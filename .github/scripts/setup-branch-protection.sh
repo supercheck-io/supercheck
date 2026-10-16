@@ -28,6 +28,8 @@ fi
 
 # Keep every entry in sync with the job `name:` values in .github/workflows/*.
 # A name that does not match a real check leaves merges permanently blocked.
+# "Quality Checks Summary" aggregates the migration, CLI, E2E-suite and
+# Deploy Validation jobs, so those are enforced without separate entries.
 read -r -d '' payload <<'JSON' || true
 {
   "strict": true,
@@ -35,7 +37,6 @@ read -r -d '' payload <<'JSON' || true
     "App Quality Checks",
     "Worker Quality Checks",
     "Quality Checks Summary",
-    "Deploy Validation",
     "Dependency Review",
     "CodeQL"
   ]

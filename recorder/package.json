@@ -3,7 +3,7 @@
   "version": "0.15.0",
   "private": true,
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "author": {
     "name": "Rui Figueira"

@@ -136,63 +136,14 @@ jobs:
           fi
           echo "Release tag v$tag matches package.json and deploy/docker compose defaults."
 
+  # Shared with the manual Release Certification workflow so the release gate
+  # (production dependency audit, disposable PostgreSQL 18, coverage gates)
+  # cannot drift from what maintainers run by hand.
   test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    strategy:
-      matrix:
-        package: [app, worker]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: ${{ matrix.package }}/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./${{ matrix.package }}
-        run: npm ci --prefer-offline --no-audit
-
-      - name: Type check
-        working-directory: ./${{ matrix.package }}
-        run: npx tsc --noEmit
-
-      - name: Lint
-        working-directory: ./${{ matrix.package }}
-        run: |
-          if [ "${{ matrix.package }}" = "app" ]; then
-            npm run lint -- --max-warnings 0
-          else
-            npm run lint:check
-          fi
-
-      - name: Run tests
-        working-directory: ./${{ matrix.package }}
-        run: npm run test:cov -- --maxWorkers=2
-        env:
-          NODE_ENV: test
-
-      - name: Build check
-        working-directory: ./${{ matrix.package }}
-        # App images use webpack (Next 16 Turbopack cannot cross-compile to ARM64).
-        # Match that bundler here so invalid route exports fail before image push.
-        run: |
-          if [ "${{ matrix.package }}" = "app" ]; then
-            npm run build:webpack
-          else
-            npm run build
-          fi
-        env:
-          SKIP_ENV_VALIDATION: ${{ matrix.package == 'app' && 'true' || 'false' }}
+    name: Release Certification
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-certification.yml
 
   build-and-push:
     name: Build and Push Docker Images
@@ -525,141 +476,40 @@ jobs:
         shell: bash
         run: rm -f "$RUNNER_TEMP/supercheck-demo-ssh/id" "$RUNNER_TEMP/supercheck-demo-ssh/known_hosts"
 
+  # The full suite runs only after the demo serves the triggering build SHA.
+  # E2E remains advisory for release builds (advisory: true): failures stay
+  # visible in the summary and artifacts without failing a successfully built
+  # image. The reusable workflow owns the steps and the supercheck-e2e lock.
   e2e-tests:
     name: Full E2E Tests
-    # The full suite runs only after the demo serves the triggering build SHA.
-    # E2E remains advisory for release builds; failures stay visible in the
-    # summary and artifacts without failing a successfully built image.
     needs: deploy-demo
     if: ${{ startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    continue-on-error: true
-    concurrency:
-      group: supercheck-e2e
-      cancel-in-progress: false
     permissions:
       contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: "24"
-
-      - name: Cache npm dependencies
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ~/.npm
-          key: npm-e2e-${{ hashFiles('app/e2e/package-lock.json') }}
-          restore-keys: npm-e2e-
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('app/e2e/package-lock.json') }}
-          restore-keys: playwright-
-
-      - name: Install dependencies
-        working-directory: ./app/e2e
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: ./app/e2e
-        run: npx playwright install --with-deps chromium
-
-      - name: Run full E2E test suite
-        id: e2e-tests
-        working-directory: ./app/e2e
-        run: |
-          REQUIRED_VARS="E2E_TEST_USER_EMAIL E2E_TEST_USER_PASSWORD E2E_INVITEE_EMAIL E2E_INVITEE_PASSWORD E2E_SESSION_USER_EMAIL E2E_SESSION_USER_PASSWORD E2E_SECURITY_USER_EMAIL E2E_SECURITY_USER_PASSWORD E2E_SUPER_ADMIN_EMAIL E2E_SUPER_ADMIN_PASSWORD E2E_ORG_OWNER_EMAIL E2E_ORG_OWNER_PASSWORD E2E_ORG_ADMIN_EMAIL E2E_ORG_ADMIN_PASSWORD E2E_PROJECT_ADMIN_EMAIL E2E_PROJECT_ADMIN_PASSWORD E2E_EDITOR_EMAIL E2E_EDITOR_PASSWORD E2E_VIEWER_EMAIL E2E_VIEWER_PASSWORD"
-          MISSING_VARS=""
-          for VAR_NAME in $REQUIRED_VARS; do
-            if [ -z "$(printenv "$VAR_NAME")" ]; then
-              MISSING_VARS="$MISSING_VARS $VAR_NAME"
-            fi
-          done
-          if [ -n "$MISSING_VARS" ]; then
-            echo "::error::Missing required full-suite E2E variables:$MISSING_VARS"
-            exit 1
-          fi
-
-          npx playwright test
-        timeout-minutes: 50
-        continue-on-error: true
-        env:
-          CI: true
-          E2E_FAIL_ON_PRIORITY_SKIPS: true
-          E2E_EXPECTED_BUILD_SHA: ${{ github.sha }}
-          E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
-          E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
-          E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
-          E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
-          E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
-          E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
-          E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
-          E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
-          E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
-          E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
-          E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
-          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
-          E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
-          E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
-          E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
-          E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
-          E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
-          E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
-          E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
-          E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}
-
-      # Only the rendered HTML report is published. The raw test-results/
-      # directory is intentionally never uploaded: it can contain request
-      # bodies and other attachments that must not leak with E2E credentials,
-      # and traces are disabled in app/e2e/playwright.config.ts for the same
-      # reason.
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: playwright-report-full
-          path: app/e2e/playwright-report/
-          retention-days: 30
-
-      - name: Create test summary
-        if: always()
-        run: |
-          {
-            echo "## 🎭 Full E2E Test Results"
-            echo ""
-
-            if [ -f "app/e2e/test-results/results.json" ]; then
-              PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
-              FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
-              SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
-              DURATION_MIN=$(jq '((.stats.duration // 0) / 60000) | floor' app/e2e/test-results/results.json)
-
-              echo "| Metric | Count |"
-              echo "|--------|-------|"
-              echo "| ✅ Passed | $PASSED |"
-              echo "| ❌ Failed | $FAILED |"
-              echo "| ⏭️ Skipped | $SKIPPED |"
-              echo "| ⏱️ Duration | ${DURATION_MIN}m |"
-              echo ""
-
-              if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-                echo "> ⚠️ **Some E2E tests failed.** The release build remains available for explicit deployment and testing."
-                echo ">"
-                echo "> Download the \`playwright-report-full\` artifact for details."
-              else
-                echo "> ✅ **All tests passed!**"
-              fi
-            else
-              echo "⚠️ No test results found. Tests may have failed to start or timed out."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+      actions: read
+    uses: ./.github/workflows/e2e-full.yml
+    with:
+      base_url: https://demo.supercheck.dev
+      expected_build_sha: ${{ github.sha }}
+      advisory: true
+    secrets:
+      E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
+      E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+      E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
+      E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
+      E2E_SESSION_USER_EMAIL: ${{ secrets.E2E_SESSION_USER_EMAIL }}
+      E2E_SESSION_USER_PASSWORD: ${{ secrets.E2E_SESSION_USER_PASSWORD }}
+      E2E_SECURITY_USER_EMAIL: ${{ secrets.E2E_SECURITY_USER_EMAIL }}
+      E2E_SECURITY_USER_PASSWORD: ${{ secrets.E2E_SECURITY_USER_PASSWORD }}
+      E2E_SUPER_ADMIN_EMAIL: ${{ secrets.E2E_SUPER_ADMIN_EMAIL }}
+      E2E_SUPER_ADMIN_PASSWORD: ${{ secrets.E2E_SUPER_ADMIN_PASSWORD }}
+      E2E_ORG_OWNER_EMAIL: ${{ secrets.E2E_ORG_OWNER_EMAIL }}
+      E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+      E2E_ORG_ADMIN_EMAIL: ${{ secrets.E2E_ORG_ADMIN_EMAIL }}
+      E2E_ORG_ADMIN_PASSWORD: ${{ secrets.E2E_ORG_ADMIN_PASSWORD }}
+      E2E_PROJECT_ADMIN_EMAIL: ${{ secrets.E2E_PROJECT_ADMIN_EMAIL }}
+      E2E_PROJECT_ADMIN_PASSWORD: ${{ secrets.E2E_PROJECT_ADMIN_PASSWORD }}
+      E2E_EDITOR_EMAIL: ${{ secrets.E2E_EDITOR_EMAIL }}
+      E2E_EDITOR_PASSWORD: ${{ secrets.E2E_EDITOR_PASSWORD }}
+      E2E_VIEWER_EMAIL: ${{ secrets.E2E_VIEWER_EMAIL }}
+      E2E_VIEWER_PASSWORD: ${{ secrets.E2E_VIEWER_PASSWORD }}

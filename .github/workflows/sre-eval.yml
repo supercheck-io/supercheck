@@ -29,6 +29,7 @@ permissions:
 
 jobs:
   deterministic-sre-eval:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
       run:

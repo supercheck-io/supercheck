@@ -138,7 +138,7 @@ The application stores platform data in PostgreSQL, schedules work through Redis
 
 ## Contributing and security
 
-Contributions are welcome. Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Governance and release expectations are described in [GOVERNANCE.md](GOVERNANCE.md), and help is listed in [SUPPORT.md](SUPPORT.md).
+Contributions are welcome. Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Governance and release expectations are described in [GOVERNANCE.md](GOVERNANCE.md), help is listed in [SUPPORT.md](SUPPORT.md), and release history is in [CHANGELOG.md](CHANGELOG.md).
 
 Use the [issue chooser](https://github.com/supercheck-io/supercheck/issues/new/choose) for reproducible bugs, documentation fixes, and feature requests, and [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for proposals and questions.
 

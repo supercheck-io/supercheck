@@ -10,6 +10,7 @@ permissions:
 jobs:
   dependency-review:
     name: Dependency Review
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

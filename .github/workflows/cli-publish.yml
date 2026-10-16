@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write # Required for npm provenance
 
 defaults:
   run:
@@ -27,13 +26,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Release tags must be annotated and signed by a key listed in
       # main's .github/release-allowed-signers. The signers file is read
       # from main, not from the tagged commit, so a tag cannot add its own key.
       - name: Checkout release signers from main
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
           path: release-signers
@@ -110,12 +109,15 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # Required for npm provenance
     env:
       NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -125,7 +127,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: cli/package-lock.json
 
-      - name: Enable npm trusted publishing
+      - name: Upgrade npm for provenance support
         run: npm install --global npm@11
 
       - name: Install dependencies
