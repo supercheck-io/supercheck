@@ -45,7 +45,7 @@ globalThis.fetch=async (url,options={})=>{
  const context={organization:{id:'org'},project:{id:state.mode==='wrong-context'?'other-project':'project'},user:{id:'user',role:'project_admin'}};
  if(state.mode==='script-denied'&&route==='/api/tests/${id}'){status=403;data={error:'denied'};}
  else if(state.mode==='swapped-test'&&route==='/api/tests/${id}'){data={id:'019a9999-0000-7000-8000-000000000009',title:'Other',type:'browser',script:'x'};}
- else if(route==='/api/context')data=context;
+ else if(route==='/api/context'){data=context;if(state.mode==='context-denied'){status=401;data={error:'expired'};}}
  else if(route==='/api/health')data={status:'ok'};
  else if(state.mode==='provider-denied'&&route==='/api/notification-providers'){status=403;data={error:'denied',config:{discordWebhookUrl:'LEAK_TEST_DISCORD',teamsWebhookUrl:'LEAK_TEST_TEAMS',url:'LEAK_TEST_URL',headers:{'X-Custom':'LEAK_TEST_HEADERS'}}};}
  else if(state.mode==='inventory-denied'&&route==='/api/jobs'){status=403;data={error:'denied'};}
@@ -73,6 +73,42 @@ globalThis.fetch=async (url,options={})=>{
 afterEach(() => rmSync(cwd, { recursive: true, force: true }))
 
 describe('CLI agent workflows through the real entrypoint', () => {
+  it('initializes with the authenticated API target and project, declaring skipped dependencies', () => {
+    rmSync(resolve(cwd, 'supercheck.config.mjs'))
+    const result = run('init', '--skip-install')
+    expect(result.status).toBe(0)
+    const generated = readFileSync(resolve(cwd, 'supercheck.config.ts'), 'utf8')
+    expect(generated).toContain('organization: "org"')
+    expect(generated).toContain('project: "project"')
+    expect(generated).toContain('"https://mock.invalid"')
+    expect(generated).not.toContain(testToken)
+    const pkg = JSON.parse(readFileSync(resolve(cwd, 'package.json'), 'utf8'))
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@playwright/test', '@supercheck/cli', '@types/k6', '@types/node', 'typescript'])
+    expect(run('config', 'validate', '--offline').status).toBe(0)
+    expect(read().requests.map((request) => request.path)).toEqual(['/api/context'])
+  })
+
+  it('keeps unauthenticated scaffolding offline and omits Playwright when examples are skipped', () => {
+    rmSync(resolve(cwd, 'supercheck.config.mjs'))
+    testToken = 'invalid'
+    expect(run('init', '--skip-install', '--skip-examples').status).toBe(0)
+    expect(read().requests).toEqual([])
+    const pkg = JSON.parse(readFileSync(resolve(cwd, 'package.json'), 'utf8'))
+    expect(pkg.devDependencies).toHaveProperty('@supercheck/cli')
+    expect(pkg.devDependencies).not.toHaveProperty('@playwright/test')
+    expect(run('config', 'validate', '--offline').status).toBe(0)
+  })
+
+  it('warns and still scaffolds when authenticated context cannot be fetched', () => {
+    rmSync(resolve(cwd, 'supercheck.config.mjs'))
+    fixture('context-denied')
+    const result = runWithOutput(false, 'init', '--skip-install')
+    expect(result.status).toBe(0)
+    expect(result.stdout + result.stderr).toContain('Could not load authenticated context')
+    expect(existsSync(resolve(cwd, 'supercheck.config.ts'))).toBe(true)
+    expect(read().requests).toHaveLength(1)
+  })
+
   it('rejects a different project before sending mutations', () => {
     fixture('wrong-context')
     const result = run('deploy', '--force')

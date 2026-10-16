@@ -30,6 +30,8 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 
 ## [CLI 0.3.1] - Unreleased
 
+- **CLI setup:** `init` now prefills the authenticated organization and project IDs, with environment overrides and a warning if context is unavailable. `--skip-install` records required dev dependencies and tells you to install them manually; Playwright browsers still require `npx playwright install chromium`.
+
 - **License:** The CLI is now Apache-2.0, with LICENSE and NOTICE included in the npm package. Earlier published versions retain their original license terms. The app and worker, including Private Agent mode, remain AGPL-3.0-only.
 - **Agent workflows:** Add offline `skills`, config-schema, and capabilities commands; support account-free local test and job execution, cloud test execution, and waiting on existing runs. Improve JSON plans/results, confirmation handling, project-target checks, and deployment state tracking with generated resource IDs.
 - **CLI reliability:** Redact Discord, Teams, and generic webhook credentials; preserve individual pull errors in human output; keep diagnostics usable with invalid project config; retire stale resource-name aliases; and preserve resumable run IDs on wait timeouts. Offline config commands require an existing file, while offline file-based test execution remains available without one.

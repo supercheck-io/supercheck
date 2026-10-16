@@ -41,6 +41,8 @@ supercheck deploy    # apply them
 
 For self-hosted instances, add `--url https://your-supercheck.example.com` to `login`. In CI, set `SUPERCHECK_TOKEN` from your secret store instead. Locally stored credentials are obfuscated, not encrypted.
 
+When logged in, `supercheck init` fetches your current organization and project IDs to prefill the generated config. `SUPERCHECK_URL` overrides the stored login URL, and `SUPERCHECK_ORG` or `SUPERCHECK_PROJECT` override the matching IDs. If context cannot be loaded, init warns and uses fallback values; check the IDs in `supercheck.config.ts` before deploying. Use `supercheck init --skip-install` to record the required dev dependencies without installing them, then run your package manager's install command. Playwright browsers still need `npx playwright install chromium`.
+
 ## Run tests locally
 
 Local runs need no Supercheck account, token, or network access to Supercheck:
