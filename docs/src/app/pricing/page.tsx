@@ -13,15 +13,11 @@ const plans = [
             '50 monitors',
             '5 status pages with custom domains',
             '3,000 Playwright minutes/month',
-            '30,000 K6 VU minutes/month',
+            '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
             '200 completed AI SRE investigations/month',
-            'Read-only evidence connectors',
-            'Private Agent support',
             '5 team members',
             '10 projects per organization',
-            'CI/CD integration',
-            'Cron job scheduling',
             'Email support',
         ],
         cta: 'Coming soon',
@@ -36,15 +32,11 @@ const plans = [
             '200 monitors',
             '20 status pages with custom domains',
             '10,000 Playwright minutes/month',
-            '100,000 K6 VU minutes/month',
+            '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
             '1,000 completed AI SRE investigations/month',
-            'Read-only evidence connectors',
-            'Private Agent support',
             '25 team members',
             '50 projects per organization',
-            'CI/CD integration',
-            'Cron job scheduling',
             'Priority email support',
         ],
         cta: 'Coming soon',
@@ -55,7 +47,7 @@ const plans = [
         description: 'Get in touch to discuss your requirements',
         features: [
             'Custom monitor allowance',
-            'Custom Playwright & K6 allowances',
+            'Custom Playwright & k6 allowances',
             'Custom AI credit pool or bring-your-own-provider',
             'Custom AI SRE investigation volume',
             'Custom connector and Private Agent limits',
@@ -73,8 +65,7 @@ const plans = [
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
-    { metric: '1,000 K6 VU-minutes', plus: '$2.00', pro: '$1.00' },
-    { metric: 'AI credits', plus: 'Included · fair use', pro: 'Included · fair use' },
+    { metric: '1,000 k6 VU-minutes', plus: '$2.00', pro: '$1.00' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
 ];
 
@@ -83,7 +74,7 @@ const comparisonFeatures = [
         category: 'Usage Limits', items: [
             { name: 'Monitors', plus: '50', pro: '200' },
             { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000' },
-            { name: 'K6 VU minutes/month', plus: '30,000', pro: '100,000' },
+            { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000' },
             { name: 'AI credits/month', plus: '1,000', pro: '5,000' },
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000' },
             { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included' },
@@ -104,9 +95,8 @@ const comparisonFeatures = [
         ]
     },
     {
-        category: 'Team & Organization', items: [
+        category: 'Team & Projects', items: [
             { name: 'Team members', plus: '5', pro: '25' },
-            { name: 'Cloud subscription scope', plus: 'One organization', pro: 'One organization' },
             { name: 'Projects', plus: '10', pro: '50' },
             { name: 'Status pages', plus: '5', pro: '20' },
             { name: 'Subscribers per status page', plus: '1,000', pro: '10,000' },
@@ -131,56 +121,36 @@ const comparisonFeatures = [
 
 const faqs = [
     {
-        question: 'Does one subscription cover the projects in my organization?',
-        answer: 'Yes. Your account has one default organization, and its projects share the subscription, usage allowances, limits, and spending controls. Create and switch projects using the project selector. Projects you join by invitation use their host team’s plan and allowances separately; joining a paid team does not require a personal subscription. Only the host organization’s owner can manage billing.',
+        question: 'Can I try Supercheck before Cloud launches?',
+        answer: 'Yes. Explore the free live demo without signing up. Cloud plans are coming soon; signups are not open yet.',
     },
     {
-        question: 'When should I consider Pro?',
-        answer: 'Pro includes more capacity and half the Playwright and K6 overage rates. At standard list prices, with only browser usage, Plus and Pro cost the same at 16,000 Playwright minutes/month. With only K6 usage, they cost the same at 80,000 VU-minutes/month. Other usage, discounts, taxes, and proration affect the comparison; review your organization’s estimate before changing plans.',
+        question: 'How are browser minutes measured?',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed check and retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
     },
     {
-        question: 'How are browser execution minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share your minute allowance. We measure execution milliseconds and round to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed check and retry contributes usage. HTTP, ping, and port checks do not consume these minutes. Failed or canceled executions can still consume compute usage.',
-    },
-    {
-        question: 'What does frequent synthetic monitoring cost?',
-        answer: 'Five monitors running for five seconds every five minutes use approximately 3,599 Playwright minutes in a 30-day month: about $54.99 total on Plus, or within Pro’s $149 allowance. Longer runs, retries, and other tests increase usage. This is an estimate before taxes.',
-    },
-    {
-        question: 'How does run duration affect browser pricing?',
-        answer: 'Beyond included usage, 1,000 five-second executions cost about $0.83 on Plus or $0.42 on Pro. At 30 seconds each, they cost $5.00 or $2.50. Each executed check and retry contributes usage; these estimates exclude the monthly subscription and taxes.',
-    },
-    {
-        question: 'How are load tests measured?',
-        answer: 'K6 usage measures peak capacity, not accumulated active VU-time: peak virtual users multiplied by execution duration in minutes, rounded up to a whole VU-minute per run. This can exceed average active VU-time for ramping tests. Review your load profile and spending settings before running a large test.',
-    },
-    {
-        question: 'Can I try Supercheck before subscribing?',
-        answer: 'Yes! Try our free demo at demo.supercheck.dev \u2014 no signup required. Cloud plans are coming soon; signups are not open yet.',
-    },
-    {
-        question: 'Do unused minutes roll over?',
-        answer: 'No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.',
+        question: 'How is k6 usage measured?',
+        answer: 'Each run uses peak virtual users multiplied by its duration in minutes, rounded up to a whole VU-minute. This measures peak capacity, so ramping tests can use more than their average active VU-time suggests. Review your load profile before running large tests.',
     },
     {
         question: 'How do AI credits work?',
-        answer: 'Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted. Full AI SRE investigations use a separate allowance: each completed report uses one investigation unit, without guaranteeing a diagnosis or resolution. Failed or timed-out full investigations and billing retries do not consume investigation units. AI SRE chat, triage, and evidence briefs do not consume investigation units.',
+        answer: 'AI credits cover test generation, fixes, and failure analysis, subject to fair use. Each accepted action uses one credit, even if generation or analysis later fails. Credits have no overage charges: upgrade or wait for the next billing cycle when they run out.',
     },
     {
-        question: 'How can I control overage spending?',
-        answer: 'Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.',
+        question: 'What counts as an AI SRE investigation?',
+        answer: 'Each completed full investigation report uses one investigation unit. Failed or timed-out investigations and billing retries do not use units. AI SRE chat, triage, and evidence briefs do not use investigation units. A completed report does not guarantee a diagnosis or resolution.',
     },
     {
-        question: 'Can I change plans anytime?',
-        answer: 'Yes. Review the effective date and any prorated charge in the billing portal before confirming a plan change.',
+        question: 'Can I limit overage spending?',
+        answer: 'Owners and admins can set monthly spending limits and alerts, with optional blocking of new billable executions and full investigations. Basic uptime checks continue. Spending limits cover overages, not the subscription fee. In-flight usage can exceed the limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require a plan upgrade.',
     },
     {
-        question: 'What payment methods do you accept?',
-        answer: 'We accept all major credit cards (Visa, Mastercard, American Express) through our payment provider.',
+        question: 'Do unused allowances roll over?',
+        answer: 'No. Execution minutes, AI credits, and investigation allowances reset monthly on your billing date.',
     },
     {
-        question: 'Do you offer enterprise plans?',
-        answer: 'Get in touch at hello@supercheck.io to discuss your requirements, usage allowances, support, SLA, and onboarding.',
+        question: 'Can I change plans?',
+        answer: 'You can change plans through the billing portal once Cloud subscriptions are available. Review the effective date and any prorated charge before confirming.',
     },
 ];
 
@@ -210,15 +180,15 @@ export default function PricingPage() {
                         Supercheck Cloud is coming soon
                     </h1>
                     <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Preview the cloud plans below. Signups are not open yet. One subscription will cover all projects in your default organization.
+                        Preview the plans below. Cloud signups are not open yet.
                     </p>
                     <p className="mt-4 text-sm text-fd-muted-foreground">
-                        Cloud prices are in USD, billed monthly, before applicable taxes. Usage overages are additional.
+                        Prices are in USD per month, before taxes. Usage beyond included allowances is billed separately.
                     </p>
                 </div>
 
                 {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-6">
+                <div className="mb-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
@@ -234,7 +204,7 @@ export default function PricingPage() {
                                     </span>
                                 </div>
                             )}
-                            <div className="mb-6 min-h-24">
+                            <div className="mb-6 min-h-20">
                                 <h2 className="text-xl font-semibold mb-2">{plan.name}</h2>
                                 <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
                             </div>
@@ -270,9 +240,6 @@ export default function PricingPage() {
                         </div>
                     ))}
                 </div>
-                <p className="text-center text-sm text-fd-muted-foreground max-w-3xl mx-auto mb-20">
-                    Cloud allowances reset each billing month and do not roll over. Joining an invited team uses that team’s subscription.
-                </p>
 
                 {/* Overage Pricing */}
                 <div className="mb-20">

@@ -36,10 +36,12 @@ const sections = [
     {
         title: "Docs",
         links: [
-            { name: "Welcome", href: "/docs/app/welcome" },
-            { name: "Self-Hosted Setup", href: "/docs/app/deployment/self-hosted" },
-            { name: "Tests", href: "/docs/app/automate/tests" },
-            { name: "Monitors", href: "/docs/app/monitor" },
+            { name: "Overview", href: "/docs/app/welcome" },
+            { name: "Test automation", href: "/docs/app/automate" },
+            { name: "Monitoring", href: "/docs/app/monitor" },
+            { name: "AI SRE", href: "/docs/app/investigate" },
+            { name: "Status pages", href: "/docs/app/communicate/status-pages" },
+            { name: "Deployment", href: "/docs/app/deployment" },
         ],
     },
     {
@@ -49,7 +51,8 @@ const sections = [
             { name: "Live Demo", href: process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev" },
             { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
             { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9" },
-            { name: "npm CLI", href: "https://www.npmjs.com/package/@supercheck/cli" },
+            { name: "CLI docs", href: "/docs/cli" },
+            { name: "API reference", href: "/docs/api" },
             { name: "YouTube", href: "https://www.youtube.com/@supercheck-io" },
             { name: "GitHub", href: "https://github.com/supercheck-io/supercheck" },
         ],
@@ -84,7 +87,7 @@ const socialLinks = [
 
 
 export function SiteFooter({
-    description = "Open source AI-powered test automation & monitoring platform.",
+    description = "Open-source testing, monitoring, and AI SRE — as code.",
     copyright = `© ${new Date().getFullYear()} Supercheck. All rights reserved.`,
 }: FooterProps) {
     return (

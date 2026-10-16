@@ -17,6 +17,7 @@ import {
   Tally4,
   ChartSpline,
   BookOpenText,
+  CreditCard,
   Chromium,
   Sparkles,
   Terminal,
@@ -237,11 +238,12 @@ export default function HomePage() {
               className={`inline-flex ${navLinkClass}`}
               aria-label="Documentation"
             >
-              <BookOpenText className="size-5" />
+              <BookOpenText aria-hidden="true" className="size-5" />
               <span className="hidden md:inline">Docs</span>
             </Link>
-            <Link href="/pricing" className={`inline-flex ${navLinkClass}`}>
-              Pricing
+            <Link href="/pricing" className={`inline-flex ${navLinkClass}`} aria-label="Pricing">
+              <CreditCard aria-hidden="true" className="size-5" />
+              <span className="hidden md:inline">Pricing</span>
             </Link>
             <a
               href="https://www.npmjs.com/package/@supercheck/cli"
