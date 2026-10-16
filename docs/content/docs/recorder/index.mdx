@@ -4,13 +4,12 @@ description: Record browser interactions and save Playwright tests directly to S
 icon: MousePointerClick
 ---
 
-The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. You can review and edit the generated test before saving it to a Supercheck project.
+The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. Review or edit the generated test, then save it to a Supercheck project.
 
 ## Install
 
 - [Install from the Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9)
-- [View the source and build instructions](https://github.com/supercheck-io/supercheck/tree/main/recorder)
+- [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 
 The extension requires Chrome or Edge with Manifest V3 side-panel support.
 
@@ -20,43 +19,27 @@ The extension requires Chrome or Edge with Manifest V3 side-panel support.
 
 1. Install the extension in the browser profile you use for Supercheck.
 2. Open `https://app.supercheck.io`, sign in, and visit any authenticated dashboard page.
-3. The extension connects automatically. You do not need to copy an API key.
+3. The extension connects automatically — no API key required.
 
 ### Self-hosted Supercheck
 
 1. Open the extension's **Options** page.
-2. Enter the HTTPS origin of your self-hosted deployment and select **Save URL and open Supercheck**.
-3. Sign in to that Supercheck instance in the same browser profile. An authenticated dashboard page connects the extension automatically.
-
-The options page retains an advanced API-key field for an existing recorder-scoped credential. Ordinary CLI tokens and job trigger keys are not recorder credentials.
-
-For local development only, the extension also accepts `http://localhost`. Other non-HTTPS instance URLs are rejected.
+2. Enter the HTTPS URL of your deployment and select **Save URL and open Supercheck**.
+3. Sign in to that instance in the same browser profile. The extension connects automatically.
 
 ## Record a test
 
 1. Open the page you want to test.
-2. Select the Supercheck Recorder extension, or press `Shift+Alt+R`.
-3. Interact with the page. The side panel displays the generated Playwright code.
+2. Open the extension, or press `Shift+Alt+R`.
+3. Interact with the page — the side panel displays the generated Playwright code.
 4. Review or edit the code.
-5. Select **Save** to send it to the originating Supercheck Playground.
+5. Select **Save** to send the test to the originating Supercheck Playground.
 
-Use `Shift+Alt+C` to inspect elements without recording actions. Close the recorder when you have finished.
+Press `Shift+Alt+C` to inspect elements without recording actions.
 
 ## Permissions and data
 
-The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access. These permissions let the extension record actions in the selected tab and save the test to Supercheck.
-
-The configured instance URL and extension API key are stored in Chrome sync storage. Treat the browser profile as sensitive: disconnect the extension before sharing the profile, and revoke the key from Supercheck if the profile or device is lost. Recorded page interactions can include text entered into forms; review generated code before saving and avoid recording real secrets.
-
-The extension requires HTTPS for cloud and self-hosted instances. Only localhost development may use HTTP.
-
-## Self-hosted deployments
-
-Configure the externally reachable HTTPS URL of your Supercheck app in the extension options. The browser must be able to reach the instance over HTTPS. If connection fails, verify the URL, certificate trust, API key, and browser access to the deployment.
-
-## Build from Source
-
-For a custom or development build, follow the [recorder build instructions](https://github.com/supercheck-io/supercheck/tree/main/recorder). For normal use, install the published browser extension.
+The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and save tests to Supercheck. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
 
 ## Troubleshooting
 
@@ -67,7 +50,3 @@ For a custom or development build, follow the [recorder build instructions](http
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |
-
-## License
-
-The Supercheck Recorder is distributed under Apache-2.0. Its Playwright-derived copyright notices and license terms remain available in the source repository.
