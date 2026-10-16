@@ -244,6 +244,25 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
 
+  it('never sends an empty secret value, so an unset environment variable cannot wipe a stored secret', () => {
+    fixture()
+    const state = read(); state.resources['/api/variables'] = [{ id, key: 'API_KEY', value: '', isSecret: true, description: 'old' }]
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    config({ variables: [{ id, key: 'API_KEY', value: '', isSecret: true, description: 'new' }] })
+    expect(run('deploy', '--force').status).toBe(0)
+    const writes = read().requests.filter((request) => request.method !== 'GET')
+    expect(writes).toHaveLength(1)
+    expect(writes[0].body).not.toHaveProperty('value')
+    expect(writes[0].body).toMatchObject({ description: 'new' })
+  })
+  it('refuses to create a secret variable that has no value', () => {
+    fixture()
+    config({ variables: [{ key: 'NEW_SECRET', value: '', isSecret: true }] })
+    const result = run('deploy', '--force')
+    expect(JSON.stringify(JSON.parse(result.stdout))).toContain('has no value')
+    expect(read().requests.filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
   it('normalizes synthetic-monitor references before the second deployment', () => {
     const path = '_supercheck_/playwright/homepage.pw.ts'; mkdirSync(resolve(cwd, '_supercheck_/playwright'), { recursive: true })
     writeFileSync(resolve(cwd, path), "import {test} from '@playwright/test'; test('home',async()=>{});")
