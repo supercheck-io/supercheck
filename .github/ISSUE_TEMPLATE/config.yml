@@ -6,9 +6,6 @@ contact_links:
   - name: Questions and ideas
     url: https://github.com/supercheck-io/supercheck/discussions
     about: Ask questions and propose larger features before opening an issue.
-  - name: Discord community
-    url: https://discord.gg/UVe327CSbm
-    about: Chat with maintainers and other users in real time.
   - name: Documentation
     url: https://supercheck.io/docs/app/welcome
     about: Read the product, CLI, API, and deployment documentation.

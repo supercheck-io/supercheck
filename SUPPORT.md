@@ -13,7 +13,6 @@ Thanks for using Supercheck. Here is where to get help.
 ## Questions and ideas
 
 - [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) for questions, design ideas, and larger proposals.
-- [Discord](https://discord.gg/UVe327CSbm) for real-time community chat.
 
 ## Bugs and feature requests
 

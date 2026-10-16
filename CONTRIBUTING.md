@@ -6,7 +6,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
-- Discuss large features, new providers, database changes, or breaking behavior in [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) or [Discord](https://discord.gg/UVe327CSbm) first.
+- Discuss large features, new providers, database changes, or breaking behavior in [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions) first.
 - Report vulnerabilities privately through [SECURITY.md](SECURITY.md). Do not open a public issue.
 - Search existing issues and pull requests before starting work.
 - For anything larger than a small fix, open or comment on an issue so maintainers can confirm the approach before you invest time.
