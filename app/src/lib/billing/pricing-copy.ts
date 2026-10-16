@@ -7,12 +7,12 @@ export const PRICING_FAQS = [
   {
     question: "Where do Cloud checks run?",
     answer:
-      "HTTP, SSL, ping, and port monitoring runs from EU, US, and Singapore. Browser synthetic checks, Playwright tests, and k6 execution run in EU. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
+      "Supercheck Cloud launches with one EU monitoring location. We plan to add more regions. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
   },
   {
     question: "How are browser execution minutes measured?",
     answer:
-      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (EU). Each executed retry contributes usage, and if browser checks are enabled in more locations, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, ping, and port checks do not consume Playwright minutes.",
+      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Each executed retry contributes usage, and if more locations are enabled, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, ping, and port checks do not consume Playwright minutes.",
   },
   {
     question: "How are load tests measured?",

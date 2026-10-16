@@ -43,7 +43,7 @@ export function formatUsd(value: number): string {
 
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
-  // Browser checks run from a single EU location, so one run per check.
+  // Supercheck Cloud launches with a single EU location, so one run per check.
   const runsPerMonth = Math.round(workload.checks * executionsPerCheck);
   const playwrightMinutes = (runsPerMonth * workload.durationSeconds) / 60;
   const notices: string[] = [];
