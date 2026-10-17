@@ -2992,6 +2992,8 @@ paths:
                 $ref: "#/components/schemas/ValidationScriptErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: Too many validation requests; retry after the Retry-After interval
         "500":
           description: Validation service error
   /api/monitors/{id}/status:

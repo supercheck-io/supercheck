@@ -6,12 +6,14 @@ import {
 } from "@/lib/script-type-validator";
 import { isK6Script } from "@/lib/k6-validator";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkAdminRateLimit } from "@/lib/session-security";
 
 export async function POST(request: NextRequest) {
   try {
     // SECURITY: Require authentication to prevent abuse (DoS via expensive validation)
+    let userId: string;
     try {
-      await requireAuthContext();
+      ({ userId } = await requireAuthContext());
     } catch (error) {
       if (isAuthError(error)) {
         return NextResponse.json(
@@ -25,6 +27,33 @@ export async function POST(request: NextRequest) {
         );
       }
       throw error;
+    }
+
+    const rateLimit = await checkAdminRateLimit(
+      userId,
+      "validate-script",
+      // CLI deploys validate every test, so leave headroom for large suites.
+      300,
+      60 * 1000,
+    );
+    if (!rateLimit.allowed) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil(((rateLimit.resetTime ?? Date.now()) - Date.now()) / 1000),
+      );
+      return NextResponse.json(
+        { error: "Too many requests", retryAfter },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    // Reject oversized bodies before buffering them (UTF-8 worst case + JSON overhead).
+    const contentLength = Number(request.headers.get("content-length"));
+    if (contentLength > MAX_SCRIPT_LENGTH * 4 + 4096) {
+      return NextResponse.json(
+        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+        { status: 413 },
+      );
     }
 
     let data: unknown;
@@ -90,14 +119,15 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       // Handle any unexpected errors during validation
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown validation error";
-      console.error("Validation service error:", errorMessage);
+      console.error(
+        "Validation service error:",
+        error instanceof Error ? error.message : "Unknown validation error",
+      );
 
       return NextResponse.json(
         {
           valid: false,
-          error: `Validation service error: ${errorMessage}`,
+          error: "Validation service error",
           errorType: "service",
           isValidationError: true,
         },

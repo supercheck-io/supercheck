@@ -475,6 +475,8 @@ describe('filterSecretVariablesToUsedKeys', () => {
     'const read = getSecret; read(key)',
     "const stage: string = 'STAGE'; getSecret(`API_${stage}`)",
     String.raw`const value: string = getSecret('API\x5fSTAGE')`,
+    "#!/usr/bin/env node\nconst k = 'B'; getSecret('A' + k)",
+    'const f = eval; f("getSecret(\'UNUSED\')")',
   ])('preserves dynamic helper lookups: %s', (script) => {
     expect(filterSecretVariablesToUsedKeys(secrets, [script])).toEqual(secrets);
   });

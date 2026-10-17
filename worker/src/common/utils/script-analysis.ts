@@ -104,11 +104,15 @@ export function filterSecretVariablesToUsedKeys(
   const used = new Set<string>();
   for (const script of scripts) {
     try {
-      acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
+      // Must match the helper-call collector's version; otherwise it silently
+      // falls back to a regex scan that misreads dynamic keys.
+      acorn.parse(script, { ecmaVersion: 2022, sourceType: 'module' });
     } catch {
       // TypeScript and other unsupported syntax need the compatibility fallback.
       return secrets;
     }
+    // Code built at runtime can reach getSecret without a visible reference.
+    if (/\b(eval|Function)\b/.test(script)) return secrets;
     const calls = collectUnboundHelperCalls(script, ['getSecret']);
     // Aliases and dynamic keys cannot be resolved statically. Keep them working.
     // This optimization is not an authorization boundary within a project.

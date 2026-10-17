@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { saveTest } from "./save-test";
 import { PUT } from "@/app/api/tests/[id]/route";
 import { encodeStoredTestScript } from "@/lib/test-script";
@@ -42,7 +43,7 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: () => false,
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
-  checkPermissionWithContext: () => true,
+  checkPermissionWithContext: jest.fn(() => true),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/requirements-internal", () => ({
@@ -51,6 +52,7 @@ jest.mock("@/lib/requirements-internal", () => ({
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 
 beforeEach(() => {
+  jest.mocked(checkPermissionWithContext).mockReturnValue(true);
   mockSet.mockClear();
   stored = {
     id: "test-id",
@@ -123,3 +125,13 @@ it.each(["action", "api"])(
     }
   },
 );
+
+it.each([
+  [{ id: "test-id", title: "T" }, "Insufficient permissions to edit tests"],
+  [{ title: "T" }, "Insufficient permissions to create tests"],
+])("denies %p before lookup or validation", async (input, error) => {
+  jest.mocked(checkPermissionWithContext).mockReturnValue(false);
+  const result = await saveTest({ ...input, script: "const a = ;" });
+  expect(result).toEqual({ id: "", success: false, error });
+  expect(mockSet).not.toHaveBeenCalled();
+});

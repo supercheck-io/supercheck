@@ -1757,9 +1757,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         await collectArtifacts();
         // Artifact transfer has its own socket bound. Allow the wrapper's exit
         // signal to reach kubelet without charging that transfer to script time.
-        timeoutAt = Math.max(
-          timeoutAt + Date.now() - extractionStartedAt,
-          Date.now() + 30_000,
+        // Never extend past the Job's activeDeadlineSeconds (timeout + 120s), or
+        // Kubernetes deletes the pod and the run is misreported as cancelled.
+        timeoutAt = Math.min(
+          Math.max(
+            timeoutAt + Date.now() - extractionStartedAt,
+            Date.now() + 30_000,
+          ),
+          startedAt + timeoutMs + 90_000,
         );
       }
 

@@ -56,6 +56,32 @@ export async function saveTest(
 
     const validatedData = saveTestWithIdSchema.parse(data);
 
+    // Authorize before any lookup or script validation work.
+    const permissionContext = { userId, organizationId, project };
+    if (validatedData.id) {
+      if (!checkPermissionWithContext("test", "update", permissionContext)) {
+        console.warn(
+          `User ${userId} attempted to update test ${validatedData.id} without EDIT_TESTS permission`,
+        );
+        return {
+          id: "",
+          success: false,
+          error: "Insufficient permissions to edit tests",
+        };
+      }
+    } else if (
+      !checkPermissionWithContext("test", "create", permissionContext)
+    ) {
+      console.warn(
+        `User ${userId} attempted to create test without CREATE_TESTS permission`,
+      );
+      return {
+        id: "",
+        success: false,
+        error: "Insufficient permissions to create tests",
+      };
+    }
+
     const existingTests = validatedData.id
       ? await db
           .select({ script: tests.script, type: tests.type })
@@ -109,24 +135,6 @@ export async function saveTest(
 
     // Check if this is an update (has an ID) or a new test
     if (validatedData.id) {
-      // This is an update - check EDIT_TESTS permission (optimized - reuses context)
-      const canEditTests = checkPermissionWithContext("test", "update", {
-        userId,
-        organizationId,
-        project,
-      });
-
-      if (!canEditTests) {
-        console.warn(
-          `User ${userId} attempted to update test ${validatedData.id} without EDIT_TESTS permission`,
-        );
-        return {
-          id: "",
-          success: false,
-          error: "Insufficient permissions to edit tests",
-        };
-      }
-
       const testId = validatedData.id;
 
       // Remove the id from the data to update
@@ -189,24 +197,6 @@ export async function saveTest(
       // Return the updated test ID
       return { id: testId, success: true };
     } else {
-      // This is a new test - check CREATE_TESTS permission (optimized - reuses context)
-      const canCreateTests = checkPermissionWithContext("test", "create", {
-        userId,
-        organizationId,
-        project,
-      });
-
-      if (!canCreateTests) {
-        console.warn(
-          `User ${userId} attempted to create test without CREATE_TESTS permission`,
-        );
-        return {
-          id: "",
-          success: false,
-          error: "Insufficient permissions to create tests",
-        };
-      }
-
       const newTestId = crypto.randomUUID();
 
       if (validatedData.requirementId) {
@@ -289,7 +279,11 @@ export async function saveTest(
     return {
       id: "",
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      // Never echo driver/SQL error text to the client.
+      error:
+        error instanceof z.ZodError
+          ? "Invalid test data"
+          : "Failed to save test",
     };
   }
 }
