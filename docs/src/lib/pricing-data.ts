@@ -78,7 +78,7 @@ export const COMPETITORS: readonly Competitor[] = [
     sourceUrl: 'https://www.checklyhq.com/pricing/',
     asOf: COMPETITOR_AS_OF,
     billing:
-      'Browser checks bill one run per execution. Plans shown at annual-billing rates.',
+      'Browser checks bill one run per execution; Playwright Check Suites bill one run per 30 seconds, so we price classic browser checks. Plans shown at annual-billing rates.',
     note: 'Hobby stops at 1,000 runs. Starter and Team bill $6.50 and $6.25 per 1,000 runs beyond the allowance.',
   },
   {
@@ -111,14 +111,14 @@ export interface CapabilityRow {
   betterstack: string;
 }
 
+export const VENDORS = [
+  { key: 'supercheck', name: 'Supercheck' },
+  { key: 'checkly', name: 'Checkly' },
+  { key: 'datadog', name: 'Datadog' },
+  { key: 'betterstack', name: 'Better Stack' },
+] as const;
+
 export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
-  {
-    name: 'Browser and Playwright tests',
-    supercheck: 'Included, overage billed',
-    checkly: 'Included, billed per run',
-    datadog: 'Billed per run',
-    betterstack: 'Billed per minute',
-  },
   {
     name: 'k6 load testing',
     supercheck: '30,000–100,000 VU min, overage billed',
@@ -129,15 +129,15 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   {
     name: 'Status pages',
     supercheck: 'Included, 5–20 pages',
-    checkly: 'Add-on, $9–$30/mo',
-    datadog: 'Separate product',
-    betterstack: '1 included, extra pages from $15/mo',
+    checkly: 'Communicate plan, $9–$30/mo',
+    datadog: 'With Incident Management, from $30/seat',
+    betterstack: '1 included, extra page $15/mo ($12 yearly)',
   },
   {
     name: 'AI incident investigation',
     supercheck: '200–1,000 investigations, overage billed',
-    checkly: 'Add-on, $12–$39/mo',
-    datadog: 'Separate product',
+    checkly: 'Resolve plan, $12–$39/mo',
+    datadog: 'Bits AI credits, billed separately',
     betterstack: 'Billed per AI token',
   },
   {

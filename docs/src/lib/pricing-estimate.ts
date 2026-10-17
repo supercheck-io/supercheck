@@ -41,6 +41,18 @@ export function formatUsd(value: number): string {
   }).format(value);
 }
 
+// Browser minutes per month above which Pro costs less than Plus. Both plans
+// are past their included minutes there, so each cost is linear in minutes.
+// Ignores the monitor limit: Plus only fits workloads of 50 monitors or fewer.
+export function planCrossoverMinutes(): number {
+  const [plus, pro] = SUPERCHECK_PLANS;
+  const base = (plan: typeof plus) =>
+    plan.monthlyFee - plan.includedPlaywrightMinutes * plan.overagePerMinute;
+  return Math.round(
+    (base(pro) - base(plus)) / (plus.overagePerMinute - pro.overagePerMinute),
+  );
+}
+
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
   // Browser checks run only in EU, so one run per check.
