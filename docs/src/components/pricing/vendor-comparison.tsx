@@ -93,7 +93,7 @@ function BrowserStackCell() {
   if (!tier) return null;
   return (
     <>
-      <p className="text-lg font-semibold">
+      <p className="whitespace-nowrap text-lg font-semibold">
         {`$${formatCount(tier.min)}–$${formatCount(tier.max)}`}
         <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
       </p>
@@ -123,7 +123,7 @@ function CostCell({
   }
   return (
     <>
-      <p className="text-lg font-semibold tabular-nums">
+      <p className="whitespace-nowrap text-lg font-semibold tabular-nums">
         {formatUsd(estimate.monthlyCost)}
         <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
         {isLowest && <LowestBadge />}
@@ -258,18 +258,26 @@ export function VendorComparison() {
 
       {/* Desktop: one table, vendors as columns */}
       <div
-        className="relative hidden overflow-x-auto rounded-lg border md:block"
+        className="relative hidden overflow-x-auto rounded-lg border lg:block"
         role="region"
         aria-label="Cost and capability comparison by vendor"
         tabIndex={0}
       >
-        <table className="w-full min-w-[900px]">
+        <table className="w-full min-w-[960px] table-fixed">
+          <colgroup>
+            <col className="w-[14%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+          </colgroup>
           <caption className="sr-only">
             Estimated monthly cost for your browser workload, and what each vendor includes
           </caption>
           <thead className="bg-fd-muted">
             <tr>
-              <th scope="col" className="px-4 py-3 text-left text-sm font-medium">
+              <th scope="col" className="px-3 py-3 text-left text-sm font-medium">
                 <span className="sr-only">Feature</span>
               </th>
               {VENDORS.map((vendor) => {
@@ -278,7 +286,7 @@ export function VendorComparison() {
                   <th
                     key={vendor.key}
                     scope="col"
-                    className={`px-4 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
+                    className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
                   >
                     {competitor ? (
                       <a
@@ -300,7 +308,7 @@ export function VendorComparison() {
           </thead>
           <tbody>
             <tr className="bg-fd-card align-top">
-              <th scope="row" className="px-4 py-4 text-left text-sm font-medium">
+              <th scope="row" className="px-3 py-4 text-left text-sm font-medium">
                 Browser tests
                 <span className="block text-xs font-normal text-fd-muted-foreground">
                   Your workload, estimated per month
@@ -309,7 +317,7 @@ export function VendorComparison() {
               {VENDORS.map((vendor) => (
                 <td
                   key={vendor.key}
-                  className={`px-4 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-primary/5' : ''}`}
+                  className={`px-3 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-primary/5' : ''}`}
                 >
                   <CostCell
                     estimate={estimateFor(vendor.key)}
@@ -321,13 +329,13 @@ export function VendorComparison() {
             </tr>
             {CAPABILITY_ROWS.map((row, idx) => (
               <tr key={row.name} className={idx % 2 === 0 ? 'bg-fd-muted/30' : 'bg-fd-card'}>
-                <th scope="row" className="px-4 py-3 text-left text-sm font-normal">
+                <th scope="row" className="px-3 py-3 text-left text-sm font-normal">
                   {row.name}
                 </th>
                 {VENDORS.map((vendor) => (
                   <td
                     key={vendor.key}
-                    className={`px-4 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-primary/5 font-medium' : 'text-fd-muted-foreground'}`}
+                    className={`px-3 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-primary/5 font-medium' : 'text-fd-muted-foreground'}`}
                   >
                     {row[vendor.key]}
                   </td>
@@ -339,7 +347,7 @@ export function VendorComparison() {
       </div>
 
       {/* Mobile: one card per vendor, cheapest first */}
-      <ol className="space-y-4 md:hidden" aria-label="Cost and capability comparison by vendor">
+      <ol className="space-y-4 lg:hidden" aria-label="Cost and capability comparison by vendor">
         {cardOrder.map((vendor) => (
           <li
             key={vendor.key}
