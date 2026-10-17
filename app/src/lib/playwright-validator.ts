@@ -1,5 +1,4 @@
 import type { TestType } from "@/db/schema/types";
-import { isK6Script, validateK6Script } from "./k6-validator";
 import { validateTestScript } from "./script-type-validator";
 
 // Known bundled libraries for editor guidance, not a runtime import allow-list.
@@ -75,55 +74,7 @@ export class PlaywrightValidationService {
         errorType: "syntax",
       };
     }
-    const submission = validateTestScript(code, options.selectedTestType);
-    if (!submission.valid) return submission;
-
-    const scriptLooksLikeK6 = isK6Script(code);
-    const selectedType = options.selectedTestType;
-    const normalizedSelectedType =
-      typeof selectedType === "string"
-        ? selectedType.toLowerCase()
-        : selectedType;
-    const expectsPerformance =
-      normalizedSelectedType === "performance" ||
-      normalizedSelectedType === "k6";
-
-    if (scriptLooksLikeK6) {
-      if (!expectsPerformance) {
-        return {
-          valid: false,
-          error:
-            "Detected k6 performance script. Switch the test type to Performance to run k6 scripts, or provide a Playwright test script.",
-          errorType: "type",
-        };
-      }
-
-      const performanceValidation = validateK6Script(code, {
-        selectedTestType: selectedType,
-      });
-
-      if (!performanceValidation.valid) {
-        return {
-          valid: false,
-          error: performanceValidation.errors.join(", "),
-          errorType: "type",
-        };
-      }
-
-      // Validated successfully as a k6 performance script
-      return { valid: true };
-    }
-
-    if (expectsPerformance) {
-      return {
-        valid: false,
-        error:
-          "Performance tests must use k6 scripts. Update the script or choose a Playwright-based test type.",
-        errorType: "type",
-      };
-    }
-
-    return { valid: true };
+    return validateTestScript(code, options.selectedTestType ?? "browser");
   }
 
   // Helper method to get allowed modules for external use
