@@ -53,17 +53,9 @@ export function planCrossoverMinutes(): number {
   );
 }
 
-// BrowserStack Automate bills per parallel test, not per run. This is the number
-// of tests running at once if every run starts on schedule (at least one).
-export function parallelTestsNeeded(workload: Workload): number {
-  const averageConcurrency =
-    (workload.checks * workload.durationSeconds) / (workload.intervalMinutes * 60);
-  return Math.max(1, Math.ceil(averageConcurrency));
-}
-
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
-  // Browser checks run only in EU, so one run per check.
+  // Browser checks run only in Europe, so one run per check.
   const runsPerMonth = Math.round(workload.checks * executionsPerCheck);
   const playwrightMinutes = (runsPerMonth * workload.durationSeconds) / 60;
   const notices: string[] = [];

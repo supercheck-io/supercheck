@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from 'react';
 import {
   CAPABILITY_ROWS,
   COMPETITORS,
-  BROWSERSTACK_AUTOMATE_FROM_PER_MONTH,
+  BROWSERSTACK_AUTOMATE_MONTHLY,
   COMPETITOR_AS_OF,
   MIN_SYNTHETIC_INTERVAL_MINUTES,
   VENDORS,
@@ -13,7 +13,6 @@ import {
   estimateCosts,
   formatCount,
   formatUsd,
-  parallelTestsNeeded,
   planCrossoverMinutes,
   type Estimate,
   type Workload,
@@ -88,25 +87,18 @@ function LowestBadge() {
   );
 }
 
-function BrowserStackCell({ workload }: { workload: Workload }) {
-  const parallels = parallelTestsNeeded(workload);
-  const fits = parallels === 1;
+function BrowserStackCell() {
+  // BrowserStack's published range for 5 parallel tests, the most it lists.
+  const tier = BROWSERSTACK_AUTOMATE_MONTHLY.find((t) => t.parallelTests === 5);
+  if (!tier) return null;
   return (
     <>
-      <p className="text-lg font-semibold">
-        {fits ? (
-          <>
-            {`From $${BROWSERSTACK_AUTOMATE_FROM_PER_MONTH}`}
-            <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
-          </>
-        ) : (
-          'Not published'
-        )}
+      <p className="whitespace-nowrap text-lg font-semibold">
+        {`$${formatCount(tier.min)}–$${formatCount(tier.max)}`}
+        <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
       </p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
-        {fits
-          ? 'Billed per parallel test (1 needed here), unlimited minutes. You trigger the runs; not part of the ranking.'
-          : `Billed per parallel test. This workload needs about ${parallels}; BrowserStack does not publish prices above 1. Not part of the ranking.`}
+        5 parallel tests, monthly billing
       </p>
     </>
   );
@@ -116,14 +108,12 @@ function CostCell({
   estimate,
   isLowest,
   vendorKey,
-  workload,
 }: {
   estimate?: Estimate;
   isLowest: boolean;
   vendorKey: string;
-  workload: Workload;
 }) {
-  if (vendorKey === 'browserstack') return <BrowserStackCell workload={workload} />;
+  if (vendorKey === 'browserstack') return <BrowserStackCell />;
   if (!estimate) {
     return (
       <p className="text-sm text-fd-muted-foreground">
@@ -133,7 +123,7 @@ function CostCell({
   }
   return (
     <>
-      <p className="text-lg font-semibold tabular-nums">
+      <p className="whitespace-nowrap text-lg font-semibold tabular-nums">
         {formatUsd(estimate.monthlyCost)}
         <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
         {isLowest && <LowestBadge />}
@@ -253,7 +243,7 @@ export function VendorComparison() {
 
         <p className="mt-6 text-xs text-fd-muted-foreground">
           {formatCount(result.runsPerMonth)} runs and {formatCount(result.playwrightMinutes)} browser
-          minutes per month, run once from EU. Retries are not included.
+          minutes per month, run once from Europe. Retries are not included.
         </p>
       </div>
 
@@ -268,18 +258,26 @@ export function VendorComparison() {
 
       {/* Desktop: one table, vendors as columns */}
       <div
-        className="relative hidden overflow-x-auto rounded-lg border md:block"
+        className="relative hidden overflow-x-auto rounded-lg border lg:block"
         role="region"
         aria-label="Cost and capability comparison by vendor"
         tabIndex={0}
       >
-        <table className="w-full min-w-[900px]">
+        <table className="w-full min-w-[960px] table-fixed">
+          <colgroup>
+            <col className="w-[14%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+            <col className="w-[17.2%]" />
+          </colgroup>
           <caption className="sr-only">
             Estimated monthly cost for your browser workload, and what each vendor includes
           </caption>
           <thead className="bg-fd-muted">
             <tr>
-              <th scope="col" className="px-4 py-3 text-left text-sm font-medium">
+              <th scope="col" className="px-3 py-3 text-left text-sm font-medium">
                 <span className="sr-only">Feature</span>
               </th>
               {VENDORS.map((vendor) => {
@@ -288,7 +286,7 @@ export function VendorComparison() {
                   <th
                     key={vendor.key}
                     scope="col"
-                    className={`px-4 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
+                    className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
                   >
                     {competitor ? (
                       <a
@@ -310,7 +308,7 @@ export function VendorComparison() {
           </thead>
           <tbody>
             <tr className="bg-fd-card align-top">
-              <th scope="row" className="px-4 py-4 text-left text-sm font-medium">
+              <th scope="row" className="px-3 py-4 text-left text-sm font-medium">
                 Browser tests
                 <span className="block text-xs font-normal text-fd-muted-foreground">
                   Your workload, estimated per month
@@ -319,26 +317,25 @@ export function VendorComparison() {
               {VENDORS.map((vendor) => (
                 <td
                   key={vendor.key}
-                  className={`px-4 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-primary/5' : ''}`}
+                  className={`px-3 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-primary/5' : ''}`}
                 >
                   <CostCell
                     estimate={estimateFor(vendor.key)}
                     isLowest={lowestId === vendor.key}
                     vendorKey={vendor.key}
-                    workload={workload}
                   />
                 </td>
               ))}
             </tr>
             {CAPABILITY_ROWS.map((row, idx) => (
               <tr key={row.name} className={idx % 2 === 0 ? 'bg-fd-muted/30' : 'bg-fd-card'}>
-                <th scope="row" className="px-4 py-3 text-left text-sm font-normal">
+                <th scope="row" className="px-3 py-3 text-left text-sm font-normal">
                   {row.name}
                 </th>
                 {VENDORS.map((vendor) => (
                   <td
                     key={vendor.key}
-                    className={`px-4 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-primary/5 font-medium' : 'text-fd-muted-foreground'}`}
+                    className={`px-3 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-primary/5 font-medium' : 'text-fd-muted-foreground'}`}
                   >
                     {row[vendor.key]}
                   </td>
@@ -350,7 +347,7 @@ export function VendorComparison() {
       </div>
 
       {/* Mobile: one card per vendor, cheapest first */}
-      <ol className="space-y-4 md:hidden" aria-label="Cost and capability comparison by vendor">
+      <ol className="space-y-4 lg:hidden" aria-label="Cost and capability comparison by vendor">
         {cardOrder.map((vendor) => (
           <li
             key={vendor.key}
@@ -361,7 +358,6 @@ export function VendorComparison() {
               estimate={estimateFor(vendor.key)}
               isLowest={lowestId === vendor.key}
               vendorKey={vendor.key}
-              workload={workload}
             />
             <dl className="mt-4 space-y-3 border-t border-fd-border pt-4 text-sm">
               {CAPABILITY_ROWS.map((row) => (
@@ -378,8 +374,10 @@ export function VendorComparison() {
       </ol>
 
       <p className="mt-4 border-t border-fd-border pt-4 text-center text-xs text-fd-muted-foreground">
-        Browser test costs compare execution only. Checkly and Datadog prices are annual-billing
-        rates; Supercheck prices are monthly. Supercheck plans also include monitors, status
+        Browser test costs compare execution only. BrowserStack bills per parallel test. Its range is for 5
+        parallel tests on monthly billing (it lists no price above 5) and is shown for reference, not
+        ranked. Supercheck includes 5 concurrent runs on Plus and 10 on Pro. Checkly and Datadog prices are annual-billing rates; Supercheck
+        prices are monthly. Supercheck plans also include monitors, status
         pages, team seats, and AI SRE. Other vendors may price those separately, so check each
         vendor.
       </p>
@@ -391,9 +389,9 @@ export function VendorComparison() {
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>
             Runs per month = checks × runs per day, over a 30-day month, from one location.
-            Browser checks run only in EU, and we price every vendor for the same
-            single-location workload. HTTP, SSL, ping and port monitoring from EU, US and
-            Singapore does not use browser minutes. If browser checks are enabled in more
+            Browser checks run only in Europe, and we price every vendor for the same
+            single-location workload. HTTP, SSL, ping and port monitoring from Europe, North
+            America and Asia Pacific does not use browser minutes. If browser checks are enabled in more
             locations later, each location counts as a separate run.
           </li>
           <li>
