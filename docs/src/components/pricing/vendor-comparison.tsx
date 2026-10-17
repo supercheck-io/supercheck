@@ -13,7 +13,6 @@ import {
   estimateCosts,
   formatCount,
   formatUsd,
-  parallelTestsNeeded,
   planCrossoverMinutes,
   type Estimate,
   type Workload,
@@ -88,26 +87,18 @@ function LowestBadge() {
   );
 }
 
-function BrowserStackCell({ workload }: { workload: Workload }) {
-  const needed = parallelTestsNeeded(workload);
-  // BrowserStack lists prices for 1, 2 and 5 parallel tests; round up to a tier.
-  const tier = BROWSERSTACK_AUTOMATE_MONTHLY.find((t) => t.parallelTests >= needed);
+function BrowserStackCell() {
+  // BrowserStack's published range for 5 parallel tests, the most it lists.
+  const tier = BROWSERSTACK_AUTOMATE_MONTHLY.find((t) => t.parallelTests === 5);
+  if (!tier) return null;
   return (
     <>
       <p className="text-lg font-semibold">
-        {tier ? (
-          <>
-            {`$${formatCount(tier.min)}–$${formatCount(tier.max)}`}
-            <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
-          </>
-        ) : (
-          'Unclear'
-        )}
+        {`$${formatCount(tier.min)}–$${formatCount(tier.max)}`}
+        <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
       </p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
-        {tier
-          ? `${tier.parallelTests} parallel ${tier.parallelTests === 1 ? 'test' : 'tests'}, monthly billing`
-          : 'Prices listed up to 5 parallel tests'}
+        5 parallel tests, monthly billing
       </p>
     </>
   );
@@ -117,14 +108,12 @@ function CostCell({
   estimate,
   isLowest,
   vendorKey,
-  workload,
 }: {
   estimate?: Estimate;
   isLowest: boolean;
   vendorKey: string;
-  workload: Workload;
 }) {
-  if (vendorKey === 'browserstack') return <BrowserStackCell workload={workload} />;
+  if (vendorKey === 'browserstack') return <BrowserStackCell />;
   if (!estimate) {
     return (
       <p className="text-sm text-fd-muted-foreground">
@@ -326,7 +315,6 @@ export function VendorComparison() {
                     estimate={estimateFor(vendor.key)}
                     isLowest={lowestId === vendor.key}
                     vendorKey={vendor.key}
-                    workload={workload}
                   />
                 </td>
               ))}
@@ -362,7 +350,6 @@ export function VendorComparison() {
               estimate={estimateFor(vendor.key)}
               isLowest={lowestId === vendor.key}
               vendorKey={vendor.key}
-              workload={workload}
             />
             <dl className="mt-4 space-y-3 border-t border-fd-border pt-4 text-sm">
               {CAPABILITY_ROWS.map((row) => (
@@ -379,8 +366,9 @@ export function VendorComparison() {
       </ol>
 
       <p className="mt-4 border-t border-fd-border pt-4 text-center text-xs text-fd-muted-foreground">
-        Browser test costs compare execution only. BrowserStack bills per parallel test and is shown
-        for reference, not ranked. Checkly and Datadog prices are annual-billing rates; Supercheck
+        Browser test costs compare execution only. BrowserStack bills per parallel test. Its range is for 5
+        parallel tests on monthly billing (it lists no price above 5) and is shown for reference, not
+        ranked. Supercheck includes 5 concurrent runs on Plus and 10 on Pro. Checkly and Datadog prices are annual-billing rates; Supercheck
         prices are monthly. Supercheck plans also include monitors, status
         pages, team seats, and AI SRE. Other vendors may price those separately, so check each
         vendor.
