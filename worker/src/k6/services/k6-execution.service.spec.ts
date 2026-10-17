@@ -27,11 +27,22 @@ import { VariableResolverService } from '../../common/services/variable-resolver
 
 // Mock execa
 jest.mock('execa', () => ({
-  execa: jest.fn().mockResolvedValue({
-    exitCode: 0,
-    stdout: 'k6 v0.45.0',
-    stderr: '',
-  }),
+  execa: jest
+    .fn()
+    .mockImplementation(async (_binary: string, args: string[] = []) =>
+      args.includes('version')
+        ? // The service probes `k6 version` during construction and logs a
+          // critical error block when the xk6-dashboard extension is absent,
+          // once per test. Answer as a binary built with the extension so the
+          // suite exercises the supported configuration instead of printing
+          // that block 476 times per run.
+          {
+            exitCode: 0,
+            stdout: 'k6 v0.45.0 (with xk6-dashboard v0.6.0)',
+            stderr: '',
+          }
+        : { exitCode: 0, stdout: 'k6 v0.45.0', stderr: '' },
+    ),
 }));
 
 // Mock fs/promises
