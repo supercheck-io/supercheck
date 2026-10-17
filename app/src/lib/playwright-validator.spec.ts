@@ -2,8 +2,6 @@
 
 import {
   PlaywrightValidationService,
-  getAllowedModules,
-  isModuleAllowed,
   playwrightValidationService,
 } from "./playwright-validator";
 
@@ -160,37 +158,9 @@ describe("playwright-validator", () => {
     });
   });
 
-  describe("module allow-list helpers", () => {
-    it("exposes the allowed module list", () => {
-      const modules = getAllowedModules();
-
-      expect(modules).toContain("@playwright/test");
-      expect(modules).toContain("k6/http");
-      expect(modules).not.toContain("fs");
-      expect(service.getAllowedModules()).toEqual(modules);
-    });
-
-    it.each([
-      ["@playwright/test", true],
-      ["@playwright/experimental-ct-react", true],
-      ["k6", true],
-      ["k6/http", true],
-      ["zod", true],
-      ["fs", false],
-      ["child_process", false],
-      ["node:fs", false],
-    ])("isModuleAllowed(%s) === %s", (moduleName, expected) => {
-      expect(isModuleAllowed(moduleName)).toBe(expected);
-      expect(service.isModuleAllowed(moduleName)).toBe(expected);
-    });
-
-    it("exports a shared singleton instance", () => {
-      expect(playwrightValidationService).toBeInstanceOf(
-        PlaywrightValidationService,
-      );
-      expect(
-        playwrightValidationService.validateCode(VALID_PLAYWRIGHT_SCRIPT),
-      ).toEqual({ valid: true });
-    });
+  it("exports the shared validator instance", () => {
+    expect(
+      playwrightValidationService.validateCode(VALID_PLAYWRIGHT_SCRIPT),
+    ).toEqual({ valid: true });
   });
 });

@@ -8,6 +8,7 @@ export interface ScriptValidationResult {
   valid: boolean;
   error?: string;
   suggestedType?: TestType;
+  warnings?: string[];
   line?: number;
   column?: number;
   errorType?: "syntax" | "length" | "complexity" | "type";

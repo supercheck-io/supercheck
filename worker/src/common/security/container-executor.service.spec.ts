@@ -323,6 +323,28 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('kubernetes execution', () => {
+    it('retains the numeric exit-code fallback for a generic Kubernetes Error', async () => {
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: { terminated: { exitCode: 1, reason: 'Error' } },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      const outcome = await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        jest.fn(),
+      );
+      expect(outcome).toMatchObject({ exitCode: 1, message: undefined });
+    });
+
     it('reports OOM termination as failure rather than user cancellation', async () => {
       service['coreApi'] = {
         readNamespacedPod: jest.fn().mockResolvedValue({

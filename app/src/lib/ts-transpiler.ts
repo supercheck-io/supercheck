@@ -63,14 +63,22 @@ const ESBUILD_OPTIONS = {
  * @returns A discriminated union: `{ success: true, code }` on success, or
  *          `{ success: false, message, line?, column? }` on failure.
  */
-export function transpileTypeScript(source: string): TranspileResult {
+export function transpileTypeScript(
+  source: string,
+  options: { preserveValueImports?: boolean } = {},
+): TranspileResult {
   try {
     // Lazy-load esbuild to avoid Jest jsdom environment issues.
     // Static `import { transformSync } from "esbuild"` breaks in jsdom because
     // esbuild's WASM/native bindings are incompatible with the jsdom global scope.
     const { transformSync } = require("esbuild") as typeof import("esbuild");
 
-    const result = transformSync(source, ESBUILD_OPTIONS);
+    const result = transformSync(source, {
+      ...ESBUILD_OPTIONS,
+      tsconfigRaw: options.preserveValueImports
+        ? { compilerOptions: { verbatimModuleSyntax: true } }
+        : undefined,
+    });
     return { success: true, code: result.code };
   } catch (error: unknown) {
     const details = extractEsbuildErrorDetails(error);

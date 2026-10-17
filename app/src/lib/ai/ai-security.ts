@@ -108,7 +108,10 @@ export class AISecurityService {
     // Layer 1.5: Remove zero-width and invisible Unicode characters
     // These can be used to bypass text pattern detection (e.g., "ig​nore" with zero-width space)
     // Includes: Zero-width space, joiner, non-joiner, BOM, directional marks, invisible separators
-    sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u2060-\u2064\u2066-\u206F]/g, "");
+    sanitized = sanitized.replace(
+      /[\u200B-\u200D\uFEFF\u200E\u200F\u2060-\u2064\u2066-\u206F]/g,
+      "",
+    );
 
     // Layer 2: Remove control characters (except newlines, tabs, spaces)
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
@@ -145,14 +148,14 @@ export class AISecurityService {
 
   /**
    * Validate and sanitize AI output code
-   * Uses AST-based validation for accurate detection
+   * Pattern diagnostics are advisory; execution isolation is enforced at runtime.
    */
   static sanitizeCodeOutput(
     code: string,
     options: {
       testType?: "browser" | "api" | "custom" | "database" | "performance";
       strict?: boolean;
-    } = {}
+    } = {},
   ): string {
     if (typeof code !== "string") {
       throw new Error("Code output must be a string");
@@ -163,26 +166,11 @@ export class AISecurityService {
     // Use the AST-based code validator
     const validationResult = validateAICode(code, { testType, strict });
 
-    if (!validationResult.isValid) {
-      // Log violations for monitoring
-      const criticalViolations = validationResult.violations.filter(
-        (v) => v.severity === "critical"
-      );
-
-      if (criticalViolations.length > 0) {
-        console.error(
-          "[AI Security] Critical violations detected in AI output:",
-          criticalViolations.map((v) => v.message)
-        );
-        throw new Error(
-          `AI-generated code contains security violations: ${criticalViolations[0].message}`
-        );
-      }
-
-      // For non-critical violations, log warning and return sanitized
+    // Generated code runs in the same isolated Job as user-authored code.
+    if (validationResult.violations.length > 0) {
       console.warn(
-        "[AI Security] Non-critical violations in AI output:",
-        validationResult.violations.map((v) => v.message)
+        "[AI Code] Advisory diagnostics:",
+        validationResult.violations.map((violation) => violation.message),
       );
     }
 
@@ -201,7 +189,7 @@ export class AISecurityService {
     // Remove any HTML/script tags from explanations iteratively to handle nested patterns
     // e.g., "<<script>script>" becomes "<script>" after first pass, then "" after second
     let sanitized = text;
-    let prev = '';
+    let prev = "";
     let iterations = 0;
     const maxIterations = 100; // Safety limit
     while (prev !== sanitized && iterations < maxIterations) {
@@ -387,7 +375,7 @@ export class AISecurityService {
 
       // No match found - reject
       console.warn(
-        `[AI Security] Rejected URL with untrusted hostname: ${parsedUrl.hostname}`
+        `[AI Security] Rejected URL with untrusted hostname: ${parsedUrl.hostname}`,
       );
       return false;
     } catch (error) {
@@ -398,7 +386,7 @@ export class AISecurityService {
 
   // Secure fetch with validation using AWS SDK
   static async securelyFetchMarkdownReport(
-    markdownReportUrl: string
+    markdownReportUrl: string,
   ): Promise<string> {
     try {
       // Validate URL is from trusted source
@@ -450,7 +438,7 @@ export class AISecurityService {
 
       if (sanitizedContent.length > MAX_MARKDOWN_LENGTH) {
         console.warn(
-          `[AI Security] Markdown report exceeded ${MAX_MARKDOWN_LENGTH} chars. Truncating to safe limit.`
+          `[AI Security] Markdown report exceeded ${MAX_MARKDOWN_LENGTH} chars. Truncating to safe limit.`,
         );
         sanitizedContent =
           sanitizedContent.slice(0, MAX_MARKDOWN_LENGTH) +
@@ -468,7 +456,7 @@ export class AISecurityService {
       throw new Error(
         `Error fetching markdown report: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -487,7 +475,7 @@ export interface UserSession {
 export class AuthService {
   static async validateUserAccess(
     _request: Request,
-    _testId: string
+    _testId: string,
   ): Promise<UserSession> {
     try {
       // Use the existing auth pattern from the app
@@ -545,7 +533,7 @@ export class AuthService {
       const retryAfterSeconds = result.retryAfter || 60;
       throw new Error(
         `Rate limit exceeded. Please try again in ${retryAfterSeconds} seconds. ` +
-          `Limit type: ${result.limitType || "unknown"}`
+          `Limit type: ${result.limitType || "unknown"}`,
       );
     }
 
@@ -558,7 +546,7 @@ export class AuthService {
   static async trackTokenUsage(
     orgId: string,
     tokensUsed: number,
-    tier?: string
+    tier?: string,
   ): Promise<RateLimitResult> {
     return aiRateLimiter.checkAndTrackTokens(orgId, tokensUsed, tier);
   }

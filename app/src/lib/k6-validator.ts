@@ -4,6 +4,8 @@
    Validates k6 performance test scripts for common issues
 =================================== */
 
+import * as acorn from 'acorn';
+import * as walk from 'acorn-walk';
 import { hasUnboundHelperCall } from './helper-call-analysis';
 import { validateScriptSyntax } from './script-validation';
 import { transpileTypeScript } from './ts-transpiler';
@@ -18,19 +20,33 @@ export interface K6ValidationOptions {
   selectedTestType?: string;
 }
 
-const REQUIRE_MODULE_PATTERN = /\brequire\s*\(\s*(['"])([^'"\\\r\n]+)\1\s*\)/g;
-
-// Advisory detection shared with CLI preflight; syntax is checked separately.
-const IMPORT_MODULE_PATTERN =
-  /^[ \t]*import\s[^;'"()]*(['"])([^'"\\\r\n]+)\1/gm;
-
 function collectModuleSpecifiers(script: string): Set<string> {
   const modules = new Set<string>();
-  for (const pattern of [IMPORT_MODULE_PATTERN, REQUIRE_MODULE_PATTERN]) {
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(script)) !== null) modules.add(match[2]);
-  }
+  const ast = acorn.parse(script, {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  });
+  walk.simple(ast, {
+    ImportDeclaration(node) {
+      modules.add(String(node.source.value));
+    },
+    ExportNamedDeclaration(node) {
+      if (node.source) modules.add(String(node.source.value));
+    },
+    ExportAllDeclaration(node) {
+      modules.add(String(node.source.value));
+    },
+    CallExpression(node) {
+      const first = node.arguments[0];
+      if (
+        node.callee.type === 'Identifier' &&
+        node.callee.name === 'require' &&
+        first?.type === 'Literal' &&
+        typeof first.value === 'string'
+      )
+        modules.add(first.value);
+    },
+  });
   return modules;
 }
 
@@ -42,7 +58,9 @@ function isK6ModuleSpecifier(moduleSpecifier: string): boolean {
  * Detects whether a script imports any k6 modules.
  */
 export const isK6Script = (script: string): boolean => {
-  const moduleSpecifiers = collectModuleSpecifiers(script);
+  const parsed = transpileTypeScript(script, { preserveValueImports: true });
+  if (!parsed.success) return false;
+  const moduleSpecifiers = collectModuleSpecifiers(parsed.code);
   for (const moduleSpecifier of moduleSpecifiers) {
     if (isK6ModuleSpecifier(moduleSpecifier)) {
       return true;
@@ -123,10 +141,10 @@ export function validateK6Script(
     'buffer',
   ];
 
-  const importedModules = collectModuleSpecifiers(script);
+  const importedModules = collectModuleSpecifiers(jsCode);
 
   forbiddenModules.forEach((mod) => {
-    if (importedModules.has(mod)) {
+    if (importedModules.has(mod) || importedModules.has(`node:${mod}`)) {
       errors.push(
         `k6 does not support Node.js module "${mod}". Use k6 built-in modules instead.`,
       );

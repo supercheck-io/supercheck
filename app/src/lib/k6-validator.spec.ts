@@ -3,79 +3,79 @@ import {
   isK6Script,
   validateK6Script,
   getK6ScriptTemplate,
-} from './k6-validator';
+} from "./k6-validator";
 
-describe('K6Validator', () => {
-  describe('isK6Script', () => {
+describe("K6Validator", () => {
+  describe("isK6Script", () => {
     // Tests k6 script detection - critical for routing scripts to correct executor
 
-    it('should detect k6/http imports', () => {
+    it("should detect k6/http imports", () => {
       // Most common k6 import pattern
       const script = `import http from 'k6/http';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6 core imports', () => {
+    it("should detect k6 core imports", () => {
       const script = `import { check, sleep } from 'k6';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6/metrics imports', () => {
+    it("should detect k6/metrics imports", () => {
       const script = `import { Counter, Trend } from 'k6/metrics';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6/crypto imports', () => {
+    it("should detect k6/crypto imports", () => {
       const script = `import crypto from 'k6/crypto';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6/html imports', () => {
+    it("should detect k6/html imports", () => {
       const script = `import { parseHTML } from 'k6/html';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6/ws imports', () => {
+    it("should detect k6/ws imports", () => {
       const script = `import ws from 'k6/ws';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6/grpc imports', () => {
+    it("should detect k6/grpc imports", () => {
       const script = `import grpc from 'k6/grpc';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should return false for Playwright imports', () => {
+    it("should return false for Playwright imports", () => {
       // Playwright scripts should not be detected as k6
-      const script = `import { test, expect } from '@playwright/test';`;
+      const script = `import '@playwright/test';`;
       expect(isK6Script(script)).toBe(false);
     });
 
-    it('should return false for Node.js scripts', () => {
+    it("should return false for Node.js scripts", () => {
       const script = `const http = require('http');`;
       expect(isK6Script(script)).toBe(false);
     });
 
-    it('should return false for empty scripts', () => {
-      expect(isK6Script('')).toBe(false);
+    it("should return false for empty scripts", () => {
+      expect(isK6Script("")).toBe(false);
     });
 
-    it('should handle double quotes', () => {
+    it("should handle double quotes", () => {
       const script = `import http from "k6/http";`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect k6 imports with tab-heavy spacing', () => {
+    it("should detect k6 imports with tab-heavy spacing", () => {
       const script = `import\thttp\tfrom\t'k6/http';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should detect side-effect-only k6 imports', () => {
+    it("should detect side-effect-only k6 imports", () => {
       const script = `import 'k6/http';`;
       expect(isK6Script(script)).toBe(true);
     });
 
-    it('should handle scripts with multiple imports', () => {
+    it("should handle scripts with multiple imports", () => {
       const script = `
         import http from 'k6/http';
         import { check } from 'k6';
@@ -85,11 +85,11 @@ describe('K6Validator', () => {
     });
   });
 
-  describe('validateK6Script', () => {
+  describe("validateK6Script", () => {
     // Tests k6 script validation for best practices and common errors
 
-    describe('script structure validation', () => {
-      it('should validate a complete valid k6 script', () => {
+    describe("script structure validation", () => {
+      it("should validate a complete valid k6 script", () => {
         // A well-formed k6 script should pass validation
         const script = `
           import http from 'k6/http';
@@ -112,30 +112,30 @@ describe('K6Validator', () => {
           }
         `;
         const result = validateK6Script(script, {
-          selectedTestType: 'performance',
+          selectedTestType: "performance",
         });
         expect(result.valid).toBe(true);
         expect(result.errors).toHaveLength(0);
       });
 
-      it('should require k6 imports', () => {
+      it("should require k6 imports", () => {
         // Scripts without k6 imports should fail
         const script = `export default function() { console.log('test'); }`;
         const result = validateK6Script(script);
         expect(result.valid).toBe(false);
         expect(result.errors).toContain(
-          'This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts.',
+          "This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts.",
         );
       });
 
-      it('accepts named scenario entrypoints without a default export', () => {
+      it("accepts named scenario entrypoints without a default export", () => {
         const script = `import http from 'k6/http';
         export const options = { scenarios: { smoke: { executor: 'shared-iterations', exec: 'smoke', vus: 1, iterations: 1 } } };
         export function smoke() { http.get('https://example.com'); }`;
         expect(validateK6Script(script).valid).toBe(true);
       });
 
-      it('accepts async default functions supported by the pinned runtime', () => {
+      it("accepts async default functions supported by the pinned runtime", () => {
         // Current k6 supports promises and async entrypoints.
         const script = `
           import http from 'k6/http';
@@ -150,60 +150,60 @@ describe('K6Validator', () => {
       });
     });
 
-    describe('test type validation', () => {
-      it('should accept performance test type', () => {
+    describe("test type validation", () => {
+      it("should accept performance test type", () => {
         const script = `
           import http from 'k6/http';
           export default function() {}
         `;
         const result = validateK6Script(script, {
-          selectedTestType: 'performance',
+          selectedTestType: "performance",
         });
         expect(result.errors).not.toContain(
-          expect.stringContaining('test type'),
+          expect.stringContaining("test type"),
         );
       });
 
-      it('should accept k6 test type', () => {
+      it("should accept k6 test type", () => {
         const script = `
           import http from 'k6/http';
           export default function() {}
         `;
-        const result = validateK6Script(script, { selectedTestType: 'k6' });
+        const result = validateK6Script(script, { selectedTestType: "k6" });
         expect(result.errors).not.toContain(
-          expect.stringContaining('test type'),
+          expect.stringContaining("test type"),
         );
       });
 
-      it('should reject k6 scripts with wrong test type', () => {
+      it("should reject k6 scripts with wrong test type", () => {
         // k6 scripts should only run with performance/k6 test types
         const script = `
           import http from 'k6/http';
           export default function() {}
         `;
-        const result = validateK6Script(script, { selectedTestType: 'e2e' });
+        const result = validateK6Script(script, { selectedTestType: "e2e" });
         expect(result.valid).toBe(false);
         expect(result.errors).toContain(
           'k6 scripts can only run when the test type is set to Performance. Current type: "e2e".',
         );
       });
 
-      it('should be case-insensitive for test type', () => {
+      it("should be case-insensitive for test type", () => {
         const script = `
           import http from 'k6/http';
           export default function() {}
         `;
         const result = validateK6Script(script, {
-          selectedTestType: 'PERFORMANCE',
+          selectedTestType: "PERFORMANCE",
         });
         expect(result.errors).not.toContain(
-          expect.stringContaining('test type is set to Performance'),
+          expect.stringContaining("test type is set to Performance"),
         );
       });
     });
 
-    describe('forbidden modules', () => {
-      it('should reject readFile helper usage', () => {
+    describe("forbidden modules", () => {
+      it("should reject readFile helper usage", () => {
         const script = `
           import http from 'k6/http';
           const csv = readFile('USERS_CSV');
@@ -215,7 +215,7 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should allow user-defined readFile helpers', () => {
+      it("should allow user-defined readFile helpers", () => {
         const script = `
           import http from 'k6/http';
           import { check } from 'k6';
@@ -240,11 +240,11 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject fs module', () => {
+      it("should reject fs module", () => {
         // Node.js fs module is not available in k6
         const script = `
           import http from 'k6/http';
-          import fs from 'fs';
+          import 'fs';
           export default function() {}
         `;
         const result = validateK6Script(script);
@@ -253,10 +253,10 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject path module', () => {
+      it("should reject path module", () => {
         const script = `
           import http from 'k6/http';
-          import path from 'path';
+          import 'path';
           export default function() {}
         `;
         const result = validateK6Script(script);
@@ -265,10 +265,10 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject child_process module', () => {
+      it("should reject child_process module", () => {
         const script = `
           import http from 'k6/http';
-          import { exec } from 'child_process';
+          import 'child_process';
           export default function() {}
         `;
         const result = validateK6Script(script);
@@ -277,10 +277,10 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject Node.js http module (not k6/http)', () => {
+      it("should reject Node.js http module (not k6/http)", () => {
         const script = `
           import k6http from 'k6/http';
-          import http from 'http';
+          import 'http';
           export default function() {}
         `;
         const result = validateK6Script(script);
@@ -289,11 +289,11 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject Node.js crypto module', () => {
+      it("should reject Node.js crypto module", () => {
         // k6 has its own k6/crypto module
         const script = `
           import http from 'k6/http';
-          import crypto from 'crypto';
+          import 'crypto';
           export default function() {}
         `;
         const result = validateK6Script(script);
@@ -302,7 +302,7 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should reject require syntax for Node.js modules', () => {
+      it("should reject require syntax for Node.js modules", () => {
         const script = `
           import http from 'k6/http';
           const fs = require('fs');
@@ -315,49 +315,49 @@ describe('K6Validator', () => {
       });
     });
 
-    describe('Playwright detection', () => {
-      it('should reject @playwright/test imports', () => {
+    describe("Playwright detection", () => {
+      it("should reject @playwright/test imports", () => {
         const script = `
           import http from 'k6/http';
-          import { test } from '@playwright/test';
+          import '@playwright/test';
           export default function() {}
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.',
+          "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.",
         );
       });
 
-      it('should reject playwright imports', () => {
+      it("should reject playwright imports", () => {
         const script = `
           import http from 'k6/http';
-          import { chromium } from 'playwright';
+          import 'playwright';
           export default function() {}
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.',
+          "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.",
         );
       });
     });
 
-    describe('k6/browser module', () => {
-      it('should reject k6/browser imports', () => {
+    describe("k6/browser module", () => {
+      it("should reject k6/browser imports", () => {
         // k6/browser is experimental and not supported in our runtime
         const script = `
           import http from 'k6/http';
-          import browser from 'k6/browser';
+          import 'k6/browser';
           export default function() {}
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'The k6/browser module is not supported. Use Playwright tests for browser automation.',
+          "The k6/browser module is not supported. Use Playwright tests for browser automation.",
         );
       });
     });
 
-    describe('warnings', () => {
-      it('should warn about missing options export', () => {
+    describe("warnings", () => {
+      it("should warn about missing options export", () => {
         const script = `
           import http from 'k6/http';
           export default function() {}
@@ -368,7 +368,7 @@ describe('K6Validator', () => {
         );
       });
 
-      it('should warn about console.log usage', () => {
+      it("should warn about console.log usage", () => {
         const script = `
           import http from 'k6/http';
           export default function() {
@@ -377,11 +377,11 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).toContain(
-          'Consider using k6 check() functions instead of console.log() for validation',
+          "Consider using k6 check() functions instead of console.log() for validation",
         );
       });
 
-      it('should warn about missing thresholds', () => {
+      it("should warn about missing thresholds", () => {
         const script = `
           import http from 'k6/http';
           export const options = {
@@ -392,11 +392,11 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).toContain(
-          'Consider adding thresholds to define pass/fail criteria for your test',
+          "Consider adding thresholds to define pass/fail criteria for your test",
         );
       });
 
-      it('should not warn about thresholds when they are defined', () => {
+      it("should not warn about thresholds when they are defined", () => {
         const script = `
           import http from 'k6/http';
           export const options = {
@@ -410,78 +410,110 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).not.toContain(
-          expect.stringContaining('thresholds'),
+          expect.stringContaining("thresholds"),
         );
       });
     });
   });
 
-  describe('getK6ScriptTemplate', () => {
+  describe("getK6ScriptTemplate", () => {
     // Tests template generation for new k6 scripts
 
-    it('should return a valid k6 script template', () => {
+    it("should return a valid k6 script template", () => {
       const template = getK6ScriptTemplate();
 
       // Template should pass validation
       const result = validateK6Script(template, {
-        selectedTestType: 'performance',
+        selectedTestType: "performance",
       });
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should include k6/http import', () => {
+    it("should include k6/http import", () => {
       const template = getK6ScriptTemplate();
       expect(template).toContain("import http from 'k6/http'");
     });
 
-    it('should include check and sleep imports', () => {
+    it("should include check and sleep imports", () => {
       const template = getK6ScriptTemplate();
       expect(template).toContain("import { check, sleep } from 'k6'");
     });
 
-    it('should include options export', () => {
+    it("should include options export", () => {
       const template = getK6ScriptTemplate();
-      expect(template).toContain('export const options');
+      expect(template).toContain("export const options");
     });
 
-    it('should include thresholds', () => {
+    it("should include thresholds", () => {
       const template = getK6ScriptTemplate();
-      expect(template).toContain('thresholds');
+      expect(template).toContain("thresholds");
     });
 
-    it('should include default export function', () => {
+    it("should include default export function", () => {
       const template = getK6ScriptTemplate();
-      expect(template).toContain('export default function');
+      expect(template).toContain("export default function");
     });
 
-    it('should include example http.get call', () => {
+    it("should include example http.get call", () => {
       const template = getK6ScriptTemplate();
-      expect(template).toContain('http.get');
+      expect(template).toContain("http.get");
     });
 
-    it('should include example check call', () => {
+    it("should include example check call", () => {
       const template = getK6ScriptTemplate();
-      expect(template).toContain('check(response');
+      expect(template).toContain("check(response");
     });
   });
 });
 
-describe('k6 module detection parity', () => {
+describe("k6 module detection parity", () => {
   it.each([
     "import 'k6/http'; export default function() {}",
     "import {\n check,\n sleep\n} from 'k6'; export default function() {}",
-  ])('detects supported import forms: %s', (script) => {
+  ])("detects supported import forms: %s", (script) => {
     expect(isK6Script(script)).toBe(true);
   });
 });
 
-describe('commented imports', () => {
-  it('does not classify a browser test from an example in a comment', () => {
+describe("commented imports", () => {
+  it("does not classify a browser test from an example in a comment", () => {
     expect(
       isK6Script(
-        "// import http from 'k6/http';\nimport { test } from '@playwright/test';\ntest('x', () => {});",
+        "// import http from 'k6/http';\nimport '@playwright/test';\ntest('x', () => {});",
       ),
     ).toBe(false);
   });
+});
+
+describe("runtime import parsing", () => {
+  it.each([
+    [
+      "/*\nimport http from 'k6/http';\n*/\nimport '@playwright/test'; test('x',()=>{});",
+      false,
+    ],
+    ["const text = \"; import http from 'k6/http';\";", false],
+    [
+      "import value from 'example'; import http from 'k6/http'; export default function(){}",
+      true,
+    ],
+    ["import type {X} from 'k6'; export const x = 1;", false],
+    ["export type {X} from 'k6';", false],
+    ["import {type X} from 'k6';", true],
+    ["export {type X} from 'k6';", true],
+    ["export {check} from 'k6';", true],
+    ["import http from 'k6/http'; export default function(){}", true],
+  ])("classifies only runtime imports: %s", (script, expected) => {
+    expect(isK6Script(script as string)).toBe(expected);
+  });
+});
+
+it("ignores commented and type-only unsupported k6 imports", () => {
+  const code = `import type { Stats } from 'node:fs';
+    /*
+    import 'k6/browser';
+    */
+    import http from 'k6/http';
+    export default function() { http.get('https://example.com'); }`;
+  expect(validateK6Script(code).valid).toBe(true);
 });

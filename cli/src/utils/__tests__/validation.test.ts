@@ -11,11 +11,18 @@
 import { describe, it, expect, jest } from '@jest/globals'
 import { parseBooleanStrict, parseIntStrict } from '../number.js'
 import { ApiRequestError, CLIError, ExitCode } from '../errors.js'
-import { isK6Script, validateScriptTypeMatch, normalizeTestTypeForApi, validateScripts } from '../validation.js'
+import {
+  isK6Script,
+  validateScriptTypeMatch,
+  normalizeTestTypeForApi,
+  validateScripts,
+} from '../validation.js'
 
 describe('parseIntStrict', () => {
   it('rejects integers that cannot be represented precisely', () => {
-    expect(() => parseIntStrict('9007199254740993', '--limit')).toThrow('not a valid integer')
+    expect(() => parseIntStrict('9007199254740993', '--limit')).toThrow(
+      'not a valid integer',
+    )
   })
   describe('valid inputs', () => {
     it('should parse a valid positive integer', () => {
@@ -62,7 +69,9 @@ describe('parseIntStrict', () => {
     })
 
     it('should include the option name in error message', () => {
-      expect(() => parseIntStrict('xyz', '--expires-in')).toThrow(/--expires-in/)
+      expect(() => parseIntStrict('xyz', '--expires-in')).toThrow(
+        /--expires-in/,
+      )
     })
 
     it('should include the invalid value in error message', () => {
@@ -80,11 +89,15 @@ describe('parseIntStrict', () => {
     })
 
     it('should throw for values below the minimum', () => {
-      expect(() => parseIntStrict('30', '--expires-in', { min: 60 })).toThrow(/below the minimum/)
+      expect(() => parseIntStrict('30', '--expires-in', { min: 60 })).toThrow(
+        /below the minimum/,
+      )
     })
 
     it('should include the minimum value in error message', () => {
-      expect(() => parseIntStrict('0', '--timeout', { min: 1 })).toThrow(/minimum of 1/)
+      expect(() => parseIntStrict('0', '--timeout', { min: 1 })).toThrow(
+        /minimum of 1/,
+      )
     })
   })
 
@@ -98,21 +111,29 @@ describe('parseIntStrict', () => {
     })
 
     it('should throw for values above the maximum', () => {
-      expect(() => parseIntStrict('200', '--retries', { max: 100 })).toThrow(/exceeds the maximum/)
+      expect(() => parseIntStrict('200', '--retries', { max: 100 })).toThrow(
+        /exceeds the maximum/,
+      )
     })
   })
 
   describe('combined constraints', () => {
     it('should accept values within range', () => {
-      expect(parseIntStrict('60', '--expires-in', { min: 60, max: 86400 })).toBe(60)
+      expect(
+        parseIntStrict('60', '--expires-in', { min: 60, max: 86400 }),
+      ).toBe(60)
     })
 
     it('should reject values below min in combined constraints', () => {
-      expect(() => parseIntStrict('1', '--expires-in', { min: 60, max: 86400 })).toThrow(/below the minimum/)
+      expect(() =>
+        parseIntStrict('1', '--expires-in', { min: 60, max: 86400 }),
+      ).toThrow(/below the minimum/)
     })
 
     it('should reject values above max in combined constraints', () => {
-      expect(() => parseIntStrict('100000', '--expires-in', { min: 60, max: 86400 })).toThrow(/exceeds the maximum/)
+      expect(() =>
+        parseIntStrict('100000', '--expires-in', { min: 60, max: 86400 }),
+      ).toThrow(/exceeds the maximum/)
     })
   })
 })
@@ -130,13 +151,17 @@ describe('parseBooleanStrict', () => {
 
   it('should reject invalid boolean strings', () => {
     expect(() => parseBooleanStrict('yes', '--active')).toThrow(CLIError)
-    expect(() => parseBooleanStrict('1', '--active')).toThrow(/Expected "true" or "false"/)
+    expect(() => parseBooleanStrict('1', '--active')).toThrow(
+      /Expected "true" or "false"/,
+    )
   })
 })
 
 describe('script type validation helpers', () => {
-  const k6Script = "import http from 'k6/http'\nexport default function() { http.get('https://example.com') }"
-  const playwrightScript = "import { test } from '@playwright/test'\ntest('ok', async ({ page }) => { await page.goto('https://example.com') })"
+  const k6Script =
+    "import http from 'k6/http'\nexport default function() { http.get('https://example.com') }"
+  const playwrightScript =
+    "import { test } from '@playwright/test'\ntest('ok', async ({ page }) => { await page.goto('https://example.com') })"
 
   it('detects k6 scripts by import pattern', () => {
     expect(isK6Script(k6Script)).toBe(true)
@@ -168,19 +193,27 @@ describe('script type validation helpers', () => {
   })
 })
 
-
 describe('validation diagnostics', () => {
   it('retains HTTP status and non-JSON error details', async () => {
     const { ApiClient } = await import('../../api/client.js')
     const client = new ApiClient()
-    jest.spyOn(client, 'post').mockRejectedValue(new ApiRequestError('API request failed → 503', 503, 'upstream unavailable'))
-    const [result] = await validateScripts(client, [{ name: 'test', script: 'test()' }])
+    jest
+      .spyOn(client, 'post')
+      .mockRejectedValue(
+        new ApiRequestError(
+          'API request failed → 503',
+          503,
+          'upstream unavailable',
+        ),
+      )
+    const [result] = await validateScripts(client, [
+      { name: 'test', script: 'test()' },
+    ])
     expect(result.valid).toBe(false)
     expect(result.error).toContain('503')
     expect(result.error).toContain('upstream unavailable')
   })
 })
-
 
 describe('k6 module detection parity', () => {
   it.each([
@@ -188,13 +221,46 @@ describe('k6 module detection parity', () => {
     "  import http from 'k6/http'; export default function() {}",
     "import {\n check,\n sleep\n} from 'k6'; export default function() {}",
   ])('detects supported import forms: %s', (script) => {
-    expect(isK6Script(script)).toBe(true);
-  });
-});
-
+    expect(isK6Script(script)).toBe(true)
+  })
+})
 
 describe('commented imports', () => {
   it('does not classify a browser test from an example in a comment', () => {
-    expect(isK6Script("// import http from 'k6/http';\nimport { test } from '@playwright/test';\ntest('x', () => {});")).toBe(false);
-  });
-});
+    expect(
+      isK6Script(
+        "// import http from 'k6/http';\nimport { test } from '@playwright/test';\ntest('x', () => {});",
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('runtime import parsing', () => {
+  it.each([
+    [
+      "/*\nimport http from 'k6/http';\n*/\nimport {test} from '@playwright/test'; test('x',()=>{});",
+      false,
+    ],
+    ['const text = "; import http from \'k6/http\';";', false],
+    [
+      "import value from 'example'; import http from 'k6/http'; export default function(){}",
+      true,
+    ],
+    ["import type {X} from 'k6'; export const x = 1;", false],
+    ["export type {X} from 'k6';", false],
+    ["import {type X} from 'k6';", true],
+    ["export {type X} from 'k6';", true],
+    ["export {check} from 'k6';", true],
+    ["import http from 'k6/http'; export default function(){}", true],
+  ])('classifies only runtime imports: %s', (script, expected) => {
+    expect(isK6Script(script as string)).toBe(expected)
+  })
+})
+
+it('inspects imports without evaluating submitted code or resolving modules', () => {
+  expect(
+    isK6Script(
+      "throw new Error('do not execute'); import http from 'k6/http'; import value from 'missing-package';",
+    ),
+  ).toBe(true)
+})

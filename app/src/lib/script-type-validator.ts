@@ -148,7 +148,9 @@ export function validateTestScript(
         valid: false,
         error: result.errors.join(", "),
         errorType: "type",
+        warnings: result.warnings,
       };
+    return { valid: true, warnings: result.warnings };
   }
   return { valid: true };
 }

@@ -1740,7 +1740,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           timedOut,
           // Cancellation is recorded by the poller; SIGKILL can also mean OOM.
           cancelled: false,
-          message: terminated.message || terminated.reason,
+          message:
+            terminated.message ||
+            (terminated.reason === 'Error' ? undefined : terminated.reason),
         };
       }
 

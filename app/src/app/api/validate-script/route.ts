@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
-import type { TestType } from "@/db/schema/types";
-import { playwrightValidationService } from "@/lib/playwright-validator";
-import { isK6Script, validateK6Script } from "@/lib/k6-validator";
+import {
+  normalizeTestType,
+  validateTestScript,
+} from "@/lib/script-type-validator";
+import { isK6Script } from "@/lib/k6-validator";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 export async function POST(request: NextRequest) {
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
     const script = data.script;
     const requestedType =
       "testType" in data && typeof data.testType === "string"
-        ? (data.testType as TestType)
+        ? normalizeTestType(data.testType)
         : undefined;
 
     if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!script) {
+    if (!script.trim()) {
       return NextResponse.json(
         { error: "Script is required" },
         { status: 400 },
@@ -64,84 +66,27 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const scriptIsK6 = isK6Script(script);
-      const isPerformanceType = requestedType === "performance";
-
-      if (scriptIsK6 && requestedType && !isPerformanceType) {
+      const validation = validateTestScript(script, requestedType);
+      if (!validation.valid) {
         return NextResponse.json(
           {
             valid: false,
-            error:
-              "Detected k6 performance script. Switch the test type to Performance before running this script.",
-            errorType: "type",
+            error: validation.error,
+            line: validation.line,
+            column: validation.column,
+            warnings: validation.warnings,
+            errorType: validation.errorType,
             isValidationError: true,
           },
           { status: 400 },
         );
       }
-
-      if (!scriptIsK6 && isPerformanceType) {
-        return NextResponse.json(
-          {
-            valid: false,
-            error:
-              "Performance tests require k6 scripts. Provide a k6 script or choose a Playwright-based test type.",
-            errorType: "type",
-            isValidationError: true,
-          },
-          { status: 400 },
-        );
-      }
-
-      if (scriptIsK6) {
-        const validation = validateK6Script(script, {
-          selectedTestType: requestedType,
-        });
-
-        if (!validation.valid) {
-          return NextResponse.json(
-            {
-              valid: false,
-              error: validation.errors.join(", "),
-              warnings: validation.warnings,
-              errorType: "type",
-              isValidationError: true,
-            },
-            { status: 400 },
-          );
-        }
-
-        return NextResponse.json({
-          valid: true,
-          message: "k6 script validation passed",
-          warnings: validation.warnings,
-        });
-      }
-
-      const validationResult = playwrightValidationService.validateCode(
-        script,
-        {
-          selectedTestType: requestedType,
-        },
-      );
-
-      if (!validationResult.valid) {
-        return NextResponse.json(
-          {
-            valid: false,
-            error: validationResult.error,
-            line: validationResult.line,
-            column: validationResult.column,
-            errorType: validationResult.errorType,
-            isValidationError: true,
-          },
-          { status: 400 },
-        );
-      }
-
       return NextResponse.json({
         valid: true,
-        message: "Script validation passed",
+        message: isK6Script(script)
+          ? "k6 script validation passed"
+          : "Script validation passed",
+        warnings: validation.warnings,
       });
     } catch (error) {
       // Handle any unexpected errors during validation
