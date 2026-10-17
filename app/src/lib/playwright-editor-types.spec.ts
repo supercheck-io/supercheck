@@ -59,12 +59,10 @@ describe("Playground Playwright declarations", () => {
       beforeEach: (hook: typeof beforeHook) => { beforeHook = hook; },
       afterEach: (hook: typeof afterHook) => { afterHook = hook; },
     });
-    const unlink = jest.fn();
     const template = getTemplatesByType("browser").find(item => item.id === "pw-failure-diagnostics")!;
     const source = ts.transpileModule(template.code, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
     new Function("require", "exports", source)((name: string) => {
       if (name === "@playwright/test") return { test, expect: jest.fn() };
-      if (name === "node:fs/promises") return { unlink };
       throw new Error(`Unexpected template import: ${name}`);
     }, {});
     const context = { tracing: { startHar: jest.fn().mockResolvedValue(undefined), stopHar: jest.fn().mockResolvedValue(undefined) } };
@@ -75,12 +73,15 @@ describe("Playground Playwright declarations", () => {
     await beforeHook({ context }, info);
     await afterHook({ context }, info);
     expect(context.tracing.stopHar).toHaveBeenCalledTimes(1);
-    expect(unlink).toHaveBeenCalledWith("/tmp/network.har");
+    expect(info.attach).not.toHaveBeenCalled();
+    await beforeHook({ context }, info);
+    await afterHook({ context }, { ...info, status: "failed", expectedStatus: "passed" });
+    expect(info.attach).toHaveBeenCalledWith("network.har", { path: "/tmp/network.har", contentType: "application/json" });
 
     context.tracing.startHar.mockRejectedValueOnce(new Error("setup failed"));
     await expect(beforeHook({ context }, info)).rejects.toThrow("setup failed");
     await afterHook({ context }, info);
-    expect(context.tracing.stopHar).toHaveBeenCalledTimes(1);
+    expect(context.tracing.stopHar).toHaveBeenCalledTimes(2);
   });
 
   it("accepts current APIs, capture options, and Supercheck helpers", () => {
