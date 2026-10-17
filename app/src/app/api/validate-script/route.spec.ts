@@ -82,7 +82,7 @@ it("rejects oversized chunked bodies that carry no Content-Length", async () => 
       method: "POST",
       body,
       duplex: "half",
-    } as RequestInit),
+    } as unknown as ConstructorParameters<typeof NextRequest>[1]),
   );
   expect(response.status).toBe(413);
 });
