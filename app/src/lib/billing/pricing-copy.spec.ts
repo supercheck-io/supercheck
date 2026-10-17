@@ -10,15 +10,25 @@ describe("PRICING_FAQS", () => {
     }
   });
 
-  it("describes current coverage without advertising planned regions as available", () => {
+  it("states three monitoring locations and EU-only browser and k6 execution", () => {
     const faq = PRICING_FAQS.find(
       (item) => item.question === "Where do Cloud checks run?",
     );
-    expect(faq?.answer).toContain("Supercheck Cloud currently runs");
-    expect(faq?.answer).toContain("US and Singapore monitoring regions are planned");
     expect(faq?.answer).toContain(
-      "browser synthetic checks, Playwright tests, and k6 execution in EU",
+      "HTTP, SSL, ping, and port monitors can run from EU, US, and Singapore",
     );
+    expect(faq?.answer).toContain(
+      "Browser synthetic monitors, Playwright tests, and k6 load tests run in EU",
+    );
+    expect(faq?.answer).not.toContain("planned");
+  });
+
+  it("explains why browser checks and k6 tests are EU-only", () => {
+    const faq = PRICING_FAQS.find(
+      (item) => item.question === "Why do browser checks and k6 tests run only in EU?",
+    );
+    expect(faq?.answer).toContain("available in our EU location only");
+    expect(faq?.answer).toContain("each location counts separately");
   });
 
   it("counts locations toward browser minutes only when browser checks are enabled in more", () => {
@@ -26,5 +36,6 @@ describe("PRICING_FAQS", () => {
       item.question.startsWith("How are browser execution minutes measured"),
     );
     expect(faq?.answer).toContain("if browser checks are enabled in more locations");
+    expect(faq?.answer).toContain("from any location do not consume Playwright minutes");
   });
 });
