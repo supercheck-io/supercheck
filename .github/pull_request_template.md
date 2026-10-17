@@ -29,7 +29,6 @@
 
 ## Checklist
 
-- [ ] Every human contributor has signed the [CLA](https://github.com/supercheck-io/supercheck/blob/main/CLA.md), or the maintainer has recorded equivalent written permission.
 - [ ] I have read [CONTRIBUTING.md](https://github.com/supercheck-io/supercheck/blob/main/CONTRIBUTING.md) and this PR is focused on one problem.
 - [ ] Tests cover the change, or I have explained why they are not needed.
 - [ ] User-facing documentation is updated in the same PR where needed.
