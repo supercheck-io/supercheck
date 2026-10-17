@@ -167,7 +167,7 @@ export function CostCalculator() {
 
           <p className="mt-6 text-xs text-fd-muted-foreground">
             {formatCount(result.runsPerMonth)} runs and {formatCount(result.playwrightMinutes)} browser
-            minutes per month from one location. Retries are not included.
+            minutes per month, run once from EU. Retries are not included.
           </p>
         </div>
 
@@ -216,9 +216,9 @@ export function CostCalculator() {
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>
             Runs per month = checks × runs per day, over a 30-day month, from one location.
-            Browser checks run from a single EU location, and we price every vendor for
-            the same single-location workload. HTTP, SSL, ping and port checks do not use
-            browser minutes. If browser checks are enabled in more
+            Browser checks run only in EU, and we price every vendor for the same
+            single-location workload. HTTP, SSL, ping and port monitoring from EU, US and
+            Singapore does not use browser minutes. If browser checks are enabled in more
             locations later, each location counts as a separate run.
           </li>
           <li>
