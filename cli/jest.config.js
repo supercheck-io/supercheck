@@ -52,17 +52,80 @@ const config = {
     '!src/bin/**',
   ],
   coverageDirectory: 'coverage',
-  // Critical reconciliation logic (create/update/delete planning and
-  // masked-secret handling) is ratcheted independently. Keep these floors at
-  // or below measured coverage and raise them as tests are added.
   coverageThreshold: {
     global: {
-      branches: 30,
-      functions: 40,
-      lines: 40,
-      statements: 40,
+      branches: 40,
+      functions: 52,
+      lines: 50,
+      statements: 50,
     },
+    // Critical reconciliation logic (create/update/delete planning and
+    // masked-secret handling) is ratcheted independently. Keep these floors at
+    // or below measured coverage and raise them as tests are added.
     './src/utils/reconcile.ts': {
+      branches: 90,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    // Command surfaces now covered directly in-process instead of only through
+    // spawned CLI runs, where coverage instrumentation cannot see them.
+    './src/commands/alerts.ts': {
+      branches: 95,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    './src/commands/audit.ts': {
+      branches: 82,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    './src/commands/config.ts': {
+      branches: 45,
+      functions: 95,
+      lines: 85,
+      statements: 85,
+    },
+    './src/commands/health.ts': {
+      branches: 50,
+      functions: 95,
+      lines: 75,
+      statements: 75,
+    },
+    // Provider updates must never round-trip masked credentials.
+    './src/commands/notifications.ts': {
+      branches: 80,
+      functions: 80,
+      lines: 88,
+      statements: 88,
+    },
+    './src/commands/runs.ts': {
+      branches: 48,
+      functions: 58,
+      lines: 70,
+      statements: 70,
+    },
+    './src/commands/skills.ts': {
+      branches: 90,
+      functions: 95,
+      lines: 95,
+      statements: 95,
+    },
+    './src/commands/tags.ts': {
+      branches: 90,
+      functions: 60,
+      lines: 75,
+      statements: 75,
+    },
+    './src/commands/validate.ts': {
+      branches: 70,
+      functions: 72,
+      lines: 95,
+      statements: 95,
+    },
+    './src/commands/variables.ts': {
       branches: 90,
       functions: 95,
       lines: 95,

@@ -14,7 +14,8 @@
  */
 
 import { test, expect } from '../../fixtures/roles.fixture';
-import { requireRbacUser } from '../../utils/env';
+import { requireCredentials, requireRbacUser, env } from '../../utils/env';
+import { authenticateWithApi } from '../../utils/api-auth';
 
 test.describe('RBAC - Unauthenticated Access @auth @rbac @security', () => {
   // Override global storage state to test unauthenticated access
@@ -290,12 +291,7 @@ test.describe('RBAC - API Authorization @auth @rbac @security', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   /**
-   * Test that API endpoints respect authorization
-   *
-   * API may return different status codes depending on implementation:
-   * - 401: Unauthorized (no auth)
-   * - 403: Forbidden (auth but no permission)
-   * - 500: Internal error (which still protects data)
+   * Unauthenticated callers get a 401 before any tenant scoping runs.
    */
   test('API requires authentication @critical @security', async ({ request }) => {
     // Try to access API without authentication
@@ -304,20 +300,112 @@ test.describe('RBAC - API Authorization @auth @rbac @security', () => {
     expect(response.status()).toBe(401);
     expect(await response.json()).toMatchObject({ error: expect.any(String) });
   });
+});
 
-  /**
-   * Test organization isolation in API
-   */
-  test('Cannot access other org data via API @critical @security', async ({ request }) => {
-    // This would require authenticated context and known org IDs
-    // Testing cross-organization access attempts
+/**
+ * Cross-tenant isolation needs two *authenticated* identities. The previous
+ * version of this check sent an unauthenticated request and asserted 401, which
+ * proved only that the auth middleware runs, not that tenant boundaries hold.
+ *
+ * Here the organization owner (positive control) and an existing user who
+ * belongs to a different organization (the outsider) call the same endpoints.
+ * The owner must read the resource and the outsider must not.
+ */
+test.describe('RBAC - Cross-tenant API isolation @auth @rbac @security', () => {
+  test('an authenticated outsider cannot read another organization\'s project data @critical @security', async ({
+    orgOwnerPage,
+    playwright,
+    baseURL,
+  }) => {
+    if (!baseURL) throw new Error('Playwright baseURL is required');
+    requireRbacUser('orgOwner');
+    requireCredentials(env.inviteeUser, 'E2E_INVITEE_EMAIL and E2E_INVITEE_PASSWORD');
 
-    // Example: Try to access a known-invalid org ID
-    const response = await request.get('/api/projects', {
-      params: { organizationId: '00000000-0000-4000-8000-000000000001' },
+    // A previously aborted invitation run can leave the outsider inside the
+    // owner's organization, which would turn this denial test into a false
+    // positive. Remove any leftover membership first, mirroring invitations.spec.ts.
+    const outsiderEmail = env.inviteeUser.email.toLowerCase().trim();
+    const membersResponse = await orgOwnerPage.request.get('/api/organizations/members');
+    expect(membersResponse.status()).toBe(200);
+    const membersBody = (await membersResponse.json()) as {
+      data: { members: Array<{ id: string; email: string }> };
+    };
+    const lingeringMembership = membersBody.data.members.find(
+      (member) => member.email.toLowerCase() === outsiderEmail,
+    );
+    if (lingeringMembership) {
+      const removeResponse = await orgOwnerPage.request.delete(
+        `/api/organizations/members/${lingeringMembership.id}`,
+      );
+      expect(removeResponse.status()).toBe(200);
+    }
+
+    const ownerProjects = (await (
+      await orgOwnerPage.request.get('/api/projects')
+    ).json()) as { currentProject?: { id?: string; organizationId?: string } };
+    const ownerProjectId = ownerProjects.currentProject?.id;
+    const ownerOrganizationId = ownerProjects.currentProject?.organizationId;
+    if (!ownerProjectId || !ownerOrganizationId) {
+      throw new Error('org owner must have an active project and organization');
+    }
+
+    // Positive control: the resource exists and its owner can read it, so a
+    // later denial cannot be explained by the endpoint being broken.
+    const ownerVariables = await orgOwnerPage.request.get(
+      `/api/projects/${ownerProjectId}/variables`,
+    );
+    expect(ownerVariables.status()).toBe(200);
+
+    const storageState = await authenticateWithApi(
+      playwright.request,
+      baseURL,
+      env.inviteeUser,
+      { requireProjectContext: false },
+    );
+    const origin = new URL(baseURL).origin;
+    const outsider = await playwright.request.newContext({
+      baseURL,
+      storageState,
+      extraHTTPHeaders: { Origin: origin, Referer: `${origin}/sign-in` },
     });
 
-    expect(response.status()).toBe(401);
-    expect(await response.json()).toMatchObject({ error: expect.any(String) });
+    try {
+      // Direct object access: the outsider knows the real project id.
+      const variablesResponse = await outsider.get(
+        `/api/projects/${ownerProjectId}/variables`,
+      );
+      expect(
+        [403, 404],
+        `outsider must not read project variables (got ${variablesResponse.status()})`,
+      ).toContain(variablesResponse.status());
+      expect(await variablesResponse.json()).toMatchObject({ error: expect.any(String) });
+
+      // Organization-scoped enumeration must be denied as well.
+      const organizationResponse = await outsider.get('/api/projects', {
+        params: { organizationId: ownerOrganizationId },
+      });
+      expect(
+        organizationResponse.status(),
+        'outsider must not enumerate another organization\'s projects',
+      ).toBe(403);
+
+      // Nor may the outsider switch their session into the other tenant.
+      const switchResponse = await outsider.post('/api/projects/switch', {
+        data: { projectId: ownerProjectId },
+      });
+      expect(
+        [400, 403, 404],
+        `outsider must not switch into another tenant's project (got ${switchResponse.status()})`,
+      ).toContain(switchResponse.status());
+
+      // Finally, the outsider's own project list must not contain the resource.
+      const ownProjects = (await (await outsider.get('/api/projects')).json()) as {
+        data?: Array<{ id?: string }>;
+      };
+      const visibleIds = (ownProjects.data ?? []).map((project) => project.id);
+      expect(visibleIds).not.toContain(ownerProjectId);
+    } finally {
+      await outsider.dispose();
+    }
   });
 });

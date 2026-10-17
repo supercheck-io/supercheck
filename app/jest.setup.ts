@@ -47,24 +47,41 @@ if (typeof globalThis.fetch === 'undefined') {
 }
 
 if (typeof globalThis.Headers === 'undefined') {
-  // Minimal Headers stub — enough to satisfy import-time checks
+  // Minimal Headers stub for jsdom. `append` follows the Fetch spec and joins
+  // repeated values with a comma, so code that reads a combined header sees the
+  // same value it would get from Undici in a node-environment test.
   class HeadersStub {
     private _map = new Map<string, string>();
-    constructor(init?: Record<string, string> | HeadersStub) {
-      if (init) {
-        if (init instanceof HeadersStub) {
-          init.forEach((v, k) => this.append(k, v));
-        } else {
-          Object.entries(init).forEach(([k, v]) => this.append(k, v));
-        }
+
+    constructor(init?: Record<string, string> | HeadersStub | Iterable<[string, string]>) {
+      if (!init) return;
+      if (init instanceof HeadersStub) {
+        init.forEach((value, key) => this.append(key, value));
+        return;
       }
+      if (typeof (init as Iterable<[string, string]>)[Symbol.iterator] === 'function') {
+        for (const [key, value] of init as Iterable<[string, string]>) {
+          this.append(key, value);
+        }
+        return;
+      }
+      Object.entries(init as Record<string, string>).forEach(([key, value]) => this.append(key, value));
     }
-    append(name: string, value: string) { this._map.set(name.toLowerCase(), value); }
+
+    append(name: string, value: string) {
+      const key = name.toLowerCase();
+      const existing = this._map.get(key);
+      this._map.set(key, existing === undefined ? String(value) : `${existing}, ${String(value)}`);
+    }
     get(name: string) { return this._map.get(name.toLowerCase()) ?? null; }
     has(name: string) { return this._map.has(name.toLowerCase()); }
-    set(name: string, value: string) { this._map.set(name.toLowerCase(), value); }
+    set(name: string, value: string) { this._map.set(name.toLowerCase(), String(value)); }
     delete(name: string) { this._map.delete(name.toLowerCase()); }
     forEach(cb: (value: string, key: string) => void) { this._map.forEach(cb); }
+    keys() { return this._map.keys(); }
+    values() { return this._map.values(); }
+    entries() { return this._map.entries(); }
+    [Symbol.iterator]() { return this._map.entries(); }
   }
   Object.defineProperty(globalThis, 'Headers', {
     value: HeadersStub,
@@ -104,8 +121,9 @@ if (typeof globalThis.Response === 'undefined') {
   class ResponseStub {
     body: unknown;
     status: number;
+    statusText: string;
     headers: InstanceType<typeof globalThis.Headers>;
-    
+
     static json(data: unknown, init?: { status?: number; statusText?: string; headers?: Record<string, string> }) {
       const body = JSON.stringify(data);
       const headers = new globalThis.Headers(init?.headers);
@@ -113,12 +131,26 @@ if (typeof globalThis.Response === 'undefined') {
       return new ResponseStub(body, { ...init, headers });
     }
 
-    constructor(body?: unknown, init?: { status?: number; headers?: any }) {
+    constructor(body?: unknown, init?: { status?: number; statusText?: string; headers?: any }) {
       this.body = body;
       this.status = init?.status ?? 200;
+      this.statusText = init?.statusText ?? '';
       this.headers = init?.headers instanceof globalThis.Headers 
         ? init.headers 
         : new globalThis.Headers(init?.headers);
+    }
+
+    // `ok` and `clone` are part of the real Response surface that application
+    // code relies on (`response.ok`, `response.clone().text()`), so returning
+    // undefined here would silently push those paths down their failure branch.
+    get ok() { return this.status >= 200 && this.status < 300; }
+
+    clone() {
+      return new ResponseStub(this.body, {
+        status: this.status,
+        statusText: this.statusText,
+        headers: new globalThis.Headers(this.headers),
+      });
     }
     
     json() { 
