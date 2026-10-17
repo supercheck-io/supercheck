@@ -20,7 +20,7 @@ interface RuntimeInfo {
   title: string;
   description: string;
   libraries: AllowedLibrary[];
-  footer: string;
+  guidance: string[];
 }
 
 const PLAYWRIGHT_TYPES: TestType[] = ["browser", "api", "database", "custom"];
@@ -30,6 +30,7 @@ const PLAYWRIGHT_LIBRARIES: AllowedLibrary[] = [
     name: "@playwright/test",
     description: "Testing framework with built-in assertions",
   },
+  { name: "path / node:path", description: "Node.js path manipulation utilities" },
   { name: "axios", description: "Promise-based HTTP client" },
   { name: "zod", description: "TypeScript-first schema validation" },
   { name: "mssql", description: "Microsoft SQL Server client" },
@@ -50,8 +51,7 @@ const PERFORMANCE_LIBRARIES: AllowedLibrary[] = [
   { name: "k6/encoding", description: "Encoding and decoding utilities" },
   { name: "k6/html", description: "HTML parsing helpers" },
   { name: "k6/ws", description: "WebSocket support" },
-  { name: "k6/grpc", description: "gRPC client support" },
-  { name: "k6/net/grpc", description: "Low-level gRPC networking" },
+  { name: "k6/net/grpc", description: "gRPC client and streaming support" },
   { name: "k6/execution", description: "Execution context (VU, scenario info)" },
 ];
 
@@ -60,17 +60,21 @@ const PLAYWRIGHT_RUNTIME: RuntimeInfo = {
   description:
     "These modules are available when running Playwright tests.",
   libraries: PLAYWRIGHT_LIBRARIES,
-  footer:
-    "Scripts are validated for security. Node.js core modules are blocked. Playwright test execution has a 5-minute timeout.",
+  guidance: [
+    "Scripts are checked for security. Only approved imports are allowed; direct filesystem and process access is blocked.",
+    "Use getVariable() for variables, getSecret() for secrets, and readFile() for file variables.",
+  ],
 };
 
 const PERFORMANCE_RUNTIME: RuntimeInfo = {
   title: "k6 Runtime Modules",
   description:
-    "These modules are available when running k6 performance tests.",
+    "Common built-in modules for k6 performance tests. Use k6/net/grpc for gRPC.",
   libraries: PERFORMANCE_LIBRARIES,
-  footer:
-    "Scripts are validated for security. Node.js packages are blocked. k6 test execution has a 60-minute timeout.",
+  guidance: [
+    "Scripts are checked for security. Node.js packages and k6/browser are unsupported.",
+    "Use getVariable() for variables and getSecret() for secrets. Read file variables with open(getFile()) in init context.",
+  ],
 };
 
 const getRuntimeInfo = (testType: TestType | undefined): RuntimeInfo => {
@@ -106,10 +110,33 @@ const RuntimeInfoPopover: React.FC<RuntimeInfoPopoverProps> = ({
           <span className="sr-only">Available runtime libraries</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96" align="start">
+      <PopoverContent className="w-96 max-w-[calc(100vw-2rem)]" align="start">
         <div className="space-y-3">
           <div>
-            <h4 className="font-medium">{runtimeInfo.title}</h4>
+            <div className="flex items-center gap-1">
+              <h4 className="font-medium">{runtimeInfo.title}</h4>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground"
+                    aria-label={`${runtimeInfo.title} guidance`}
+                  >
+                    <Info className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-80 max-w-[calc(100vw-2rem)] space-y-2 text-sm text-muted-foreground"
+                  align="end"
+                  aria-label={`${runtimeInfo.title} guidance`}
+                >
+                  {runtimeInfo.guidance.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            </div>
             <p className="text-sm text-muted-foreground">
               {runtimeInfo.description}
             </p>
@@ -130,9 +157,6 @@ const RuntimeInfoPopover: React.FC<RuntimeInfoPopoverProps> = ({
             </div>
           </ScrollArea>
 
-          <div className="pt-2 border-t text-xs text-muted-foreground">
-            {runtimeInfo.footer}
-          </div>
         </div>
       </PopoverContent>
     </Popover>

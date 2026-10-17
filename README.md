@@ -26,10 +26,10 @@ Supercheck combines capabilities that are commonly split across test automation,
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
 | **Supercheck** | Unified reliability | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Checkly | Synthetic monitoring & testing | ✅ | ✅ | — | ✅ | Partial |
-| Datadog | Observability & synthetics | Partial | ✅ | — | — | Partial |
-| Better Stack | Observability & incident management | — | ✅ | — | ✅ | Partial |
+| Datadog | Observability & synthetics | Partial | ✅ | — | Partial | Partial |
+| Better Stack | Observability & incident management | Partial | ✅ | — | ✅ | Partial |
 | UptimeRobot | Uptime monitoring | — | ✅ | — | ✅ | — |
-| BrowserStack | Browser & device cloud | ✅ | Partial | — | — | Partial |
+| BrowserStack | Browser & device cloud | ✅ | — | ✅ | — | Partial |
 | Sauce Labs | Browser & device cloud | ✅ | Partial | — | — | Partial |
 | Cypress Cloud | Cypress orchestration | ✅ | — | — | — | Partial |
 | Grafana k6 | Performance & load testing | — | Partial | ✅ | — | Partial |
@@ -40,7 +40,7 @@ Supercheck combines capabilities that are commonly split across test automation,
 | PagerDuty | Event intelligence & response | — | — | — | — | ✅ |
 | Resolve AI | AI production ops | — | — | — | — | ✅ |
 
-\* Comparison snapshot: October 2026. Product capabilities may change.
+\* Comparison snapshot: October 2026. Product capabilities may change. "Partial" means available through a separate product or plan, or with limited scope. The [pricing page](https://supercheck.io/pricing) compares costs for Checkly, Datadog, Better Stack and BrowserStack.
 
 ## Get started
 

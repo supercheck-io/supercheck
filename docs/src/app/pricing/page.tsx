@@ -2,20 +2,30 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
-import { CostCalculator } from '../../components/pricing/cost-calculator';
-import { CapabilityComparison } from '../../components/pricing/capability-comparison';
+import { VendorComparison } from '../../components/pricing/vendor-comparison';
+import { CopyEmail } from '../../components/pricing/copy-email';
 
 type Feature = string | { text: string; hint: string };
 
 const WAITLIST_EMAIL = 'hello@supercheck.io';
 
+function mailtoHref(subject: string, body?: string) {
+    const params = [`subject=${encodeURIComponent(subject)}`];
+    if (body) params.push(`body=${encodeURIComponent(body)}`);
+    return `mailto:${WAITLIST_EMAIL}?${params.join('&')}`;
+}
+
 function waitlistHref(plan: string) {
-    const subject = encodeURIComponent(`Supercheck Cloud waitlist (${plan})`);
-    const body = encodeURIComponent(
+    return mailtoHref(
+        `Supercheck Cloud waitlist (${plan})`,
         `Please add me to the Supercheck Cloud waitlist for the ${plan} plan.`,
     );
-    return `mailto:${WAITLIST_EMAIL}?subject=${subject}&body=${body}`;
 }
+
+const enterpriseHref = mailtoHref(
+    'Supercheck Cloud Enterprise enquiry',
+    'Hi, I would like to discuss Supercheck Cloud Enterprise. My team size, expected usage and locations are:\n',
+);
 
 const plans: {
     name: string;
@@ -35,7 +45,7 @@ const plans: {
         features: [
             '50 monitors',
             '5 status pages with custom domains',
-            { text: '1 EU monitoring location', hint: 'US and Singapore planned' },
+            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
             { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
             '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
@@ -56,7 +66,7 @@ const plans: {
         features: [
             '200 monitors',
             '20 status pages with custom domains',
-            { text: '1 EU monitoring location', hint: 'US and Singapore planned' },
+            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
             { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
             '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
@@ -86,14 +96,14 @@ const plans: {
             'Onboarding & training',
         ],
         cta: 'Get in touch',
-        ctaLink: `mailto:${WAITLIST_EMAIL}`,
+        ctaLink: enterpriseHref,
         highlighted: false,
     },
 ];
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
-    { metric: '1,000 k6 VU-minutes', plus: '$2.00', pro: '$1.00' },
+    { metric: 'k6 VU-minute', plus: '$0.002 ($2 per 1,000)', pro: '$0.001 ($1 per 1,000)' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];
@@ -104,6 +114,7 @@ const CUSTOM = 'Custom';
 
 interface ComparisonItem {
     name: string;
+    hint?: string;
     plus: string;
     pro: string;
     enterprise: string;
@@ -117,14 +128,14 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000', enterprise: CUSTOM },
             { name: 'AI credits/month', plus: '1,000', pro: '5,000', enterprise: CUSTOM },
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
-            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Private Agent support', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Concurrent jobs', plus: '5', pro: '10', enterprise: CUSTOM },
+            { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-jobs limit.', plus: '5', pro: '10', enterprise: CUSTOM },
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
-            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'EU', pro: 'EU', enterprise: CUSTOM },
-            { name: 'Browser checks, Playwright tests and k6 execution', plus: 'EU', pro: 'EU', enterprise: CUSTOM },
+            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
+            { name: 'Browser checks, Playwright tests and k6 execution', plus: 'Europe', pro: 'Europe', enterprise: CUSTOM },
         ]
     },
     {
@@ -156,6 +167,10 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Custom domains', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'CI/CD integration', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Cron job scheduling', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Requirements and coverage tracking', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Supercheck Recorder (Chrome and Edge)', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Variables, secrets and file data', plus: CHECK, pro: CHECK, enterprise: CHECK },
+            { name: 'Role-based access and audit log', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Support', plus: 'Email', pro: 'Priority email', enterprise: 'Custom SLA' },
             { name: 'Dedicated account manager', plus: NONE, pro: NONE, enterprise: CHECK },
             { name: 'Onboarding & training', plus: NONE, pro: NONE, enterprise: CHECK },
@@ -198,11 +213,15 @@ const faqs = [
     },
     {
         question: 'Where do Cloud checks run?',
-        answer: 'Supercheck Cloud currently runs HTTP, SSL, ping, and port monitoring, browser synthetic checks, Playwright tests, and k6 execution in EU. US and Singapore monitoring regions are planned. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
+        answer: 'HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
+    },
+    {
+        question: 'Why do browser checks and k6 tests run only in Europe?',
+        answer: 'At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.',
     },
     {
         question: 'How are browser minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (EU). If they are enabled in more locations, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, ping, and port checks do not use browser minutes.',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). If they are enabled in more locations, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, SSL, ping, and port checks from any location do not use browser minutes.',
     },
     {
         question: 'How is k6 usage measured?',
@@ -234,6 +253,16 @@ const faqs = [
     },
 ];
 
+const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+    })),
+};
+
 function FAQItem({ question, answer }: { question: string; answer: string }) {
     return (
         <details className="group border-b border-fd-border last:border-0">
@@ -251,6 +280,10 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 export default function PricingPage() {
     return (
         <div className="min-h-screen bg-fd-background">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd).replace(/</g, '\\u003c') }}
+            />
             <SiteHeader showPricing={false} />
 
             <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 md:py-16">
@@ -324,9 +357,7 @@ export default function PricingPage() {
                     ))}
                 </div>
 
-                <p className="mb-16 text-center text-xs text-fd-muted-foreground">
-                    Waitlist buttons open an email to {WAITLIST_EMAIL}.
-                </p>
+                <CopyEmail email={WAITLIST_EMAIL} />
 
                 {/* Self-hosting */}
                 <aside aria-labelledby="self-host-heading" className="mb-20 flex flex-col items-start justify-between gap-4 rounded-xl border border-fd-border bg-fd-card p-6 sm:flex-row sm:items-center sm:p-8">
@@ -346,9 +377,7 @@ export default function PricingPage() {
                     </div>
                 </aside>
 
-                <CostCalculator />
-
-                <CapabilityComparison />
+                <VendorComparison />
 
                 {/* Overage Pricing */}
                 <div className="mb-20">
@@ -404,7 +433,10 @@ export default function PricingPage() {
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
-                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">{item.name}</th>
+                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">
+                                                        {item.name}
+                                                        {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
+                                                    </th>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.plus} /></td>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.pro} /></td>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.enterprise} /></td>
@@ -430,7 +462,7 @@ export default function PricingPage() {
                     <Link href="https://demo.supercheck.dev" className="hover:underline">Try the demo</Link>
                     <Link href="/terms" className="hover:underline">Terms of Service</Link>
                     <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
-                    <Link href="mailto:hello@supercheck.io" className="hover:underline">Contact us</Link>
+                    <Link href={mailtoHref('Supercheck question')} className="hover:underline">Contact us</Link>
                 </nav>
             </main>
         </div>
