@@ -130,7 +130,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at the same time. Extra runs wait in a queue.', plus: '5', pro: '10', enterprise: CUSTOM },
+            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-jobs limit.', plus: '5', pro: '10', enterprise: CUSTOM },
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },

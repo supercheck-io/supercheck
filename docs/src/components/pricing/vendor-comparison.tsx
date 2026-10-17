@@ -105,7 +105,7 @@ function BrowserStackCell({ workload }: { workload: Workload }) {
       </p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
         {fits
-          ? 'Per parallel test, unlimited minutes'
+          ? 'For 1 parallel test, unlimited minutes'
           : `Needs about ${parallels} parallel tests`}
       </p>
     </>
@@ -378,8 +378,9 @@ export function VendorComparison() {
       </ol>
 
       <p className="mt-4 border-t border-fd-border pt-4 text-center text-xs text-fd-muted-foreground">
-        Browser test costs compare execution only. Checkly and Datadog prices are annual-billing
-        rates; Supercheck prices are monthly. Supercheck plans also include monitors, status
+        Browser test costs compare execution only. BrowserStack bills per parallel test and is shown
+        for reference, not ranked. Checkly and Datadog prices are annual-billing rates; Supercheck
+        prices are monthly. Supercheck plans also include monitors, status
         pages, team seats, and AI SRE. Other vendors may price those separately, so check each
         vendor.
       </p>

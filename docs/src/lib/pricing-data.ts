@@ -88,7 +88,7 @@ export const COMPETITORS: readonly Competitor[] = [
     asOf: COMPETITOR_AS_OF,
     billing:
       'Browser tests bill per run at $12 per 1,000 on annual billing ($18 on-demand). One run covers up to 25 steps.',
-    note: 'No base fee shown for this product; other Datadog products are priced separately.',
+    note: 'No base fee shown for this product; other Datadog products are priced separately. Running CI tests in parallel needs a parallelization add-on, from $79 a month per additional parallelization on annual billing.',
   },
   {
     id: 'betterstack',
@@ -143,10 +143,10 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'Parallel test runs',
-    supercheck: '5–10 at once, extra runs queue',
-    checkly: 'Not listed',
-    datadog: 'Add-on, from $79/mo',
-    betterstack: 'Not listed',
+    supercheck: '5 (Plus) or 10 (Pro) at once, extra runs queue',
+    checkly: 'No limit listed',
+    datadog: 'CI add-on, from $79/mo',
+    betterstack: 'No limit listed',
     browserstack: 'Billed per parallel test',
   },
   {
