@@ -112,7 +112,8 @@ export function filterSecretVariablesToUsedKeys(
       return secrets;
     }
     // Code built at runtime can reach getSecret without a visible reference.
-    if (/\b(eval|Function)\b/.test(script)) return secrets;
+    if (/\b(eval|Function|globalThis|global|self|window)\b/.test(script))
+      return secrets;
     const calls = collectUnboundHelperCalls(script, ['getSecret']);
     // Aliases and dynamic keys cannot be resolved statically. Keep them working.
     // This optimization is not an authorization boundary within a project.

@@ -68,3 +68,21 @@ it.each(["k6", "PERFORMANCE", "load"])(
     expect(response.status).toBe(200);
   },
 );
+
+it("rejects oversized chunked bodies that carry no Content-Length", async () => {
+  const chunk = new TextEncoder().encode("a".repeat(1_000_000));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < 5; i++) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  const response = await POST(
+    new NextRequest("http://localhost/api/validate-script", {
+      method: "POST",
+      body,
+      duplex: "half",
+    } as RequestInit),
+  );
+  expect(response.status).toBe(413);
+});

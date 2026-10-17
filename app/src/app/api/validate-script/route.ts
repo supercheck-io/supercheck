@@ -47,18 +47,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Reject oversized bodies before buffering them (UTF-8 worst case + JSON overhead).
-    const contentLength = Number(request.headers.get("content-length"));
-    if (contentLength > MAX_SCRIPT_LENGTH * 4 + 4096) {
-      return NextResponse.json(
-        { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
-        { status: 413 },
-      );
-    }
-
+    // Enforce the size cap while streaming so chunked bodies cannot bypass
+    // Content-Length. UTF-8 worst case plus JSON overhead.
+    const maxBytes = MAX_SCRIPT_LENGTH * 4 + 4096;
     let data: unknown;
     try {
-      data = await request.json();
+      const reader = request.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maxBytes) {
+          await reader.cancel();
+          return NextResponse.json(
+            { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+            { status: 413 },
+          );
+        }
+        chunks.push(value);
+      }
+      data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
