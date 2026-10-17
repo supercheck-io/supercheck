@@ -41,6 +41,26 @@ export function formatUsd(value: number): string {
   }).format(value);
 }
 
+// Browser minutes per month above which Pro costs less than Plus. Both plans
+// are past their included minutes there, so each cost is linear in minutes.
+// Ignores the monitor limit: Plus only fits workloads of 50 monitors or fewer.
+export function planCrossoverMinutes(): number {
+  const [plus, pro] = SUPERCHECK_PLANS;
+  const base = (plan: typeof plus) =>
+    plan.monthlyFee - plan.includedPlaywrightMinutes * plan.overagePerMinute;
+  return Math.round(
+    (base(pro) - base(plus)) / (plus.overagePerMinute - pro.overagePerMinute),
+  );
+}
+
+// BrowserStack Automate bills per parallel test, not per run. This is the number
+// of tests running at once if every run starts on schedule (at least one).
+export function parallelTestsNeeded(workload: Workload): number {
+  const averageConcurrency =
+    (workload.checks * workload.durationSeconds) / (workload.intervalMinutes * 60);
+  return Math.max(1, Math.ceil(averageConcurrency));
+}
+
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
   // Browser checks run only in EU, so one run per check.

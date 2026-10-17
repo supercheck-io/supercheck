@@ -2,8 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
-import { CostCalculator } from '../../components/pricing/cost-calculator';
-import { CapabilityComparison } from '../../components/pricing/capability-comparison';
+import { VendorComparison } from '../../components/pricing/vendor-comparison';
 import { CopyEmail } from '../../components/pricing/copy-email';
 
 type Feature = string | { text: string; hint: string };
@@ -104,7 +103,7 @@ const plans: {
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
-    { metric: '1,000 k6 VU-minutes', plus: '$2.00', pro: '$1.00' },
+    { metric: 'k6 VU-minute', plus: '$0.002 ($2 per 1,000)', pro: '$0.001 ($1 per 1,000)' },
     { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];
@@ -115,6 +114,7 @@ const CUSTOM = 'Custom';
 
 interface ComparisonItem {
     name: string;
+    hint?: string;
     plus: string;
     pro: string;
     enterprise: string;
@@ -128,8 +128,8 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000', enterprise: CUSTOM },
             { name: 'AI credits/month', plus: '1,000', pro: '5,000', enterprise: CUSTOM },
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
-            { name: 'Read-only evidence connectors', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Private Agent support', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
+            { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Concurrent jobs', plus: '5', pro: '10', enterprise: CUSTOM },
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
@@ -373,9 +373,7 @@ export default function PricingPage() {
                     </div>
                 </aside>
 
-                <CostCalculator />
-
-                <CapabilityComparison />
+                <VendorComparison />
 
                 {/* Overage Pricing */}
                 <div className="mb-20">
@@ -431,7 +429,10 @@ export default function PricingPage() {
                                             </tr>
                                             {category.items.map((item, idx) => (
                                                 <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
-                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">{item.name}</th>
+                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">
+                                                        {item.name}
+                                                        {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
+                                                    </th>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.plus} /></td>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.pro} /></td>
                                                     <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.enterprise} /></td>
