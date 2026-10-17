@@ -39,6 +39,76 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
   ),
 }));
 
+// Unit tests must not dial the internet. `net` and `tls` are replaced with
+// controllable fakes so the TCP/TLS paths are asserted deterministically
+// instead of depending on google.com / example.com being reachable from CI.
+jest.mock('net', () => {
+  const actual = jest.requireActual('net');
+  const { EventEmitter } = jest.requireActual('events');
+  const state = { behavior: 'error' as 'connect' | 'error' };
+
+  class FakeSocket extends EventEmitter {
+    destroy = jest.fn();
+    connect = jest.fn((_port: number, _host: string, callback?: () => void) => {
+      process.nextTick(() => {
+        if (state.behavior === 'connect') callback?.();
+        else
+          this.emit(
+            'error',
+            Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+          );
+      });
+    });
+  }
+
+  return {
+    ...actual,
+    __state: state,
+    Socket: FakeSocket,
+    createConnection: jest.fn(() => {
+      const socket = new FakeSocket();
+      process.nextTick(() => {
+        if (state.behavior === 'connect') socket.emit('connect');
+        else
+          socket.emit(
+            'error',
+            Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }),
+          );
+      });
+      return socket;
+    }),
+  };
+});
+
+jest.mock('tls', () => {
+  const actual = jest.requireActual('tls');
+  const { EventEmitter } = jest.requireActual('events');
+  const state = { daysUntilExpiry: 90, authorized: true };
+
+  const connect = jest.fn((_options: unknown, callback?: () => void) => {
+    const socket: Record<string, unknown> = new EventEmitter();
+    socket.authorized = state.authorized;
+    socket.authorizationError = state.authorized
+      ? null
+      : new Error('self signed certificate');
+    socket.getPeerCertificate = () => ({
+      valid_from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      valid_to: new Date(
+        Date.now() + state.daysUntilExpiry * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+      issuer: { CN: 'Test CA' },
+      subject: { CN: 'example.test' },
+      serialNumber: '01',
+      fingerprint: 'AA:BB',
+    });
+    socket.destroy = jest.fn();
+    process.nextTick(() => callback?.());
+    return socket;
+  });
+
+  return { ...actual, __state: state, connect };
+});
+
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
@@ -56,6 +126,9 @@ import { VariableResolverService } from '../common/services/variable-resolver.se
 import * as schema from '../db/schema';
 
 describe('MonitorService', () => {
+  // Deterministic network fakes installed by the jest.mock('net'|'tls') factories.
+  const netState = jest.requireMock('net').__state;
+  const tlsState = jest.requireMock('tls').__state;
   let service: MonitorService;
   let _httpService: HttpService;
   let _dbService: DbService;
@@ -116,31 +189,39 @@ describe('MonitorService', () => {
     getUsage: jest.fn().mockResolvedValue({ count: 0 }),
   };
 
-  const mockValidationService = {
-    validateUrl: jest.fn().mockReturnValue(true),
-    sanitizeInput: jest.fn((input) => input),
-  };
+  // Zero-I/O collaborators run for real. Stubs with invented method names
+  // (`validateUrl`, `maskCredential`, `handleError`, `acquireResource`) turned
+  // validation, credential masking and error mapping into TypeErrors, so the
+  // service fell into its generic "system_error" branch instead of exercising
+  // the behaviour these tests describe.
+  // ResourceManagerService.enforceResourceLimits() compares the *process* heap
+  // (not this suite's usage) against MAX_MEMORY_USAGE_MB. A 100-test file can pass
+  // the 512MB default, which would fail an unrelated HTTP-path assertion depending
+  // on run order, so give the shared instance a ceiling this suite cannot reach.
+  process.env.MAX_MEMORY_USAGE_MB = '4096';
 
-  const mockEnhancedValidationService = {
-    validateInput: jest.fn().mockReturnValue({ isValid: true }),
-    validateUrl: jest.fn().mockReturnValue({ isValid: true }),
-  };
+  const validationService = new ValidationService();
+  const enhancedValidationService = new EnhancedValidationService();
+  const credentialSecurityService = new CredentialSecurityService();
+  const errorHandler = new StandardizedErrorHandler();
+  const resourceManager = new ResourceManagerService();
 
-  const mockCredentialSecurityService = {
-    encryptCredential: jest.fn().mockReturnValue('encrypted'),
-    decryptCredential: jest.fn().mockReturnValue('decrypted'),
-    maskCredential: jest.fn().mockReturnValue('***'),
-  };
+  // Captures the long request timeouts armed through ResourceManagerService
+  // (>= 20s). Jest's own 10s test timeout is deliberately left untouched so a
+  // genuinely hanging test still fails instead of being masked.
+  const originalSetTimeout = globalThis.setTimeout;
+  let pendingTimers: ReturnType<typeof setTimeout>[] = [];
 
-  const mockErrorHandler = {
-    handleError: jest.fn().mockReturnValue({ handled: true }),
-    logError: jest.fn(),
-  };
-
-  const mockResourceManager = {
-    acquireResource: jest.fn().mockResolvedValue(true),
-    releaseResource: jest.fn().mockResolvedValue(undefined),
-  };
+  beforeAll(() => {
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      const handle = originalSetTimeout(...args);
+      const delay = typeof args[1] === 'number' ? args[1] : 0;
+      if (delay >= 20_000) {
+        pendingTimers.push(handle);
+      }
+      return handle;
+    }) as typeof setTimeout;
+  });
 
   const mockLocationService = {
     getCurrentLocation: jest.fn().mockReturnValue('eu-central'),
@@ -208,6 +289,12 @@ describe('MonitorService', () => {
     };
     mockHttpService.request.mockReturnValue(of(mockResponse));
 
+    // Default network fakes to "unreachable" so a test that forgets to set a
+    // behaviour still cannot reach the real network.
+    netState.behavior = 'error';
+    tlsState.daysUntilExpiry = 90;
+    tlsState.authorized = true;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MonitorService,
@@ -216,17 +303,17 @@ describe('MonitorService', () => {
         { provide: MonitorAlertService, useValue: mockAlertService },
         { provide: ExecutionService, useValue: mockExecutionService },
         { provide: UsageTrackerService, useValue: mockUsageTrackerService },
-        { provide: ValidationService, useValue: mockValidationService },
+        { provide: ValidationService, useValue: validationService },
         {
           provide: EnhancedValidationService,
-          useValue: mockEnhancedValidationService,
+          useValue: enhancedValidationService,
         },
         {
           provide: CredentialSecurityService,
-          useValue: mockCredentialSecurityService,
+          useValue: credentialSecurityService,
         },
-        { provide: StandardizedErrorHandler, useValue: mockErrorHandler },
-        { provide: ResourceManagerService, useValue: mockResourceManager },
+        { provide: StandardizedErrorHandler, useValue: errorHandler },
+        { provide: ResourceManagerService, useValue: resourceManager },
         { provide: LocationService, useValue: mockLocationService },
         { provide: RedisService, useValue: mockRedisService },
         {
@@ -244,6 +331,24 @@ describe('MonitorService', () => {
     }).compile();
 
     service = module.get<MonitorService>(MonitorService);
+  });
+
+  afterEach(() => {
+    // ResourceManagerService.executeWithResourceLimits arms a per-request
+    // timeout (30s by default) and never clears it when the request settles
+    // first. The orphaned handle outlives the test and forces the Jest worker
+    // to exit before it finishes, so the suite tracks and clears what it armed.
+    // The real fix belongs in resource-manager.service.ts; this keeps the leak
+    // visible instead of hiding it behind --forceExit.
+    for (const handle of pendingTimers) {
+      clearTimeout(handle);
+    }
+    pendingTimers = [];
+    resourceManager.shutdown();
+  });
+
+  afterAll(() => {
+    globalThis.setTimeout = originalSetTimeout;
   });
 
   // ==========================================================================
@@ -588,29 +693,80 @@ describe('MonitorService', () => {
       });
     });
 
-    it('should handle ping_host type', async () => {
-      const pingJobData = {
+    it('reports a host as down when no TCP port accepts the connection', async () => {
+      netState.behavior = 'error';
+
+      const result = await service.executeMonitor({
         ...mockJobData,
         type: 'ping_host' as const,
         target: 'google.com',
-      };
+      });
 
-      const result = await service.executeMonitor(pingJobData);
-
-      expect(result).toBeDefined();
+      expect(result).toMatchObject({ status: 'down', isUp: false });
+      expect(result?.details?.errorMessage).toContain('Host unreachable');
     });
 
-    it('should handle port_check type', async () => {
-      const portJobData = {
+    it('reports a host as up when a TCP port accepts the connection', async () => {
+      netState.behavior = 'connect';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'ping_host' as const,
+        target: 'google.com',
+      });
+
+      expect(result).toMatchObject({ status: 'up', isUp: true });
+      expect(result?.details).toMatchObject({ connectionMethod: 'tcp' });
+    });
+
+    it('reports an open port as up when the port is expected to be open', async () => {
+      netState.behavior = 'connect';
+
+      const result = await service.executeMonitor({
         ...mockJobData,
         type: 'port_check' as const,
         target: 'db.example.com',
         config: { ...mockJobData.config, port: 5432 },
-      };
+      });
 
-      const result = await service.executeMonitor(portJobData);
+      expect(result).toMatchObject({ status: 'up', isUp: true });
+      expect(result?.details).toMatchObject({
+        port: 5432,
+        connectionSuccessful: true,
+      });
+    });
 
-      expect(result).toBeDefined();
+    it('fails a port check when the port should be closed but accepts connections', async () => {
+      netState.behavior = 'connect';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432, expectClosed: true },
+      });
+
+      expect(result).toMatchObject({ status: 'down', isUp: false });
+      expect(result?.details?.errorMessage).toBe(
+        'Port is open but was expected to be closed',
+      );
+    });
+
+    it('reports a refused port as down', async () => {
+      netState.behavior = 'error';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432 },
+      });
+
+      expect(result).toMatchObject({
+        status: 'down',
+        isUp: false,
+        details: { port: 5432 },
+      });
     });
   });
 
@@ -631,7 +787,10 @@ describe('MonitorService', () => {
       expect(result).toBeDefined();
     });
 
-    it('should check SSL for https targets when enabled', async () => {
+    it('records the certificate when the SSL check succeeds', async () => {
+      tlsState.daysUntilExpiry = 90;
+      tlsState.authorized = true;
+
       const websiteJobData = {
         ...mockJobData,
         type: 'website' as const,
@@ -645,7 +804,43 @@ describe('MonitorService', () => {
 
       const result = await service.executeMonitor(websiteJobData);
 
-      expect(result).toBeDefined();
+      expect(result?.status).toBe('up');
+      expect(result?.details?.sslCertificate).toMatchObject({
+        valid: true,
+        issuer: 'Test CA',
+        subject: 'example.test',
+        daysRemaining: 90,
+      });
+      expect(result?.details?.sslWarning).toBeUndefined();
+    });
+
+    it('keeps a certificate that is close to expiry from failing the website check', async () => {
+      tlsState.daysUntilExpiry = 10;
+
+      const websiteJobData = {
+        ...mockJobData,
+        type: 'website' as const,
+        target: 'https://example.com',
+        config: {
+          ...mockJobData.config,
+          enableSslCheck: true,
+          sslDaysUntilExpirationWarning: 30,
+        },
+      };
+
+      const result = await service.executeMonitor(websiteJobData);
+
+      expect(result?.status).toBe('up');
+      expect(result?.details?.sslCertificate).toMatchObject({
+        daysRemaining: 10,
+      });
+      // KNOWN GAP: executeSslCheck reports a near-expiry certificate as
+      // `isUp: true` with `details.warningMessage`, but the website branch only
+      // copies that message into `details.sslWarning` when `!sslResult.isUp`, so
+      // the warning text never reaches the caller. The daysRemaining value above
+      // is what operators can act on today; surfacing the warning needs a change
+      // in monitor.service.ts, not in this test.
+      expect(result?.details?.sslWarning).toBeUndefined();
     });
 
     it('should not check SSL for http targets', async () => {
