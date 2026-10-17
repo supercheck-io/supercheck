@@ -34,6 +34,8 @@ jest.mock("@/lib/job-scheduler", () => ({
 }));
 
 import { db } from "@/utils/db";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -41,6 +43,18 @@ import { scheduleJob } from "@/lib/job-scheduler";
 import { revalidatePath } from "next/cache";
 import { createJob } from "./create-job";
 import { deleteTest } from "./delete-test";
+
+const dialect = new PgDialect();
+
+/**
+ * Serialises the predicate handed to `.where()` with Drizzle's own dialect, so a
+ * scoping assertion covers the query itself: dropping `projectId` or
+ * `organizationId` would still return the same status code while touching
+ * another tenant's row.
+ */
+function predicateFor(predicate: unknown): { sql: string; params: unknown[] } {
+  return dialect.sqlToQuery(predicate as SQL);
+}
 
 const mockDb = db as unknown as {
   select: jest.Mock;
@@ -298,6 +312,11 @@ describe("job and test lifecycle actions", () => {
       });
       const lookupChain = mockDb.select.mock.results[0].value as ReturnType<typeof limitChain>;
       expect(lookupChain.limit).toHaveBeenCalledWith(1);
+      const lookup = predicateFor(lookupChain.where.mock.calls[0][0]);
+      expect(lookup.sql).toContain('"tests"."id" =');
+      expect(lookup.sql).toContain('"tests"."project_id" =');
+      expect(lookup.sql).toContain('"tests"."organization_id" =');
+      expect(lookup.params).toEqual([TEST_ID_1, "project-1", "org-1"]);
       expect(mockDb.delete).not.toHaveBeenCalled();
     });
 
@@ -347,6 +366,13 @@ describe("job and test lifecycle actions", () => {
       const result = await deleteTest(TEST_ID_1);
 
       expect(result).toEqual({ success: true, message: "Test deleted successfully" });
+      // The predicate, not just the result: the delete must carry the same
+      // project and organization scope as the lookup above.
+      const deletePredicate = predicateFor(deletion.where.mock.calls[0][0]);
+      expect(deletePredicate.sql).toContain('"tests"."id" =');
+      expect(deletePredicate.sql).toContain('"tests"."project_id" =');
+      expect(deletePredicate.sql).toContain('"tests"."organization_id" =');
+      expect(deletePredicate.params).toEqual([TEST_ID_1, "project-1", "org-1"]);
       expect(deletion.returning).toHaveBeenCalled();
       expect(mockLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
