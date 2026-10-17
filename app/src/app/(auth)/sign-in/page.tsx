@@ -139,14 +139,17 @@ function SignInPageContent() {
       });
 
       if (error) {
-        if (inviteToken && error.message?.toLowerCase().includes("verif")) {
-          router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
-          return;
-        }
+        // Classify CAPTCHA first: "Captcha verification failed" also contains
+        // "verif" and must not be mistaken for the email-verification gate below.
         // A CAPTCHA rejection says nothing about the credentials: don't count it
         // toward lockout, and don't blame the invitee's account.
-        if (error.message?.toLowerCase().includes("captcha")) {
+        const errorMessage = error.message?.toLowerCase() ?? "";
+        if (errorMessage.includes("captcha")) {
           setError("Verification failed. Please try again.");
+          return;
+        }
+        if (inviteToken && errorMessage.includes("verif")) {
+          router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
           return;
         }
         // Step 3a: Record failed attempt

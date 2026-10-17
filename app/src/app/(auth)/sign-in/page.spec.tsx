@@ -5,10 +5,13 @@ import SignInPage from "./page";
 
 const push = jest.fn();
 const mockExecute = jest.fn();
+const VALID_TOKEN = "01a149f7-ce26-70e2-997b-806e9f48d9de";
+// Prefixed `mock` so jest.mock factories may reference it.
+const mockQuery = { value: "" };
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: jest.fn() }),
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(mockQuery.value),
 }));
 jest.mock("@/utils/auth-client", () => ({ signIn: { email: jest.fn() } }));
 jest.mock("@/hooks/use-project-context", () => ({ clearProjectsCache: jest.fn() }));
@@ -41,6 +44,7 @@ describe("sign-in page CAPTCHA handling", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockQuery.value = "";
     checkActions = [];
     global.fetch = jest.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
       const action = init?.body ? JSON.parse(String(init.body)).action : undefined;
@@ -82,5 +86,29 @@ describe("sign-in page CAPTCHA handling", () => {
     expect(await screen.findByText(/Verification failed/i)).toBeInTheDocument();
     expect(checkActions).not.toContain("failed");
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("shows the CAPTCHA retry message, not verify-email, for an invitee whose CAPTCHA is rejected", async () => {
+    mockQuery.value = `invite=${VALID_TOKEN}`;
+    mockExecute.mockResolvedValue(null);
+    mockSignIn.mockResolvedValue({ error: { message: "Captcha verification failed" } });
+    render(<SignInPage />);
+
+    attempt();
+    expect(await screen.findByText(/Verification failed\. Please try again/i)).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+    expect(checkActions).not.toContain("failed");
+  });
+
+  it("still sends an invitee with an unverified email to verify-email", async () => {
+    mockQuery.value = `invite=${VALID_TOKEN}`;
+    mockExecute.mockResolvedValue("tok");
+    mockSignIn.mockResolvedValue({ error: { message: "Email not verified" } });
+    render(<SignInPage />);
+
+    attempt();
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith(expect.stringContaining(`/verify-email?email=`))
+    );
   });
 });
