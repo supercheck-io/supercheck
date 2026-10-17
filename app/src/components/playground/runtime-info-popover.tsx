@@ -61,7 +61,7 @@ const PLAYWRIGHT_RUNTIME: RuntimeInfo = {
     "These modules are available when running Playwright tests.",
   libraries: PLAYWRIGHT_LIBRARIES,
   guidance: [
-    "Scripts are checked for security. Only approved imports are allowed; direct filesystem and process access is blocked.",
+    "Scripts run in isolated containers. Validation checks syntax and test compatibility.",
     "Use getVariable() for variables, getSecret() for secrets, and readFile() for file variables.",
   ],
 };
@@ -72,7 +72,7 @@ const PERFORMANCE_RUNTIME: RuntimeInfo = {
     "Common built-in modules for k6 performance tests. Use k6/net/grpc for gRPC.",
   libraries: PERFORMANCE_LIBRARIES,
   guidance: [
-    "Scripts are checked for security. Node.js packages and k6/browser are unsupported.",
+    "Scripts run in isolated containers. Node.js packages and k6/browser are unsupported.",
     "Use getVariable() for variables and getSecret() for secrets. Read file variables with open(getFile()) in init context.",
   ],
 };

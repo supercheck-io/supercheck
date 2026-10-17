@@ -7,7 +7,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
-import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
+import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
 /**
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
     if (typeof script === "string" && script.length > 0) {
       // Decode base64 if needed for validation
       const decodedScript = decodeStoredTestScript(script);
-      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
+      const typeValidation = validateTestScript(decodedScript, resolvedType);
       if (!typeValidation.valid) {
         return NextResponse.json(
           {

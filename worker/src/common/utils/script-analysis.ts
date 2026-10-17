@@ -1,3 +1,4 @@
+import * as acorn from 'acorn';
 import { collectUnboundHelperCalls } from './helper-call-analysis';
 
 /**
@@ -92,4 +93,33 @@ export function filterFileVariablesToUsedKeys<
   return Object.fromEntries(
     Object.entries(files).filter(([key]) => usedKeys.has(key)),
   ) as T;
+}
+
+/** Least-privilege injection for direct helpers, with a compatibility fallback. */
+export function filterSecretVariablesToUsedKeys(
+  secrets: Record<string, string>,
+  scripts: string[],
+): Record<string, string> {
+  if (scripts.length === 0) return secrets;
+  const used = new Set<string>();
+  for (const script of scripts) {
+    try {
+      acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
+    } catch {
+      // TypeScript and other unsupported syntax need the compatibility fallback.
+      return secrets;
+    }
+    const calls = collectUnboundHelperCalls(script, ['getSecret']);
+    // Aliases and dynamic keys cannot be resolved statically. Keep them working.
+    // This optimization is not an authorization boundary within a project.
+    if (
+      calls.some((call) => call.literalKey === undefined) ||
+      (script.match(/\bgetSecret\b/g)?.length ?? 0) > calls.length
+    )
+      return secrets;
+    for (const call of calls) if (call.literalKey) used.add(call.literalKey);
+  }
+  return Object.fromEntries(
+    Object.entries(secrets).filter(([key]) => used.has(key)),
+  );
 }

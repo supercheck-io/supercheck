@@ -323,6 +323,145 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('kubernetes execution', () => {
+    it('reports OOM termination as failure rather than user cancellation', async () => {
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: { terminated: { exitCode: 137, reason: 'OOMKilled' } },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      const outcome = await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        jest.fn(),
+      );
+      expect(outcome).toMatchObject({
+        exitCode: 137,
+        cancelled: false,
+        message: 'OOMKilled',
+      });
+    });
+
+    it.each([false, true])(
+      'preserves artifact collection and fails if the pod terminates before collection=%s',
+      async (earlyTermination) => {
+        service['batchApi'] = {
+          createNamespacedJob: jest
+            .fn()
+            .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        service['createExecutionSecret'] = jest
+          .fn()
+          .mockResolvedValue(undefined);
+        service['waitForExecutionPod'] = jest.fn().mockResolvedValue('pod');
+        service['waitForExecutionOutcome'] = jest
+          .fn()
+          .mockImplementation(
+            async (
+              _pod,
+              _workspace,
+              _timeout,
+              collect: () => Promise<void>,
+            ) => {
+              if (!earlyTermination) await collect();
+              return { exitCode: 0, timedOut: false, cancelled: false };
+            },
+          );
+        service['startLogStreamWithReconnect'] = jest
+          .fn()
+          .mockReturnValue(new AbortController());
+        service['signalExecutionExit'] = jest.fn().mockResolvedValue(undefined);
+        service['extractPodArtifacts'] = jest.fn().mockResolvedValue(undefined);
+        service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+        service['fetchPodLogsSnapshot'] = jest.fn().mockResolvedValue('');
+        const result = await service.executeInContainer(null, ['node'], {
+          ...defaultOptions,
+          extractFromContainer: '/tmp/report',
+          extractToHost: '/tmp/host-report',
+        });
+        expect(result.success).toBe(!earlyTermination);
+        if (earlyTermination)
+          expect(result.error).toContain('before requested artifacts');
+        else {
+          expect(service['extractPodArtifacts']).toHaveBeenCalledTimes(1);
+          expect(service['signalExecutionExit']).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+
+    it('does not charge artifact extraction against the execution timeout', async () => {
+      let now = 0;
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+      service['coreApi'] = {
+        readNamespacedPod: jest
+          .fn()
+          .mockResolvedValueOnce({
+            status: {
+              containerStatuses: [
+                { name: 'execution', state: { running: {} } },
+              ],
+            },
+          })
+          .mockResolvedValue({
+            status: {
+              containerStatuses: [
+                { name: 'execution', state: { terminated: { exitCode: 0 } } },
+              ],
+            },
+          }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      service['readExecutionExitCode'] = jest.fn().mockResolvedValue(0);
+      service['sleep'] = jest.fn().mockResolvedValue(undefined);
+      try {
+        const outcome = await service['waitForExecutionOutcome'](
+          'pod',
+          '/tmp/run',
+          1000,
+          async () => {
+            now = 2000;
+          },
+        );
+        expect(outcome).toMatchObject({ exitCode: 0, timedOut: false });
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it('uses Kubernetes exit status even when the tenant writes a successful marker', async () => {
+      const statuses = [
+        { name: 'execution', state: { running: {} } },
+        { name: 'execution', state: { terminated: { exitCode: 7 } } },
+      ];
+      const readPod = jest.fn().mockImplementation(() =>
+        Promise.resolve({
+          status: { containerStatuses: [statuses.shift()] },
+        }),
+      );
+      service['coreApi'] = {
+        readNamespacedPod: readPod,
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      service['readExecutionExitCode'] = jest.fn().mockResolvedValue(0);
+      service['sleep'] = jest.fn().mockResolvedValue(undefined);
+      const collectArtifacts = jest.fn().mockResolvedValue(undefined);
+
+      const outcome = await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/supercheck/run-test',
+        30000,
+        collectArtifacts,
+      );
+      expect(outcome.exitCode).toBe(7);
+      expect(collectArtifacts).toHaveBeenCalledTimes(1);
+      expect(readPod).toHaveBeenCalledTimes(2);
+    });
+
     it.each([false, true])(
       'uses the complete snapshot over replayed logs, retaining the buffer on fetch failure=%s',
       async (snapshotFails) => {

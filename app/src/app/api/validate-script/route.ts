@@ -13,29 +13,53 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       if (isAuthError(error)) {
         return NextResponse.json(
-          { error: error instanceof Error ? error.message : "Authentication required" },
-          { status: 401 }
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Authentication required",
+          },
+          { status: 401 },
         );
       }
       throw error;
     }
 
-    const data = await request.json();
-    const script = data.script as string;
+    let data: unknown;
+    try {
+      data = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      !("script" in data) ||
+      typeof data.script !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "Script must be a string" },
+        { status: 400 },
+      );
+    }
+    const script = data.script;
     const requestedType =
-      typeof data.testType === "string" ? (data.testType as TestType) : undefined;
+      "testType" in data && typeof data.testType === "string"
+        ? (data.testType as TestType)
+        : undefined;
 
     if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
       return NextResponse.json(
         { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
-        { status: 413 }
+        { status: 413 },
       );
     }
 
     if (!script) {
       return NextResponse.json(
         { error: "Script is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,7 +76,7 @@ export async function POST(request: NextRequest) {
             errorType: "type",
             isValidationError: true,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -65,7 +89,7 @@ export async function POST(request: NextRequest) {
             errorType: "type",
             isValidationError: true,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -83,7 +107,7 @@ export async function POST(request: NextRequest) {
               errorType: "type",
               isValidationError: true,
             },
-            { status: 400 }
+            { status: 400 },
           );
         }
 
@@ -94,9 +118,12 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const validationResult = playwrightValidationService.validateCode(script, {
-        selectedTestType: requestedType,
-      });
+      const validationResult = playwrightValidationService.validateCode(
+        script,
+        {
+          selectedTestType: requestedType,
+        },
+      );
 
       if (!validationResult.valid) {
         return NextResponse.json(
@@ -108,7 +135,7 @@ export async function POST(request: NextRequest) {
             errorType: validationResult.errorType,
             isValidationError: true,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -118,21 +145,25 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       // Handle any unexpected errors during validation
-      const errorMessage = error instanceof Error ? error.message : 'Unknown validation error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown validation error";
       console.error("Validation service error:", errorMessage);
-      
-      return NextResponse.json({
-        valid: false,
-        error: `Validation service error: ${errorMessage}`,
-        errorType: 'service',
-        isValidationError: true,
-      }, { status: 500 });
+
+      return NextResponse.json(
+        {
+          valid: false,
+          error: `Validation service error: ${errorMessage}`,
+          errorType: "service",
+          isValidationError: true,
+        },
+        { status: 500 },
+      );
     }
   } catch (error) {
     console.error("Error processing validation request:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

@@ -3,7 +3,7 @@ import type { ApiClient } from '../api/client.js'
 
 export type ApiTestType = 'browser' | 'performance' | 'api' | 'database' | 'custom'
 
-const K6_IMPORT_PATTERN = /import\s+.*\s+from\s+['"]k6(?:\/[^'"]*)?['"]/
+const K6_IMPORT_PATTERN = /(?:^[ \t]*import\s[^;'"()]*|\brequire\s*\(\s*)(['"])k6(?:\/[^'"\\\r\n]*)?\1/m
 
 /**
  * Detects whether a script imports any k6 modules.

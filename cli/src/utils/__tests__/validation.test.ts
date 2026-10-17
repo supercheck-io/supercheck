@@ -180,3 +180,21 @@ describe('validation diagnostics', () => {
     expect(result.error).toContain('upstream unavailable')
   })
 })
+
+
+describe('k6 module detection parity', () => {
+  it.each([
+    "import 'k6/http'; export default function() {}",
+    "  import http from 'k6/http'; export default function() {}",
+    "import {\n check,\n sleep\n} from 'k6'; export default function() {}",
+  ])('detects supported import forms: %s', (script) => {
+    expect(isK6Script(script)).toBe(true);
+  });
+});
+
+
+describe('commented imports', () => {
+  it('does not classify a browser test from an example in a comment', () => {
+    expect(isK6Script("// import http from 'k6/http';\nimport { test } from '@playwright/test';\ntest('x', () => {});")).toBe(false);
+  });
+});

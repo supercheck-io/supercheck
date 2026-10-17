@@ -6,7 +6,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { logAuditEvent } from '@/lib/audit-logger';
-import { validateScriptTypeMatch, normalizeTestType } from '@/lib/script-type-validator';
+import { validateTestScript, normalizeTestType } from '@/lib/script-type-validator';
 import { decodeStoredTestScript, encodeStoredTestScript } from '@/lib/test-script';
 
 export async function GET(
@@ -134,7 +134,7 @@ export async function PUT(
     // Validate script-type compatibility
     if (effectiveScript && effectiveScript.length > 0) {
       const decodedScript = decodeStoredTestScript(effectiveScript);
-      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
+      const typeValidation = validateTestScript(decodedScript, resolvedType);
       if (!typeValidation.valid) {
         return NextResponse.json(
           {

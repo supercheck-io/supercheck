@@ -259,3 +259,60 @@ describe('Playwright console publication', () => {
     expect(result.stdout).toBe('hello [SECRET] world');
   });
 });
+
+describe('single Playwright execution outcome', () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    'requires executor success even with a passing report (monitor=%s, runner=%s)',
+    async (monitor, runnerSuccess) => {
+      const service = Object.create(
+        ExecutionService.prototype,
+      ) as ExecutionService;
+      const storeReportMetadata = jest.fn().mockResolvedValue(undefined);
+      Object.assign(service, {
+        logger: {
+          log: jest.fn(),
+          debug: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+        },
+        activeExecutions: new Map(),
+        maxConcurrentExecutions: 1,
+        dbService: { storeReportMetadata },
+        reportUploadService: {
+          uploadReport: jest
+            .fn()
+            .mockResolvedValue({ success: true, reportUrl: 'report' }),
+        },
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        _executePlaywrightNativeRunner: jest.fn().mockResolvedValue({
+          success: runnerSuccess,
+          error: runnerSuccess ? null : 'OOMKilled',
+          stdout: '',
+          stderr: '',
+        }),
+        evaluatePlaywrightReport: jest
+          .fn()
+          .mockResolvedValue({ hasFailures: false }),
+      });
+      const result = await service.runSingleTest(
+        { testId: 'test-1', code: "test('x', () => {})" },
+        true,
+        monitor,
+      );
+      expect(result.success).toBe(runnerSuccess);
+      expect(result.error).toBe(runnerSuccess ? null : 'OOMKilled');
+      expect(storeReportMetadata).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          status: runnerSuccess ? 'passed' : 'failed',
+        }),
+      );
+    },
+  );
+});

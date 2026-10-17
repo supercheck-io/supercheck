@@ -1,5 +1,7 @@
+/** @jest-environment node */
 import {
   validateScriptTypeMatch,
+  validateTestScript,
   normalizeTestType,
   isTestTypeCompatibleWithJobType,
   getJobTestTypeMismatchError,
@@ -135,12 +137,16 @@ describe("isTestTypeCompatibleWithJobType", () => {
   it("should allow browser/api/database/custom tests in playwright jobs", () => {
     expect(isTestTypeCompatibleWithJobType("browser", "playwright")).toBe(true);
     expect(isTestTypeCompatibleWithJobType("api", "playwright")).toBe(true);
-    expect(isTestTypeCompatibleWithJobType("database", "playwright")).toBe(true);
+    expect(isTestTypeCompatibleWithJobType("database", "playwright")).toBe(
+      true,
+    );
     expect(isTestTypeCompatibleWithJobType("custom", "playwright")).toBe(true);
   });
 
   it("should reject performance tests in playwright jobs", () => {
-    expect(isTestTypeCompatibleWithJobType("performance", "playwright")).toBe(false);
+    expect(isTestTypeCompatibleWithJobType("performance", "playwright")).toBe(
+      false,
+    );
   });
 
   it("should allow performance tests in k6 jobs", () => {
@@ -157,7 +163,11 @@ describe("isTestTypeCompatibleWithJobType", () => {
 
 describe("getJobTestTypeMismatchError", () => {
   it("should return error for performance test in playwright job", () => {
-    const error = getJobTestTypeMismatchError("test-1", "performance", "playwright");
+    const error = getJobTestTypeMismatchError(
+      "test-1",
+      "performance",
+      "playwright",
+    );
     expect(error).toContain("test-1");
     expect(error).toContain("performance");
     expect(error).toContain("Playwright");
@@ -171,7 +181,23 @@ describe("getJobTestTypeMismatchError", () => {
   });
 
   it("should return empty string for compatible combinations", () => {
-    expect(getJobTestTypeMismatchError("test-3", "browser", "playwright")).toBe("");
+    expect(getJobTestTypeMismatchError("test-3", "browser", "playwright")).toBe(
+      "",
+    );
     expect(getJobTestTypeMismatchError("test-4", "performance", "k6")).toBe("");
+  });
+});
+
+describe("validateTestScript", () => {
+  it("rejects malformed source on saved-test submission", () => {
+    expect(validateTestScript("const x = ;", "browser").valid).toBe(false);
+  });
+  it("accepts TypeScript and Node built-ins", () => {
+    expect(
+      validateTestScript(
+        "import fs from 'node:fs'; const x: boolean = fs.existsSync('/tmp');",
+        "browser",
+      ),
+    ).toEqual({ valid: true });
   });
 });

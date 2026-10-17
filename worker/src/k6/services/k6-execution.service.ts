@@ -15,7 +15,10 @@ import {
   findFirstFileByNames,
   pathExists,
 } from '../../common/utils/file-search';
-import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
+import {
+  filterSecretVariablesToUsedKeys,
+  filterFileVariablesToUsedKeys,
+} from '../../common/utils/script-analysis';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 
 // Utility function to safely get error message
@@ -361,7 +364,7 @@ export class K6ExecutionService {
           K6_NO_COLOR: '1', // Disable ANSI colors in output
           ...this.buildVariableRuntimeEnv(
             runtimeVariables,
-            runtimeSecrets,
+            filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
             filePaths,
           ),
         };

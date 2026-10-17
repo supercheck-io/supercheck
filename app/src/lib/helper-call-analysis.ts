@@ -10,7 +10,7 @@ import * as walk from "acorn-walk";
 
 // ─── Types (shared with worker) ──────────────────────────────────────
 
-type HelperName = "getFile" | "readFile";
+type HelperName = "getFile" | "readFile" | "getSecret";
 
 interface HelperCall {
   name: HelperName;

@@ -2966,8 +2966,9 @@ paths:
     post:
       operationId: validateScript
       summary: Validate a test script
-      description: Validate a Playwright or k6 script using the same server-side rules
-        as the Playground and CLI preflight checks.
+      description: Check script syntax, size and statement limits, and Playwright or
+        k6 compatibility. Validation provides submission feedback, not a runtime
+        security boundary.
       tags:
         - Tests
       requestBody:

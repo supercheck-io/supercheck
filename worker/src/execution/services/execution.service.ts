@@ -12,7 +12,10 @@ import { ReportUploadService } from '../../common/services/report-upload.service
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { CancellationService } from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
-import { filterFileVariablesToUsedKeys } from '../../common/utils/script-analysis';
+import {
+  filterSecretVariablesToUsedKeys,
+  filterFileVariablesToUsedKeys,
+} from '../../common/utils/script-analysis';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { decodeStoredTestScript } from '../../common/utils/test-script';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
@@ -387,7 +390,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     const runtimeEnv = this.buildVariableRuntimeEnv(
       runtimeVariables,
-      runtimeSecrets,
+      filterSecretVariablesToUsedKeys(runtimeSecrets, [code]),
       filePaths,
     );
 
@@ -512,13 +515,12 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // 5. Process result and upload report
-      // The report evaluation is the authoritative source for test status
-      // It correctly handles flaky tests (which pass on retry)
+      // A passing report cannot override a runner or artifact extraction failure.
+      // Flaky tests that pass on retry still have a successful runner outcome.
       const reportOutcome =
         await this.evaluatePlaywrightReport(extractedReportsDir);
-      const finalStatus: 'passed' | 'failed' = !reportOutcome.hasFailures
-        ? 'passed'
-        : 'failed';
+      const finalStatus: 'passed' | 'failed' =
+        execResult.success && !reportOutcome.hasFailures ? 'passed' : 'failed';
 
       if (finalStatus === 'passed') {
         // Removed success log - only log errors and completion summary
@@ -915,7 +917,10 @@ export class ExecutionService implements OnModuleDestroy {
         runId, // Pass runId for cancellation tracking
         this.buildVariableRuntimeEnv(
           task.variables ?? {},
-          task.secrets ?? {},
+          filterSecretVariablesToUsedKeys(
+            task.secrets ?? {},
+            rawDecodedScripts,
+          ),
           filePaths,
         ),
       );

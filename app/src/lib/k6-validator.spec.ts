@@ -1,3 +1,4 @@
+/** @jest-environment node */
 import {
   isK6Script,
   validateK6Script,
@@ -110,7 +111,9 @@ describe('K6Validator', () => {
             sleep(1);
           }
         `;
-        const result = validateK6Script(script, { selectedTestType: 'performance' });
+        const result = validateK6Script(script, {
+          selectedTestType: 'performance',
+        });
         expect(result.valid).toBe(true);
         expect(result.errors).toHaveLength(0);
       });
@@ -121,26 +124,19 @@ describe('K6Validator', () => {
         const result = validateK6Script(script);
         expect(result.valid).toBe(false);
         expect(result.errors).toContain(
-          'This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts.'
+          'This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts.',
         );
       });
 
-      it('should require default export function', () => {
-        // k6 requires a default export function as entry point
-        const script = `
-          import http from 'k6/http';
-          
-          function test() {
-            http.get('https://test.k6.io');
-          }
-        `;
-        const result = validateK6Script(script);
-        expect(result.valid).toBe(false);
-        expect(result.errors).toContain('Script must export a default function');
+      it('accepts named scenario entrypoints without a default export', () => {
+        const script = `import http from 'k6/http';
+        export const options = { scenarios: { smoke: { executor: 'shared-iterations', exec: 'smoke', vus: 1, iterations: 1 } } };
+        export function smoke() { http.get('https://example.com'); }`;
+        expect(validateK6Script(script).valid).toBe(true);
       });
 
-      it('should reject async default functions', () => {
-        // k6 does not support async/await in the default function
+      it('accepts async default functions supported by the pinned runtime', () => {
+        // Current k6 supports promises and async entrypoints.
         const script = `
           import http from 'k6/http';
           
@@ -149,10 +145,8 @@ describe('K6Validator', () => {
           }
         `;
         const result = validateK6Script(script);
-        expect(result.valid).toBe(false);
-        expect(result.errors).toContain(
-          'k6 does not support async/await. For browser testing, use Playwright test type instead.'
-        );
+        expect(result.valid).toBe(true);
+        expect(result.errors).toEqual([]);
       });
     });
 
@@ -162,8 +156,12 @@ describe('K6Validator', () => {
           import http from 'k6/http';
           export default function() {}
         `;
-        const result = validateK6Script(script, { selectedTestType: 'performance' });
-        expect(result.errors).not.toContain(expect.stringContaining('test type'));
+        const result = validateK6Script(script, {
+          selectedTestType: 'performance',
+        });
+        expect(result.errors).not.toContain(
+          expect.stringContaining('test type'),
+        );
       });
 
       it('should accept k6 test type', () => {
@@ -172,7 +170,9 @@ describe('K6Validator', () => {
           export default function() {}
         `;
         const result = validateK6Script(script, { selectedTestType: 'k6' });
-        expect(result.errors).not.toContain(expect.stringContaining('test type'));
+        expect(result.errors).not.toContain(
+          expect.stringContaining('test type'),
+        );
       });
 
       it('should reject k6 scripts with wrong test type', () => {
@@ -184,7 +184,7 @@ describe('K6Validator', () => {
         const result = validateK6Script(script, { selectedTestType: 'e2e' });
         expect(result.valid).toBe(false);
         expect(result.errors).toContain(
-          'k6 scripts can only run when the test type is set to Performance. Current type: "e2e".'
+          'k6 scripts can only run when the test type is set to Performance. Current type: "e2e".',
         );
       });
 
@@ -193,8 +193,12 @@ describe('K6Validator', () => {
           import http from 'k6/http';
           export default function() {}
         `;
-        const result = validateK6Script(script, { selectedTestType: 'PERFORMANCE' });
-        expect(result.errors).not.toContain(expect.stringContaining('test type is set to Performance'));
+        const result = validateK6Script(script, {
+          selectedTestType: 'PERFORMANCE',
+        });
+        expect(result.errors).not.toContain(
+          expect.stringContaining('test type is set to Performance'),
+        );
       });
     });
 
@@ -207,7 +211,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
+          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them.",
         );
       });
 
@@ -232,7 +236,7 @@ describe('K6Validator', () => {
         const result = validateK6Script(script);
         expect(result.valid).toBe(true);
         expect(result.errors).not.toContain(
-          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
+          "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them.",
         );
       });
 
@@ -245,7 +249,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "fs". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "fs". Use k6 built-in modules instead.',
         );
       });
 
@@ -257,7 +261,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "path". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "path". Use k6 built-in modules instead.',
         );
       });
 
@@ -269,7 +273,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "child_process". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "child_process". Use k6 built-in modules instead.',
         );
       });
 
@@ -281,7 +285,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "http". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "http". Use k6 built-in modules instead.',
         );
       });
 
@@ -294,7 +298,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "crypto". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "crypto". Use k6 built-in modules instead.',
         );
       });
 
@@ -306,7 +310,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'k6 does not support Node.js module "fs". Use k6 built-in modules instead.'
+          'k6 does not support Node.js module "fs". Use k6 built-in modules instead.',
         );
       });
     });
@@ -320,7 +324,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.'
+          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.',
         );
       });
 
@@ -332,7 +336,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.'
+          'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.',
         );
       });
     });
@@ -347,7 +351,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.errors).toContain(
-          'The k6/browser module is not supported. Use Playwright tests for browser automation.'
+          'The k6/browser module is not supported. Use Playwright tests for browser automation.',
         );
       });
     });
@@ -360,7 +364,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).toContain(
-          'Consider adding "export const options" to configure VUs, duration, and thresholds'
+          'Consider adding "export const options" to configure VUs, duration, and thresholds',
         );
       });
 
@@ -373,7 +377,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).toContain(
-          'Consider using k6 check() functions instead of console.log() for validation'
+          'Consider using k6 check() functions instead of console.log() for validation',
         );
       });
 
@@ -388,7 +392,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).toContain(
-          'Consider adding thresholds to define pass/fail criteria for your test'
+          'Consider adding thresholds to define pass/fail criteria for your test',
         );
       });
 
@@ -406,7 +410,7 @@ describe('K6Validator', () => {
         `;
         const result = validateK6Script(script);
         expect(result.warnings).not.toContain(
-          expect.stringContaining('thresholds')
+          expect.stringContaining('thresholds'),
         );
       });
     });
@@ -417,9 +421,11 @@ describe('K6Validator', () => {
 
     it('should return a valid k6 script template', () => {
       const template = getK6ScriptTemplate();
-      
+
       // Template should pass validation
-      const result = validateK6Script(template, { selectedTestType: 'performance' });
+      const result = validateK6Script(template, {
+        selectedTestType: 'performance',
+      });
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -459,5 +465,23 @@ describe('K6Validator', () => {
       expect(template).toContain('check(response');
     });
   });
+});
 
+describe('k6 module detection parity', () => {
+  it.each([
+    "import 'k6/http'; export default function() {}",
+    "import {\n check,\n sleep\n} from 'k6'; export default function() {}",
+  ])('detects supported import forms: %s', (script) => {
+    expect(isK6Script(script)).toBe(true);
+  });
+});
+
+describe('commented imports', () => {
+  it('does not classify a browser test from an example in a comment', () => {
+    expect(
+      isK6Script(
+        "// import http from 'k6/http';\nimport { test } from '@playwright/test';\ntest('x', () => {});",
+      ),
+    ).toBe(false);
+  });
 });

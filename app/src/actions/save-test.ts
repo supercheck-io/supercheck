@@ -18,7 +18,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
-import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
+import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
 // Create a schema for the save test action
@@ -62,7 +62,7 @@ export async function saveTest(
 
     const resolvedType = normalizeTestType(validatedData.type);
     if (scriptForValidation.trim().length > 0) {
-      const typeValidation = validateScriptTypeMatch(scriptForValidation, resolvedType);
+      const typeValidation = validateTestScript(scriptForValidation, resolvedType);
       if (!typeValidation.valid) {
         return {
           id: "",
@@ -87,7 +87,7 @@ export async function saveTest(
 
       if (existingTest.length > 0 && existingTest[0].script) {
         const existingScript = decodeStoredTestScript(existingTest[0].script);
-        const typeValidation = validateScriptTypeMatch(existingScript, resolvedType);
+        const typeValidation = validateTestScript(existingScript, resolvedType);
         if (!typeValidation.valid) {
           return {
             id: "",
