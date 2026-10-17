@@ -45,7 +45,7 @@ const plans: {
         features: [
             '50 monitors',
             '5 status pages with custom domains',
-            { text: 'Monitoring from EU, US and Singapore', hint: 'Browser checks, Playwright and k6 run in EU' },
+            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
             { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
             '30,000 k6 VU minutes/month',
             '1,000 AI credits/month',
@@ -66,7 +66,7 @@ const plans: {
         features: [
             '200 monitors',
             '20 status pages with custom domains',
-            { text: 'Monitoring from EU, US and Singapore', hint: 'Browser checks, Playwright and k6 run in EU' },
+            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
             { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
             '100,000 k6 VU minutes/month',
             '5,000 AI credits/month',
@@ -130,12 +130,12 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Concurrent jobs', plus: '5', pro: '10', enterprise: CUSTOM },
+            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at the same time. Extra runs wait in a queue.', plus: '5', pro: '10', enterprise: CUSTOM },
             { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
-            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'EU, US, Singapore', pro: 'EU, US, Singapore', enterprise: CUSTOM },
-            { name: 'Browser checks, Playwright tests and k6 execution', plus: 'EU', pro: 'EU', enterprise: CUSTOM },
+            { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
+            { name: 'Browser checks, Playwright tests and k6 execution', plus: 'Europe', pro: 'Europe', enterprise: CUSTOM },
         ]
     },
     {
@@ -213,15 +213,15 @@ const faqs = [
     },
     {
         question: 'Where do Cloud checks run?',
-        answer: 'HTTP, SSL, ping, and port monitors can run from EU, US, and Singapore. Browser synthetic monitors, Playwright tests, and k6 load tests run in EU. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
+        answer: 'HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
     },
     {
-        question: 'Why do browser checks and k6 tests run only in EU?',
-        answer: 'At launch, browser and k6 execution is available in our EU location only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.',
+        question: 'Why do browser checks and k6 tests run only in Europe?',
+        answer: 'At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.',
     },
     {
         question: 'How are browser minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (EU). If they are enabled in more locations, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, SSL, ping, and port checks from any location do not use browser minutes.',
+        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). If they are enabled in more locations, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, SSL, ping, and port checks from any location do not use browser minutes.',
     },
     {
         question: 'How is k6 usage measured?',

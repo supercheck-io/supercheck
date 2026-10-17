@@ -7,17 +7,17 @@ export const PRICING_FAQS = [
   {
     question: "Where do Cloud checks run?",
     answer:
-      "HTTP, SSL, ping, and port monitors can run from EU, US, and Singapore. Browser synthetic monitors, Playwright tests, and k6 load tests run in EU. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
+      "HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
   },
   {
-    question: "Why do browser checks and k6 tests run only in EU?",
+    question: "Why do browser checks and k6 tests run only in Europe?",
     answer:
-      "At launch, browser and k6 execution is available in our EU location only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.",
+      "At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.",
   },
   {
     question: "How are browser execution minutes measured?",
     answer:
-      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (EU). Each executed retry contributes usage, and if browser checks are enabled in more locations, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, SSL, ping, and port checks from any location do not consume Playwright minutes.",
+      "Playwright tests and synthetic monitors share your minute allowance. Execution time is rounded to four decimal places in minutes per run, without a whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). Each executed retry contributes usage, and if browser checks are enabled in more locations, each location counts separately. Failed or canceled executions can still consume compute usage. HTTP, SSL, ping, and port checks from any location do not consume Playwright minutes.",
   },
   {
     question: "How are load tests measured?",

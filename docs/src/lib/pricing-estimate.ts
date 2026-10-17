@@ -63,7 +63,7 @@ export function parallelTestsNeeded(workload: Workload): number {
 
 export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
-  // Browser checks run only in EU, so one run per check.
+  // Browser checks run only in Europe, so one run per check.
   const runsPerMonth = Math.round(workload.checks * executionsPerCheck);
   const playwrightMinutes = (runsPerMonth * workload.durationSeconds) / 60;
   const notices: string[] = [];

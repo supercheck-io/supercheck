@@ -105,8 +105,8 @@ function BrowserStackCell({ workload }: { workload: Workload }) {
       </p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
         {fits
-          ? 'Billed per parallel test (1 needed here), unlimited minutes. You trigger the runs; not part of the ranking.'
-          : `Billed per parallel test. This workload needs about ${parallels}; BrowserStack does not publish prices above 1. Not part of the ranking.`}
+          ? 'Per parallel test, unlimited minutes'
+          : `Needs about ${parallels} parallel tests`}
       </p>
     </>
   );
@@ -253,7 +253,7 @@ export function VendorComparison() {
 
         <p className="mt-6 text-xs text-fd-muted-foreground">
           {formatCount(result.runsPerMonth)} runs and {formatCount(result.playwrightMinutes)} browser
-          minutes per month, run once from EU. Retries are not included.
+          minutes per month, run once from Europe. Retries are not included.
         </p>
       </div>
 
@@ -391,9 +391,9 @@ export function VendorComparison() {
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>
             Runs per month = checks × runs per day, over a 30-day month, from one location.
-            Browser checks run only in EU, and we price every vendor for the same
-            single-location workload. HTTP, SSL, ping and port monitoring from EU, US and
-            Singapore does not use browser minutes. If browser checks are enabled in more
+            Browser checks run only in Europe, and we price every vendor for the same
+            single-location workload. HTTP, SSL, ping and port monitoring from Europe, North
+            America and Asia Pacific does not use browser minutes. If browser checks are enabled in more
             locations later, each location counts as a separate run.
           </li>
           <li>

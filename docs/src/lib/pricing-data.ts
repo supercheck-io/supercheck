@@ -142,6 +142,14 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     browserstack: 'Not listed',
   },
   {
+    name: 'Parallel test runs',
+    supercheck: '5–10 at once, extra runs queue',
+    checkly: 'Not listed',
+    datadog: 'Add-on, from $79/mo',
+    betterstack: 'Not listed',
+    browserstack: 'Billed per parallel test',
+  },
+  {
     name: 'Requirements traceability',
     supercheck: 'Requirements and coverage',
     checkly: 'Not listed',
@@ -151,9 +159,9 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'Browser recorder',
-    supercheck: 'Chrome and Edge, Playwright code',
+    supercheck: 'Browser extension (Chrome, Edge)',
     checkly: 'Not listed',
-    datadog: 'Chrome extension, no-code steps',
+    datadog: 'Chrome extension',
     betterstack: 'Not listed',
     browserstack: 'Low-code recorder',
   },
