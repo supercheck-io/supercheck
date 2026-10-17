@@ -7,6 +7,25 @@ import { UsageTrackerService } from './usage-tracker.service';
 
 jest.setTimeout(60_000);
 
+/**
+ * db-seed.js prints `[SEED]` progress through console.log. Capture that output
+ * for the expected seeding runs instead of letting it print: it keeps CI output
+ * readable and turns the progress lines into evidence the seed ran.
+ */
+async function seedCapturingLogs<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; logs: string }> {
+  const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    return {
+      result: await run(),
+      logs: logSpy.mock.calls.map((call) => String(call[0])).join('\n'),
+    };
+  } finally {
+    logSpy.mockRestore();
+  }
+}
+
 // This is a monorepo contract test: worker pricing must match the app-owned
 // migration and seed. A standalone worker checkout must supply those fixtures.
 // App dependencies are not installed in the worker CI job.
@@ -50,7 +69,23 @@ describe('K6 volume pricing migration and seeding', () => {
       const { seedOveragePricing } = require(
         resolve(__dirname, '../../../../app/scripts/db-seed.js'),
       );
-      await expect(seedOveragePricing(client)).resolves.toBe(false);
+      // The refusal is the scenario under test, so db-seed's [ERROR] line is
+      // expected: assert it instead of letting it print.
+      const errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      try {
+        await expect(seedOveragePricing(client)).resolves.toBe(false);
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            hasK6Migration
+              ? 'Migration 0026 is required'
+              : 'Migration 0025 is required',
+          ),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
       expect(
         (await pg.query('SELECT count(*)::int AS count FROM overage_pricing'))
           .rows,
@@ -118,7 +153,9 @@ describe('K6 volume pricing migration and seeding', () => {
     ) as {
       seedOveragePricing: (connection: typeof client) => Promise<boolean>;
     };
-    await expect(seedOveragePricing(client)).resolves.toBe(true);
+    const seeded = await seedCapturingLogs(() => seedOveragePricing(client));
+    expect(seeded.result).toBe(true);
+    expect(seeded.logs).toContain('Upserted overage pricing: plus');
     const preserved = await drizzle(pg).select().from(overagePricing);
     expect(
       preserved.find((row) => row.plan === 'plus')
@@ -155,7 +192,9 @@ describe('K6 volume pricing migration and seeding', () => {
     ) as {
       seedOveragePricing: (connection: typeof client) => Promise<boolean>;
     };
-    await expect(seedOveragePricing(client)).resolves.toBe(true);
+    const seeded = await seedCapturingLogs(() => seedOveragePricing(client));
+    expect(seeded.result).toBe(true);
+    expect(seeded.logs).toContain('Upserted overage pricing: pro');
     const prices = await drizzle(pg).select().from(overagePricing);
     expect(prices.find((row) => row.plan === 'plus')).toMatchObject({
       playwrightMinutePriceCents: 4,
