@@ -4,9 +4,11 @@ import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { LoginForm } from "@/components/auth/login-form";
+import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
 import { Loader2 } from "lucide-react";
+import { parseInviteToken } from "@/lib/validations/auth";
 
 interface InviteData {
   organizationName: string;
@@ -36,10 +38,10 @@ function SignInPageContent() {
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isFromNotification, setIsFromNotification] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileCaptchaRef>(null);
 
   // Derive invite token from URL params (not state)
-  const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
+  const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
 
   const getInviteSignInGuidance = useCallback((message?: string) => {
     const normalized = String(message ?? "").toLowerCase();
@@ -124,17 +126,27 @@ function SignInPageContent() {
       // Step 2: Attempt sign-in via Better Auth
       // Include CAPTCHA token in request headers if available
       // Better Auth captcha plugin validates via x-captcha-response header
+      // Turnstile tokens are single-use: request a fresh one for every attempt
+      // (a retry after a wrong password would otherwise resend a spent token).
+      // No stale-token fallback: a spent token only fails verification server-side.
+      const freshToken = await captchaRef.current?.execute();
       const { error } = await signIn.email({
         email,
         password,
         fetchOptions: {
-          headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
+          headers: freshToken ? { "x-captcha-response": freshToken } : {},
         },
       });
 
       if (error) {
         if (inviteToken && error.message?.toLowerCase().includes("verif")) {
           router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
+          return;
+        }
+        // A CAPTCHA rejection says nothing about the credentials: don't count it
+        // toward lockout, and don't blame the invitee's account.
+        if (error.message?.toLowerCase().includes("captcha")) {
+          setError("Verification failed. Please try again.");
           return;
         }
         // Step 3a: Record failed attempt
@@ -208,7 +220,7 @@ function SignInPageContent() {
       inviteToken={inviteToken}
       isFromNotification={isFromNotification}
       emailVerified={emailVerified}
-      onCaptchaToken={setCaptchaToken}
+      captchaRef={captchaRef}
     />
   );
 }

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { SignupForm } from "@/components/auth/signup-form";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { Loader2 } from "lucide-react";
+import { parseInviteToken } from "@/lib/validations/auth";
 import type { TurnstileCaptchaRef } from "@/components/auth/turnstile-captcha";
 
 interface InviteData {
@@ -50,7 +51,7 @@ function SignUpPageContent() {
   const captchaRef = useRef<TurnstileCaptchaRef>(null);
 
   // Derive invite token from URL params (not state)
-  const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
+  const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
 
   useEffect(() => {
     // Apply hosting rules once config query resolves.
@@ -121,11 +122,11 @@ function SignUpPageContent() {
     setIsLoading(true);
     const formData = new FormData(event.currentTarget);
     const name = formData.get("name") as string;
-    const email = formData.get("email") as string;
+    const email = ((formData.get("email") as string) ?? "").trim();
     const password = formData.get("password") as string;
 
-    // Validate email matches invitation if present
-    if (inviteData?.email && email !== inviteData.email) {
+    // Validate email matches invitation if present (case/whitespace-insensitive)
+    if (inviteData?.email && email.toLowerCase() !== inviteData.email.trim().toLowerCase()) {
       setError("Email must match the invitation email address");
       setIsLoading(false);
       return;
@@ -157,7 +158,7 @@ function SignUpPageContent() {
       ) {
         if (inviteToken) {
           // User already has an account — they should sign in instead
-          router.push(`/sign-in?invite=${inviteToken}`);
+          router.push(`/sign-in?invite=${encodeURIComponent(inviteToken)}`);
           return;
         }
         setError("An account with this email already exists. Please sign in instead.");
@@ -174,6 +175,29 @@ function SignUpPageContent() {
         signUpError.message?.toLowerCase().includes("missing captcha")
       ) {
         setError("Verification failed. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      // ── 2b. Rejected by our sign-up route before any account was created ──
+      // These 403s carry a machine-readable code. They must NOT be treated as
+      // the email-verification gate below, or users land on "Check your email"
+      // for an account that does not exist.
+      const rejectionCode = (signUpError as { code?: string }).code;
+      if (rejectionCode === "INVITE_REQUIRED" && inviteToken) {
+        setError(
+          "We couldn't find a pending invitation for this email. Check the address, or ask your admin to resend the invitation."
+        );
+        setIsLoading(false);
+        return;
+      }
+      if (
+        rejectionCode === "INVITE_REQUIRED" ||
+        rejectionCode === "INVITE_EXPIRED" ||
+        rejectionCode === "EMAIL_DOMAIN_NOT_ALLOWED" ||
+        rejectionCode === "SIGNUP_DISABLED"
+      ) {
+        setError(signUpError.message || "Sign-up is not available for this email.");
         setIsLoading(false);
         return;
       }

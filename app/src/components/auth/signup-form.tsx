@@ -105,7 +105,7 @@ export function SignupForm({
   // Update email field when inviteData changes
   useEffect(() => {
     if (inviteData?.email) {
-      form.setValue("email", inviteData.email);
+      form.setValue("email", inviteData.email, { shouldValidate: true });
     }
   }, [inviteData, form]);
 
@@ -113,6 +113,9 @@ export function SignupForm({
 
   // Determine mode: invitation flow vs open registration (self-hosted without invite)
   const isInviteMode = !!inviteData;
+  // The public invite endpoint withholds the email from anonymous viewers, so only
+  // lock the field when the address is actually known. Otherwise the invitee must type it.
+  const isEmailLocked = !!inviteData?.email;
   const isOpenRegistration = isSelfHosted && !inviteData && !inviteToken;
   const hasEmailDomainRestriction = allowedEmailDomains.length > 0;
 
@@ -204,7 +207,7 @@ export function SignupForm({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Invitation for</p>
                   <p className="text-sm text-muted-foreground truncate">
-                    {inviteData.email || "Enter the email address that received your invitation"}
+                    {inviteData.email || "Use the email address this invitation was sent to"}
                   </p>
                 </div>
               </div>
@@ -258,14 +261,15 @@ export function SignupForm({
                       <Input
                         id="email"
                         type="email"
-                        placeholder={isOpenRegistration ? "m@example.com" : undefined}
+                        placeholder={isEmailLocked ? undefined : "m@example.com"}
                         autoComplete="email"
-                        readOnly={isInviteMode}
-                        className={isInviteMode ? "bg-muted/50" : ""}
+                        readOnly={isEmailLocked}
+                        className={isEmailLocked ? "bg-muted/50" : ""}
+                        data-testid="signup-email-input"
                         {...field}
                       />
                     </FormControl>
-                    {hasEmailDomainRestriction && !isInviteMode && (
+                    {hasEmailDomainRestriction && !isEmailLocked && (
                       <p className="text-xs text-muted-foreground">
                         Allowed domains: {allowedEmailDomains.join(", ")}
                       </p>
