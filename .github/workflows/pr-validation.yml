@@ -87,6 +87,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: supercheck_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -130,6 +144,13 @@ jobs:
           name: app-coverage
           path: app/coverage
           retention-days: 7
+
+      - name: Run database integration tests
+        working-directory: ./app
+        run: npm run test:db
+        env:
+          NODE_ENV: test
+          TEST_DATABASE_URL: postgresql://postgres@localhost:5432/supercheck_test
 
       - name: Build check
         working-directory: ./app
