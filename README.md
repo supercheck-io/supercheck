@@ -156,7 +156,7 @@ Community integrations are maintained outside the core Supercheck repository. If
 
 The Supercheck app, worker (including Private Agent mode), documentation, and deployment assets are licensed under [AGPL-3.0-only](LICENSE). The [CLI](cli/LICENSE), from version 0.3.1, and [recorder](recorder/LICENSE) are Apache-2.0. Third-party licenses and notices remain in effect; earlier releases retain their original terms.
 
-Contributors keep ownership of their work; see the [contributor agreement](CLA.md). The Supercheck name and logo are covered by the [trademark policy](TRADEMARKS.md).
+The Supercheck name and logo are covered by the [trademark policy](TRADEMARKS.md).
 
 ## Community
 
