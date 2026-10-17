@@ -104,13 +104,11 @@ export const COMPETITORS: readonly Competitor[] = [
     sourceUrl: 'https://www.browserstack.com/pricing?product=automate',
     asOf: COMPETITOR_AS_OF,
     billing:
-      'Automate bills per parallel test with unlimited testing minutes. Plans run from $59 to $225 a month on annual billing, each for 1 parallel test.',
-    note: 'Prices for 2 or more parallel tests are not published. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
+      'Automate bills per parallel test with unlimited testing minutes, so its cost depends on how many tests you run at once, not on runs or minutes.',
+    note: 'Its price per parallel test is not directly comparable to per-run or per-minute pricing. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
   },
 ];
 
-// Lowest published Automate price: 1 parallel test, annual billing.
-export const BROWSERSTACK_AUTOMATE_FROM_PER_MONTH = 59;
 
 // What each vendor sells, from the same public pricing pages. "Not listed"
 // means the vendor's pricing page names no such product; it is not a claim
@@ -143,7 +141,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'Parallel test runs',
-    supercheck: '5 (Plus) or 10 (Pro) at once, extra runs queue',
+    supercheck: '5–10 at once, extra runs queue',
     checkly: 'No limit listed',
     datadog: 'CI add-on, from $79/mo',
     betterstack: 'No limit listed',

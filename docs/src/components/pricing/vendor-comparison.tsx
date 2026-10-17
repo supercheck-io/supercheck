@@ -4,7 +4,6 @@ import { useId, useMemo, useState } from 'react';
 import {
   CAPABILITY_ROWS,
   COMPETITORS,
-  BROWSERSTACK_AUTOMATE_FROM_PER_MONTH,
   COMPETITOR_AS_OF,
   MIN_SYNTHETIC_INTERVAL_MINUTES,
   VENDORS,
@@ -13,7 +12,6 @@ import {
   estimateCosts,
   formatCount,
   formatUsd,
-  parallelTestsNeeded,
   planCrossoverMinutes,
   type Estimate,
   type Workload,
@@ -88,25 +86,12 @@ function LowestBadge() {
   );
 }
 
-function BrowserStackCell({ workload }: { workload: Workload }) {
-  const parallels = parallelTestsNeeded(workload);
-  const fits = parallels === 1;
+function BrowserStackCell() {
   return (
     <>
-      <p className="text-lg font-semibold">
-        {fits ? (
-          <>
-            {`From $${BROWSERSTACK_AUTOMATE_FROM_PER_MONTH}`}
-            <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
-          </>
-        ) : (
-          'Not published'
-        )}
-      </p>
+      <p className="text-lg font-semibold">Unclear</p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
-        {fits
-          ? 'For 1 parallel test, unlimited minutes'
-          : `Needs about ${parallels} parallel tests`}
+        Billed per parallel test, not per run
       </p>
     </>
   );
@@ -116,14 +101,12 @@ function CostCell({
   estimate,
   isLowest,
   vendorKey,
-  workload,
 }: {
   estimate?: Estimate;
   isLowest: boolean;
   vendorKey: string;
-  workload: Workload;
 }) {
-  if (vendorKey === 'browserstack') return <BrowserStackCell workload={workload} />;
+  if (vendorKey === 'browserstack') return <BrowserStackCell />;
   if (!estimate) {
     return (
       <p className="text-sm text-fd-muted-foreground">
@@ -325,7 +308,6 @@ export function VendorComparison() {
                     estimate={estimateFor(vendor.key)}
                     isLowest={lowestId === vendor.key}
                     vendorKey={vendor.key}
-                    workload={workload}
                   />
                 </td>
               ))}
@@ -361,7 +343,6 @@ export function VendorComparison() {
               estimate={estimateFor(vendor.key)}
               isLowest={lowestId === vendor.key}
               vendorKey={vendor.key}
-              workload={workload}
             />
             <dl className="mt-4 space-y-3 border-t border-fd-border pt-4 text-sm">
               {CAPABILITY_ROWS.map((row) => (
