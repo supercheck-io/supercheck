@@ -7,11 +7,22 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testEnvironment: "jest-environment-jsdom",
+  // Explicit discovery: only *.spec.* files are tests. The default pattern also
+  // matches `src/db/schema/test.ts` (the schema module for the `tests` table),
+  // which is why this directory used to be ignored wholesale — that hid any real
+  // spec placed in src/db alongside it.
+  testMatch: [
+    "<rootDir>/**/*.spec.ts",
+    "<rootDir>/**/*.spec.tsx",
+    "<rootDir>/**/*.spec.js",
+  ],
   testPathIgnorePatterns: [
     "<rootDir>/.next/",
     "<rootDir>/node_modules/",
-    "<rootDir>/src/db/",
     "<rootDir>/e2e/",
+    // Database integration specs need a disposable PostgreSQL instance and run
+    // through `npm run test:db` (jest.db.config.js), not the hermetic unit run.
+    "\\.db\\.spec\\.ts$",
   ],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
   moduleNameMapper: {
