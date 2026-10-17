@@ -7,7 +7,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
-import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
+import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 
 /**
@@ -197,6 +197,17 @@ export async function POST(request: NextRequest) {
     await subscriptionService.blockUntilSubscribed(context.organizationId);
     await subscriptionService.requireValidPolarCustomer(context.organizationId);
 
+    // Authorize before spending CPU on script validation.
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canCreate = checkPermissionWithContext("test", "create", context);
+
+    if (!canCreate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to create tests" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { title, description, priority, type, script } = body;
 
@@ -221,7 +232,7 @@ export async function POST(request: NextRequest) {
     if (typeof script === "string" && script.length > 0) {
       // Decode base64 if needed for validation
       const decodedScript = decodeStoredTestScript(script);
-      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
+      const typeValidation = validateTestScript(decodedScript, resolvedType);
       if (!typeValidation.valid) {
         return NextResponse.json(
           {
@@ -235,16 +246,6 @@ export async function POST(request: NextRequest) {
 
     // Use current project context
     const targetProjectId = context.project.id;
-
-    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
-    const canCreate = checkPermissionWithContext("test", "create", context);
-
-    if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create tests" },
-        { status: 403 }
-      );
-    }
 
     // Create the test
     const [newTest] = await db

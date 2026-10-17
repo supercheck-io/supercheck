@@ -1,16 +1,75 @@
 import { ApiRequestError, CLIError, ExitCode } from './errors.js'
+import { createJiti } from 'jiti'
 import type { ApiClient } from '../api/client.js'
 
-export type ApiTestType = 'browser' | 'performance' | 'api' | 'database' | 'custom'
+export type ApiTestType =
+  | 'browser'
+  | 'performance'
+  | 'api'
+  | 'database'
+  | 'custom'
 
-const K6_IMPORT_PATTERN = /import\s+.*\s+from\s+['"]k6(?:\/[^'"]*)?['"]/
+const scriptParser = createJiti(import.meta.url)
 
-/**
- * Detects whether a script imports any k6 modules.
- * Mirrors the server-side `isK6Script` logic from `k6-validator.ts`.
- */
+type ImportNode = {
+  type: string
+  importKind?: string
+  exportKind?: string
+  source?: { value: string }
+}
+
+/** Parse imports without executing code; jiti is already used for CLI TypeScript. */
 export function isK6Script(script: string): boolean {
-  return K6_IMPORT_PATTERN.test(script)
+  let found = false
+  const inspect = (value: string) => {
+    if (value === 'k6' || value.startsWith('k6/')) found = true
+  }
+  try {
+    scriptParser.transform({
+      source: script,
+      filename: 'script.ts',
+      ts: true,
+      babel: {
+        plugins: [
+          () => ({
+            // Inspect the parsed source before TypeScript removes unused value imports.
+            pre(file: { ast: { program: { body: ImportNode[] } } }) {
+              for (const node of file.ast.program.body) {
+                if (
+                  node.source &&
+                  node.importKind !== 'type' &&
+                  node.exportKind !== 'type'
+                )
+                  inspect(node.source.value)
+              }
+            },
+            visitor: {
+              CallExpression({
+                node,
+              }: {
+                node: {
+                  callee: { type: string; name?: string }
+                  arguments: { type: string; value?: string }[]
+                }
+              }) {
+                const first = node.arguments[0]
+                if (
+                  node.callee.type === 'Identifier' &&
+                  node.callee.name === 'require' &&
+                  first?.type === 'StringLiteral' &&
+                  typeof first.value === 'string'
+                )
+                  inspect(first.value)
+              },
+            },
+          }),
+        ],
+      },
+    })
+  } catch {
+    return false
+  }
+  return found
 }
 
 /**
@@ -53,7 +112,9 @@ export interface TestValidationResult {
   warnings?: string[]
 }
 
-export function normalizeTestTypeForApi(localType: unknown): ApiTestType | undefined {
+export function normalizeTestTypeForApi(
+  localType: unknown,
+): ApiTestType | undefined {
   if (typeof localType !== 'string') return undefined
 
   const normalized = localType.trim().toLowerCase()
@@ -99,22 +160,27 @@ export async function validateScripts(
 
   for (const input of inputs) {
     if (!input.script || input.script.trim().length === 0) {
-      throw new CLIError(`Test "${input.name}" has no script content`, ExitCode.ConfigError)
+      throw new CLIError(
+        `Test "${input.name}" has no script content`,
+        ExitCode.ConfigError,
+      )
     }
 
     try {
-      const { data } = await client.post<{ valid: boolean; warnings?: string[] }>(
-        '/api/validate-script',
-        {
-          script: input.script,
-          testType: input.testType,
-        },
-      )
+      const { data } = await client.post<{
+        valid: boolean
+        warnings?: string[]
+      }>('/api/validate-script', {
+        script: input.script,
+        testType: input.testType,
+      })
 
       results.push({
         name: input.name,
         valid: data?.valid === true,
-        ...(!data?.valid ? { error: `Unexpected validation response: ${JSON.stringify(data)}` } : {}),
+        ...(!data?.valid
+          ? { error: `Unexpected validation response: ${JSON.stringify(data)}` }
+          : {}),
         warnings: data?.warnings,
       })
     } catch (err) {

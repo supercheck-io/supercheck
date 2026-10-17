@@ -4,8 +4,11 @@
    Validates k6 performance test scripts for common issues
 =================================== */
 
-import { hasUnboundHelperCall } from "./helper-call-analysis";
-import { transpileTypeScript } from "./ts-transpiler";
+import * as acorn from 'acorn';
+import * as walk from 'acorn-walk';
+import { hasUnboundHelperCall } from './helper-call-analysis';
+import { validateScriptSyntax } from './script-validation';
+import { transpileTypeScript } from './ts-transpiler';
 
 export interface K6ValidationResult {
   valid: boolean;
@@ -17,74 +20,47 @@ export interface K6ValidationOptions {
   selectedTestType?: string;
 }
 
-const REQUIRE_MODULE_PATTERN = /\brequire\s*\(\s*(['"])([^'"\\\r\n]+)\1\s*\)/g;
-
-function readQuotedModuleSpecifier(input: string): string | null {
-  const trimmed = input.trimStart();
-  const quote = trimmed[0];
-
-  if (quote !== "'" && quote !== '"') {
-    return null;
-  }
-
-  for (let index = 1; index < trimmed.length; index += 1) {
-    if (trimmed[index] === quote && trimmed[index - 1] !== "\\") {
-      return trimmed.slice(1, index);
-    }
-  }
-
-  return null;
-}
-
-function extractModuleSpecifierFromImportLine(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("import")) {
-    return null;
-  }
-
-  const importBody = trimmed.slice("import".length).trimStart();
-  if (importBody.startsWith("(")) {
-    return null;
-  }
-
-  const fromMatch = /\bfrom\b/.exec(importBody);
-  if (fromMatch) {
-    const afterFrom = importBody.slice(fromMatch.index + fromMatch[0].length);
-    return readQuotedModuleSpecifier(afterFrom);
-  }
-
-  return readQuotedModuleSpecifier(importBody);
-}
-
 function collectModuleSpecifiers(script: string): Set<string> {
   const modules = new Set<string>();
-  const lines = script.split(/\r?\n/);
-
-  for (const line of lines) {
-    const importModule = extractModuleSpecifierFromImportLine(line);
-    if (importModule) {
-      modules.add(importModule);
-    }
-
-    REQUIRE_MODULE_PATTERN.lastIndex = 0;
-    let match: RegExpExecArray | null = null;
-    while ((match = REQUIRE_MODULE_PATTERN.exec(line)) !== null) {
-      modules.add(match[2]);
-    }
-  }
-
+  const ast = acorn.parse(script, {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  });
+  walk.simple(ast, {
+    ImportDeclaration(node) {
+      modules.add(String(node.source.value));
+    },
+    ExportNamedDeclaration(node) {
+      if (node.source) modules.add(String(node.source.value));
+    },
+    ExportAllDeclaration(node) {
+      modules.add(String(node.source.value));
+    },
+    CallExpression(node) {
+      const first = node.arguments[0];
+      if (
+        node.callee.type === 'Identifier' &&
+        node.callee.name === 'require' &&
+        first?.type === 'Literal' &&
+        typeof first.value === 'string'
+      )
+        modules.add(first.value);
+    },
+  });
   return modules;
 }
 
 function isK6ModuleSpecifier(moduleSpecifier: string): boolean {
-  return moduleSpecifier === "k6" || moduleSpecifier.startsWith("k6/");
+  return moduleSpecifier === 'k6' || moduleSpecifier.startsWith('k6/');
 }
 
 /**
  * Detects whether a script imports any k6 modules.
  */
 export const isK6Script = (script: string): boolean => {
-  const moduleSpecifiers = collectModuleSpecifiers(script);
+  const parsed = transpileTypeScript(script, { preserveValueImports: true });
+  if (!parsed.success) return false;
+  const moduleSpecifiers = collectModuleSpecifiers(parsed.code);
   for (const moduleSpecifier of moduleSpecifiers) {
     if (isK6ModuleSpecifier(moduleSpecifier)) {
       return true;
@@ -98,48 +74,43 @@ export const isK6Script = (script: string): boolean => {
  */
 export function validateK6Script(
   script: string,
-  options: K6ValidationOptions = {}
+  options: K6ValidationOptions = {},
 ): K6ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Limit input length to prevent ReDoS attacks on regex patterns
-  const MAX_SCRIPT_LENGTH = 500000; // 500KB limit
-  if (script.length > MAX_SCRIPT_LENGTH) {
-    return {
-      valid: false,
-      errors: ['Script exceeds maximum length (500KB)'],
-      warnings: [],
-    };
-  }
+  const syntax = validateScriptSyntax(script);
+  if (!syntax.valid)
+    return { valid: false, errors: [syntax.error!], warnings: [] };
 
   // Transpile TypeScript to JavaScript for regex-based validation.
-  // On failure, fall back to the original script so import checks still work.
+  // Malformed syntax is an error in every submission path.
   const transpileResult = transpileTypeScript(script);
   let jsCode: string;
   if (transpileResult.success) {
     jsCode = transpileResult.code;
   } else {
-    jsCode = script;
-    warnings.push(
-      `TypeScript transpilation failed: ${transpileResult.message}. Validation will use the original source.`
-    );
+    return {
+      valid: false,
+      errors: [`Syntax error: ${transpileResult.message}`],
+      warnings: [],
+    };
   }
 
   const normalizedType = options.selectedTestType?.toLowerCase();
   const scriptLooksLikeK6 = isK6Script(script);
   const isPerformanceType =
-    normalizedType === "performance" || normalizedType === "k6";
+    normalizedType === 'performance' || normalizedType === 'k6';
 
   if (normalizedType && !isPerformanceType) {
     errors.push(
-      `k6 scripts can only run when the test type is set to Performance. Current type: "${options.selectedTestType}".`
+      `k6 scripts can only run when the test type is set to Performance. Current type: "${options.selectedTestType}".`,
     );
   }
 
   if (!scriptLooksLikeK6) {
     errors.push(
-      "This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts."
+      'This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts.',
     );
     return {
       valid: false,
@@ -148,19 +119,11 @@ export function validateK6Script(
     };
   }
 
-  // Required: Must have default export function
-  // Use original script for structural checks because esbuild transforms
-  // 'export default function()' into 'export { stdin_default as default }'
-  // which breaks the regex pattern match
-  if (!/export\s+default\s+(?:async\s+)?function/.test(script)) {
-    errors.push('Script must export a default function');
-  }
-
   // Warning: Recommend options export for test configuration
   // Use original script - esbuild restructures exports
   if (!/export\s+const\s+options\s*=/.test(script)) {
     warnings.push(
-      'Consider adding "export const options" to configure VUs, duration, and thresholds'
+      'Consider adding "export const options" to configure VUs, duration, and thresholds',
     );
   }
 
@@ -181,33 +144,33 @@ export function validateK6Script(
   const importedModules = collectModuleSpecifiers(jsCode);
 
   forbiddenModules.forEach((mod) => {
-    if (importedModules.has(mod)) {
+    if (importedModules.has(mod) || importedModules.has(`node:${mod}`)) {
       errors.push(
-        `k6 does not support Node.js module "${mod}". Use k6 built-in modules instead.`
+        `k6 does not support Node.js module "${mod}". Use k6 built-in modules instead.`,
       );
     }
   });
 
   if (
-    importedModules.has("@playwright/test") ||
-    importedModules.has("playwright") ||
-    importedModules.has("playwright/test")
+    importedModules.has('@playwright/test') ||
+    importedModules.has('playwright') ||
+    importedModules.has('playwright/test')
   ) {
     errors.push(
-      "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test."
+      'Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test.',
     );
   }
 
-  if (hasUnboundHelperCall(jsCode, "readFile")) {
+  if (hasUnboundHelperCall(jsCode, 'readFile')) {
     errors.push(
-      "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them."
+      "k6 does not support readFile(). Use open(getFile('KEY')) in init context, and wrap shared datasets in SharedArray when multiple VUs reuse them.",
     );
   }
 
   // Warning: Check for console.log usage (recommend using check() instead)
   if (/console\.log/.test(jsCode)) {
     warnings.push(
-      'Consider using k6 check() functions instead of console.log() for validation'
+      'Consider using k6 check() functions instead of console.log() for validation',
     );
   }
 
@@ -219,23 +182,14 @@ export function validateK6Script(
     !/thresholds\s*:\s*\{/.test(jsCode)
   ) {
     warnings.push(
-      'Consider adding thresholds to define pass/fail criteria for your test'
-    );
-  }
-
-  // Error: k6 does not support async/await in default function
-  // Use Playwright for browser automation tests instead
-  // Use original script - esbuild restructures exports
-  if (/export\s+default\s+async\s+function/.test(script)) {
-    errors.push(
-      'k6 does not support async/await. For browser testing, use Playwright test type instead.'
+      'Consider adding thresholds to define pass/fail criteria for your test',
     );
   }
 
   // Error: Block experimental browser module which is unsupported in our runtime
   if (importedModules.has('k6/browser')) {
     errors.push(
-      'The k6/browser module is not supported. Use Playwright tests for browser automation.'
+      'The k6/browser module is not supported. Use Playwright tests for browser automation.',
     );
   }
 

@@ -1,5 +1,6 @@
 import {
   extractGetFileKeys,
+  filterSecretVariablesToUsedKeys,
   filterFileVariablesToUsedKeys,
   scriptsContainGetFile,
   countAllGetFileCalls,
@@ -451,5 +452,33 @@ describe('script-analysis', () => {
       const result = filterFileVariablesToUsedKeys(allFiles, scripts);
       expect(Object.keys(result)).toHaveLength(0);
     });
+  });
+});
+
+describe('filterSecretVariablesToUsedKeys', () => {
+  const secrets = { USED: 'one', UNUSED: 'two' };
+  it('injects only literal getSecret references across a job', () => {
+    expect(
+      filterSecretVariablesToUsedKeys(secrets, [
+        "getSecret('USED')",
+        'console.log(1)',
+      ]),
+    ).toEqual({ USED: 'one' });
+  });
+  it('injects no secrets when none are used', () => {
+    expect(
+      filterSecretVariablesToUsedKeys(secrets, ['console.log(1)']),
+    ).toEqual({});
+  });
+  it.each([
+    'getSecret(key)',
+    'const read = getSecret; read(key)',
+    "const stage: string = 'STAGE'; getSecret(`API_${stage}`)",
+    String.raw`const value: string = getSecret('API\x5fSTAGE')`,
+    "#!/usr/bin/env node\nconst k = 'B'; getSecret('A' + k)",
+    "const n = ['get', 'Secret'].join(''); globalThis[n]('UNUSED')",
+    'const f = eval; f("getSecret(\'UNUSED\')")',
+  ])('preserves dynamic helper lookups: %s', (script) => {
+    expect(filterSecretVariablesToUsedKeys(secrets, [script])).toEqual(secrets);
   });
 });

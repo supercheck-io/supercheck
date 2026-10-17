@@ -4457,7 +4457,7 @@
       "post": {
         "operationId": "validateScript",
         "summary": "Validate a test script",
-        "description": "Validate a Playwright or k6 script using the same server-side rules as the Playground and CLI preflight checks.",
+        "description": "Check script syntax, size and statement limits, and Playwright or k6 compatibility. Validation provides submission feedback, not a runtime security boundary.",
         "tags": [
           "Tests"
         ],
@@ -4494,6 +4494,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "description": "Too many validation requests; retry after the Retry-After interval"
           },
           "500": {
             "description": "Validation service error"

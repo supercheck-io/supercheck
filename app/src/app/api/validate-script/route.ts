@@ -1,138 +1,154 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
-import type { TestType } from "@/db/schema/types";
-import { playwrightValidationService } from "@/lib/playwright-validator";
-import { isK6Script, validateK6Script } from "@/lib/k6-validator";
+import {
+  normalizeTestType,
+  validateTestScript,
+} from "@/lib/script-type-validator";
+import { isK6Script } from "@/lib/k6-validator";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkAdminRateLimit } from "@/lib/session-security";
 
 export async function POST(request: NextRequest) {
   try {
     // SECURITY: Require authentication to prevent abuse (DoS via expensive validation)
+    let userId: string;
     try {
-      await requireAuthContext();
+      ({ userId } = await requireAuthContext());
     } catch (error) {
       if (isAuthError(error)) {
         return NextResponse.json(
-          { error: error instanceof Error ? error.message : "Authentication required" },
-          { status: 401 }
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Authentication required",
+          },
+          { status: 401 },
         );
       }
       throw error;
     }
 
-    const data = await request.json();
-    const script = data.script as string;
+    const rateLimit = await checkAdminRateLimit(
+      userId,
+      "validate-script",
+      // CLI deploys validate every test, so leave headroom for large suites.
+      300,
+      60 * 1000,
+    );
+    if (!rateLimit.allowed) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil(((rateLimit.resetTime ?? Date.now()) - Date.now()) / 1000),
+      );
+      return NextResponse.json(
+        { error: "Too many requests", retryAfter },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    // Enforce the size cap while streaming so chunked bodies cannot bypass
+    // Content-Length. UTF-8 worst case plus JSON overhead.
+    const maxBytes = MAX_SCRIPT_LENGTH * 4 + 4096;
+    let data: unknown;
+    try {
+      const reader = request.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maxBytes) {
+          await reader.cancel();
+          return NextResponse.json(
+            { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
+            { status: 413 },
+          );
+        }
+        chunks.push(value);
+      }
+      data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      !("script" in data) ||
+      typeof data.script !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "Script must be a string" },
+        { status: 400 },
+      );
+    }
+    const script = data.script;
     const requestedType =
-      typeof data.testType === "string" ? (data.testType as TestType) : undefined;
+      "testType" in data && typeof data.testType === "string"
+        ? normalizeTestType(data.testType)
+        : undefined;
 
     if (typeof script === "string" && script.length > MAX_SCRIPT_LENGTH) {
       return NextResponse.json(
         { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
-        { status: 413 }
+        { status: 413 },
       );
     }
 
-    if (!script) {
+    if (!script.trim()) {
       return NextResponse.json(
         { error: "Script is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     try {
-      const scriptIsK6 = isK6Script(script);
-      const isPerformanceType = requestedType === "performance";
-
-      if (scriptIsK6 && requestedType && !isPerformanceType) {
+      const validation = validateTestScript(script, requestedType);
+      if (!validation.valid) {
         return NextResponse.json(
           {
             valid: false,
-            error:
-              "Detected k6 performance script. Switch the test type to Performance before running this script.",
-            errorType: "type",
+            error: validation.error,
+            line: validation.line,
+            column: validation.column,
+            warnings: validation.warnings,
+            errorType: validation.errorType,
             isValidationError: true,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
-
-      if (!scriptIsK6 && isPerformanceType) {
-        return NextResponse.json(
-          {
-            valid: false,
-            error:
-              "Performance tests require k6 scripts. Provide a k6 script or choose a Playwright-based test type.",
-            errorType: "type",
-            isValidationError: true,
-          },
-          { status: 400 }
-        );
-      }
-
-      if (scriptIsK6) {
-        const validation = validateK6Script(script, {
-          selectedTestType: requestedType,
-        });
-
-        if (!validation.valid) {
-          return NextResponse.json(
-            {
-              valid: false,
-              error: validation.errors.join(", "),
-              warnings: validation.warnings,
-              errorType: "type",
-              isValidationError: true,
-            },
-            { status: 400 }
-          );
-        }
-
-        return NextResponse.json({
-          valid: true,
-          message: "k6 script validation passed",
-          warnings: validation.warnings,
-        });
-      }
-
-      const validationResult = playwrightValidationService.validateCode(script, {
-        selectedTestType: requestedType,
-      });
-
-      if (!validationResult.valid) {
-        return NextResponse.json(
-          {
-            valid: false,
-            error: validationResult.error,
-            line: validationResult.line,
-            column: validationResult.column,
-            errorType: validationResult.errorType,
-            isValidationError: true,
-          },
-          { status: 400 }
-        );
-      }
-
       return NextResponse.json({
         valid: true,
-        message: "Script validation passed",
+        message: isK6Script(script)
+          ? "k6 script validation passed"
+          : "Script validation passed",
+        warnings: validation.warnings,
       });
     } catch (error) {
       // Handle any unexpected errors during validation
-      const errorMessage = error instanceof Error ? error.message : 'Unknown validation error';
-      console.error("Validation service error:", errorMessage);
-      
-      return NextResponse.json({
-        valid: false,
-        error: `Validation service error: ${errorMessage}`,
-        errorType: 'service',
-        isValidationError: true,
-      }, { status: 500 });
+      console.error(
+        "Validation service error:",
+        error instanceof Error ? error.message : "Unknown validation error",
+      );
+
+      return NextResponse.json(
+        {
+          valid: false,
+          error: "Validation service error",
+          errorType: "service",
+          isValidationError: true,
+        },
+        { status: 500 },
+      );
     }
   } catch (error) {
     console.error("Error processing validation request:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

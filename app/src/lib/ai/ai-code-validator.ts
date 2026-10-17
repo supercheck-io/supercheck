@@ -105,8 +105,7 @@ const DANGEROUS_PATTERNS = {
     /\bReflect\.setPrototypeOf\s*\(/gi,
   ],
 
-  // Dangerous imports (raw fs/path blocked — file variables should use
-  // Supercheck helpers instead of direct filesystem access)
+  // Advisory import diagnostics; Supercheck helpers remain portable for file variables.
   dangerousImports: [
     /\brequire\s*\(\s*['"`]fs['"`]\s*\)/gi,
     /\brequire\s*\(\s*['"`]node:fs['"`]\s*\)/gi,
@@ -135,7 +134,7 @@ const DANGEROUS_PATTERNS = {
     /\bWebSocket\s*\(\s*['"`](?!wss?:\/\/localhost|wss?:\/\/127\.0\.0\.1)/gi,
   ],
 
-  // Filesystem access patterns (all raw fs operations blocked)
+  // Advisory filesystem access patterns within the execution container.
   filesystemAccess: [
     /\bfs\.readFileSync\s*\(/gi,
     /\bfs\.readFile\s*\(/gi,

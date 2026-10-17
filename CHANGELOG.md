@@ -3,6 +3,7 @@
 Notable features, fixes, and upgrade requirements for Supercheck users. App and CLI releases are versioned separately.
 
 ## [Unreleased]
+- **Execution:** Align saved-test and playground validation on syntax, size, complexity, and runner compatibility. Support Node.js APIs in isolated Playwright runs and async/named-scenario k6 scripts. Determine execution outcomes from Kubernetes exit status and preserve artifact collection.
 - **Playwright:** Use the installed Playwright version for editor typing, retain traces and videos on failures and retries, and group HTML reports. Add four opt-in templates for diagnostics, passkeys, experimental Chromium WebMCP, and job-scoped test locks.
 - **Playwright:** Upgrade app, worker, and E2E dependencies to 1.64.0 (Chromium 156, Firefox 157, WebKit 27.2). Hidden-iframe elements now count as hidden; `Locator.ariaRef()` is removed in favor of `ariaSnapshot()`, and `videosPath`/`videoSize` are replaced by `recordVideo`. Worker Firefox pins `screen` to 1280×720; saved tests that override the viewport must also set a matching `screen` for screen-sensitive checks.
 - **Local development:** `docker-compose-local.yml` publishes PostgreSQL, Redis, and RustFS on `127.0.0.1`, so the app and worker can be stopped as containers and run from source (`npm run dev`) against the same stack and data.
@@ -29,6 +30,7 @@ Notable features, fixes, and upgrade requirements for Supercheck users. App and 
 **Upgrade note:** Automatic AI SRE incident triage is now off by default; deployments that relied on it must set `SRE_AUTOMATION_ENABLED=true` in both app and worker to keep it, and opt-outs are no longer needed. Otherwise existing deployments start unchanged. If yours still uses the default placeholder `SECRET_ENCRYPTION_KEY`, stored variables and connector credentials are protected by a publicly known key. Plan to set a real key (`openssl rand -hex 32`), then re-enter those values, because they cannot be decrypted with the new key. New installs generate a key with `./init-secrets.sh`. Apply the included database migrations before updating app and worker images, including `0024_execution_usage_receipts.sql`. Review existing AI SRE automation opt-outs: older per-workflow flags must be replaced with the two controls above. Remove `-f docker-compose-collaboration.yml` from existing Compose commands; Slack/Teams command credentials are no longer read.
 
 ## [CLI 0.3.1] - Unreleased
+- **Script validation:** Parse k6 runtime imports during deploy, test, and job preflight checks, including same-line and multiline imports, while ignoring comments and type-only imports.
 
 - **CLI setup:** `init` now prefills the authenticated organization and project IDs, with environment overrides and a warning if context is unavailable. `--skip-install` records required dev dependencies and tells you to install them manually; Playwright browsers still require `npx playwright install chromium`.
 

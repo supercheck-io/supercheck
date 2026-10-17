@@ -470,7 +470,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Executes a script as a child process inside the worker container.
+   * Executes a script in a separate ephemeral Kubernetes Job.
    *
    * All callers (execution.service.ts, k6-execution.service.ts) pass the
    * same arguments — gVisor isolation is transparent at the runtime level.
@@ -780,6 +780,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     let combinedLogs = '';
     let podStartupDurationMs = 0;
     let artifactExtractionDurationMs = 0;
+    let artifactsExtracted = false;
     const logCollector = this.createLogCollector(options);
 
     try {
@@ -867,56 +868,63 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         podName,
         workspace,
         limits.timeoutMs,
+        async () => {
+          if (options.extractFromContainer && options.extractToHost) {
+            const extractSource = this.rewriteTmpPath(
+              options.extractFromContainer,
+              workspace,
+            );
+            const extractionStartedAt = Date.now();
+            try {
+              await this.extractPodArtifacts(
+                podName!,
+                extractSource,
+                options.extractToHost,
+                workspace,
+              );
+              artifactsExtracted = true;
+              artifactExtractionDurationMs = Date.now() - extractionStartedAt;
+              this.logger.debug(
+                `[${jobName}] Extracted artifacts from ${podName} in ${artifactExtractionDurationMs}ms`,
+              );
+            } catch (extractError) {
+              artifactExtractionDurationMs = Date.now() - extractionStartedAt;
+              this.logger.error(
+                `Failed to extract pod artifacts after ${artifactExtractionDurationMs}ms: ${
+                  extractError instanceof Error
+                    ? extractError.message
+                    : String(extractError)
+                }`,
+              );
+              throw extractError;
+            }
+          }
+
+          if (podName) {
+            await this.signalExecutionExit(podName, workspace).catch(
+              (signalError) => {
+                this.logger.debug(
+                  `Failed to signal execution pod exit for ${podName}: ${
+                    signalError instanceof Error
+                      ? signalError.message
+                      : String(signalError)
+                  }`,
+                );
+              },
+            );
+          }
+        },
       );
       timedOut = outcome.timedOut;
       killed = killed || outcome.cancelled;
-
       if (
+        outcome.exitCode === 0 &&
         options.extractFromContainer &&
         options.extractToHost &&
-        !timedOut &&
-        !killed
+        !artifactsExtracted
       ) {
-        const extractSource = this.rewriteTmpPath(
-          options.extractFromContainer,
-          workspace,
-        );
-        const extractionStartedAt = Date.now();
-        try {
-          await this.extractPodArtifacts(
-            podName,
-            extractSource,
-            options.extractToHost,
-            workspace,
-          );
-          artifactExtractionDurationMs = Date.now() - extractionStartedAt;
-          this.logger.debug(
-            `[${jobName}] Extracted artifacts from ${podName} in ${artifactExtractionDurationMs}ms`,
-          );
-        } catch (extractError) {
-          artifactExtractionDurationMs = Date.now() - extractionStartedAt;
-          this.logger.error(
-            `Failed to extract pod artifacts after ${artifactExtractionDurationMs}ms: ${
-              extractError instanceof Error
-                ? extractError.message
-                : String(extractError)
-            }`,
-          );
-          throw extractError;
-        }
-      }
-
-      if (!timedOut && !killed && podName) {
-        await this.signalExecutionExit(podName, workspace).catch(
-          (signalError) => {
-            this.logger.debug(
-              `Failed to signal execution pod exit for ${podName}: ${
-                signalError instanceof Error
-                  ? signalError.message
-                  : String(signalError)
-              }`,
-            );
-          },
+        throw new Error(
+          'Execution pod terminated before requested artifacts could be collected',
         );
       }
 
@@ -1512,8 +1520,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
    * off (duplicates are harmless — the collector appends to the same
    * buffer and the final snapshot replaces it anyway).
    *
-   * Completion is determined by `waitForExecutionOutcome()` (exit-code
-   * file polling), NOT by the log stream lifecycle.
+   * Completion is determined by Kubernetes container termination status,
+   * not by the log stream lifecycle or tenant-writable files.
    *
    * On reconnect, `sinceSeconds: 5` replays the last few seconds to
    * avoid gaps. The collector's live-forwarding is suppressed during
@@ -1677,6 +1685,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     podName: string,
     workspace: string,
     timeoutMs: number,
+    collectArtifacts: () => Promise<void>,
   ): Promise<{
     exitCode: number;
     timedOut: boolean;
@@ -1684,19 +1693,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     message?: string;
   }> {
     const startedAt = Date.now();
-    const timeoutAt = Date.now() + timeoutMs;
+    let timeoutAt = Date.now() + timeoutMs;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
+    let artifactsCollected = false;
 
     while (Date.now() < timeoutAt) {
-      const exitCode = await this.readExecutionExitCode(podName, exitCodeFile);
-      if (exitCode !== null) {
-        return {
-          exitCode,
-          timedOut: false,
-          cancelled: false,
-        };
-      }
-
       let pod: k8s.V1Pod;
       try {
         pod = await this.coreApi!.readNamespacedPod({
@@ -1737,9 +1738,34 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         return {
           exitCode: terminated.exitCode ?? (timedOut ? 124 : 1),
           timedOut,
-          cancelled: terminated.exitCode === 137,
-          message: terminated.message || terminated.reason,
+          // Cancellation is recorded by the poller; SIGKILL can also mean OOM.
+          cancelled: false,
+          message:
+            terminated.message ||
+            (terminated.reason === 'Error' ? undefined : terminated.reason),
         };
+      }
+
+      // The tenant-writable marker only signals artifact readiness. Kubernetes
+      // termination status above is the sole source of the execution exit code.
+      if (
+        !artifactsCollected &&
+        (await this.readExecutionExitCode(podName, exitCodeFile)) !== null
+      ) {
+        artifactsCollected = true;
+        const extractionStartedAt = Date.now();
+        await collectArtifacts();
+        // Artifact transfer has its own socket bound. Allow the wrapper's exit
+        // signal to reach kubelet without charging that transfer to script time.
+        // Never extend past the Job's activeDeadlineSeconds (timeout + 120s), or
+        // Kubernetes deletes the pod and the run is misreported as cancelled.
+        timeoutAt = Math.min(
+          Math.max(
+            timeoutAt + Date.now() - extractionStartedAt,
+            Date.now() + 30_000,
+          ),
+          startedAt + timeoutMs + 90_000,
+        );
       }
 
       await this.sleep(

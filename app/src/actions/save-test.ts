@@ -18,8 +18,15 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
-import { validateScriptTypeMatch, normalizeTestType } from "@/lib/script-type-validator";
-import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
+import {
+  validateTestScript,
+  validateScriptTypeMatch,
+  normalizeTestType,
+} from "@/lib/script-type-validator";
+import {
+  decodeStoredTestScript,
+  encodeStoredTestScript,
+} from "@/lib/test-script";
 
 // Create a schema for the save test action
 const saveTestSchema = testsInsertSchema.omit({
@@ -41,7 +48,7 @@ export type SaveTestInput = z.infer<typeof saveTestWithIdSchema>;
  * @returns The saved test ID
  */
 export async function saveTest(
-  data: SaveTestInput
+  data: SaveTestInput,
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
     // Get user and project context
@@ -49,67 +56,12 @@ export async function saveTest(
 
     const validatedData = saveTestWithIdSchema.parse(data);
 
-    const scriptToSave = encodeStoredTestScript(validatedData.script || "");
-    const scriptForValidation = decodeStoredTestScript(validatedData.script || "");
-
-    if (scriptForValidation.length > MAX_SCRIPT_LENGTH) {
-      return {
-        id: "",
-        success: false,
-        error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters`,
-      };
-    }
-
-    const resolvedType = normalizeTestType(validatedData.type);
-    if (scriptForValidation.trim().length > 0) {
-      const typeValidation = validateScriptTypeMatch(scriptForValidation, resolvedType);
-      if (!typeValidation.valid) {
-        return {
-          id: "",
-          success: false,
-          error: typeValidation.error,
-        };
-      }
-    } else if (validatedData.id) {
-      // When updating a test with no script provided, fetch the existing script
-      // and validate it against the new type to prevent type mismatches
-      const existingTest = await db
-        .select({ script: tests.script, type: tests.type })
-        .from(tests)
-        .where(
-          and(
-            eq(tests.id, validatedData.id),
-            eq(tests.organizationId, organizationId),
-            eq(tests.projectId, project.id)
-          )
-        )
-        .limit(1);
-
-      if (existingTest.length > 0 && existingTest[0].script) {
-        const existingScript = decodeStoredTestScript(existingTest[0].script);
-        const typeValidation = validateScriptTypeMatch(existingScript, resolvedType);
-        if (!typeValidation.valid) {
-          return {
-            id: "",
-            success: false,
-            error: typeValidation.error,
-          };
-        }
-      }
-    }
-
-    // Check if this is an update (has an ID) or a new test
+    // Authorize before any lookup or script validation work.
+    const permissionContext = { userId, organizationId, project };
     if (validatedData.id) {
-      // This is an update - check EDIT_TESTS permission (optimized - reuses context)
-      const canEditTests = checkPermissionWithContext("test", "update", {
-        userId,
-        organizationId,
-        project,
-      });
-
-      if (!canEditTests) {
+      if (!checkPermissionWithContext("test", "update", permissionContext)) {
         console.warn(
-          `User ${userId} attempted to update test ${validatedData.id} without EDIT_TESTS permission`
+          `User ${userId} attempted to update test ${validatedData.id} without EDIT_TESTS permission`,
         );
         return {
           id: "",
@@ -117,12 +69,81 @@ export async function saveTest(
           error: "Insufficient permissions to edit tests",
         };
       }
+    } else if (
+      !checkPermissionWithContext("test", "create", permissionContext)
+    ) {
+      console.warn(
+        `User ${userId} attempted to create test without CREATE_TESTS permission`,
+      );
+      return {
+        id: "",
+        success: false,
+        error: "Insufficient permissions to create tests",
+      };
+    }
 
+    const existingTests = validatedData.id
+      ? await db
+          .select({ script: tests.script, type: tests.type })
+          .from(tests)
+          .where(
+            and(
+              eq(tests.id, validatedData.id),
+              eq(tests.organizationId, organizationId),
+              eq(tests.projectId, project.id),
+            ),
+          )
+          .limit(1)
+      : [];
+    const existingTest = existingTests[0];
+    if (validatedData.id && !existingTest) {
+      return {
+        id: "",
+        success: false,
+        error: "Test not found or access denied",
+      };
+    }
+    const resolvedType =
+      validatedData.type !== undefined
+        ? normalizeTestType(validatedData.type)
+        : (existingTest?.type ?? "browser");
+    const hasSubmittedScript = validatedData.script !== undefined;
+    const scriptToSave = hasSubmittedScript
+      ? encodeStoredTestScript(validatedData.script!)
+      : (existingTest?.script ?? "");
+    if (hasSubmittedScript) {
+      const script = decodeStoredTestScript(validatedData.script!);
+      if (script.length > MAX_SCRIPT_LENGTH) {
+        return {
+          id: "",
+          success: false,
+          error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters`,
+        };
+      }
+      const validation = validateTestScript(script, resolvedType);
+      if (!validation.valid)
+        return { id: "", success: false, error: validation.error };
+    } else if (existingTest && resolvedType !== existingTest.type) {
+      // Metadata edits preserve legacy source; only a changed type needs rechecking.
+      const validation = validateScriptTypeMatch(
+        decodeStoredTestScript(existingTest.script),
+        resolvedType,
+      );
+      if (!validation.valid)
+        return { id: "", success: false, error: validation.error };
+    }
+
+    // Check if this is an update (has an ID) or a new test
+    if (validatedData.id) {
       const testId = validatedData.id;
 
       // Remove the id from the data to update
-       
-      const { id: _, requirementId: _requirementId, ...updateData } = validatedData;
+
+      const {
+        id: _,
+        requirementId: _requirementId,
+        ...updateData
+      } = validatedData;
 
       // Update the test in the database
       const updatedTests = await db
@@ -140,8 +161,8 @@ export async function saveTest(
           and(
             eq(tests.id, testId),
             eq(tests.organizationId, organizationId),
-            eq(tests.projectId, project.id)
-          )
+            eq(tests.projectId, project.id),
+          ),
         )
         .returning({ id: tests.id });
 
@@ -176,24 +197,6 @@ export async function saveTest(
       // Return the updated test ID
       return { id: testId, success: true };
     } else {
-      // This is a new test - check CREATE_TESTS permission (optimized - reuses context)
-      const canCreateTests = checkPermissionWithContext("test", "create", {
-        userId,
-        organizationId,
-        project,
-      });
-
-      if (!canCreateTests) {
-        console.warn(
-          `User ${userId} attempted to create test without CREATE_TESTS permission`
-        );
-        return {
-          id: "",
-          success: false,
-          error: "Insufficient permissions to create tests",
-        };
-      }
-
       const newTestId = crypto.randomUUID();
 
       if (validatedData.requirementId) {
@@ -204,8 +207,8 @@ export async function saveTest(
             and(
               eq(requirements.id, validatedData.requirementId),
               eq(requirements.organizationId, organizationId),
-              eq(requirements.projectId, project.id)
-            )
+              eq(requirements.projectId, project.id),
+            ),
           )
           .limit(1);
 
@@ -262,7 +265,7 @@ export async function saveTest(
 
       // Revalidate the tests page to show the updated data
       revalidatePath("/tests");
-      
+
       // If linked to a requirement, revalidate requirements page too
       if (validatedData.requirementId) {
         revalidatePath("/requirements");
@@ -276,7 +279,11 @@ export async function saveTest(
     return {
       id: "",
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      // Never echo driver/SQL error text to the client.
+      error:
+        error instanceof z.ZodError
+          ? "Invalid test data"
+          : "Failed to save test",
     };
   }
 }

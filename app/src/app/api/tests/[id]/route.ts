@@ -3,15 +3,22 @@ import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
-import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
-import { logAuditEvent } from '@/lib/audit-logger';
-import { validateScriptTypeMatch, normalizeTestType } from '@/lib/script-type-validator';
-import { decodeStoredTestScript, encodeStoredTestScript } from '@/lib/test-script';
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { logAuditEvent } from "@/lib/audit-logger";
+import {
+  validateTestScript,
+  validateScriptTypeMatch,
+  normalizeTestType,
+} from "@/lib/script-type-validator";
+import {
+  decodeStoredTestScript,
+  encodeStoredTestScript,
+} from "@/lib/test-script";
 
 export async function GET(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   const params = await routeContext.params;
   const testId = params.id;
@@ -22,14 +29,14 @@ export async function GET(
     const context = await requireAuthContext();
 
     // Check permission to view tests
-    const canView = checkPermissionWithContext('test', 'view', context);
+    const canView = checkPermissionWithContext("test", "view", context);
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
+        { error: "Insufficient permissions" },
+        { status: 403 },
       );
     }
-    
+
     // Find the test scoped to current project
     const result = await db
       .select()
@@ -38,16 +45,13 @@ export async function GET(
         and(
           eq(tests.id, testId),
           eq(tests.projectId, context.project.id),
-          eq(tests.organizationId, context.organizationId)
-        )
+          eq(tests.organizationId, context.organizationId),
+        ),
       )
       .limit(1);
 
     if (result.length === 0) {
-      return NextResponse.json(
-        { error: "Test not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Test not found" }, { status: 404 });
     }
 
     const test = result[0];
@@ -70,21 +74,24 @@ export async function GET(
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     console.error("Error fetching test:", error);
     return NextResponse.json(
       { error: "Failed to fetch test" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   const params = await routeContext.params;
   const testId = params.id;
@@ -98,7 +105,7 @@ export async function PUT(
       where: and(
         eq(tests.id, testId),
         eq(tests.projectId, context.project.id),
-        eq(tests.organizationId, context.organizationId)
+        eq(tests.organizationId, context.organizationId),
       ),
     });
 
@@ -112,36 +119,44 @@ export async function PUT(
     if (!canUpdate) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    if (typeof body.script === "string" && body.script.length > MAX_SCRIPT_LENGTH) {
+    if (
+      typeof body.script === "string" &&
+      body.script.length > MAX_SCRIPT_LENGTH
+    ) {
       return NextResponse.json(
         { error: `Script cannot exceed ${MAX_SCRIPT_LENGTH} characters` },
-        { status: 413 }
+        { status: 413 },
       );
     }
 
     // Normalize type if provided
-    const resolvedType = body.type !== undefined
-      ? normalizeTestType(body.type)
-      : existingTest.type;
+    const resolvedType =
+      body.type !== undefined
+        ? normalizeTestType(body.type)
+        : existingTest.type;
 
-    // Determine the effective script for validation
-    const effectiveScript = body.script !== undefined ? body.script : existingTest.script;
-
-    // Validate script-type compatibility
-    if (effectiveScript && effectiveScript.length > 0) {
-      const decodedScript = decodeStoredTestScript(effectiveScript);
-      const typeValidation = validateScriptTypeMatch(decodedScript, resolvedType);
-      if (!typeValidation.valid) {
+    const hasSubmittedScript = body.script !== undefined;
+    if (hasSubmittedScript && typeof body.script !== "string") {
+      return NextResponse.json(
+        { error: "Script must be a string" },
+        { status: 400 },
+      );
+    }
+    if (hasSubmittedScript || resolvedType !== existingTest.type) {
+      const decodedScript = decodeStoredTestScript(
+        hasSubmittedScript ? body.script : existingTest.script,
+      );
+      const validation = hasSubmittedScript
+        ? validateTestScript(decodedScript, resolvedType)
+        : validateScriptTypeMatch(decodedScript, resolvedType);
+      if (!validation.valid) {
         return NextResponse.json(
-          {
-            error: typeValidation.error,
-            suggestedType: typeValidation.suggestedType,
-          },
-          { status: 400 }
+          { error: validation.error, suggestedType: validation.suggestedType },
+          { status: 400 },
         );
       }
     }
@@ -151,9 +166,16 @@ export async function PUT(
       .update(tests)
       .set({
         title: body.title !== undefined ? body.title : existingTest.title,
-        description: body.description !== undefined ? body.description : existingTest.description,
-        script: body.script !== undefined ? encodeStoredTestScript(body.script) : existingTest.script,
-        priority: body.priority !== undefined ? body.priority : existingTest.priority,
+        description:
+          body.description !== undefined
+            ? body.description
+            : existingTest.description,
+        script:
+          body.script !== undefined
+            ? encodeStoredTestScript(body.script)
+            : existingTest.script,
+        priority:
+          body.priority !== undefined ? body.priority : existingTest.priority,
         type: resolvedType,
         updatedAt: new Date(),
       })
@@ -164,21 +186,24 @@ export async function PUT(
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
     console.error(`Error updating test ${testId}:`, error);
     return NextResponse.json(
       { error: "Failed to update test" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   // NOTE: This API intentionally deviates from strict REST semantics.
   // PATCH is the canonical endpoint for partial updates and internally reuses
@@ -193,18 +218,18 @@ export async function PATCH(
  */
 export async function DELETE(
   _request: NextRequest,
-  routeContext: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
     const { project, organizationId } = context;
 
-    const canDelete = checkPermissionWithContext('test', 'delete', context);
+    const canDelete = checkPermissionWithContext("test", "delete", context);
     if (!canDelete) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to delete tests' },
-        { status: 403 }
+        { error: "Insufficient permissions to delete tests" },
+        { status: 403 },
       );
     }
 
@@ -218,13 +243,17 @@ export async function DELETE(
           and(
             eq(tests.id, id),
             eq(tests.projectId, project.id),
-            eq(tests.organizationId, organizationId)
-          )
+            eq(tests.organizationId, organizationId),
+          ),
         )
         .limit(1);
 
       if (!existingTest) {
-        return { success: false as const, status: 404, error: 'Test not found' };
+        return {
+          success: false as const,
+          status: 404,
+          error: "Test not found",
+        };
       }
 
       // Block deletion if test is used in any jobs (scoped to current org/project)
@@ -236,15 +265,15 @@ export async function DELETE(
           and(
             eq(jobTests.testId, id),
             eq(jobs.projectId, project.id),
-            eq(jobs.organizationId, organizationId)
-          )
+            eq(jobs.organizationId, organizationId),
+          ),
         );
 
       if ((jobUsage?.count ?? 0) > 0) {
         return {
           success: false as const,
           status: 409,
-          error: 'Cannot delete test',
+          error: "Cannot delete test",
           details: `This test is used by ${jobUsage.count} job(s). Remove it from all jobs first.`,
         };
       }
@@ -255,59 +284,75 @@ export async function DELETE(
         .from(monitors)
         .where(
           and(
-            eq(monitors.type, 'synthetic_test'),
+            eq(monitors.type, "synthetic_test"),
             eq(monitors.projectId, project.id),
             eq(monitors.organizationId, organizationId),
-            sql`${monitors.config}->>'testId' = ${id}`
-          )
+            sql`${monitors.config}->>'testId' = ${id}`,
+          ),
         );
 
       if ((monitorUsage?.count ?? 0) > 0) {
         return {
           success: false as const,
           status: 409,
-          error: 'Cannot delete test',
+          error: "Cannot delete test",
           details: `This test is used by ${monitorUsage.count} synthetic monitor(s). Delete the monitor(s) first.`,
         };
       }
 
       // Delete scoped to org/project for defense-in-depth
-      await tx.delete(tests).where(
-        and(
-          eq(tests.id, id),
-          eq(tests.projectId, project.id),
-          eq(tests.organizationId, organizationId)
-        )
-      );
+      await tx
+        .delete(tests)
+        .where(
+          and(
+            eq(tests.id, id),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId),
+          ),
+        );
 
       return { success: true as const, test: existingTest };
     });
 
     if (!txResult.success) {
       const response: Record<string, string> = { error: txResult.error };
-      if ('details' in txResult && txResult.details) response.details = txResult.details;
+      if ("details" in txResult && txResult.details)
+        response.details = txResult.details;
       return NextResponse.json(response, { status: txResult.status });
     }
 
     await logAuditEvent({
       userId: context.userId,
       organizationId,
-      action: 'test_deleted',
-      resource: 'test',
+      action: "test_deleted",
+      resource: "test",
       resourceId: id,
-      metadata: { testTitle: txResult.test.title, testType: txResult.test.type, projectId: project.id },
+      metadata: {
+        testTitle: txResult.test.title,
+        testType: txResult.test.type,
+        projectId: project.id,
+      },
       success: true,
     });
 
-    return NextResponse.json({ success: true, message: 'Test deleted successfully' });
+    return NextResponse.json({
+      success: true,
+      message: "Test deleted successfully",
+    });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        {
+          error:
+            error instanceof Error ? error.message : "Authentication required",
+        },
+        { status: 401 },
       );
     }
-    console.error('Error deleting test:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error("Error deleting test:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

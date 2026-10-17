@@ -11,7 +11,7 @@
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 
-export type HelperName = 'getFile' | 'readFile';
+export type HelperName = 'getFile' | 'readFile' | 'getSecret';
 
 export interface HelperCall {
   name: HelperName;

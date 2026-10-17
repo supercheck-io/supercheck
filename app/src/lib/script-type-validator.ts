@@ -13,7 +13,11 @@
  */
 
 import type { TestType } from "@/db/schema/types";
-import { isK6Script } from "@/lib/k6-validator";
+import {
+  validateScriptSyntax,
+  type ScriptValidationResult,
+} from "./script-validation";
+import { isK6Script, validateK6Script } from "@/lib/k6-validator";
 
 export interface ScriptTypeValidationResult {
   valid: boolean;
@@ -31,7 +35,7 @@ export interface ScriptTypeValidationResult {
  */
 export function validateScriptTypeMatch(
   script: string,
-  declaredType: TestType
+  declaredType: TestType,
 ): ScriptTypeValidationResult {
   if (!script || script.trim().length === 0) {
     return { valid: true };
@@ -96,7 +100,7 @@ export function normalizeTestType(value: unknown): TestType {
  */
 export function isTestTypeCompatibleWithJobType(
   testType: TestType,
-  jobType: "playwright" | "k6"
+  jobType: "playwright" | "k6",
 ): boolean {
   if (jobType === "k6") {
     return testType === "performance";
@@ -111,7 +115,7 @@ export function isTestTypeCompatibleWithJobType(
 export function getJobTestTypeMismatchError(
   testId: string,
   testType: TestType,
-  jobType: "playwright" | "k6"
+  jobType: "playwright" | "k6",
 ): string {
   if (jobType === "k6" && testType !== "performance") {
     return `Test ${testId} has type "${testType}" and cannot be added to a k6 job. k6 jobs only accept performance tests.`;
@@ -120,4 +124,33 @@ export function getJobTestTypeMismatchError(
     return `Test ${testId} has type "performance" (k6) and cannot be added to a Playwright job. Playwright jobs do not support k6 performance tests.`;
   }
   return "";
+}
+
+/** Shared submission feedback for UI, API and CLI; never a security boundary. */
+export function validateTestScript(
+  script: string,
+  declaredType?: TestType,
+): ScriptValidationResult {
+  const syntax = validateScriptSyntax(script);
+  if (!syntax.valid) return syntax;
+  if (!script.trim()) return { valid: true }; // Empty drafts remain saveable.
+  if (declaredType) {
+    const match = validateScriptTypeMatch(
+      script,
+      normalizeTestType(declaredType),
+    );
+    if (!match.valid) return { ...match, errorType: "type" };
+  }
+  if (isK6Script(script)) {
+    const result = validateK6Script(script, { selectedTestType: declaredType });
+    if (!result.valid)
+      return {
+        valid: false,
+        error: result.errors.join(", "),
+        errorType: "type",
+        warnings: result.warnings,
+      };
+    return { valid: true, warnings: result.warnings };
+  }
+  return { valid: true };
 }

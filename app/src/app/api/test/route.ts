@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       console.error("Validation service error:", errorMessage);
       return NextResponse.json({
         error: "Script validation failed",
-        validationError: `Validation service error: ${errorMessage}`,
+        validationError: "Validation service error",
         isValidationError: true,
       }, { status: 500 });
     }

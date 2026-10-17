@@ -4,7 +4,7 @@ description: Write custom Node.js test scripts
 icon: SquareFunction
 ---
 
-Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests run in a sandbox with an approved set of testing, HTTP, data, and database packages.
+Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests run in isolated Kubernetes jobs using gVisor and the Playwright, HTTP, data, and database packages included in the runner.
 
 ## Create Test
 
@@ -71,5 +71,5 @@ test.describe.serial('posts CRUD', () => {
 - **API and database workflows** — Exercise supported services with approved clients
 
 <Callout type="info">
-System APIs such as `process`, `child_process`, `fs`, native `http`/`https`, and `net` are blocked. Use Playwright's request client or Axios for HTTP calls and Supercheck helpers for variables and secrets.
+Server-side script validation checks syntax, script limits, and runner compatibility. It is feedback for submitted scripts, not a security boundary; runtime isolation is provided by gVisor and Kubernetes policy. The execution filesystem has a read-only root, while `/tmp` and shared memory are writable. Use `readFile()` and `getFile()` to access injected files portably. Public TCP egress is available for test targets; private and cluster destinations are blocked.
 </Callout>
