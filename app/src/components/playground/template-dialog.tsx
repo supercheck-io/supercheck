@@ -16,7 +16,8 @@ import { Editor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { TestType } from "@/db/schema/types";
 import { CodeTemplate, getTemplatesByType } from "./template-data";
-import { Code2, Check } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Code2, Check, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMonacoTheme } from "@/lib/monaco-config";
 
@@ -35,23 +36,37 @@ export function TemplateDialog({
 }: TemplateDialogProps) {
   const { resolvedTheme } = useTheme();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    null
+    null,
   );
+
+  const [query, setQuery] = useState("");
 
   // Get templates for the current test type
   const templates = getTemplatesByType(testType);
 
   // Group templates by category
-  const templatesByCategory = templates.reduce((acc, template) => {
-    if (!acc[template.category]) {
-      acc[template.category] = [];
-    }
-    acc[template.category].push(template);
-    return acc;
-  }, {} as Record<string, CodeTemplate[]>);
+  const filteredTemplates = templates.filter((template) =>
+    [template.name, template.description, template.category, ...template.tags]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  const templatesByCategory = filteredTemplates.reduce(
+    (acc, template) => {
+      if (!acc[template.category]) {
+        acc[template.category] = [];
+      }
+      acc[template.category].push(template);
+      return acc;
+    },
+    {} as Record<string, CodeTemplate[]>,
+  );
+
+  const selectedTemplate =
+    filteredTemplates.find((t) => t.id === selectedTemplateId) ??
+    filteredTemplates[0];
 
   const handleApply = () => {
-    const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
     if (selectedTemplate) {
       onApply(selectedTemplate.code);
       onOpenChange(false);
@@ -59,38 +74,57 @@ export function TemplateDialog({
   };
 
   // Select first template by default when dialog opens
-  if (open && !selectedTemplateId && templates.length > 0) {
+  if (
+    open &&
+    !templates.some((t) => t.id === selectedTemplateId) &&
+    templates.length > 0
+  ) {
     setSelectedTemplateId(templates[0].id);
   }
 
   // Reset selection when dialog closes
-  if (!open && selectedTemplateId) {
+  if (!open && (selectedTemplateId || query)) {
     setSelectedTemplateId(null);
+    setQuery("");
   }
 
-  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
   const isPerformance = testType === "performance";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] h-[85vh] p-0 gap-0 min-w-[1300px]">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+      <DialogContent className="flex w-[calc(100%-2rem)] max-w-[1500px] sm:max-w-[1500px] h-[90dvh] flex-col p-0 gap-0">
+        <DialogHeader className="px-4 sm:px-6 pt-6 pb-4 border-b shrink-0 pr-12">
           <div className="flex items-center gap-2">
-
             <DialogTitle className="text-2xl">Code Templates</DialogTitle>
           </div>
           <DialogDescription className="text-base">
-            Select a template to quickly get started with{" "}
-            {isPerformance ? "k6 performance" : "Playwright"} testing
+            Choose a starting point for{" "}
+            {isPerformance ? "k6 performance" : "Playwright"} testing. Applying
+            a template replaces the code in your editor; it does not save or run
+            it.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row overflow-hidden">
           {/* Template Selection Section with Radio Buttons */}
-          <div className="w-[35%] border-r overflow-auto">
-            <div className="p-6">
+          <div className="flex h-[40%] min-h-0 shrink-0 flex-col border-b md:border-b-0 md:border-r md:h-auto md:w-[35%]">
+            <div className="relative m-4 mb-0 shrink-0">
+              <Search
+                aria-hidden="true"
+                className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
+              />
+              <Input
+                aria-label="Search templates"
+                placeholder="Search templates…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="min-h-0 overflow-auto p-4">
               <RadioGroup
-                value={selectedTemplateId || ""}
+                aria-label="Code templates"
+                value={selectedTemplate?.id || ""}
                 onValueChange={setSelectedTemplateId}
                 className="space-y-6"
               >
@@ -107,8 +141,8 @@ export function TemplateDialog({
                             htmlFor={`template-${template.id}`}
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
-                              selectedTemplateId === template.id &&
-                              "border-primary bg-primary/5"
+                              selectedTemplate?.id === template.id &&
+                                "border-primary bg-primary/5",
                             )}
                           >
                             <div className="flex-1 min-w-0">
@@ -128,17 +162,22 @@ export function TemplateDialog({
                         ))}
                       </div>
                     </div>
-                  )
+                  ),
                 )}
               </RadioGroup>
+              {filteredTemplates.length === 0 && (
+                <p role="status" className="py-6 text-sm text-muted-foreground">
+                  No matching templates. Try another search.
+                </p>
+              )}
             </div>
           </div>
 
           {/* Monaco Editor Section - Takes More Space */}
-          <div className="flex-1 flex flex-col">
+          <div className="min-h-0 min-w-0 flex-1 flex flex-col">
             {selectedTemplate ? (
               <>
-                <div className="border-b px-6 py-3 bg-muted/30">
+                <div className="shrink-0 border-b px-4 sm:px-6 py-3 bg-muted/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -148,20 +187,24 @@ export function TemplateDialog({
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {selectedTemplate.description}
                       </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {selectedTemplate.setup ??
+                          (isPerformance
+                            ? "Demo targets and thresholds are examples. Use your own authorized target and tune the load before running."
+                            : "Adapt demo URLs, selectors, and assertions to your application before running.")}
+                      </p>
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   <Editor
                     height="100%"
-                    defaultLanguage={
-                      isPerformance ? "javascript" : "typescript"
-                    }
+                    language={isPerformance ? "javascript" : "typescript"}
                     value={selectedTemplate.code}
                     theme={getMonacoTheme(resolvedTheme)}
                     options={{
                       readOnly: true,
-                      minimap: { enabled: true },
+                      minimap: { enabled: false },
                       scrollBeyondLastLine: false,
                       wordWrap: "on",
                       lineNumbers: "on",
@@ -188,11 +231,11 @@ export function TemplateDialog({
         </div>
 
         {/* Footer with Actions */}
-        <DialogFooter className="border-t px-6 py-4 bg-muted/30">
-          <div className="flex items-center justify-between w-full">
+        <DialogFooter className="shrink-0 border-t px-4 sm:px-6 py-4 bg-muted/30">
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
             <div className="text-sm text-muted-foreground">
-              {templates.length} template{templates.length !== 1 ? "s" : ""}{" "}
-              available
+              {filteredTemplates.length} of {templates.length} template
+              {templates.length !== 1 ? "s" : ""} available
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -8,6 +8,7 @@ export interface CodeTemplate {
   testType: TestType;
   code: string;
   tags: string[];
+  setup?: string;
 }
 
 export const codeTemplates: CodeTemplate[] = [
@@ -17,17 +18,17 @@ export const codeTemplates: CodeTemplate[] = [
   {
     id: "k6-smoke-check",
     name: "Smoke Check (API)",
-    description: "Fast uptime and latency probe before heavier runs",
+    description: "Short availability and latency sample before heavier runs",
     category: "Smoke & Health",
     testType: "performance",
     tags: ["k6", "smoke", "api"],
     code: `/**
- * k6 smoke test for uptime and latency.
+ * k6 smoke test for availability and latency.
  * 
  * Purpose:
- * - Verify system availability (uptime)
+ * - Sample system availability during this run
  * - Check basic latency performance
- * - Ensure the system is ready for heavier load tests
+ * - Check the configured latency and error budgets
  * 
  * Configuration:
  * - VUs: 5 virtual users running concurrently
@@ -46,6 +47,7 @@ export const options = {
   vus: 5,           // 5 concurrent users
   duration: '30s',  // Run for 30 seconds
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.01'],      // Error rate < 1%
     http_req_duration: ['p(95)<800'],    // 95% of requests < 800ms
   },
@@ -83,7 +85,7 @@ export default function () {
  * Configuration:
  * - Stages:
  *   1. Ramp up to 5 VUs over 10 seconds
- *   2. Hold at 10 VUs for 10 seconds
+ *   2. Ramp from 5 to 10 VUs over 10 seconds
  *   3. Ramp down to 0 VUs over 10 seconds
  * - Thresholds: Strict latency and error limits
  * 
@@ -91,12 +93,12 @@ export default function () {
  */
 
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
     { duration: '10s', target: 5 },   // Ramp-up to 5 VUs
-    { duration: '10s', target: 10 },  // Hold at 10 VUs
+    { duration: '10s', target: 10 },  // Ramp from 5 to 10 VUs
     { duration: '10s', target: 0 },   // Ramp-down
   ],
   thresholds: {
@@ -112,15 +114,16 @@ export default function () {
 
   check(response, {
     'status is 200': (res) => res.status === 200,
-    'p95 under budget': (res) => res.timings.duration < 600,
+    'request under 600ms': (res) => res.timings.duration < 600,
   });
+  sleep(1);
 }
 `,
   },
   {
     id: "k6-spike-resilience",
     name: "Spike + Recovery",
-    description: "Short spike to validate autoscaling and stability",
+    description: "Ramp arrival rate up and down to observe latency and errors",
     category: "Resilience",
     testType: "performance",
     tags: ["k6", "spike", "resilience"],
@@ -129,34 +132,36 @@ export default function () {
  * 
  * Purpose:
  * - Verify system stability during sudden traffic spikes
- * - Ensure system recovers after the spike subsides
- * - Test autoscaling triggers
+ * - Observe latency and errors after the spike subsides
+ * - Correlate with your own autoscaling telemetry
  * 
  * Configuration:
  * - Executor: ramping-arrival-rate (controls throughput)
- * - Spike: Jump from 20 to 200 iterations/s in 30s
+ * - Spike: Ramp 5 → 20 → 5 iterations/s over 30 seconds
  * 
  * @requires k6 binary
  */
 
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 export const options = {
   scenarios: {
     spike: {
-      executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
+      executor: 'ramping-arrival-rate', // Iterations per timeUnit
+      startRate: 5,
       timeUnit: '1s',
       preAllocatedVUs: 50,
       maxVUs: 200,
       stages: [
-        { duration: '10s', target: 5 },     // Baseline: 5 req/s
-        { duration: '10s', target: 20 },    // Spike: 20 req/s
-        { duration: '10s', target: 5 },     // Recovery: back to 5 req/s
+        { duration: '10s', target: 5 },     // Baseline: 5 iterations/s
+        { duration: '10s', target: 20 },    // Ramp to 20 iterations/s
+        { duration: '10s', target: 5 },     // Recovery: back to 5 iterations/s
       ],
     },
   },
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.05'],         // Allow 5% errors during spike
     http_req_duration: ['p(99)<1500'],      // 99% of requests < 1.5s
   },
@@ -170,14 +175,15 @@ export default function () {
     '200 OK during spike': (r) => r.status === 200
   });
 
-  sleep(1); // User think time
+  // The arrival-rate executor controls pacing; no sleep is needed.
 }
 `,
   },
   {
     id: "k6-soak-reliability",
+    setup: "This 40-second sample demonstrates the profile only. Extend it for endurance testing and monitor server resources.",
     name: "Soak / Endurance",
-    description: "Longer run to catch memory leaks and slow creep",
+    description: "Short endurance profile to extend for sustained-load testing",
     category: "Reliability",
     testType: "performance",
     tags: ["k6", "soak", "endurance"],
@@ -185,8 +191,8 @@ export default function () {
  * Soak test (Endurance test) to surface long-running issues.
  * 
  * Purpose:
- * - Detect memory leaks
- * - Identify resource exhaustion (connections, file handles)
+ * - Extend the duration and correlate with server metrics to investigate memory leaks
+ * - Correlate with server metrics to investigate resource exhaustion
  * - Monitor performance degradation over time
  * 
  * Configuration:
@@ -209,8 +215,9 @@ export const options = {
     { duration: '10s', target: 0 },    // Cool-down
   ],
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.01'],    // Must maintain <1% error rate
-    http_req_duration: ['p(95)<700'],  // Latency shouldn't degrade over time
+    http_req_duration: ['p(95)<700'],  // Aggregate latency budget
   },
 };
 
@@ -228,8 +235,9 @@ export default function () {
   },
   {
     id: "k6-api-checklist",
+    setup: "GET and simulated POST run without setup. Add an API_TOKEN secret for test-api.k6.io to include the authenticated GET.",
     name: "API Checklist (GET + POST + auth)",
-    description: "Exercises public and authenticated endpoints together",
+    description: "Public GET, simulated POST, and optional authenticated GET",
     category: "API Coverage",
     testType: "performance",
     tags: ["k6", "api", "auth"],
@@ -242,9 +250,9 @@ export default function () {
  * - Group metrics by functionality (list, create, auth)
  * 
  * Configuration:
- * - VUs: 20 concurrent users
- * - Duration: 2 minutes
- * - Environment: Requires API_TOKEN for auth parts
+ * - VUs: 5 concurrent users
+ * - Duration: 30 seconds
+ * - Project secret: Optional API_TOKEN enables the authenticated request
  * 
  * @requires k6 binary
  */
@@ -264,7 +272,7 @@ export const options = {
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  const token = __ENV.API_TOKEN || ''; // Read environment variable
+  const token = getSecret('API_TOKEN', { required: false }) || ''; // Optional project secret
 
   // GROUP 1: List resources
   group('list resources', () => {
@@ -275,11 +283,11 @@ export default function () {
   // GROUP 2: Create resource
   group('create resource', () => {
     const payload = JSON.stringify({
-      name: 'Load Test',
-      sex: 'M',
-      date_of_birth: '2015-01-01',
+      title: 'Load Test',
+      body: 'Simulated write; JSONPlaceholder does not persist this post',
+      userId: 1,
     });
-    const res = http.post(baseUrl + '/public/crocodiles/', payload, {
+    const res = http.post('https://jsonplaceholder.typicode.com/posts', payload, {
       headers: { 'Content-Type': 'application/json' },
     });
     check(res, { 'created resource': (r) => r.status === 201 });
@@ -287,7 +295,7 @@ export default function () {
 
   // GROUP 3: Authenticated request
   group('authenticated request', () => {
-    if (!token) return; // Skip if no token
+    if (!token) return; // Auth checks run only when API_TOKEN is configured
 
     const res = http.get(baseUrl + '/my/crocodiles/', {
       headers: { Authorization: 'Bearer ' + token },
@@ -353,11 +361,13 @@ export default function () {
       try { JSON.parse(r.body); return true; } catch { return false; }
     },
     'has expected fields': (r) => {
-      const data = JSON.parse(r.body);
-      return data.id !== undefined && data.title !== undefined;
+      try {
+        const data = JSON.parse(r.body);
+        return data !== null && data.id !== undefined && data.title !== undefined;
+      } catch { return false; }
     },
     'response time < 500ms': (r) => r.timings.duration < 500,
-    'response size < 10KB': (r) => r.body.length < 10240,
+    'response size < 10KB': (r) => r.body !== null && r.body.length < 10240,
   });
 
   // Track custom metrics
@@ -405,7 +415,7 @@ const apiLatency = new Trend('api_latency');
 export const options = {
   stages: [
     { duration: '10s', target: 5 },   // Ramp-up to 5 VUs
-    { duration: '10s', target: 10 },  // Hold at 10 VUs
+    { duration: '10s', target: 10 },  // Ramp from 5 to 10 VUs
     { duration: '10s', target: 0 },   // Ramp-down
   ],
   thresholds: {
@@ -452,8 +462,9 @@ export default function () {
   },
   {
     id: "k6-stress-test",
+    setup: "Small 5–10 VU example. Increase the stages for your own target and monitor server metrics to investigate capacity and recovery.",
     name: "Stress Test",
-    description: "Pushes system beyond normal capacity to find breaking points",
+    description: "Staged load profile to adapt for stress and recovery testing",
     category: "Resilience",
     testType: "performance",
     tags: ["k6", "stress", "capacity"],
@@ -522,21 +533,21 @@ export default function () {
   {
     id: "k6-breakpoint-test",
     name: "Breakpoint Test",
-    description: "Gradually increases load until system breaks",
+    description: "Bounded arrival-rate ramp with failure thresholds that abort the run",
     category: "Resilience",
     testType: "performance",
     tags: ["k6", "breakpoint", "capacity"],
     code: `/**
- * Breakpoint test to identify exact system limits.
+ * Bounded breakpoint profile; increase load for your own target.
  * 
  * Purpose:
- * - Find the exact point where the system fails
+ * - Explore failure thresholds within the configured load range
  * - Determine the "knee" of the curve where latency spikes
  * 
  * Configuration:
- * - VUs: 10-20 virtual users (using ramping-arrival-rate executor)
+ * - Arrival rate: 5 → 30 iterations/s, with 10-20 available VUs
  * - Duration: 30 seconds total
- * - Thresholds: Abort test immediately if failure rate or latency gets too high
+ * - Thresholds: Abort when a threshold evaluation detects excessive errors or latency
  * 
  * @requires k6 binary
  */
@@ -545,17 +556,22 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-  executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
-  startRate: 5,
-  timeUnit: '1s',
-  preAllocatedVUs: 10,
-  maxVUs: 20,
-  stages: [
-    { target: 10, duration: '10s' },   // 10 req/s
-    { target: 20, duration: '10s' },   // 20 req/s
-    { target: 30, duration: '10s' },   // 30 req/s (sample limit)
-  ],
+  scenarios: {
+    breakpoint: {
+      executor: 'ramping-arrival-rate',
+      startRate: 5,
+      timeUnit: '1s',
+      preAllocatedVUs: 10,
+      maxVUs: 20,
+      stages: [
+        { target: 10, duration: '10s' },
+        { target: 20, duration: '10s' },
+        { target: 30, duration: '10s' },
+      ],
+    },
+  },
   thresholds: {
+    checks: ['rate>0.95'],
     'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
     'http_req_duration': [{ threshold: 'p(99)<3000', abortOnFail: true }],
   },
@@ -601,6 +617,7 @@ export const options = {
   thresholds: {
     http_req_duration: ['p(95)<500'],
     http_req_failed: ['rate<0.05'],
+    checks: ['rate>0.95'],
   },
 };
 
@@ -614,10 +631,19 @@ export default function () {
 
   // WebSocket echo test
   group('WebSocket', () => {
-    ws.connect('wss://echo.websocket.org', {}, (socket) => {
+    let echoed = false;
+    const response = ws.connect('wss://echo.websocket.org', {}, (socket) => {
       socket.on('open', () => socket.send('Hello from k6!'));
-      socket.on('message', () => socket.close());
+      socket.on('message', (message) => {
+        if (message !== 'Hello from k6!') return;
+        echoed = true;
+        socket.close();
+      });
       socket.setTimeout(() => socket.close(), 3000);
+    });
+    check(response, {
+      'WebSocket upgraded': (r) => r && r.status === 101,
+      'echo received': () => echoed,
     });
   });
 
@@ -673,10 +699,16 @@ export default function () {
 
   // gRPC unary call using reflection
   group('gRPC', () => {
-    client.connect('grpcbin.test.k6.io:9001', { reflect: true });
-    const res = client.invoke('grpcbin.GRPCBin/DummyUnary', { f_string: 'test', f_int32: 42 });
-    check(res, { 'gRPC ok': (r) => r && r.status === grpc.StatusOK });
-    client.close();
+    let response = null;
+    try {
+      client.connect('grpcbin.test.k6.io:9001', { reflect: true });
+      response = client.invoke('grpcbin.GRPCBin/DummyUnary', { f_string: 'test', f_int32: 42 });
+    } catch (error) {
+      console.error('gRPC request failed:', error);
+    } finally {
+      client.close();
+    }
+    check(response, { 'gRPC ok': (r) => r !== null && r.status === grpc.StatusOK });
   });
 
   sleep(0.5);
@@ -858,9 +890,8 @@ test.use({
   geolocation: { longitude: 12.492507, latitude: 41.889938 },
   permissions: ['geolocation'],
   
-  // Locale and timezone can also be set here or in global config
-  // locale: 'en-US',
-  // timezoneId: 'UTC',
+  locale: 'en-US',
+  timezoneId: 'Europe/Rome',
 });
 
 test.describe('geolocation and locale emulation', () => {
@@ -991,8 +1022,8 @@ test.describe('API health check', () => {
   },
   {
     id: "pw-api-crud",
-    name: "Create + read + cleanup",
-    description: "Serializes CRUD flow with cleanup",
+    name: "Simulated API CRUD",
+    description: "Create, read, and update against a non-persistent demo API",
     category: "API CRUD",
     testType: "api",
     tags: ["playwright", "api", "crud"],
@@ -1143,25 +1174,28 @@ const client = new Client({
 // Cheap heartbeat query to ensure the database is reachable.
 test.describe('database read health check', () => {
   test('rnc_database table returns expected columns', async () => {
-    await client.connect();
+    try {
+      await client.connect();
     
-    // Execute a simple SELECT query on the RNAcentral database
-    const result = await client.query('SELECT id, descr, current_release FROM rnc_database LIMIT 5');
+      // Execute a simple SELECT query on the RNAcentral database
+      const result = await client.query('SELECT id, descr, current_release FROM rnc_database LIMIT 5');
     
-    // Verify we got results and the schema matches expectations
-    expect(result.rowCount).toBeGreaterThan(0);
-    expect(result.rows[0]).toHaveProperty('id');
-    expect(result.rows[0]).toHaveProperty('descr');
+      // Verify we got results and the schema matches expectations
+      expect(result.rowCount).toBeGreaterThan(0);
+      expect(result.rows[0]).toHaveProperty('id');
+      expect(result.rows[0]).toHaveProperty('descr');
     
-    await client.end();
+    } finally {
+      await client.end();
+    }
   });
 });
 `,
   },
   {
     id: "pw-db-transaction",
-    name: "Insert with rollback",
-    description: "Writes inside a transaction and keeps DB clean",
+    name: "Read-only transaction",
+    description: "Compares reads in a repeatable-read transaction, then rolls back",
     category: "Transactions",
     testType: "database",
     tags: ["playwright", "database", "transaction"],
@@ -1195,33 +1229,36 @@ const client = new Client({
 // Demonstrate transaction isolation with reads
 test.describe('database transaction demonstration', () => {
   test('transaction isolation ensures consistent reads', async () => {
-    await client.connect();
+    try {
+      await client.connect();
 
-    // Start a transaction
-    await client.query('BEGIN');
+      // Start a transaction
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 
-    // First read within transaction
-    const firstRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
-    const countAtStart = parseInt(firstRead.rows[0].total);
+      // First read within transaction
+      const firstRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
+      const countAtStart = parseInt(firstRead.rows[0].total);
 
-    // Second read within same transaction (should see same count)
-    const secondRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
-    const countAtEnd = parseInt(secondRead.rows[0].total);
+      // Second read within same transaction (should see same count)
+      const secondRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
+      const countAtEnd = parseInt(secondRead.rows[0].total);
 
-    // Within a transaction, both reads should return the same value
-    expect(countAtStart).toBe(countAtEnd);
+      // Within a transaction, both reads should return the same value
+      expect(countAtStart).toBe(countAtEnd);
 
-    // End the transaction
-    await client.query('COMMIT');
-    await client.end();
+      // End the transaction
+      await client.query('ROLLBACK');
+    } finally {
+      await client.end();
+    }
   });
 });
 `,
   },
   {
     id: "pw-db-update",
-    name: "Safe UPDATE with RETURNING",
-    description: "Guards updates with WHERE clause and row assertions",
+    name: "Query plan analysis",
+    description: "Runs EXPLAIN and SELECT; includes a commented UPDATE pattern",
     category: "Database checks",
     testType: "database",
     tags: ["playwright", "database", "update"],
@@ -1254,32 +1291,35 @@ const client = new Client({
 
 test.describe('SQL query analysis', () => {
   test('analyze query execution plan', async () => {
-    await client.connect();
+    try {
+      await client.connect();
 
-    // Use EXPLAIN to analyze a SELECT query
-    const explainResult = await client.query(
-      'EXPLAIN SELECT id, descr FROM rnc_database WHERE current_release IS NOT NULL LIMIT 10'
-    );
+      // Use EXPLAIN to analyze a SELECT query
+      const explainResult = await client.query(
+        'EXPLAIN SELECT id, descr FROM rnc_database WHERE current_release IS NOT NULL LIMIT 10'
+      );
 
-    // EXPLAIN returns the query plan as rows
-    expect(explainResult.rows.length).toBeGreaterThan(0);
+      // EXPLAIN returns the query plan as rows
+      expect(explainResult.rows.length).toBeGreaterThan(0);
     
-    // Run the actual query
-    const result = await client.query(
-      'SELECT id, descr, current_release FROM rnc_database WHERE current_release IS NOT NULL LIMIT 5'
-    );
+      // Run the actual query
+      const result = await client.query(
+        'SELECT id, descr, current_release FROM rnc_database WHERE current_release IS NOT NULL LIMIT 5'
+      );
 
-    expect(result.rowCount).toBeGreaterThan(0);
-    expect(result.rows[0]).toHaveProperty('id');
+      expect(result.rowCount).toBeGreaterThan(0);
+      expect(result.rows[0]).toHaveProperty('id');
 
-    // Production UPDATE pattern example (commented):
-    // const updateResult = await client.query(
-    //   'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
-    //   ['New Name', 123]
-    // );
-    // expect(updateResult.rowCount).toBe(1);
+      // Production UPDATE pattern example (commented):
+      // const updateResult = await client.query(
+      //   'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
+      //   ['New Name', 123]
+      // );
+      // expect(updateResult.rowCount).toBe(1);
 
-    await client.end();
+    } finally {
+      await client.end();
+    }
   });
 });
 `,
@@ -1303,17 +1343,23 @@ test.describe('SQL query analysis', () => {
  * 
  * Key Concepts:
  * - test.extend: Creates a new test object with custom fixtures
- * - Page Object: Encapsulates page-specific logic (goto, addTodo, getTodoText)
+ * - Page Object: Encapsulates page-specific logic (goto, addTodo, getTodo)
  * 
  * @requires @playwright/test
  */
 
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Locator } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Extend base test with custom fixtures
-const test = base.extend({
+type TodoPage = {
+  goto: () => Promise<void>;
+  addTodo: (text: string) => Promise<void>;
+  getTodo: (index: number) => Locator;
+};
+
+// Extend base test with a typed custom fixture.
+const test = base.extend<{ todoPage: TodoPage }>({
   todoPage: async ({ page }, use) => {
     // Create page object methods
     const todoPage = {
@@ -1326,10 +1372,7 @@ const test = base.extend({
         await page.keyboard.press('Enter');
       },
       
-      getTodoText: async (index) => {
-        const text = await page.getByRole('listitem').nth(index).textContent();
-        return text || '';
-      },
+      getTodo: (index) => page.getByRole('listitem').nth(index),
     };
     
     // Navigate to app before each test
@@ -1343,16 +1386,15 @@ const test = base.extend({
 test.describe('custom fixtures and page objects', () => {
   test('add todo using fixture', async ({ todoPage }) => {
     await todoPage.addTodo('Buy groceries');
-    const text = await todoPage.getTodoText(0);
-    expect(text).toContain('Buy groceries');
+    await expect(todoPage.getTodo(0)).toContainText('Buy groceries');
   });
 
   test('add multiple todos', async ({ todoPage }) => {
     await todoPage.addTodo('Task 1');
     await todoPage.addTodo('Task 2');
     
-    expect(await todoPage.getTodoText(0)).toContain('Task 1');
-    expect(await todoPage.getTodoText(1)).toContain('Task 2');
+    await expect(todoPage.getTodo(0)).toContainText('Task 1');
+    await expect(todoPage.getTodo(1)).toContainText('Task 2');
   });
 });
 `,
@@ -1360,6 +1402,7 @@ test.describe('custom fixtures and page objects', () => {
 
   {
     id: "pw-custom-form-stubbing",
+    setup: "Uses a synthetic form and intercepted API response. Replace the form and route with your application.",
     name: "Form with API stubbing",
     description: "Submits a form while stubbing the backend response",
     category: "Cross-layer",
@@ -1383,46 +1426,28 @@ test.describe('custom fixtures and page objects', () => {
 
 import { expect, test } from '@playwright/test';
 
-const APP_URL = 'https://demo.playwright.dev/todomvc';
-
-test.describe('form submission with API stubbing', () => {
-  test('stubs todo creation API and validates UI response', async ({ page }) => {
-    // Stub the todo creation API call
-    await page.route('**/todos', async (route) => {
-      // Only intercept POST requests
-      if (route.request().method() !== 'POST') {
-        return route.continue();
-      }
-
-      let body = {};
-      try {
-        body = route.request().postDataJSON() || {};
-      } catch {
-        body = {};
-      }
-
-      // Mock successful API response
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({ 
-          id: 999, 
-          title: body.title || 'Stubbed todo',
-          completed: false,
-          userId: 1 
-        }),
-      });
-    });
-
-    await page.goto(APP_URL);
-
-    // Fill and submit the "form" (todo input)
-    await page.getByPlaceholder('What needs to be done?').fill('API stubbed todo');
-    await page.keyboard.press('Enter');
-
-    // Verify the todo appears in the UI (would normally come from real API)
-    await expect(page.getByRole('listitem').first()).toContainText('API stubbed todo');
-  });
+test('submits a form through a stubbed API', async ({ page }) => {
+  await page.route('https://example.com/**', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<form><label>Title<input name="title"></label><button>Save</button></form><p role="status"></p>' +
+      '<script>document.querySelector("form").onsubmit = async (event) => {' +
+      'event.preventDefault(); const title = document.querySelector("input").value;' +
+      'const response = await fetch("/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });' +
+      'const todo = await response.json(); document.querySelector("[role=status]").textContent = todo.title;' +
+      '};</script>',
+  }));
+  // Later routes take precedence over the synthetic page route.
+  await page.route('https://example.com/todos', route => route.fulfill({
+    status: 201,
+    contentType: 'application/json',
+    body: JSON.stringify({ id: 999, title: route.request().postDataJSON().title }),
+  }));
+  await page.goto('https://example.com/');
+  const created = page.waitForResponse('https://example.com/todos');
+  await page.getByLabel('Title').fill('API stubbed todo');
+  await page.getByRole('button', { name: 'Save' }).click();
+  expect((await created).status()).toBe(201);
+  await expect(page.getByRole('status')).toHaveText('API stubbed todo');
 });
 `,
   },
@@ -1550,19 +1575,19 @@ test.describe('device verification example', () => {
   },
   {
     id: "pw-custom-e2e",
-    name: "API + UI end-to-end",
-    description: "Seeds data via API, verifies it through the UI",
+    name: "API response + UI input",
+    description: "Uses a simulated API response as input for an independent demo UI",
     category: "Cross-layer",
     testType: "custom",
     tags: ["playwright", "api", "ui"],
     code: `/**
- * Cross-layer test: seed via API, verify via UI.
+ * Cross-layer demo: pass a simulated API response into a separate UI.
  * 
  * Purpose:
  * - Demonstrate end-to-end testing across layers
- * - Use API for fast data setup (seeding)
+ * - Use the simulated API response as test input
  * - Use UI for user-centric verification
- * - Clean up data via API
+ * - Demonstrate a simulated API DELETE
  * 
  * Key Actions:
  * - API POST: Create data
@@ -1577,9 +1602,10 @@ import { expect, test } from '@playwright/test';
 const API_URL = 'https://jsonplaceholder.typicode.com';
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-test.describe('API + UI end-to-end test', () => {
-  test('creates data via API and checks UI', async ({ page, request }) => {
-    // 1. Seed data using the API (fast)
+test.describe('API response + UI input', () => {
+  test('uses API response data in the UI', async ({ page, request }) => {
+    // These demo services do not share a backend. POST and DELETE are simulated.
+    // 1. Create test input using the demo API
     const createResponse = await request.post(API_URL + '/posts', {
       data: { title: 'Full-stack check', body: 'Seeded by API', userId: 1 },
     });
@@ -1862,6 +1888,7 @@ test.describe('database query tests', () => {
   },
   {
     id: "pw-custom-github",
+    setup: "Calls the public GitHub API without authentication; rate limits and upstream page changes can affect this example.",
     name: "GitHub API + Browser Integration",
     description: "Combines API data fetching with browser validation",
     category: "Cross-layer",
@@ -1930,7 +1957,7 @@ test.describe('GitHub integration tests', () => {
     const issueAnalysis = {
       withLabels: issues.filter(issue => issue.labels.length > 0).length,
       withAssignees: issues.filter(issue => issue.assignees.length > 0).length,
-      averageComments: Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
+      averageComments: issues.length === 0 ? 0 : Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
     };
 
     console.log(\`🏷️  Issues with labels: \${issueAnalysis.withLabels}/\${issues.length}\`);
@@ -1975,7 +2002,6 @@ test.describe('GitHub integration tests', () => {
 
     console.log("Step 2: Validating user profile in browser...");
     await page.goto(\`https://github.com/\${username}\`);
-    await page.waitForLoadState('networkidle');
     await expect(page).toHaveURL(new RegExp(username));
     console.log(\`✅ Confirmed on \${username}'s profile page\`);
 
@@ -1986,6 +2012,7 @@ test.describe('GitHub integration tests', () => {
   },
   {
     id: "k6-data-driven-file",
+    setup: "Requires a USERS_CSV file variable with username,password columns and valid demo API accounts. Each data row starts one VU; use a small file to limit load. Simple CSV only: no quoted commas or multiline values.",
     name: "Data-Driven Performance Test (File Variable)",
     description: "Read test data from a CSV file variable for parameterized k6 load testing",
     category: "Data-Driven",
@@ -1995,7 +2022,7 @@ test.describe('GitHub integration tests', () => {
  * Data-driven k6 performance test using file variables.
  *
  * Prerequisites:
- * 1. Go to Project Settings > Variables
+ * 1. Open Variables in the current project
  * 2. Create a File-type variable named "USERS_CSV" and upload a CSV file
  *    Example CSV content:
  *      username,password
@@ -2015,20 +2042,26 @@ import { SharedArray } from 'k6/data';
 const users = new SharedArray('users', function () {
   const usersCsvContent = open(getFile('USERS_CSV'));
 
-  return usersCsvContent
-    .trim()
-    .split('\\n')
-    .slice(1) // skip header row
+  const lines = usersCsvContent.trim().split('\\n');
+  if (lines[0].trim() !== 'username,password') throw new Error('USERS_CSV header must be username,password');
+  return lines.slice(1)
+    .filter((line) => line.trim().length > 0)
     .map((line) => {
-      const [username, password] = line.split(',');
+      const columns = line.split(',');
+      if (columns.length !== 2 || line.includes('"')) throw new Error('USERS_CSV requires username,password as two unquoted columns');
+      const [username, password] = columns;
+      if (!username?.trim() || !password?.trim()) throw new Error('USERS_CSV requires username,password on each row');
       return { username: username.trim(), password: password.trim() };
     });
 });
+
+if (users.length === 0) throw new Error('USERS_CSV needs at least one data row');
 
 export const options = {
   vus: users.length,          // One VU per user row
   duration: '30s',
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_duration: ['p(95)<500'],
     http_req_failed: ['rate<0.1'],
   },
@@ -2090,6 +2123,7 @@ export const options = {
   vus: 5,                     // 5 virtual users
   duration: '30s',            // Run for 30 seconds
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
     http_req_failed: ['rate<0.1'],     // Error rate < 10%
   },
@@ -2108,8 +2142,9 @@ export default function() {
   },
   {
     id: "pw-data-driven-file",
+    setup: "Requires a TEST_DATA file variable with url,expectedTitle columns. Simple CSV only: no quoted commas or multiline values.",
     name: "Data-Driven Test (File Variable)",
-    description: "Read test data from a file variable (CSV/JSON) for parameterized testing",
+    description: "Read a simple CSV file variable for parameterized browser tests",
     category: "Data-Driven",
     testType: "browser",
     tags: ["playwright", "file", "csv", "data-driven"],
@@ -2117,7 +2152,7 @@ export default function() {
  * Data-driven Playwright test using file variables.
  *
  * Prerequisites:
- * 1. Go to Project Settings > Variables
+ * 1. Open Variables in the current project
  * 2. Create a File-type variable named "TEST_DATA" and upload a CSV file with columns: url,expectedTitle
  *    Example CSV content:
  *      url,expectedTitle
@@ -2132,34 +2167,40 @@ import { test, expect } from '@playwright/test';
 
 // readFile() returns the file contents as a string directly
 const playwrightCsvContent = readFile('TEST_DATA');
-const rows = playwrightCsvContent
-  .trim()
-  .split('\\n')
-  .slice(1) // skip header row
+const lines = playwrightCsvContent.trim().split('\\n');
+if (lines[0].trim() !== 'url,expectedTitle') throw new Error('TEST_DATA header must be url,expectedTitle');
+const rows = lines.slice(1)
+  .filter((line) => line.trim().length > 0)
   .map((line) => {
-    const [url, expectedTitle] = line.split(',');
+    const columns = line.split(',');
+    if (columns.length !== 2 || line.includes('"')) throw new Error('TEST_DATA requires url,expectedTitle as two unquoted columns');
+    const [url, expectedTitle] = columns;
+    if (!url?.trim() || !expectedTitle?.trim()) throw new Error('TEST_DATA requires url,expectedTitle on each row');
     return { url: url.trim(), expectedTitle: expectedTitle.trim() };
   });
 
-for (const { url, expectedTitle } of rows) {
-  test(\`page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
+if (rows.length === 0) throw new Error('TEST_DATA needs at least one data row');
+
+for (const [index, { url, expectedTitle }] of rows.entries()) {
+  test(\`row \${index + 1}: page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
     await page.goto(url);
-    await expect(page).toHaveTitle(new RegExp(expectedTitle));
+    await expect(page).toHaveTitle(new RegExp(expectedTitle.replace(/[.*+?^$()|[\\]\\\\]/g, '\\\\$&')));
   });
 }
 `,
   },
   {
     id: "pw-failure-diagnostics",
+    setup: "Uses a synthetic page. Adapt the URL filter to your app; HAR files may include sensitive headers and response bodies.",
     name: "Failure Diagnostics",
     description: "Rich failure traces, annotated retry videos, and a scoped network HAR",
     category: "Diagnostics",
     testType: "browser",
     tags: ["trace", "video", "har", "retries"],
     code: `import { test, expect } from '@playwright/test';
-import { unlink } from 'node:fs/promises';
 
 // These captures apply only to this test file, including its retries.
+// HAR files stay in the isolated test output; attach them to reports only on failure.
 test.use({
   trace: { mode: 'retain-on-failure-and-retries', snapshots: { dom: true, aria: true, screen: true } },
   video: { mode: 'retain-on-failure-and-retries', show: { actions: { position: 'top-right' } } },
@@ -2181,8 +2222,6 @@ test.afterEach(async ({ context }, testInfo) => {
   const harPath = testInfo.outputPath('network.har');
   if (testInfo.status !== testInfo.expectedStatus) {
     await testInfo.attach('network.har', { path: harPath, contentType: 'application/json' });
-  } else {
-    await unlink(harPath);
   }
 });
 
@@ -2202,6 +2241,7 @@ test('diagnose a page', async ({ page }) => {
   },
   {
     id: "pw-passkey-authentication",
+    setup: "Uses a virtual authenticator and synthetic challenges. Adapt to your real registration and sign-in flow to test server verification.",
     name: "Passkey Registration and Sign-In",
     description: "Exercise WebAuthn with a virtual authenticator, without hardware keys",
     category: "Authentication",
@@ -2216,17 +2256,17 @@ test('register and authenticate a passkey', async ({ context, page }) => {
   }));
   await page.goto('https://example.com/');
 
-  // For a real application, use its registration/sign-in UI and server challenges.
+  // For a real application, use its registration/sign-in UI, server challenges, and relying-party ID.
   const passkey = await test.step('Register a passkey', async () => page.evaluate(async () => {
     const credential = await navigator.credentials.create({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { name: 'Example application', id: location.hostname },
+      rp: { name: 'Example application', id: 'example.com' },
       user: { id: new Uint8Array([1, 2, 3, 4]), name: 'test-user', displayName: 'Test User' },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
       timeout: 15000,
     } });
-    if (!credential || credential.type !== 'public-key' || !('rawId' in credential) || !(credential.rawId instanceof ArrayBuffer)) {
+    if (!(credential instanceof PublicKeyCredential)) {
       throw new Error('Expected a passkey');
     }
     return { id: credential.id, rawId: Array.from(new Uint8Array(credential.rawId)) };
@@ -2235,7 +2275,7 @@ test('register and authenticate a passkey', async ({ context, page }) => {
   const signedInId = await test.step('Sign in with the passkey', async () => page.evaluate(async (passkey) => {
     const credential = await navigator.credentials.get({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rpId: location.hostname,
+      rpId: 'example.com',
       allowCredentials: [{ type: 'public-key', id: new Uint8Array(passkey.rawId) }],
       userVerification: 'required',
       timeout: 15000,
@@ -2248,6 +2288,7 @@ test('register and authenticate a passkey', async ({ context, page }) => {
   },
   {
     id: "pw-webmcp-tools",
+    setup: "Experimental Chromium feature. Uses a synthetic page-defined tool; browser support may vary.",
     name: "WebMCP Tools (Experimental, Chromium)",
     description: "Discover and call a page-defined tool using Chromium's experimental WebMCP support",
     category: "AI Applications",
@@ -2263,7 +2304,9 @@ test('discover and call a WebMCP tool', async ({ page }) => {
   await page.route('https://example.com/**', route => route.fulfill({
     contentType: 'text/html',
     body: '<h1>WebMCP example</h1><script>' +
-      'document.modelContext.registerTool({' +
+      'const modelContext = navigator.modelContext || document.modelContext;' +
+      'if (!modelContext) throw new Error("WebMCP is unavailable in this browser");' +
+      'modelContext.registerTool({' +
       'name: "add", description: "Add two numbers",' +
       'inputSchema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },' +
       'execute: ({a, b}) => ({ content: [{ type: "text", text: String(a + b) }] })' +
