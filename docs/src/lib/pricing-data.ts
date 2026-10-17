@@ -104,7 +104,7 @@ export const COMPETITORS: readonly Competitor[] = [
     sourceUrl: 'https://www.browserstack.com/pricing?product=automate',
     asOf: COMPETITOR_AS_OF,
     billing:
-      'Automate bills per parallel test with unlimited testing minutes, so its cost depends on how many tests you run at once, not on runs or minutes.',
+      'Automate bills per parallel test with unlimited testing minutes, so its cost depends on how many tests you run at once, not on runs or minutes. On monthly billing, 1 parallel test costs $79 to $275 a month, 2 cost $159 to $550 and 5 cost $399 to $1,375, depending on browser and device coverage. Prices above 5 parallel tests are not published.',
     note: 'Its price per parallel test is not directly comparable to per-run or per-minute pricing. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
   },
 ];
@@ -113,6 +113,19 @@ export const COMPETITORS: readonly Competitor[] = [
 // What each vendor sells, from the same public pricing pages. "Not listed"
 // means the vendor's pricing page names no such product; it is not a claim
 // that the capability is impossible to assemble from other tools.
+// BrowserStack Automate list prices on monthly billing, read from the plan cards
+// on its pricing page (October 2026). The low end is the Chrome-only plan and the
+// high end is Desktop & Mobile Pro. BrowserStack publishes no price above 5.
+export const BROWSERSTACK_AUTOMATE_MONTHLY: readonly {
+  parallelTests: number;
+  min: number;
+  max: number;
+}[] = [
+  { parallelTests: 1, min: 79, max: 275 },
+  { parallelTests: 2, min: 159, max: 550 },
+  { parallelTests: 5, min: 399, max: 1375 },
+];
+
 export interface CapabilityRow {
   name: string;
   supercheck: string;
