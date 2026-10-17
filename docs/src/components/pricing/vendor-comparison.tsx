@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from 'react';
 import {
   CAPABILITY_ROWS,
   COMPETITORS,
+  BROWSERSTACK_AUTOMATE_FROM_PER_MONTH,
   COMPETITOR_AS_OF,
   MIN_SYNTHETIC_INTERVAL_MINUTES,
   VENDORS,
@@ -12,6 +13,7 @@ import {
   estimateCosts,
   formatCount,
   formatUsd,
+  parallelTestsNeeded,
   planCrossoverMinutes,
   type Estimate,
   type Workload,
@@ -86,13 +88,42 @@ function LowestBadge() {
   );
 }
 
+function BrowserStackCell({ workload }: { workload: Workload }) {
+  const parallels = parallelTestsNeeded(workload);
+  const fits = parallels === 1;
+  return (
+    <>
+      <p className="text-lg font-semibold">
+        {fits ? (
+          <>
+            From {formatUsd(BROWSERSTACK_AUTOMATE_FROM_PER_MONTH)}
+            <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
+          </>
+        ) : (
+          'Contact sales'
+        )}
+      </p>
+      <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
+        {fits
+          ? 'Billed per parallel test (1 needed here), unlimited minutes. You trigger the runs; not part of the ranking.'
+          : `Billed per parallel test. This workload needs about ${parallels}; prices above 1 are quoted by sales. Not part of the ranking.`}
+      </p>
+    </>
+  );
+}
+
 function CostCell({
   estimate,
   isLowest,
+  vendorKey,
+  workload,
 }: {
   estimate?: Estimate;
   isLowest: boolean;
+  vendorKey: string;
+  workload: Workload;
 }) {
+  if (vendorKey === 'browserstack') return <BrowserStackCell workload={workload} />;
   if (!estimate) {
     return (
       <p className="text-sm text-fd-muted-foreground">
@@ -162,7 +193,7 @@ export function VendorComparison() {
     <section aria-labelledby="comparison-heading" className="mb-20">
       <div className="mx-auto mb-8 max-w-2xl text-center">
         <h2 id="comparison-heading" className="mb-3 text-2xl font-bold">
-          Compare Supercheck with Checkly, Datadog and Better Stack
+          Compare Supercheck with Checkly, Datadog, Better Stack and BrowserStack
         </h2>
         <p className="text-fd-muted-foreground">
           Describe your browser checks to estimate the monthly cost, then compare what each
@@ -242,7 +273,7 @@ export function VendorComparison() {
         aria-label="Cost and capability comparison by vendor"
         tabIndex={0}
       >
-        <table className="w-full min-w-[720px]">
+        <table className="w-full min-w-[900px]">
           <caption className="sr-only">
             Estimated monthly cost for your browser workload, and what each vendor includes
           </caption>
@@ -293,6 +324,8 @@ export function VendorComparison() {
                   <CostCell
                     estimate={estimateFor(vendor.key)}
                     isLowest={lowestId === vendor.key}
+                    vendorKey={vendor.key}
+                    workload={workload}
                   />
                 </td>
               ))}
@@ -327,6 +360,8 @@ export function VendorComparison() {
             <CostCell
               estimate={estimateFor(vendor.key)}
               isLowest={lowestId === vendor.key}
+              vendorKey={vendor.key}
+              workload={workload}
             />
             <dl className="mt-4 space-y-3 border-t border-fd-border pt-4 text-sm">
               {CAPABILITY_ROWS.map((row) => (
@@ -369,10 +404,8 @@ export function VendorComparison() {
             monitors.
           </li>
           <li>
-            Not priced here: BrowserStack sells a browser and device cloud billed per parallel
-            test (Automate starts at $59 a month on annual billing), not scheduled production
-            monitoring. Resolve AI sells AI agents for production operations and does not publish
-            prices. Neither is a like-for-like estimate, so we leave them out of the cost row.
+            Not priced here: Resolve AI sells AI agents for production operations and does not
+            publish prices.
           </li>
           {COMPETITORS.map((competitor) => (
             <li key={competitor.id}>

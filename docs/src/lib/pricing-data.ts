@@ -50,7 +50,7 @@ export interface RunPricedTier {
 }
 
 export interface Competitor {
-  id: 'checkly' | 'datadog' | 'betterstack';
+  id: 'checkly' | 'datadog' | 'betterstack' | 'browserstack';
   name: string;
   sourceUrl: string;
   asOf: string;
@@ -98,7 +98,19 @@ export const COMPETITORS: readonly Competitor[] = [
     billing: 'Playwright minutes are $1 per 100 minutes.',
     note: 'Monitors, responders, and extra status pages are billed separately and are not included in this estimate.',
   },
+  {
+    id: 'browserstack',
+    name: 'BrowserStack',
+    sourceUrl: 'https://www.browserstack.com/pricing?product=automate',
+    asOf: COMPETITOR_AS_OF,
+    billing:
+      'Automate bills per parallel test with unlimited testing minutes. Plans run from $59 to $225 a month on annual billing, each for 1 parallel test.',
+    note: 'Prices for 2 or more parallel tests are quoted by sales. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
+  },
 ];
+
+// Lowest published Automate price: 1 parallel test, annual billing.
+export const BROWSERSTACK_AUTOMATE_FROM_PER_MONTH = 59;
 
 // What each vendor sells, from the same public pricing pages. "Not listed"
 // means the vendor's pricing page names no such product; it is not a claim
@@ -109,6 +121,7 @@ export interface CapabilityRow {
   checkly: string;
   datadog: string;
   betterstack: string;
+  browserstack: string;
 }
 
 export const VENDORS = [
@@ -116,15 +129,25 @@ export const VENDORS = [
   { key: 'checkly', name: 'Checkly' },
   { key: 'datadog', name: 'Datadog' },
   { key: 'betterstack', name: 'Better Stack' },
+  { key: 'browserstack', name: 'BrowserStack' },
 ] as const;
 
 export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
+  {
+    name: 'Scheduled production monitoring',
+    supercheck: 'HTTP, SSL, ping, port and browser checks',
+    checkly: 'Included',
+    datadog: 'Included',
+    betterstack: 'Included',
+    browserstack: 'Not listed',
+  },
   {
     name: 'k6 load testing',
     supercheck: '30,000–100,000 VU min, overage billed',
     checkly: 'Not listed',
     datadog: 'Results integration only',
     betterstack: 'Not listed',
+    browserstack: 'Load Testing product runs k6 and JMeter scripts; price not published',
   },
   {
     name: 'Status pages',
@@ -132,6 +155,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     checkly: 'Communicate plan, $9–$30/mo',
     datadog: 'With Incident Management, from $30/seat',
     betterstack: '1 included, extra page $15/mo ($12 yearly)',
+    browserstack: 'Not listed',
   },
   {
     name: 'AI incident investigation',
@@ -139,6 +163,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     checkly: 'Resolve plan, $12–$39/mo',
     datadog: 'Bits AI credits, billed separately',
     betterstack: 'Billed per AI token',
+    browserstack: 'Test AI agents on Pro plan; no incident investigation listed',
   },
   {
     name: 'Self-hostable',
@@ -146,6 +171,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     checkly: 'SaaS only',
     datadog: 'SaaS only',
     betterstack: 'SaaS only',
+    browserstack: 'Not listed',
   },
   {
     name: 'Open-source platform',
@@ -153,5 +179,6 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     checkly: 'No',
     datadog: 'No',
     betterstack: 'No',
+    browserstack: 'No',
   },
 ];
