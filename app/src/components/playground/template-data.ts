@@ -47,6 +47,7 @@ export const options = {
   vus: 5,           // 5 concurrent users
   duration: '30s',  // Run for 30 seconds
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.01'],      // Error rate < 1%
     http_req_duration: ['p(95)<800'],    // 95% of requests < 800ms
   },
@@ -142,7 +143,7 @@ export default function () {
  */
 
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 export const options = {
   scenarios: {
@@ -160,6 +161,7 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.05'],         // Allow 5% errors during spike
     http_req_duration: ['p(99)<1500'],      // 99% of requests < 1.5s
   },
@@ -173,7 +175,7 @@ export default function () {
     '200 OK during spike': (r) => r.status === 200
   });
 
-  sleep(1); // User think time
+  // The arrival-rate executor controls pacing; no sleep is needed.
 }
 `,
   },
@@ -213,6 +215,7 @@ export const options = {
     { duration: '10s', target: 0 },    // Cool-down
   ],
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_failed: ['rate<0.01'],    // Must maintain <1% error rate
     http_req_duration: ['p(95)<700'],  // Aggregate latency budget
   },
@@ -459,8 +462,9 @@ export default function () {
   },
   {
     id: "k6-stress-test",
+    setup: "Small 5–10 VU example. Increase the stages for your own target and monitor server metrics to investigate capacity and recovery.",
     name: "Stress Test",
-    description: "Pushes system beyond normal capacity to find breaking points",
+    description: "Staged load profile to adapt for stress and recovery testing",
     category: "Resilience",
     testType: "performance",
     tags: ["k6", "stress", "capacity"],
@@ -567,6 +571,7 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate>0.95'],
     'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
     'http_req_duration': [{ threshold: 'p(99)<3000', abortOnFail: true }],
   },
@@ -694,10 +699,16 @@ export default function () {
 
   // gRPC unary call using reflection
   group('gRPC', () => {
-    client.connect('grpcbin.test.k6.io:9001', { reflect: true });
-    const res = client.invoke('grpcbin.GRPCBin/DummyUnary', { f_string: 'test', f_int32: 42 });
-    check(res, { 'gRPC ok': (r) => r && r.status === grpc.StatusOK });
-    client.close();
+    let response = null;
+    try {
+      client.connect('grpcbin.test.k6.io:9001', { reflect: true });
+      response = client.invoke('grpcbin.GRPCBin/DummyUnary', { f_string: 'test', f_int32: 42 });
+    } catch (error) {
+      console.error('gRPC request failed:', error);
+    } finally {
+      client.close();
+    }
+    check(response, { 'gRPC ok': (r) => r !== null && r.status === grpc.StatusOK });
   });
 
   sleep(0.5);
@@ -1332,17 +1343,23 @@ test.describe('SQL query analysis', () => {
  * 
  * Key Concepts:
  * - test.extend: Creates a new test object with custom fixtures
- * - Page Object: Encapsulates page-specific logic (goto, addTodo, getTodoText)
+ * - Page Object: Encapsulates page-specific logic (goto, addTodo, getTodo)
  * 
  * @requires @playwright/test
  */
 
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Locator } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Extend base test with custom fixtures
-const test = base.extend({
+type TodoPage = {
+  goto: () => Promise<void>;
+  addTodo: (text: string) => Promise<void>;
+  getTodo: (index: number) => Locator;
+};
+
+// Extend base test with a typed custom fixture.
+const test = base.extend<{ todoPage: TodoPage }>({
   todoPage: async ({ page }, use) => {
     // Create page object methods
     const todoPage = {
@@ -1355,10 +1372,7 @@ const test = base.extend({
         await page.keyboard.press('Enter');
       },
       
-      getTodoText: async (index) => {
-        const text = await page.getByRole('listitem').nth(index).textContent();
-        return text || '';
-      },
+      getTodo: (index) => page.getByRole('listitem').nth(index),
     };
     
     // Navigate to app before each test
@@ -1372,16 +1386,15 @@ const test = base.extend({
 test.describe('custom fixtures and page objects', () => {
   test('add todo using fixture', async ({ todoPage }) => {
     await todoPage.addTodo('Buy groceries');
-    const text = await todoPage.getTodoText(0);
-    expect(text).toContain('Buy groceries');
+    await expect(todoPage.getTodo(0)).toContainText('Buy groceries');
   });
 
   test('add multiple todos', async ({ todoPage }) => {
     await todoPage.addTodo('Task 1');
     await todoPage.addTodo('Task 2');
     
-    expect(await todoPage.getTodoText(0)).toContain('Task 1');
-    expect(await todoPage.getTodoText(1)).toContain('Task 2');
+    await expect(todoPage.getTodo(0)).toContainText('Task 1');
+    await expect(todoPage.getTodo(1)).toContainText('Task 2');
   });
 });
 `,
@@ -1944,7 +1957,7 @@ test.describe('GitHub integration tests', () => {
     const issueAnalysis = {
       withLabels: issues.filter(issue => issue.labels.length > 0).length,
       withAssignees: issues.filter(issue => issue.assignees.length > 0).length,
-      averageComments: Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
+      averageComments: issues.length === 0 ? 0 : Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
     };
 
     console.log(\`🏷️  Issues with labels: \${issueAnalysis.withLabels}/\${issues.length}\`);
@@ -1989,7 +2002,6 @@ test.describe('GitHub integration tests', () => {
 
     console.log("Step 2: Validating user profile in browser...");
     await page.goto(\`https://github.com/\${username}\`);
-    await page.waitForLoadState('networkidle');
     await expect(page).toHaveURL(new RegExp(username));
     console.log(\`✅ Confirmed on \${username}'s profile page\`);
 
@@ -2000,7 +2012,7 @@ test.describe('GitHub integration tests', () => {
   },
   {
     id: "k6-data-driven-file",
-    setup: "Requires a USERS_CSV file variable with username,password columns and valid demo API accounts. Simple CSV only: no quoted commas or multiline values.",
+    setup: "Requires a USERS_CSV file variable with username,password columns and valid demo API accounts. Each data row starts one VU; use a small file to limit load. Simple CSV only: no quoted commas or multiline values.",
     name: "Data-Driven Performance Test (File Variable)",
     description: "Read test data from a CSV file variable for parameterized k6 load testing",
     category: "Data-Driven",
@@ -2030,13 +2042,14 @@ import { SharedArray } from 'k6/data';
 const users = new SharedArray('users', function () {
   const usersCsvContent = open(getFile('USERS_CSV'));
 
-  return usersCsvContent
-    .trim()
-    .split('\\n')
-    .slice(1) // skip header row
+  const lines = usersCsvContent.trim().split('\\n');
+  if (lines[0].trim() !== 'username,password') throw new Error('USERS_CSV header must be username,password');
+  return lines.slice(1)
     .filter((line) => line.trim().length > 0)
     .map((line) => {
-      const [username, password] = line.split(',');
+      const columns = line.split(',');
+      if (columns.length !== 2 || line.includes('"')) throw new Error('USERS_CSV requires username,password as two unquoted columns');
+      const [username, password] = columns;
       if (!username?.trim() || !password?.trim()) throw new Error('USERS_CSV requires username,password on each row');
       return { username: username.trim(), password: password.trim() };
     });
@@ -2048,6 +2061,7 @@ export const options = {
   vus: users.length,          // One VU per user row
   duration: '30s',
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_duration: ['p(95)<500'],
     http_req_failed: ['rate<0.1'],
   },
@@ -2109,6 +2123,7 @@ export const options = {
   vus: 5,                     // 5 virtual users
   duration: '30s',            // Run for 30 seconds
   thresholds: {
+    checks: ['rate>0.95'],
     http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
     http_req_failed: ['rate<0.1'],     // Error rate < 10%
   },
@@ -2152,21 +2167,22 @@ import { test, expect } from '@playwright/test';
 
 // readFile() returns the file contents as a string directly
 const playwrightCsvContent = readFile('TEST_DATA');
-const rows = playwrightCsvContent
-  .trim()
-  .split('\\n')
-  .slice(1) // skip header row
+const lines = playwrightCsvContent.trim().split('\\n');
+if (lines[0].trim() !== 'url,expectedTitle') throw new Error('TEST_DATA header must be url,expectedTitle');
+const rows = lines.slice(1)
   .filter((line) => line.trim().length > 0)
   .map((line) => {
-    const [url, expectedTitle] = line.split(',');
+    const columns = line.split(',');
+    if (columns.length !== 2 || line.includes('"')) throw new Error('TEST_DATA requires url,expectedTitle as two unquoted columns');
+    const [url, expectedTitle] = columns;
     if (!url?.trim() || !expectedTitle?.trim()) throw new Error('TEST_DATA requires url,expectedTitle on each row');
     return { url: url.trim(), expectedTitle: expectedTitle.trim() };
   });
 
 if (rows.length === 0) throw new Error('TEST_DATA needs at least one data row');
 
-for (const { url, expectedTitle } of rows) {
-  test(\`page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
+for (const [index, { url, expectedTitle }] of rows.entries()) {
+  test(\`row \${index + 1}: page title contains "\${expectedTitle}" for \${url}\`, async ({ page }) => {
     await page.goto(url);
     await expect(page).toHaveTitle(new RegExp(expectedTitle.replace(/[.*+?^$()|[\\]\\\\]/g, '\\\\$&')));
   });
@@ -2288,7 +2304,9 @@ test('discover and call a WebMCP tool', async ({ page }) => {
   await page.route('https://example.com/**', route => route.fulfill({
     contentType: 'text/html',
     body: '<h1>WebMCP example</h1><script>' +
-      'document.modelContext.registerTool({' +
+      'const modelContext = navigator.modelContext || document.modelContext;' +
+      'if (!modelContext) throw new Error("WebMCP is unavailable in this browser");' +
+      'modelContext.registerTool({' +
       'name: "add", description: "Add two numbers",' +
       'inputSchema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },' +
       'execute: ({a, b}) => ({ content: [{ type: "text", text: String(a + b) }] })' +

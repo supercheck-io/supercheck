@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import ts from "typescript";
-import { getTemplatesByType } from "@/components/playground/template-data";
+import { codeTemplates, getTemplatesByType } from "@/components/playground/template-data";
 
 const appRoot = path.resolve(__dirname, "../..");
 const bundlePath = path.join(appRoot, "public/playwright-types.json");
@@ -115,10 +115,10 @@ describe("Playground Playwright declarations", () => {
       .toContain("Property 'notARealAPI' does not exist");
   });
 
-  it.each(["pw-failure-diagnostics", "pw-passkey-authentication", "pw-webmcp-tools", "pw-resource-lock"])(
-    "offers a type-correct browser template: %s",
+  it.each(codeTemplates.filter((template) => template.testType !== "performance" && template.testType !== "database").map((template) => template.id))(
+    "offers a type-correct Playwright template: %s",
     (id) => {
-      const template = getTemplatesByType("browser").find((item) => item.id === id);
+      const template = codeTemplates.find((item) => item.id === id);
       expect(template).toBeDefined();
       expect(diagnostics(template!.code)).toEqual([]);
     },
