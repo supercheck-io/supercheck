@@ -105,7 +105,7 @@ export const COMPETITORS: readonly Competitor[] = [
     asOf: COMPETITOR_AS_OF,
     billing:
       'Automate bills per parallel test with unlimited testing minutes. Plans run from $59 to $225 a month on annual billing, each for 1 parallel test.',
-    note: 'Prices for 2 or more parallel tests are quoted by sales. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
+    note: 'Prices for 2 or more parallel tests are not published. The pages we reviewed describe running tests from your CI or code, not a built-in scheduler, so BrowserStack is shown for reference and is not part of the cost ranking.',
   },
 ];
 

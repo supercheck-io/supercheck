@@ -100,13 +100,13 @@ function BrowserStackCell({ workload }: { workload: Workload }) {
             <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
           </>
         ) : (
-          'Contact sales'
+          'Not published'
         )}
       </p>
       <p className="mt-1 text-xs font-normal text-fd-muted-foreground">
         {fits
           ? 'Billed per parallel test (1 needed here), unlimited minutes. You trigger the runs; not part of the ranking.'
-          : `Billed per parallel test. This workload needs about ${parallels}; prices above 1 are quoted by sales. Not part of the ranking.`}
+          : `Billed per parallel test. This workload needs about ${parallels}; BrowserStack does not publish prices above 1. Not part of the ranking.`}
       </p>
     </>
   );
