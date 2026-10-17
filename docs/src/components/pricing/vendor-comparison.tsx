@@ -96,7 +96,7 @@ function BrowserStackCell({ workload }: { workload: Workload }) {
       <p className="text-lg font-semibold">
         {fits ? (
           <>
-            From {formatUsd(BROWSERSTACK_AUTOMATE_FROM_PER_MONTH)}
+            {`From $${BROWSERSTACK_AUTOMATE_FROM_PER_MONTH}`}
             <span className="text-sm font-normal text-fd-muted-foreground">/mo</span>
           </>
         ) : (
