@@ -148,6 +148,14 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     browserstack: 'Billed per parallel test',
   },
   {
+    name: 'Trigger from CI/CD',
+    supercheck: 'API trigger key and CLI',
+    checkly: 'CLI trigger',
+    datadog: 'CLI and API',
+    betterstack: 'Not listed',
+    browserstack: 'From your CI pipeline',
+  },
+  {
     name: 'Requirements traceability',
     supercheck: 'Requirements and coverage',
     checkly: 'Not listed',
