@@ -45,14 +45,26 @@ const customJestConfig = {
   coverageDirectory: "coverage",
   coverageThreshold: {
     global: {
-      branches: 20,
-      functions: 25,
-      lines: 25,
-      statements: 25,
+      branches: 22,
+      functions: 27,
+      lines: 28,
+      statements: 28,
     },
     // Critical paid-service paths are ratcheted independently from the broad
     // application baseline. Keep these floors at or below measured coverage
     // and raise them as tests are added; a regression now fails CI.
+    "./src/actions/create-job.ts": {
+      branches: 85,
+      functions: 95,
+      lines: 90,
+      statements: 90,
+    },
+    "./src/actions/delete-test.ts": {
+      branches: 78,
+      functions: 95,
+      lines: 90,
+      statements: 90,
+    },
     "./src/components/subscription-guard.tsx": {
       branches: 70,
       functions: 85,
