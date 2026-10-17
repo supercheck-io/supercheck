@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { SocialAuthButtons } from "./social-auth-buttons";
-import { TurnstileCaptcha } from "./turnstile-captcha";
+import { TurnstileCaptcha, type TurnstileCaptchaRef } from "./turnstile-captcha";
 import { useCaptcha } from "@/hooks/use-captcha";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useForm } from "react-hook-form";
@@ -46,6 +46,8 @@ interface LoginFormProps {
   emailVerified?: boolean;
   /** Callback when CAPTCHA token changes (null when expired/failed) */
   onCaptchaToken?: (token: string | null) => void;
+  /** Ref to the TurnstileCaptcha so the page can request a fresh single-use token per attempt */
+  captchaRef?: RefObject<TurnstileCaptchaRef | null>;
 }
 
 export function LoginForm({
@@ -58,6 +60,7 @@ export function LoginForm({
   isFromNotification = false,
   emailVerified = false,
   onCaptchaToken,
+  captchaRef: externalCaptchaRef,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -322,7 +325,7 @@ export function LoginForm({
 
       {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
       <TurnstileCaptcha
-        ref={captchaRef}
+        ref={externalCaptchaRef ?? captchaRef}
         onSuccess={handleCaptchaSuccess}
         onError={handleCaptchaError}
         onExpire={handleCaptchaExpire}

@@ -7,6 +7,7 @@ import { Loader2, Mail, CheckCircle, ArrowLeft, Clock } from "lucide-react";
 import Link from "next/link";
 import { sendVerificationEmail } from "@/utils/auth-client";
 import { FieldGroup, Field, FieldDescription } from "@/components/ui/field";
+import { parseInviteToken } from "@/lib/validations/auth";
 
 // Rate limiting configuration
 const RESEND_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -60,7 +61,7 @@ export default function VerifyEmailPage() {
 
 function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
-  const inviteToken = searchParams.get("invite");
+  const inviteToken = parseInviteToken(searchParams.get("invite"));
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -204,7 +205,7 @@ function VerifyEmailPageContent() {
         {/* Back Link */}
         <div className="text-center">
           <Link
-            href="/sign-in"
+            href={inviteToken ? `/sign-in?invite=${encodeURIComponent(inviteToken)}` : "/sign-in"}
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />

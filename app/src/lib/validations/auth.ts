@@ -66,3 +66,15 @@ export const signupFormSchema = z.object({
 
 export type LoginFormData = z.infer<typeof loginFormSchema>;
 export type SignupFormData = z.infer<typeof signupFormSchema>;
+
+/**
+ * Invitation ids are UUIDs. Anything else in the `?invite=` query param is
+ * treated as absent so it can never be interpolated into an API path or
+ * redirect (e.g. `..%2F..%2Fapi%2Fx`).
+ */
+const INVITE_TOKEN_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function parseInviteToken(value: string | null): string | null {
+  return value && INVITE_TOKEN_PATTERN.test(value) ? value : null;
+}
