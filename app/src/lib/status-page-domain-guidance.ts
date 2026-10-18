@@ -1,6 +1,13 @@
 export const STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE =
   "Create a CNAME for the custom hostname only. Do not add A/AAAA records on that same hostname.";
 
+export function getStatusPageDomainOwnershipRecord(domain: string, statusPageId: string) {
+  return {
+    name: `_supercheck-challenge.${domain}`,
+    value: `supercheck-domain-verification=${statusPageId}`,
+  };
+}
+
 export const STATUS_PAGE_CUSTOM_DOMAIN_TARGET_RECORD_GUIDANCE =
   "Before verification, the target hostname must already point to your app, usually via an A/AAAA record or a wildcard record that already covers it.";
 
