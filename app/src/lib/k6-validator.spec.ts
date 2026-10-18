@@ -135,6 +135,28 @@ describe("K6Validator", () => {
         expect(validateK6Script(script).valid).toBe(true);
       });
 
+      it.each([
+        "import 'k6/http';",
+        "import 'k6/http'; export const options = { vus: 1, duration: '1s' }; export function smoke() {}",
+        "import 'k6/http'; // export default function() {}\nconst example = 'scenarios';",
+      ])("rejects scripts with no default or scenarios: %s", (script) => {
+        expect(validateK6Script(script).errors).toContain(
+          'Script must export a default function or configure options.scenarios with named exec functions.',
+        );
+      });
+
+      it.each([
+        "import 'k6/http'; const run = () => {}; export { run as default };",
+        "import 'k6/http'; export { default } from './shared.js';",
+        "import 'k6/http'; export const options = JSON.parse(__ENV.OPTIONS); export function smoke() {}",
+        "import 'k6/http'; export const options = { ...JSON.parse(__ENV.OPTIONS) }; export function smoke() {}",
+        "import 'k6/http'; export { options } from './shared.js'; export function smoke() {}",
+        "import 'k6/http'; export const options = {}; options.scenarios = { smoke: { exec: 'smoke' } }; export function smoke() {}",
+        "import 'k6/http'; export const options = {}; Object.assign(options, JSON.parse(__ENV.OPTIONS)); export function smoke() {}",
+      ])("preserves valid aliases and runtime-resolved options: %s", (script) => {
+        expect(validateK6Script(script).valid).toBe(true);
+      });
+
       it("accepts async default functions supported by the pinned runtime", () => {
         // Current k6 supports promises and async entrypoints.
         const script = `

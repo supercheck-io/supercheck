@@ -1,6 +1,6 @@
 {
   "name": "@supercheck/cli",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Open-source testing, monitoring, and AI SRE \u2014 as code",
   "keywords": [
     "monitoring",
@@ -45,6 +45,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "NOTICE",
     "assets/architecture.png"
   ],
@@ -56,7 +57,6 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "release:latest": "npm run build && npm test && npm publish --tag latest --access public",
     "supercheck": "tsx src/bin/supercheck.ts"
   },
   "dependencies": {

@@ -9,7 +9,8 @@ export type ApiTestType =
   | 'database'
   | 'custom'
 
-const scriptParser = createJiti(import.meta.url)
+// Detection depends on Babel hooks running for every call, including identical scripts.
+const scriptParser = createJiti(import.meta.url, { fsCache: false })
 
 type ImportNode = {
   type: string
@@ -19,8 +20,9 @@ type ImportNode = {
 }
 
 /** Parse imports without executing code; jiti is already used for CLI TypeScript. */
-export function isK6Script(script: string): boolean {
+function detectK6Script(script: string): boolean | undefined {
   let found = false
+  let parsed = false
   const inspect = (value: string) => {
     if (value === 'k6' || value.startsWith('k6/')) found = true
   }
@@ -34,6 +36,7 @@ export function isK6Script(script: string): boolean {
           () => ({
             // Inspect the parsed source before TypeScript removes unused value imports.
             pre(file: { ast: { program: { body: ImportNode[] } } }) {
+              parsed = true
               for (const node of file.ast.program.body) {
                 if (
                   node.source &&
@@ -67,9 +70,13 @@ export function isK6Script(script: string): boolean {
       },
     })
   } catch {
-    return false
+    return undefined
   }
-  return found
+  return parsed ? found : undefined
+}
+
+export function isK6Script(script: string): boolean {
+  return detectK6Script(script) === true
 }
 
 /**
@@ -86,7 +93,9 @@ export function validateScriptTypeMatch(
 ): string | undefined {
   if (!script || !declaredType) return undefined
 
-  const scriptIsK6 = isK6Script(script)
+  const scriptIsK6 = detectK6Script(script)
+  // The server (or local runtime in offline mode) reports the actual syntax error.
+  if (scriptIsK6 === undefined) return undefined
 
   if (scriptIsK6 && declaredType !== 'performance') {
     return `Script contains k6 imports but test type is "${declaredType}". k6 scripts must use type "performance".`
@@ -137,6 +146,7 @@ export function normalizeTestTypeForApi(
 }
 
 function formatValidationError(responseBody: unknown): string {
+  if (typeof responseBody === 'string') return responseBody || 'Validation failed'
   if (responseBody && typeof responseBody === 'object') {
     const body = responseBody as Record<string, unknown>
     if (typeof body.error === 'string') {
@@ -149,7 +159,7 @@ function formatValidationError(responseBody: unknown): string {
     }
   }
 
-  return 'Validation failed'
+  return responseBody === undefined ? 'Validation failed' : JSON.stringify(responseBody)
 }
 
 export async function validateScripts(
@@ -188,7 +198,7 @@ export async function validateScripts(
         results.push({
           name: input.name,
           valid: false,
-          error: `${err.message}: ${formatValidationError(err.responseBody)}${err.responseBody === undefined ? '' : ` — ${typeof err.responseBody === 'string' ? err.responseBody : JSON.stringify(err.responseBody)}`}`,
+          error: `${err.message}: ${formatValidationError(err.responseBody)}`,
         })
         continue
       }

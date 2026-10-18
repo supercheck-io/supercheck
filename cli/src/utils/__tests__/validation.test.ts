@@ -168,6 +168,20 @@ describe('script type validation helpers', () => {
     expect(isK6Script(playwrightScript)).toBe(false)
   })
 
+  it('detects identical k6 scripts on consecutive calls', () => {
+    expect(isK6Script(k6Script)).toBe(true)
+    expect(isK6Script(k6Script)).toBe(true)
+    expect(validateScriptTypeMatch(k6Script, 'performance')).toBeUndefined()
+    expect(validateScriptTypeMatch(k6Script, 'browser')).toContain('k6 imports')
+  })
+
+  it.each(['performance', 'browser'] as const)(
+    'leaves syntax diagnostics to the server for %s scripts', (type) => {
+      const script = "import http from 'k6/http'; const value = ;"
+      expect(validateScriptTypeMatch(script, type)).toBeUndefined()
+    },
+  )
+
   it('rejects k6 script declared as browser type', () => {
     const error = validateScriptTypeMatch(k6Script, 'browser')
     expect(error).toContain('k6 imports')
@@ -194,6 +208,27 @@ describe('script type validation helpers', () => {
 })
 
 describe('validation diagnostics', () => {
+  it('formats structured server errors once with their source location', async () => {
+    const { ApiClient } = await import('../../api/client.js')
+    const client = new ApiClient()
+    jest.spyOn(client, 'post').mockRejectedValue(new ApiRequestError(
+      'API request failed → 400', 400,
+      { error: 'Syntax error: Unexpected ";"', line: 4, column: 13 },
+    ))
+    const [result] = await validateScripts(client, [{ name: 'bad', script: 'const x = ;' }])
+    expect(result.error).toBe('API request failed → 400: Syntax error: Unexpected ";" (line 4, column 13)')
+  })
+
+  it('does not repeat a 413 response body', async () => {
+    const { ApiClient } = await import('../../api/client.js')
+    const client = new ApiClient()
+    jest.spyOn(client, 'post').mockRejectedValue(new ApiRequestError(
+      'API request failed → 413', 413, { error: 'Script cannot exceed 1000000 characters' },
+    ))
+    const [result] = await validateScripts(client, [{ name: 'large', script: 'test()' }])
+    expect(result.error).toBe('API request failed → 413: Script cannot exceed 1000000 characters')
+  })
+
   it('retains HTTP status and non-JSON error details', async () => {
     const { ApiClient } = await import('../../api/client.js')
     const client = new ApiClient()

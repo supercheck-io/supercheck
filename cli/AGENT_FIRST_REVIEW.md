@@ -54,4 +54,4 @@ The suggested trigger-permission regression is not present in the current API: b
 
 Backup pruning remains manual to avoid deleting recovery data. Local output remains bounded, with an explicit truncation flag; native report/artifact details are available when the report fits. Schema description remains tied to the installed Zod 3 API and must be revalidated during a major Zod upgrade. These optional enhancements do not require a new output contract in this fix.
 
-A new npm CLI release is required for installed users to receive these changes. The repository currently prepares 0.3.1; confirm that version is unpublished before using it, otherwise select the next version and update both package manifests and changelog. Follow `RELEASING.md` after merge and CI. This change does not publish a package, push release tags, or deploy a server.
+An npm CLI release is required for installed users to receive these changes. PR #434 prepares version 0.3.2 in both package manifests and the changelog. Follow `RELEASING.md` after merge and CI; a maintainer must create and push the signed tag. This change does not publish a package, push release tags, or deploy a server.
