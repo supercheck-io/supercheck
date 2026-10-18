@@ -26,7 +26,7 @@ on:
         description: Node.js version
         required: false
         type: string
-        default: "20"
+        default: "24"
       cli-version:
         description: Supercheck CLI npm tag or version
         required: false

@@ -3,7 +3,7 @@
 #   docker build -t supercheck/cli .
 #   docker run --rm -e SUPERCHECK_TOKEN=$TOKEN supercheck/cli job trigger <id> --wait
 
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY src/ src/
 RUN npm run build
 
 # --- Production image ---
-FROM node:20-slim
+FROM node:24-slim
 
 LABEL org.opencontainers.image.title="Supercheck CLI"
 LABEL org.opencontainers.image.description="Open-source testing, monitoring, and AI SRE — as code"
