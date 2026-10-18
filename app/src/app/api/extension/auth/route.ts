@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { InferAPI } from "better-auth";
 import type { apiKey } from "@better-auth/api-key";
+import { defaultKeyHasher } from "@better-auth/api-key";
+import { hashApiKey } from "@/lib/security/api-key-hash";
 import { z } from "zod";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
@@ -296,6 +298,16 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const rawKey = request.headers.get("x-api-key")?.trim();
+    if (rawKey) {
+      const keyHashes = [hashApiKey(rawKey), await defaultKeyHasher(rawKey)];
+      // A recorder may revoke only the extension credential it possesses.
+      const revoked = await db.update(apikey).set({ enabled: false }).where(and(
+        eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
+        or(...keyHashes.map((keyHash) => eq(apikey.key, keyHash))),
+      )).returning({ id: apikey.id });
+      return NextResponse.json({ success: true, data: { keysRevoked: revoked.length } });
+    }
     const requestHeaders = await headers();
     const session = await auth.api.getSession({
       headers: requestHeaders,

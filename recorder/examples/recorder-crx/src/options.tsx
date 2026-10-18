@@ -151,6 +151,8 @@ function OptionsPage() {
       setConfig(null);
       setApiKey('');
       setConnectionState({ status: 'disconnected' });
+    } catch (error) {
+      setConnectionState({ status: 'error', error: error instanceof Error ? error.message : 'Disconnect failed' });
     } finally {
       setSaving(false);
     }

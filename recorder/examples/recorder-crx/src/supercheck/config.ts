@@ -57,6 +57,15 @@ export async function saveConfig(config: Partial<SupercheckConfig>): Promise<voi
  */
 export async function clearConfig(): Promise<void> {
   try {
+    const config = await getConfig();
+    if (config.apiKey) {
+      const response = await fetch(`${config.instanceUrl.replace(/\/$/, '')}/api/extension/auth`, {
+        method: 'DELETE',
+        headers: { 'x-api-key': config.apiKey },
+      });
+      if (!response.ok && response.status !== 401)
+        throw new Error('Could not revoke the recorder key. Try disconnecting again.');
+    }
     await chrome.storage.sync.remove(STORAGE_KEY);
   } catch (error) {
     console.error('[Supercheck] Failed to clear config:', error);
