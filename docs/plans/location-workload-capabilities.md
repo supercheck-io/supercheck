@@ -51,7 +51,7 @@ What goes where:
 - The app builds `k6-<code>` queue maps only for k6-capable locations. `K6DynamicWorkerService` discovers `is_enabled AND supports_k6` locations. A region therefore can't receive regional k6 work unless both the DB and the worker allow it.
 - At startup, the worker logs a warning when its env and the DB disagree, e.g. it consumes `k6` but `supports_k6=false`. It does not change anything automatically.
 
-**Runbook for a new location `sa-east`.** This is also written to `supercheck-ops/specs/08-infrastructure-deployment/ADDING_A_LOCATION.md`.
+**Runbook for a new location `sa-east`.** The same steps are captured in the internal operations runbook.
 1. Ops: copy `deploy/k8s/regions/_template` to `regions/sa-east`, which sets the code, the Hetzner DC and the server type. It includes:
    - a Deployment with `WORKER_LOCATION`, `WORKER_QUEUES=monitor`, `EXECUTION_NODE_SELECTOR=region=sa-east`, and node affinity
    - a ScaledObject that watches only `monitor-sa-east`
@@ -157,7 +157,7 @@ What goes where:
   - k6 backstop.
   - `container-executor.service.spec.ts`: malformed selector fails fast in cloud production and only warns in self-hosted.
 
-## PR 2 — `supercheck-ops`, branch `feat/regional-probe-workers` (manifests only, no cluster apply)
+## PR 2 — regional probe worker manifests, branch `feat/regional-probe-workers` (manifests only, no cluster apply)
 - `overlays/production`:
   - Each worker gets `EXECUTION_NODE_SELECTOR=region=<loc>`. In base it stays unset, so staging and self-hosted don't inherit it.
   - Before choosing the selector, check in terraform which nodes carry `gvisor.io/enabled`/`region`. Masters use `topology.kubernetes.io/region=<hetzner dc>`, and the README says execution pods currently land on app/master nodes. If EU masters should keep running execution pods, add a `region=eu-central` label for them in terraform. Do not change node labels on the live cluster.
