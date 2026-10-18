@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Publish deployment locks only after their owner information is written, so an interrupted lock creation cannot leave an empty lock that blocks later deploys.
+
 ## 0.3.2 - 2026-10-18
 
 - Fix CLI k6 detection when identical script content is parsed repeatedly, including duplicate scripts in one command.

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, unlinkSync, linkSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, linkSync } from 'node:fs'
 import { dirname, resolve, posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { constants as osConstants, hostname } from 'node:os'
@@ -46,9 +46,12 @@ export function deploymentLock(configPath?: string | null): () => void {
   const path = resolve(dirname(configPath ?? resolve('supercheck.config.ts')), 'supercheck.state.json.lock')
   const locked = () => new CLIError(`DEPLOY_LOCKED: Another deploy may be active. If it stopped unexpectedly, inspect and remove ${path}.`, ExitCode.ConfigError)
   const lockBody = `${process.pid}\n${hostname()}\n`
-  let fd: number | undefined
-  for (let attempt = 0; fd === undefined; attempt++) {
-    try { fd = openSync(path, 'wx', 0o600) } catch {
+  const temporaryPath = `${path}.${randomUUID()}.tmp`
+  writeFileSync(temporaryPath, lockBody, { flag: 'wx', mode: 0o600 })
+  let acquired = false
+  try {
+  for (let attempt = 0; !acquired; attempt++) {
+    try { linkSync(temporaryPath, path); acquired = true } catch {
       // Recover only from a lock whose owning process is verifiably gone (crash or kill); anything uncertain stays locked.
       let owner = NaN, ownerHost = ''
       try { [owner, ownerHost] = parseLock(readFileSync(path, 'utf8')) } catch { /* unreadable lock stays locked */ }
@@ -65,15 +68,15 @@ export function deploymentLock(configPath?: string | null): () => void {
       if (moved !== owner) throw locked()
     }
   }
-  writeFileSync(fd, lockBody)
-  const handle = fd
+  } finally {
+    unlinkSync(temporaryPath)
+  }
   let released = false
   const release = () => {
     if (released) return
     released = true
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)
-    try { closeSync(handle) } catch { /* already closed */ }
     // Remove the lock only if it is still ours, so a late release cannot delete a successor's lock.
     try { if (readFileSync(path, 'utf8') === lockBody) unlinkSync(path) } catch { /* already removed; must not mask the deploy outcome */ }
   }
