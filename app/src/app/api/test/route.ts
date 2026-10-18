@@ -298,7 +298,7 @@ export async function POST(request: NextRequest) {
             await db
               .update(runs)
               .set({ status: queueResult.status })
-              .where(and(eq(runs.id, runIdForQueue), inArray(runs.status, ['queued', 'running'])));
+              .where(and(eq(runs.id, runIdForQueue), eq(runs.status, 'queued')));
           } catch (statusError) {
             console.error(
               `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,
@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
             await db
               .update(runs)
               .set({ status: queueResult.status })
-              .where(and(eq(runs.id, runIdForQueue), inArray(runs.status, ['queued', 'running'])));
+              .where(and(eq(runs.id, runIdForQueue), eq(runs.status, 'queued')));
           } catch (statusError) {
             console.error(
               `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,

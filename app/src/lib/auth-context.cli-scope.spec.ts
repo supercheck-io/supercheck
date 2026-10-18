@@ -6,7 +6,7 @@ jest.mock("@/lib/rbac/middleware", () => ({ requireAuth: jest.fn() }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: jest.fn(async () => false) }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 import { db } from "@/utils/db";
-import { requireUserAuthContext } from "./auth-context";
+import { authErrorStatus, requireUserAuthContext } from "./auth-context";
 function rows(result: unknown[]) {
   return { from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(result) };
 }
@@ -21,6 +21,14 @@ it("binds resource access to the token project even for an organization owner", 
   await expect(requireUserAuthContext("project-b")).rejects.toThrow("does not authorize this project");
   token('["cli:full"]');
   expect(await requireUserAuthContext("project-a")).toMatchObject({ userId: "user", projectId: "project-a", isCliAuth: true });
+});
+it("reports a project-scope denial as 403 and a bad token as 401", async () => {
+  token('["cli:full"]');
+  const scopeError = await requireUserAuthContext("project-b").catch((error) => error);
+  expect(authErrorStatus(scopeError)).toBe(403);
+  token('[]');
+  const tokenError = await requireUserAuthContext().catch((error) => error);
+  expect(authErrorStatus(tokenError)).toBe(401);
 });
 it.each(['["recording:create"]', '[]', '{"cli:full":true}', 'invalid', ''])("rejects incompatible explicit capabilities %s", async (permissions) => {
   token(permissions);

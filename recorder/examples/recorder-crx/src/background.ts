@@ -325,8 +325,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle DISCONNECT from content script
   if (message.type === 'INTERNAL_DISCONNECT') {
-    clearConfig().then(() => {
-      sendResponse({ success: true });
+    clearConfig().then(({ revoked }) => {
+      sendResponse({ success: true, revoked });
     }).catch(error => {
       console.error('[Supercheck] Failed to clear config:', error);
       sendResponse({ success: false, error: error.message });

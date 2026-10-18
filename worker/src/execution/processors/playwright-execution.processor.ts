@@ -78,7 +78,9 @@ export class PlaywrightExecutionProcessor
     const data = job.data;
     if (
       data.runId &&
-      (await this.executionService.hasActiveExecution(data.runId))
+      (await this.executionService.hasActiveExecution(data.runId, {
+        boundUncertainty: true,
+      }))
     ) {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();

@@ -253,8 +253,11 @@ export class K6ExecutionService {
   /**
    * Execute a k6 performance test
    */
-  async hasActiveExecution(runId: string): Promise<boolean> {
-    return this.containerExecutorService.hasActiveExecution(runId);
+  async hasActiveExecution(
+    runId: string,
+    options?: { boundUncertainty?: boolean },
+  ): Promise<boolean> {
+    return this.containerExecutorService.hasActiveExecution(runId, options);
   }
 
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {

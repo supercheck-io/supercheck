@@ -51,10 +51,19 @@ export interface AuthContext {
  * Allows catch blocks to distinguish auth errors (401) from server errors (500).
  */
 export class AuthError extends Error {
-  constructor(message: string) {
+  /** 401 when unauthenticated, 403 when authenticated but not permitted. */
+  readonly status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403 = 401) {
     super(message);
     this.name = "AuthError";
+    this.status = status;
   }
+}
+
+/** HTTP status for an auth failure: 403 for scope denials, otherwise 401. */
+export function authErrorStatus(error: unknown): 401 | 403 {
+  return error instanceof AuthError ? error.status : 401;
 }
 
 /**
@@ -379,7 +388,7 @@ export async function requireUserAuthContext(targetProjectId?: string): Promise<
     }
 
     if (targetProjectId && targetProjectId !== cliContext.project.id) {
-      throw new AuthError("CLI token does not authorize this project");
+      throw new AuthError("CLI token does not authorize this project", 403);
     }
 
     return {

@@ -2313,9 +2313,6 @@ export class MonitorService {
             },
           );
 
-          // Record that we sent an SSL alert
-          await this.recordSslAlert(resultData.monitorId);
-
           // Only log important SSL alerts
           this.logger.log(
             `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
@@ -2340,6 +2337,9 @@ export class MonitorService {
         where: and(
           eq(schema.alertHistory.monitorId, monitorId),
           eq(schema.alertHistory.type, 'ssl_expiring'),
+          // Only delivered alerts throttle: failed deliveries must be retried
+          // on the next check instead of being suppressed for 24 hours.
+          eq(schema.alertHistory.status, 'sent'),
         ),
         orderBy: [desc(schema.alertHistory.sentAt)],
       });
@@ -2351,25 +2351,6 @@ export class MonitorService {
         error,
       );
       return null;
-    }
-  }
-
-  /**
-   * Records that an SSL alert was sent for a monitor
-   */
-  private async recordSslAlert(monitorId: string): Promise<void> {
-    try {
-      await this.dbService.db
-        .update(schema.monitors)
-        .set({
-          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{lastSslAlertSentAt}', to_jsonb(${new Date().toISOString()}::text))`,
-        })
-        .where(eq(schema.monitors.id, monitorId));
-    } catch (error) {
-      this.logger.error(
-        `Error recording SSL alert for monitor ${monitorId}:`,
-        error,
-      );
     }
   }
 

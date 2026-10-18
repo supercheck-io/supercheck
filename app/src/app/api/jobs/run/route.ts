@@ -405,7 +405,7 @@ export async function POST(request: NextRequest) {
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
+            .where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         } catch (statusError) {
           console.error("Failed to persist admitted K6 run status:", {
             jobId,
@@ -439,7 +439,7 @@ export async function POST(request: NextRequest) {
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
+            .where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         } catch (statusError) {
           console.error("Failed to persist admitted Playwright run status:", {
             jobId,

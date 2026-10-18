@@ -323,6 +323,63 @@ describe('ContainerExecutorService', () => {
     });
   });
 
+  describe('hasActiveExecution', () => {
+    function failingApi() {
+      service['ensureKubernetesClients'] = jest
+        .fn()
+        .mockResolvedValue(undefined);
+      service['batchApi'] = {
+        listNamespacedJob: jest
+          .fn()
+          .mockRejectedValue(new Error('apiserver down')),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+    }
+
+    it('assumes a run is active while Kubernetes cannot be queried', async () => {
+      failingApi();
+      await expect(service.hasActiveExecution('run-1')).resolves.toBe(true);
+      await expect(
+        service.hasActiveExecution('run-1', { boundUncertainty: true }),
+      ).resolves.toBe(true);
+    });
+
+    it('fails loudly after a prolonged outage instead of delaying forever', async () => {
+      failingApi();
+      for (let i = 0; i < 30; i++) {
+        await expect(
+          service.hasActiveExecution('run-2', { boundUncertainty: true }),
+        ).resolves.toBe(true);
+      }
+      await expect(
+        service.hasActiveExecution('run-2', { boundUncertainty: true }),
+      ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
+    });
+
+    it('never throws for unbounded callers such as the stalled-run sweep', async () => {
+      failingApi();
+      for (let i = 0; i < 40; i++) {
+        await expect(service.hasActiveExecution('run-3')).resolves.toBe(true);
+      }
+    });
+
+    it('resets the uncertainty count once Kubernetes answers', async () => {
+      failingApi();
+      for (let i = 0; i < 29; i++) {
+        await service.hasActiveExecution('run-4', { boundUncertainty: true });
+      }
+      service['batchApi'] = {
+        listNamespacedJob: jest.fn().mockResolvedValue({ items: [] }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      await expect(
+        service.hasActiveExecution('run-4', { boundUncertainty: true }),
+      ).resolves.toBe(false);
+      failingApi();
+      await expect(
+        service.hasActiveExecution('run-4', { boundUncertainty: true }),
+      ).resolves.toBe(true);
+    });
+  });
+
   describe('kubernetes execution', () => {
     it('retains the numeric exit-code fallback for a generic Kubernetes Error', async () => {
       service['coreApi'] = {

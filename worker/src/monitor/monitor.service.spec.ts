@@ -14,6 +14,7 @@
  * - Security (URL validation, credential masking)
  */
 
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
 import { of } from 'rxjs';
@@ -804,9 +805,6 @@ describe('MonitorService', () => {
       const lastAlert = jest
         .spyOn(service, 'getLastSslAlert' as never)
         .mockResolvedValue(null as never);
-      const record = jest
-        .spyOn(service, 'recordSslAlert' as never)
-        .mockResolvedValue(undefined as never);
       const result: MonitorExecutionResult = {
         monitorId: monitor.id,
         location: 'eu',
@@ -821,7 +819,6 @@ describe('MonitorService', () => {
       expect(
         mockAlertService.sendSslExpirationNotification,
       ).toHaveBeenCalledTimes(1);
-      expect(record).toHaveBeenCalledTimes(1);
       lastAlert.mockResolvedValue(new Date() as never);
       await service.saveMonitorResults([result], { persisted: true });
       expect(
@@ -834,6 +831,24 @@ describe('MonitorService', () => {
         mockAlertService.sendSslExpirationNotification,
       ).toHaveBeenCalledTimes(1);
     });
+    it('throttles SSL alerts on delivered history rows only', async () => {
+      const findFirst = jest.fn().mockResolvedValue(null);
+      const queries = mockDbService.db.query as Record<string, unknown>;
+      const previous = queries.alertHistory;
+      queries.alertHistory = { findFirst };
+      try {
+        await service['getLastSslAlert']('monitor-1');
+      } finally {
+        queries.alertHistory = previous;
+      }
+      expect(findFirst).toHaveBeenCalledTimes(1);
+      const where = findFirst.mock.calls[0][0].where;
+      const query = new PgDialect().sqlToQuery(where);
+      expect(query.params).toEqual(
+        expect.arrayContaining(['ssl_expiring', 'sent']),
+      );
+    });
+
     it('should skip SSL check when disabled', async () => {
       const websiteJobData = {
         ...mockJobData,

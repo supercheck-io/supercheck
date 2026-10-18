@@ -482,13 +482,12 @@ export class AuthService {
     const { hasPermissionForUser } = await import("@/lib/rbac/middleware");
     const context = await resolveAccessContext("test", entityId) ??
       (testType === "performance" ? await resolveAccessContext("k6_test", entityId) : null);
-    if (
-      !context?.organizationId ||
-      !context.projectId ||
-      context.organizationId !== session.user.organizationId
-    ) {
+    if (!context?.organizationId || !context.projectId) {
       return false;
     }
+    // Organization membership and project access are enforced by
+    // hasPermissionForUser for the report's own org, so users who belong to
+    // several organizations can reach reports outside their active one.
     return hasPermissionForUser(session.user.id, "test", "view", {
       organizationId: context.organizationId,
       projectId: context.projectId,

@@ -180,6 +180,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       { name: 'attempts', value: '3' },
     ]);
   private static readonly SLOW_POD_STARTUP_WARN_MS = 5_000;
+  /** Consecutive unverifiable activity checks (10s apart) before failing loudly. */
+  private static readonly MAX_UNCERTAIN_EXECUTION_CHECKS = 30;
   private static readonly OUTCOME_POLL_FAST_UNTIL_MS = 15_000;
   private static readonly OUTCOME_POLL_MEDIUM_UNTIL_MS = 120_000;
   private static readonly OUTCOME_POLL_FAST_MS = 1_000;
@@ -240,6 +242,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private logClient: k8s.Log | null = null;
   private execClient: k8s.Exec | null = null;
   private readonly runningJobs: Map<string, string> = new Map();
+  private readonly uncertainExecutionChecks: Map<string, number> = new Map();
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
   private readonly execFailureLogged: Set<string> = new Set();
 
@@ -433,7 +436,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     this.runningJobs.clear();
   }
 
-  async hasActiveExecution(runId: string): Promise<boolean> {
+  /**
+   * Whether a live execution Job exists for the run. When Kubernetes cannot be
+   * queried the answer is "assume active" so a live run is never duplicated or
+   * marked terminal. Queue processors pass `boundUncertainty` so a prolonged API
+   * outage fails loudly instead of re-delaying the run forever.
+   */
+  async hasActiveExecution(
+    runId: string,
+    options: { boundUncertainty?: boolean } = {},
+  ): Promise<boolean> {
     if (this.runningJobs.has(runId)) return true;
 
     try {
@@ -442,6 +454,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         namespace: this.executionNamespace,
         labelSelector: `supercheck.io/run-id=${this.buildLabelValue(runId)}`,
       });
+      this.uncertainExecutionChecks.delete(runId);
       return jobs.items.some(
         (job) =>
           (job.status?.succeeded ?? 0) === 0 &&
@@ -449,11 +462,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           (job.status?.failed ?? 0) === 0,
       );
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Unable to verify Kubernetes execution state for ${runId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Unable to verify Kubernetes execution state for ${runId}: ${reason}`,
       );
+      if (options.boundUncertainty) {
+        const uncertain = (this.uncertainExecutionChecks.get(runId) ?? 0) + 1;
+        if (
+          uncertain > ContainerExecutorService.MAX_UNCERTAIN_EXECUTION_CHECKS
+        ) {
+          this.uncertainExecutionChecks.delete(runId);
+          throw new Error(
+            `Unable to verify Kubernetes execution state for ${runId} after ${ContainerExecutorService.MAX_UNCERTAIN_EXECUTION_CHECKS} attempts: ${reason}`,
+          );
+        }
+        this.uncertainExecutionChecks.set(runId, uncertain);
+      }
       // Fail safe: uncertainty must not cause a live run to be marked terminal.
       return true;
     }

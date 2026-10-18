@@ -98,7 +98,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     };
 
     const runId = taskData.runId;
-    if (await this.k6ExecutionService.hasActiveExecution(runId)) {
+    if (
+      await this.k6ExecutionService.hasActiveExecution(runId, {
+        boundUncertainty: true,
+      })
+    ) {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();
     }
