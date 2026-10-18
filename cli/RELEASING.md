@@ -63,7 +63,7 @@ git rev-parse 'refs/tags/cli-v<version>^{commit}'
 git push origin cli-v<version>
 ```
 
-The signer must be listed in `.github/release-allowed-signers` on `main`. The workflow requires the signed tag to match the package version (`cli-v<version>`) and the tag's commit to match the workflow's checked-out commit. These checks apply to every publishing run. A manual workflow dispatch defaults to a dry run; selecting a real publish still requires a valid matching signed tag. Stable versions publish under `latest`; versions containing a hyphen publish under `next`.
+The signer must be listed in `.github/release-allowed-signers` on `main`. The workflow requires the signed tag to match the package version (`cli-v<version>`) and the tag's commit to match the workflow's checked-out commit. These checks apply to every publishing run. A manual workflow dispatch defaults to a dry run; selecting a real publish still requires a valid matching signed tag. Stable versions publish under `latest`; versions containing a hyphen publish under `next`. After a successful publish, the workflow creates a GitHub Release for the tag (not marked as the repository's latest release), linking to the npm version. npm packages never appear in GitHub's Packages sidebar, which lists only GitHub's own registry; the npm page links back to this repository through `repository` in `package.json` and the provenance attestation.
 
 ## Verify the release
 
