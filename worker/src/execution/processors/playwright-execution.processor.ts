@@ -1,5 +1,5 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import {
   Logger,
   OnApplicationBootstrap,
@@ -204,8 +204,14 @@ export class PlaywrightExecutionProcessor
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
+      if (
+        !isCancellation &&
+        !(error instanceof UnrecoverableError) &&
+        (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
+      ) {
+        throw error;
+      }
 
       this.logger.error(
         `[${testId}] Test execution job ID: ${job.id} failed. Error: ${errorMessage}`,
@@ -437,8 +443,14 @@ export class PlaywrightExecutionProcessor
         error instanceof Error ? error.message : String(error);
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
+      if (
+        !isCancellation &&
+        !(error instanceof UnrecoverableError) &&
+        (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
+      ) {
+        throw error;
+      }
 
       // Update database with error status
       const errorStatus = isCancellation ? 'error' : 'failed';

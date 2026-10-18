@@ -266,7 +266,12 @@ export class DbService implements OnModuleInit {
       }
 
       // Update the database
-      await database.update(runs).set(updateData).where(eq(runs.id, runId));
+      await database
+        .update(runs)
+        .set(updateData)
+        .where(
+          and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])),
+        );
 
       this.logger.log(
         `Successfully updated run ${runId} with status ${status}`,

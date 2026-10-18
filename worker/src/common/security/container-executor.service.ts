@@ -127,6 +127,7 @@ export interface ContainerExecutionResult {
   stderr: string;
   duration: number;
   timedOut: boolean;
+  cancelled?: boolean;
   error?: string;
 }
 
@@ -245,8 +246,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .get<string>('WORKER_IMAGE')
       ?.trim();
     const isCloudProduction =
-      process.env.NODE_ENV === 'production' &&
-      process.env.SELF_HOSTED?.toLowerCase() !== 'true';
+      process.env.NODE_ENV === 'production' && !isSelfHostedEnvironment();
     if (isCloudProduction && !configuredImage) {
       throw new Error(
         'WORKER_IMAGE must be explicitly configured in cloud production',
@@ -952,6 +952,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stderr: '',
         duration,
         timedOut,
+        cancelled: killed,
         error: timedOut
           ? `Execution timed out after ${limits.timeoutMs}ms`
           : killed

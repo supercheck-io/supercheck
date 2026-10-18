@@ -760,6 +760,17 @@ describe('ContainerExecutorService', () => {
           } as any,
         );
 
+      it.each(['true', '1'])(
+        'allows runtime opt-out for self-hosted production (%s)',
+        (value) => {
+          process.env.NODE_ENV = 'production';
+          process.env.SELF_HOSTED = value;
+          expect(() =>
+            build({ EXECUTION_RUNTIME_CLASS_NAME: 'none' }),
+          ).not.toThrow();
+        },
+      );
+
       it('only warns about a malformed selector outside cloud production', () => {
         process.env.NODE_ENV = 'test';
         const svc = build({ EXECUTION_NODE_SELECTOR: 'not-a-pair' });

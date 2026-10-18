@@ -62,6 +62,7 @@ export interface K6ExecutionTask {
 
 export interface K6ExecutionResult {
   success: boolean;
+  cancelled?: boolean;
   timedOut: boolean;
   runId: string;
   durationMs: number;
@@ -349,6 +350,7 @@ export class K6ExecutionService {
         stderr: string;
         error: string | null;
         timedOut: boolean;
+        cancelled?: boolean;
       } | null = null;
       for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
         const dashboardPort = this.useDashboardPortPool
@@ -599,6 +601,7 @@ export class K6ExecutionService {
 
       finalResult = {
         success: overallSuccess,
+        cancelled: execResult.cancelled,
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
@@ -778,6 +781,7 @@ export class K6ExecutionService {
     stderr: string;
     error: string | null;
     timedOut: boolean;
+    cancelled?: boolean;
   }> {
     const _startTime = Date.now();
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
@@ -933,6 +937,7 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
+        cancelled: containerResult.cancelled,
         error: redactedError || null,
         timedOut,
       };
@@ -971,12 +976,9 @@ export class K6ExecutionService {
       return false;
     }
 
-    // K6 exit code 99 definitively means threshold failure
-    // This takes precedence over summary.json parsing since k6 knows best
-    if (exitCode === 99) {
-      this.logger.debug(
-        'Thresholds failed: k6 exit code 99 (threshold breach)',
-      );
+    // A summary can survive a crash; every nonzero exit still means failure.
+    if (exitCode !== 0) {
+      this.logger.debug(`Thresholds failed: k6 exit code ${exitCode}`);
       return false;
     }
 

@@ -916,6 +916,23 @@ describe('K6ExecutionService', () => {
   // ==========================================================================
 
   describe('Report Generation', () => {
+    it.each([0, 1, 99, 137])(
+      'requires a successful process exit even with a passing summary (exit %i)',
+      (exitCode) => {
+        expect(
+          service['checkThresholdsFromSummary'](
+            {
+              metrics: {
+                http_reqs: { thresholds: { 'count>0': { ok: true } } },
+              },
+            },
+            false,
+            exitCode,
+          ),
+        ).toBe(exitCode === 0);
+      },
+    );
+
     it.each([0, 99])(
       'retains the execution result when the dashboard export is missing (exit %s)',
       async (exitCode) => {

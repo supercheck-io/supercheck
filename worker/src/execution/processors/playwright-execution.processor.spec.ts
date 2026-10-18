@@ -210,6 +210,36 @@ describe('PlaywrightExecutionProcessor', () => {
   // ==========================================================================
 
   describe('Single Test Execution', () => {
+    it.each(['test', 'job'])(
+      'allows a transient %s failure to retry before persisting a successful terminal result',
+      async (kind) => {
+        const task = kind === 'test' ? mockTestTask : mockJobTask;
+        const job = createMockJob(task);
+        job.opts = { attempts: 2 };
+        job.attemptsMade = 0;
+        const execute =
+          kind === 'test'
+            ? mockExecutionService.runSingleTest
+            : mockExecutionService.runJob;
+        execute.mockRejectedValueOnce(new Error('temporary failure'));
+        await expect(processor.process(job)).rejects.toThrow(
+          'temporary failure',
+        );
+        expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).not.toHaveBeenCalled();
+        job.attemptsMade = 1;
+        expect((await processor.process(job)).success).toBe(true);
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          runId,
+          'passed',
+          expect.anything(),
+          undefined,
+          expect.anything(),
+        );
+      },
+    );
     describe('Positive Cases', () => {
       it('should execute single test successfully', async () => {
         const job = createMockJob(mockTestTask);
@@ -827,7 +857,6 @@ describe('PlaywrightExecutionProcessor', () => {
       it.each([
         ['cancelled', 'Cancellation requested by user'],
         ['cancellation', 'Cancellation requested by user'],
-        ['code 137', 'Cancellation requested by user'],
       ])(
         'should detect %s as cancellation',
         async (errorSubstring, expectedMessage) => {
@@ -850,6 +879,20 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await expect(processor.process(job)).rejects.toThrow(
           'Timeout exceeded',
+        );
+      });
+      it('does not attribute a generic SIGKILL to a user', async () => {
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          new Error('Process exited with code 137'),
+        );
+        await expect(
+          processor.process(createMockJob(mockTestTask)),
+        ).rejects.toThrow('code 137');
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          runId,
+          'failed',
+          '0',
+          'Process exited with code 137',
         );
       });
     });

@@ -6,7 +6,7 @@ import {
   LocationWorkloadUnavailableError,
   resolveProjectK6Location,
 } from "@/lib/location-registry";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       await db
         .update(runs)
         .set({ status: queueStatus })
-        .where(eq(runs.id, run.id));
+        .where(and(eq(runs.id, run.id), inArray(runs.status, ['queued', 'running'])));
     } catch (statusError) {
       console.error(
         `[Test Execute API] Failed to persist admitted run status for ${run.id}:`,
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
             completedAt: new Date(),
             errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
-          .where(eq(runs.id, createdRunId));
+          .where(and(eq(runs.id, createdRunId), inArray(runs.status, ['queued', 'running'])));
       } catch (statusError) {
         console.error(
           `[Test Execute API] Failed to finalize rejected run ${createdRunId}:`,

@@ -255,7 +255,7 @@ export async function processScheduledJob(
           completedAt: new Date(),
           errorDetails: errorMessage,
         })
-        .where(eq(runs.id, runId));
+        .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
       return { success: false };
     }
 
@@ -274,7 +274,7 @@ export async function processScheduledJob(
             completedAt: new Date(),
             errorDetails: 'Unable to prepare k6 script for execution',
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
       }
 
@@ -287,7 +287,7 @@ export async function processScheduledJob(
             completedAt: new Date(),
             errorDetails: 'k6 jobs require performance tests',
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
       }
 
@@ -319,7 +319,7 @@ export async function processScheduledJob(
 
         // Update run status based on capacity result
         if (result.status === 'running') {
-          await db.update(runs).set({ status: 'running' }).where(eq(runs.id, runId));
+          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         }
         // If 'queued', status is already 'queued'
       } catch (error) {
@@ -331,7 +331,7 @@ export async function processScheduledJob(
             completedAt: new Date(),
             errorDetails: error instanceof Error ? error.message : 'Failed to enqueue job',
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
       }
     } else {
@@ -358,7 +358,7 @@ export async function processScheduledJob(
 
         // Update run status based on capacity result
         if (result.status === 'running') {
-          await db.update(runs).set({ status: 'running' }).where(eq(runs.id, runId));
+          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         }
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue Playwright job');
@@ -369,7 +369,7 @@ export async function processScheduledJob(
             completedAt: new Date(),
             errorDetails: error instanceof Error ? error.message : 'Failed to enqueue job',
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
       }
     }

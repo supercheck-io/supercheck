@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
-import { sql, eq, and, type SQL } from 'drizzle-orm';
+import { sql, eq, and, type SQL, inArray } from 'drizzle-orm';
 import {
   K6ExecutionService,
   K6ExecutionTask,
@@ -122,7 +122,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           completedAt: new Date(),
           errorDetails: 'Execution cancelled by user',
         })
-        .where(eq(schema.runs.id, runId));
+        .where(
+          and(
+            eq(schema.runs.id, runId),
+            inArray(schema.runs.status, ['queued', 'running']),
+          ),
+        );
 
       return {
         success: false,
@@ -148,7 +153,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           completedAt: new Date(),
           errorDetails: blockCheck.reason,
         })
-        .where(eq(schema.runs.id, runId));
+        .where(
+          and(
+            eq(schema.runs.id, runId),
+            inArray(schema.runs.status, ['queued', 'running']),
+          ),
+        );
 
       // Update job status if this is a job run
       if (taskData.jobId) {
@@ -203,7 +213,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           location:
             effectiveJobLocation as (typeof schema.runs.$inferInsert)['location'],
         })
-        .where(eq(schema.runs.id, runId));
+        .where(
+          and(eq(schema.runs.id, runId), eq(schema.runs.status, 'queued')),
+        );
 
       // Execute k6
       const result = await this.k6ExecutionService.runK6Test(taskData);
@@ -216,12 +228,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Extract metrics from summary
       const metrics = this.extractMetrics(result.summary);
 
-      // Check if this was a cancellation (exit code 137 = SIGKILL)
-      // The container executor kills the container with SIGKILL when cancellation is detected
-      const wasCancelled =
-        !result.success &&
-        (result.error?.includes('code 137') ||
-          result.error?.includes('cancelled'));
+      const wasCancelled = result.cancelled === true;
 
       // Create k6_performance_runs record
       const totalRequests = Math.round(metrics.totalRequests || 0);
@@ -368,7 +375,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           await transaction
             .update(schema.runs)
             .set(runUpdate)
-            .where(eq(schema.runs.id, runId));
+            .where(
+              and(
+                eq(schema.runs.id, runId),
+                inArray(schema.runs.status, ['queued', 'running']),
+              ),
+            );
         },
       );
 
@@ -472,6 +484,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         error instanceof Error ? error.stack : undefined,
       );
 
+      if (
+        !message.includes('cancelled') &&
+        !message.includes('cancellation') &&
+        !(error instanceof UnrecoverableError) &&
+        (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
+      ) {
+        throw error;
+      }
+
       // Update run record to error status before rethrowing to ensure UI and retries work correctly
       try {
         const _durationSeconds = Math.round(
@@ -479,9 +500,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         );
         // Check if this is a cancellation error
         const isCancellation =
-          message.includes('cancelled') ||
-          message.includes('cancellation') ||
-          message.includes('code 137');
+          message.includes('cancelled') || message.includes('cancellation');
 
         await this.dbService.db
           .update(schema.runs)
@@ -493,7 +512,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               ? 'Cancellation requested by user'
               : message,
           })
-          .where(eq(schema.runs.id, runId));
+          .where(
+            and(
+              eq(schema.runs.id, runId),
+              inArray(schema.runs.status, ['queued', 'running']),
+            ),
+          );
       } catch (dbError) {
         this.logger.error(
           `[${runId}] Failed to update run to failed status: ${getErrorMessage(dbError)}`,
@@ -559,9 +583,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Check if this is a cancellation error (re-check at outer scope)
       const isCancellationOuter =
-        message.includes('cancelled') ||
-        message.includes('cancellation') ||
-        message.includes('code 137');
+        message.includes('cancelled') || message.includes('cancellation');
 
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellationOuter) {

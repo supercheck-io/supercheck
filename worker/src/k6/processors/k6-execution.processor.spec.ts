@@ -33,9 +33,13 @@ describe('k6 HTTP failure metrics', () => {
 });
 
 describe('k6 durable completion', () => {
-  it.each([false, true])(
-    'persists terminal results in the receipt transaction (existing result: %s)',
-    async (existing) => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+  ])(
+    'persists terminal results in the receipt transaction (existing result: %s, retry: %s)',
+    async (existing, retry) => {
       const result = {
         success: true,
         durationMs: 61000,
@@ -81,9 +85,10 @@ describe('k6 durable completion', () => {
         ),
       };
       type Dependencies = ConstructorParameters<typeof K6ExecutionProcessor>;
+      const execute = jest.fn().mockResolvedValue(result);
       const processor = new K6ExecutionProcessor(
         {
-          runK6Test: jest.fn().mockResolvedValue(result),
+          runK6Test: execute,
         } as unknown as Dependencies[0],
         { db } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
@@ -105,6 +110,20 @@ describe('k6 durable completion', () => {
           tests: [],
         },
       } as unknown as Job<K6ExecutionTask>;
+      if (retry) {
+        job.opts = { attempts: 2 };
+        job.attemptsMade = 0;
+        execute.mockRejectedValueOnce(new Error('temporary failure'));
+        await expect(processor.process(job)).rejects.toThrow(
+          'temporary failure',
+        );
+        expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+        expect(outsideSet).toHaveBeenCalledTimes(1);
+        expect(outsideSet).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: 'running' }),
+        );
+        job.attemptsMade = 1;
+      }
       await expect(processor.process(job)).resolves.toMatchObject({
         success: true,
       });
@@ -123,7 +142,7 @@ describe('k6 durable completion', () => {
         expect.objectContaining({ status: 'passed', durationMs: 61000 }),
       );
       expect(db.insert).not.toHaveBeenCalled();
-      expect(outsideSet).toHaveBeenCalledTimes(1);
+      expect(outsideSet).toHaveBeenCalledTimes(retry ? 2 : 1);
       expect(outsideSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'running' }),
       );

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -428,7 +428,7 @@ export async function POST(
               completedAt: new Date(),
               errorDetails: "Unable to prepare k6 script for execution",
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
 
           return NextResponse.json(
             { error: "Unable to prepare k6 script for execution" },
@@ -444,7 +444,7 @@ export async function POST(
               completedAt: new Date(),
               errorDetails: "k6 jobs require performance tests",
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
 
           return NextResponse.json(
             { error: "k6 jobs require performance tests" },
@@ -462,7 +462,7 @@ export async function POST(
                 completedAt: new Date(),
                 errorDetails: validation.errors?.[0] || "Invalid k6 script",
               })
-              .where(eq(runs.id, runId));
+              .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
 
             return NextResponse.json(
               {
@@ -485,7 +485,7 @@ export async function POST(
               completedAt: new Date(),
               errorDetails: "Failed to validate k6 script",
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
 
           return NextResponse.json(
             { error: "Failed to validate k6 script" },
@@ -519,7 +519,7 @@ export async function POST(
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         } catch (statusError) {
           console.error(
             `[${jobId}/${runId}] Failed to persist admitted K6 run status:`,
@@ -552,7 +552,7 @@ export async function POST(
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         } catch (statusError) {
           console.error(
             `[${jobId}/${runId}] Failed to persist admitted Playwright run status:`,
@@ -573,7 +573,7 @@ export async function POST(
               completedAt: new Date(),
               errorDetails: getSafeExecutionQueueErrorDetails(error),
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         } catch (statusError) {
           console.error(
             `[Job Trigger API] Failed to finalize rejected run ${runId}:`,
@@ -619,7 +619,7 @@ export async function POST(
             completedAt: new Date(),
             errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
-          .where(eq(runs.id, createdRunId));
+          .where(and(eq(runs.id, createdRunId), inArray(runs.status, ['queued', 'running'])));
       } catch (statusError) {
         console.error(
           `[Job Trigger API] Failed to finalize rejected run ${createdRunId}:`,

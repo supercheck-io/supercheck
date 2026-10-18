@@ -111,6 +111,7 @@ export function ensureProperTraceConfiguration(
 // Interface defining the result from the internal _executePlaywright function
 interface PlaywrightExecutionResult {
   success: boolean;
+  cancelled?: boolean;
   error: string | null;
   stdout: string;
   stderr: string;
@@ -506,9 +507,7 @@ export class ExecutionService implements OnModuleDestroy {
         runtimeSecrets,
       );
 
-      // Check if this was a cancellation (exit code 137 = SIGKILL)
-      const wasCancelled =
-        !execResult.success && execResult.error?.includes('code 137');
+      const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${testId}] Execution was cancelled (exit code 137)`);
         throw new Error('Execution cancelled by user');
@@ -640,8 +639,7 @@ export class ExecutionService implements OnModuleDestroy {
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
 
       // Use 'error' status for cancellation, 'failed' for other errors
       const finalStatus = isCancellation ? 'error' : 'failed';
@@ -944,9 +942,7 @@ export class ExecutionService implements OnModuleDestroy {
       stderr_log = execResult.stderr;
       finalError = execResult.error;
 
-      // Check if this was a cancellation (exit code 137 = SIGKILL)
-      const wasCancelled =
-        !execResult.success && execResult.error?.includes('code 137');
+      const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${runId}] Execution was cancelled (exit code 137)`);
         throw new Error('Execution cancelled by user');
@@ -1048,8 +1044,7 @@ export class ExecutionService implements OnModuleDestroy {
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
 
       this.logger.error(
         `[${runId}] Unhandled error during job execution: ${errorMessage}`,
@@ -1282,6 +1277,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       return {
         success: execResult.success,
+        cancelled: execResult.cancelled,
         error: extractedError, // Use the extracted error message
         stdout: execResult.stdout,
         stderr: execResult.stderr,
@@ -1670,6 +1666,7 @@ export class ExecutionService implements OnModuleDestroy {
     } = {},
   ): Promise<{
     success: boolean;
+    cancelled?: boolean;
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
@@ -1768,6 +1765,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     return {
       success: containerResult.success,
+      cancelled: containerResult.cancelled,
       stdout: redactedStdout,
       stderr: redactedStderr,
       executionTimeMs: containerResult.duration,

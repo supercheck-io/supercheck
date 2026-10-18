@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   addK6TestToQueue,
   addTestToQueue,
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
             await db
               .update(runs)
               .set({ status: queueResult.status })
-              .where(eq(runs.id, runIdForQueue));
+              .where(and(eq(runs.id, runIdForQueue), inArray(runs.status, ['queued', 'running'])));
           } catch (statusError) {
             console.error(
               `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,
@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
             await db
               .update(runs)
               .set({ status: queueResult.status })
-              .where(eq(runs.id, runIdForQueue));
+              .where(and(eq(runs.id, runIdForQueue), inArray(runs.status, ['queued', 'running'])));
           } catch (statusError) {
             console.error(
               `[Test API] Failed to persist admitted run status for ${runIdForQueue}:`,
@@ -373,7 +373,7 @@ export async function POST(request: NextRequest) {
               completedAt: new Date(),
               errorDetails: getSafeExecutionQueueErrorDetails(error),
             })
-            .where(eq(runs.id, runIdForQueue));
+            .where(and(eq(runs.id, runIdForQueue), inArray(runs.status, ['queued', 'running'])));
         } catch (statusError) {
           console.error(
             `[Test API] Failed to finalize rejected run ${runIdForQueue}:`,

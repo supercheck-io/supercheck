@@ -91,6 +91,7 @@ type AggregatedAlertState = {
   consecutiveSuccessCount: number;
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
+  recoverySequence?: boolean;
   executionGroupId?: string;
 };
 
@@ -557,6 +558,9 @@ export class MonitorService {
         })),
       },
     });
+    for (const result of results) {
+      await this.checkSslExpirationAlert(result, monitor);
+    }
     if (groupEvaluation) {
       await this.dbService.db
         .update(schema.monitorResults)
@@ -1885,7 +1889,8 @@ export class MonitorService {
     const timeout =
       (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT) * 1000;
     const daysUntilExpirationWarning =
-      config?.daysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
+      config?.sslDaysUntilExpirationWarning ??
+      SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
     this.logger.debug(
       `SSL Check: ${target}, Timeout: ${timeout}ms, Warning threshold: ${daysUntilExpirationWarning} days`,
@@ -2225,6 +2230,12 @@ export class MonitorService {
     monitor: Monitor | null,
   ): Promise<void> {
     try {
+      if (
+        !monitor?.alertConfig?.enabled ||
+        !monitor.alertConfig.alertOnSslExpiration
+      ) {
+        return;
+      }
       // Removed debug log
 
       // Check if SSL certificate info is available and has warning
@@ -2335,22 +2346,11 @@ export class MonitorService {
    */
   private async recordSslAlert(monitorId: string): Promise<void> {
     try {
-      const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: eq(schema.monitors.id, monitorId),
-      });
-
-      if (!monitor) {
-        return;
-      }
-
-      const updatedConfig = {
-        ...((monitor.config as Record<string, unknown>) || {}),
-        lastSslAlertSentAt: new Date().toISOString(),
-      } as typeof monitor.config;
-
       await this.dbService.db
         .update(schema.monitors)
-        .set({ config: updatedConfig })
+        .set({
+          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{lastSslAlertSentAt}', to_jsonb(${new Date().toISOString()}::text))`,
+        })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
       this.logger.error(
@@ -2428,7 +2428,13 @@ export class MonitorService {
         checkedAt: resultData.checkedAt,
         status: resultData.status,
         responseTimeMs: resultData.responseTimeMs,
-        details: resultData.details,
+        details: {
+          ...resultData.details,
+          recoverySequence:
+            resultData.isUp &&
+            (lastResult?.isUp === false ||
+              lastResult?.details?.recoverySequence === true),
+        },
         isUp: resultData.isUp,
         isStatusChange: isStatusChange,
         consecutiveFailureCount: consecutiveFailureCount,
@@ -2506,6 +2512,7 @@ export class MonitorService {
       alertsSentForRecovery: toSafeCounter(
         rawAlertState?.alertsSentForRecovery,
       ),
+      recoverySequence: rawAlertState?.recoverySequence === true,
     };
   }
 
@@ -2526,6 +2533,7 @@ export class MonitorService {
           ? previousState.alertsSentForFailure
           : 0,
         alertsSentForRecovery: 0,
+        recoverySequence: false,
       };
     }
 
@@ -2540,6 +2548,9 @@ export class MonitorService {
       alertsSentForRecovery: continuingRecoverySequence
         ? previousState.alertsSentForRecovery
         : 0,
+      recoverySequence:
+        previousStatus === 'down' ||
+        (continuingRecoverySequence && previousState.recoverySequence === true),
     };
   }
 
@@ -2707,7 +2718,13 @@ export class MonitorService {
           );
         }
       }
-    } else if (currentStatus === 'up' && previousStatus === 'down') {
+    } else if (
+      currentStatus === 'up' &&
+      (previousStatus === 'down' ||
+        (isMultiLocationEvaluation
+          ? aggregatedAlertState?.recoverySequence
+          : latestResult?.details?.recoverySequence) === true)
+    ) {
       alertType = 'recovery';
       const recoveryThreshold =
         (monitorAlertConfig?.recoveryThreshold as number) || 1;

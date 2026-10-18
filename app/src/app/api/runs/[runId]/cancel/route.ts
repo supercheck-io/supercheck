@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, member, projects } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { getQueues } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 import {
@@ -350,7 +350,7 @@ export async function POST(
           completedAt: now,
           errorDetails: "Cancellation requested by user",
         })
-        .where(eq(runs.id, runId));
+        .where(and(eq(runs.id, runId), inArray(runs.status, ["queued", "running"])));
 
       logger.info({ runId }, "Run status updated to cancelled");
 

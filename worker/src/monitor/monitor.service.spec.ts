@@ -174,6 +174,7 @@ describe('MonitorService', () => {
     checkAndSendAlerts: jest.fn().mockResolvedValue(undefined),
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
     sendNotification: jest.fn().mockResolvedValue(undefined),
+    sendSslExpirationNotification: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockExecutionService = {
@@ -775,6 +776,53 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('SSL Checks', () => {
+    it('honors the configured warning threshold for SSL-only checks', async () => {
+      tlsState.daysUntilExpiry = 45;
+      const result = await service['executeSslCheck'](mockJobData.target, {
+        sslDaysUntilExpirationWarning: 60,
+      });
+      expect(result?.details?.warningMessage).toContain('45 days');
+    });
+
+    it('checks SSL expiration on the live result path and throttles daily', async () => {
+      const monitor = {
+        ...mockMonitor,
+        alertConfig: { enabled: true, alertOnSslExpiration: true },
+      };
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(monitor);
+      const lastAlert = jest
+        .spyOn(service, 'getLastSslAlert' as never)
+        .mockResolvedValue(null as never);
+      const record = jest
+        .spyOn(service, 'recordSslAlert' as never)
+        .mockResolvedValue(undefined as never);
+      const result: MonitorExecutionResult = {
+        monitorId: monitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+        details: {
+          sslCertificate: { daysRemaining: 10 },
+        } as MonitorExecutionResult['details'],
+      };
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+      expect(record).toHaveBeenCalledTimes(1);
+      lastAlert.mockResolvedValue(new Date() as never);
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+      monitor.alertConfig.alertOnSslExpiration = false;
+      lastAlert.mockResolvedValue(null as never);
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+    });
     it('should skip SSL check when disabled', async () => {
       const websiteJobData = {
         ...mockJobData,
@@ -925,6 +973,105 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Multi-location Alert Thresholds', () => {
+    it.each([1, 2, 3, 4, 5])(
+      'sends recovery at threshold %i after a failure, including later up results',
+      async (recoveryThreshold) => {
+        for (const multiLocation of [false, true]) {
+          mockAlertService.sendNotification.mockClear();
+          let state = service['readAggregatedAlertState'](null);
+          let previousStatus = 'down';
+          for (let success = 1; success <= recoveryThreshold; success++) {
+            const latestResult = {
+              id: 'recovered-result',
+              consecutiveSuccessCount: success,
+              alertsSentForRecovery: 0,
+              details: { recoverySequence: true },
+            };
+            mockDbService.db.query.monitorResults.findFirst.mockResolvedValue(
+              latestResult,
+            );
+            const monitor = {
+              ...mockMonitor,
+              status: previousStatus,
+              config: { aggregatedAlertState: state },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: true,
+                recoveryThreshold,
+              },
+            };
+            await service['evaluateAndSendAlert']({
+              monitorId: monitor.id,
+              monitor:
+                monitor as unknown as typeof schema.monitors.$inferSelect,
+              previousStatus,
+              currentStatus: 'up',
+              reason: 'Recovered',
+              metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+            });
+            expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(
+              success === recoveryThreshold ? 1 : 0,
+            );
+            state = service['getNextAggregatedAlertState'](
+              state,
+              previousStatus,
+              'up',
+            );
+            previousStatus = 'up';
+          }
+        }
+      },
+    );
+
+    it('does not send recovery alerts for a monitor that has always been healthy', async () => {
+      for (const multiLocation of [false, true]) {
+        mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+          consecutiveSuccessCount: 2,
+          details: { recoverySequence: false },
+        });
+        await service['evaluateAndSendAlert']({
+          monitorId: mockMonitor.id,
+          monitor: {
+            ...mockMonitor,
+            config: { aggregatedAlertState: { consecutiveSuccessCount: 1 } },
+            alertConfig: {
+              enabled: true,
+              alertOnRecovery: true,
+              recoveryThreshold: 2,
+            },
+          } as unknown as typeof schema.monitors.$inferSelect,
+          previousStatus: 'up',
+          currentStatus: 'up',
+          reason: 'Healthy',
+          metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+        });
+      }
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('persists recovery eligibility through the success streak and resets it on failure', async () => {
+      let lastResult: Record<string, unknown> = { isUp: false };
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      for (const isUp of [true, true, false, true]) {
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+        expect(lastResult.details).toMatchObject({ recoverySequence: isUp });
+      }
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {
         ...mockMonitor,
