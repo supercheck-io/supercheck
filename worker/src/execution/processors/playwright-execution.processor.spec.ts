@@ -231,6 +231,26 @@ describe('PlaywrightExecutionProcessor', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
+      mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
+        new Error('Unable to verify Kubernetes execution state for run-456'),
+      );
+      const job = createMockJob(mockTestTask);
+      await expect(processor.process(job)).rejects.toThrow(
+        /Unable to verify Kubernetes execution state/,
+      );
+      expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+        runId,
+        'failed',
+        '0',
+        expect.stringContaining('Unable to verify Kubernetes execution state'),
+      );
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+    });
+
     it.each(['test', 'job'])(
       'allows a transient %s failure to retry before persisting a successful terminal result',
       async (kind) => {

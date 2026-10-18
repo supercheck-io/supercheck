@@ -3044,7 +3044,11 @@ export class MonitorService {
         where: eq(schema.monitors.id, monitorId),
       });
 
-      if (monitor?.organizationId) {
+      // Meter container run time evidenced by Kubernetes, not the wall-clock
+      // response time, which includes scheduling and image pulls. A check whose
+      // container never started is not billed.
+      const billableMs = testResult.billableMs ?? 0;
+      if (monitor?.organizationId && billableMs > 0) {
         // Persist exact usage before returning a completed synthetic result.
         // The execution ID is unique per check, including each location.
         await this.usageTrackerService
@@ -3053,7 +3057,7 @@ export class MonitorService {
               organizationId: monitor.organizationId,
               runId: testResult.testId,
               eventType: 'playwright_execution',
-              durationMs: responseTimeMs,
+              durationMs: billableMs,
               metadata: {
                 monitorId,
                 testId: test.id,
@@ -3070,7 +3074,7 @@ export class MonitorService {
             );
           });
         await this.usageTrackerService
-          .trackPlaywrightExecution(monitor.organizationId, responseTimeMs, {
+          .trackPlaywrightExecution(monitor.organizationId, billableMs, {
             runId: testResult.testId,
             monitorId,
             testId: test.id,

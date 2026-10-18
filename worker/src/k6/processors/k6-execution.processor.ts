@@ -76,6 +76,40 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     );
   }
 
+  /**
+   * Whether a live execution exists for the run. If Kubernetes stays
+   * unreachable past the bounded wait, fail the run terminally (no retry, no
+   * usage) so it cannot sit queued forever with no sweeper looking at it.
+   */
+  private async hasActiveExecutionOrFail(runId: string): Promise<boolean> {
+    try {
+      return await this.k6ExecutionService.hasActiveExecution(runId, {
+        boundUncertainty: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.dbService.db
+        .update(schema.runs)
+        .set({
+          status: 'failed',
+          completedAt: new Date(),
+          errorDetails: message,
+        })
+        .where(
+          and(
+            eq(schema.runs.id, runId),
+            inArray(schema.runs.status, ['queued', 'running']),
+          ),
+        )
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
+          ),
+        );
+      throw new UnrecoverableError(message);
+    }
+  }
+
   async handleProcess(
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
@@ -98,11 +132,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     };
 
     const runId = taskData.runId;
-    if (
-      await this.k6ExecutionService.hasActiveExecution(runId, {
-        boundUncertainty: true,
-      })
-    ) {
+    if (await this.hasActiveExecutionOrFail(runId)) {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();
     }

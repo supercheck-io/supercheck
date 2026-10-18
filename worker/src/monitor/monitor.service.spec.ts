@@ -1545,6 +1545,41 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Synthetic Test Monitoring', () => {
+    it('does not bill a synthetic check whose container never started', async () => {
+      mockDbService.getTestById.mockResolvedValue({
+        id: 'test-1',
+        title: 'Health',
+        script: 'test("health", async () => {});',
+      });
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        organizationId: 'org-1',
+      });
+      mockUsageTrackerService.completeRunWithUsage.mockClear();
+      mockUsageTrackerService.trackPlaywrightExecution.mockClear();
+      mockExecutionService.runSingleTest.mockResolvedValue({
+        success: false,
+        error: 'Execution timed out waiting for pod',
+        executionTimeMs: 120_000,
+        billableMs: 0,
+        testId: 'test-1-execution-unique',
+        reportUrl: null,
+      });
+      await (
+        service as unknown as {
+          executeSyntheticTest: (
+            id: string,
+            config: { testId: string },
+          ) => Promise<unknown>;
+        }
+      ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.trackPlaywrightExecution,
+      ).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])(
       'preserves the check result when receipt failure is %s',
       async (failReceipt) => {
@@ -1558,7 +1593,8 @@ describe('MonitorService', () => {
         });
         mockExecutionService.runSingleTest.mockResolvedValue({
           success: true,
-          executionTimeMs: 1234,
+          executionTimeMs: 2000,
+          billableMs: 1234,
           testId: 'test-1-execution-unique',
           reportUrl: 'https://example.com/report',
         });

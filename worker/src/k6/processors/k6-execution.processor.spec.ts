@@ -297,6 +297,28 @@ describe('k6 container-start metering', () => {
     expect(runningMark![0].startedAt).not.toBeInstanceOf(Date);
   });
 
+  it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
+    const runK6Test = jest.fn();
+    const { processor, set, usage } = build(runK6Test);
+    (
+      processor as unknown as {
+        k6ExecutionService: { hasActiveExecution: jest.Mock };
+      }
+    ).k6ExecutionService.hasActiveExecution = jest
+      .fn()
+      .mockRejectedValue(
+        new Error('Unable to verify Kubernetes execution state'),
+      );
+    await expect(processor.process(job())).rejects.toThrow(
+      /Unable to verify Kubernetes execution state/,
+    );
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'failed' }),
+    );
+    expect(runK6Test).not.toHaveBeenCalled();
+    expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+  });
+
   it('creates no usage receipt when the run fails before any container started', async () => {
     const runK6Test = jest
       .fn()

@@ -76,12 +76,7 @@ export class PlaywrightExecutionProcessor
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
-    if (
-      data.runId &&
-      (await this.executionService.hasActiveExecution(data.runId, {
-        boundUncertainty: true,
-      }))
-    ) {
+    if (data.runId && (await this.hasActiveExecutionOrFail(data.runId))) {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();
     }
@@ -91,6 +86,29 @@ export class PlaywrightExecutionProcessor
       return this.processTest(job as Job<TestExecutionTask>);
     } else {
       return this.processJob(job as Job<JobExecutionTask>);
+    }
+  }
+
+  /**
+   * Whether a live execution exists for the run. If Kubernetes stays
+   * unreachable past the bounded wait, fail the run terminally (no retry, no
+   * usage) so it cannot sit queued forever with no sweeper looking at it.
+   */
+  private async hasActiveExecutionOrFail(runId: string): Promise<boolean> {
+    try {
+      return await this.executionService.hasActiveExecution(runId, {
+        boundUncertainty: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.dbService
+        .updateRunStatus(runId, 'failed', '0', message)
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
+          ),
+        );
+      throw new UnrecoverableError(message);
     }
   }
 

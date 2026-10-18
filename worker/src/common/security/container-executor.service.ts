@@ -146,10 +146,28 @@ interface ContainerStartEvidence {
 }
 
 /** Billable time for a container: zero unless Kubernetes reported it started. */
-export function computeBillableMs(evidence: ContainerStartEvidence): number {
-  if (evidence.startedAtMs === null) return 0;
+/** Kubernetes reports the zero time (epoch) for containers that never started. */
+const MIN_PLAUSIBLE_START_MS = Date.UTC(2000, 0, 1);
+/** Job activeDeadline is the timeout plus 120s; allow the same grace here. */
+const BILLABLE_DEADLINE_GRACE_MS = 150_000;
+
+export function computeBillableMs(
+  evidence: ContainerStartEvidence,
+  timeoutMs?: number,
+): number {
+  if (
+    evidence.startedAtMs === null ||
+    evidence.startedAtMs < MIN_PLAUSIBLE_START_MS
+  ) {
+    return 0;
+  }
   const end = evidence.finishedAtMs ?? Date.now();
-  return Math.max(0, end - evidence.startedAtMs);
+  const elapsed = Math.max(0, end - evidence.startedAtMs);
+  // A container cannot outlive its Job's deadline, so never bill past it
+  // (guards against clock skew or malformed timestamps).
+  return timeoutMs === undefined
+    ? elapsed
+    : Math.min(elapsed, timeoutMs + BILLABLE_DEADLINE_GRACE_MS);
 }
 
 /** Internal validated resource limits */
@@ -1001,7 +1019,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: combinedLogs,
         stderr: '',
         duration,
-        billableMs: computeBillableMs(startEvidence),
+        billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
         cancelled: killed,
         error: timedOut
@@ -1019,7 +1037,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: logCollector.getOutput(),
         stderr: error instanceof Error ? error.message : String(error),
         duration: Date.now() - startTime,
-        billableMs: computeBillableMs(startEvidence),
+        billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
         error: error instanceof Error ? error.message : String(error),
       };
@@ -1795,7 +1813,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         executionState?.running?.startedAt ?? terminated?.startedAt;
       if (startedAtRaw && startEvidence.startedAtMs === null) {
         const parsed = new Date(startedAtRaw).getTime();
-        if (Number.isFinite(parsed)) startEvidence.startedAtMs = parsed;
+        if (Number.isFinite(parsed) && parsed >= MIN_PLAUSIBLE_START_MS) {
+          startEvidence.startedAtMs = parsed;
+        }
       }
       if (terminated) {
         if (terminated.finishedAt) {

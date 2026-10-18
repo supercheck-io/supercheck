@@ -446,6 +446,54 @@ describe('ContainerExecutorService', () => {
       ).toBe(0);
     });
 
+    it('bills zero for a container whose reported start is the zero time', async () => {
+      const evidence = { startedAtMs: null, finishedAtMs: null } as {
+        startedAtMs: number | null;
+        finishedAtMs: number | null;
+      };
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: {
+                  terminated: {
+                    exitCode: 128,
+                    reason: 'StartError',
+                    startedAt: '1970-01-01T00:00:00Z',
+                    finishedAt: '1970-01-01T00:00:00Z',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(evidence.startedAtMs).toBeNull();
+      expect(computeBillableMs(evidence, 1000)).toBe(0);
+    });
+
+    it('never bills past the job deadline or a negative span', () => {
+      const now = Date.now();
+      expect(
+        computeBillableMs(
+          { startedAtMs: now - 10 * 60_000, finishedAtMs: null },
+          60_000,
+        ),
+      ).toBe(60_000 + 150_000);
+      expect(
+        computeBillableMs({ startedAtMs: now, finishedAtMs: now - 5_000 }),
+      ).toBe(0);
+    });
+
     it('bills a still-running container from its start until now', () => {
       const started = Date.now() - 5_000;
       const billable = computeBillableMs({
