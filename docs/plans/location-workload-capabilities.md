@@ -51,14 +51,11 @@ What goes where:
 - The app builds `k6-<code>` queue maps only for k6-capable locations. `K6DynamicWorkerService` discovers `is_enabled AND supports_k6` locations. A region therefore can't receive regional k6 work unless both the DB and the worker allow it.
 - At startup, the worker logs a warning when its env and the DB disagree, e.g. it consumes `k6` but `supports_k6=false`. It does not change anything automatically.
 
-**Runbook for a new location `sa-east`.** The same steps are captured in the internal operations runbook.
-1. Ops: copy `deploy/k8s/regions/_template` to `regions/sa-east`, which sets the code, the Hetzner DC and the server type. It includes:
-   - a Deployment with `WORKER_LOCATION`, `WORKER_QUEUES=monitor`, `EXECUTION_NODE_SELECTOR=region=sa-east`, and node affinity
-   - a ScaledObject that watches only `monitor-sa-east`
-   - a PDB
-   - a capped autoscaler pool entry
+**Runbook for a new location `sa-east`.**
 
-   Add the region to the overlay and re-run the connection budget check.
+1. Provision the region's worker: a deployment carrying `WORKER_LOCATION` and `WORKER_QUEUES=monitor`,
+   pinned to that region's nodes, with a scaler that watches only `monitor-sa-east` and a pod
+   disruption budget. Re-check the capacity budget before adding the nodes.
 2. Super Admin: create `sa-east`. Its default is **disabled** with both capabilities **off**. Check that heartbeats arrive and the region shows Active.
 3. Enable it. Monitors can then be scheduled there.
 4. Later, to add browser support: resize the pool, validate an in-region run, then turn on `supports_browser`. No release is needed. For k6: add the `k6` token to that worker and turn on `supports_k6`.
@@ -157,15 +154,19 @@ What goes where:
   - k6 backstop.
   - `container-executor.service.spec.ts`: malformed selector fails fast in cloud production and only warns in self-hosted.
 
-## PR 2 — regional probe worker manifests, branch `feat/regional-probe-workers` (manifests only, no cluster apply)
-- `overlays/production`:
-  - Each worker gets `EXECUTION_NODE_SELECTOR=region=<loc>`. In base it stays unset, so staging and self-hosted don't inherit it.
-  - Before choosing the selector, check in terraform which nodes carry `gvisor.io/enabled`/`region`. Masters use `topology.kubernetes.io/region=<hetzner dc>`, and the README says execution pods currently land on app/master nodes. If EU masters should keep running execution pods, add a `region=eu-central` label for them in terraform. Do not change node labels on the live cluster.
-  - US and APAC workers get `WORKER_QUEUES=monitor`.
-- `base/keda-scaledobject.yaml` (or a production patch): remove the `playwright-global`, `k6-global` and `k6-<loc>` triggers from US and APAC, so they watch only their monitor queue.
-- `overlays/regional-launch`: keep EU at production's 2 replicas and KEDA min/max 2. Set US and APAC to 1 warm replica. Cap the autoscaler so primary plus fallback per region adds up to the intended node budget (1). Update `CONNECTION_BUDGET.md` and re-run `scripts/check-connection-budget.py`.
-- Introduce `deploy/k8s/regions/_template` + per-region dirs (`eu-central`, `us-east`, `asia-pacific`) so a new location is a copy-and-edit, plus the `ADDING_A_LOCATION.md` runbook. Rendered output for existing regions must be byte-equivalent to the intended diff (no accidental changes).
-- Validate with `kustomize build` for production, regional-launch, staging and self-hosted, and diff the rendered output against current main.
+## PR 2 — regional probe worker manifests (config only, no cluster apply)
+
+Deployment configuration is tracked outside this repository. The change is config only:
+
+- each regional worker gets a node selector pinning it to its region. It stays unset in the base, so staging and self-hosted don't inherit it.
+- Check which nodes carry the gVisor and region labels before choosing the selector. Execution pods currently land on app and master nodes; if EU masters should keep running them, they need a region label. Do not change node labels on a live cluster.
+- US and APAC workers get `WORKER_QUEUES=monitor`.
+- Remove the global playwright and k6 scaler triggers from US and APAC so they watch only their region's monitor queue.
+- EU keeps its current replica count. Set US and APAC to one warm replica, and cap the autoscaler so primary plus fallback per region stays inside the intended node budget.
+- Add a reusable per-region template plus per-region directories, so a new location is a copy-and-edit. Rendered output for existing regions must be byte-equivalent to the intended diff (no accidental changes).
+- Render every overlay and diff the output against the current state before applying.
+
+The capacity budget needs re-checking as part of this change.
 
 ## Deferred (explicitly out of scope here)
 - **A KEDA backlog metric that counts `:prioritized` jobs.** KEDA's redis list trigger can't read a sorted set, so this needs a metrics-api or Prometheus source. Launch runs on fixed replicas, as production already does.
@@ -179,12 +180,11 @@ What goes where:
 - Local smoke test (hybrid compose):
   - The default worker with no `WORKER_QUEUES` still runs a Playwright test, a k6 test and a synthetic monitor on `local`.
   - A worker with `WORKER_QUEUES=monitor` advertises only `monitor-*` in its heartbeat (`redis-cli GET supercheck:worker-heartbeat:*`).
-- Ops: render the overlays with `kustomize build`, and run `check-connection-budget.py`.
+- Render the deployment manifests for every overlay and confirm the capacity budget.
 - Run the code-reviewer and security-reviewer subagents on both diffs and fix their findings.
 - Handoff prompt for the DeepSeek tester: negative-scenario matrix plus backward-compatibility tests for when the setting is omitted. I'll provide it after PR 1 is up.
 
 ## Process
-- Copy this plan to `supercheck/docs/plans/location-workload-capabilities.md` after approval.
-- Branch and PR in both repos; never push to main.
+- Branch and PR for the app and worker changes; never push to main.
 - Commit as krish-kant with no AI trailers.
-- The two PR descriptions are self-contained and do not link to each other.
+- Deployment configuration is reviewed as a separate change, and change descriptions stay self-contained rather than linking across repositories.
