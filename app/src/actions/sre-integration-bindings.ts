@@ -11,10 +11,10 @@ export async function getSreIntegrationBindingSetupOptions() {
   return service.getSreIntegrationBindingSetupOptions();
 }
 
-export async function createSreIntegrationBinding(...args: Parameters<typeof service.createSreIntegrationBinding>) {
-  return service.createSreIntegrationBinding(...args);
+export async function createSreIntegrationBinding(input: Parameters<typeof service.createSreIntegrationBinding>[0]) {
+  return service.createSreIntegrationBinding(input);
 }
 
-export async function disableSreIntegrationBinding(...args: Parameters<typeof service.disableSreIntegrationBinding>) {
-  return service.disableSreIntegrationBinding(...args);
+export async function disableSreIntegrationBinding(input: Parameters<typeof service.disableSreIntegrationBinding>[0]) {
+  return service.disableSreIntegrationBinding(input);
 }

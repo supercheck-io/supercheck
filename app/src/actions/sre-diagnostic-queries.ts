@@ -11,10 +11,10 @@ export async function getSreDiagnosticQuerySetupOptions() {
   return service.getSreDiagnosticQuerySetupOptions();
 }
 
-export async function createSreDiagnosticQuery(...args: Parameters<typeof service.createSreDiagnosticQuery>) {
-  return service.createSreDiagnosticQuery(...args);
+export async function createSreDiagnosticQuery(input: Parameters<typeof service.createSreDiagnosticQuery>[0]) {
+  return service.createSreDiagnosticQuery(input);
 }
 
-export async function disableSreDiagnosticQuery(...args: Parameters<typeof service.disableSreDiagnosticQuery>) {
-  return service.disableSreDiagnosticQuery(...args);
+export async function disableSreDiagnosticQuery(input: Parameters<typeof service.disableSreDiagnosticQuery>[0]) {
+  return service.disableSreDiagnosticQuery(input);
 }

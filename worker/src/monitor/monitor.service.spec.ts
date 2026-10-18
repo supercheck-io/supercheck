@@ -1098,6 +1098,35 @@ describe('MonitorService', () => {
       }
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
+    it('continues failure counters per location, ignoring other regions', async () => {
+      const rows: Array<Record<string, unknown>> = [];
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          rows.push(value);
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async (query: { where: unknown }) => {
+          const { params } = new PgDialect().sqlToQuery(query.where as never);
+          const wanted = params.find((p) => p === 'eu' || p === 'us-east');
+          return [...rows].reverse().find((row) => row.location === wanted);
+        },
+      );
+      const save = (location: string, isUp: boolean) =>
+        service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location,
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+      await save('eu', false);
+      await save('us-east', true);
+      await save('eu', false);
+      expect(rows.map((row) => row.consecutiveFailureCount)).toEqual([1, 0, 2]);
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {
         ...mockMonitor,

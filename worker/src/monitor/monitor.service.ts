@@ -2359,9 +2359,14 @@ export class MonitorService {
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
+      // Counters are tracked per location: another region's latest result must
+      // not reset or advance this location's failure/recovery sequence.
       const lastResult = await this.dbService.db.query.monitorResults.findFirst(
         {
-          where: eq(schema.monitorResults.monitorId, resultData.monitorId),
+          where: and(
+            eq(schema.monitorResults.monitorId, resultData.monitorId),
+            eq(schema.monitorResults.location, resultData.location),
+          ),
           orderBy: [desc(schema.monitorResults.checkedAt)],
         },
       );

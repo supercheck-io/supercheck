@@ -16,10 +16,15 @@ export function encodeSseEvent({ event, data }: SseEvent) {
   return encoder.encode(`event: ${event}\ndata: ${payload}\n\n`);
 }
 
+/**
+ * The producer receives an AbortSignal that fires when the client disconnects,
+ * so long-running work (model calls, tool use) stops instead of running on.
+ */
 export function createSseStream(
-  producer: (send: (event: string, data: unknown) => void) => Promise<void>
+  producer: (send: (event: string, data: unknown) => void, signal: AbortSignal) => Promise<void>
 ) {
   let cancelled = false;
+  const disconnected = new AbortController();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: string, data: unknown) => {
@@ -28,7 +33,7 @@ export function createSseStream(
       };
 
       try {
-        await producer(send);
+        await producer(send, disconnected.signal);
         send("done", { ok: true });
       } catch (error) {
         send("error", {
@@ -38,7 +43,10 @@ export function createSseStream(
         if (!cancelled) controller.close();
       }
     },
-    cancel() { cancelled = true; },
+    cancel() {
+      cancelled = true;
+      disconnected.abort();
+    },
   });
 }
 

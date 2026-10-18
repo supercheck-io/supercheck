@@ -390,7 +390,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const stream = createSseStream(async (send) => {
+  const stream = createSseStream(async (send, signal) => {
     const conversation = parsed.data.conversationId
       ? await getSreConversation({
           organizationId: context.organizationId,
@@ -445,6 +445,7 @@ export async function POST(request: NextRequest) {
       const liveConnectorToolsEnabled =
         parsed.data.useLiveConnectorTools && canInvestigateConnectors;
       const result = await runSreAgent({
+        abortSignal: signal,
         system: buildSreTriageSystemPrompt(),
         prompt: buildChatPrompt({
           message: parsed.data.message,

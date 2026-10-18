@@ -20,6 +20,8 @@ export type RunSreAgentInput<TTools extends ToolSet = ToolSet> = {
   model?: LanguageModel;
   validateConfiguration?: boolean;
   onStepFinish?: (event: SreAgentRunEvent) => void | Promise<void>;
+  /** Aborts the run early, for example when the requesting client disconnects. */
+  abortSignal?: AbortSignal;
 };
 
 export class SreAgentEmptyResponseError extends Error {
@@ -53,7 +55,10 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
   const startedAt = Date.now();
   let stepIndex = 0;
   const modelId = getActualModelName();
-  const abortSignal = AbortSignal.timeout(budget.timeoutMs);
+  const abortSignal = AbortSignal.any([
+    AbortSignal.timeout(budget.timeoutMs),
+    ...(input.abortSignal ? [input.abortSignal] : []),
+  ]);
   const result = streamText({
     model: input.model ?? getProviderModel(),
     system,

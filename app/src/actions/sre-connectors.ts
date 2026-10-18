@@ -7,30 +7,30 @@ export async function getSreConnectors() {
   return service.getSreConnectors();
 }
 
-export async function getPrivateAgentConnectorJobResult(...args: Parameters<typeof service.getPrivateAgentConnectorJobResult>) {
-  return service.getPrivateAgentConnectorJobResult(...args);
+export async function getPrivateAgentConnectorJobResult(input: Parameters<typeof service.getPrivateAgentConnectorJobResult>[0]) {
+  return service.getPrivateAgentConnectorJobResult(input);
 }
 
 export async function getSreConnectorSetupOptions() {
   return service.getSreConnectorSetupOptions();
 }
 
-export async function createSreConnector(...args: Parameters<typeof service.createSreConnector>) {
-  return service.createSreConnector(...args);
+export async function createSreConnector(input: Parameters<typeof service.createSreConnector>[0]) {
+  return service.createSreConnector(input);
 }
 
-export async function validateSreConnector(...args: Parameters<typeof service.validateSreConnector>) {
-  return service.validateSreConnector(...args);
+export async function validateSreConnector(input: Parameters<typeof service.validateSreConnector>[0]) {
+  return service.validateSreConnector(input);
 }
 
-export async function rotateSreConnectorCredential(...args: Parameters<typeof service.rotateSreConnectorCredential>) {
-  return service.rotateSreConnectorCredential(...args);
+export async function rotateSreConnectorCredential(input: Parameters<typeof service.rotateSreConnectorCredential>[0]) {
+  return service.rotateSreConnectorCredential(input);
 }
 
-export async function searchSreConnectorEvidence(...args: Parameters<typeof service.searchSreConnectorEvidence>) {
-  return service.searchSreConnectorEvidence(...args);
+export async function searchSreConnectorEvidence(input: Parameters<typeof service.searchSreConnectorEvidence>[0]) {
+  return service.searchSreConnectorEvidence(input);
 }
 
-export async function disableSreConnector(...args: Parameters<typeof service.disableSreConnector>) {
-  return service.disableSreConnector(...args);
+export async function disableSreConnector(input: Parameters<typeof service.disableSreConnector>[0]) {
+  return service.disableSreConnector(input);
 }
