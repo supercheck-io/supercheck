@@ -299,7 +299,12 @@ test.describe("Security - Information Disclosure @auth @security", () => {
         // still satisfies the no-enumeration contract.
         expect(error).toMatch(/locked|too many/i);
       } else if (response.status() === 429) {
-        expect(error).toBe("Too many requests. Please try again later.");
+        // Better Auth rate-limits the sign-in endpoint, while the page can then
+        // surface the fail-closed lockout message from the check endpoint. Both
+        // outcomes reveal nothing about the account, so accept either.
+        expect(error).toMatch(
+          /too many requests|too many failed attempts|account locked/i,
+        );
         const retryAfter = Number(response.headers()["x-retry-after"]);
         expect(Number.isInteger(retryAfter)).toBe(true);
         expect(retryAfter).toBeGreaterThanOrEqual(0);
