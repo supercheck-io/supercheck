@@ -15,7 +15,6 @@ const logger = createLogger({ module: "extension-auth" });
 
 const EXTENSION_API_KEY_CONFIG_ID = "default";
 const EXTENSION_API_KEY_PREFIX = "ext";
-const EXTENSION_API_KEY_LIST_LIMIT = 1000;
 const EXTENSION_API_KEY_MAX_NAME_LENGTH = 32;
 const DEFAULT_EXTENSION_API_KEY_NAME = "Supercheck Recorder Extension";
 const EXTENSION_API_KEY_NAME_PREFIX = "Recorder: ";
@@ -31,11 +30,8 @@ const authRequestSchema = z.object({
 
 type ApiKeyServerApi = Pick<
   InferAPI<ReturnType<typeof apiKey>["endpoints"]>,
-  "createApiKey" | "listApiKeys" | "updateApiKey"
+  "createApiKey" | "updateApiKey"
 >;
-type ListedApiKey = Awaited<
-  ReturnType<ApiKeyServerApi["listApiKeys"]>
->["apiKeys"][number];
 
 const apiKeyServerApi = auth.api as typeof auth.api & ApiKeyServerApi;
 
@@ -79,16 +75,55 @@ function getPermissionStatements(rawPermissions: unknown): string[] {
   });
 }
 
-function isExtensionKey(
-  apiKey: Pick<ListedApiKey, "name" | "permissions" | "prefix">
-): boolean {
+function isExtensionKey(key: {
+  name: string | null;
+  prefix: string | null;
+  permissions: unknown;
+}): boolean {
   return (
-    apiKey.name?.startsWith(EXTENSION_API_KEY_NAME_PREFIX) === true ||
-    apiKey.prefix === EXTENSION_API_KEY_PREFIX ||
-    getPermissionStatements(apiKey.permissions).includes(
+    key.name?.startsWith(EXTENSION_API_KEY_NAME_PREFIX) === true ||
+    key.prefix === EXTENSION_API_KEY_PREFIX ||
+    getPermissionStatements(key.permissions).includes(
       EXTENSION_PERMISSION_STATEMENT
     )
   );
+}
+
+/**
+ * Enabled extension keys for a user, read straight from the apikey table.
+ *
+ * Better Auth's `listApiKeys` pages through its adapter, and that adapter caps
+ * unpaginated `findMany` calls at 100 rows — so `limit: 1000` had no effect. Once
+ * an account held more than 100 API keys, the newest extension key fell outside
+ * the window: DELETE revoked nothing, the key stayed enabled, and POST kept
+ * answering "Extension already connected", leaving the recorder unable to
+ * reconnect. The predicate mirrors the one POST already uses to detect an
+ * existing connection.
+ *
+ * A key carrying the extension permission but neither the prefix nor the name
+ * prefix is not matched, which is also true of POST's existing detection.
+ */
+async function findEnabledExtensionKeys(userId: string) {
+  return db
+    .select({
+      id: apikey.id,
+      name: apikey.name,
+      prefix: apikey.prefix,
+      permissions: apikey.permissions,
+    })
+    .from(apikey)
+    .where(
+      and(
+        eq(apikey.referenceId, userId),
+        eq(apikey.configId, EXTENSION_API_KEY_CONFIG_ID),
+        eq(apikey.enabled, true),
+        or(
+          eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
+          like(apikey.name, `${EXTENSION_API_KEY_NAME_PREFIX}%`)
+        )
+      )
+    )
+    .orderBy(apikey.createdAt);
 }
 
 function getBetterAuthErrorStatus(error: unknown) {
@@ -206,17 +241,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { apiKeys } = await apiKeyServerApi.listApiKeys({
-      headers: requestHeaders,
-      query: {
-        configId: EXTENSION_API_KEY_CONFIG_ID,
-        limit: EXTENSION_API_KEY_LIST_LIMIT,
-      },
-    });
+    // Fall back to the direct read for keys that match by permissions rather
+    // than by prefix or name. listApiKeys cannot be used here: its adapter caps
+    // unpaginated reads, so the newest key is invisible past 100 API keys.
+    const existingExtensionKey = (await findEnabledExtensionKeys(userId)).find(
+      isExtensionKey
+    );
 
-    const existingExtensionKey = apiKeys.find(isExtensionKey);
-
-    if (existingExtensionKey && existingExtensionKey.enabled !== false) {
+    if (existingExtensionKey) {
       // Return existing key info (but not the key itself for security)
       return NextResponse.json({
         success: true,
@@ -295,22 +327,12 @@ export async function DELETE(request: NextRequest) {
 
     const userId = session.user.id;
 
-    const { apiKeys } = await apiKeyServerApi.listApiKeys({
-      headers: requestHeaders,
-      query: {
-        configId: EXTENSION_API_KEY_CONFIG_ID,
-        limit: EXTENSION_API_KEY_LIST_LIMIT,
-      },
-    });
-    const extensionKeys = apiKeys.filter(isExtensionKey);
-
+    const extensionKeys = (await findEnabledExtensionKeys(userId)).filter(
+      isExtensionKey
+    );
     let revokedCount = 0;
 
     for (const key of extensionKeys) {
-      if (!key.enabled) {
-        continue;
-      }
-
       await apiKeyServerApi.updateApiKey({
         headers: requestHeaders,
         body: {
