@@ -26,7 +26,8 @@ function isUseServerModule(source: string): boolean {
 /** Top-level parameter names of each exported function in a module. */
 function exportedFunctionParameters(source: string): Array<{ name: string; parameters: string[] }> {
   const found: Array<{ name: string; parameters: string[] }> = [];
-  const declaration = /export\s+(?:async\s+)?function\s+(\w+)\s*(?:<[^(]*>)?\s*\(/g;
+  // `export function f(`, `export async function f(` and `export const f = async (`.
+  const declaration = /export\s+(?:(?:async\s+)?function\s+(\w+)\s*(?:<[^(]*>)?|const\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^(]*>)?)\s*\(/g;
   let match: RegExpExecArray | null;
   while ((match = declaration.exec(source))) {
     let depth = 1;
@@ -43,7 +44,7 @@ function exportedFunctionParameters(source: string): Array<{ name: string; param
       }
     }
     found.push({
-      name: match[1],
+      name: match[1] ?? match[2],
       parameters: parameters
         .map((parameter) => parameter.trim().replace(/^\.\.\./, ""))
         .filter(Boolean)
@@ -85,5 +86,7 @@ describe("server action public surface", () => {
     expect(exportedFunctionParameters(bad)).toEqual([{ name: "evil", parameters: ["data", "contextOverride?"] }]);
     expect(FORBIDDEN_PARAMETER.test("contextOverride?")).toBe(true);
     expect(FORBIDDEN_PARAMETER.test("input")).toBe(false);
+    const arrow = `"use server";\nexport const evil = async (data: Data, role: string) => {}`;
+    expect(exportedFunctionParameters(arrow)).toEqual([{ name: "evil", parameters: ["data", "role"] }]);
   });
 });
