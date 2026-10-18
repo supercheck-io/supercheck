@@ -17,6 +17,12 @@ publish workflows (`build-multiarch.yml`, `cli-publish.yml`,
 - Manual `cli-publish.yml` and `recorder-publish.yml` runs only proceed as
   dry runs unless they run on a signed tag.
 
+## GitHub releases
+
+`cli-publish.yml` and `recorder-publish.yml` create the GitHub Release for their
+tag after a successful publish. Pushing the signed tag is the only manual step;
+do not create releases by hand for those tags.
+
 ## Creating a release tag
 
 ```bash
