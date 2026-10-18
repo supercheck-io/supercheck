@@ -1031,15 +1031,17 @@ export async function reconcileCapacityCounters(
     // in backoff and work waiting on a disabled or paused region.
     const actualRunningByOrg: Record<string, number> = {};
     
-    const allActiveJobs = await Promise.all(
-      executionQueues.map(q => q.getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children']))
-    );
-
-    for (const jobs of allActiveJobs) {
-      for (const job of jobs) {
-        // organizationId is always present in job data (required field)
-        const orgId = job.data?.organizationId || 'global';
-        actualRunningByOrg[orgId] = (actualRunningByOrg[orgId] || 0) + 1;
+    for (const queue of executionQueues) {
+      const seen = new Set<string>();
+      for (let offset = 0; ; offset += 250) {
+        const jobs = await queue.getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children'], offset, offset + 249);
+        for (const job of jobs) {
+          if (job.id && seen.has(job.id)) continue;
+          if (job.id) seen.add(job.id);
+          const orgId = job.data?.organizationId || 'global';
+          actualRunningByOrg[orgId] = (actualRunningByOrg[orgId] || 0) + 1;
+        }
+        if (jobs.length < 250) break;
       }
     }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getPrivateAgents } from "@/actions/private-agents";
+import { getPrivateAgents } from "@/lib/server-actions/private-agents";
 import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {

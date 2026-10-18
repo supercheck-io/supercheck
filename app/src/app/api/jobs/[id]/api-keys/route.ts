@@ -295,7 +295,7 @@ export async function POST(
         createdAt: apiKey.createdAt?.toISOString() || new Date().toISOString(),
         jobId: apiKey.jobId,
       },
-    });
+    }, { status: 201 });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

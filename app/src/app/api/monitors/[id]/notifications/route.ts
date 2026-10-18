@@ -34,7 +34,7 @@ export async function GET(
 
   try {
     // Require authentication (supports both Bearer tokens and session cookies)
-    const { userId } = await requireUserAuthContext();
+    const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -44,6 +44,10 @@ export async function GET(
 
     if (!monitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    if (isCliAuth && tokenProjectId !== monitor.projectId) {
+      return NextResponse.json({ error: "CLI token does not authorize this project" }, { status: 403 });
     }
 
     // Check if user has permission to view this monitor's notifications
@@ -103,7 +107,7 @@ export async function POST(
 
   try {
     // Require authentication (supports both Bearer tokens and session cookies)
-    const { userId } = await requireUserAuthContext();
+    const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -113,6 +117,10 @@ export async function POST(
 
     if (!monitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    if (isCliAuth && tokenProjectId !== monitor.projectId) {
+      return NextResponse.json({ error: "CLI token does not authorize this project" }, { status: 403 });
     }
 
     // Check if user has permission to update monitor notifications
@@ -206,7 +214,7 @@ export async function DELETE(
 
   try {
     // Require authentication (supports both Bearer tokens and session cookies)
-    const { userId } = await requireUserAuthContext();
+    const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
     const monitor = await db.query.monitors.findFirst({
@@ -216,6 +224,10 @@ export async function DELETE(
 
     if (!monitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    if (isCliAuth && tokenProjectId !== monitor.projectId) {
+      return NextResponse.json({ error: "CLI token does not authorize this project" }, { status: 403 });
     }
 
     // Check if user has permission to update monitor notifications

@@ -251,6 +251,10 @@ export class K6ExecutionService {
   /**
    * Execute a k6 performance test
    */
+  async hasActiveExecution(runId: string): Promise<boolean> {
+    return this.containerExecutorService.hasActiveExecution(runId);
+  }
+
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
     const resolved = await this.variableResolverService.resolveProjectVariables(
       task.projectId,

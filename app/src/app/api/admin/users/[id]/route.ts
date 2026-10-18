@@ -12,7 +12,7 @@ import { requireAdmin } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 
@@ -140,9 +140,12 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       await tx.update(postmortems).set({ createdByUserId: null }).where(eq(postmortems.createdByUserId, userId));
       await tx.update(projectVariables).set({ createdByUserId: null }).where(eq(projectVariables.createdByUserId, userId));
 
-      // 3. Delete notifications and audit logs owned by the user
+      // 3. Preserve audit history while removing its user foreign key
       await tx.delete(notifications).where(eq(notifications.userId, userId));
-      await tx.delete(auditLogs).where(eq(auditLogs.userId, userId));
+      await tx.update(auditLogs).set({
+        userId: null,
+        details: sql`coalesce(${auditLogs.details}, '{}'::jsonb) || jsonb_build_object('deletedUserId', ${userId}::text)`,
+      }).where(eq(auditLogs.userId, userId));
 
       // 4. Delete user — CASCADE handles: session, account, member,
       //    project_members, invitation.inviterId

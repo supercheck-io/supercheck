@@ -19,6 +19,7 @@ import { Logger } from '@nestjs/common';
 // Mock dependencies
 const mockExecutionService = {
   runSingleTest: jest.fn(),
+  hasActiveExecution: jest.fn().mockResolvedValue(false),
   runJob: jest.fn(),
 };
 
@@ -210,6 +211,22 @@ describe('PlaywrightExecutionProcessor', () => {
   // ==========================================================================
 
   describe('Single Test Execution', () => {
+    it('delays a duplicate attempt without changing status or starting another pod', async () => {
+      mockExecutionService.hasActiveExecution.mockResolvedValueOnce(true);
+      const job = createMockJob(mockTestTask);
+      job.moveToDelayed = jest.fn().mockResolvedValue(undefined);
+      await expect(processor.process(job)).rejects.toThrow();
+      expect(job.moveToDelayed).toHaveBeenCalledWith(
+        expect.any(Number),
+        job.token,
+      );
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+    });
+
     it.each(['test', 'job'])(
       'allows a transient %s failure to retry before persisting a successful terminal result',
       async (kind) => {
@@ -224,6 +241,15 @@ describe('PlaywrightExecutionProcessor', () => {
         execute.mockRejectedValueOnce(new Error('temporary failure'));
         await expect(processor.process(job)).rejects.toThrow(
           'temporary failure',
+        );
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            runId: `${task.runId}:attempt:0`,
+            eventType: 'playwright_execution',
+          }),
+          expect.any(Function),
         );
         expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
         expect(
@@ -326,6 +352,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'failed',
           '0',
           'Container failed',
+          mockDbService.db,
         );
       });
 
@@ -893,6 +920,7 @@ describe('PlaywrightExecutionProcessor', () => {
           'failed',
           '0',
           'Process exited with code 137',
+          mockDbService.db,
         );
       });
     });

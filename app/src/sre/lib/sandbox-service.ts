@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import { posix as posixPath } from "path";
-import { Writable } from "stream";
+import { Readable, Writable } from "stream";
 import type * as k8s from "@kubernetes/client-node";
 import { z } from "zod";
 
@@ -12,7 +12,7 @@ const logger = createLogger({ module: "sre-sandbox" }) as {
   warn: (obj: unknown, msg?: string) => void;
 };
 
-const DEFAULT_NAMESPACE = "supercheck-execution";
+const DEFAULT_NAMESPACE = "supercheck-sre-workspaces";
 const DEFAULT_TTL_SECONDS = 3600;
 const DEFAULT_CPU_REQUEST = "500m";
 const DEFAULT_MEMORY_REQUEST = "512Mi";
@@ -402,10 +402,10 @@ export class KubernetesAgentSandboxAdapter implements AgentSandboxAdapter {
       namespace,
       podName,
       containerName,
-      ["/bin/sh", "-c", wrappedCommand],
+      ["/bin/sh", "-s"],
       stdout,
       stderr,
-      null,
+      Readable.from([wrappedCommand]),
       false,
     );
 

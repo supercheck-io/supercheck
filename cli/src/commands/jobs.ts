@@ -1,3 +1,4 @@
+import { canRevealSecrets } from "../utils/redact.js"
 import { waitForRun } from '../utils/wait.js'
 import { Command } from 'commander'
 import { readFileSync } from 'node:fs'
@@ -212,6 +213,9 @@ keysCommand
   .requiredOption('--name <name>', 'Key name')
   .option('--expires-in <seconds>', 'Expiry in seconds (min 60)')
   .action(async (jobId: string, options: { name: string; expiresIn?: string }) => {
+    if (!canRevealSecrets()) {
+      throw new CLIError('Use --show-secrets when creating a trigger key so you can save its one-time value.', ExitCode.ConfigError)
+    }
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = { name: options.name }

@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { session, user, member, projects, projectMembers, organization } from "@/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, gt } from "drizzle-orm";
 import { normalizeRole } from "./role-normalizer";
 import { Role } from "./permissions-client";
 
@@ -65,7 +65,7 @@ export async function getUnifiedAuthContext(
       })
       .from(session)
       .leftJoin(user, eq(session.userId, user.id))
-      .where(eq(session.token, token))
+      .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
       .limit(1);
 
     const s = sessionResult[0];

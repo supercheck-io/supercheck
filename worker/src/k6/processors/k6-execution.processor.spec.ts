@@ -89,6 +89,7 @@ describe('k6 durable completion', () => {
       const processor = new K6ExecutionProcessor(
         {
           runK6Test: execute,
+          hasActiveExecution: jest.fn().mockResolvedValue(false),
         } as unknown as Dependencies[0],
         { db } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
@@ -117,7 +118,10 @@ describe('k6 durable completion', () => {
         await expect(processor.process(job)).rejects.toThrow(
           'temporary failure',
         );
-        expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+        expect(usage.completeRunWithUsage).toHaveBeenCalledWith(
+          expect.objectContaining({ runId: 'run-id:attempt:0' }),
+          expect.any(Function),
+        );
         expect(outsideSet).toHaveBeenCalledTimes(1);
         expect(outsideSet).toHaveBeenLastCalledWith(
           expect.objectContaining({ status: 'running' }),
@@ -159,7 +163,10 @@ describe('k6 location capability backstop', () => {
     const db = { update: jest.fn().mockReturnValue({ set }), execute };
     const runK6Test = jest.fn();
     const processor = new K6ExecutionProcessor(
-      { runK6Test } as unknown as Dependencies[0],
+      {
+        runK6Test,
+        hasActiveExecution: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[0],
       { db } as unknown as Dependencies[1],
       { get: () => 'us-east' } as unknown as Dependencies[2],
       {} as Dependencies[3],

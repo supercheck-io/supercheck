@@ -7,6 +7,7 @@
  * Uses Pino for structured logging alongside database persistence.
  */
 
+import { getAuditActor } from "./audit-actor";
 import { db } from "@/utils/db";
 import {
   auditLogs as audit_log,
@@ -64,6 +65,8 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
       userAgent = event.userAgent || "system";
     }
 
+    const actor = await getAuditActor(event.userId);
+
     // Prepare audit log entry according to schema
     const auditEntry = {
       userId: event.userId || null,
@@ -80,6 +83,7 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
         userAgent: event.userAgent || userAgent,
         ...(event.metadata ?? {}),
         ...(event.metadata ? { metadata: { ...event.metadata } } : {}),
+        ...actor,
       },
     };
 

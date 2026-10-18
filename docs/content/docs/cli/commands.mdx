@@ -30,6 +30,8 @@ For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` pro
 
 List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata. Local test and job runs emit bounded NDJSON `local.result` records in JSON mode. Errors are emitted on stderr. Sensitive fields are redacted by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers (monitor target URLs stay visible and credential headers are masked); use `--show-secrets` only when the output can be handled securely.
 
+Creating a trigger key requires `--show-secrets` to display its one-time plaintext value. The command fails before making the request when the flag is absent.
+
 ## Exit Codes
 
 | Code | Meaning | Example |

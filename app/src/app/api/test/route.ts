@@ -20,6 +20,7 @@ import {
   LocationWorkloadUnavailableError,
   resolveProjectK6Location,
 } from "@/lib/location-registry";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
@@ -55,7 +56,13 @@ export async function POST(request: NextRequest) {
 	      );
 	    }
 
-	    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+	    try {
+        await subscriptionService.blockUntilSubscribed(organizationId);
+        await subscriptionService.requireValidPolarCustomer(organizationId);
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Subscription validation failed" }, { status: 402 });
+      }
+      const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
 	    if (spendingBlock.blocked) {
 	      return NextResponse.json(
 	        buildBillingBlockedResponse(spendingBlock.reason),

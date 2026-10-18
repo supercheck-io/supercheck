@@ -3,7 +3,7 @@
   "info": {
     "title": "Supercheck API",
     "version": "1.0.0",
-    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting \u2014 all managed via API or CLI.",
+    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting — all managed via API or CLI.",
     "contact": {
       "name": "Supercheck",
       "url": "https://supercheck.io"
@@ -963,7 +963,7 @@
       "post": {
         "operationId": "createCliToken",
         "summary": "Create a CLI token",
-        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response \u2014 store it securely.",
+        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response — store it securely.",
         "tags": [
           "Authentication"
         ],
@@ -996,7 +996,7 @@
         },
         "responses": {
           "201": {
-            "description": "Token created. The `key` field contains the plain token \u2014 store it securely, it cannot be retrieved again.",
+            "description": "Token created. The `key` field contains the plain token — store it securely, it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1474,7 +1474,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
-            "description": "Rate limited \u2014 too many trigger requests",
+            "description": "Rate limited — too many trigger requests",
             "content": {
               "application/json": {
                 "schema": {
@@ -1627,9 +1627,6 @@
                       "type": "string",
                       "format": "uuid"
                     },
-                    "status": {
-                      "type": "string"
-                    },
                     "message": {
                       "type": "string"
                     }
@@ -1709,7 +1706,7 @@
       "post": {
         "operationId": "createJobApiKey",
         "summary": "Create a trigger key",
-        "description": "Create a new API trigger key for a job. The plain key is returned only once \u2014 store it securely.",
+        "description": "Create a new API trigger key for a job. The plain key is returned only once — store it securely.",
         "tags": [
           "Trigger Keys"
         ],
@@ -1740,7 +1737,7 @@
         },
         "responses": {
           "201": {
-            "description": "Trigger key created. Store the `key` value securely \u2014 it cannot be retrieved again.",
+            "description": "Trigger key created. Store the `key` value securely — it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2271,7 +2268,7 @@
                 "custom"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
           }
         ],
         "responses": {
@@ -2337,7 +2334,7 @@
                       "custom"
                     ],
                     "default": "browser",
-                    "description": "Test type. Aliases accepted: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+                    "description": "Test type. Aliases accepted: `playwright` → `browser`, `k6` → `performance`"
                   },
                   "description": {
                     "type": "string"
@@ -2795,15 +2792,35 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
                     "runId": {
                       "type": "string",
                       "format": "uuid"
                     },
-                    "message": {
-                      "type": "string"
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "running",
+                        "queued"
+                      ]
+                    },
+                    "position": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Queue position when the test is queued; omitted when it starts immediately."
+                    },
+                    "testType": {
+                      "type": "string",
+                      "enum": [
+                        "browser",
+                        "api",
+                        "performance",
+                        "database",
+                        "custom"
+                      ]
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "Resolved execution location for performance tests; omitted for other test types."
                     }
                   }
                 }
@@ -3288,11 +3305,16 @@
                 "properties": {
                   "key": {
                     "type": "string",
-                    "example": "API_BASE_URL"
+                    "example": "API_BASE_URL",
+                    "minLength": 4,
+                    "maxLength": 20,
+                    "pattern": "^[A-Z][A-Z0-9_]*$",
+                    "description": "Uppercase letters, digits, and underscores only; cannot use the SUPERCHECK_ prefix or reserved system names."
                   },
                   "value": {
                     "type": "string",
-                    "example": "https://api.example.com"
+                    "example": "https://api.example.com",
+                    "maxLength": 10000
                   },
                   "isSecret": {
                     "type": "boolean",
@@ -3381,10 +3403,15 @@
                 "type": "object",
                 "properties": {
                   "key": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 20,
+                    "pattern": "^[A-Z][A-Z0-9_]*$",
+                    "description": "Uppercase letters, digits, and underscores only; cannot use the SUPERCHECK_ prefix or reserved system names."
                   },
                   "value": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 10000
                   },
                   "isSecret": {
                     "type": "boolean"
@@ -5171,7 +5198,7 @@
       "put": {
         "operationId": "updateOrganization",
         "summary": "Update organization",
-        "description": "Update the organization name (2\u201350 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request; CLI tokens retain their existing authorization.",
+        "description": "Update the organization name (2–50 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request; CLI tokens retain their existing authorization.",
         "tags": [
           "Organizations"
         ],

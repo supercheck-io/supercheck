@@ -1,6 +1,9 @@
 import { validateMonitorConfiguration } from "./monitor-validation";
 
 describe("validateMonitorConfiguration", () => {
+  it.each(["2001:4860:4860::8888", "2606:4700:4700::1111"])("accepts IPv6 target %s while worker SSRF remains authoritative", (target) => {
+    expect(validateMonitorConfiguration({ type: "port_check", target, config: { port: 443, protocol: "tcp" } })).toEqual({ success: true });
+  });
   it.each([1, 443, 65535])("accepts valid port %i", (port) => {
     expect(
       validateMonitorConfiguration({

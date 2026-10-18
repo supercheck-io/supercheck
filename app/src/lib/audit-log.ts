@@ -5,6 +5,7 @@
  * Used for compliance, security, and debugging purposes.
  */
 
+import { getAuditActor } from "./audit-actor";
 import { db } from "@/utils/db";
 import { auditLogs } from "@/db/schema";
 import type { AuditDetails } from "@/db/schema/types";
@@ -41,7 +42,7 @@ export async function createAuditLog(entry: AuditLogEntry): Promise<string | nul
       organizationId: entry.organizationId,
       userId: entry.userId,
       action: entry.action,
-      details: entry.details,
+      details: { ...entry.details, ...await getAuditActor(entry.userId) },
     }).returning({ id: auditLogs.id });
 
     return result?.id ?? null;

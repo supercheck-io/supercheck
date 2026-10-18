@@ -361,6 +361,10 @@ export class ExecutionService implements OnModuleDestroy {
    * Runs a single test defined by the task data.
    * Container-only execution: No host filesystem dependencies
    */
+  async hasActiveExecution(runId: string): Promise<boolean> {
+    return this.containerExecutorService.hasActiveExecution(runId);
+  }
+
   async runSingleTest(
     task: TestExecutionTask,
     bypassConcurrencyCheck = false,

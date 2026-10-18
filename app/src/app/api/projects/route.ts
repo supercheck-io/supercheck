@@ -17,11 +17,15 @@ import { subscriptionService } from "@/lib/services/subscription-service";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId, organizationId: authOrgId, isCliAuth } = await requireUserAuthContext();
+    const { userId, organizationId: authOrgId, isCliAuth, projectId: tokenProjectId } = await requireUserAuthContext();
 
     // Get organization ID from query params or use auth context organization
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get("organizationId");
+
+    if (isCliAuth && organizationId && organizationId !== authOrgId) {
+      return NextResponse.json({ error: "CLI token does not authorize this organization" }, { status: 403 });
+    }
 
     // Browser project selection includes invited teams. CLI enumeration retains
     // its organization scope unless the caller explicitly requests another team.
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: userProjects,
+      data: isCliAuth && tokenProjectId ? userProjects.filter((project) => project.id === tokenProjectId) : userProjects,
       currentProject: currentProject,
     });
   } catch (error) {

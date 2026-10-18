@@ -5,7 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { updateVariableSchema, createFileVariableSchema, keySchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
-import { encryptValue, decryptValue } from "@/lib/encryption";
+import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { z } from "zod";
@@ -21,7 +21,7 @@ export async function GET(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
 
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {
@@ -122,7 +122,7 @@ export async function PUT(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
 
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {
@@ -256,25 +256,10 @@ export async function PUT(
           updateData.encryptedValue = encryptValue(existingVariable.value, projectId);
           updateData.value = "[ENCRYPTED]";
         } else {
-          if (!existingVariable.encryptedValue) {
-            return NextResponse.json(
-              {
-                error:
-                  "Cannot unmark as secret without providing a value. The encrypted value is unavailable.",
-              },
-              { status: 400 }
-            );
-          }
-
-          try {
-            updateData.value = decryptValue(existingVariable.encryptedValue, projectId);
-            updateData.encryptedValue = null;
-          } catch {
-            return NextResponse.json(
-              { error: "Cannot decrypt existing secret value" },
-              { status: 400 }
-            );
-          }
+          return NextResponse.json(
+            { error: "Provide a replacement value to convert a secret to plaintext. Use the audited decrypt action to reveal an existing secret." },
+            { status: 400 },
+          );
         }
       }
 
@@ -335,7 +320,7 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
 
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {

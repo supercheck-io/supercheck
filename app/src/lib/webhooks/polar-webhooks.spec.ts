@@ -612,6 +612,15 @@ describe("Polar webhook helpers", () => {
       else expect(write).not.toHaveProperty("subscriptionPlan");
     });
 
+    it("treats a canceled snapshot without product_id as retaining its current plan", async () => {
+      mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123", subscriptionPlan: "pro", subscriptionStatus: "canceled", subscriptionId: "sub_123", polarCustomerId: "cus_123",
+      });
+      await handleSubscriptionCanceled({ id: "evt_cancel_no_product", type: "subscription.canceled", data: { id: "sub_123", status: "active", cancel_at_period_end: true, customer_id: "cus_123" } });
+      expect(runOrderedPolarEvent).toHaveBeenCalledWith(expect.objectContaining({ snapshot: { status: "canceled", plan: "pro" } }), expect.any(Function));
+    });
+
     it("marks subscriptions past_due from the explicit Polar event", async () => {
       mockWebhookClaim();
       (db.query.organization.findFirst as jest.Mock).mockResolvedValue({

@@ -20,7 +20,7 @@ export async function GET(
     const projectId = resolvedParams.id;
     const variableId = resolvedParams.variableId;
 
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
 
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {

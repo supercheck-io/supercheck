@@ -15,7 +15,8 @@ import { DEFAULT_OVERAGE_PRICING_CENTS } from "@/lib/billing/pricing-defaults";
  *   API-level enforcement, and batch retry of failed syncs via scheduler.
  */
 
-import { db, postgresClient } from "@/utils/db";
+import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
+import { db } from "@/utils/db";
 import {
   organization,
   usageEvents,
@@ -79,7 +80,6 @@ export interface SpendingStatus {
   remainingCents: number | null;
 }
 
-const USAGE_SYNC_ADVISORY_LOCK_KEY = 792401305;
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
 export { POLAR_API_VERSION };
 export const CLOSED_USAGE_PERIOD_ERROR = "Billing period closed; manual reconciliation required";
@@ -497,20 +497,9 @@ class PolarUsageService {
     }
 
     try {
-      // The production database path uses transaction pooling, so consecutive
-      // statements can reach different PostgreSQL backends. A transaction-scoped
-      // advisory lock is pinned to one backend and releases automatically.
-      const result = await postgresClient.begin(async (transaction) => {
-        const lockResult = (await transaction`
-          SELECT pg_try_advisory_xact_lock(${USAGE_SYNC_ADVISORY_LOCK_KEY}) AS locked
-        `) as Array<{ locked: boolean }>;
-
-        if (!lockResult[0]?.locked) {
-          return null;
-        }
-
-        return this.syncPendingEventsLocked(batchSize);
-      });
+      const result = await withUsageSyncLease((assertOwned) =>
+        this.syncPendingEventsLocked(batchSize, assertOwned),
+      );
 
       if (!result) {
         logger.info({}, "Usage sync already running; skipping this run");
@@ -529,7 +518,7 @@ class PolarUsageService {
     }
   }
 
-  private async syncPendingEventsLocked(batchSize: number): Promise<UsageSyncResult> {
+  private async syncPendingEventsLocked(batchSize: number, assertOwned: () => void): Promise<UsageSyncResult> {
     const errors: string[] = [];
 
     try {
@@ -589,6 +578,7 @@ class PolarUsageService {
       let failed = 0;
 
       for (const event of pendingEvents) {
+        assertOwned();
         try {
           const synced = await this.syncEventToPolar(event.id);
           if (synced) {
@@ -606,6 +596,7 @@ class PolarUsageService {
         }
       }
 
+      assertOwned();
       // Run notification checks while this replica still owns the global usage
       // sync lock. The durable notification ledger suppresses repeat thresholds.
       try {

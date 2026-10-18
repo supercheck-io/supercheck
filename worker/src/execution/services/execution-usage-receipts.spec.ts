@@ -124,6 +124,27 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
     ]);
   });
 
+  it('keeps retry attempts and final completion separately idempotent', async () => {
+    const retry = {
+      ...completion,
+      runId: `${runId}:attempt:0`,
+      metadata: { executionRunId: runId, retryAttempt: 0 },
+    };
+    await persistExecutionReceipt(database, retry, async () => {});
+    await persistExecutionReceipt(database, retry, async () => {});
+    await persistExecutionReceipt(database, completion, persistResult);
+    const receipts = await database
+      .select()
+      .from(schema.executionUsageReceipts);
+    expect(receipts).toHaveLength(2);
+    expect(receipts.map((receipt) => receipt.runId)).toEqual(
+      expect.arrayContaining([runId, `${runId}:attempt:0`]),
+    );
+    expect(
+      receipts.reduce((sum, receipt) => sum + Number(receipt.units), 0),
+    ).toBeCloseTo((2 * 61) / 60, 3);
+  });
+
   afterAll(async () => {
     if (originalToken === undefined) delete process.env.POLAR_ACCESS_TOKEN;
     else process.env.POLAR_ACCESS_TOKEN = originalToken;

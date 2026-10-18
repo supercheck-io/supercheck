@@ -153,7 +153,7 @@ describe('Formatter', () => {
       setOutputFormat('json')
       const data = { id: '123', name: 'Test' }
       outputDetail(data)
-      expect(mockOutput).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
+      expect(mockOutput).toHaveBeenCalledWith(JSON.stringify(data, null, 2), {})
       setOutputFormat('table')
     })
   })

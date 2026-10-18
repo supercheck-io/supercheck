@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateJob } from "@/actions/update-job";
+import { updateJob } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, runs, reports, tests as testsTable, testTags, tags } from "@/db/schema";
 import { eq, inArray, asc, and } from "drizzle-orm";

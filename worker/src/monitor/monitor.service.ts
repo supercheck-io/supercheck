@@ -164,7 +164,10 @@ export class MonitorService {
       }
       const billing = await this.usageTrackerService.shouldBlockExecution(
         monitor.organizationId ?? '',
-        { checkSpendingLimit: jobData.type === 'synthetic_test' },
+        {
+          checkSpendingLimit: jobData.type === 'synthetic_test',
+          monitorId: jobData.monitorId,
+        },
       );
       if (billing.blocked) {
         // Billing holds are not probe failures and must not trigger downtime
@@ -2034,6 +2037,16 @@ export class MonitorService {
           isUp = false;
           details = {
             errorMessage: 'Certificate has expired',
+            sslCertificate,
+            responseTimeMs,
+          };
+        } else if (!certificateInfo.authorized) {
+          status = 'down';
+          isUp = false;
+          details = {
+            errorMessage:
+              certificateInfo.authorizationError?.message ||
+              'Certificate trust or hostname verification failed',
             sslCertificate,
             responseTimeMs,
           };

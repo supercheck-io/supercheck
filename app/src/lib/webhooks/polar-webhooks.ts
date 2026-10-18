@@ -1821,7 +1821,7 @@ function orderedHandler(
         // A deferred plan change keeps the current plan, so compare with that.
         snapshot: eventType === "order.paid" ? undefined : {
           status: getSubscriptionStatusFromPayload(payload),
-          plan: isFuturePendingProduct(payload, getProductIdFromPayload(payload))
+          plan: (eventType === "subscription.canceled" && !getProductIdFromPayload(payload)) || isFuturePendingProduct(payload, getProductIdFromPayload(payload))
             ? org.subscriptionPlan
             : getPlanFromProductId(getProductIdFromPayload(payload) || null),
         },

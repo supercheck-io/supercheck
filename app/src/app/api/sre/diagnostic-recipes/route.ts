@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import {
   getSreDiagnosticQueries,
   getSreDiagnosticQuerySetupOptions,
-} from "@/actions/sre-diagnostic-queries";
+} from "@/lib/server-actions/sre-diagnostic-queries";
 import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {

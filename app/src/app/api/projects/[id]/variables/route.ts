@@ -17,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
     const resolvedParams = await params;
     const projectId = resolvedParams.id;
 
@@ -102,7 +102,7 @@ export async function POST(
     const resolvedParams = await params;
     const projectId = resolvedParams.id;
 
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
 
     // Resolve permission context (2-3 DB queries, replaces separate project + permission lookups)
     const permCtx = await resolveProjectPermissionContext(userId, projectId);

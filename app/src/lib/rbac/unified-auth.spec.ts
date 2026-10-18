@@ -7,7 +7,7 @@ jest.mock("drizzle-orm", () => ({
 }));
 
 import { db } from "@/utils/db";
-import { projects } from "@/db/schema";
+import { projects, session } from "@/db/schema";
 import { getUnifiedAuthContext } from "./unified-auth";
 
 describe("organization and project consistency in unified auth", () => {
@@ -16,13 +16,24 @@ describe("organization and project consistency in unified auth", () => {
     return { from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
       where: track ? where : jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(data) };
   }
+  const authWhere = jest.fn().mockReturnThis();
   beforeEach(() => {
     jest.clearAllMocks();
     where.mockReturnThis();
-    (db.select as jest.Mock).mockReturnValueOnce(rows([{ userId: "user", role: "project_viewer", activeOrgId: "org-b", activeProjectId: "project-a" }]))
+    (db.select as jest.Mock).mockReturnValueOnce({ ...rows([{ userId: "user", role: "project_viewer", activeOrgId: "org-b", activeProjectId: "project-a" }]), where: authWhere })
       .mockReturnValueOnce(rows([], true));
   });
 
+  it("filters expired sessions in the database before resolving project membership", async () => {
+    await getUnifiedAuthContext("token");
+    const filter = authWhere.mock.calls[0][0];
+    expect(filter.conditions[0]).toEqual({ column: session.token, value: "token" });
+    const expiration = filter.conditions[1];
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    const predicate = new PgDialect().sqlToQuery(expiration);
+    expect(predicate.sql).toContain('"session"."expires_at" >');
+    expect(Math.abs(Date.parse(String(predicate.params[0])) - Date.now())).toBeLessThan(1000);
+  });
   it("filters stale implicit project selection to its selected host organization", async () => {
     const context = await getUnifiedAuthContext("token");
     expect(where).toHaveBeenCalledWith({ conditions: [

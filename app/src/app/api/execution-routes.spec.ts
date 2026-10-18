@@ -134,9 +134,11 @@ const { checkPermissionWithContext: mockCheckPermissionWithContext } =
 
 const {
   addTestToQueue: mockAddTestToQueue,
+  addK6TestToQueue: mockAddK6TestToQueue,
   addJobToQueue: mockAddJobToQueue,
 } = jest.requireMock("@/lib/queue") as {
   addTestToQueue: jest.Mock;
+  addK6TestToQueue: jest.Mock;
   addJobToQueue: jest.Mock;
 };
 
@@ -338,6 +340,14 @@ describe("Execution route regressions", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("Invalid trigger value"),
     });
+  });
+
+  it("rejects unsubscribed Playground execution before queue admission", async () => {
+    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockRejectedValueOnce(new Error("Subscription required"));
+    const response = await executePlaygroundTest(new NextRequest("http://localhost/api/test", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ script: "test('x', () => {})" }) }));
+    expect(response.status).toBe(402);
+    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+    expect(mockAddK6TestToQueue).not.toHaveBeenCalled();
   });
 
   it("rejects a non-string playground script before validation", async () => {

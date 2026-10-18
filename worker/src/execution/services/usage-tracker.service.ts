@@ -675,7 +675,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
    */
   async shouldBlockExecution(
     organizationId: string,
-    options: { checkSpendingLimit?: boolean } = {},
+    options: { checkSpendingLimit?: boolean; monitorId?: string } = {},
   ): Promise<{ blocked: boolean; reason?: string }> {
     if (isSelfHosted()) return { blocked: false };
     if (!process.env.POLAR_ACCESS_TOKEN) {
@@ -702,6 +702,30 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             org.subscriptionEndsAt.getTime() > Date.now()));
       if (!hasAccess || !org) {
         return { blocked: true, reason: 'An active subscription is required' };
+      }
+      if (options.monitorId) {
+        const limits = await this.db.query.planLimits.findFirst({
+          where: eq(schema.planLimits.plan, org.subscriptionPlan!),
+        });
+        if (!limits)
+          return { blocked: true, reason: 'Unable to verify monitor quota' };
+        const eligible = await this.db
+          .select({ id: schema.monitors.id })
+          .from(schema.monitors)
+          .where(
+            and(
+              eq(schema.monitors.organizationId, organizationId),
+              sql`${schema.monitors.status} <> 'paused'`,
+            ),
+          )
+          .orderBy(asc(schema.monitors.createdAt), asc(schema.monitors.id))
+          .limit(limits.maxMonitors);
+        if (!eligible.some((monitor) => monitor.id === options.monitorId)) {
+          return {
+            blocked: true,
+            reason: 'Monitor exceeds the current plan quota',
+          };
+        }
       }
       if (options.checkSpendingLimit === false) return { blocked: false };
       return await this.checkSpendingLimit(organizationId, org);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { auditLogs, user } from "@/db/schema";
-import { desc, eq, and, ilike, count, SQL } from "drizzle-orm";
+import { desc, eq, and, ilike, count, SQL, sql } from "drizzle-orm";
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
@@ -11,7 +11,7 @@ const logger = createLogger({ module: 'audit-api' });
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId, organizationId } = await requireUserAuthContext();
+    const { userId, organizationId, projectId, isCliAuth } = await requireUserAuthContext();
     
     if (!organizationId) {
       logger.warn('No active organization found for audit request');
@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
     
     // Add search filter
     const searchConditions: SQL<unknown>[] = [];
+    if (isCliAuth && projectId) searchConditions.push(sql`${auditLogs.details}->>'projectId' = ${projectId}`);
     if (search) {
       searchConditions.push(ilike(auditLogs.action, `%${search}%`));
     }
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
     const uniqueActions = await db
       .selectDistinct({ action: auditLogs.action })
       .from(auditLogs)
-      .where(eq(auditLogs.organizationId, organizationId))
+      .where(and(eq(auditLogs.organizationId, organizationId), isCliAuth && projectId ? sql`${auditLogs.details}->>'projectId' = ${projectId}` : undefined))
       .orderBy(auditLogs.action);
 
     const totalPages = Math.ceil(totalCount / limit);

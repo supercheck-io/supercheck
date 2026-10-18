@@ -286,6 +286,39 @@ describe('UsageTrackerService execution blocking', () => {
     return { org, query, service: new UsageTrackerService({ query } as never) };
   }
 
+  it('enforces the current monitor quota deterministically and resumes on upgrade', async () => {
+    const f = admissionFixture();
+    const limit = jest.fn().mockResolvedValue([{ id: 'oldest-monitor' }]);
+    const query = {
+      from: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit,
+    };
+    const db = { query: f.query, select: jest.fn().mockReturnValue(query) };
+    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 1 } as never);
+    const service = new UsageTrackerService(db as never);
+    expect(
+      await service.shouldBlockExecution('org-1', {
+        monitorId: 'new-monitor',
+        checkSpendingLimit: false,
+      }),
+    ).toMatchObject({ blocked: true });
+    expect(query.orderBy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+    );
+    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 2 } as never);
+    limit.mockResolvedValue([{ id: 'oldest-monitor' }, { id: 'new-monitor' }]);
+    expect(
+      await service.shouldBlockExecution('org-1', {
+        monitorId: 'new-monitor',
+        checkSpendingLimit: false,
+      }),
+    ).toEqual({ blocked: false });
+    expect(limit).toHaveBeenLastCalledWith(2);
+  });
+
   it('includes SRE investigation overage in the execution spending cap', async () => {
     const f = admissionFixture();
     await expect(

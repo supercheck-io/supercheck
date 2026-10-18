@@ -423,7 +423,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       });
       return jobs.items.some(
         (job) =>
-          (job.status?.active ?? 0) > 0 &&
+          (job.status?.succeeded ?? 0) === 0 &&
           !job.status?.completionTime &&
           (job.status?.failed ?? 0) === 0,
       );

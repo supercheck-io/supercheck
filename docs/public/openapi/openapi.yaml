@@ -1099,8 +1099,6 @@ paths:
                   jobId:
                     type: string
                     format: uuid
-                  status:
-                    type: string
                   message:
                     type: string
         "400":
@@ -1877,13 +1875,31 @@ paths:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
                   runId:
                     type: string
                     format: uuid
-                  message:
+                  status:
                     type: string
+                    enum:
+                      - running
+                      - queued
+                  position:
+                    type: integer
+                    minimum: 0
+                    description: Queue position when the test is queued; omitted when it starts
+                      immediately.
+                  testType:
+                    type: string
+                    enum:
+                      - browser
+                      - api
+                      - performance
+                      - database
+                      - custom
+                  location:
+                    type: string
+                    description: Resolved execution location for performance tests; omitted for
+                      other test types.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
@@ -2204,9 +2220,15 @@ paths:
                 key:
                   type: string
                   example: API_BASE_URL
+                  minLength: 4
+                  maxLength: 20
+                  pattern: ^[A-Z][A-Z0-9_]*$
+                  description: Uppercase letters, digits, and underscores only; cannot use the
+                    SUPERCHECK_ prefix or reserved system names.
                 value:
                   type: string
                   example: https://api.example.com
+                  maxLength: 10000
                 isSecret:
                   type: boolean
                   default: false
@@ -2268,8 +2290,14 @@ paths:
               properties:
                 key:
                   type: string
+                  minLength: 4
+                  maxLength: 20
+                  pattern: ^[A-Z][A-Z0-9_]*$
+                  description: Uppercase letters, digits, and underscores only; cannot use the
+                    SUPERCHECK_ prefix or reserved system names.
                 value:
                   type: string
+                  maxLength: 10000
                 isSecret:
                   type: boolean
                 description:

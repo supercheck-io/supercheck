@@ -1,5 +1,5 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Job, UnrecoverableError } from 'bullmq';
+import { Job, UnrecoverableError, DelayedError } from 'bullmq';
 import {
   Logger,
   OnApplicationBootstrap,
@@ -75,6 +75,13 @@ export class PlaywrightExecutionProcessor
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
+    if (
+      data.runId &&
+      (await this.executionService.hasActiveExecution(data.runId))
+    ) {
+      await job.moveToDelayed(Date.now() + 10_000, job.token);
+      throw new DelayedError();
+    }
 
     // Determine if this is a test or a job
     if ('testId' in data && !('jobId' in data)) {
@@ -88,6 +95,8 @@ export class PlaywrightExecutionProcessor
     const testId = job.data.testId;
     const runId = job.data.runId; // runId is the database run ID for playground tests
     const startTime = new Date();
+    let executionStartedAt: number | undefined;
+    let usagePersisted = false;
 
     try {
       // Check for hard stop before execution (billing limit enforcement)
@@ -134,6 +143,7 @@ export class PlaywrightExecutionProcessor
       await job.updateProgress(10);
 
       // Delegate the actual execution to the service
+      executionStartedAt = Date.now();
       const result = await this.executionService.runSingleTest(job.data);
 
       await job.updateProgress(100);
@@ -184,6 +194,8 @@ export class PlaywrightExecutionProcessor
         }
       }
 
+      usagePersisted = true;
+
       // Track Playwright usage for billing (if organizationId is available)
       if (job.data.organizationId) {
         await this.usageTrackerService
@@ -210,6 +222,26 @@ export class PlaywrightExecutionProcessor
         !(error instanceof UnrecoverableError) &&
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
+        if (
+          executionStartedAt &&
+          !usagePersisted &&
+          job.data.organizationId &&
+          runId
+        ) {
+          await this.usageTrackerService.completeRunWithUsage(
+            {
+              organizationId: job.data.organizationId,
+              runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
+              eventType: 'playwright_execution',
+              durationMs: Date.now() - executionStartedAt,
+              metadata: {
+                executionRunId: runId,
+                retryAttempt: job.attemptsMade ?? 0,
+              },
+            },
+            async () => {},
+          );
+        }
         throw error;
       }
 
@@ -225,13 +257,42 @@ export class PlaywrightExecutionProcessor
         const errorDetails = isCancellation
           ? 'Cancellation requested by user'
           : errorMessage;
-        await this.dbService
-          .updateRunStatus(runId, errorStatus, '0', errorDetails)
-          .catch((err: Error) =>
-            this.logger.error(
-              `[${testId}] Failed to update run error status: ${err.message}`,
-            ),
-          );
+        await (
+          job.data.organizationId && executionStartedAt && !usagePersisted
+            ? this.usageTrackerService.completeRunWithUsage(
+                {
+                  organizationId: job.data.organizationId,
+                  runId,
+                  durationMs: Date.now() - executionStartedAt,
+                  eventType: 'playwright_execution',
+                  metadata: {
+                    testId,
+                    type: 'single_test',
+                    executionError: true,
+                  },
+                },
+                (transaction) =>
+                  this.dbService.updateRunStatus(
+                    runId,
+                    errorStatus,
+                    String(
+                      Math.floor((Date.now() - executionStartedAt!) / 1000),
+                    ),
+                    errorDetails,
+                    transaction,
+                  ),
+              )
+            : this.dbService.updateRunStatus(
+                runId,
+                errorStatus,
+                '0',
+                errorDetails,
+              )
+        ).catch((err: Error) =>
+          this.logger.error(
+            `[${testId}] Failed to update run error status: ${err.message}`,
+          ),
+        );
       }
 
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
@@ -258,6 +319,8 @@ export class PlaywrightExecutionProcessor
     const { jobId: originalJobId } = jobData;
     const jobIdForLookup = jobData.originalJobId || jobData.jobId;
     const startTime = new Date();
+    let executionStartedAt: number | undefined;
+    let usagePersisted = false;
 
     this.logger.log(
       `[${runId}] Job execution job ID: ${job.id} received for processing${originalJobId ? ` (job ${originalJobId})` : ''}`,
@@ -344,6 +407,7 @@ export class PlaywrightExecutionProcessor
 
     try {
       // Delegate the actual execution to the service
+      executionStartedAt = Date.now();
       const result = await this.executionService.runJob(job.data);
 
       await job.updateProgress(100);
@@ -392,6 +456,8 @@ export class PlaywrightExecutionProcessor
           ),
       );
 
+      usagePersisted = true;
+
       // Track Playwright usage for billing
       await this.usageTrackerService
         .trackPlaywrightExecution(jobData.organizationId, durationMs, {
@@ -404,6 +470,8 @@ export class PlaywrightExecutionProcessor
             `[${runId}] Failed to track Playwright usage: ${err.message}`,
           ),
         );
+
+      usagePersisted = true;
 
       // Update job status based on all current run statuses
       if (originalJobId) {
@@ -449,6 +517,26 @@ export class PlaywrightExecutionProcessor
         !(error instanceof UnrecoverableError) &&
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
+        if (
+          executionStartedAt &&
+          !usagePersisted &&
+          job.data.organizationId &&
+          runId
+        ) {
+          await this.usageTrackerService.completeRunWithUsage(
+            {
+              organizationId: job.data.organizationId,
+              runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
+              eventType: 'playwright_execution',
+              durationMs: Date.now() - executionStartedAt,
+              metadata: {
+                executionRunId: runId,
+                retryAttempt: job.attemptsMade ?? 0,
+              },
+            },
+            async () => {},
+          );
+        }
         throw error;
       }
 
@@ -459,13 +547,36 @@ export class PlaywrightExecutionProcessor
         : errorMessage;
 
       // Update run status first
-      await this.dbService
-        .updateRunStatus(runId, errorStatus, '0', errorDetails)
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to update run error status: ${err.message}`,
-          ),
-        );
+      await (
+        jobData.organizationId && executionStartedAt && !usagePersisted
+          ? this.usageTrackerService.completeRunWithUsage(
+              {
+                organizationId: jobData.organizationId,
+                runId,
+                durationMs: Date.now() - executionStartedAt,
+                eventType: 'playwright_execution',
+                metadata: { jobId: jobIdForLookup, executionError: true },
+              },
+              (transaction) =>
+                this.dbService.updateRunStatus(
+                  runId,
+                  errorStatus,
+                  String(Math.floor((Date.now() - executionStartedAt!) / 1000)),
+                  errorDetails,
+                  transaction,
+                ),
+            )
+          : this.dbService.updateRunStatus(
+              runId,
+              errorStatus,
+              '0',
+              errorDetails,
+            )
+      ).catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to update run error status: ${err.message}`,
+        ),
+      );
 
       // Update job status based on all current run statuses
       if (originalJobId) {

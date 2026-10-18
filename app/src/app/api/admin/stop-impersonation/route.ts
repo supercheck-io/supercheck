@@ -51,7 +51,8 @@ export async function POST() {
       .set({
         userId: currentSession.impersonatedBy,
         impersonatedBy: null,
-        activeProjectId: null, // Clear project context to force admin's default project
+        activeProjectId: null,
+        activeOrganizationId: null, // Clear project context to force admin's default project
         updatedAt: new Date()
       })
       .where(eq(session.token, sessionData.session.token));

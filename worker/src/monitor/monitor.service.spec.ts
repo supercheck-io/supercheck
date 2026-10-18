@@ -583,7 +583,7 @@ describe('MonitorService', () => {
       expect(result).toBeNull();
       expect(mockUsageTrackerService.shouldBlockExecution).toHaveBeenCalledWith(
         mockMonitor.organizationId,
-        { checkSpendingLimit: true },
+        { checkSpendingLimit: true, monitorId: mockMonitor.id },
       );
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
       expect(
@@ -776,6 +776,17 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('SSL Checks', () => {
+    it('rejects a date-valid certificate with an untrusted chain or hostname', async () => {
+      tlsState.daysUntilExpiry = 90;
+      tlsState.authorized = false;
+      const result = await service['executeSslCheck'](mockJobData.target, {});
+      expect(result).toMatchObject({
+        status: 'down',
+        isUp: false,
+        details: { sslCertificate: { valid: false } },
+      });
+    });
+
     it('honors the configured warning threshold for SSL-only checks', async () => {
       tlsState.daysUntilExpiry = 45;
       const result = await service['executeSslCheck'](mockJobData.target, {

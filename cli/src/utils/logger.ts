@@ -66,12 +66,12 @@ export const logger = {
    * Output data to stdout (not stderr).
    * This is for machine-readable output (JSON, tables).
    */
-  output(data: string): void {
+  output(data: string, options: { redact?: boolean } = {}): void {
     outputCount++
-    if (machineMode) {
+    if (machineMode && options.redact !== false) {
       try { data = JSON.stringify(redact(JSON.parse(data))) } catch { data = redactText(data) }
     }
-    process.stdout.write(`${machineMode ? data : redactText(data)}\n`)
+    process.stdout.write(`${machineMode || options.redact === false ? data : redactText(data)}\n`)
   },
 
   newline(): void {
