@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: cli-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 defaults:
   run:
     working-directory: cli
@@ -27,6 +31,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       # Release tags must be annotated and signed by a key listed in
       # main's .github/release-allowed-signers. The signers file is read
@@ -83,6 +90,19 @@ jobs:
           cache: "npm"
           cache-dependency-path: cli/package-lock.json
 
+      - name: Verify CLI release version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$RELEASE_REF" == refs/tags/* ]]; then
+            PKG_VERSION=$(node -p "require('./package.json').version")
+            if [[ "$RELEASE_REF" != "refs/tags/cli-v$PKG_VERSION" ]]; then
+              echo "::error::Release tag must be cli-v$PKG_VERSION; got $RELEASE_REF."
+              exit 1
+            fi
+          fi
+
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit
 
@@ -111,13 +131,14 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write # Required for npm provenance
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
+      id-token: write # npm trusted publishing (OIDC) and provenance
 
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -127,8 +148,8 @@ jobs:
           cache: "npm"
           cache-dependency-path: cli/package-lock.json
 
-      - name: Upgrade npm for provenance support
-        run: npm install --global npm@11
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.21.1
 
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit
@@ -136,23 +157,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Verify tag matches package version
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG_VERSION="${GITHUB_REF#refs/tags/cli-v}"
-            if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-              echo "::error::Tag version ($TAG_VERSION) doesn't match package.json version ($PKG_VERSION)"
-              exit 1
-            fi
-          fi
-          echo "Publishing version: $PKG_VERSION"
-
       - name: Determine npm tag
         id: npm-tag
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          if echo "$PKG_VERSION" | grep -qE '(alpha|beta|rc|canary|next|dev)'; then
+          if [[ "$PKG_VERSION" == *-* ]]; then
             echo "tag=next" >> "$GITHUB_OUTPUT"
           else
             echo "tag=latest" >> "$GITHUB_OUTPUT"
@@ -168,10 +177,16 @@ jobs:
         run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
 
       - name: Summary
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           {
-            echo "### 📦 Published @supercheck/cli@$PKG_VERSION"
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "### Dry run passed for @supercheck/cli@$PKG_VERSION (not published)"
+            else
+              echo "### Published @supercheck/cli@$PKG_VERSION"
+            fi
             echo ""
             echo "- **npm tag:** \`${{ steps.npm-tag.outputs.tag }}\`"
             echo "- **Registry:** https://www.npmjs.com/package/@supercheck/cli"

@@ -1,10 +1,32 @@
 # Releasing the Supercheck CLI
 
-Version **0.3.1** is prepared with the Apache-2.0 CLI license; verify the currently published version against npm. Publish manually from a clean checkout after the release PR merges and CI passes. The README diagram points to an image on `main`, so merge it before publishing.
+CLI releases are published to npm by `.github/workflows/cli-publish.yml` using npm trusted publishing (OIDC). Maintainers prepare and merge the version change; a maintainer creates and pushes the signed release tag from the merged commit. Automation and coding agents must not create tags or releases, or dispatch publish workflows; see [the release policy](../docs/releasing.md).
 
-## Validate and build
+## One-time npm setup
 
-From the `cli` directory:
+In the npm settings for `@supercheck/cli`, configure a trusted publisher with:
+
+- Provider: GitHub Actions
+- Organization: `supercheck-io`
+- Repository: `supercheck`
+- Workflow filename: `cli-publish.yml`
+- Environment: none
+
+Allow direct `npm publish` for this trusted publisher. See [npm's trusted publishing setup](https://docs.npmjs.com/trusted-publishers/).
+
+The workflow uses GitHub-hosted Node.js 24, pins npm to 11.21.1, and requests the `id-token: write` permission needed for OIDC. It does not use `NPM_TOKEN`. After a successful OIDC publication is confirmed, remove the old `NPM_TOKEN` publishing secret and restrict any remaining npm tokens to the minimum needed. Complete and verify this npm-side setup before the first release; this repository cannot prove that the external publisher configuration is active.
+
+## Prepare and validate a release
+
+Choose a new version and add its dated notes to [CHANGELOG.md](./CHANGELOG.md). From `cli/`, update `package.json` and `package-lock.json` together:
+
+```bash
+npm version <version> --no-git-tag-version
+```
+
+Open a PR with the version and changelog update, then merge it after required CI passes. The tag must point at that exact merged commit. The release workflow validates lint, types, tests, build, licenses and notices, and package contents before publishing.
+
+Keep the local release gates as well:
 
 ```bash
 npm ci
@@ -13,41 +35,34 @@ npm run lint
 npm test
 npm run build
 npm pack --dry-run
-node -p "require('./package.json').version"
-npm view @supercheck/cli versions --json
 ```
 
-Confirm the package version is 0.3.1 and that version is absent from npm. Inspect the package contents: executable, type exports, README, architecture image, Apache-2.0 LICENSE, and NOTICE. Verify package.json and the lockfile both declare Apache-2.0. Future releases must update both package versions in `package-lock.json`, `package.json`, and the changelog.
+Inspect the tarball for the executable, type exports, README, architecture image, Apache-2.0 `LICENSE`, and `NOTICE`. Exercise a packed installation, including offline skills guidance and account-free local execution. Before releasing agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify that an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. See [agent workflow review notes](./AGENT_FIRST_REVIEW.md); mock API tests do not replace this real-server check.
 
-Exercise the packed installation, including offline `skills` guidance and account-free local execution. Before releasing the agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. See [agent workflow review notes](./AGENT_FIRST_REVIEW.md) for completed checks and remaining acceptance gates; mock API tests do not replace this real-server check.
+## Publish from GitHub
 
-## Authenticate and publish manually
-
-Use an npm account with package-write access:
+After the version PR has merged and npm trusted publishing is configured, a maintainer creates and pushes the signed, annotated tag for that exact commit:
 
 ```bash
-npm login --registry=https://registry.npmjs.org
-npm whoami --registry=https://registry.npmjs.org
-npm publish --dry-run --access public --tag latest --registry=https://registry.npmjs.org
-npm publish --access public --tag latest --registry=https://registry.npmjs.org
+git tag -s cli-v<version> -m "cli-v<version>" <merged-commit>
+git cat-file -t refs/tags/cli-v<version>  # must print: tag
+git verify-tag refs/tags/cli-v<version>  # must report a valid signature
+git rev-parse 'refs/tags/cli-v<version>^{commit}'
+git push origin cli-v<version>
 ```
 
-Complete the browser/2FA prompts. If npm returns `EOTP`, retry publication with `--otp=YOUR_CURRENT_OTP`. If an environment token overrides interactive login, remove that token from the publishing session. Never commit credentials or an authenticated `.npmrc`.
+The signer must be listed in `.github/release-allowed-signers` on `main`. The workflow requires the signed tag to match the package version (`cli-v<version>`) and the tag's commit to match the workflow's checked-out commit. These checks apply to every publishing run. A manual workflow dispatch defaults to a dry run; selecting a real publish still requires a valid matching signed tag. Stable versions publish under `latest`; versions containing a hyphen publish under `next`.
 
-npm versions cannot be overwritten. An authentication failure does not consume a version, so check registry state before retrying. Manual publication does not provide GitHub Actions provenance.
+## Verify the release
 
-## Verify publication
+After the workflow succeeds, confirm the published version, provenance, and dist-tag on npm, then install the released version and check the CLI:
 
 ```bash
-npm view @supercheck/cli@0.3.1 version license dist --json
+npm view @supercheck/cli@<version> version license dist --json
 npm view @supercheck/cli dist-tags --json
-npm install -g @supercheck/cli@0.3.1
+npm install -g @supercheck/cli@<version>
 supercheck --version
 supercheck sre --help
 ```
 
-Confirm `latest` and the installed CLI report 0.3.1. Check the npm README image after publication. Date the CLI changelog entry and publish release notes identifying the source commit and the Apache-2.0 license change. Matching app/worker deployment is required for investigation status and the console/k6 fixes.
-
-## Optional GitHub publishing
-
-`.github/workflows/cli-publish.yml` supports trusted publishing or `NPM_TOKEN` with provenance. Pushing a `cli-v*` tag triggers npm publication automatically. For a manual release, do not push such a tag unless that workflow has been disabled or changed to avoid duplicate publication.
+Confirm the expected version and `latest` or `next` tag, inspect npm's provenance for the GitHub Actions run, and check the installed version. Never reuse a published version. The next release must bump both package version files and add dated changelog notes before its tag is created.

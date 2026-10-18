@@ -54,6 +54,50 @@ function isK6ModuleSpecifier(moduleSpecifier: string): boolean {
   return moduleSpecifier === 'k6' || moduleSpecifier.startsWith('k6/');
 }
 
+/** Reject only statically missing entrypoints; dynamic options are checked by k6. */
+function isMissingEntrypoint(script: string): boolean {
+  const ast = acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
+  let optionsName: string | undefined;
+  for (const node of ast.body) {
+    if (node.type === 'ExportDefaultDeclaration' || node.type === 'ExportAllDeclaration') return false;
+    if (node.type !== 'ExportNamedDeclaration') continue;
+    for (const specifier of node.specifiers) {
+      const name = specifier.exported.type === 'Identifier'
+        ? specifier.exported.name : specifier.exported.value;
+      if (name === 'default') return false;
+      if (name === 'options') {
+        if (node.source) return false;
+        if (specifier.local.type !== 'Identifier') return false;
+        optionsName = specifier.local.name;
+      }
+    }
+  }
+  if (!optionsName) return true;
+  let dynamicOptions = false;
+  walk.fullAncestor(ast, (baseNode, _state, ancestors) => {
+    const node = baseNode as acorn.AnyNode;
+    if (node.type !== 'Identifier' || node.name !== optionsName) return;
+    const parent = ancestors[ancestors.length - 2] as acorn.AnyNode | undefined;
+    if (parent?.type === 'ExportSpecifier') return;
+    if (parent?.type === 'VariableDeclarator' && parent.id === node) return;
+    dynamicOptions = true;
+  });
+  if (dynamicOptions) return false;
+  for (const node of ast.body) {
+    if (node.type !== 'VariableDeclaration') continue;
+    for (const declaration of node.declarations) {
+      if (declaration.id.type !== 'Identifier' || declaration.id.name !== optionsName) continue;
+      if (declaration.init?.type !== 'ObjectExpression') return false;
+      return !declaration.init.properties.some((property) =>
+        property.type === 'SpreadElement' || property.computed ||
+        (property.key.type === 'Identifier' ? property.key.name :
+          property.key.type === 'Literal' ? property.key.value : undefined) === 'scenarios',
+      );
+    }
+  }
+  return false;
+}
+
 /**
  * Detects whether a script imports any k6 modules.
  */
@@ -117,6 +161,10 @@ export function validateK6Script(
       errors,
       warnings,
     };
+  }
+
+  if (isMissingEntrypoint(jsCode)) {
+    errors.push('Script must export a default function or configure options.scenarios with named exec functions.');
   }
 
   // Warning: Recommend options export for test configuration
