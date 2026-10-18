@@ -473,6 +473,28 @@ export interface UserSession {
 }
 
 export class AuthService {
+  static async canAccessTestReport(
+    session: UserSession,
+    entityId: string,
+    testType: string,
+  ): Promise<boolean> {
+    const { resolveAccessContext } = await import("@/lib/test-results-access");
+    const { hasPermissionForUser } = await import("@/lib/rbac/middleware");
+    const context = await resolveAccessContext("test", entityId) ??
+      (testType === "performance" ? await resolveAccessContext("k6_test", entityId) : null);
+    if (
+      !context?.organizationId ||
+      !context.projectId ||
+      context.organizationId !== session.user.organizationId
+    ) {
+      return false;
+    }
+    return hasPermissionForUser(session.user.id, "test", "view", {
+      organizationId: context.organizationId,
+      projectId: context.projectId,
+    });
+  }
+
   static async validateUserAccess(
     _request: Request,
     _testId: string,

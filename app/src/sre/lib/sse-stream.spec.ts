@@ -15,6 +15,17 @@ async function readStream(stream: ReadableStream<Uint8Array>) {
 }
 
 describe("SRE SSE stream", () => {
+  it("allows an asynchronous producer to finish after the consumer cancels", async () => {
+    let resume!: () => void;
+    const gate = new Promise<void>((resolve) => { resume = resolve; });
+    const stream = createSseStream(async (send) => {
+      await gate;
+      send("status", { phase: "finished" });
+    });
+    await stream.cancel();
+    resume();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
   it("encodes JSON SSE events", () => {
     const encoded = new TextDecoder().decode(encodeSseEvent({ event: "message", data: { ok: true } }));
 

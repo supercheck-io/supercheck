@@ -46,6 +46,9 @@ export async function PATCH(
     }
 
     // Check permission to manage/update monitor
+    if (!currentMonitor.organizationId || !currentMonitor.projectId) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
     if (currentMonitor.organizationId && currentMonitor.projectId) {
       const canManage = await hasPermissionForUser(userId, 'monitor', 'manage', {
         organizationId: currentMonitor.organizationId,
@@ -122,4 +125,4 @@ export async function PATCH(
       { status: 500 }
     );
   }
-} 
+}

@@ -19,9 +19,11 @@ export function encodeSseEvent({ event, data }: SseEvent) {
 export function createSseStream(
   producer: (send: (event: string, data: unknown) => void) => Promise<void>
 ) {
+  let cancelled = false;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: string, data: unknown) => {
+        if (cancelled) return;
         controller.enqueue(encodeSseEvent({ event, data }));
       };
 
@@ -33,9 +35,10 @@ export function createSseStream(
           message: error instanceof Error ? error.message : "SRE stream failed",
         });
       } finally {
-        controller.close();
+        if (!cancelled) controller.close();
       }
     },
+    cancel() { cancelled = true; },
   });
 }
 

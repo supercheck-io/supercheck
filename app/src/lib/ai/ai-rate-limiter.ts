@@ -527,10 +527,10 @@ export class AIRateLimiter {
     try {
       const redis = await getRedisConnection();
 
-      // Atomic increment with TTL
+      // Scores are timestamps; members hold token counts for the sliding window.
       const pipeline = redis.multi();
       pipeline.zremrangebyscore(key, 0, now - windowSeconds);
-      pipeline.zincrby(key, tokensUsed, `${now}:${Math.random()}`);
+      pipeline.zadd(key, now, `${tokensUsed}:${crypto.randomUUID()}`);
       pipeline.zrangebyscore(key, now - windowSeconds, "+inf");
       pipeline.expire(key, windowSeconds + 60);
 
@@ -549,19 +549,14 @@ export class AIRateLimiter {
       const entries = results[2]?.[1] as string[] | undefined;
       let totalTokens = 0;
       if (entries) {
-        // Sum up all token counts (stored as scores)
-        const scores = await redis.zrangebyscore(
-          key,
-          now - windowSeconds,
-          "+inf",
-          "WITHSCORES"
-        );
-        for (let i = 1; i < scores.length; i += 2) {
-          totalTokens += parseFloat(scores[i]);
+        for (const entry of entries) {
+          totalTokens += Number(entry.split(":")[0]);
         }
       }
 
-      const allowed = totalTokens <= limits.tokenCostPerHour;
+      const allowed = tokensUsed === 0
+        ? totalTokens < limits.tokenCostPerHour
+        : totalTokens <= limits.tokenCostPerHour;
       const resetAt = new Date((now + windowSeconds) * 1000);
 
       return {
@@ -613,6 +608,8 @@ export class AIRateLimiter {
         logger.warn({ orgId, result: orgResult }, "Org rate limit exceeded");
         return orgResult;
       }
+      const tokenResult = await this.checkAndTrackTokens(orgId, 0, tier);
+      if (!tokenResult.allowed) return tokenResult;
     }
 
     // Check IP limit as fallback or additional protection
@@ -656,17 +653,16 @@ export class AIRateLimiter {
       pipeline.zrangebyscore(
         `${TOKEN_KEY}:${orgId}:hour`,
         now - 3600,
-        "+inf",
-        "WITHSCORES"
+        "+inf"
       );
 
       const results = await pipeline.exec();
 
       let totalTokens = 0;
       if (results && results[3]?.[1]) {
-        const scores = results[3][1] as string[];
-        for (let i = 1; i < scores.length; i += 2) {
-          totalTokens += parseFloat(scores[i]);
+        const entries = results[3][1] as string[];
+        for (const entry of entries) {
+          totalTokens += Number(entry.split(":")[0]);
         }
       }
 

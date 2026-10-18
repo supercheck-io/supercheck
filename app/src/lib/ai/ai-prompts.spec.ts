@@ -100,8 +100,8 @@ describe('AIPromptBuilder', () => {
       });
 
       expect(prompt).toContain('<HTML_REPORTS_CONTEXT>');
-      expect(prompt).toContain('<html>baseline</html>');
-      expect(prompt).toContain('<html>compare</html>');
+      expect(prompt).toContain('&lt;html&gt;baseline&lt;/html&gt;');
+      expect(prompt).toContain('&lt;html&gt;compare&lt;/html&gt;');
     });
   });
 
