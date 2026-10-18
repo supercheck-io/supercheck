@@ -89,20 +89,7 @@ function isExtensionKey(key: {
   );
 }
 
-/**
- * Enabled extension keys for a user, read straight from the apikey table.
- *
- * Better Auth's `listApiKeys` pages through its adapter, and that adapter caps
- * unpaginated `findMany` calls at 100 rows — so `limit: 1000` had no effect. Once
- * an account held more than 100 API keys, the newest extension key fell outside
- * the window: DELETE revoked nothing, the key stayed enabled, and POST kept
- * answering "Extension already connected", leaving the recorder unable to
- * reconnect. The predicate mirrors the one POST already uses to detect an
- * existing connection.
- *
- * A key carrying the extension permission but neither the prefix nor the name
- * prefix is not matched, which is also true of POST's existing detection.
- */
+// Read without Better Auth’s list cap; classify permission-only keys in the caller.
 async function findEnabledExtensionKeys(userId: string) {
   return db
     .select({
@@ -116,11 +103,7 @@ async function findEnabledExtensionKeys(userId: string) {
       and(
         eq(apikey.referenceId, userId),
         eq(apikey.configId, EXTENSION_API_KEY_CONFIG_ID),
-        eq(apikey.enabled, true),
-        or(
-          eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
-          like(apikey.name, `${EXTENSION_API_KEY_NAME_PREFIX}%`)
-        )
+        eq(apikey.enabled, true)
       )
     )
     .orderBy(apikey.createdAt);

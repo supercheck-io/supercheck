@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 jest.mock("@/utils/auth", () => ({
   auth: {
@@ -40,6 +41,7 @@ jest.mock("@/utils/db", () => {
 
   return {
     db: { select: jest.fn(() => ({ from })) },
+    __where: where,
     __setPersistedRows: (rows: unknown[]) => {
       persistedRows = rows;
     },
@@ -70,7 +72,8 @@ const { checkPermissionWithContext: mockCanCreateKey } = jest.requireMock("@/lib
   checkPermissionWithContext: jest.Mock;
 };
 
-const { __setPersistedRows, __setLookupRows } = jest.requireMock("@/utils/db") as {
+const { __setPersistedRows, __setLookupRows, __where } = jest.requireMock("@/utils/db") as {
+  __where: jest.Mock;
   __setPersistedRows: (rows: unknown[]) => void;
   __setLookupRows: (rows: unknown[]) => void;
 };
@@ -148,6 +151,9 @@ describe("Extension auth route", () => {
     expect(body.success).toBe(true);
     expect(body.data.message).toBe("Extension already connected");
     expect(body.data.keyId).toBe("key-1");
+    const query = new PgDialect().sqlToQuery(__where.mock.calls[1][0]);
+    expect(query.params).toEqual(["user-1", "default", true]);
+    expect(query.sql).not.toMatch(/"(?:prefix|name)"/);
     expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
   });
 
@@ -339,6 +345,29 @@ describe("Extension auth route", () => {
         enabled: false,
       },
     });
+  });
+
+  it("revokes permission-only keys without restricting the lookup by name or prefix", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    mockAuth.api.updateApiKey.mockResolvedValue({});
+    __setLookupRows([
+      { id: "permission-only", name: "Custom recorder", prefix: "cli", permissions: '{"recorder":["save"]}' },
+      { id: "ordinary-cli", name: "CLI", prefix: "cli", permissions: null },
+    ]);
+
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/extension/auth", { method: "DELETE" })
+    );
+
+    expect((await response.json()).data.keysRevoked).toBe(1);
+    expect(mockAuth.api.updateApiKey).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: { configId: "default", keyId: "permission-only", enabled: false },
+    });
+    // Check the real predicate so fixtures cannot bypass SQL filtering.
+    const query = new PgDialect().sqlToQuery(__where.mock.calls[0][0]);
+    expect(query.params).toEqual(["user-1", "default", true]);
+    expect(query.sql).not.toMatch(/"(?:prefix|name)"/);
   });
 
   it("reports zero revocations when there is no extension key", async () => {
