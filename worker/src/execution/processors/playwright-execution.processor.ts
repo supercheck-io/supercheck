@@ -21,6 +21,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
+import { getBillableMs } from '../../common/billable-ms';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
@@ -95,7 +96,6 @@ export class PlaywrightExecutionProcessor
     const testId = job.data.testId;
     const runId = job.data.runId; // runId is the database run ID for playground tests
     const startTime = new Date();
-    let executionStartedAt: number | undefined;
     let usagePersisted = false;
 
     try {
@@ -143,7 +143,6 @@ export class PlaywrightExecutionProcessor
       await job.updateProgress(10);
 
       // Delegate the actual execution to the service
-      executionStartedAt = Date.now();
       const result = await this.executionService.runSingleTest(job.data);
 
       await job.updateProgress(100);
@@ -164,6 +163,8 @@ export class PlaywrightExecutionProcessor
       const durationMs =
         result.executionTimeMs ?? endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
+      // Meter only container run time evidenced by Kubernetes.
+      const billableMs = result.billableMs ?? 0;
 
       // Update the runs table status for playground tests (critical for preventing stale runs)
       if (runId) {
@@ -183,7 +184,7 @@ export class PlaywrightExecutionProcessor
             {
               organizationId: job.data.organizationId,
               runId,
-              durationMs,
+              durationMs: billableMs,
               eventType: 'playwright_execution',
               metadata: { testId, type: 'single_test' },
             },
@@ -197,9 +198,9 @@ export class PlaywrightExecutionProcessor
       usagePersisted = true;
 
       // Track Playwright usage for billing (if organizationId is available)
-      if (job.data.organizationId) {
+      if (job.data.organizationId && billableMs > 0) {
         await this.usageTrackerService
-          .trackPlaywrightExecution(job.data.organizationId, durationMs, {
+          .trackPlaywrightExecution(job.data.organizationId, billableMs, {
             testId,
             runId,
             type: 'single_test',
@@ -223,7 +224,7 @@ export class PlaywrightExecutionProcessor
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
         if (
-          executionStartedAt &&
+          getBillableMs(error) > 0 &&
           !usagePersisted &&
           job.data.organizationId &&
           runId
@@ -233,7 +234,7 @@ export class PlaywrightExecutionProcessor
               organizationId: job.data.organizationId,
               runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
               eventType: 'playwright_execution',
-              durationMs: Date.now() - executionStartedAt,
+              durationMs: getBillableMs(error),
               metadata: {
                 executionRunId: runId,
                 retryAttempt: job.attemptsMade ?? 0,
@@ -258,12 +259,12 @@ export class PlaywrightExecutionProcessor
           ? 'Cancellation requested by user'
           : errorMessage;
         await (
-          job.data.organizationId && executionStartedAt && !usagePersisted
+          job.data.organizationId && getBillableMs(error) > 0 && !usagePersisted
             ? this.usageTrackerService.completeRunWithUsage(
                 {
                   organizationId: job.data.organizationId,
                   runId,
-                  durationMs: Date.now() - executionStartedAt,
+                  durationMs: getBillableMs(error),
                   eventType: 'playwright_execution',
                   metadata: {
                     testId,
@@ -275,9 +276,7 @@ export class PlaywrightExecutionProcessor
                   this.dbService.updateRunStatus(
                     runId,
                     errorStatus,
-                    String(
-                      Math.floor((Date.now() - executionStartedAt!) / 1000),
-                    ),
+                    String(Math.floor(getBillableMs(error) / 1000)),
                     errorDetails,
                     transaction,
                   ),
@@ -319,7 +318,6 @@ export class PlaywrightExecutionProcessor
     const { jobId: originalJobId } = jobData;
     const jobIdForLookup = jobData.originalJobId || jobData.jobId;
     const startTime = new Date();
-    let executionStartedAt: number | undefined;
     let usagePersisted = false;
 
     this.logger.log(
@@ -407,7 +405,6 @@ export class PlaywrightExecutionProcessor
 
     try {
       // Delegate the actual execution to the service
-      executionStartedAt = Date.now();
       const result = await this.executionService.runJob(job.data);
 
       await job.updateProgress(100);
@@ -419,6 +416,8 @@ export class PlaywrightExecutionProcessor
       const endTime = new Date();
       const durationMs = endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
+      // Meter only container run time evidenced by Kubernetes.
+      const billableMs = result.billableMs ?? 0;
 
       // Check if execution service already set error status (for cancellations)
       // Don't override 'error' status with 'failed'
@@ -439,7 +438,7 @@ export class PlaywrightExecutionProcessor
         {
           organizationId: jobData.organizationId,
           runId,
-          durationMs,
+          durationMs: billableMs,
           eventType: 'playwright_execution',
           metadata: {
             jobId: originalJobId,
@@ -458,18 +457,20 @@ export class PlaywrightExecutionProcessor
 
       usagePersisted = true;
 
-      // Track Playwright usage for billing
-      await this.usageTrackerService
-        .trackPlaywrightExecution(jobData.organizationId, durationMs, {
-          runId,
-          jobId: originalJobId,
-          testCount: result.results?.length || 0,
-        })
-        .catch((err: Error) =>
-          this.logger.warn(
-            `[${runId}] Failed to track Playwright usage: ${err.message}`,
-          ),
-        );
+      // Track Playwright usage for billing (only when a container actually ran)
+      if (billableMs > 0) {
+        await this.usageTrackerService
+          .trackPlaywrightExecution(jobData.organizationId, billableMs, {
+            runId,
+            jobId: originalJobId,
+            testCount: result.results?.length || 0,
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[${runId}] Failed to track Playwright usage: ${err.message}`,
+            ),
+          );
+      }
 
       usagePersisted = true;
 
@@ -518,7 +519,7 @@ export class PlaywrightExecutionProcessor
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
         if (
-          executionStartedAt &&
+          getBillableMs(error) > 0 &&
           !usagePersisted &&
           job.data.organizationId &&
           runId
@@ -528,7 +529,7 @@ export class PlaywrightExecutionProcessor
               organizationId: job.data.organizationId,
               runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
               eventType: 'playwright_execution',
-              durationMs: Date.now() - executionStartedAt,
+              durationMs: getBillableMs(error),
               metadata: {
                 executionRunId: runId,
                 retryAttempt: job.attemptsMade ?? 0,
@@ -548,12 +549,12 @@ export class PlaywrightExecutionProcessor
 
       // Update run status first
       await (
-        jobData.organizationId && executionStartedAt && !usagePersisted
+        jobData.organizationId && getBillableMs(error) > 0 && !usagePersisted
           ? this.usageTrackerService.completeRunWithUsage(
               {
                 organizationId: jobData.organizationId,
                 runId,
-                durationMs: Date.now() - executionStartedAt,
+                durationMs: getBillableMs(error),
                 eventType: 'playwright_execution',
                 metadata: { jobId: jobIdForLookup, executionError: true },
               },
@@ -561,7 +562,7 @@ export class PlaywrightExecutionProcessor
                 this.dbService.updateRunStatus(
                   runId,
                   errorStatus,
-                  String(Math.floor((Date.now() - executionStartedAt!) / 1000)),
+                  String(Math.floor(getBillableMs(error) / 1000)),
                   errorDetails,
                   transaction,
                 ),

@@ -15,6 +15,7 @@ import { DbService } from '../../execution/services/db.service';
 import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
 import { HardStopNotificationService } from '../../execution/services/hard-stop-notification.service';
 import { CancellationService } from '../../common/services/cancellation.service';
+import { getBillableMs } from '../../common/billable-ms';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
@@ -79,7 +80,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
-    let executionStartedAt: number | undefined;
+    let observedBillableMs = 0;
     let usagePersisted = false;
     const requestedLocation = job.data.location || this.workerLocation;
     const normalizedJobLocation = requestedLocation.toLowerCase();
@@ -215,17 +216,23 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .update(schema.runs)
         .set({
           status: 'running',
-          startedAt: new Date(),
+          // The app marks runs running at admission; keep that timestamp.
+          startedAt: sql`coalesce(${schema.runs.startedAt}, now())`,
           location:
             effectiveJobLocation as (typeof schema.runs.$inferInsert)['location'],
         })
         .where(
-          and(eq(schema.runs.id, runId), eq(schema.runs.status, 'queued')),
+          and(
+            eq(schema.runs.id, runId),
+            inArray(schema.runs.status, ['queued', 'running']),
+          ),
         );
 
       // Execute k6
-      executionStartedAt = Date.now();
       const result = await this.k6ExecutionService.runK6Test(taskData);
+      // Meter only container run time evidenced by Kubernetes.
+      const billableMs = result.billableMs ?? 0;
+      observedBillableMs = billableMs;
 
       // Log execution result
       this.logger.log(
@@ -260,16 +267,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
             ? 'passed'
             : 'failed';
 
-      const actualDurationMs =
-        result.durationMs > 0
-          ? result.durationMs
-          : Math.max(1000, Date.now() - processStartTime);
       await this.usageTrackerService.completeRunWithUsage(
         {
           organizationId: taskData.organizationId,
           runId,
           eventType: 'k6_execution',
-          durationMs: actualDurationMs,
+          durationMs: billableMs,
           virtualUsers: metrics.maxVUs > 0 ? metrics.maxVUs : 1,
           metadata: {
             jobId: taskData.jobId,
@@ -392,25 +395,27 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       );
       usagePersisted = true;
 
-      // Track K6 usage for billing (even for cancelled runs - they still consumed resources)
-      // Use actual duration for cancelled runs, not 0
-      await this.usageTrackerService
-        .trackK6Execution(
-          taskData.organizationId,
-          metrics.maxVUs > 0 ? metrics.maxVUs : 1, // At least 1 VU for cancelled runs
-          actualDurationMs,
-          {
-            runId,
-            jobId: taskData.jobId,
-            testId,
-            location: taskData.location,
-          },
-        )
-        .catch((err: Error) =>
-          this.logger.warn(
-            `[${runId}] Failed to track K6 usage: ${err.message}`,
-          ),
-        );
+      // Track K6 usage for billing. Cancelled runs that started a container are
+      // charged for the time it ran; runs that never started are not charged.
+      if (billableMs > 0) {
+        await this.usageTrackerService
+          .trackK6Execution(
+            taskData.organizationId,
+            metrics.maxVUs > 0 ? metrics.maxVUs : 1, // At least 1 VU for cancelled runs
+            billableMs,
+            {
+              runId,
+              jobId: taskData.jobId,
+              testId,
+              location: taskData.location,
+            },
+          )
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[${runId}] Failed to track K6 usage: ${err.message}`,
+            ),
+          );
+      }
 
       if (taskData.jobId) {
         // Use the same execution error check for final job status
@@ -498,13 +503,17 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         !(error instanceof UnrecoverableError) &&
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
-        if (executionStartedAt && !usagePersisted) {
+        const attemptBillableMs = Math.max(
+          getBillableMs(error),
+          observedBillableMs,
+        );
+        if (attemptBillableMs > 0 && !usagePersisted) {
           await this.usageTrackerService.completeRunWithUsage(
             {
               organizationId: taskData.organizationId,
               runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
               eventType: 'k6_execution',
-              durationMs: Date.now() - executionStartedAt,
+              durationMs: attemptBillableMs,
               virtualUsers: 1,
               metadata: {
                 executionRunId: runId,
@@ -549,13 +558,17 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               ),
             );
         };
-        if (executionStartedAt && !usagePersisted) {
+        const failureBillableMs = Math.max(
+          getBillableMs(error),
+          observedBillableMs,
+        );
+        if (failureBillableMs > 0 && !usagePersisted) {
           await this.usageTrackerService.completeRunWithUsage(
             {
               organizationId: taskData.organizationId,
               runId,
               eventType: 'k6_execution',
-              durationMs: Date.now() - executionStartedAt,
+              durationMs: failureBillableMs,
               virtualUsers: 1,
               metadata: {
                 testId,

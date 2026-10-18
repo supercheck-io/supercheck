@@ -80,6 +80,26 @@ describe('UsageTrackerService ledger settlement', () => {
     };
   }
 
+  it.each([0, -1, Number.NaN])(
+    'persists the result without a receipt when billable duration is %s',
+    async (durationMs) => {
+      const f = fixture();
+      const persistResult = jest.fn().mockResolvedValue(undefined);
+      await f.service.completeRunWithUsage(
+        {
+          organizationId: 'org-1',
+          runId: 'run-1',
+          eventType: 'playwright_execution',
+          durationMs,
+        },
+        persistResult,
+      );
+      expect(persistResult).toHaveBeenCalledTimes(1);
+      expect(f.tx.insert).not.toHaveBeenCalled();
+      expect(f.tx.select).not.toHaveBeenCalled();
+    },
+  );
+
   it('reads fractional database counters as numbers without truncation', () => {
     expect(
       organization.playwrightMinutesUsed.mapFromDriverValue('3598.5600'),

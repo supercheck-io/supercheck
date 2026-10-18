@@ -66,6 +66,8 @@ export interface K6ExecutionResult {
   timedOut: boolean;
   runId: string;
   durationMs: number;
+  /** Container run time evidenced by Kubernetes across all launches; 0 if none started. */
+  billableMs?: number;
   summary: Record<string, unknown> | null;
   thresholdsPassed: boolean;
   reportUrl: string | null;
@@ -269,6 +271,8 @@ export class K6ExecutionService {
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
     const startTime = Date.now();
+    // Container run time summed over every launch (dashboard-port retries).
+    let totalBillableMs = 0;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
@@ -355,6 +359,7 @@ export class K6ExecutionService {
         error: string | null;
         timedOut: boolean;
         cancelled?: boolean;
+        billableMs?: number;
       } | null = null;
       for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
         const dashboardPort = this.useDashboardPortPool
@@ -394,6 +399,8 @@ export class K6ExecutionService {
             this.releaseDashboardPort(dashboardPort);
           }
         }
+
+        totalBillableMs += execResult.billableMs ?? 0;
 
         const portConflict =
           execResult.stderr.includes('address already in use') ||
@@ -609,6 +616,7 @@ export class K6ExecutionService {
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
+        billableMs: totalBillableMs,
         summary,
         thresholdsPassed,
         reportUrl,
@@ -669,6 +677,7 @@ export class K6ExecutionService {
         timedOut: false,
         runId,
         durationMs: Date.now() - startTime,
+        billableMs: totalBillableMs,
         summary: null,
         thresholdsPassed: false,
         reportUrl: null,
@@ -786,6 +795,7 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
     cancelled?: boolean;
+    billableMs?: number;
   }> {
     const _startTime = Date.now();
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
@@ -942,6 +952,7 @@ export class K6ExecutionService {
         stdout,
         stderr,
         cancelled: containerResult.cancelled,
+        billableMs: containerResult.billableMs ?? 0,
         error: redactedError || null,
         timedOut,
       };

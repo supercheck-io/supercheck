@@ -73,7 +73,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     input: ExecutionUsageCompletion,
     persistResult: (tx: ExecutionUsageTransaction) => Promise<void>,
   ): Promise<void> {
-    if (!isPolarEnabled()) {
+    // No Polar billing, or no evidence the execution container ever ran:
+    // persist the result without a receipt so nothing is charged.
+    if (!isPolarEnabled() || !(input.durationMs > 0)) {
       await this.db.transaction(persistResult);
       return;
     }

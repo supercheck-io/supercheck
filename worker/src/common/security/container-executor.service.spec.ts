@@ -3,6 +3,7 @@ jest.mock('fs/promises');
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
+  computeBillableMs,
   ContainerExecutionOptions,
   ContainerExecutorService,
 } from './container-executor.service';
@@ -340,9 +341,62 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/run',
         1000,
+        { startedAtMs: null, finishedAtMs: null },
         jest.fn(),
       );
       expect(outcome).toMatchObject({ exitCode: 1, message: undefined });
+    });
+
+    it('records container start and finish times as billable evidence', async () => {
+      const evidence = { startedAtMs: null, finishedAtMs: null } as {
+        startedAtMs: number | null;
+        finishedAtMs: number | null;
+      };
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: {
+                  terminated: {
+                    exitCode: 0,
+                    startedAt: '2026-10-18T10:00:00.000Z',
+                    finishedAt: '2026-10-18T10:00:30.000Z',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(computeBillableMs(evidence)).toBe(30_000);
+    });
+
+    it('bills zero when the container never started', () => {
+      expect(computeBillableMs({ startedAtMs: null, finishedAtMs: null })).toBe(
+        0,
+      );
+      expect(
+        computeBillableMs({ startedAtMs: null, finishedAtMs: Date.now() }),
+      ).toBe(0);
+    });
+
+    it('bills a still-running container from its start until now', () => {
+      const started = Date.now() - 5_000;
+      const billable = computeBillableMs({
+        startedAtMs: started,
+        finishedAtMs: null,
+      });
+      expect(billable).toBeGreaterThanOrEqual(5_000);
+      expect(billable).toBeLessThan(10_000);
     });
 
     it('reports OOM termination as failure rather than user cancellation', async () => {
@@ -362,6 +416,7 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/run',
         1000,
+        { startedAtMs: null, finishedAtMs: null },
         jest.fn(),
       );
       expect(outcome).toMatchObject({
@@ -390,6 +445,7 @@ describe('ContainerExecutorService', () => {
               _pod,
               _workspace,
               _timeout,
+              _evidence,
               collect: () => Promise<void>,
             ) => {
               if (!earlyTermination) await collect();
@@ -446,6 +502,7 @@ describe('ContainerExecutorService', () => {
           'pod',
           '/tmp/run',
           1000,
+          { startedAtMs: null, finishedAtMs: null },
           async () => {
             now = 2000;
           },
@@ -477,6 +534,7 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/supercheck/run-test',
         30000,
+        { startedAtMs: null, finishedAtMs: null },
         collectArtifacts,
       );
       expect(outcome.exitCode).toBe(7);

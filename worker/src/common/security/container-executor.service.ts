@@ -126,9 +126,30 @@ export interface ContainerExecutionResult {
   stdout: string;
   stderr: string;
   duration: number;
+  /**
+   * Wall-clock time the execution container actually ran, from the container
+   * status reported by Kubernetes. Zero when there is no evidence the container
+   * started (preflight/validation failures, scheduling or image-pull timeouts,
+   * cancellation while pending). Billing and usage metering must use this, not
+   * `duration`.
+   */
+  billableMs?: number;
   timedOut: boolean;
   cancelled?: boolean;
   error?: string;
+}
+
+/** Last container-start evidence observed while polling an execution pod. */
+interface ContainerStartEvidence {
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+}
+
+/** Billable time for a container: zero unless Kubernetes reported it started. */
+export function computeBillableMs(evidence: ContainerStartEvidence): number {
+  if (evidence.startedAtMs === null) return 0;
+  const end = evidence.finishedAtMs ?? Date.now();
+  return Math.max(0, end - evidence.startedAtMs);
 }
 
 /** Internal validated resource limits */
@@ -781,6 +802,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     let podStartupDurationMs = 0;
     let artifactExtractionDurationMs = 0;
     let artifactsExtracted = false;
+    const startEvidence: ContainerStartEvidence = {
+      startedAtMs: null,
+      finishedAtMs: null,
+    };
     const logCollector = this.createLogCollector(options);
 
     try {
@@ -868,6 +893,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         podName,
         workspace,
         limits.timeoutMs,
+        startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
             const extractSource = this.rewriteTmpPath(
@@ -951,6 +977,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: combinedLogs,
         stderr: '',
         duration,
+        billableMs: computeBillableMs(startEvidence),
         timedOut,
         cancelled: killed,
         error: timedOut
@@ -968,6 +995,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: logCollector.getOutput(),
         stderr: error instanceof Error ? error.message : String(error),
         duration: Date.now() - startTime,
+        billableMs: computeBillableMs(startEvidence),
         timedOut,
         error: error instanceof Error ? error.message : String(error),
       };
@@ -1686,6 +1714,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     podName: string,
     workspace: string,
     timeoutMs: number,
+    startEvidence: ContainerStartEvidence,
     collectArtifacts: () => Promise<void>,
   ): Promise<{
     exitCode: number;
@@ -1719,6 +1748,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(
             `Pod ${podName} no longer exists — treating as cancellation`,
           );
+          // Charge only what actually ran; a pod deleted while still pending
+          // has no start evidence and is billed zero.
+          if (startEvidence.startedAtMs !== null) {
+            startEvidence.finishedAtMs ??= Date.now();
+          }
           return {
             exitCode: 137,
             timedOut: false,
@@ -1729,10 +1763,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         throw podError;
       }
 
-      const terminated = pod.status?.containerStatuses?.find(
+      const executionState = pod.status?.containerStatuses?.find(
         (container) => container.name === 'execution',
-      )?.state?.terminated;
+      )?.state;
+      const terminated = executionState?.terminated;
+      const startedAtRaw =
+        executionState?.running?.startedAt ?? terminated?.startedAt;
+      if (startedAtRaw && startEvidence.startedAtMs === null) {
+        const parsed = new Date(startedAtRaw).getTime();
+        if (Number.isFinite(parsed)) startEvidence.startedAtMs = parsed;
+      }
       if (terminated) {
+        if (terminated.finishedAt) {
+          const finished = new Date(terminated.finishedAt).getTime();
+          if (Number.isFinite(finished)) startEvidence.finishedAtMs = finished;
+        }
         const timedOut =
           terminated.reason === 'DeadlineExceeded' ||
           terminated.message?.includes('DeadlineExceeded') === true;

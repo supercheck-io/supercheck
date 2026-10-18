@@ -18,6 +18,7 @@ import {
 } from '../../common/utils/script-analysis';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { decodeStoredTestScript } from '../../common/utils/test-script';
+import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
   TestResult,
@@ -116,6 +117,7 @@ interface PlaywrightExecutionResult {
   stdout: string;
   stderr: string;
   executionTimeMs?: number; // Actual execution time in milliseconds
+  billableMs?: number; // Container run time evidenced by Kubernetes
 }
 
 @Injectable()
@@ -422,6 +424,8 @@ export class ExecutionService implements OnModuleDestroy {
     const entityType = isMonitorExecution ? 'monitor' : 'test';
     let finalResult: TestResult;
     let s3Url: string | null = null;
+    // Container run time once the execution pod has actually started.
+    let billableMs = 0;
 
     // Create temp directory for extracted reports (OS-managed temp)
     const extractedReportsDir = path.join(
@@ -498,6 +502,7 @@ export class ExecutionService implements OnModuleDestroy {
         runtimeEnv,
       );
 
+      billableMs = execResult.billableMs ?? 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -568,6 +573,7 @@ export class ExecutionService implements OnModuleDestroy {
           stderr: execResult.stderr,
           error: null,
           executionTimeMs: execResult.executionTimeMs,
+          billableMs,
         };
         this.logger.log(
           `[Playwright Test] ${testId} passed (${execResult.executionTimeMs ?? 0}ms)`,
@@ -630,6 +636,7 @@ export class ExecutionService implements OnModuleDestroy {
           stdout: execResult.stdout,
           stderr: execResult.stderr,
           executionTimeMs: execResult.executionTimeMs,
+          billableMs,
         };
         this.logger.error(
           `[Playwright Test] ${testId} failed: ${specificError} (${execResult.executionTimeMs ?? 0}ms)`,
@@ -682,8 +689,9 @@ export class ExecutionService implements OnModuleDestroy {
       this.logger.error(
         `[Playwright Test] ${testId} ${isCancellation ? 'cancelled' : 'crashed'}: ${errorMessage}`,
       );
-      // Propagate the error to the BullMQ processor so the job is marked as failed
-      throw error;
+      // Propagate the error to the BullMQ processor so the job is marked as failed.
+      // Carry container run time so metering charges only work that ran.
+      throw attachBillableMs(error, billableMs);
     } finally {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
@@ -747,6 +755,8 @@ export class ExecutionService implements OnModuleDestroy {
     const s3ReportKeyPrefix = `${runId}/report`;
     let finalResult: TestExecutionResult;
     let s3Url: string | null = null;
+    // Container run time once the execution pod has actually started.
+    let jobBillableMs = 0;
     let finalError: string | null = null;
     const timestamp = new Date().toISOString();
     let overallSuccess = false; // Default to failure
@@ -928,6 +938,7 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       const taskSecrets = task.secrets ?? {};
+      jobBillableMs = execResult.billableMs ?? 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         taskSecrets,
@@ -1009,6 +1020,7 @@ export class ExecutionService implements OnModuleDestroy {
         })),
         timestamp,
         duration: durationStr,
+        billableMs: jobBillableMs,
         stdout: stdout_log,
         stderr: stderr_log,
       };
@@ -1086,6 +1098,7 @@ export class ExecutionService implements OnModuleDestroy {
         reportUrl: null,
         results: [],
         timestamp,
+        billableMs: jobBillableMs,
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
@@ -1286,6 +1299,7 @@ export class ExecutionService implements OnModuleDestroy {
         stdout: execResult.stdout,
         stderr: execResult.stderr,
         executionTimeMs: execResult.executionTimeMs,
+        billableMs: execResult.billableMs ?? 0,
       };
     } catch (error) {
       return {
@@ -1674,6 +1688,7 @@ export class ExecutionService implements OnModuleDestroy {
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
+    billableMs?: number;
     error?: string;
   }> {
     const startTime = Date.now();
@@ -1773,6 +1788,7 @@ export class ExecutionService implements OnModuleDestroy {
       stdout: redactedStdout,
       stderr: redactedStderr,
       executionTimeMs: containerResult.duration,
+      billableMs: containerResult.billableMs ?? 0,
       error: redactedError,
     };
   }
