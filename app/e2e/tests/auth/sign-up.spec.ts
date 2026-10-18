@@ -119,13 +119,17 @@ test.describe("Sign Up - Invitation Flow @auth @invite", () => {
    * @priority high
    * @type negative
    *
-   * Invalid invite tokens should result in redirect to sign-in
-   * because the invite data fetch will fail.
+   * Invitation ids are UUIDs; malformed values are treated as no invite at
+   * all. A UUID-shaped token that does not exist still hits the invite API and
+   * falls back to the hosting-mode default: sign-in on cloud, open sign-up on
+   * self-hosted.
    */
-  test("Invalid invitation token redirects to sign-in @high @negative", async ({
+  test("Invalid invitation token follows hosting-mode fallback @high @negative", async ({
     page,
   }) => {
-    const invalidToken = "invalid-token-12345";
+    // Must be UUID-shaped, otherwise parseInviteToken drops it before the
+    // invite fetch and the redirect fallback never runs.
+    const invalidToken = "00000000-0000-4000-8000-000000000000";
     const hosting = await getAppConfig(page);
 
     // Navigate with invalid invite token

@@ -139,6 +139,12 @@ test.describe("AI SRE Private Agent lifecycle @aisre @private-agent @critical", 
       await page
         .getByRole("menuitem", { name: "Rotate token", exact: true })
         .click();
+      const rotateConfirm = page.getByRole("alertdialog", {
+        name: "Rotate registration token?",
+      });
+      await rotateConfirm
+        .getByRole("button", { name: "Rotate token", exact: true })
+        .click();
       const rotatedDialog = page.getByRole("dialog", { name: "Token rotated" });
       const rotatedRegistrationToken = await rotatedDialog
         .locator("input")

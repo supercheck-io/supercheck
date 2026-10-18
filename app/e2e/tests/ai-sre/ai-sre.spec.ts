@@ -216,6 +216,13 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
       .last();
     await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
     await expect(assistantMessage).not.toBeEmpty();
+    // The console only adds the session to its in-memory history once the
+    // thread finishes and resolves the conversation. New chat unmounts the
+    // thread, so wait for that handoff (Archive only renders once the
+    // conversation id exists) before leaving the chat.
+    await expect(
+      page.getByRole("button", { name: "Archive chat", exact: true }),
+    ).toBeVisible({ timeout: 60_000 });
 
     await page.getByRole("button", { name: "New chat", exact: true }).click();
     await expect(page.getByLabel("User message")).toHaveCount(0);
