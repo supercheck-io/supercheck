@@ -4,7 +4,7 @@
  * CRITICAL: Queue names must match exactly across all components:
  * - App queue definitions in app/src/lib/queue.ts
  * - Scheduler constants in worker/src/scheduler/constants.ts
- * - KEDA ScaledObjects in deploy/k8s/keda-scaledobject.yaml
+ * - KEDA ScaledObjects that scale on these queues
  *
  * Architecture:
  * - K6_QUEUE (k6-global): For jobs without specific location, processed by ALL workers

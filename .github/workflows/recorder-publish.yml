@@ -8,7 +8,7 @@
 #   3. Tag the merge commit: git tag recorder-v<version> && git push origin recorder-v<version>
 #   The tag must match the manifest version or the run fails before publishing.
 #
-# Required repository/environment secrets (see the runbook in supercheck-ops):
+# Required repository/environment secrets:
 #   BPP_KEYS - JSON credentials consumed by PlasmoHQ/bpp, e.g.
 #     {
 #       "chrome": {

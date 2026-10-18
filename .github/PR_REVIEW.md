@@ -38,7 +38,7 @@ This uses GitHub’s ordinary PR event without overriding event policies or chec
 
 References: [secure use](https://docs.github.com/en/actions/reference/security/secure-use), [PR event security](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target), and [Actions usage terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions).
 
-The script, tests, and this guide are kept identical in `supercheck` and `supercheck-ops`; workflow action pins may differ. Change shared behavior in both copies together. Each repository owns its review rules. Actions are pinned by commit SHA and Node 24 is explicit. Run:
+The script, tests, and this guide are kept identical across the repositories that share them; workflow action pins may differ. Change shared behavior in every copy together. Each repository owns its review rules. Actions are pinned by commit SHA and Node 24 is explicit. Run:
 
 ```sh
 node --test .github/scripts/pr-review.test.mjs

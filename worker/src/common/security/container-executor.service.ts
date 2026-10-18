@@ -345,7 +345,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       'EXECUTION_ARTIFACT_SOCKET_TIMEOUT_MS',
       ContainerExecutorService.DEFAULT_ARTIFACT_SOCKET_TIMEOUT_MS,
     );
-    // These defaults match deploy/k8s/base/execution-limitrange.yaml. Memory
+    // These defaults match the execution LimitRange applied to the cluster. Memory
     // excludes the fixed 662 MiB gVisor + /dev/shm overhead added to every Job.
     this.maxExecutionMemoryLimitMb = this.resolvePositiveInteger(
       'EXECUTION_MAX_MEMORY_LIMIT_MB',
