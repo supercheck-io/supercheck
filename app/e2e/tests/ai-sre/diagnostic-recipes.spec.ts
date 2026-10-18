@@ -3,10 +3,10 @@ import { expect } from "@playwright/test";
 import { test } from "../../fixtures/roles.fixture";
 import { requireRbacUser } from "../../utils/env";
 
-test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
+test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
   test.beforeAll(() => requireRbacUser("orgOwner"));
 
-  test("rejects an incompatible recipe, then persists and disables a bounded recipe", async ({
+  test("rejects an incompatible query, then persists and disables a bounded query", async ({
     orgOwnerPage: page,
   }) => {
     const projects = await page.request.get("/api/projects");
@@ -15,7 +15,7 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
       (await projects.json()) as { currentProject: { id: string } }
     ).currentProject.id;
     const createdProject = await page.request.post("/api/projects", {
-      data: { name: `E2E recipes ${Date.now()}` },
+      data: { name: `E2E saved queries ${Date.now()}` },
     });
     expect(createdProject.status(), await createdProject.text()).toBe(201);
     const projectId = (
@@ -31,7 +31,7 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
 
       const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const connectorName = `E2E GitHub diagnostics ${suffix}`;
-      const recipeName = `E2E bounded issues ${suffix}`;
+      const queryName = `E2E bounded issues ${suffix}`;
 
       await page.goto("/org-admin?tab=integrations", { waitUntil: "load" });
       await page
@@ -72,50 +72,50 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
       await expect(connectorRow).not.toContainText("api.github.com");
       await expect(connectorRow).not.toContainText("e2e_not_a_real_token");
 
-      await page.goto("/org-admin?tab=diagnostic-recipes", {
+      await page.goto("/org-admin?tab=integrations&section=saved-queries", {
         waitUntil: "load",
       });
       await page
-        .getByRole("button", { name: "Add recipe", exact: true })
+        .getByRole("button", { name: "Add query", exact: true })
         .first()
         .click();
-      const recipeDialog = page.getByRole("dialog", {
-        name: "Add diagnostic recipe",
+      const queryDialog = page.getByRole("dialog", {
+        name: "Add saved query",
       });
-      const connectorField = recipeDialog
+      const connectorField = queryDialog
         .getByText("Connector", { exact: true })
         .locator("..");
       await connectorField.getByRole("combobox").click();
       await page
         .getByRole("option", { name: `${connectorName} (github)`, exact: true })
         .click();
-      await recipeDialog
+      await queryDialog
         .getByPlaceholder("High latency by route")
-        .fill(recipeName);
-      const typeField = recipeDialog
+        .fill(queryName);
+      const typeField = queryDialog
         .getByText("Type", { exact: true })
         .locator("..");
       await typeField.getByRole("combobox").click();
       await page.getByRole("option", { name: "promql", exact: true }).click();
-      await recipeDialog
+      await queryDialog
         .getByPlaceholder(/sum\(rate\(http_request_duration_seconds_count/)
         .fill("up");
-      await recipeDialog
-        .getByRole("button", { name: "Save recipe", exact: true })
+      await queryDialog
+        .getByRole("button", { name: "Save query", exact: true })
         .click();
       await expect(
         page.getByText(
           "promql diagnostic queries are not supported for github connectors",
         ),
       ).toBeVisible();
-      await expect(recipeDialog).toBeVisible();
+      await expect(queryDialog).toBeVisible();
 
       await typeField.getByRole("combobox").click();
       await page.getByRole("option", { name: "http_get", exact: true }).click();
-      await recipeDialog
+      await queryDialog
         .getByPlaceholder(/sum\(rate\(http_request_duration_seconds_count/)
         .fill("/repos/{{repository}}/issues?state=open&per_page=5");
-      await recipeDialog
+      await queryDialog
         .getByText("Parameter schema JSON", { exact: true })
         .locator("..")
         .getByRole("textbox")
@@ -128,21 +128,21 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
             },
           }),
         );
-      await recipeDialog
+      await queryDialog
         .getByText("Allowlist JSON", { exact: true })
         .locator("..")
         .getByRole("textbox")
         .fill(JSON.stringify({ repository: ["openai/openai-node"] }));
-      await recipeDialog
-        .getByRole("button", { name: "Save recipe", exact: true })
+      await queryDialog
+        .getByRole("button", { name: "Save query", exact: true })
         .click();
-      await expect(recipeDialog).toBeHidden();
+      await expect(queryDialog).toBeHidden();
 
-      const recipesResponse = await page.request.get(
+      const queriesResponse = await page.request.get(
         "/api/sre/diagnostic-recipes",
       );
-      expect(recipesResponse.status(), await recipesResponse.text()).toBe(200);
-      const recipesBody = (await recipesResponse.json()) as {
+      expect(queriesResponse.status(), await queriesResponse.text()).toBe(200);
+      const queriesBody = (await queriesResponse.json()) as {
         success: boolean;
         queries: Array<{
           id: string;
@@ -152,19 +152,24 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
           maxRows: number;
         }>;
       };
-      expect(recipesBody.success).toBe(true);
+      expect(queriesBody.success).toBe(true);
       expect(
-        recipesBody.queries.find((recipe) => recipe.name === recipeName),
+        queriesBody.queries.find((query) => query.name === queryName),
       ).toMatchObject({
         id: expect.any(String),
-        name: recipeName,
+        name: queryName,
         queryType: "http_get",
         status: "active",
         maxRows: 100,
       });
 
-      const row = page.getByRole("row").filter({ hasText: recipeName });
-      await expect(page.getByRole("columnheader")).toHaveText([
+      // Connectors and saved queries now share the Integrations tab, so scope
+      // the header contract to the saved-query table.
+      const savedQueryTable = page.getByRole("table").filter({
+        has: page.getByRole("columnheader", { name: "Limits" }),
+      });
+      const row = page.getByRole("row").filter({ hasText: queryName });
+      await expect(savedQueryTable.getByRole("columnheader")).toHaveText([
         "Name",
         "Template",
         "Connector",
@@ -176,19 +181,19 @@ test.describe("AI SRE diagnostic recipes @aisre @diagnostics @critical", () => {
       ]);
       await expect(row).toContainText("active");
       await row
-        .getByRole("button", { name: `Open actions for ${recipeName}` })
+        .getByRole("button", { name: `Open actions for ${queryName}` })
         .click();
       await page.getByRole("menuitem", { name: /disable/i }).click();
       const disableDialog = page.getByRole("alertdialog", {
-        name: "Disable diagnostic recipe?",
+        name: "Disable saved query?",
       });
       await disableDialog
-        .getByRole("button", { name: "Disable recipe", exact: true })
+        .getByRole("button", { name: "Disable query", exact: true })
         .click();
       await expect(row).toContainText("disabled");
       await page.reload();
       await expect(
-        page.getByRole("row").filter({ hasText: recipeName }),
+        page.getByRole("row").filter({ hasText: queryName }),
       ).toContainText("disabled");
     } finally {
       const restored = await page.request.post("/api/projects/switch", {
