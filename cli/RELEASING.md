@@ -39,6 +39,18 @@ npm pack --dry-run
 
 Inspect the tarball for the executable, type exports, README, architecture image, Apache-2.0 `LICENSE`, and `NOTICE`. Exercise a packed installation, including offline skills guidance and account-free local execution. Before releasing agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify that an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. See [agent workflow review notes](./AGENT_FIRST_REVIEW.md); mock API tests do not replace this real-server check.
 
+### Prepared release: 0.3.2
+
+PR #434 prepares version `0.3.2` in both package manifests and the CLI changelog. Do not run `npm version` again for this release. After the PR merges with required CI green, a maintainer must create and push this signed tag from the exact merged commit SHA:
+
+```bash
+git tag -s cli-v0.3.2 -m "cli-v0.3.2" <merged-commit-sha>
+git verify-tag cli-v0.3.2
+git push origin cli-v0.3.2
+```
+
+This repository state does not establish that the version has been published.
+
 ## Publish from GitHub
 
 After the version PR has merged and npm trusted publishing is configured, a maintainer creates and pushes the signed, annotated tag for that exact commit:
@@ -66,3 +78,12 @@ supercheck sre --help
 ```
 
 Confirm the expected version and `latest` or `next` tag, inspect npm's provenance for the GitHub Actions run, and check the installed version. Never reuse a published version. The next release must bump both package version files and add dated changelog notes before its tag is created.
+
+For 0.3.2, verify the concrete version after the workflow succeeds:
+
+```bash
+npm view @supercheck/cli@0.3.2 version license dist --json
+npm view @supercheck/cli dist-tags --json
+npm install -g @supercheck/cli@0.3.2
+supercheck --version
+```

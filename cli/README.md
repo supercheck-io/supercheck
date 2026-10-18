@@ -27,6 +27,22 @@ npx @supercheck/cli --help
 
 Update with `supercheck upgrade`. Run `supercheck doctor` to check your local setup.
 
+### Upgrade the CLI
+
+After a release is published, upgrade a global install and check its version with:
+
+```bash
+npm install -g @supercheck/cli@latest
+supercheck --version
+```
+
+For a project-local install:
+
+```bash
+npm install --save-dev @supercheck/cli@latest
+npx supercheck --version
+```
+
 ## Quick start
 
 Create a project-scoped CLI token in **Organization Admin → CLI Tokens**, then:
@@ -54,6 +70,17 @@ supercheck job run --local --offline --id "Nightly E2E"
 ```
 
 Playwright tests need `@playwright/test` and its browsers (`npx playwright install chromium`); performance tests need [k6](https://k6.io). Pass `--playwright-config <path>` to reuse your application's Playwright config. `supercheck doctor` reports missing dependencies. Without `--offline`, local runs still validate scripts against your Supercheck project first.
+
+## Validate test scripts
+
+Validate the tests in the current suite, or check one k6 script explicitly:
+
+```bash
+supercheck validate
+supercheck test validate --file ./_supercheck_/k6/example.k6.ts --type performance
+```
+
+k6 scripts must use the `performance` test type and either export a default function or configure named entrypoints in `options.scenarios`. Validation checks script syntax and type compatibility through the configured Supercheck API; it does not run the test. Use `supercheck test run --offline --all` for local execution, where runtime failures are detected.
 
 ## Configuration
 
@@ -169,7 +196,7 @@ The CLI ships offline, versioned workflow guidance. `supercheck skills` prints a
 ## Links
 
 - [CLI documentation](https://supercheck.io/docs/cli/commands)
-- [Changelog](https://github.com/supercheck-io/supercheck/blob/main/CHANGELOG.md)
+- [Changelog](https://github.com/supercheck-io/supercheck/blob/main/cli/CHANGELOG.md)
 - [Report an issue](https://github.com/supercheck-io/supercheck/issues)
 - [Contributing](https://github.com/supercheck-io/supercheck/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/supercheck-io/supercheck/blob/main/SECURITY.md)
 - [Release process](https://github.com/supercheck-io/supercheck/blob/main/cli/RELEASING.md)

@@ -1,6 +1,6 @@
 {
   "name": "@supercheck/cli",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Open-source testing, monitoring, and AI SRE \u2014 as code",
   "keywords": [
     "monitoring",
@@ -45,6 +45,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "NOTICE",
     "assets/architecture.png"
   ],
