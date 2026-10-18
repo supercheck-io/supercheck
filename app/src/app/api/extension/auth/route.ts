@@ -295,22 +295,29 @@ export async function DELETE(request: NextRequest) {
 
     const userId = session.user.id;
 
-    const { apiKeys } = await apiKeyServerApi.listApiKeys({
-      headers: requestHeaders,
-      query: {
-        configId: EXTENSION_API_KEY_CONFIG_ID,
-        limit: EXTENSION_API_KEY_LIST_LIMIT,
-      },
-    });
-    const extensionKeys = apiKeys.filter(isExtensionKey);
+    // Look up enabled extension keys directly instead of paginating through
+    // Better Auth's list endpoint: the adapter caps unpaginated findMany calls
+    // at 100 rows, so a user with more than 100 API keys would never have the
+    // newest extension key revoked and the recorder could never reconnect.
+    const extensionKeys = await db
+      .select({ id: apikey.id })
+      .from(apikey)
+      .where(
+        and(
+          eq(apikey.referenceId, userId),
+          eq(apikey.configId, EXTENSION_API_KEY_CONFIG_ID),
+          eq(apikey.enabled, true),
+          or(
+            eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
+            like(apikey.name, `${EXTENSION_API_KEY_NAME_PREFIX}%`),
+          ),
+        ),
+      )
+      .orderBy(apikey.createdAt);
 
     let revokedCount = 0;
 
     for (const key of extensionKeys) {
-      if (!key.enabled) {
-        continue;
-      }
-
       await apiKeyServerApi.updateApiKey({
         headers: requestHeaders,
         body: {

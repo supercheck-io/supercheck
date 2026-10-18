@@ -26,14 +26,22 @@ jest.mock("@/lib/rbac/middleware", () => ({
 }));
 
 jest.mock("@/utils/db", () => {
-  const limit = jest.fn();
-  const orderBy = jest.fn(() => ({ limit }));
+  const limit = jest.fn(() => Promise.resolve([]));
+  let revokeRows: unknown[] = [];
+  // POST awaits .orderBy(createdAt).limit(1); DELETE awaits .orderBy(createdAt).
+  const orderBy = jest.fn(() => {
+    const rows = Promise.resolve(revokeRows);
+    return Object.assign(rows, { limit });
+  });
   const where = jest.fn(() => ({ orderBy }));
   const from = jest.fn(() => ({ where }));
 
   return {
     db: { select: jest.fn(() => ({ from })) },
     __mockLimit: limit,
+    __mockRevokeRows: (rows: unknown[]) => {
+      revokeRows = rows;
+    },
   };
 });
 
@@ -49,7 +57,7 @@ jest.mock("@/lib/logger/pino-config", () => {
   };
 });
 
-import { POST } from "./route";
+import { POST, DELETE } from "./route";
 
 const { requireAuthContext: mockRequireAuthContext } = jest.requireMock("@/lib/auth-context") as {
   requireAuthContext: jest.Mock;
@@ -58,8 +66,12 @@ const { checkPermissionWithContext: mockCanCreateKey } = jest.requireMock("@/lib
   checkPermissionWithContext: jest.Mock;
 };
 
-const { __mockLimit: mockPersistedKeyLookup } = jest.requireMock("@/utils/db") as {
+const {
+  __mockLimit: mockPersistedKeyLookup,
+  __mockRevokeRows: mockRevokeRows,
+} = jest.requireMock("@/utils/db") as {
   __mockLimit: jest.Mock;
+  __mockRevokeRows: (rows: Array<{ id: string }>) => void;
 };
 
 const { auth: mockAuth } = jest.requireMock("@/utils/auth") as {
@@ -77,6 +89,7 @@ describe("Extension auth route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPersistedKeyLookup.mockResolvedValue([]);
+    mockRevokeRows([]);
     mockRequireAuthContext.mockResolvedValue({
       userId: "user-1", organizationId: "org-1", project: { id: "project-1", userRole: "project_editor" },
     });
@@ -322,5 +335,76 @@ describe("Extension auth route", () => {
     expect(response.status).toBe(400);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Server-only property");
+  });
+
+  it("revokes enabled extension keys without relying on the capped list endpoint", async () => {
+    mockAuth.api.getSession.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+        name: "User One",
+      },
+    });
+    // A user with more than 100 API keys no longer appears in full through
+    // Better Auth's list endpoint, so revocation must resolve keys directly.
+    mockRevokeRows([{ id: "key-100" }, { id: "key-101" }]);
+    mockAuth.api.updateApiKey.mockResolvedValue({ id: "key-100" });
+
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/extension/auth", {
+        method: "DELETE",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ success: true, data: { keysRevoked: 2 } });
+    expect(mockAuth.api.listApiKeys).not.toHaveBeenCalled();
+    expect(mockAuth.api.updateApiKey).toHaveBeenCalledTimes(2);
+    expect(mockAuth.api.updateApiKey).toHaveBeenNthCalledWith(1, {
+      headers: expect.any(Headers),
+      body: { configId: "default", keyId: "key-100", enabled: false },
+    });
+    expect(mockAuth.api.updateApiKey).toHaveBeenNthCalledWith(2, {
+      headers: expect.any(Headers),
+      body: { configId: "default", keyId: "key-101", enabled: false },
+    });
+  });
+
+  it("reports zero revocations when no enabled extension key exists", async () => {
+    mockAuth.api.getSession.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "user@example.com",
+        name: "User One",
+      },
+    });
+    mockRevokeRows([]);
+
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/extension/auth", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      data: { keysRevoked: 0 },
+    });
+    expect(mockAuth.api.updateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("requires a session before revoking extension keys", async () => {
+    mockAuth.api.getSession.mockResolvedValue(null);
+
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/extension/auth", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(mockAuth.api.updateApiKey).not.toHaveBeenCalled();
   });
 });
