@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
-import { isCloudHosted } from '@/lib/feature-flags';
+import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 
 export async function GET(
   request: NextRequest,
@@ -230,7 +230,9 @@ export async function POST(
       const [acceptingUser] = await tx.select({ id: userTable.id }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
-      if (isCloudHosted()) {
+      // Plan limits only exist when Polar billing is active; cloud mode without
+      // Polar (dev, staging, e2e) has no plans to enforce.
+      if (isPolarEnabled()) {
         const [org] = await tx.select({ plan: organization.subscriptionPlan }).from(organization)
           .where(eq(organization.id, invite.organizationId)).limit(1).for("update");
         const [existingMember] = await tx.select({ id: member.id }).from(member)

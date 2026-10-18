@@ -10,10 +10,10 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
-jest.mock("@/lib/feature-flags", () => ({ isCloudHosted: jest.fn(() => true) }));
+jest.mock("@/lib/feature-flags", () => ({ isCloudHosted: jest.fn(() => true), isPolarEnabled: jest.fn(() => true) }));
 
 import { GET, POST } from "./route";
-import { isCloudHosted } from "@/lib/feature-flags";
+import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 
 const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; update: jest.Mock; transaction: jest.Mock } };
 const { auth } = jest.requireMock("@/utils/auth") as { auth: { api: { getSession: jest.Mock } } };
@@ -42,6 +42,8 @@ describe("invitation privacy and acceptance", () => {
     jest.clearAllMocks();
     db.select.mockReset();
     (isCloudHosted as unknown as jest.Mock).mockReturnValue(true);
+    // Polar follows cloud mode unless a test overrides it.
+    (isPolarEnabled as jest.Mock).mockImplementation(() => (isCloudHosted as jest.Mock)());
     db.select.mockReturnValue(selectRows([invite]));
     auth.api.getSession.mockResolvedValue(null);
     requireUserAuthContext.mockResolvedValue({ userId: "user-1" });
@@ -138,6 +140,17 @@ describe("invitation privacy and acceptance", () => {
     expect(response.status).toBe(402);
     expect(tx.update).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it("skips plan limits in cloud mode when Polar billing is not enabled", async () => {
+    const { tx } = acceptance();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
+    (isPolarEnabled as jest.Mock).mockReturnValue(false);
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }]))
+      .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(200);
+    expect(tx.insert).toHaveBeenCalled();
   });
 
   it("allows an unverified self-hosted account to accept and select the organization atomically", async () => {
