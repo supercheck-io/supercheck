@@ -209,6 +209,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   /** Max combined stdout+stderr size in bytes (10 MB) */
   private static readonly MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+  private static readonly LOG_SNAPSHOT_HEADROOM_BYTES = 64 * 1024;
   private static readonly EXEC_SOCKET_TIMEOUT_MS = 30_000;
   private static readonly DEFAULT_ARTIFACT_SOCKET_TIMEOUT_MS = 5 * 60_000;
   private static readonly PAYLOAD_CHUNK_BYTES = 700 * 1024;
@@ -1758,7 +1759,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       {
         follow: false,
         timestamps: false,
-        limitBytes: ContainerExecutorService.MAX_OUTPUT_BYTES + 1,
+        // Kubernetes may return slightly fewer bytes than limitBytes, so ask for
+        // headroom and treat anything beyond MAX_OUTPUT_BYTES as overflow.
+        limitBytes:
+          ContainerExecutorService.MAX_OUTPUT_BYTES +
+          ContainerExecutorService.LOG_SNAPSHOT_HEADROOM_BYTES,
       },
     );
     await finished(sink);

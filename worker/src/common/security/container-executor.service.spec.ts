@@ -551,7 +551,7 @@ describe('ContainerExecutorService', () => {
           'pod',
           'execution',
           expect.any(Writable),
-          { follow: false, timestamps: false, limitBytes: limit + 1 },
+          { follow: false, timestamps: false, limitBytes: limit + 64 * 1024 },
         );
       },
     );

@@ -192,11 +192,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       // 4. Delete user — CASCADE handles: session, account, member,
       //    project_members, invitation.inviterId
       await tx.delete(user).where(eq(user.id, userId));
+
+      // Same transaction as the deletion: both commit or neither does.
+      await logAdminEvent(currentAdmin.id, 'user_deleted', userId, 'user', userId, {
+        targetEmail: targetUser.email,
+      }, tx);
     });
     
-    await logAdminEvent(currentAdmin.id, 'user_deleted', userId, 'user', userId, {
-      targetEmail: targetUser.email,
-    });
     return NextResponse.json({
       success: true,
       data: { message: 'User deleted successfully' }

@@ -20,11 +20,11 @@ beforeEach(() => {
   };
   (db.transaction as jest.Mock).mockImplementation(async (fn) => fn(tx));
 });
-it("records the administrator and deleted account after the transaction commits", async () => {
+it("records the administrator and deleted account inside the deletion transaction", async () => {
   const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "target" }) });
   expect(response.status).toBe(200);
-  expect(logAdminEvent).toHaveBeenCalledWith("admin", "user_deleted", "target", "user", "target", { targetEmail: "target@example.test" });
-  expect((db.transaction as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((logAdminEvent as jest.Mock).mock.invocationCallOrder[0]);
+  // The audit row is written through the transaction handle, not the shared pool.
+  expect(logAdminEvent).toHaveBeenCalledWith("admin", "user_deleted", "target", "user", "target", { targetEmail: "target@example.test" }, expect.objectContaining({ delete: expect.any(Function) }));
 });
 it("does not claim deletion when the transaction fails", async () => {
   (db.transaction as jest.Mock).mockRejectedValue(new Error("rollback"));
