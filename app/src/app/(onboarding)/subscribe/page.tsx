@@ -2,6 +2,7 @@
 
 import { useOrganizations } from "@/hooks/use-organizations";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -61,25 +62,59 @@ export default function SubscribePage() {
     isPending: organizationLoading,
     isError: organizationError,
   } = useOrganizations();
-  const overdue = activeOrganization?.subscriptionStatus === "past_due";
-  const hasCurrentSubscription =
-    activeOrganization?.subscriptionStatus === "active" ||
-    activeOrganization?.subscriptionStatus === "past_due" ||
-    (activeOrganization?.subscriptionStatus === "canceled" &&
-      Boolean(
-        activeOrganization.subscriptionEndsAt &&
-          new Date(activeOrganization.subscriptionEndsAt).getTime() >
-            Date.now(),
-      ));
+  const organizationId = activeOrganization?.id;
+  const {
+    data: access,
+    isPending: accessLoading,
+    isError: accessError,
+    refetch: refreshAccess,
+  } = useQuery<{
+    organizationId: string;
+    isActive: boolean;
+    plan: "plus" | "pro" | "unlimited" | null;
+    status: "active" | "past_due" | "canceled" | "none" | null;
+    reason: string;
+    subscriptionEndsAt?: string | null;
+  }>({
+    queryKey: ["subscription-status", organizationId],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/subscription/status?organizationId=${encodeURIComponent(organizationId!)}`,
+      );
+      if (!response.ok) throw new Error("Unable to verify subscription access");
+      const result = await response.json();
+      if (result.organizationId !== organizationId)
+        throw new Error("Organization changed. Refresh before subscribing.");
+      return result;
+    },
+    enabled:
+      Boolean(organizationId) && !organizationLoading && !organizationError,
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: 1,
+  });
+  const hasCurrentSubscription = access?.isActive === true;
+  // Match checkout's duplicate-purchase guard even when access validation fails.
+  const billingNeedsAttention = Boolean(
+    access &&
+      !access.isActive &&
+      (access.status === "active" ||
+        access.status === "past_due" ||
+        (access.status === "canceled" &&
+          access.subscriptionEndsAt &&
+          new Date(access.subscriptionEndsAt).getTime() > Date.now())),
+  );
+  const hasBillingContext = hasCurrentSubscription || billingNeedsAttention;
+  const overdue = access?.status === "past_due";
   const expired =
-    !hasCurrentSubscription &&
-    Boolean(
-      activeOrganization?.subscriptionStatus === "canceled" ||
-        activeOrganization?.subscriptionEndsAt,
-    );
+    !hasBillingContext &&
+    Boolean(access?.status === "canceled" || access?.subscriptionEndsAt);
   const canSubscribe =
     activeOrganization?.role === "org_owner" &&
-    !hasCurrentSubscription &&
+    Boolean(access) &&
+    !hasBillingContext &&
+    !accessLoading &&
+    !accessError &&
     !organizationLoading &&
     !organizationError;
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
@@ -151,11 +186,29 @@ export default function SubscribePage() {
     }
   };
 
-  if (loading && !hasCurrentSubscription) {
+  if (organizationId && accessLoading && !organizationError)
+    return <SubscribeSkeleton />;
+  if (organizationId && accessError)
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-semibold">
+          Unable to verify your subscription
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          We couldn&apos;t check your organization&apos;s billing status. Retry
+          before starting checkout.
+        </p>
+        <Button variant="outline" onClick={() => refreshAccess()}>
+          Retry
+        </Button>
+      </div>
+    );
+
+  if (loading && !hasBillingContext) {
     return <SubscribeSkeleton />;
   }
 
-  if ((error || !pricingData) && !hasCurrentSubscription) {
+  if ((error || !pricingData) && !hasBillingContext) {
     return (
       <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
@@ -176,17 +229,19 @@ export default function SubscribePage() {
 
   return (
     <div
-      className={`mx-auto py-6 md:py-8 px-4 space-y-8 ${hasCurrentSubscription ? "max-w-2xl" : "max-w-4xl"}`}
+      className={`mx-auto py-6 md:py-8 px-4 space-y-8 ${hasBillingContext ? "max-w-2xl" : "max-w-4xl"}`}
     >
       <header className="space-y-3">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-          {overdue
-            ? "Update your payment method"
-            : expired
-              ? "Restore your subscription"
-              : hasCurrentSubscription
-                ? "Your subscription"
-                : "Choose your plan"}
+          {billingNeedsAttention
+            ? "Review your billing setup"
+            : overdue
+              ? "Update your payment method"
+              : expired
+                ? "Restore your subscription"
+                : hasCurrentSubscription
+                  ? "Your subscription"
+                  : "Choose your plan"}
         </h1>
         <p className="text-sm text-muted-foreground">
           One subscription covers all projects in your organization.
@@ -200,15 +255,17 @@ export default function SubscribePage() {
           </h2>
           {activeOrganization && (
             <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
-              {overdue
-                ? "Payment overdue"
-                : expired
-                  ? "Subscription ended"
-                  : hasCurrentSubscription
-                    ? activeOrganization.subscriptionStatus === "canceled"
-                      ? "Cancellation scheduled"
-                      : "Active"
-                    : "Not subscribed"}
+              {billingNeedsAttention
+                ? "Billing needs attention"
+                : overdue
+                  ? "Payment overdue"
+                  : expired
+                    ? "Subscription ended"
+                    : hasCurrentSubscription
+                      ? access?.status === "canceled"
+                        ? "Cancellation scheduled"
+                        : "Active"
+                      : "Not subscribed"}
             </span>
           )}
         </div>
@@ -233,24 +290,30 @@ export default function SubscribePage() {
             Only this organization&apos;s owner can subscribe. Contact the
             owner, or switch to an organization you own if available.
           </p>
-        ) : hasCurrentSubscription ? (
+        ) : hasBillingContext ? (
           <>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {overdue
-                ? "Your latest payment is overdue. Update your payment details to keep your existing subscription."
-                : activeOrganization?.subscriptionStatus === "canceled"
-                  ? "Your subscription will not renew. Access continues until the paid period ends."
-                  : "View invoices, update payment details, or change your plan in billing."}
+              {billingNeedsAttention
+                ? "We couldn’t confirm access for this subscription. Review billing or contact support before starting another subscription."
+                : overdue
+                  ? "Your latest payment is overdue. Update your payment details to keep your existing subscription."
+                  : access?.status === "canceled"
+                    ? "Your subscription will not renew. Access continues until the paid period ends."
+                    : "View invoices, update payment details, or change your plan in billing."}
             </p>
             <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-5">
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Current plan</p>
+                <p className="text-xs text-muted-foreground">
+                  {billingNeedsAttention ? "Access status" : "Current plan"}
+                </p>
                 <p className="text-sm font-medium">
-                  {activeOrganization?.subscriptionPlan === "plus"
+                  {access?.plan === "plus"
                     ? "Plus"
-                    : activeOrganization?.subscriptionPlan === "pro"
+                    : access?.plan === "pro"
                       ? "Pro"
-                      : "Paid subscription"}
+                      : billingNeedsAttention
+                        ? "Needs review"
+                        : "Paid subscription"}
                 </p>
               </div>
               {activeOrganization?.role === "org_owner" && (
@@ -279,7 +342,7 @@ export default function SubscribePage() {
       </Card>
 
       {/* Pricing Tier Cards */}
-      {!hasCurrentSubscription && (
+      {!hasBillingContext && (
         <section className="max-w-4xl mx-auto">
           <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
             {plans.map((plan) => (

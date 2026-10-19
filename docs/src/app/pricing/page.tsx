@@ -104,7 +104,7 @@ const plans: {
 
 const overagePricing = [
     { metric: 'Playwright minute', plus: `$${(catalog.plus.overageCents.playwrightMinutes / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.playwrightMinutes / 100).toFixed(3)}` },
-    { metric: 'k6 VU-minute', plus: `$${(catalog.plus.overageCents.k6VuMinutes / 100).toFixed(3)}`, pro: `$${(catalog.pro.overageCents.k6VuMinutes / 100).toFixed(3)}` },
+    { metric: 'k6 VU-minute', plus: `$${(catalog.plus.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.plus.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)`, pro: `$${(catalog.pro.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.pro.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)` },
     { metric: 'Completed AI SRE investigation', plus: `$${(catalog.plus.overageCents.sreInvestigationUnits / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.sreInvestigationUnits / 100).toFixed(2)}` },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];

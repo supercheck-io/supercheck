@@ -119,7 +119,7 @@ describe("SubscriptionGuard", () => {
     });
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/subscribe?required=true");
+      expect(pushMock).toHaveBeenCalledWith("/subscribe");
     });
   });
 

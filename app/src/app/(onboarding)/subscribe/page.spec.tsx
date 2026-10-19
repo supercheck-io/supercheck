@@ -1,12 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useOrganizations } from "@/hooks/use-organizations";
 import { toast } from "sonner";
 import SubscribePage from "./page";
 
 jest.mock("@/hooks/use-organizations", () => ({ useOrganizations: jest.fn() }));
-jest.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams("required=true"),
-}));
 
 const pricing = {
   plans: ["plus", "pro"].map((id) => ({
@@ -23,6 +21,20 @@ const pricing = {
   featureComparison: [], faqs: [],
 };
 
+jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
+
+function subscriptionAccessFixture() {
+  const org = (useOrganizations as jest.Mock)().activeOrganization;
+  const isActive = org?.subscriptionStatus === "active" || org?.subscriptionStatus === "past_due" ||
+    (org?.subscriptionStatus === "canceled" && new Date(org.subscriptionEndsAt).getTime() > Date.now());
+  return {
+    data: org ? { organizationId: org.id, isActive: Boolean(isActive), plan: isActive ? "plus" : null,
+      status: org.subscriptionStatus ?? "none", subscriptionEndsAt: org.subscriptionEndsAt,
+      reason: isActive ? "active" : org.subscriptionStatus === "canceled" ? "canceled_expired" : "inactive" } : undefined,
+    isPending: !org, isError: false, refetch: jest.fn(),
+  };
+}
+
 describe("signup plan selection", () => {
   const originalFetch = global.fetch;
   const mockFetch = jest.fn();
@@ -30,6 +42,7 @@ describe("signup plan selection", () => {
   const organization = { id: "org-default", name: "My team", role: "org_owner", subscriptionStatus: null };
 
   beforeEach(() => {
+    (useQuery as jest.Mock).mockReset().mockImplementation(subscriptionAccessFixture);
     jest.clearAllMocks();
     mockUseOrganizations.mockReturnValue({ activeOrganization: organization, isPending: false, isError: false });
     mockFetch.mockReset().mockResolvedValue({ ok: true, json: async () => pricing });
@@ -124,6 +137,63 @@ describe("signup plan selection", () => {
     expect(screen.queryByText(/Billed monthly per organization/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage subscription" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Continue with Plus" })).not.toBeInTheDocument();
+  });
+
+  it.each(["missing_plan", "invalid_plan", "polar_customer_missing", "polar_customer_invalid"])("offers billing recovery for denied existing subscriptions: %s", async reason => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "active", subscriptionPlan: null }, isPending: false, isError: false });
+    (useQuery as jest.Mock).mockReturnValue({ data: { organizationId: organization.id, isActive: false, plan: null, status: "active", reason }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("heading", { name: "Review your billing setup" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Manage subscription" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Contact support" })).toBeVisible();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();
+  });
+
+  it.each(["2020-01-01T00:00:00Z", null, "invalid"])("allows recovery for an ended cancellation with incomplete billing data: %s", async subscriptionEndsAt => {
+    (useQuery as jest.Mock).mockReturnValue({ data: { organizationId: organization.id, isActive: false, plan: null, status: "canceled", reason: "missing_plan", subscriptionEndsAt }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("button", { name: "Resubscribe to Plus" })).toBeEnabled();
+    expect(screen.queryByRole("heading", { name: "Review your billing setup" })).not.toBeInTheDocument();
+  });
+
+  it("preserves duplicate-purchase protection for an incomplete cancellation in its paid period", async () => {
+    (useQuery as jest.Mock).mockReturnValue({ data: { organizationId: organization.id, isActive: false, plan: null, status: "canceled", reason: "missing_plan", subscriptionEndsAt: "2999-01-01T00:00:00Z" }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("heading", { name: "Review your billing setup" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Resubscribe to/ })).not.toBeInTheDocument();
+  });
+
+  it("trusts server access over a stale organization summary", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "active" }, isPending: false, isError: false });
+    (useQuery as jest.Mock).mockReturnValue({ data: { organizationId: organization.id, isActive: false, plan: null, status: "none", reason: "inactive" }, isPending: false, isError: false });
+    expect(await openPage()).toBeEnabled();
+  });
+
+  it("blocks checkout while access is being checked", () => {
+    (useQuery as jest.Mock).mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<SubscribePage />);
+    expect(screen.getByRole("status", { name: "Loading plans" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();
+  });
+
+  it("offers retry rather than checkout after an access lookup error", async () => {
+    const refetch = jest.fn();
+    (useQuery as jest.Mock).mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
+    render(<SubscribePage />);
+    expect(screen.getByRole("heading", { name: "Unable to verify your subscription" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();
+  });
+
+  it("pins the access request and rejects another organization's response", async () => {
+    await openPage();
+    const { queryFn, queryKey } = (useQuery as jest.Mock).mock.calls[0][0];
+    expect(queryKey).toEqual(["subscription-status", organization.id]);
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ organizationId: "another-org", isActive: true }) });
+    await expect(queryFn()).rejects.toThrow("Organization changed");
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/subscription/status?organizationId=org-default");
   });
 
   it("recovers from a failed plan lookup without exposing checkout", async () => {

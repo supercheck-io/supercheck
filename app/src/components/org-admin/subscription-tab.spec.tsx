@@ -1,8 +1,9 @@
+import { useOrganizations } from "@/hooks/use-organizations";
+import { useQuery } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SubscriptionTab } from "./subscription-tab";
 import SubscribePage from "../../app/(onboarding)/subscribe/page";
 
-jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/components/billing/spending-limits", () => ({
@@ -43,10 +44,25 @@ const pricing = { plans: [{
   overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
 }] };
 
+jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
+
+function subscriptionAccessFixture() {
+  const org = (useOrganizations as jest.Mock)().activeOrganization;
+  const isActive = org?.subscriptionStatus === "active" || org?.subscriptionStatus === "past_due" ||
+    (org?.subscriptionStatus === "canceled" && new Date(org.subscriptionEndsAt).getTime() > Date.now());
+  return {
+    data: org ? { organizationId: org.id, isActive: Boolean(isActive), plan: isActive ? "plus" : null,
+      status: org.subscriptionStatus ?? "none", subscriptionEndsAt: org.subscriptionEndsAt,
+      reason: isActive ? "active" : org.subscriptionStatus === "canceled" ? "canceled_expired" : "inactive" } : undefined,
+    isPending: !org, isError: false, refetch: jest.fn(),
+  };
+}
+
 describe("SubscriptionTab", () => {
   const originalFetch = global.fetch;
   const fetchMock = jest.fn();
   beforeEach(() => {
+    (useQuery as jest.Mock).mockReset().mockImplementation(subscriptionAccessFixture);
     mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Test organization", role: "org_owner", subscriptionStatus: "none" }, isPending: false, isError: false });
     fetchMock.mockReset().mockImplementation(async (url: string) => ({
       ok: true,

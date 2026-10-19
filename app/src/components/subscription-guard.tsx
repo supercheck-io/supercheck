@@ -123,12 +123,12 @@ export function SubscriptionGuard({
     if (!isFetched) return;
 
     if (isError) {
-      router.push('/subscribe?required=true');
+      router.push('/subscribe');
       return;
     }
 
     if (subscriptionStatus && !subscriptionStatus.isActive) {
-      router.push('/subscribe?required=true');
+      router.push('/subscribe');
     }
   }, [hasSelfHostedInfo, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router]);
 
