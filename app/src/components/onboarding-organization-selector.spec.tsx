@@ -10,18 +10,21 @@ const projects = [
     organizationId: "invited",
     name: "Default",
     organizationName: "Invited team",
+    isDefault: true,
   },
   {
     id: "team2",
     organizationId: "invited",
     name: "Other",
     organizationName: "Invited team",
+    isDefault: false,
   },
   {
     id: "home",
     organizationId: "own",
     name: "Default",
     organizationName: "My organization",
+    isDefault: true,
   },
 ];
 it("shows each organization once and preserves switching out of an invited team", async () => {
@@ -39,6 +42,19 @@ it("shows each organization once and preserves switching out of an invited team"
   fireEvent.change(select, { target: { value: "own" } });
   await waitFor(() => expect(switchProject).toHaveBeenCalledWith("home"));
   await waitFor(() => expect(select).not.toBeDisabled());
+});
+it("switches to the organization's default project", async () => {
+  const switchProject = jest.fn().mockResolvedValue(true);
+  (useProjectContext as jest.Mock).mockReturnValue({
+    currentProject: projects[2],
+    switchProject,
+    projects,
+  });
+  render(<OnboardingOrganizationSelector />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Organization" }), {
+    target: { value: "invited" },
+  });
+  await waitFor(() => expect(switchProject).toHaveBeenCalledWith("team"));
 });
 it("hides the switcher when all projects belong to one organization", () => {
   (useProjectContext as jest.Mock).mockReturnValue({

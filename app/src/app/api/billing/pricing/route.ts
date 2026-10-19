@@ -66,21 +66,21 @@ export async function GET() {
         const planType = plan.plan as "plus" | "pro";
         const overage = overagePricingMap.get(planType);
 
-        // Hardcoded pricing information (managed in Polar)
+        // Presentation comes from the shared catalog; Polar owns the charge.
         const planInfo = {
           plus: {
             id: "plus",
             name: PLAN_PRICING.plus.name,
             price: PLAN_PRICING.plus.monthlyPriceCents / 100,
             interval: "month",
-            description: "For small teams and growing projects",
+            description: catalog.plus.description,
           },
           pro: {
             id: "pro",
             name: PLAN_PRICING.pro.name,
             price: PLAN_PRICING.pro.monthlyPriceCents / 100,
             interval: "month",
-            description: "For growing production teams",
+            description: catalog.pro.description,
           },
         }[planType];
 

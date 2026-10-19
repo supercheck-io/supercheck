@@ -1,6 +1,7 @@
 {
   "plus": {
     "name": "Plus",
+    "description": "For startups and small teams",
     "monthlyPriceCents": 4900,
     "limits": {
       "maxMonitors": 50,
@@ -31,6 +32,7 @@
   },
   "pro": {
     "name": "Pro",
+    "description": "For growing teams",
     "monthlyPriceCents": 14900,
     "limits": {
       "maxMonitors": 200,

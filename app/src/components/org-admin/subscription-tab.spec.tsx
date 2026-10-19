@@ -44,7 +44,11 @@ const pricing = { plans: [{
   overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
 }] };
 
-jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
+const mockInvalidateQueries = jest.fn();
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: jest.fn(),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+}));
 
 function subscriptionAccessFixture() {
   const org = (useOrganizations as jest.Mock)().activeOrganization;

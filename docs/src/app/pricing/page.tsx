@@ -42,7 +42,7 @@ const plans: {
         name: 'Plus',
         price: `$${catalog.plus.monthlyPriceCents / 100}`,
         period: '/month',
-        description: 'For startups and small teams',
+        description: catalog.plus.description,
         features: [
             `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")} monitors`,
             `${catalog.plus.limits.maxStatusPages} status pages with custom domains`,
@@ -63,7 +63,7 @@ const plans: {
         name: 'Pro',
         price: `$${catalog.pro.monthlyPriceCents / 100}`,
         period: '/month',
-        description: 'For growing teams',
+        description: catalog.pro.description,
         features: [
             `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")} monitors`,
             `${catalog.pro.limits.maxStatusPages} status pages with custom domains`,

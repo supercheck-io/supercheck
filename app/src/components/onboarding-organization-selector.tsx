@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { useProjectContext } from "@/hooks/use-project-context";
+import { useProjectContext, type ProjectContext } from "@/hooks/use-project-context";
 
 export function OnboardingOrganizationSelector() {
   const { projects, currentProject, switchProject } = useProjectContext();
   const [pending, setPending] = useState(false);
+  // One entry per organization. Prefer the default project so switching
+  // organizations does not silently land on an arbitrary project.
   const organizations = Array.from(
-    new Map(
-      projects.map((project) => [project.organizationId, project]),
-    ).values(),
+    projects
+      .reduce((byOrganization, project) => {
+        const current = byOrganization.get(project.organizationId);
+        if (!current || (project.isDefault && !current.isDefault)) {
+          byOrganization.set(project.organizationId, project);
+        }
+        return byOrganization;
+      }, new Map<string, ProjectContext>())
+      .values(),
   );
   if (organizations.length < 2) return null;
   return (

@@ -21,7 +21,11 @@ const pricing = {
   featureComparison: [], faqs: [],
 };
 
-jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
+const mockInvalidateQueries = jest.fn();
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: jest.fn(),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+}));
 
 function subscriptionAccessFixture() {
   const org = (useOrganizations as jest.Mock)().activeOrganization;
@@ -42,6 +46,7 @@ describe("signup plan selection", () => {
   const organization = { id: "org-default", name: "My team", role: "org_owner", subscriptionStatus: null };
 
   beforeEach(() => {
+    mockInvalidateQueries.mockReset().mockResolvedValue(undefined);
     (useQuery as jest.Mock).mockReset().mockImplementation(subscriptionAccessFixture);
     jest.clearAllMocks();
     mockUseOrganizations.mockReturnValue({ activeOrganization: organization, isPending: false, isError: false });
@@ -107,6 +112,22 @@ describe("signup plan selection", () => {
     expect(await openPage()).toBeDisabled();
   });
 
+  it("sets up a missing default organization before checkout", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: null, isPending: false, isError: false });
+    mockFetch.mockImplementation(async (url: string) =>
+      url === "/api/auth/setup-defaults"
+        ? { ok: true, json: async () => ({ success: true }) }
+        : { ok: true, json: async () => pricing },
+    );
+    render(<SubscribePage />);
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith("/api/auth/setup-defaults", { method: "POST" }),
+    );
+    await waitFor(() =>
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["organizations"] }),
+    );
+  });
+
   it.each(["2020-01-01T00:00:00Z", null, "invalid"])("explains expired access and allows resubscription: %s", async subscriptionEndsAt => {
     mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "canceled", subscriptionEndsAt }, isPending: false, isError: false });
     render(<SubscribePage />);
@@ -144,7 +165,8 @@ describe("signup plan selection", () => {
     (useQuery as jest.Mock).mockReturnValue({ data: { organizationId: organization.id, isActive: false, plan: null, status: "active", reason }, isPending: false, isError: false });
     render(<SubscribePage />);
     expect(await screen.findByRole("heading", { name: "Review your billing setup" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Manage subscription" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Manage subscription" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Contact support about billing" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
     expect(screen.getByRole("link", { name: "Contact support" })).toBeVisible();
     expect(screen.queryByText("Active")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Continue with/ })).not.toBeInTheDocument();

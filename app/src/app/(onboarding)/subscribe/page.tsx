@@ -2,7 +2,7 @@
 
 import { useOrganizations } from "@/hooks/use-organizations";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -17,6 +17,7 @@ import {
   ExternalLink,
   ArrowRight,
   CreditCard,
+  Mail,
 } from "lucide-react";
 
 interface PricingPlan {
@@ -62,6 +63,7 @@ export default function SubscribePage() {
     isPending: organizationLoading,
     isError: organizationError,
   } = useOrganizations();
+  const queryClient = useQueryClient();
   const organizationId = activeOrganization?.id;
   const {
     data: access,
@@ -121,6 +123,7 @@ export default function SubscribePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const checkoutPending = useRef(false);
+  const setupAttempted = useRef(false);
   const [subscribing, setSubscribing] = useState<string | null>(null);
 
   const fetchPricing = useCallback(() => {
@@ -143,6 +146,51 @@ export default function SubscribePage() {
   useEffect(() => {
     fetchPricing();
   }, [fetchPricing]);
+
+  // /subscribe is reachable without visiting the dashboard, where SetupChecker
+  // normally creates a new user's organization. Recover that path here so a
+  // direct visit cannot leave checkout permanently disabled.
+  useEffect(() => {
+    if (
+      organizationLoading ||
+      organizationError ||
+      organizationId ||
+      setupAttempted.current
+    ) {
+      return;
+    }
+
+    setupAttempted.current = true;
+
+    const setupDefaults = async () => {
+      try {
+        const response = await fetch("/api/auth/setup-defaults", {
+          method: "POST",
+        });
+        if (!response.ok) return;
+
+        const result = (await response.json().catch(() => null)) as {
+          pendingInvitationId?: string;
+        } | null;
+
+        if (result?.pendingInvitationId) {
+          window.location.assign(
+            new URL(
+              `/invite/${encodeURIComponent(result.pendingInvitationId)}`,
+              window.location.origin,
+            ).toString(),
+          );
+          return;
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      } catch (setupError) {
+        console.warn("Setup defaults failed:", setupError);
+      }
+    };
+
+    void setupDefaults();
+  }, [organizationError, organizationId, organizationLoading, queryClient]);
 
   const handleSubscribe = async (planSlug: string) => {
     // Prevent double-click: if already subscribing, ignore
@@ -281,8 +329,8 @@ export default function SubscribePage() {
         )}
         {!organizationLoading && !organizationError && !activeOrganization && (
           <p className="text-sm text-muted-foreground">
-            Your default organization is still being set up. Refresh this page
-            to retry setup.
+            Your default organization is still being set up. This page will
+            update automatically; refresh if it does not.
           </p>
         )}
         {activeOrganization && activeOrganization.role !== "org_owner" ? (
@@ -321,11 +369,22 @@ export default function SubscribePage() {
                   asChild
                   className="bg-[hsl(220,90%,56%)] text-white hover:bg-[hsl(220,90%,50%)] dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]"
                 >
-                  <Link href="/org-admin?tab=subscription">
-                    <CreditCard aria-hidden="true" className="h-4 w-4" />
-                    Manage subscription
-                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                  </Link>
+                  {billingNeedsAttention ? (
+                    <a
+                      href="mailto:hello@supercheck.io"
+                      aria-label="Contact support about billing"
+                    >
+                      <Mail aria-hidden="true" className="h-4 w-4" />
+                      Contact support
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </a>
+                  ) : (
+                    <Link href="/org-admin?tab=subscription">
+                      <CreditCard aria-hidden="true" className="h-4 w-4" />
+                      Manage subscription
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  )}
                 </Button>
               )}
             </div>
