@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
@@ -25,6 +25,8 @@ jest.mock("./incident-notifications/send-slack-notifications", () => ({
 }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
 import { getPublicComponents } from "@/actions/get-public-components";
+import { checkUptimePercentage } from "@/lib/status-page-uptime";
+import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import {
   enqueuePendingDeliveries,
   processDelivery,
@@ -176,6 +178,81 @@ it("uses failed checks for uptime even with no incident", async () => {
   expect(result.components[0].dailyMetrics).toEqual([
     expect.objectContaining({ totalChecks: 1, successfulChecks: 0 }),
   ]);
+});
+
+it("uses historical location rows when a single-location monitor has no combined row", async () => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() - 1);
+  await mockDatabase.insert(schema.monitorAggregates).values({
+    monitorId,
+    periodType: "daily",
+    periodStart: day,
+    location: "local",
+    totalChecks: 10,
+    successfulChecks: 9,
+    failedChecks: 1,
+    uptimePercentage: "90.00",
+  });
+
+  const result = await getPublicComponents(pageId);
+  expect(result.success).toBe(true);
+  expect(result.components[0].dailyMetrics).toEqual([
+    { date: day.toISOString().slice(0, 10), totalChecks: 10, successfulChecks: 9 },
+  ]);
+  expect(checkUptimePercentage(result.components[0].dailyMetrics)).toBe(90);
+
+  await mockDatabase.insert(schema.monitorAggregates).values({
+    monitorId,
+    periodType: "daily",
+    periodStart: day,
+    location: null,
+    totalChecks: 10,
+    successfulChecks: 9,
+    failedChecks: 1,
+    uptimePercentage: "90.00",
+  });
+  const combined = await getPublicComponents(pageId);
+  expect(combined.components[0].dailyMetrics).toEqual(result.components[0].dailyMetrics);
+});
+
+it("writes a combined daily aggregate for a single-location monitor", async () => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() - 1);
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: new Date(day.getTime() + 60_000), location: "local", status: "up", isUp: true },
+    { monitorId, checkedAt: new Date(day.getTime() + 120_000), location: "local", status: "down", isUp: false },
+  ]);
+
+  const aggregation = await monitorAggregationService.runDailyAggregation();
+  expect(aggregation.success).toBe(true);
+  expect(aggregation.errors).toEqual([]);
+  const rows = await mockDatabase.select().from(schema.monitorAggregates).where(and(
+    eq(schema.monitorAggregates.monitorId, monitorId),
+    eq(schema.monitorAggregates.periodType, "daily"),
+    eq(schema.monitorAggregates.periodStart, day),
+  ));
+  expect(rows).toHaveLength(2);
+  const location = rows.find((row) => row.location === "local");
+  const combined = rows.find((row) => row.location === null);
+  expect(location).toBeDefined();
+  expect(combined).toMatchObject({
+    totalChecks: location?.totalChecks,
+    successfulChecks: location?.successfulChecks,
+    failedChecks: location?.failedChecks,
+  });
+  expect(combined?.totalChecks).toBe(2);
+  expect(combined?.successfulChecks).toBe(1);
+  expect(combined?.location).toBeNull();
+
+  const rerun = await monitorAggregationService.runDailyAggregation();
+  expect(rerun.success).toBe(true);
+  expect(await mockDatabase.select().from(schema.monitorAggregates).where(and(
+    eq(schema.monitorAggregates.monitorId, monitorId),
+    eq(schema.monitorAggregates.periodType, "daily"),
+    eq(schema.monitorAggregates.periodStart, day),
+  ))).toHaveLength(2);
 });
 
 it("starts and completes maintenance, and catches up an expired window without a false start", async () => {

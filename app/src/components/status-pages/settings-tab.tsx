@@ -1136,9 +1136,9 @@ export function SettingsTab({
                       <Rss className="h-4 w-4 text-amber-500" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">RSS Feed</div>
+                      <div className="text-sm font-medium">Feeds (RSS and iCal)</div>
                       <div className="text-xs text-muted-foreground">
-                        Provide an RSS feed for automated monitoring tools
+                        Provide RSS and iCal feeds for updates and calendar subscriptions
                       </div>
                     </div>
                   </div>

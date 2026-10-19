@@ -8,7 +8,8 @@ import {
   monitorAggregates,
   monitorResults,
 } from "@/db/schema";
-import { eq, and, gte, lt, inArray, isNull, sql } from "drizzle-orm";
+import { eq, and, gte, lt, inArray, isNull, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 // UUID validation schema
@@ -107,6 +108,7 @@ export async function getPublicComponents(statusPageId: string) {
     const from = new Date(today);
     from.setUTCDate(from.getUTCDate() - 89);
     const componentIds = components.map((component) => component.id);
+    const combinedAggregate = alias(monitorAggregates, "combined_aggregate");
     const historical =
       componentIds.length === 0
         ? []
@@ -129,7 +131,19 @@ export async function getPublicComponents(statusPageId: string) {
               and(
                 inArray(statusPageComponentMonitors.componentId, componentIds),
                 eq(monitorAggregates.periodType, "daily"),
-                isNull(monitorAggregates.location),
+                or(
+                  isNull(monitorAggregates.location),
+                  notExists(
+                    db.select({ id: combinedAggregate.id })
+                      .from(combinedAggregate)
+                      .where(and(
+                        eq(combinedAggregate.monitorId, monitorAggregates.monitorId),
+                        eq(combinedAggregate.periodType, monitorAggregates.periodType),
+                        eq(combinedAggregate.periodStart, monitorAggregates.periodStart),
+                        isNull(combinedAggregate.location),
+                      )),
+                  ),
+                ),
                 gte(monitorAggregates.periodStart, from),
                 lt(monitorAggregates.periodStart, today),
               ),
