@@ -113,7 +113,12 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       const receipt = await this.db.query.executionUsageReceipts.findFirst({
         where: eq(schema.executionUsageReceipts.id, id),
       });
-      if (!receipt || receipt.settledAt) return;
+      if (
+        !receipt ||
+        receipt.settledAt ||
+        receipt.metadata?.requiresAllocationReconciliation === true
+      )
+        return;
       const k6 = receipt.eventType === 'k6_execution';
       await this.recordUsageEvent(
         receipt.organizationId,

@@ -145,6 +145,24 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
     ).toBeCloseTo((2 * 61) / 60, 3);
   });
 
+  it('parks positive k6 runtime without native allocation instead of silently charging one VU', async () => {
+    await persistExecutionReceipt(
+      database,
+      { ...completion, eventType: 'k6_execution', durationMs: 61_000 },
+      persistResult,
+    );
+    const [receipt] = await database
+      .select()
+      .from(schema.executionUsageReceipts);
+    expect(Number(receipt.units)).toBe(0);
+    expect(receipt.nextAttemptAt).toBeNull();
+    expect(receipt.lastError).toContain('allocation evidence missing');
+    expect(receipt.metadata).toMatchObject({
+      durationMs: 61_000,
+      requiresAllocationReconciliation: true,
+    });
+  });
+
   afterAll(async () => {
     if (originalToken === undefined) delete process.env.POLAR_ACCESS_TOKEN;
     else process.env.POLAR_ACCESS_TOKEN = originalToken;

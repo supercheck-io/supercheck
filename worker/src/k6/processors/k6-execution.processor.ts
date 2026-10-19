@@ -15,7 +15,10 @@ import { DbService } from '../../execution/services/db.service';
 import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
 import { HardStopNotificationService } from '../../execution/services/hard-stop-notification.service';
 import { CancellationService } from '../../common/services/cancellation.service';
-import { getBillableMs } from '../../common/billable-ms';
+import {
+  getBillableMs,
+  getBillableVirtualUsers,
+} from '../../common/billable-ms';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
@@ -115,6 +118,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
     let observedBillableMs = 0;
+    let observedVirtualUsers: number | undefined;
     let usagePersisted = false;
     const requestedLocation = job.data.location || this.workerLocation;
     const normalizedJobLocation = requestedLocation.toLowerCase();
@@ -132,6 +136,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     };
 
     const runId = taskData.runId;
+    const terminal = await this.dbService.getTerminalRun(runId);
+    if (terminal)
+      return {
+        success: terminal.status === 'passed',
+        error: terminal.errorDetails ?? undefined,
+      };
     if (await this.hasActiveExecutionOrFail(runId)) {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();
@@ -267,6 +277,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Meter only container run time evidenced by Kubernetes.
       const billableMs = result.billableMs ?? 0;
       observedBillableMs = billableMs;
+      observedVirtualUsers = result.billingVirtualUsers;
 
       // Log execution result
       this.logger.log(
@@ -307,7 +318,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           runId,
           eventType: 'k6_execution',
           durationMs: billableMs,
-          virtualUsers: metrics.maxVUs > 0 ? metrics.maxVUs : 1,
+          virtualUsers: result.billingVirtualUsers,
           metadata: {
             jobId: taskData.jobId,
             testId,
@@ -431,11 +442,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Track K6 usage for billing. Cancelled runs that started a container are
       // charged for the time it ran; runs that never started are not charged.
-      if (billableMs > 0) {
+      if (billableMs > 0 && result.billingVirtualUsers !== undefined) {
         await this.usageTrackerService
           .trackK6Execution(
             taskData.organizationId,
-            metrics.maxVUs > 0 ? metrics.maxVUs : 1, // At least 1 VU for cancelled runs
+            result.billingVirtualUsers,
             billableMs,
             {
               runId,
@@ -548,11 +559,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
               eventType: 'k6_execution',
               durationMs: attemptBillableMs,
-              virtualUsers: 1,
+              virtualUsers:
+                getBillableVirtualUsers(error) ?? observedVirtualUsers,
               metadata: {
                 executionRunId: runId,
                 retryAttempt: job.attemptsMade ?? 0,
-                estimatedVirtualUsers: true,
+                requiresAllocationReconciliation:
+                  (getBillableVirtualUsers(error) ?? observedVirtualUsers) ===
+                  undefined,
               },
             },
             async () => {},
@@ -603,12 +617,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               runId,
               eventType: 'k6_execution',
               durationMs: failureBillableMs,
-              virtualUsers: 1,
+              virtualUsers:
+                getBillableVirtualUsers(error) ?? observedVirtualUsers,
               metadata: {
                 testId,
                 jobId: taskData.jobId,
                 executionError: true,
-                estimatedVirtualUsers: true,
+                requiresAllocationReconciliation:
+                  (getBillableVirtualUsers(error) ?? observedVirtualUsers) ===
+                  undefined,
               },
             },
             persistError,

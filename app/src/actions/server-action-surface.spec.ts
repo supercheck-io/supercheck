@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
+import ts from "typescript";
 
 /**
  * Every exported function of a "use server" module is a public RPC endpoint:
@@ -19,43 +20,44 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-function isUseServerModule(source: string): boolean {
-  return /^\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/.*\n\s*)*["']use server["']/.test(source);
+function parseSource(source: string, fileName = "action.ts") {
+  return ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 }
 
-/** Top-level parameter names of each exported function in a module. */
-function exportedFunctionParameters(source: string): Array<{ name: string; parameters: string[] }> {
+function isUseServerModule(source: string, fileName?: string): boolean {
+  for (const statement of parseSource(source, fileName).statements) {
+    if (!ts.isExpressionStatement(statement) || !ts.isStringLiteral(statement.expression)) return false;
+    if (statement.expression.text === "use server") return true;
+  }
+  return false;
+}
+
+/** Read actual declarations; comments and source strings cannot mask parameters. */
+function exportedFunctionParameters(source: string, fileName?: string): Array<{ name: string; parameters: string[] }> {
+  const file = parseSource(source, fileName);
   const found: Array<{ name: string; parameters: string[] }> = [];
-  // `export function f(`, `export async function f(` and `export const f = async (`.
-  const declaration = /export\s+(?:(?:async\s+)?function\s+(\w+)\s*(?:<[^(]*>)?|const\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^(]*>)?)\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = declaration.exec(source))) {
-    let depth = 1;
-    let index = declaration.lastIndex;
-    let start = index;
-    const parameters: string[] = [];
-    for (; index < source.length && depth > 0; index++) {
-      const char = source[index];
-      if ("({[<".includes(char)) depth++;
-      else if (")}]>".includes(char) && !(char === ">" && source[index - 1] === "=")) depth--;
-      if ((char === "," && depth === 1) || depth === 0) {
-        parameters.push(source.slice(start, char === "," ? index : index));
-        start = index + 1;
+  function add(name: string, parameters: ts.NodeArray<ts.ParameterDeclaration>) {
+    found.push({ name, parameters: parameters.map((parameter) =>
+      parameter.name.getText(file) + (parameter.questionToken ? "?" : "")),
+    });
+  }
+  for (const statement of file.statements) {
+    if (!ts.canHaveModifiers(statement) || !ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    if (ts.isFunctionDeclaration(statement)) {
+      add(statement.name?.text ?? "default", statement.parameters);
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (declaration.initializer && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) {
+          add(declaration.name.getText(file), declaration.initializer.parameters);
+        }
       }
     }
-    found.push({
-      name: match[1] ?? match[2],
-      parameters: parameters
-        .map((parameter) => parameter.trim().replace(/^\.\.\./, ""))
-        .filter(Boolean)
-        .map((parameter) => parameter.split(/[:=]/)[0].trim()),
-    });
   }
   return found;
 }
 
 describe("server action public surface", () => {
-  const serverModules = sourceFiles(SRC_ROOT).filter((file) => isUseServerModule(readFileSync(file, "utf8")));
+  const serverModules = sourceFiles(SRC_ROOT).filter((file) => isUseServerModule(readFileSync(file, "utf8"), file));
 
   it("finds the server action modules", () => {
     expect(serverModules.length).toBeGreaterThan(20);
@@ -66,7 +68,7 @@ describe("server action public surface", () => {
 
   it("never accepts a caller-supplied identity, role, or auth context", () => {
     const offenders = serverModules.flatMap((file) =>
-      exportedFunctionParameters(readFileSync(file, "utf8")).flatMap(({ name, parameters }) =>
+      exportedFunctionParameters(readFileSync(file, "utf8"), file).flatMap(({ name, parameters }) =>
         parameters
           .filter((parameter) => FORBIDDEN_PARAMETER.test(parameter))
           .map((parameter) => `${path.relative(SRC_ROOT, file)}: ${name}(${parameter})`),
@@ -79,6 +81,13 @@ describe("server action public surface", () => {
     const offenders = serverModules.filter((file) => /\(\.\.\.args\b/.test(readFileSync(file, "utf8")))
       .map((file) => path.relative(SRC_ROOT, file));
     expect(offenders).toEqual([]);
+  });
+
+  it("handles comments and directive prologues without scanning comment contents", () => {
+    expect(isUseServerModule('/*' + '*//*'.repeat(10000) + '*/\n"use server";')).toBe(true);
+    expect(isUseServerModule('// comment\n"use strict";\n"use server";')).toBe(true);
+    expect(isUseServerModule('const source = "use server";')).toBe(false);
+    expect(exportedFunctionParameters('export const evil = async role => {};')).toEqual([{ name: "evil", parameters: ["role"] }]);
   });
 
   it("detects a forged context parameter (self-test)", () => {

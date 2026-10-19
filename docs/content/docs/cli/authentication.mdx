@@ -119,3 +119,5 @@ The CLI automatically handles rate limiting with exponential backoff. When the A
 - **Use separate tokens** per environment (staging, production)
 - **Set expiry dates** on tokens used in temporary pipelines
 - **Prefer trigger keys** when only job triggering is needed (least-privilege)
+
+Organization and billing administration, including member management and creating projects, require an interactive browser session. Project-scoped CLI tokens receive `403` for these operations, even when their owner is an organization administrator. Tokens still support scoped organization/project discovery, authentication context, and authorized resource operations within their project.

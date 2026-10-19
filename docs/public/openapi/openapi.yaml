@@ -3422,7 +3422,8 @@ paths:
       operationId: getOrganizationStats
       summary: Get organization usage stats
       description: Counts of projects, jobs, tests, monitors, runs, and members for
-        the active organization. Requires org_admin or org_owner.
+        the active organization. Requires org_admin or org_owner. Requires an
+        interactive browser session. Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3445,6 +3446,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/{id}:
     parameters:
       - name: id
@@ -3457,7 +3460,8 @@ paths:
       operationId: getOrganization
       summary: Get organization details
       description: Returns organization details, the caller's role, and project/member
-        counts. Requires membership.
+        counts. Requires membership. Requires an interactive browser session.
+        Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3478,13 +3482,16 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
     put:
       operationId: updateOrganization
       summary: Update organization
       description: Update the organization name (2–50 characters after trim). Optional
         slug, logo, and metadata. Requires org_admin or org_owner. Browser
         updates require a same-origin request; CLI tokens retain their existing
-        authorization.
+        authorization. Requires an interactive browser session. Project-scoped
+        CLI tokens receive 403.
       tags:
         - Organizations
       requestBody:
@@ -3515,6 +3522,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
     delete:
       operationId: deleteOrganization
       summary: Delete organization
@@ -3523,7 +3532,8 @@ paths:
         atomically. Organizations containing projects or protected dependencies
         return 409; contact an administrator or support for safe removal.
         Browser mutations require a same-origin request; CLI tokens retain their
-        existing authorization.
+        existing authorization. Requires an interactive browser session.
+        Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3549,13 +3559,16 @@ paths:
             requires administrator or support assistance.
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/members:
     get:
       operationId: listOrganizationMembers
       summary: List members and invitations
       description: List members (with project assignments), pending/expired
         invitations, and the current user's org role. Requires org_admin or
-        org_owner.
+        org_owner. Requires an interactive browser session. Project-scoped CLI
+        tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3589,6 +3602,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/members/{memberId}:
     parameters:
       - name: memberId
@@ -3602,7 +3617,8 @@ paths:
       summary: Update member role and projects
       description: Update a member's role and project assignments. Cannot change the
         owner, your own role, or (as org_admin) another org_admin. Only
-        org_owner can assign org_admin.
+        org_owner can assign org_admin. Requires an interactive browser session.
+        Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       requestBody:
@@ -3642,12 +3658,15 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
     delete:
       operationId: removeOrganizationMember
       summary: Remove a member
       description: Remove a member and their project assignments in this organization.
         Cannot remove the owner or yourself. Only org_owner can remove org_admin
-        members.
+        members. Requires an interactive browser session. Project-scoped CLI
+        tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3679,13 +3698,16 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/members/invite:
     post:
       operationId: inviteOrganizationMember
       summary: Invite a member
       description: Create a pending invitation and send email. Rate limited per user
         (`INVITE_RATE_LIMIT_MAX`, default 10/hour). Requires org_admin or
-        org_owner. Only org_owner can invite org_admin.
+        org_owner. Only org_owner can invite org_admin. Requires an interactive
+        browser session. Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       requestBody:
@@ -3732,6 +3754,8 @@ paths:
           description: Rate limit exceeded
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/members/invite/{invitationId}:
     parameters:
       - name: invitationId
@@ -3744,6 +3768,8 @@ paths:
       operationId: cancelOrganizationInvitation
       summary: Cancel an invitation
       description: Cancel a pending invitation. Requires org_admin or org_owner.
+        Requires an interactive browser session. Project-scoped CLI tokens
+        receive 403.
       tags:
         - Organizations
       responses:
@@ -3768,11 +3794,14 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
     post:
       operationId: resendOrganizationInvitation
       summary: Resend an invitation
       description: Resend a pending invitation email. Rate limited (5/hour). Expired
-        invitations have expiry extended by 7 days.
+        invitations have expiry extended by 7 days. Requires an interactive
+        browser session. Project-scoped CLI tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3806,12 +3835,15 @@ paths:
           description: Rate limit exceeded
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/organizations/invitations:
     get:
       operationId: listOrganizationInvitations
       summary: List invitations
       description: List invitations for the active organization. Requires org_admin or
-        org_owner.
+        org_owner. Requires an interactive browser session. Project-scoped CLI
+        tokens receive 403.
       tags:
         - Organizations
       responses:
@@ -3836,6 +3868,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           description: Internal server error
+      security:
+        - sessionCookie: []
   /api/locations/metadata:
     get:
       operationId: listLocationMetadata

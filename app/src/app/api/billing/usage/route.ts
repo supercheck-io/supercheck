@@ -8,7 +8,8 @@ import { polarUsageService } from "@/lib/services/polar-usage.service";
  */
 export async function GET() {
   try {
-    const { organizationId } = await requireUserAuthContext();
+    const { organizationId, isCliAuth } = await requireUserAuthContext();
+    if (isCliAuth) return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
 
     if (!organizationId) {
       return NextResponse.json(

@@ -25,6 +25,7 @@ const mockExecutionService = {
 };
 
 const mockDbService = {
+  getTerminalRun: jest.fn(),
   updateRunStatus: jest.fn(),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
@@ -194,6 +195,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockCancellationService.isCancelled.mockResolvedValue(false);
     mockExecutionService.runSingleTest.mockResolvedValue(mockSuccessResult);
     mockExecutionService.runJob.mockResolvedValue(mockJobSuccessResult);
+    mockDbService.getTerminalRun.mockResolvedValue(undefined);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.updateJobStatus.mockResolvedValue(undefined);
     mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
@@ -215,6 +217,47 @@ describe('PlaywrightExecutionProcessor', () => {
   // ==========================================================================
 
   describe('Single Test Execution', () => {
+    it('keeps successful execution and metering when completion progress fails', async () => {
+      const job = createMockJob(mockTestTask);
+      (job.updateProgress as jest.Mock).mockImplementation(
+        async (value: number) => {
+          if (value === 100) throw new Error('Redis progress unavailable');
+        },
+      );
+      expect((await processor.process(job)).success).toBe(true);
+      expect(mockUsageTrackerService.completeRunWithUsage).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMs: 5000 }),
+        expect.any(Function),
+      );
+    });
+
+    it('does not execute a committed run again after a post-commit notification failure', async () => {
+      let committed = false;
+      mockDbService.getTerminalRun.mockImplementation(async () =>
+        committed ? { status: 'passed', errorDetails: null } : undefined,
+      );
+      mockUsageTrackerService.completeRunWithUsage.mockImplementation(
+        async (_input: unknown, persist: (tx: unknown) => Promise<void>) => {
+          await persist(mockDbService.db);
+          committed = true;
+        },
+      );
+      mockJobNotificationService.handleJobNotifications.mockRejectedValueOnce(
+        new Error('Notification unavailable'),
+      );
+      const job = createMockJob(mockJobTask);
+      await expect(processor.process(job)).rejects.toThrow(
+        'Notification unavailable',
+      );
+      await expect(processor.process(job)).resolves.toMatchObject({
+        success: true,
+      });
+      expect(mockExecutionService.runJob).toHaveBeenCalledTimes(1);
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).toHaveBeenCalledTimes(1);
+    });
+
     it('delays a duplicate attempt without changing status or starting another pod', async () => {
       mockExecutionService.hasActiveExecution.mockResolvedValueOnce(true);
       const job = createMockJob(mockTestTask);

@@ -1,3 +1,8 @@
+import {
+  attachBillableMs,
+  getBillableMs,
+  createK6AllocationTracker,
+} from '../../common/billable-ms';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -68,6 +73,7 @@ export interface K6ExecutionResult {
   durationMs: number;
   /** Container run time evidenced by Kubernetes across all launches; 0 if none started. */
   billableMs?: number;
+  billingVirtualUsers?: number;
   summary: Record<string, unknown> | null;
   thresholdsPassed: boolean;
   reportUrl: string | null;
@@ -276,6 +282,7 @@ export class K6ExecutionService {
     const startTime = Date.now();
     // Container run time summed over every launch (dashboard-port retries).
     let totalBillableMs = 0;
+    let billingVirtualUsers: number | undefined;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
@@ -336,6 +343,9 @@ export class K6ExecutionService {
 
       const args = [
         'run',
+        '--quiet=false',
+        '--no-color',
+        '--log-format=json',
         '--summary-export',
         `${k6OutputDir}/${summaryFileName}`,
         // Include p(99) in summary.json - K6 defaults only include p(90) and p(95)
@@ -363,6 +373,7 @@ export class K6ExecutionService {
         timedOut: boolean;
         cancelled?: boolean;
         billableMs?: number;
+        billingVirtualUsers?: number;
       } | null = null;
       for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
         const dashboardPort = this.useDashboardPortPool
@@ -404,6 +415,11 @@ export class K6ExecutionService {
         }
 
         totalBillableMs += execResult.billableMs ?? 0;
+        if (execResult.billingVirtualUsers !== undefined)
+          billingVirtualUsers = Math.max(
+            billingVirtualUsers ?? 0,
+            execResult.billingVirtualUsers,
+          );
 
         const portConflict =
           execResult.stderr.includes('address already in use') ||
@@ -620,6 +636,7 @@ export class K6ExecutionService {
         runId,
         durationMs: Date.now() - startTime,
         billableMs: totalBillableMs,
+        billingVirtualUsers,
         summary,
         thresholdsPassed,
         reportUrl,
@@ -681,6 +698,7 @@ export class K6ExecutionService {
         runId,
         durationMs: Date.now() - startTime,
         billableMs: totalBillableMs,
+        billingVirtualUsers,
         summary: null,
         thresholdsPassed: false,
         reportUrl: null,
@@ -691,7 +709,7 @@ export class K6ExecutionService {
         error: getErrorMessage(error),
       };
 
-      throw error;
+      throw attachBillableMs(error, totalBillableMs, billingVirtualUsers);
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 
@@ -799,8 +817,11 @@ export class K6ExecutionService {
     timedOut: boolean;
     cancelled?: boolean;
     billableMs?: number;
+    billingVirtualUsers?: number;
   }> {
     const _startTime = Date.now();
+    const allocation = createK6AllocationTracker();
+    let observedBillableMs = 0;
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
       `[${runId}] k6 environment override keys: ${Object.keys(overrideEnv).join(', ')}`,
@@ -886,10 +907,14 @@ export class K6ExecutionService {
             networkMode: 'bridge', // k6 needs network access
             autoRemove: false, // Don't auto-remove - we need to extract files first
             image: this.k6DockerImage, // Use K6-specific Docker image
-            onStdoutChunk: (chunk) => consoleStream.write(chunk),
+            onStdoutChunk: (chunk) => {
+              allocation.write(chunk);
+              return consoleStream.write(chunk);
+            },
           },
         );
 
+      observedBillableMs = containerResult.billableMs ?? 0;
       await consoleStream.flush();
 
       // Clean up active runs tracking
@@ -956,6 +981,7 @@ export class K6ExecutionService {
         stderr,
         cancelled: containerResult.cancelled,
         billableMs: containerResult.billableMs ?? 0,
+        billingVirtualUsers: allocation.value(),
         error: redactedError || null,
         timedOut,
       };
@@ -967,6 +993,8 @@ export class K6ExecutionService {
 
       return {
         exitCode: 1,
+        billableMs: Math.max(observedBillableMs, getBillableMs(error)),
+        billingVirtualUsers: allocation.value(),
         stdout: '',
         stderr: getErrorMessage(error),
         error: getErrorMessage(error),

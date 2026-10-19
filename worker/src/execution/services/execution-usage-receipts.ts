@@ -36,7 +36,18 @@ export async function persistExecutionReceipt(
   input: ExecutionUsageCompletion,
   persistResult: (tx: ExecutionUsageTransaction) => Promise<void>,
 ): Promise<string> {
-  const units = executionUsageUnits(input);
+  const missingAllocation =
+    input.eventType === 'k6_execution' &&
+    input.durationMs > 0 &&
+    input.virtualUsers === undefined;
+  const units = executionUsageUnits(
+    missingAllocation ||
+      (input.eventType === 'k6_execution' &&
+        input.durationMs === 0 &&
+        input.virtualUsers === undefined)
+      ? { ...input, virtualUsers: 0 }
+      : input,
+  );
   if (!Number.isFinite(units) || units >= 1_000_000) {
     throw new Error('Execution usage exceeds ledger precision');
   }
@@ -64,13 +75,23 @@ export async function persistExecutionReceipt(
         runId: input.runId,
         eventType: input.eventType,
         units: String(units),
-        metadata: { ...input.metadata, runId: input.runId },
+        metadata: {
+          ...input.metadata,
+          runId: input.runId,
+          durationMs: input.durationMs,
+          ...(missingAllocation
+            ? { requiresAllocationReconciliation: true }
+            : {}),
+        },
         billingPeriodStart: org.usagePeriodStart ?? now,
         billingPeriodEnd:
           org.usagePeriodEnd ??
           new Date(now.getFullYear(), now.getMonth() + 1, 1),
         createdAt: now,
-        nextAttemptAt: now,
+        nextAttemptAt: missingAllocation ? null : now,
+        lastError: missingAllocation
+          ? 'K6 allocation evidence missing; manual reconciliation required'
+          : null,
       });
     }
     await persistResult(tx);

@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId, organizationId: authOrgId } = await requireUserAuthContext();
+    const { userId, organizationId: authOrgId, isCliAuth } = await requireUserAuthContext();
+    if (isCliAuth) return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
 
     const body = await request.json();
     const { name, slug, description, organizationId } = body;

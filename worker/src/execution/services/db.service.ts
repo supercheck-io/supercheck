@@ -502,6 +502,17 @@ export class DbService implements OnModuleInit {
     }
   }
 
+  /** A committed terminal result makes a redelivered queue task a replay. */
+  async getTerminalRun(runId: string) {
+    return this.db.query.runs.findFirst({
+      where: and(
+        eq(runs.id, runId),
+        inArray(runs.status, ['passed', 'failed', 'error', 'blocked']),
+      ),
+      columns: { id: true, status: true, errorDetails: true },
+    });
+  }
+
   async getRunStatusesForJob(
     jobId: string,
   ): Promise<

@@ -45,6 +45,7 @@ describe('k6 durable completion', () => {
         success: true,
         durationMs: 61000,
         billableMs: 61000,
+        billingVirtualUsers: 10,
         thresholdsPassed: true,
         summary: { metrics: { vus_max: { max: 10 } } },
       };
@@ -88,12 +89,13 @@ describe('k6 durable completion', () => {
       };
       type Dependencies = ConstructorParameters<typeof K6ExecutionProcessor>;
       const execute = jest.fn().mockResolvedValue(result);
+      const getTerminalRun = jest.fn().mockResolvedValue(undefined);
       const processor = new K6ExecutionProcessor(
         {
           runK6Test: execute,
           hasActiveExecution: jest.fn().mockResolvedValue(false),
         } as unknown as Dependencies[0],
-        { db } as unknown as Dependencies[1],
+        { db, getTerminalRun } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
         {} as Dependencies[3],
         usage as unknown as Dependencies[4],
@@ -155,6 +157,18 @@ describe('k6 durable completion', () => {
       );
       expect(db.insert).not.toHaveBeenCalled();
       expect(outsideSet).toHaveBeenCalledTimes(retry ? 2 : 1);
+      if (!existing && !retry) {
+        getTerminalRun.mockResolvedValue({
+          status: 'passed',
+          errorDetails: null,
+        });
+        await expect(processor.process(job)).resolves.toMatchObject({
+          success: true,
+        });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(usage.completeRunWithUsage).toHaveBeenCalledTimes(1);
+      }
+
       expect(outsideSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'running' }),
       );
@@ -175,7 +189,10 @@ describe('k6 location capability backstop', () => {
         runK6Test,
         hasActiveExecution: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[0],
-      { db } as unknown as Dependencies[1],
+      {
+        db,
+        getTerminalRun: jest.fn().mockResolvedValue(undefined),
+      } as unknown as Dependencies[1],
       { get: () => 'us-east' } as unknown as Dependencies[2],
       {} as Dependencies[3],
       {
@@ -256,6 +273,7 @@ describe('k6 container-start metering', () => {
       } as unknown as Dependencies[0],
       {
         db,
+        getTerminalRun: jest.fn().mockResolvedValue(undefined),
         getRunStatusesForJob: jest.fn(),
         updateJobStatus: jest.fn(),
       } as unknown as Dependencies[1],
