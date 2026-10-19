@@ -52,6 +52,34 @@ export async function saveConfig(config: Partial<SupercheckConfig>): Promise<voi
   }
 }
 
+/**
+ * Replace the stored configuration with `config`, dropping any credential that
+ * belonged to a different instance. Used when the options page switches to a
+ * new instance URL so an old key is never sent to the new host.
+ */
+export async function replaceConfig(config: SupercheckConfig): Promise<void> {
+  try {
+    await chrome.storage.sync.set({ [STORAGE_KEY]: config });
+  } catch (error) {
+    console.error('[Supercheck] Failed to replace config:', error);
+    throw error;
+  }
+}
+
+/**
+ * Compare two instance URLs by origin, ignoring trailing slashes and paths.
+ */
+export function isSameInstance(first?: string, second?: string): boolean {
+  if (!first || !second)
+    return false;
+
+  try {
+    return new URL(first).origin === new URL(second).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** How long to wait for the instance when revoking the key on disconnect. */
 const REVOKE_TIMEOUT_MS = 5000;
 

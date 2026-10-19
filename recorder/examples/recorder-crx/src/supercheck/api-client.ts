@@ -49,6 +49,30 @@ export interface UserInfo {
   name?: string;
 }
 
+export type VerifyFailureReason =
+  | 'missing_key'
+  | 'invalid'
+  | 'rate_limited'
+  | 'unreachable'
+  | 'server_error';
+
+export interface VerifyConnectionResult {
+  valid: boolean;
+  user?: UserInfo;
+  reason?: VerifyFailureReason;
+  message?: string;
+  retryAfterSeconds?: number;
+}
+
+function parseRetryAfter(response: Response): number | undefined {
+  const header = response.headers.get('retry-after');
+  if (!header)
+    return undefined;
+
+  const seconds = Number.parseInt(header, 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -190,32 +214,88 @@ class SupercheckApiClient {
   // ============================================
 
   /**
-   * Verify API key and get user information
+   * Verify the recorder credential against the instance.
+   *
+   * Uses the extension-scoped projects endpoint: it validates exactly the
+   * recorder credential and is not subject to the job/CLI verification rate
+   * limit. Falls back to the legacy verify-key endpoint so the extension keeps
+   * working against older self-hosted deployments.
    */
-  async verifyConnection(testApiKey?: string, instanceUrl?: string): Promise<{ valid: boolean; user?: UserInfo }> {
-    try {
-      const config = await this.getCachedConfig();
-      const key = testApiKey || config?.apiKey;
-      if (!key)
-        return { valid: false };
+  async verifyConnection(testApiKey?: string, instanceUrl?: string): Promise<VerifyConnectionResult> {
+    const config = await this.getCachedConfig();
+    const key = testApiKey || config?.apiKey;
+    if (!key)
+      return { valid: false, reason: 'missing_key' };
 
-      const baseUrl = (instanceUrl || config?.instanceUrl || DEFAULT_INSTANCE_URL).replace(/\/$/, '');
+    const baseUrl = (instanceUrl || config?.instanceUrl || DEFAULT_INSTANCE_URL).replace(/\/$/, '');
+
+    try {
+      const response = await fetch(`${baseUrl}/api/extension/projects`, {
+        method: 'GET',
+        headers: { 'x-api-key': key },
+      });
+
+      if (response.status === 404 || response.status === 405)
+        return await this.verifyConnectionLegacy(baseUrl, key);
+
+      return this.readVerificationResponse(response);
+    } catch {
+      return {
+        valid: false,
+        reason: 'unreachable',
+        message: `Could not reach ${baseUrl}`,
+      };
+    }
+  }
+
+  private async verifyConnectionLegacy(baseUrl: string, key: string): Promise<VerifyConnectionResult> {
+    try {
       const response = await fetch(`${baseUrl}/api/auth/verify-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: key }),
       });
 
-      if (!response.ok)
-        return { valid: false };
-      const data = await response.json();
-      return { valid: Boolean(data.valid), user: data.user };
-    } catch (error) {
-      if (error instanceof AuthError)
-        return { valid: false };
+      if (response.status === 429) {
+        return {
+          valid: false,
+          reason: 'rate_limited',
+          message: 'Too many verification attempts from this network',
+          retryAfterSeconds: parseRetryAfter(response),
+        };
+      }
 
-      throw error;
+      if (!response.ok)
+        return { valid: false, reason: response.status >= 500 ? 'server_error' : 'invalid' };
+
+      const data = await response.json();
+      return { valid: Boolean(data.valid) };
+    } catch {
+      return {
+        valid: false,
+        reason: 'unreachable',
+        message: `Could not reach ${baseUrl}`,
+      };
     }
+  }
+
+  private async readVerificationResponse(response: Response): Promise<VerifyConnectionResult> {
+    if (response.status === 429) {
+      return {
+        valid: false,
+        reason: 'rate_limited',
+        message: 'Too many verification attempts',
+        retryAfterSeconds: parseRetryAfter(response),
+      };
+    }
+
+    if (response.status === 401 || response.status === 403)
+      return { valid: false, reason: 'invalid' };
+
+    if (!response.ok)
+      return { valid: false, reason: 'server_error' };
+
+    return { valid: true };
   }
 
   /**

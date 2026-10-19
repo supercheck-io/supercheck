@@ -204,7 +204,19 @@ jobs:
           name: supercheck-recorder
           path: release-assets
 
+      # Lets self-hosted and enterprise installs verify the ZIP they sideload
+      # against the artifact that was submitted to the stores.
+      - name: Generate checksums
+        run: cd release-assets && sha256sum ./*.zip > SHA256SUMS.txt
+
       - name: Publish GitHub release
-        run: gh release create "${GITHUB_REF_NAME}" release-assets/*.zip --title "Supercheck Recorder v${GITHUB_REF_NAME#recorder-v}" --generate-notes --verify-tag
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release-assets/*.zip \
+            release-assets/SHA256SUMS.txt \
+            --title "Supercheck Recorder v${GITHUB_REF_NAME#recorder-v}" \
+            --generate-notes \
+            --verify-tag \
+            --latest=false
         env:
           GH_TOKEN: ${{ github.token }}

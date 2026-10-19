@@ -140,7 +140,12 @@ body {
 }
 
 .status-indicator.configured {
-  background-color: var(--sc-success);
+  background-color: var(--sc-warning);
+}
+
+.status-indicator.loading {
+  background-color: var(--sc-muted-foreground);
+  animation: pulse 1.5s infinite;
 }
 
 .status-indicator.error {
@@ -215,6 +220,57 @@ body {
   color: var(--sc-muted-foreground);
   font-size: 0.75rem;
   margin-top: var(--sc-spacing-xs);
+}
+
+/* Callout */
+.callout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sc-spacing-xs);
+  margin-bottom: var(--sc-spacing-lg);
+  padding: var(--sc-spacing-md);
+  border: 1px solid var(--sc-border);
+  border-left: 3px solid var(--sc-primary);
+  border-radius: var(--sc-radius-sm);
+  background-color: var(--sc-muted);
+  font-size: 0.8125rem;
+  color: var(--sc-muted-foreground);
+}
+
+.callout strong {
+  color: var(--sc-foreground);
+  font-weight: 600;
+}
+
+/* Advanced connection panel */
+.advanced-panel {
+  margin-top: var(--sc-spacing-lg);
+  padding-top: var(--sc-spacing-lg);
+  border-top: 1px dashed var(--sc-border);
+}
+
+.btn-link {
+  display: inline-block;
+  margin-top: var(--sc-spacing-md);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--sc-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-link:hover {
+  color: var(--sc-primary-hover);
+}
+
+.connection-actions {
+  display: flex;
+  gap: var(--sc-spacing-sm);
+  margin-top: var(--sc-spacing-md);
 }
 
 /* Checkbox group */
@@ -353,6 +409,20 @@ body {
 
   .btn-secondary:hover:not(:disabled) {
     background-color: var(--sc-border-dark);
+  }
+
+  .callout {
+    background-color: var(--sc-muted-dark);
+    border-color: var(--sc-border-dark);
+    border-left-color: var(--sc-primary);
+  }
+
+  .callout strong {
+    color: var(--sc-foreground-dark);
+  }
+
+  .advanced-panel {
+    border-top-color: var(--sc-border-dark);
   }
 
   .options-footer {
