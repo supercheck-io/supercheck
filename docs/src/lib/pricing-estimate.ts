@@ -28,6 +28,9 @@ export interface EstimateResult {
 }
 
 const number = new Intl.NumberFormat('en-US');
+const LARGEST_PLAN = SUPERCHECK_PLANS.reduce((largest, plan) =>
+  plan.maxMonitors > largest.maxMonitors ? plan : largest,
+);
 
 export function formatCount(value: number): string {
   return number.format(Math.round(value));
@@ -43,7 +46,7 @@ export function formatUsd(value: number): string {
 
 // Browser minutes per month above which Pro costs less than Plus. Both plans
 // are past their included minutes there, so each cost is linear in minutes.
-// Ignores the monitor limit: Plus only fits workloads of 50 monitors or fewer.
+// Ignores monitor limits; estimateCosts filters plans by monitor count.
 export function planCrossoverMinutes(): number {
   const [plus, pro] = SUPERCHECK_PLANS;
   const base = (plan: typeof plus) =>
@@ -89,7 +92,7 @@ export function estimateCosts(workload: Workload): EstimateResult {
     });
   } else {
     notices.push(
-      'That many checks is above the Pro plan’s 200-monitor limit. Contact us for an Enterprise quote.',
+      `That many checks is above the ${LARGEST_PLAN.name} plan’s ${formatCount(LARGEST_PLAN.maxMonitors)}-monitor limit. Contact us for an Enterprise quote.`,
     );
   }
 

@@ -277,6 +277,8 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     );
   }
 
+  const expired = data.subscription.accessReason === "canceled_expired" ||
+    (!data.subscription.plan && Boolean(data.subscription.subscriptionEndsAt || data.subscription.status === "canceled"));
   const hasSubscription = data.subscription.plan !== null;
   const plan = data.subscription.plan
     ? planDetails[data.subscription.plan]
@@ -321,6 +323,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 className={`${plan ? `${plan.color} text-white` : "bg-muted text-muted-foreground"} text-sm`}
               >
                 {data.subscription.status === "past_due" ? "Payment overdue"
+                  : expired ? "Subscription ended"
                   : data.subscription.status === "canceled" && hasSubscription ? "Cancellation scheduled"
                   : data.subscription.status === "none" ? "Not subscribed"
                   : data.subscription.status}
@@ -416,7 +419,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         )}
         {!hasSubscription && canManageSubscription && (
           <Button asChild>
-            <Link href="/subscribe">Choose a plan</Link>
+            <Link href="/subscribe">{expired ? "Resubscribe" : "Choose a plan"}</Link>
           </Button>
         )}
       </div>
@@ -442,7 +445,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
       {!hasSubscription && (
         <p className="text-sm text-muted-foreground">
-          Choose a plan to view paid usage and resource allowances.
+          {expired ? "Your subscription has ended. Choose a plan to restore access. Existing data remains subject to the retention policy." : "Choose a plan to view paid usage and resource allowances."}
         </p>
       )}
 

@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PricingTierCardProps {
@@ -42,60 +42,53 @@ export function PricingTierCard({
   return (
     <Card
       className={cn(
-        "relative overflow-hidden transition-all duration-300 h-full flex flex-col",
+        "relative h-full flex flex-col shadow-none",
         highlighted
-          ? "border-2 border-emerald-500/60 shadow-lg shadow-emerald-500/10 hover:shadow-xl hover:shadow-emerald-500/15"
-          : "border hover:border-muted-foreground/30 hover:shadow-lg"
+          ? "border-[hsl(220,90%,56%)] bg-[hsl(220,90%,56%)]/5 dark:border-[hsl(220,90%,66%)] dark:bg-[hsl(220,90%,66%)]/5"
+          : "border",
       )}
     >
-
       {badge && (
-        <div className="absolute top-3.5 right-3.5 z-10">
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
           <Badge
             className={cn(
               "rounded-full px-2.5 py-1 text-xs font-semibold",
               highlighted
-                ? "bg-emerald-700 text-white border-0 shadow-sm"
-                : "bg-muted text-muted-foreground border-0"
+                ? "bg-[hsl(220,90%,56%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 border-0"
+                : "bg-muted text-muted-foreground border-0",
             )}
           >
-            {highlighted && <Sparkles aria-hidden="true" className="h-3 w-3 mr-1" />}
             {badge}
           </Badge>
         </div>
       )}
 
-      <CardHeader className={cn("space-y-4 pb-6", badge && "pt-10")}>
+      <CardHeader className="space-y-4 pb-6">
         {/* Plan Name and Tagline */}
         <div>
-          <h2
-            className={cn(
-              "text-2xl font-bold tracking-tight",
-              highlighted && "text-emerald-600 dark:text-emerald-400"
-            )}
-          >
-            {name}
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">{name}</h2>
           <p className="text-sm text-muted-foreground mt-1">{tagline}</p>
         </div>
 
         {/* Price */}
-        {price !== undefined && <div className="flex items-baseline gap-1">
-          {typeof price === "number" ? (
-            <>
-              <span className="text-5xl font-bold tracking-tight">
-                ${price}
-              </span>
-              {priceInterval && (
-                <span className="text-base text-muted-foreground font-medium">
-                  /{priceInterval}
+        {price !== undefined && (
+          <div className="flex items-baseline gap-1">
+            {typeof price === "number" ? (
+              <>
+                <span className="text-5xl font-bold tracking-tight">
+                  ${price}
                 </span>
-              )}
-            </>
-          ) : (
-            <span className="text-4xl font-bold tracking-tight">{price}</span>
-          )}
-        </div>}
+                {priceInterval && (
+                  <span className="text-base text-muted-foreground font-medium">
+                    /{priceInterval}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-4xl font-bold tracking-tight">{price}</span>
+            )}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-6 flex-1 flex flex-col pt-0">
@@ -103,16 +96,11 @@ export function PricingTierCard({
         <ul className="space-y-3 flex-1">
           {keyFeatures.map((feature, index) => (
             <li key={index} className="flex items-start gap-3">
-              <div
-                className={cn(
-                  "flex-shrink-0 h-5 w-5 rounded-full flex items-center justify-center mt-0.5",
-                  highlighted
-                    ? "bg-emerald-500 text-white"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                <Check aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
-              </div>
+              <Check
+                aria-hidden="true"
+                className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(220,90%,56%)] dark:text-[hsl(220,90%,66%)]"
+                strokeWidth={2}
+              />
               <span className="text-sm leading-5 text-foreground/90">
                 {feature}
               </span>
@@ -126,20 +114,22 @@ export function PricingTierCard({
             className={cn(
               "w-full h-11 text-sm font-semibold",
               highlighted &&
-                "bg-emerald-700 hover:bg-emerald-800 text-white shadow-md"
+                "bg-[hsl(220,90%,56%)] hover:bg-[hsl(220,90%,50%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]",
             )}
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
             asChild
           >
-            <a href={ctaHref} aria-label={`${ctaText} about ${name}`}>{ctaText}</a>
+            <a href={ctaHref} aria-label={`${ctaText} about ${name}`}>
+              {ctaText}
+            </a>
           </Button>
         ) : (
           <Button
             className={cn(
               "w-full h-11 text-sm font-semibold",
               highlighted &&
-                "bg-emerald-700 hover:bg-emerald-800 text-white shadow-md"
+                "bg-[hsl(220,90%,56%)] hover:bg-[hsl(220,90%,50%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]",
             )}
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
@@ -148,7 +138,10 @@ export function PricingTierCard({
           >
             {loading ? (
               <>
-                <Loader2 aria-hidden="true" className="animate-spin mr-2 h-4 w-4" />
+                <Loader2
+                  aria-hidden="true"
+                  className="animate-spin mr-2 h-4 w-4"
+                />
                 Opening checkout...
               </>
             ) : (

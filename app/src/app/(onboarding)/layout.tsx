@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 import { getCurrentUser, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { ProjectContextProvider } from "@/hooks/use-project-context";
-import { OnboardingProjectSelector } from "@/components/onboarding-project-selector";
+import { OnboardingOrganizationSelector } from "@/components/onboarding-organization-selector";
 
 export const metadata: Metadata = {
   title: "Subscription | Supercheck",
@@ -58,7 +58,7 @@ export default async function OnboardingLayout({
               <span className="font-semibold text-lg">Supercheck</span>
             </div>
             <div className="flex min-w-0 max-w-full flex-wrap items-center gap-4">
-              <OnboardingProjectSelector />
+              <OnboardingOrganizationSelector />
               <span className="text-sm text-muted-foreground">
                 {user.email}
               </span>

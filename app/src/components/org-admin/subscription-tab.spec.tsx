@@ -1,8 +1,9 @@
+import { useOrganizations } from "@/hooks/use-organizations";
+import { useQuery } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SubscriptionTab } from "./subscription-tab";
 import SubscribePage from "../../app/(onboarding)/subscribe/page";
 
-jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/components/billing/spending-limits", () => ({
@@ -43,10 +44,29 @@ const pricing = { plans: [{
   overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
 }] };
 
+const mockInvalidateQueries = jest.fn();
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: jest.fn(),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+}));
+
+function subscriptionAccessFixture() {
+  const org = (useOrganizations as jest.Mock)().activeOrganization;
+  const isActive = org?.subscriptionStatus === "active" || org?.subscriptionStatus === "past_due" ||
+    (org?.subscriptionStatus === "canceled" && new Date(org.subscriptionEndsAt).getTime() > Date.now());
+  return {
+    data: org ? { organizationId: org.id, isActive: Boolean(isActive), plan: isActive ? "plus" : null,
+      status: org.subscriptionStatus ?? "none", subscriptionEndsAt: org.subscriptionEndsAt,
+      reason: isActive ? "active" : org.subscriptionStatus === "canceled" ? "canceled_expired" : "inactive" } : undefined,
+    isPending: !org, isError: false, refetch: jest.fn(),
+  };
+}
+
 describe("SubscriptionTab", () => {
   const originalFetch = global.fetch;
   const fetchMock = jest.fn();
   beforeEach(() => {
+    (useQuery as jest.Mock).mockReset().mockImplementation(subscriptionAccessFixture);
     mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Test organization", role: "org_owner", subscriptionStatus: "none" }, isPending: false, isError: false });
     fetchMock.mockReset().mockImplementation(async (url: string) => ({
       ok: true,
@@ -142,7 +162,7 @@ describe("SubscriptionTab", () => {
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("No active plan");
-    expect(screen.getByRole("link", { name: "Choose a plan" })).toHaveAttribute("href", "/subscribe");
+    expect(screen.getByRole("link", { name: "Resubscribe" })).toHaveAttribute("href", "/subscribe");
     expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
     expect(screen.queryByText("$49.00")).not.toBeInTheDocument();
   });
@@ -198,17 +218,16 @@ describe("SubscriptionTab", () => {
       },
     }) });
     render(<SubscribePage />);
-    expect(await screen.findByText("Monthly subscription per organization")).toBeInTheDocument();
-    expect(screen.getByText("$5.00 per 1,000 VU-min")).toBeInTheDocument();
-    expect(screen.getByText("$2.50 per 1,000 VU-min")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Enterprise" }).parentElement?.parentElement).not.toHaveTextContent(/\$/);
-    expect(screen.getByRole("link", { name: "Get in touch about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    expect(await screen.findByText(/Billed monthly per organization in USD/)).toBeInTheDocument();
+    expect(screen.getByText(/Overage:.*\$2.50 per 1,000 VU-min/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Enterprise" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Contact us about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
     expect(screen.queryByText(/annual/i)).not.toBeInTheDocument();
   });
   it("does not let an invited member start a personal subscription for the organization", async () => {
     mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Invited organization", role: "project_editor", subscriptionStatus: "none" }, isPending: false, isError: false });
     render(<SubscribePage />);
-    expect(await screen.findByText("Subscription for Invited organization")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Invited organization" })).toBeInTheDocument();
     expect(screen.getByText(/Only this organization's owner can subscribe/)).toBeInTheDocument();
     const button = screen.getByRole("button", { name: "Continue with Pro" });
     expect(button).toBeDisabled();
@@ -220,7 +239,7 @@ describe("SubscriptionTab", () => {
     mockUseOrganizations.mockReturnValue({ activeOrganization: { id: "org_1", name: "Paid organization", role: "org_owner", subscriptionStatus: "active" }, isPending: false, isError: false });
     render(<SubscribePage />);
     expect(await screen.findByRole("link", { name: "Manage subscription" })).toHaveAttribute("href", "/org-admin?tab=subscription");
-    expect(screen.getByRole("button", { name: "Continue with Pro" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Continue with Pro" })).not.toBeInTheDocument();
   });
 
 });

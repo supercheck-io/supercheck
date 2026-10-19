@@ -1,3 +1,4 @@
+import catalog from "@/lib/billing/plan-catalog.json";
 import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
 import { DEFAULT_OVERAGE_PRICING } from "@/lib/billing/pricing-defaults";
 import { NextResponse } from "next/server";
@@ -7,26 +8,7 @@ import { eq, or } from "drizzle-orm";
 import { PLAN_PRICING } from "@/lib/feature-flags";
 import { getEnabledLocations } from "@/lib/location-registry";
 
-const PLAN_LIMIT_FALLBACKS = {
-  plus: {
-    playwrightMinutesIncluded: 3000,
-    k6VuMinutesIncluded: 30000,
-    aiCreditsIncluded: 1000,
-    sreInvestigationUnitsIncluded: 200,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 30,
-    jobDataRetentionDays: 30,
-  },
-  pro: {
-    playwrightMinutesIncluded: 10000,
-    k6VuMinutesIncluded: 100000,
-    aiCreditsIncluded: 5000,
-    sreInvestigationUnitsIncluded: 1000,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 90,
-    jobDataRetentionDays: 90,
-  },
-} as const;
+const PLAN_LIMIT_FALLBACKS = { plus: catalog.plus.limits, pro: catalog.pro.limits };
 
 /**
  * GET /api/billing/pricing
@@ -84,21 +66,21 @@ export async function GET() {
         const planType = plan.plan as "plus" | "pro";
         const overage = overagePricingMap.get(planType);
 
-        // Hardcoded pricing information (managed in Polar)
+        // Presentation comes from the shared catalog; Polar owns the charge.
         const planInfo = {
           plus: {
             id: "plus",
             name: PLAN_PRICING.plus.name,
             price: PLAN_PRICING.plus.monthlyPriceCents / 100,
             interval: "month",
-            description: "For small teams and growing projects",
+            description: catalog.plus.description,
           },
           pro: {
             id: "pro",
             name: PLAN_PRICING.pro.name,
             price: PLAN_PRICING.pro.monthlyPriceCents / 100,
             interval: "month",
-            description: "For growing production teams",
+            description: catalog.pro.description,
           },
         }[planType];
 

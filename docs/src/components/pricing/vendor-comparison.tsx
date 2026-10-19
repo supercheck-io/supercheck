@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from 'react';
 import {
   CAPABILITY_ROWS,
+  SUPERCHECK_PLANS,
   COMPETITORS,
   BROWSERSTACK_AUTOMATE_MONTHLY,
   COMPETITOR_AS_OF,
@@ -395,9 +396,8 @@ export function VendorComparison() {
             locations later, each location counts as a separate run.
           </li>
           <li>
-            Supercheck uses the lowest-cost of Plus ($49, up to 50 monitors) and Pro ($149, up
-            to 200 monitors) that fits your checks, plus overage after the included minutes.
-            For workloads that fit Plus (50 monitors or fewer), Pro costs less than Plus above
+            Supercheck uses the lowest-cost of {SUPERCHECK_PLANS.map(plan => `${plan.name} (${formatUsd(plan.monthlyFee)}, up to ${formatCount(plan.maxMonitors)} monitors)`).join(" and ")} that fits your checks, plus overage after the included minutes.
+            For workloads that fit Plus ({formatCount(SUPERCHECK_PLANS[0].maxMonitors)} monitors or fewer), Pro costs less than Plus above
             about {formatCount(CROSSOVER_MINUTES)} browser minutes a month. Browser checks share the monitor limit with HTTP, ping, and port
             monitors.
           </li>

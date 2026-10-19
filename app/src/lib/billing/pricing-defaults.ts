@@ -1,19 +1,11 @@
 // Browser-safe defaults; database pricing remains authoritative.
 
+import catalog from "./plan-catalog.json";
+
 export const DEFAULT_OVERAGE_PRICING_CENTS = {
-  plus: {
-    playwrightMinutes: 1,
-    k6VuMinutes: 0.2,
-    aiCredits: 0,
-    sreInvestigationUnits: 10,
-  },
-  pro: {
-    playwrightMinutes: 0.5,
-    k6VuMinutes: 0.1,
-    aiCredits: 0,
-    sreInvestigationUnits: 10,
-  },
-} as const;
+  plus: catalog.plus.overageCents,
+  pro: catalog.pro.overageCents,
+};
 
 export const DEFAULT_OVERAGE_PRICING = {
   plus: {

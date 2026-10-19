@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const catalog = require("../src/lib/billing/plan-catalog.json");
 const { getDatabaseSSLConfig } = require("./db-ssl.js");
 
 /**
@@ -54,48 +55,7 @@ function logError(message) {
  * - GitLab CI: 30-90 days depending on plan
  */
 const PLAN_LIMITS_SEED = [
-  {
-    plan: "plus",
-    maxMonitors: 50,
-    minCheckIntervalMinutes: 1,
-    playwrightMinutesIncluded: 3000,
-    k6VuMinutesIncluded: 30000,
-    aiCreditsIncluded: 1000,
-    sreInvestigationUnitsIncluded: "200.0000",
-    runningCapacity: 5,
-    queuedCapacity: 50,
-    maxTeamMembers: 5,
-    maxOrganizations: 1,
-    maxProjects: 10,
-    maxStatusPages: 5,
-    maxStatusPageSubscribers: 1000,
-    customDomains: true,
-    ssoEnabled: true,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 30,
-    jobDataRetentionDays: 30, // Matches CircleCI
-  },
-  {
-    plan: "pro",
-    maxMonitors: 200,
-    minCheckIntervalMinutes: 1,
-    playwrightMinutesIncluded: 10000,
-    k6VuMinutesIncluded: 100000,
-    aiCreditsIncluded: 5000,
-    sreInvestigationUnitsIncluded: "1000.0000",
-    runningCapacity: 10,
-    queuedCapacity: 100,
-    maxTeamMembers: 25,
-    maxOrganizations: 1,
-    maxProjects: 50,
-    maxStatusPages: 20,
-    maxStatusPageSubscribers: 10000,
-    customDomains: true,
-    ssoEnabled: true,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 90,
-    jobDataRetentionDays: 90, // Matches GitHub Actions
-  },
+  ...Object.entries(catalog).map(([plan, details]) => ({ plan, ...details.limits })),
   {
     plan: "unlimited",
     maxMonitors: 999999,
@@ -125,19 +85,19 @@ const PLAN_LIMITS_SEED = [
 const OVERAGE_PRICING_SEED = [
   {
     plan: "plus",
-    playwrightMinutePriceCents: 1,
+    playwrightMinutePriceCents: catalog.plus.overageCents.playwrightMinutes,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
-    k6VuMinutePriceCentsOverride: 0.2,
+    k6VuMinutePriceCentsOverride: catalog.plus.overageCents.k6VuMinutes,
     aiCreditPriceCents: 5, // Legacy column: AI has no paid overage and no reader prices it
-    sreInvestigationUnitPriceCents: 10,
+    sreInvestigationUnitPriceCents: catalog.plus.overageCents.sreInvestigationUnits,
   },
   {
     plan: "pro",
-    playwrightMinutePriceCents: 0.5,
+    playwrightMinutePriceCents: catalog.pro.overageCents.playwrightMinutes,
     k6VuMinutePriceCents: 1, // Legacy fallback for older workers
-    k6VuMinutePriceCentsOverride: 0.1,
+    k6VuMinutePriceCentsOverride: catalog.pro.overageCents.k6VuMinutes,
     aiCreditPriceCents: 3, // Legacy column: AI has no paid overage and no reader prices it
-    sreInvestigationUnitPriceCents: 10,
+    sreInvestigationUnitPriceCents: catalog.pro.overageCents.sreInvestigationUnits,
   },
 ];
 

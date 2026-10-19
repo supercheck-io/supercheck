@@ -6,12 +6,14 @@ on:
     paths:
       - "docs/**"
       - "app/public/openapi.json"
+      - "app/src/lib/billing/plan-catalog.json"
       - ".github/workflows/docs-deploy.yml"
   pull_request:
     branches: [main]
     paths:
       - "docs/**"
       - "app/public/openapi.json"
+      - "app/src/lib/billing/plan-catalog.json"
       - ".github/workflows/docs-deploy.yml"
   workflow_dispatch:
 
