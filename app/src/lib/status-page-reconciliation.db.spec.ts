@@ -25,6 +25,7 @@ jest.mock("./incident-notifications/send-slack-notifications", () => ({
 }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
 import { getPublicComponents } from "@/actions/get-public-components";
+import { checkUptimePercentage } from "@/lib/status-page-uptime";
 import {
   enqueuePendingDeliveries,
   processDelivery,
@@ -176,6 +177,42 @@ it("uses failed checks for uptime even with no incident", async () => {
   expect(result.components[0].dailyMetrics).toEqual([
     expect.objectContaining({ totalChecks: 1, successfulChecks: 0 }),
   ]);
+});
+
+it("uses historical location rows when a single-location monitor has no combined row", async () => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() - 1);
+  await mockDatabase.insert(schema.monitorAggregates).values({
+    monitorId,
+    periodType: "daily",
+    periodStart: day,
+    location: "local",
+    totalChecks: 10,
+    successfulChecks: 9,
+    failedChecks: 1,
+    uptimePercentage: "90.00",
+  });
+
+  const result = await getPublicComponents(pageId);
+  expect(result.success).toBe(true);
+  expect(result.components[0].dailyMetrics).toEqual([
+    { date: day.toISOString().slice(0, 10), totalChecks: 10, successfulChecks: 9 },
+  ]);
+  expect(checkUptimePercentage(result.components[0].dailyMetrics)).toBe(90);
+
+  await mockDatabase.insert(schema.monitorAggregates).values({
+    monitorId,
+    periodType: "daily",
+    periodStart: day,
+    location: null,
+    totalChecks: 10,
+    successfulChecks: 9,
+    failedChecks: 1,
+    uptimePercentage: "90.00",
+  });
+  const combined = await getPublicComponents(pageId);
+  expect(combined.components[0].dailyMetrics).toEqual(result.components[0].dailyMetrics);
 });
 
 it("starts and completes maintenance, and catches up an expired window without a false start", async () => {

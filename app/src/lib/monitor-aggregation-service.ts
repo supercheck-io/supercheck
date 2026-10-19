@@ -435,7 +435,7 @@ export class MonitorAggregationService {
       }
 
       // Also create combined aggregate (all locations)
-      if (locations.length > 1) {
+if (locations.length > 0) {
         const result = await this.aggregatePeriod(
           monitorId,
           "hourly",
@@ -491,7 +491,7 @@ export class MonitorAggregationService {
       }
 
       // Also create combined aggregate (all locations)
-      if (locations.length > 1) {
+if (locations.length > 0) {
         const result = await this.aggregatePeriod(
           monitorId,
           "daily",
