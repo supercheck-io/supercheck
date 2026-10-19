@@ -1021,12 +1021,13 @@ export class MonitorService {
               isStatusChange: isStatusChange,
             };
 
-            const notification = await this.monitorAlertService.sendNotification(
-              resultData.monitorId,
-              type,
-              reason,
-              metadata,
-            );
+            const notification =
+              await this.monitorAlertService.sendNotification(
+                resultData.monitorId,
+                type,
+                reason,
+                metadata,
+              );
 
             if (notification?.suppressed) return;
 

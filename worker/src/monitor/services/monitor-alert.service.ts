@@ -72,13 +72,33 @@ export class MonitorAlertService {
       return;
     }
 
-    const maintenance = await db.select({ id: schema.incidents.id }).from(schema.statusPageComponentMonitors)
-      .innerJoin(schema.incidentComponents, eq(schema.incidentComponents.componentId, schema.statusPageComponentMonitors.componentId))
-      .innerJoin(schema.incidents, eq(schema.incidents.id, schema.incidentComponents.incidentId))
-      .where(and(eq(schema.statusPageComponentMonitors.monitorId, monitorId), ne(schema.incidents.status, 'resolved'), lte(schema.incidents.scheduledFor, new Date()), gt(schema.incidents.scheduledUntil, new Date())))
+    const maintenance = await db
+      .select({ id: schema.incidents.id })
+      .from(schema.statusPageComponentMonitors)
+      .innerJoin(
+        schema.incidentComponents,
+        eq(
+          schema.incidentComponents.componentId,
+          schema.statusPageComponentMonitors.componentId,
+        ),
+      )
+      .innerJoin(
+        schema.incidents,
+        eq(schema.incidents.id, schema.incidentComponents.incidentId),
+      )
+      .where(
+        and(
+          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
+          ne(schema.incidents.status, 'resolved'),
+          lte(schema.incidents.scheduledFor, new Date()),
+          gt(schema.incidents.scheduledUntil, new Date()),
+        ),
+      )
       .limit(1);
     if (maintenance.length) {
-      this.logger.log(`[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`);
+      this.logger.log(
+        `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
+      );
       return { suppressed: true };
     }
 
