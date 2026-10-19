@@ -6,6 +6,7 @@ COPY docs/next.config.mjs docs/source.config.ts ./
 RUN npm ci --silent
 COPY docs/ ./
 COPY app/public/openapi.json /app/app/public/openapi.json
+COPY app/src/lib/billing/plan-catalog.json /app/app/src/lib/billing/plan-catalog.json
 RUN npm run build -- --webpack
 
 # Next.js exports this site as static files; next start cannot serve it.

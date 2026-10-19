@@ -1,4 +1,4 @@
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createMDX } from 'fumadocs-mdx/next';
 
@@ -13,9 +13,9 @@ const config = {
   images: {
     unoptimized: true,
   },
-  // Ensure module resolution stays within the docs package in this monorepo.
+  // Include the shared billing catalog from the app package.
   turbopack: {
-    root: __dirname,
+    root: resolve(__dirname, ".."),
   },
   experimental: {
     // Tree-shake barrel re-exports from these packages

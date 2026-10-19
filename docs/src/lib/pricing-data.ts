@@ -1,10 +1,6 @@
-// Pricing inputs for the public pricing page and cost calculator.
-//
-// Supercheck figures mirror app/src/lib/billing/pricing-defaults.ts and
-// migration 0027_competitive_cloud_pricing.sql; update them together.
-// Competitor figures come from each vendor's public pricing page. They change,
-// so every entry carries the page it came from and the date we last checked.
+import catalog from "../../../app/src/lib/billing/plan-catalog.json";
 
+// Competitor figures are reviewed separately from the shared Supercheck catalog.
 export const COMPETITOR_AS_OF = 'October 2026';
 
 export const MINUTES_PER_MONTH = 30 * 24 * 60;
@@ -18,24 +14,14 @@ export interface SupercheckPlanCost {
   maxMonitors: number;
 }
 
-export const SUPERCHECK_PLANS: readonly SupercheckPlanCost[] = [
-  {
-    id: 'plus',
-    name: 'Plus',
-    monthlyFee: 49,
-    includedPlaywrightMinutes: 3_000,
-    overagePerMinute: 0.01,
-    maxMonitors: 50,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    monthlyFee: 149,
-    includedPlaywrightMinutes: 10_000,
-    overagePerMinute: 0.005,
-    maxMonitors: 200,
-  },
-];
+export const SUPERCHECK_PLANS: readonly SupercheckPlanCost[] = (["plus", "pro"] as const).map(id => ({
+  id,
+  name: catalog[id].name,
+  monthlyFee: catalog[id].monthlyPriceCents / 100,
+  includedPlaywrightMinutes: catalog[id].limits.playwrightMinutesIncluded,
+  overagePerMinute: catalog[id].overageCents.playwrightMinutes / 100,
+  maxMonitors: catalog[id].limits.maxMonitors,
+}));
 
 // Supercheck's shortest interval for browser (synthetic) checks.
 export const MIN_SYNTHETIC_INTERVAL_MINUTES = 5;
@@ -154,7 +140,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'Parallel test runs',
-    supercheck: '5–10 at once, extra runs queue',
+    supercheck: `${catalog.plus.limits.runningCapacity}–${catalog.pro.limits.runningCapacity} at once, extra runs queue`,
     checkly: 'No limit listed',
     datadog: 'CI add-on, from $79/mo',
     betterstack: 'No limit listed',
@@ -194,7 +180,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'k6 load testing',
-    supercheck: '30,000–100,000 VU min',
+    supercheck: `${catalog.plus.limits.k6VuMinutesIncluded.toLocaleString("en-US")}–${catalog.pro.limits.k6VuMinutesIncluded.toLocaleString("en-US")} VU min`,
     checkly: 'Not listed',
     datadog: 'Results only',
     betterstack: 'Not listed',
@@ -202,7 +188,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'Status pages',
-    supercheck: 'Included, 5–20 pages',
+    supercheck: `Included, ${catalog.plus.limits.maxStatusPages}–${catalog.pro.limits.maxStatusPages} pages`,
     checkly: '$9–$30/mo',
     datadog: 'With Incident Management',
     betterstack: '1 included, extra $15/mo',
@@ -210,7 +196,7 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
   },
   {
     name: 'AI incident investigation',
-    supercheck: '200–1,000 per month',
+    supercheck: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}–${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")} per month`,
     checkly: '$12–$39/mo',
     datadog: 'Bits AI credits',
     betterstack: 'Billed per token',

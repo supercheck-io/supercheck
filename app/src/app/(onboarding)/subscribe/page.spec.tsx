@@ -15,7 +15,7 @@ const pricing = {
     features: {
       monitors: 50, playwrightMinutes: 3000, k6VuMinutes: 30000,
       aiCredits: 1000, sreInvestigationUnits: 200, teamMembers: 5,
-      projects: 10, monitorDataRetention: "7 days raw / 30 days metrics",
+      projects: 10, statusPages: 5, monitorDataRetention: "7 days raw / 30 days metrics",
       jobDataRetention: "30 days", customDomains: true, support: "Email support",
     },
     overagePricing: { playwrightMinutes: 0.01, k6VuMinutes: 0.002, aiCredits: 0, sreInvestigationUnits: 0.1 },
@@ -48,10 +48,18 @@ describe("signup plan selection", () => {
     expect(screen.getAllByText("1,000 AI credits/month · fair use")).toHaveLength(2);
     expect(screen.getAllByText("200 completed AI SRE reports/month")).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "How do AI credits work?" }));
-    expect(screen.getByText(/even if it later fails/)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Compare plans in detail" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Compare all features and pricing/ })).toHaveAttribute("href", "https://supercheck.io/pricing");
     expect(screen.getByRole("link", { name: "Terms of service" })).toHaveAttribute("href", "https://supercheck.io/terms");
-    expect(screen.getByRole("link", { name: "Get in touch about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    expect(screen.getByRole("link", { name: "Contact us about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+  });
+
+  it("keeps the external-tab notice accessible without repeating it visually", async () => {
+    await openPage();
+    const comparison = screen.getByRole("link", { name: /Compare all features and pricing/ });
+    expect(comparison).toHaveAttribute("target", "_blank");
+    expect(comparison.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(comparison.querySelector(".sr-only")).toHaveTextContent("opens in a new tab");
   });
 
   it.each(["org_admin", "project_editor", "project_viewer"])("prevents checkout for an invited %s", async (role) => {
@@ -70,7 +78,9 @@ describe("signup plan selection", () => {
     { subscriptionStatus: "canceled", subscriptionEndsAt: "2999-01-01T00:00:00Z" },
   ])("avoids a duplicate subscription for %j", async (status) => {
     mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, ...status }, isPending: false, isError: false });
-    expect(await openPage()).toBeDisabled();
+    render(<SubscribePage />);
+    await screen.findByRole("link", { name: "Manage subscription" });
+    expect(screen.queryByRole("button", { name: "Continue with Plus" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage subscription" })).toHaveAttribute("href", "/org-admin?tab=subscription");
     expect(screen.queryByText(/Choose a plan to activate/)).not.toBeInTheDocument();
   });
@@ -84,6 +94,38 @@ describe("signup plan selection", () => {
     expect(await openPage()).toBeDisabled();
   });
 
+  it.each(["2020-01-01T00:00:00Z", null, "invalid"])("explains expired access and allows resubscription: %s", async subscriptionEndsAt => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "canceled", subscriptionEndsAt }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("button", { name: "Resubscribe to Plus" })).toBeEnabled();
+    expect(screen.getByRole("heading", { name: "Restore your subscription" })).toBeVisible();
+    expect(screen.queryByText(/activate your organization/)).not.toBeInTheDocument();
+  });
+
+  it("recognizes a terminated subscription whose plan was cleared by a webhook", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "none", subscriptionEndsAt: "2020-01-01T00:00:00Z" }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("button", { name: "Resubscribe to Plus" })).toBeEnabled();
+  });
+
+  it("keeps existing billing reachable when plan pricing is unavailable", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "active" }, isPending: false, isError: false });
+    mockFetch.mockResolvedValueOnce({ ok: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("link", { name: "Manage subscription" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Continue with Plus" })).not.toBeInTheDocument();
+  });
+
+  it("keeps overdue payments on the existing subscription", async () => {
+    mockUseOrganizations.mockReturnValue({ activeOrganization: { ...organization, subscriptionStatus: "past_due" }, isPending: false, isError: false });
+    render(<SubscribePage />);
+    expect(await screen.findByRole("heading", { name: "Update your payment method" })).toBeVisible();
+    expect(screen.getByText(/keep your existing subscription/)).toBeVisible();
+    expect(screen.queryByText(/Billed monthly per organization/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage subscription" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Continue with Plus" })).not.toBeInTheDocument();
+  });
+
   it("recovers from a failed plan lookup without exposing checkout", async () => {
     mockFetch.mockResolvedValueOnce({ ok: false });
     render(<SubscribePage />);
@@ -94,7 +136,7 @@ describe("signup plan selection", () => {
 
   it("pins checkout to the displayed organization and allows retry after rejection", async () => {
     const button = await openPage();
-    mockFetch.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Organization context changed" }) });
+    mockFetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Organization context changed" }) });
     fireEvent.click(button);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Unable to start checkout", { description: "Organization context changed" }));
     expect(mockFetch).toHaveBeenCalledWith("/api/billing/checkout", expect.objectContaining({

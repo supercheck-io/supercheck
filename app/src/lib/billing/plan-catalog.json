@@ -1,0 +1,62 @@
+{
+  "plus": {
+    "name": "Plus",
+    "monthlyPriceCents": 4900,
+    "limits": {
+      "maxMonitors": 50,
+      "minCheckIntervalMinutes": 1,
+      "playwrightMinutesIncluded": 3000,
+      "k6VuMinutesIncluded": 30000,
+      "aiCreditsIncluded": 1000,
+      "sreInvestigationUnitsIncluded": "200.0000",
+      "runningCapacity": 5,
+      "queuedCapacity": 50,
+      "maxTeamMembers": 5,
+      "maxOrganizations": 1,
+      "maxProjects": 10,
+      "maxStatusPages": 5,
+      "maxStatusPageSubscribers": 1000,
+      "customDomains": true,
+      "ssoEnabled": true,
+      "dataRetentionDays": 7,
+      "aggregatedDataRetentionDays": 30,
+      "jobDataRetentionDays": 30
+    },
+    "overageCents": {
+      "playwrightMinutes": 1,
+      "k6VuMinutes": 0.2,
+      "aiCredits": 0,
+      "sreInvestigationUnits": 10
+    }
+  },
+  "pro": {
+    "name": "Pro",
+    "monthlyPriceCents": 14900,
+    "limits": {
+      "maxMonitors": 200,
+      "minCheckIntervalMinutes": 1,
+      "playwrightMinutesIncluded": 10000,
+      "k6VuMinutesIncluded": 100000,
+      "aiCreditsIncluded": 5000,
+      "sreInvestigationUnitsIncluded": "1000.0000",
+      "runningCapacity": 10,
+      "queuedCapacity": 100,
+      "maxTeamMembers": 25,
+      "maxOrganizations": 1,
+      "maxProjects": 50,
+      "maxStatusPages": 20,
+      "maxStatusPageSubscribers": 10000,
+      "customDomains": true,
+      "ssoEnabled": true,
+      "dataRetentionDays": 7,
+      "aggregatedDataRetentionDays": 90,
+      "jobDataRetentionDays": 90
+    },
+    "overageCents": {
+      "playwrightMinutes": 0.5,
+      "k6VuMinutes": 0.1,
+      "aiCredits": 0,
+      "sreInvestigationUnits": 10
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
 import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
@@ -39,19 +40,19 @@ const plans: {
 }[] = [
     {
         name: 'Plus',
-        price: '$49',
+        price: `$${catalog.plus.monthlyPriceCents / 100}`,
         period: '/month',
         description: 'For startups and small teams',
         features: [
-            '50 monitors',
-            '5 status pages with custom domains',
+            `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")} monitors`,
+            `${catalog.plus.limits.maxStatusPages} status pages with custom domains`,
             { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
-            { text: '3,000 Playwright minutes/month', hint: '≈ 36,000 five-second test runs' },
-            '30,000 k6 VU minutes/month',
-            '1,000 AI credits/month',
-            '200 completed AI SRE investigations/month',
-            '5 team members',
-            '10 projects per organization',
+            { text: `${catalog.plus.limits.playwrightMinutesIncluded.toLocaleString("en-US")} Playwright minutes/month`, hint: `≈ ${(catalog.plus.limits.playwrightMinutesIncluded * 12).toLocaleString("en-US")} five-second test runs` },
+            `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")} k6 VU minutes/month`,
+            `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")} AI credits/month`,
+            `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")} completed AI SRE investigations/month`,
+            `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")} team members`,
+            `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")} projects per organization`,
             'Email support',
         ],
         cta: 'Join the Plus waitlist',
@@ -60,19 +61,19 @@ const plans: {
     },
     {
         name: 'Pro',
-        price: '$149',
+        price: `$${catalog.pro.monthlyPriceCents / 100}`,
         period: '/month',
         description: 'For growing teams',
         features: [
-            '200 monitors',
-            '20 status pages with custom domains',
+            `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")} monitors`,
+            `${catalog.pro.limits.maxStatusPages} status pages with custom domains`,
             { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
-            { text: '10,000 Playwright minutes/month', hint: '≈ 120,000 five-second test runs' },
-            '100,000 k6 VU minutes/month',
-            '5,000 AI credits/month',
-            '1,000 completed AI SRE investigations/month',
-            '25 team members',
-            '50 projects per organization',
+            { text: `${catalog.pro.limits.playwrightMinutesIncluded.toLocaleString("en-US")} Playwright minutes/month`, hint: `≈ ${(catalog.pro.limits.playwrightMinutesIncluded * 12).toLocaleString("en-US")} five-second test runs` },
+            `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")} k6 VU minutes/month`,
+            `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")} AI credits/month`,
+            `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")} completed AI SRE investigations/month`,
+            `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")} team members`,
+            `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")} projects per organization`,
             'Priority email support',
         ],
         cta: 'Join the Pro waitlist',
@@ -102,9 +103,9 @@ const plans: {
 ];
 
 const overagePricing = [
-    { metric: 'Playwright minute', plus: '$0.01', pro: '$0.005' },
-    { metric: 'k6 VU-minute', plus: '$0.002 ($2 per 1,000)', pro: '$0.001 ($1 per 1,000)' },
-    { metric: 'Completed AI SRE investigation', plus: '$0.10', pro: '$0.10' },
+    { metric: 'Playwright minute', plus: `$${(catalog.plus.overageCents.playwrightMinutes / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.playwrightMinutes / 100).toFixed(3)}` },
+    { metric: 'k6 VU-minute', plus: `$${(catalog.plus.overageCents.k6VuMinutes / 100).toFixed(3)}`, pro: `$${(catalog.pro.overageCents.k6VuMinutes / 100).toFixed(3)}` },
+    { metric: 'Completed AI SRE investigation', plus: `$${(catalog.plus.overageCents.sreInvestigationUnits / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.sreInvestigationUnits / 100).toFixed(2)}` },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];
 
@@ -123,15 +124,15 @@ interface ComparisonItem {
 const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     {
         category: 'Usage Limits', items: [
-            { name: 'Monitors', plus: '50', pro: '200', enterprise: CUSTOM },
-            { name: 'Playwright minutes/month', plus: '3,000', pro: '10,000', enterprise: CUSTOM },
-            { name: 'k6 VU minutes/month', plus: '30,000', pro: '100,000', enterprise: CUSTOM },
-            { name: 'AI credits/month', plus: '1,000', pro: '5,000', enterprise: CUSTOM },
-            { name: 'Completed AI SRE investigations/month', plus: '200', pro: '1,000', enterprise: CUSTOM },
+            { name: 'Monitors', plus: `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Playwright minutes/month', plus: `${Number(catalog.plus.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'k6 VU minutes/month', plus: `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'AI credits/month', plus: `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Completed AI SRE investigations/month', plus: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-jobs limit.', plus: '5', pro: '10', enterprise: CUSTOM },
-            { name: 'Queued jobs', plus: '50', pro: '100', enterprise: CUSTOM },
+            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-jobs limit.', plus: `${Number(catalog.plus.limits.runningCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.runningCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Queued jobs', plus: `${Number(catalog.plus.limits.queuedCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.queuedCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
             { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
@@ -149,17 +150,17 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     },
     {
         category: 'Team & Projects', items: [
-            { name: 'Team members', plus: '5', pro: '25', enterprise: CUSTOM },
-            { name: 'Projects', plus: '10', pro: '50', enterprise: CUSTOM },
-            { name: 'Status pages', plus: '5', pro: '20', enterprise: CUSTOM },
-            { name: 'Subscribers per status page', plus: '1,000', pro: '10,000', enterprise: CUSTOM },
+            { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Projects', plus: `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Status pages', plus: `${Number(catalog.plus.limits.maxStatusPages).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPages).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Subscribers per status page', plus: `${Number(catalog.plus.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, enterprise: CUSTOM },
         ]
     },
     {
         category: 'Data Retention', items: [
-            { name: 'Raw monitor data', plus: '7 days', pro: '7 days', enterprise: CUSTOM },
-            { name: 'Aggregated metrics', plus: '30 days', pro: '90 days', enterprise: CUSTOM },
-            { name: 'Job run history', plus: '30 days', pro: '90 days', enterprise: CUSTOM },
+            { name: 'Raw monitor data', plus: `${Number(catalog.plus.limits.dataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.dataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
+            { name: 'Aggregated metrics', plus: `${Number(catalog.plus.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
+            { name: 'Job run history', plus: `${Number(catalog.plus.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
         ]
     },
     {

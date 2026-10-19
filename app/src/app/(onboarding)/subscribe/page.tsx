@@ -1,30 +1,21 @@
 "use client";
 
-import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
 import { useOrganizations } from "@/hooks/use-organizations";
 import Link from "next/link";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
-import { Suspense, useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
-import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
 import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
   ArrowRight,
-  Mail,
+  CreditCard,
 } from "lucide-react";
 
 interface PricingPlan {
@@ -60,62 +51,41 @@ interface PricingPlan {
   };
 }
 
-interface FeatureRow {
-  name: string;
-  plus: string | boolean | number;
-  pro: string | boolean | number;
-  enterprise?: string | boolean | number;
-  selfHosted?: string | boolean | number;
-}
-
-interface FeatureCategory {
-  category: string;
-  features: FeatureRow[];
-}
-
-interface OveragePricingData {
-  plus: {
-    playwrightMinutes: number;
-    k6VuMinutes: number;
-    aiCredits: number;
-    sreInvestigationUnits: number;
-  };
-  pro: {
-    playwrightMinutes: number;
-    k6VuMinutes: number;
-    aiCredits: number;
-    sreInvestigationUnits: number;
-  };
-}
-
 interface PricingData {
   plans: PricingPlan[];
-  featureComparison: FeatureCategory[];
-  faqs: Array<{ question: string; answer: string }>;
-  overagePricing?: OveragePricingData;
 }
-
-const defaultFaqs = PRICING_FAQS;
 
 export default function SubscribePage() {
-  return (
-    <Suspense fallback={<SubscribeSkeleton />}>
-      <SubscribePageContent />
-    </Suspense>
-  );
-}
-
-function SubscribePageContent() {
-  const searchParams = useSearchParams();
-  const isRequired = searchParams.get("required") === "true";
-  const { activeOrganization, isPending: organizationLoading, isError: organizationError } = useOrganizations();
-  const hasCurrentSubscription = activeOrganization?.subscriptionStatus === "active" ||
+  const {
+    activeOrganization,
+    isPending: organizationLoading,
+    isError: organizationError,
+  } = useOrganizations();
+  const overdue = activeOrganization?.subscriptionStatus === "past_due";
+  const hasCurrentSubscription =
+    activeOrganization?.subscriptionStatus === "active" ||
     activeOrganization?.subscriptionStatus === "past_due" ||
-    (activeOrganization?.subscriptionStatus === "canceled" && Boolean(activeOrganization.subscriptionEndsAt && new Date(activeOrganization.subscriptionEndsAt).getTime() > Date.now()));
-  const canSubscribe = activeOrganization?.role === "org_owner" && !hasCurrentSubscription && !organizationLoading && !organizationError;
+    (activeOrganization?.subscriptionStatus === "canceled" &&
+      Boolean(
+        activeOrganization.subscriptionEndsAt &&
+          new Date(activeOrganization.subscriptionEndsAt).getTime() >
+            Date.now(),
+      ));
+  const expired =
+    !hasCurrentSubscription &&
+    Boolean(
+      activeOrganization?.subscriptionStatus === "canceled" ||
+        activeOrganization?.subscriptionEndsAt,
+    );
+  const canSubscribe =
+    activeOrganization?.role === "org_owner" &&
+    !hasCurrentSubscription &&
+    !organizationLoading &&
+    !organizationError;
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const checkoutPending = useRef(false);
   const [subscribing, setSubscribing] = useState<string | null>(null);
 
   const fetchPricing = useCallback(() => {
@@ -136,36 +106,25 @@ function SubscribePageContent() {
   }, []);
 
   useEffect(() => {
-    // NOTE: Organization setup is handled by SetupChecker in the layout
-    // Do not call setup-defaults here to avoid race conditions
     fetchPricing();
   }, [fetchPricing]);
 
   const handleSubscribe = async (planSlug: string) => {
     // Prevent double-click: if already subscribing, ignore
-    if (subscribing || !canSubscribe) return;
-
+    if (checkoutPending.current || !canSubscribe) return;
+    checkoutPending.current = true;
     setSubscribing(planSlug);
     try {
-      // IMPORTANT: Ensure organization exists before checkout
-      // In cloud mode, users may arrive at /subscribe without having an organization yet
-      // (e.g., after email verification, the signup flow skips setup-defaults)
-      try {
-        await fetch("/api/auth/setup-defaults", { method: "POST" });
-      } catch (setupError) {
-        console.log(
-          "Setup defaults call completed (may already exist):",
-          setupError,
-        );
-      }
-
       // The server validates the active organization, owner role, product, and
       // redirect URLs before creating a Polar checkout.
       const checkoutRes = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ plan: planSlug, organizationId: activeOrganization?.id }),
+        body: JSON.stringify({
+          plan: planSlug,
+          organizationId: activeOrganization?.id,
+        }),
       });
       if (!checkoutRes.ok) {
         const errData = await checkoutRes.json().catch(() => ({}));
@@ -187,15 +146,16 @@ function SubscribePageContent() {
             ? error.message
             : "Please refresh and try again.",
       });
+      checkoutPending.current = false;
       setSubscribing(null);
     }
   };
 
-  if (loading) {
+  if (loading && !hasCurrentSubscription) {
     return <SubscribeSkeleton />;
   }
 
-  if (error || !pricingData) {
+  if ((error || !pricingData) && !hasCurrentSubscription) {
     return (
       <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
@@ -212,267 +172,218 @@ function SubscribePageContent() {
     );
   }
 
-  const plans = pricingData.plans || [];
-  const faqs = pricingData.faqs?.length ? pricingData.faqs : defaultFaqs;
+  const plans = pricingData?.plans || [];
 
   return (
-    <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
-      {/* Subscription Required Banner */}
-      {isRequired && canSubscribe && (
-        <div className="max-w-2xl mx-auto bg-muted/50 border rounded-lg px-4 py-3 text-center text-sm text-muted-foreground">
-          Choose a plan to activate your organization and access the dashboard.
-        </div>
-      )}
-
-      {/* Hero Section */}
-      <section className="text-center space-y-4 pt-4">
-        <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight">
-          Choose your plan
+    <div
+      className={`mx-auto py-6 md:py-8 px-4 space-y-8 ${hasCurrentSubscription ? "max-w-2xl" : "max-w-4xl"}`}
+    >
+      <header className="space-y-3">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+          {overdue
+            ? "Update your payment method"
+            : expired
+              ? "Restore your subscription"
+              : hasCurrentSubscription
+                ? "Your subscription"
+                : "Choose your plan"}
         </h1>
-        <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          Managed testing, monitoring, and AI SRE. Your organization&apos;s projects share one monthly subscription.
+        <p className="text-sm text-muted-foreground">
+          One subscription covers all projects in your organization.
         </p>
-        {activeOrganization && <p className="text-sm font-medium">Subscription for {activeOrganization.name}</p>}
-        {organizationLoading && <p role="status" className="text-sm text-muted-foreground">Checking your organization before checkout...</p>}
-        {!organizationLoading && !organizationError && !activeOrganization && <p className="text-sm text-muted-foreground">Your default organization is still being set up. Refresh this page to retry setup.</p>}
-        {organizationError && <p role="alert" className="text-sm text-destructive">Unable to load your project&apos;s organization. Refresh this page to retry, or select another project above if available.</p>}
-        {activeOrganization && activeOrganization.role !== "org_owner" && <p className="text-sm text-muted-foreground">Only this organization&apos;s owner can subscribe. Contact the owner, or select a project in your own organization above if available.</p>}
-        {hasCurrentSubscription && activeOrganization?.role === "org_owner" && <p className="text-sm text-muted-foreground">This organization already has a subscription. <Link href="/org-admin?tab=subscription" className="underline">Manage subscription</Link> to change plans.</p>}
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1">
-          <span>Monthly subscription per organization</span>
-          <span className="hidden sm:inline">·</span>
-          <span>Cancel anytime</span>
-          <span className="hidden sm:inline">·</span>
-          <span>Prices in USD, before applicable tax</span>
-          <span className="hidden sm:inline">·</span>
-          <span>Additional usage billed at the rates below</span>
-        </div>
-        {canSubscribe && <p className="text-xs text-muted-foreground">Continue to secure checkout to review your subscription before payment.</p>}
-      </section>
+      </header>
 
-      {/* Pricing Tier Cards */}
-      <section className="max-w-6xl mx-auto">
-        <div className="grid gap-6 lg:grid-cols-3 md:grid-cols-2 max-w-6xl mx-auto">
-          {plans.map((plan) => (
-            <PricingTierCard
-              key={plan.id}
-              name={plan.name}
-              price={plan.price}
-              priceInterval={plan.interval}
-              tagline={plan.description}
-              badge={plan.id === "pro" ? "Higher capacity" : undefined}
-              keyFeatures={[
-                `${Number(plan.features.monitors).toLocaleString()} monitors`,
-                `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright minutes/month`,
-                `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-minutes/month`,
-                `${Number(plan.features.aiCredits).toLocaleString()} AI credits/month · fair use`,
-                `${Number(plan.features.sreInvestigationUnits).toLocaleString()} completed AI SRE reports/month`,
-                "Read-only evidence connectors",
-                "Private Agent support",
-                `${plan.features.teamMembers} team members`,
-                `${plan.features.projects} projects`,
-                `${plan.features.monitorDataRetention} monitor retention`,
-                `${plan.features.jobDataRetention} job retention`,
-                plan.features.customDomains
-                  ? "Custom status-page domains"
-                  : "Standard status-page domains",
-                ...(plan.features.support ? [plan.features.support] : []),
-              ]}
-              overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · AI credits included, fair use`}
-              ctaText={`Continue with ${plan.name}`}
-              ctaVariant={plan.id === "pro" ? "default" : "outline"}
-              onCtaClick={() => handleSubscribe(plan.id)}
-              loading={subscribing === plan.id}
-              disabled={!canSubscribe || (subscribing !== null && subscribing !== plan.id)}
-              highlighted={plan.id === "pro"}
-            />
-          ))}
-
-          {/* Enterprise Card */}
-          <PricingTierCard
-            name="Enterprise"
-            tagline="For large organizations with custom requirements"
-            badge="Tailored"
-            keyFeatures={[
-              "Custom monitor allowance",
-              "Custom Playwright & K6 allowances",
-              "Custom AI credit pool or bring-your-own-provider",
-              "Custom completed AI SRE report allowance",
-              "Custom connector and Private Agent limits",
-              "Custom team member & project limits",
-              "Custom data retention policies",
-              "Dedicated account manager",
-              "Custom SLA & priority support",
-              "Onboarding & training",
-            ]}
-            overageText="Get in touch to discuss your requirements, usage allowances, support, SLA, and onboarding."
-            ctaText="Get in touch"
-            ctaVariant="outline"
-            ctaHref="mailto:hello@supercheck.io"
-          />
-        </div>
-
-        {/* Self-hosted & demo links */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8 text-sm">
-          <a
-            href="https://demo.supercheck.dev"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Try free demo
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-          <span className="hidden sm:inline text-muted-foreground/40">|</span>
-          <a
-            href="https://supercheck.io/docs/app/deployment/self-hosted"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Explore self-hosting
-            <ArrowRight className="h-3.5 w-3.5" />
-          </a>
-        </div>
-        <p className="mt-3 text-center text-xs text-muted-foreground">Self-hosting has no license cost. You pay your own infrastructure and AI provider costs.</p>
-      </section>
-
-      {/* Feature Comparison Table */}
-      <section className="max-w-7xl mx-auto">
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-6 md:p-8">
-          <div className="text-center space-y-1.5 mb-6">
-            <h2 className="text-2xl font-bold">Compare plans in detail</h2>
-            <p className="text-sm text-muted-foreground">
-              Everything included at a glance
-            </p>
-          </div>
-          {pricingData && (
-            <PricingComparisonTable
-              categories={pricingData.featureComparison}
-              overagePricing={pricingData.overagePricing}
-            />
+      <Card className="gap-5 p-5 sm:p-6 shadow-none">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="min-w-0 break-words text-base font-semibold">
+            {activeOrganization?.name || "Your organization"}
+          </h2>
+          {activeOrganization && (
+            <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
+              {overdue
+                ? "Payment overdue"
+                : expired
+                  ? "Subscription ended"
+                  : hasCurrentSubscription
+                    ? activeOrganization.subscriptionStatus === "canceled"
+                      ? "Cancellation scheduled"
+                      : "Active"
+                    : "Not subscribed"}
+            </span>
           )}
         </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="max-w-3xl mx-auto">
-        <div className="rounded-2xl border bg-card p-6 md:p-8">
-          <div className="text-center space-y-1.5 mb-6">
-            <h2 className="text-2xl font-bold">Frequently asked questions</h2>
-            <p className="text-sm text-muted-foreground">
-              Everything you need to know about pricing
+        {organizationLoading && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Checking your organization before checkout...
+          </p>
+        )}
+        {organizationError && (
+          <p role="alert" className="text-sm text-destructive">
+            Unable to load your organization. Refresh this page to retry.
+          </p>
+        )}
+        {!organizationLoading && !organizationError && !activeOrganization && (
+          <p className="text-sm text-muted-foreground">
+            Your default organization is still being set up. Refresh this page
+            to retry setup.
+          </p>
+        )}
+        {activeOrganization && activeOrganization.role !== "org_owner" ? (
+          <p className="text-sm text-muted-foreground">
+            Only this organization&apos;s owner can subscribe. Contact the
+            owner, or switch to an organization you own if available.
+          </p>
+        ) : hasCurrentSubscription ? (
+          <>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {overdue
+                ? "Your latest payment is overdue. Update your payment details to keep your existing subscription."
+                : activeOrganization?.subscriptionStatus === "canceled"
+                  ? "Your subscription will not renew. Access continues until the paid period ends."
+                  : "View invoices, update payment details, or change your plan in billing."}
             </p>
-          </div>
-          <Accordion type="single" collapsible className="w-full">
-            {faqs.map((faq, index) => (
-              <AccordionItem key={index} value={`item-${index}`}>
-                <AccordionTrigger className="text-left text-sm font-medium py-4 hover:no-underline">
-                  {faq.question}
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground pb-4">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      </section>
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-5">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Current plan</p>
+                <p className="text-sm font-medium">
+                  {activeOrganization?.subscriptionPlan === "plus"
+                    ? "Plus"
+                    : activeOrganization?.subscriptionPlan === "pro"
+                      ? "Pro"
+                      : "Paid subscription"}
+                </p>
+              </div>
+              {activeOrganization?.role === "org_owner" && (
+                <Button
+                  asChild
+                  className="bg-[hsl(220,90%,56%)] text-white hover:bg-[hsl(220,90%,50%)] dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]"
+                >
+                  <Link href="/org-admin?tab=subscription">
+                    <CreditCard aria-hidden="true" className="h-4 w-4" />
+                    Manage subscription
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </>
+        ) : (
+          activeOrganization && (
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {expired
+                ? "Your subscription has ended. Choose a plan below to restore access."
+                : "Choose a plan below to activate your organization."}
+            </p>
+          )
+        )}
+      </Card>
 
-      {/* Bottom contact */}
-      <section className="text-center pb-6 space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Have more questions? We&apos;d love to help.
-        </p>
-        <Button variant="outline" size="sm" asChild>
-          <a href="mailto:hello@supercheck.io">
-            <Mail className="h-4 w-4 mr-2" />
-            Contact us
-          </a>
-        </Button>
-        <p className="flex justify-center gap-4 text-xs text-muted-foreground">
-          <a href="https://supercheck.io/terms" className="underline">Terms of service</a>
-          <a href="https://supercheck.io/privacy" className="underline">Privacy policy</a>
-        </p>
-      </section>
+      {/* Pricing Tier Cards */}
+      {!hasCurrentSubscription && (
+        <section className="max-w-4xl mx-auto">
+          <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+            {plans.map((plan) => (
+              <PricingTierCard
+                key={plan.id}
+                name={plan.name}
+                price={plan.price}
+                priceInterval={plan.interval}
+                tagline={plan.description}
+                badge={plan.id === "pro" ? "Higher capacity" : undefined}
+                keyFeatures={[
+                  `${Number(plan.features.monitors).toLocaleString()} monitors`,
+                  `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright minutes/month`,
+                  `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-minutes/month`,
+                  `${Number(plan.features.aiCredits).toLocaleString()} AI credits/month · fair use`,
+                  `${Number(plan.features.sreInvestigationUnits).toLocaleString()} completed AI SRE reports/month`,
+                  `${plan.features.teamMembers} team members · ${plan.features.projects} projects`,
+                  `${plan.features.statusPages} status pages`,
+                ]}
+                overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · AI credits included, fair use`}
+                ctaText={
+                  expired
+                    ? `Resubscribe to ${plan.name}`
+                    : `Continue with ${plan.name}`
+                }
+                ctaVariant={plan.id === "pro" ? "default" : "outline"}
+                onCtaClick={() => handleSubscribe(plan.id)}
+                loading={subscribing === plan.id}
+                disabled={
+                  !canSubscribe ||
+                  (subscribing !== null && subscribing !== plan.id)
+                }
+                highlighted={plan.id === "pro"}
+              />
+            ))}
+          </div>
+          <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
+            Billed monthly per organization in USD, before tax. Cancel anytime.
+            <br />
+            Usage overages are shown above. Review your total at checkout.
+          </p>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            <a
+              href="https://supercheck.io/pricing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 underline underline-offset-4"
+            >
+              Compare all features and pricing
+              <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+            {" · "}
+            <a
+              href="mailto:hello@supercheck.io"
+              className="underline underline-offset-4"
+            >
+              Contact us about Enterprise
+            </a>
+          </p>
+        </section>
+      )}
+
+      <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-4 text-xs text-muted-foreground">
+        <a
+          href="mailto:hello@supercheck.io"
+          className="underline underline-offset-4"
+        >
+          Contact support
+        </a>
+        <a
+          href="https://supercheck.io/terms"
+          className="underline underline-offset-4"
+        >
+          Terms of service
+        </a>
+        <a
+          href="https://supercheck.io/privacy"
+          className="underline underline-offset-4"
+        >
+          Privacy policy
+        </a>
+      </footer>
     </div>
   );
 }
 
 function SubscribeSkeleton() {
   return (
-    <div role="status" aria-label="Loading plans" className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
-      {/* Hero Skeleton */}
-      <div className="text-center space-y-3 pt-4">
-        <Skeleton className="h-10 w-80 max-w-full mx-auto" />
-        <Skeleton className="h-5 w-96 mx-auto max-w-full" />
-        <Skeleton className="h-4 w-64 mx-auto max-w-full" />
-      </div>
-
-      {/* Pricing Cards Skeleton */}
-      <div className="grid gap-6 lg:grid-cols-3 md:grid-cols-2 max-w-6xl mx-auto">
-        {[1, 2, 3].map((i) => (
-          <Card key={i} className="p-6 border">
-            {/* Plan name and tagline */}
-            <Skeleton className="h-8 w-24 mb-1 max-w-full" />
-            <Skeleton className="h-4 w-56 mb-4 max-w-full" />
-            {/* Price */}
-            <Skeleton className="h-14 w-36 mb-6 max-w-full" />
-            {/* Features - 8 items to match actual card */}
-            <div className="space-y-3 mb-6">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
-                <div key={j} className="flex items-center gap-3">
-                  <Skeleton className="h-5 w-5 rounded-full flex-shrink-0 max-w-full" />
-                  <Skeleton className="h-4 w-full" />
-                </div>
-              ))}
-            </div>
-            {/* CTA Button */}
-            <Skeleton className="h-11 w-full mb-4" />
-            {/* Overage text */}
-            <div className="pt-4 border-t">
-              <Skeleton className="h-3 w-full mx-auto" />
-            </div>
+    <div
+      role="status"
+      aria-label="Loading plans"
+      className="max-w-4xl mx-auto p-4 space-y-6"
+    >
+      <Skeleton className="h-10 w-64 max-w-full mx-auto" />
+      <div className="grid gap-6 md:grid-cols-2">
+        {[1, 2].map((i) => (
+          <Card key={i} className="p-6 space-y-4">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-14 w-36" />
+            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-11 w-full" />
           </Card>
         ))}
-      </div>
-
-      {/* Self-hosted link skeleton */}
-      <div className="flex justify-center gap-4">
-        <Skeleton className="h-4 w-28 max-w-full" />
-        <Skeleton className="h-4 w-32 max-w-full" />
-      </div>
-
-      {/* Table Skeleton */}
-      <div className="space-y-4 max-w-7xl mx-auto">
-        <div className="text-center space-y-1.5 mb-6">
-          <Skeleton className="h-7 w-56 mx-auto max-w-full" />
-          <Skeleton className="h-4 w-72 mx-auto max-w-full" />
-        </div>
-        <div className="rounded-lg border overflow-hidden">
-          <Skeleton className="h-12 w-full" />
-          {[1, 2, 3, 4, 5].map((cat) => (
-            <div key={cat}>
-              <Skeleton className="h-10 w-full bg-muted/40" />
-              {[1, 2, 3].map((row) => (
-                <Skeleton key={row} className="h-11 w-full" />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* FAQ Skeleton */}
-      <div className="space-y-4 max-w-3xl mx-auto">
-        <div className="text-center space-y-1.5 mb-6">
-          <Skeleton className="h-7 w-64 mx-auto max-w-full" />
-          <Skeleton className="h-4 w-80 mx-auto max-w-full" />
-        </div>
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
-          ))}
-        </div>
       </div>
     </div>
   );
