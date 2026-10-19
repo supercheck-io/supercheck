@@ -54,7 +54,7 @@ export async function POST(
     const runId = params.runId;
 
     // Require authentication (supports both Bearer tokens and session cookies)
-    const { userId } = await requireAuthContext();
+    const { userId, isCliAuth, project: tokenProject } = await requireAuthContext();
 
     logger.info({ runId, userId }, "Cancellation requested");
 
@@ -135,6 +135,14 @@ export async function POST(
 
     // RBAC: Check if user has permission to cancel runs in this project
     const projectIdForRbac = run.runProjectId || run.jobProjectId;
+
+    // Project-scoped CLI tokens may only act on their own project, even for super admins.
+    if (isCliAuth && tokenProject?.id !== projectIdForRbac) {
+      return NextResponse.json(
+        { error: "Access denied - token is not scoped to this run's project" },
+        { status: 403 }
+      );
+    }
     const canCancel = await canCancelRunInProject(
       userId,
       projectIdForRbac ?? null,

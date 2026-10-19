@@ -10,11 +10,12 @@ jest.mock("better-auth/api", () => ({
   },
   isAPIError: (value: unknown) => value instanceof Error && "body" in value,
 }));
-jest.mock("@/lib/session-security", () => ({ getClientIP: () => "192.0.2.1" }));
+jest.mock("@/lib/session-security", () => ({ getClientIP: jest.fn(() => "192.0.2.1") }));
 jest.mock("./login-lockout", () => ({
   checkLockout: jest.fn(), clearLockout: jest.fn(), recordFailedAttempt: jest.fn(),
 }));
 import { APIError } from "better-auth/api";
+import { getClientIP } from "@/lib/session-security";
 import { loginLockoutHooks } from "./login-lockout-hooks";
 import { checkLockout, clearLockout, recordFailedAttempt } from "./login-lockout";
 const context = (returned?: unknown, newSession?: unknown) => ({
@@ -57,4 +58,13 @@ it("ignores other auth endpoints and invalid bodies", async () => {
   await before({ ...context(), body: {} } as ReturnType<typeof context>);
   expect(checkLockout).not.toHaveBeenCalled();
   expect(recordFailedAttempt).not.toHaveBeenCalled();
+});
+it("skips the IP dimension when the client IP is unknown", async () => {
+  (getClientIP as jest.Mock).mockReturnValueOnce("unknown").mockReturnValueOnce("unknown");
+  await before(context());
+  expect(checkLockout).toHaveBeenCalledTimes(1);
+  expect(checkLockout).toHaveBeenCalledWith("user@example.test");
+  await after(context(new APIError("UNAUTHORIZED", { code: "INVALID_EMAIL_OR_PASSWORD" })));
+  expect(recordFailedAttempt).toHaveBeenCalledTimes(1);
+  expect(recordFailedAttempt).not.toHaveBeenCalledWith("unknown");
 });

@@ -13,6 +13,7 @@ import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 
@@ -48,25 +49,55 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+// Mirrors user_role_canonical_check: global roles are super_admin or project_viewer.
+const updateUserSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255).optional(),
+    email: z.string().trim().toLowerCase().email().max(320).optional(),
+    role: z.enum(['super_admin', 'project_viewer']).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'No fields to update');
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   try {
     await requireAdmin();
-    
-    const body = await request.json();
-    const { name, email, role } = body;
-    
+    const currentAdmin = await getCurrentUser();
+    if (!currentAdmin) throw new Error('Authentication required');
+
+    const parsed = updateUserSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid user update' },
+        { status: 400 }
+      );
+    }
+    const changes = parsed.data;
+
+    if (
+      resolvedParams.id === currentAdmin.id &&
+      changes.role !== undefined &&
+      changes.role !== 'super_admin'
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot remove your own super admin role' },
+        { status: 400 }
+      );
+    }
+
+    const [before] = await db
+      .select({ name: user.name, email: user.email, role: user.role })
+      .from(user)
+      .where(eq(user.id, resolvedParams.id))
+      .limit(1);
+
     const [updatedUser] = await db
       .update(user)
-      .set({
-        name,
-        email,
-        role,
-        updatedAt: new Date()
-      })
+      .set({ ...changes, updatedAt: new Date() })
       .where(eq(user.id, resolvedParams.id))
       .returning();
-    
+
     if (!updatedUser) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
@@ -74,6 +105,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
     
+    // A demoted super admin must not keep acting through live impersonation sessions.
+    if (before?.role === 'super_admin' && updatedUser.role !== 'super_admin') {
+      await db.delete(session).where(eq(session.impersonatedBy, resolvedParams.id));
+    }
+
+    await logAdminEvent(currentAdmin.id, 'user_updated', resolvedParams.id, 'user', resolvedParams.id, {
+      changedFields: Object.keys(changes),
+      previousRole: before?.role ?? null,
+      newRole: updatedUser.role ?? null,
+    });
     return NextResponse.json({
       success: true,
       data: updatedUser
@@ -82,7 +123,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     console.error('Admin user PUT error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },
-      { status: 500 }
+      { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
     );
   }
 }

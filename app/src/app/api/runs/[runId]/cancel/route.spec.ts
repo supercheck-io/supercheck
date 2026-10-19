@@ -18,6 +18,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { setCancellationSignal } from "@/lib/cancellation-service";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
+import { requireAuthContext } from "@/lib/auth-context";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
 import { POST } from "./route";
 
@@ -57,4 +58,15 @@ it.each([false, true])("tenant membership gate respects super-admin=%s", async (
   // A super admin reaches the ordinary terminal-run status check, without signaling it.
   expect(setCancellationSignal).not.toHaveBeenCalled();
   if (superAdmin) expect(db.query.member.findFirst).not.toHaveBeenCalled();
+});
+
+it("denies a project-scoped CLI token for another project's run, even for a super admin", async () => {
+  jest.clearAllMocks();
+  (requireAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "user-1", isCliAuth: true, project: { id: "other-project" } });
+  (isSuperAdmin as jest.Mock).mockResolvedValue(true);
+  (canCancelRunInProject as jest.Mock).mockResolvedValue(true);
+  (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" }] }) }) }) });
+  const response = await POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
+  expect(response.status).toBe(403);
+  expect(setCancellationSignal).not.toHaveBeenCalled();
 });
