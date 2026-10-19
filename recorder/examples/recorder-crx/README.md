@@ -71,7 +71,7 @@ The extension connects without setup on every first-party deployment:
 | Supercheck Cloud | `https://app.supercheck.io` |
 | Supercheck website | `https://supercheck.io` |
 | Live demo | `https://demo.supercheck.dev` |
-| QA | `https://qa.superset.io` |
+| QA | `https://qa.supercheck.io` |
 
 1. Open one of those origins in the same browser profile.
 2. Sign in and open any authenticated dashboard page.
