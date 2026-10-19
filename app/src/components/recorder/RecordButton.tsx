@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Video, Download, ExternalLink, RefreshCw, MousePointerClick, Circle, Chrome } from "lucide-react";
+import { Video, Download, ExternalLink, RefreshCw, MousePointerClick, Circle, Chrome, Copy, Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -71,7 +71,36 @@ export function RecordButton({
   const [showClickExtensionDialog, setShowClickExtensionDialog] = useState(false);
   const [showUnsupportedDialog, setShowUnsupportedDialog] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
   const [browser] = useState(() => detectBrowser());
+
+  // The content script reports an orphaned extension (for example right after
+  // an update) so the user gets the refresh dialog instead of the install one.
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (
+        event.source === window &&
+        event.origin === window.location.origin &&
+        event.data?.source === "supercheck-recorder" &&
+        event.data?.type === "SUPERCHECK_REFRESH_REQUIRED"
+      ) {
+        setShowRefreshDialog(true);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const copyInstanceUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.origin);
+      setCopiedOrigin(true);
+      window.setTimeout(() => setCopiedOrigin(false), 2000);
+    } catch {
+      // Clipboard access can be denied; the URL stays visible for manual copy.
+    }
+  }, []);
 
   const handleClick = useCallback(async () => {
     setIsStarting(true);
@@ -183,6 +212,28 @@ export function RecordButton({
             <p className="text-xs text-muted-foreground text-center">
               Works with Chrome, Microsoft Edge, and other Chromium browsers
             </p>
+
+            <div className="rounded-lg border border-dashed p-4 space-y-2">
+              <p className="text-sm font-medium">Already installed, or using the demo / self-hosted?</p>
+              <p className="text-xs text-muted-foreground">
+                Supercheck Cloud, the demo, and QA sites connect automatically. For any other
+                instance, open the extension&apos;s <strong className="text-foreground">Options</strong> page,
+                paste this URL, then reload this tab:
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-md bg-muted px-2 py-1.5 text-xs">
+                  {typeof window !== "undefined" ? window.location.origin : ""}
+                </code>
+                <Button type="button" variant="outline" size="sm" onClick={copyInstanceUrl}>
+                  {copiedOrigin ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                  <span className="ml-1.5">{copiedOrigin ? "Copied" : "Copy"}</span>
+                </Button>
+              </div>
+            </div>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">

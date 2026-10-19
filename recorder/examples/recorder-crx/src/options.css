@@ -140,7 +140,12 @@ body {
 }
 
 .status-indicator.configured {
-  background-color: var(--sc-success);
+  background-color: var(--sc-warning);
+}
+
+.status-indicator.loading {
+  background-color: var(--sc-muted-foreground);
+  animation: pulse 1.5s infinite;
 }
 
 .status-indicator.error {
@@ -215,6 +220,127 @@ body {
   color: var(--sc-muted-foreground);
   font-size: 0.75rem;
   margin-top: var(--sc-spacing-xs);
+}
+
+/* Info tip */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: var(--sc-spacing-xs);
+}
+
+.info-tip-button {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--sc-muted-foreground);
+  cursor: help;
+}
+
+.info-tip-button:hover,
+.info-tip-button:focus-visible {
+  color: var(--sc-primary);
+  outline: none;
+}
+
+.info-tip-button:focus-visible {
+  box-shadow: 0 0 0 2px var(--sc-primary);
+}
+
+.info-tip-body {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: -8px;
+  width: max-content;
+  max-width: 280px;
+  margin-top: 6px;
+  padding: var(--sc-spacing-sm) var(--sc-spacing-md);
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius-sm);
+  background: var(--sc-background);
+  color: var(--sc-foreground);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+/* Invisible bridge so the pointer can travel from the icon into the tooltip. */
+.info-tip-body::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+
+.info-tip:hover .info-tip-body,
+.info-tip:focus-within .info-tip-body {
+  visibility: visible;
+  opacity: 1;
+}
+
+.info-tip-body a {
+  color: var(--sc-primary);
+}
+
+/* Callout */
+.callout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sc-spacing-xs);
+  margin-bottom: var(--sc-spacing-lg);
+  padding: var(--sc-spacing-md);
+  border: 1px solid var(--sc-border);
+  border-left: 3px solid var(--sc-primary);
+  border-radius: var(--sc-radius-sm);
+  background-color: var(--sc-muted);
+  font-size: 0.8125rem;
+  color: var(--sc-muted-foreground);
+}
+
+.callout strong {
+  color: var(--sc-foreground);
+  font-weight: 600;
+}
+
+/* Advanced connection panel */
+.advanced-panel {
+  margin-top: var(--sc-spacing-lg);
+  padding-top: var(--sc-spacing-lg);
+  border-top: 1px dashed var(--sc-border);
+}
+
+.btn-link {
+  display: inline-block;
+  margin-top: var(--sc-spacing-md);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--sc-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-link:hover {
+  color: var(--sc-primary-hover);
+}
+
+.connection-actions {
+  display: flex;
+  gap: var(--sc-spacing-sm);
+  margin-top: var(--sc-spacing-md);
 }
 
 /* Checkbox group */
@@ -304,6 +430,12 @@ body {
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
+  .info-tip-body {
+    background: var(--sc-card-dark);
+    border-color: var(--sc-border-dark);
+    color: var(--sc-foreground-dark);
+  }
+
   body {
     color: var(--sc-foreground-dark);
     background-color: var(--sc-background-dark);
@@ -353,6 +485,20 @@ body {
 
   .btn-secondary:hover:not(:disabled) {
     background-color: var(--sc-border-dark);
+  }
+
+  .callout {
+    background-color: var(--sc-muted-dark);
+    border-color: var(--sc-border-dark);
+    border-left-color: var(--sc-primary);
+  }
+
+  .callout strong {
+    color: var(--sc-foreground-dark);
+  }
+
+  .advanced-panel {
+    border-top-color: var(--sc-border-dark);
   }
 
   .options-footer {

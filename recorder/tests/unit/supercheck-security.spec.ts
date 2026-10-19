@@ -2,24 +2,48 @@ import { expect, test } from '@playwright/test';
 import { isRetryableRequestMethod } from '../../examples/recorder-crx/src/supercheck/api-client';
 import {
   isAllowedAppOrigin,
+  isSupercheckCloudOrigin,
   isValidAutoConnectPayload,
   isValidRecordingContextPayload,
 } from '../../examples/recorder-crx/src/supercheck/message-security';
 
+test('accepts every first-party Supercheck deployment', () => {
+  expect(isSupercheckCloudOrigin('https://app.supercheck.io')).toBe(true);
+  expect(isSupercheckCloudOrigin('https://supercheck.io')).toBe(true);
+  expect(isSupercheckCloudOrigin('https://demo.supercheck.dev')).toBe(true);
+  expect(isSupercheckCloudOrigin('https://qa.supercheck.io')).toBe(true);
+});
+
 test('accepts cloud and explicitly configured self-hosted origins', () => {
   expect(isAllowedAppOrigin('https://supercheck.io')).toBe(true);
   expect(isAllowedAppOrigin('https://app.supercheck.io')).toBe(true);
+  expect(isAllowedAppOrigin('https://demo.supercheck.dev')).toBe(true);
+  expect(isAllowedAppOrigin('https://qa.supercheck.io')).toBe(true);
   expect(isAllowedAppOrigin('http://localhost:3000', 'http://localhost:3000')).toBe(true);
   expect(isAllowedAppOrigin('https://self-hosted.example.com', 'https://self-hosted.example.com')).toBe(true);
 });
 
 test('rejects insecure and lookalike origins', () => {
   expect(isAllowedAppOrigin('http://app.supercheck.io')).toBe(false);
+  expect(isAllowedAppOrigin('http://demo.supercheck.dev')).toBe(false);
+  expect(isAllowedAppOrigin('http://qa.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost:3000')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost:3000', 'https://app.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('http://localhost.example.com')).toBe(false);
   expect(isAllowedAppOrigin('https://supercheck.io.example.com')).toBe(false);
+  expect(isAllowedAppOrigin('https://app.supercheck.io.example.com')).toBe(false);
+  expect(isAllowedAppOrigin('https://demo.supercheck.dev.evil.test')).toBe(false);
+  expect(isAllowedAppOrigin('https://evil-demo.supercheck.dev', 'https://app.supercheck.io')).toBe(false);
+  expect(isAllowedAppOrigin('https://qa.supercheck.io.evil.test')).toBe(false);
+  expect(isAllowedAppOrigin('https://status.supercheck.io')).toBe(false);
+  expect(isAllowedAppOrigin('https://demo.supercheck.io')).toBe(false);
   expect(isAllowedAppOrigin('not a URL')).toBe(false);
+});
+
+test('only trusts origins configured explicitly for self-hosted instances', () => {
+  expect(isAllowedAppOrigin('https://self-hosted.example.com', 'https://app.supercheck.io')).toBe(false);
+  expect(isAllowedAppOrigin('https://self-hosted.example.com/', 'https://self-hosted.example.com')).toBe(true);
+  expect(isAllowedAppOrigin('https://self-hosted.example.com:8443', 'https://self-hosted.example.com')).toBe(false);
 });
 
 test('requires auto-connect credentials to target the sender origin', () => {

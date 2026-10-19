@@ -62,16 +62,30 @@
 
 ### Connecting to Supercheck
 
-#### Supercheck Cloud (Recommended)
-1. Open `https://app.supercheck.io` in the same browser profile.
+#### Supercheck-hosted sites (Recommended)
+
+The extension connects without setup on every first-party deployment:
+
+| Instance | URL |
+|---|---|
+| Supercheck Cloud | `https://app.supercheck.io` |
+| Supercheck website | `https://supercheck.io` |
+| Live demo | `https://demo.supercheck.dev` |
+| QA | `https://qa.supercheck.io` |
+
+1. Open one of those origins in the same browser profile.
 2. Sign in and open any authenticated dashboard page.
 3. Supercheck detects the extension and pairs it automatically.
+
+The list lives in `src/supercheck/message-security.ts` (`SUPERCHECK_CLOUD_ORIGINS`) and is an exact-origin allowlist, not a wildcard. Adding a host is a security change: update that constant, the unit tests, and the recorder docs, then ship a new extension release.
 
 #### Self-Hosted Supercheck
 1. Right-click the extension icon and select **Options**.
 2. Enter the HTTPS origin of your Supercheck instance (or `http://localhost:3000` for local development).
 3. Click **Save URL and open Supercheck**.
 4. Sign in to your deployment; the extension connects automatically.
+
+Self-hosted origins are not trusted until you save the URL: that explicit action is the trust decision for the origin. Changing the URL clears the credential saved for the previous instance so a key is never sent to a host it was not created for.
 
 > The API-key field in Options is strictly reserved for existing recorder-scoped credentials (`ext_*`). CLI tokens and trigger keys cannot upload recordings.
 
@@ -99,7 +113,7 @@ Recorded flows are always generated as Playwright Test (JavaScript); the recorde
 
 - Recorder-scoped credentials are stored in Chrome sync storage; treat the browser profile and installed extensions as trusted because extension storage is not a general-purpose secret vault.
 - All network traffic uses HTTPS (except `localhost` development).
-- Origin validation pins cloud communication to `app.supercheck.io` and `supercheck.io`.
+- Origin validation pins cloud communication to the exact first-party origins listed above plus the instance URL saved in Options; lookalike and non-HTTPS origins are rejected.
 - Form inputs may be captured during recording; always inspect generated code before saving to avoid recording secrets.
 
 ---
@@ -146,6 +160,16 @@ npm run lint     # ESLint checks
 The extension imports the `playwright-crx` workspace library, so run the workspace build from `recorder/` (`npm run build` or `npm run build:crx`) before building the extension in isolation.
 
 ---
+
+## Releases
+
+App and extension versions are independent. To cut a recorder release:
+
+1. Bump `version` in `public/manifest.json` and `package.json` (the publish workflow requires them to match) and add a `CHANGELOG.md` entry.
+2. Merge to `main`.
+3. Create and push a signed annotated tag: `git tag -s recorder-v<version> && git push origin recorder-v<version>`.
+
+`.github/workflows/recorder-publish.yml` builds the ZIP, attaches it plus `SHA256SUMS.txt` to a GitHub release, and submits the same ZIP to the Chrome Web Store and Edge Add-ons (behind the `recorder-release` environment and `BPP_KEYS`). The GitHub asset is the supported install path for enterprise/air-gapped environments; it does not auto-update. Store submission is the only step that needs credentials: without `BPP_KEYS` the publish job fails, but the build and GitHub release still produce a sideloadable ZIP.
 
 ## API integration reference
 

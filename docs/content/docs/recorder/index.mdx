@@ -11,21 +11,40 @@ The Supercheck Recorder is a Chrome and Edge extension that turns browser intera
 - [Install from the Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 - [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 
-The extension requires Chrome or Edge with Manifest V3 side-panel support.
+The extension requires Chrome or Edge with Manifest V3 side-panel support. Store builds update automatically; GitHub releases are available for air-gapped or enterprise installs (see [Install without the stores](#install-without-the-stores)).
 
 ## Connect to Supercheck
 
-### Supercheck Cloud
+### Supercheck-hosted sites
+
+The extension connects without any setup on these origins:
+
+| Instance | URL |
+|---|---|
+| Supercheck Cloud | `https://app.supercheck.io` |
+| Supercheck website | `https://supercheck.io` |
+| Live demo | `https://demo.supercheck.dev` |
+| QA | `https://qa.supercheck.io` |
 
 1. Install the extension in the browser profile you use for Supercheck.
-2. Open `https://app.supercheck.io`, sign in, and visit any authenticated dashboard page.
-3. The extension connects automatically — no API key required.
+2. Open the instance, sign in, and visit any authenticated dashboard page.
+3. The extension connects automatically — no API key or URL entry required.
+
+The list is the extension's trust boundary and ships in the extension build. A new first-party host needs the allowlist in `recorder/examples/recorder-crx/src/supercheck/message-security.ts` updated and a new extension release. Until then, add the URL in **Options** as described below.
 
 ### Self-hosted Supercheck
 
+Self-hosted deployments are not trusted automatically: saving the URL once is the explicit trust decision, and the extension only talks to that exact origin.
+
 1. Open the extension's **Options** page.
 2. Enter the HTTPS URL of your deployment and select **Save URL and open Supercheck**.
-3. Sign in to that instance in the same browser profile. The extension connects automatically.
+3. Sign in to that instance in the same browser profile. The extension connects automatically and stays connected on later visits.
+
+Changing the URL clears the credential saved for the previous instance. Keys are scoped to one instance and are never sent to another host.
+
+### Manual API key (advanced)
+
+Use a recorder-scoped API key when you cannot sign in on the instance — for example, an automated browser profile. Open **Options → Advanced: connect with an API key**, paste a key created on that instance, and select **Connect with API key**. Auto-connect is the normal path; the key field is not required.
 
 ## Record a test
 
@@ -42,11 +61,36 @@ Press `Shift+Alt+C` to inspect elements without recording actions.
 
 The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and save tests to Supercheck. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
 
+The extension injects its page API only on the origins listed under [Supercheck-hosted sites](#supercheck-hosted-sites) and on the instance URL saved in Options. Other pages cannot use the recorder API, read the stored credential, or start a recording.
+
+## Install without the stores
+
+Enterprise and air-gapped environments can install the packaged extension from GitHub releases instead of the Chrome Web Store. The release asset is the same build that is submitted to both stores.
+
+1. Download `supercheck-recorder-v<version>.zip` from [Recorder releases](https://github.com/supercheck-io/supercheck/releases?q=recorder-v).
+2. Unzip it and open `chrome://extensions`.
+3. Enable **Developer mode**, select **Load unpacked**, and choose the unzipped folder.
+4. Pin the extension. Unpacked installs do not auto-update, so repeat this after each recorder release.
+
+## Release process (maintainers)
+
+The recorder is released from the monorepo; app and extension versions are independent.
+
+1. Bump `version` in `recorder/examples/recorder-crx/public/manifest.json` and `recorder/examples/recorder-crx/package.json` (the publish workflow requires them to match) and add a `CHANGELOG.md` entry.
+2. Merge to `main`.
+3. Create and push a signed annotated tag: `git tag -s recorder-v<version> && git push origin recorder-v<version>`.
+4. The `Publish Recorder Extension` workflow builds the package, submits it to the Chrome Web Store and Edge Add-ons (gated by the `recorder-release` environment), and attaches the ZIP to a GitHub release.
+
+Store review can take days. The GitHub release is published in the same run, so QA and self-hosted users can install the ZIP before the stores finish reviewing.
+
 ## Troubleshooting
 
 | Problem | Check |
 |---|---|
-| Extension is not detected | Reload the extension and the Supercheck tab, using the same browser profile |
+| The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#supercheck-hosted-sites), or save the instance URL in **Options** and reload the tab |
+| Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
+| **Invalid API key** | Keys are per instance. The key you pasted belongs to a different instance; clear it and connect automatically, or paste a key created on the current instance |
+| **Too many connection checks** | The legacy verification endpoint is rate limited. Wait for the shown number of seconds, then reopen Options |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
 | Extension stays **Not connected to Supercheck** after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, revoke the old key in **Settings → API keys**, then reload an authenticated page to reconnect. If disconnect could not reach the server, keep the configuration and retry. |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |

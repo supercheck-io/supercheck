@@ -13,28 +13,58 @@ export interface RecordingContextPayload {
   returnUrl?: string;
 }
 
-export function isAllowedAppOrigin(origin: string, configuredInstanceUrl?: string): boolean {
-  let candidate: URL;
-  try {
-    candidate = new URL(origin);
-  } catch {
-    return false;
-  }
+/**
+ * First-party Supercheck deployments the recorder connects to without setup.
+ *
+ * Every entry is an exact HTTPS origin and is trusted to drive the recorder:
+ * a page on one of these origins can receive the extension credential through
+ * the auto-connect handshake. Keep the list explicit (no wildcards) and review
+ * new entries like a security change. Update `docs/content/docs/recorder/index.mdx`
+ * in the same change so the documented hosts never drift from the code.
+ */
+export const SUPERCHECK_CLOUD_ORIGINS = [
+  'https://app.supercheck.io',
+  'https://supercheck.io',
+  'https://demo.supercheck.dev',
+  'https://qa.supercheck.io',
+] as const;
 
-  // Pin cloud origins specifically to app.supercheck.io and supercheck.io
-  const isSupercheckCloud = candidate.protocol === 'https:' &&
-    (candidate.hostname === 'app.supercheck.io' || candidate.hostname === 'supercheck.io');
-  if (isSupercheckCloud)
+function parseOrigin(origin: string): URL | null {
+  try {
+    return new URL(origin);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `origin` is exactly one of the first-party deployments above.
+ */
+export function isSupercheckCloudOrigin(origin: string): boolean {
+  const candidate = parseOrigin(origin);
+  if (!candidate || candidate.protocol !== 'https:')
+    return false;
+
+  return (SUPERCHECK_CLOUD_ORIGINS as readonly string[]).includes(candidate.origin);
+}
+
+/**
+ * Origins allowed to talk to the recorder: first-party deployments plus the
+ * instance the user configured explicitly in the options page.
+ */
+export function isAllowedAppOrigin(origin: string, configuredInstanceUrl?: string): boolean {
+  if (isSupercheckCloudOrigin(origin))
     return true;
 
   if (!configuredInstanceUrl)
     return false;
 
-  try {
-    return candidate.origin === new URL(configuredInstanceUrl).origin;
-  } catch {
+  const candidate = parseOrigin(origin);
+  const configured = parseOrigin(configuredInstanceUrl);
+  if (!candidate || !configured)
     return false;
-  }
+
+  return candidate.origin === configured.origin;
 }
 
 export function isValidAutoConnectPayload(

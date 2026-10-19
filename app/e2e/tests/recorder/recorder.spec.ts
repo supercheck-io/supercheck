@@ -19,6 +19,10 @@ test.describe('Recorder web integration @recorder', () => {
     );
     await expect(installLink).toHaveAttribute('target', '_blank');
     await expect(installLink).toHaveAttribute('rel', 'noopener noreferrer');
+    // Installed-but-unconfigured users need the self-hosted path, not a second install.
+    await expect(dialog.getByText(/demo \/ self-hosted/i)).toBeVisible();
+    await expect(dialog.getByText(new URL(page.url()).origin)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Copy' })).toBeVisible();
   });
 
   test('Recorder extension credential lifecycle is scoped, one-time, and revocable @high @security', async ({

@@ -1,9 +1,17 @@
 /**
  * Supercheck Recorder - Options Page
  *
+ * Connection model:
+ * - First-party Supercheck deployments (see SUPERCHECK_CLOUD_ORIGINS) connect
+ *   automatically after sign-in; nothing needs to be configured here.
+ * - Self-hosted deployments require the user to save their instance URL once.
+ *   That explicit action is the trust decision for the origin.
+ * - A recorder API key is only needed for advanced/manual setups. Keys are
+ *   scoped to one instance, so switching the URL never reuses the old key.
+ *
  * Settings page for configuring the extension, including:
- * - Supercheck instance URL (for self-hosted)
- * - API Key management
+ * - Supercheck instance URL (self-hosted)
+ * - Optional recorder API key
  * - Recorder preferences
  */
 
@@ -11,34 +19,140 @@ import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   getConfig,
-  saveConfig,
+  replaceConfig,
   clearConfig,
+  isSameInstance,
   validateInstanceUrl,
   DEFAULT_INSTANCE_URL,
+  addConfigChangeListener,
   type SupercheckConfig
 } from './supercheck/config';
+import { SUPERCHECK_CLOUD_ORIGINS } from './supercheck/message-security';
 import { apiClient } from './supercheck/api-client';
 import { loadSettings, storeSettings, defaultSettings, type CrxSettings } from './settings';
 import './options.css';
 
-type ConnectionStatus = 'disconnected' | 'configured' | 'connecting' | 'connected' | 'error';
+type ConnectionStatus = 'loading' | 'disconnected' | 'configured' | 'connecting' | 'connected' | 'error';
 
 interface ConnectionState {
   status: ConnectionStatus;
-  error?: string;
-  user?: { email: string; name?: string };
+  message?: string;
+  email?: string;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+const DOCS_URL = 'https://supercheck.io/docs/recorder';
+
+/**
+ * Small "i" button that reveals a short explanation on hover or keyboard
+ * focus. Keeps the form compact while the detail stays one click away.
+ */
+function InfoTip({ label, children, learnMore }: { label: string; children: React.ReactNode; learnMore?: string }) {
+  const id = React.useId();
+  return (
+    <span className='info-tip'>
+      <button type='button' className='info-tip-button' aria-label={`About ${label}`} aria-describedby={id}>
+        <svg viewBox='0 0 16 16' width='14' height='14' aria-hidden='true'>
+          <circle cx='8' cy='8' r='7' fill='none' stroke='currentColor' strokeWidth='1.5' />
+          <rect x='7.25' y='7' width='1.5' height='4.5' rx='0.75' fill='currentColor' />
+          <circle cx='8' cy='4.75' r='0.9' fill='currentColor' />
+        </svg>
+      </button>
+      <span role='tooltip' id={id} className='info-tip-body'>
+        {children}
+        {learnMore && (
+          <>
+            {' '}
+            <a href={`${DOCS_URL}${learnMore}`} target='_blank' rel='noopener noreferrer'>Learn more</a>
+          </>
+        )}
+      </span>
+    </span>
+  );
 }
 
 function OptionsPage() {
   const [config, setConfig] = React.useState<SupercheckConfig | null>(null);
   const [settings, setSettings] = React.useState<CrxSettings>(defaultSettings);
-  const [connectionState, setConnectionState] = React.useState<ConnectionState>({ status: 'disconnected' });
+  const [connectionState, setConnectionState] = React.useState<ConnectionState>({ status: 'loading' });
   const [instanceUrl, setInstanceUrl] = React.useState(DEFAULT_INSTANCE_URL);
   const [apiKey, setApiKey] = React.useState('');
+  const [hasStoredKey, setHasStoredKey] = React.useState(false);
   const [urlError, setUrlError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
 
-  // Load initial config
+  const instanceUrlRef = React.useRef(instanceUrl);
+  instanceUrlRef.current = instanceUrl;
+  const savedInstanceUrlRef = React.useRef<string | undefined>(undefined);
+  savedInstanceUrlRef.current = config?.instanceUrl;
+  // Set while the page itself writes storage so the change listener does not
+  // replace the status message this page is about to show.
+  const suppressStorageSyncRef = React.useRef(false);
+
+  // storage.onChanged only fires when a value actually changes, so a no-op
+  // write would leave the flag set and swallow the next real change.
+  const releaseStorageSuppression = () => {
+    window.setTimeout(() => {
+      suppressStorageSyncRef.current = false;
+    }, 500);
+  };
+
+  const describeFailure = React.useCallback((
+    reason: string | undefined,
+    target: string,
+    retryAfterSeconds?: number
+  ) => {
+    const host = hostOf(target);
+    switch (reason) {
+      case 'rate_limited':
+        return `Too many connection checks. Try again in ${retryAfterSeconds ?? 60} seconds.`;
+      case 'unreachable':
+        return `Could not reach ${host}. Check the URL, then try again.`;
+      case 'server_error':
+        return `${host} returned an error. Try again in a moment.`;
+      case 'missing_key':
+        return 'Enter a recorder API key, or save the URL and sign in to connect automatically.';
+      default:
+        return `That API key was rejected by ${host}. Recorder keys are scoped to a single instance.`;
+    }
+  }, []);
+
+  const applyConfig = React.useCallback((savedConfig: SupercheckConfig | null) => {
+    setConfig(savedConfig);
+    setHasStoredKey(Boolean(savedConfig?.apiKey));
+  }, []);
+
+  const verifySavedConnection = React.useCallback(async (savedConfig: SupercheckConfig) => {
+    if (!savedConfig.apiKey) {
+      setConnectionState({ status: 'disconnected' });
+      return;
+    }
+
+    setConnectionState({ status: 'connecting' });
+    const result = await apiClient.verifyConnection(savedConfig.apiKey, savedConfig.instanceUrl);
+    if (result.valid) {
+      setConnectionState({
+        status: 'connected',
+        email: result.user?.email ?? savedConfig.userEmail,
+      });
+      return;
+    }
+
+    setConnectionState({
+      status: 'error',
+      message: describeFailure(result.reason, savedConfig.instanceUrl, result.retryAfterSeconds),
+    });
+  }, [describeFailure]);
+
+  // Load initial config and settings.
   React.useEffect(() => {
     async function loadConfig() {
       const [savedConfig, savedSettings] = await Promise.all([
@@ -46,99 +160,181 @@ function OptionsPage() {
         loadSettings(),
       ]);
 
-      if (savedConfig) {
-        setConfig(savedConfig);
-        setInstanceUrl(savedConfig.instanceUrl || DEFAULT_INSTANCE_URL);
-        setApiKey(savedConfig.apiKey || '');
-
-        // Verify existing connection
-        if (savedConfig.apiKey) {
-          setConnectionState({ status: 'connecting' });
-          try {
-            const result = await apiClient.verifyConnection();
-            if (result.valid) {
-              setConnectionState({
-                status: 'connected',
-                user: result.user
-                  ? { email: result.user.email, name: result.user.name }
-                  : (savedConfig.userEmail ? { email: savedConfig.userEmail } : undefined),
-              });
-            } else {
-              setConnectionState({ status: 'disconnected' });
-            }
-          } catch {
-            setConnectionState({ status: 'error', error: 'Connection verification failed' });
-          }
-        }
-      }
-
+      applyConfig(savedConfig);
+      setInstanceUrl(savedConfig.instanceUrl || DEFAULT_INSTANCE_URL);
       setSettings(savedSettings);
+      await verifySavedConnection(savedConfig);
     }
     loadConfig();
-  }, []);
+  }, [applyConfig, verifySavedConnection]);
 
-  // Validate URL on change
+  // Reflect auto-connect (and disconnects) without requiring a reload.
   React.useEffect(() => {
-    if (instanceUrl) {
-      const validation = validateInstanceUrl(instanceUrl);
-      setUrlError(validation.valid ? null : validation.error || null);
+    return addConfigChangeListener(changed => {
+      const next = changed ?? {
+        instanceUrl: DEFAULT_INSTANCE_URL,
+        autoConnected: false,
+      };
+      const previousSavedUrl = savedInstanceUrlRef.current ?? DEFAULT_INSTANCE_URL;
+      applyConfig(next);
+
+      if (suppressStorageSyncRef.current) {
+        suppressStorageSyncRef.current = false;
+        return;
+      }
+
+      // An auto-connect from a Supercheck page is authoritative: it also
+      // updates the instance this extension is paired with.
+      if (next.apiKey) {
+        setInstanceUrl(next.instanceUrl || DEFAULT_INSTANCE_URL);
+        setConnectionState({ status: 'connected', email: next.userEmail });
+        setApiKey('');
+        return;
+      }
+
+      // The credential is gone, so never keep showing "Connected". Only leave
+      // the URL field alone when the user is mid-edit (it differs from what
+      // was saved before this change).
+      const userIsEditing = !isSameInstance(instanceUrlRef.current, previousSavedUrl);
+      if (!userIsEditing)
+        setInstanceUrl(next.instanceUrl || DEFAULT_INSTANCE_URL);
+      setConnectionState({ status: 'disconnected' });
+    });
+  }, [applyConfig]);
+
+  // Validate URL on change.
+  React.useEffect(() => {
+    if (!instanceUrl) {
+      setUrlError('Instance URL is required');
+      return;
+    }
+    const validation = validateInstanceUrl(instanceUrl);
+    setUrlError(validation.valid ? null : validation.error || null);
+  }, [instanceUrl]);
+
+  const savedInstanceUrl = config?.instanceUrl ?? DEFAULT_INSTANCE_URL;
+  const urlChanged = !isSameInstance(instanceUrl, savedInstanceUrl);
+  const isCloudHost = React.useMemo(() => {
+    try {
+      return (SUPERCHECK_CLOUD_ORIGINS as readonly string[]).includes(new URL(instanceUrl).origin);
+    } catch {
+      return false;
     }
   }, [instanceUrl]);
 
-  const handleConnect = async () => {
-    if (!instanceUrl) {
-      setConnectionState({ status: 'error', error: 'Instance URL is required' });
+  const handleInstanceUrlChange = (next: string) => {
+    setInstanceUrl(next);
+    setApiKey('');
+
+    if (!isSameInstance(next, savedInstanceUrl)) {
+      setConnectionState({
+        status: 'disconnected',
+        message: hasStoredKey
+          ? `The saved credential belongs to ${hostOf(savedInstanceUrl)} and will be removed when you save this URL.`
+          : undefined,
+      });
+      return;
+    }
+
+    // Back on the saved instance: re-check the stored key instead of assuming it still works.
+    if (config?.apiKey)
+      void verifySavedConnection(config);
+  };
+
+  const handleSaveInstance = async () => {
+    const validation = validateInstanceUrl(instanceUrl);
+    if (!validation.valid) {
+      setUrlError(validation.error || 'Invalid URL');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const changingInstance = !isSameInstance(instanceUrl, savedInstanceUrl);
+      if (changingInstance) {
+        // Dropping a credential that belongs to another instance is intentional:
+        // it must never be sent to a host it was not created for.
+        suppressStorageSyncRef.current = true;
+        await replaceConfig({
+          instanceUrl,
+          autoConnected: false,
+        });
+        apiClient.clearCache();
+        setConfig({ instanceUrl, autoConnected: false });
+        setHasStoredKey(false);
+        setApiKey('');
+        setConnectionState({
+          status: 'configured',
+          message: isCloudHost
+            ? `URL saved. Sign in to ${hostOf(instanceUrl)} to connect automatically.`
+            : `Instance saved. Sign in to ${hostOf(instanceUrl)} to connect automatically.`,
+        });
+      }
+
+      await chrome.tabs.create({ url: instanceUrl });
+    } catch (error) {
+      suppressStorageSyncRef.current = false;
+      setConnectionState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save the instance URL',
+      });
+    } finally {
+      releaseStorageSuppression();
+      setSaving(false);
+    }
+  };
+
+  const handleConnectWithKey = async () => {
+    if (!apiKey.trim()) {
+      setConnectionState({ status: 'error', message: 'Enter a recorder API key.' });
       return;
     }
 
     const validation = validateInstanceUrl(instanceUrl);
     if (!validation.valid) {
-      setConnectionState({ status: 'error', error: validation.error });
+      setUrlError(validation.error || 'Invalid URL');
       return;
     }
 
-    setConnectionState({ status: 'connecting' });
     setSaving(true);
-
+    setConnectionState({ status: 'connecting' });
     try {
-      if (!apiKey) {
-        await saveConfig({ instanceUrl });
-        apiClient.clearCache();
-        await chrome.tabs.create({ url: instanceUrl });
+      const result = await apiClient.verifyConnection(apiKey.trim(), instanceUrl);
+      if (!result.valid) {
         setConnectionState({
-          status: 'configured',
-          error: 'Instance saved. Sign in to Supercheck to connect automatically.'
+          status: 'error',
+          message: describeFailure(result.reason, instanceUrl, result.retryAfterSeconds),
         });
         return;
       }
 
-      // Verify connection first before saving
-      const result = await apiClient.verifyConnection(apiKey, instanceUrl);
-
-      if (result.valid) {
-        await saveConfig({
-          instanceUrl,
-          apiKey,
-          userId: result.user?.id || config?.userId,
-          userEmail: result.user?.email || config?.userEmail,
-        });
-        apiClient.clearCache();
-        setConnectionState({
-          status: 'connected',
-          user: result.user
-            ? { email: result.user.email, name: result.user.name }
-            : (config?.userEmail ? { email: config.userEmail } : undefined),
-        });
-      } else {
-        apiClient.clearCache();
-        setConnectionState({ status: 'error', error: 'Invalid API key' });
-      }
+      suppressStorageSyncRef.current = true;
+      await replaceConfig({
+        instanceUrl,
+        apiKey: apiKey.trim(),
+        userEmail: result.user?.email,
+        userId: result.user?.id,
+        autoConnected: false,
+      });
+      apiClient.clearCache();
+      setConfig({
+        instanceUrl,
+        apiKey: apiKey.trim(),
+        userEmail: result.user?.email,
+        userId: result.user?.id,
+        autoConnected: false,
+      });
+      setHasStoredKey(true);
+      setApiKey('');
+      setConnectionState({ status: 'connected', email: result.user?.email });
     } catch (error) {
+      suppressStorageSyncRef.current = false;
       setConnectionState({
         status: 'error',
-        error: error instanceof Error ? error.message : 'Connection failed'
+        message: error instanceof Error ? error.message : 'Connection failed',
       });
     } finally {
+      releaseStorageSuppression();
       setSaving(false);
     }
   };
@@ -146,19 +342,26 @@ function OptionsPage() {
   const handleDisconnect = async () => {
     setSaving(true);
     try {
+      suppressStorageSyncRef.current = true;
       const { revoked } = await clearConfig();
       apiClient.clearCache();
       setConfig(null);
+      setHasStoredKey(false);
       setApiKey('');
       setConnectionState({
         status: 'disconnected',
-        error: revoked
-          ? undefined
-          : 'Disconnected, but the key could not be revoked on the server. Revoke it from your Supercheck settings.',
+        message: revoked
+          ? 'Disconnected. The recorder key was revoked on the server.'
+          : 'Disconnected locally. The key could not be revoked on the server; remove it in Supercheck settings.',
       });
     } catch (error) {
-      setConnectionState({ status: 'error', error: error instanceof Error ? error.message : 'Disconnect failed' });
+      suppressStorageSyncRef.current = false;
+      setConnectionState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Disconnect failed',
+      });
     } finally {
+      releaseStorageSuppression();
       setSaving(false);
     }
   };
@@ -168,6 +371,23 @@ function OptionsPage() {
     setSettings(newSettings);
     await storeSettings(newSettings);
   };
+
+  const statusLabel = (() => {
+    switch (connectionState.status) {
+      case 'loading':
+        return 'Loading connection…';
+      case 'connecting':
+        return 'Checking connection…';
+      case 'connected':
+        return `Connected to ${hostOf(savedInstanceUrl)}${connectionState.email ? ` as ${connectionState.email}` : ''}`;
+      case 'configured':
+        return connectionState.message;
+      case 'error':
+        return connectionState.message;
+      default:
+        return connectionState.message ?? 'Not connected';
+    }
+  })();
 
   return (
     <div className='options-container'>
@@ -185,82 +405,139 @@ function OptionsPage() {
       <main className='options-main'>
         {/* Connection Section */}
         <section className='options-section'>
-          <h2>Supercheck Connection</h2>
+          <h2>
+            Supercheck Connection
+            <InfoTip label='the connection' learnMore='#connect-to-supercheck'>
+              Supercheck Cloud, the demo and QA sites connect automatically once you sign in. Self-hosted
+              instances need their URL saved here once.
+            </InfoTip>
+          </h2>
 
-          <div className='connection-status'>
+          <div className='connection-status' role='status' aria-live='polite'>
             <span className={`status-indicator ${connectionState.status}`} />
-            <span className='status-text'>
-              {connectionState.status === 'connected' && connectionState.user
-                ? `Connected as ${connectionState.user.email}`
-                : connectionState.status === 'connecting'
-                  ? 'Connecting...'
-                  : connectionState.status === 'configured'
-                    ? connectionState.error
-                    : connectionState.status === 'error'
-                      ? connectionState.error
-                      : (connectionState.error ?? 'Not connected')}
-            </span>
+            <span className='status-text'>{statusLabel}</span>
           </div>
 
-          {connectionState.status !== 'connected' && (
+          {connectionState.status === 'connected' ? (
+            <div className='connection-actions'>
+              <button
+                className='btn btn-secondary'
+                onClick={handleDisconnect}
+                disabled={saving}
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
             <>
-              <div className='form-group'>
-                <label htmlFor='instanceUrl'>Supercheck Instance URL</label>
-                <input
-                  id='instanceUrl'
-                  type='url'
-                  value={instanceUrl}
-                  onChange={e => setInstanceUrl(e.target.value)}
-                  placeholder='https://app.supercheck.io'
-                  className={urlError ? 'error' : ''}
-                />
-                {urlError && <span className='field-error'>{urlError}</span>}
-                <span className='field-hint'>
-                  Use https://app.supercheck.io for cloud, or your self-hosted URL
+              <div className='callout'>
+                <strong>Supercheck-hosted sites connect automatically.</strong>
+                <span>
+                  {SUPERCHECK_CLOUD_ORIGINS.map(hostOf).join(', ')}
+                </span>
+                <span>
+                  Only a self-hosted instance needs its URL saved here.
                 </span>
               </div>
 
               <div className='form-group'>
-                <label htmlFor='apiKey'>API Key</label>
+                <label htmlFor='instanceUrl'>
+                  Supercheck instance URL
+                  <InfoTip label='the instance URL' learnMore='#self-hosted-supercheck'>
+                    The address you open Supercheck at. Saving it is what lets this extension trust that site.
+                    Changing it removes the credential stored for the previous instance.
+                  </InfoTip>
+                </label>
                 <input
-                  id='apiKey'
-                  type='password'
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder='Enter your API key'
+                  id='instanceUrl'
+                  type='url'
+                  inputMode='url'
+                  autoComplete='off'
+                  spellCheck={false}
+                  value={instanceUrl}
+                  onChange={e => handleInstanceUrlChange(e.target.value)}
+                  placeholder={DEFAULT_INSTANCE_URL}
+                  className={urlError ? 'error' : ''}
+                  aria-invalid={Boolean(urlError)}
+                  aria-describedby='instanceUrl-hint'
                 />
-                <span className='field-hint'>
-                  Optional: only use an existing recorder-scoped credential
+                {urlError && <span className='field-error'>{urlError}</span>}
+                <span className='field-hint' id='instanceUrl-hint'>
+                  Use the HTTPS URL of your deployment.
                 </span>
               </div>
 
               <button
                 className='btn btn-primary'
-                onClick={handleConnect}
-                disabled={saving || !instanceUrl || !!urlError}
+                onClick={handleSaveInstance}
+                disabled={saving || !instanceUrl || Boolean(urlError)}
               >
-                {saving ? 'Saving...' : apiKey ? 'Connect with API key' : 'Save URL and open Supercheck'}
+                {saving ? 'Saving…' : urlChanged ? 'Save URL and open Supercheck' : 'Open Supercheck'}
               </button>
-            </>
-          )}
 
-          {connectionState.status === 'connected' && (
-            <button
-              className='btn btn-secondary'
-              onClick={handleDisconnect}
-              disabled={saving}
-            >
-              Disconnect
-            </button>
+              <button
+                type='button'
+                className='btn-link'
+                onClick={() => setShowAdvanced(value => !value)}
+                aria-expanded={showAdvanced}
+                aria-controls='advanced-connection'
+              >
+                {showAdvanced ? 'Hide advanced connection' : 'Advanced: connect with an API key'}
+              </button>
+
+              {showAdvanced && (
+                <div id='advanced-connection' className='advanced-panel'>
+                  <div className='form-group'>
+                    <label htmlFor='apiKey'>
+                      Recorder API key
+                      <InfoTip label='the recorder API key' learnMore='#manual-api-key-advanced'>
+                        Only needed when you cannot sign in to the instance from this browser. Keys belong to one
+                        instance and are never sent to another.
+                      </InfoTip>
+                    </label>
+                    <input
+                      id='apiKey'
+                      type='password'
+                      autoComplete='off'
+                      spellCheck={false}
+                      value={apiKey}
+                      onChange={e => setApiKey(e.target.value)}
+                      placeholder='Paste an existing recorder key'
+                    />
+                    <span className='field-hint'>
+                      Paste the key issued by {hostOf(instanceUrl)}.
+                    </span>
+                  </div>
+                  <button
+                    className='btn btn-secondary'
+                    onClick={handleConnectWithKey}
+                    disabled={saving || !apiKey.trim() || Boolean(urlError)}
+                  >
+                    {saving ? 'Connecting…' : 'Connect with API key'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
 
         {/* Recorder Settings Section */}
         <section className='options-section'>
-          <h2>Recorder Settings</h2>
+          <h2>
+            Recorder Settings
+            <InfoTip label='recorder settings' learnMore='#record-a-test'>
+              Preferences for how the recorder generates code and where it opens. They apply to every recording.
+            </InfoTip>
+          </h2>
 
           <div className='form-group'>
-            <label htmlFor='testIdAttributeName'>Test ID Attribute</label>
+            <label htmlFor='testIdAttributeName'>
+              Test ID Attribute
+              <InfoTip label='the test ID attribute'>
+                The HTML attribute your app uses for test hooks, such as data-testid or data-qa. Recorded
+                selectors use it through getByTestId() when an element has it.
+              </InfoTip>
+            </label>
             <input
               id='testIdAttributeName'
               type='text'
@@ -268,9 +545,6 @@ function OptionsPage() {
               onChange={e => handleSettingChange('testIdAttributeName', e.target.value)}
               placeholder='data-testid'
             />
-            <span className='field-hint'>
-              Attribute used for getByTestId() selectors
-            </span>
           </div>
 
           <div className='form-group checkbox-group'>
@@ -281,10 +555,11 @@ function OptionsPage() {
                 onChange={e => handleSettingChange('sidepanel', e.target.checked)}
               />
               Open in side panel
+              <InfoTip label='the side panel option'>
+                Opens the recorder docked beside the page so you can keep both in view. Turn it off to use a
+                popup window instead.
+              </InfoTip>
             </label>
-            <span className='field-hint'>
-              Open recorder in browser side panel instead of popup
-            </span>
           </div>
         </section>
 
