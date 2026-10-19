@@ -14,6 +14,8 @@ describe("EmailService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // The singleton caches its pooled transporter; start each test fresh.
+    (service as unknown as { transporter?: unknown }).transporter = undefined;
     process.env.SMTP_HOST = "smtp.example.com";
     process.env.SMTP_PORT = "587";
     process.env.SMTP_USER = "user@example.com";
@@ -51,7 +53,7 @@ describe("EmailService", () => {
       success: true,
       message: "Email sent successfully via SMTP",
     });
-    expect(mockVerify).toHaveBeenCalledTimes(1);
+    expect(mockVerify).not.toHaveBeenCalled();
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "alerts@example.com",

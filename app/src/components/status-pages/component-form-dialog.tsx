@@ -30,6 +30,7 @@ import {
   updateComponent,
   type UpdateComponentData,
 } from "@/actions/update-component";
+import { getSreServices } from "@/actions/sre-services";
 import { toast } from "sonner";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,6 +50,15 @@ type Component = {
   status: ComponentStatus;
   monitorId: string | null;
   monitorIds?: string[];
+  monitors?: Array<{ id: string; weight?: number }>;
+  aggregationMethod?:
+    | "worst_case"
+    | "best_case"
+    | "majority_vote"
+    | "weighted_average";
+  failureThreshold?: number;
+  autoCreateIncidents?: boolean;
+  serviceId?: string | null;
   showcase: boolean;
   onlyShowIfDegraded: boolean;
   position: number;
@@ -80,6 +90,18 @@ const componentFormSchema = z.object({
     "under_maintenance",
   ]),
   monitorIds: z.array(z.string()),
+  monitorWeights: z.record(z.string(), z.number().int().min(1).max(100)),
+  showcase: z.boolean(),
+  onlyShowIfDegraded: z.boolean(),
+  aggregationMethod: z.enum([
+    "worst_case",
+    "best_case",
+    "majority_vote",
+    "weighted_average",
+  ]),
+  failureThreshold: z.number().int().min(1).max(100),
+  autoCreateIncidents: z.boolean(),
+  serviceId: z.string(),
 });
 
 type ComponentFormData = z.infer<typeof componentFormSchema>;
@@ -89,24 +111,24 @@ const statusOptions: {
   label: string;
   color: string;
 }[] = [
-    { value: "operational", label: "Operational", color: "text-green-600" },
-    {
-      value: "degraded_performance",
-      label: "Degraded Performance",
-      color: "text-yellow-600",
-    },
-    {
-      value: "partial_outage",
-      label: "Partial Outage",
-      color: "text-orange-600",
-    },
-    { value: "major_outage", label: "Major Outage", color: "text-red-600" },
-    {
-      value: "under_maintenance",
-      label: "Under Maintenance",
-      color: "text-blue-600",
-    },
-  ];
+  { value: "operational", label: "Operational", color: "text-green-600" },
+  {
+    value: "degraded_performance",
+    label: "Degraded Performance",
+    color: "text-yellow-600",
+  },
+  {
+    value: "partial_outage",
+    label: "Partial Outage",
+    color: "text-orange-600",
+  },
+  { value: "major_outage", label: "Major Outage", color: "text-red-600" },
+  {
+    value: "under_maintenance",
+    label: "Under Maintenance",
+    color: "text-blue-600",
+  },
+];
 
 export function ComponentFormDialog({
   open,
@@ -136,10 +158,27 @@ export function ComponentFormDialog({
       description: "",
       status: "operational",
       monitorIds: [],
+      monitorWeights: {},
+      showcase: true,
+      onlyShowIfDegraded: false,
+      aggregationMethod: "worst_case",
+      failureThreshold: 1,
+      autoCreateIncidents: false,
+      serviceId: "",
     },
   });
 
   const monitorIds = watch("monitorIds");
+  const [services, setServices] = useState<Array<{ id: string; name: string }>>(
+    [],
+  );
+  useEffect(() => {
+    if (open) {
+      void getSreServices().then((result) => {
+        if (result.success) setServices(result.services);
+      });
+    }
+  }, [open]);
 
   // Reset form when dialog opens with new component data
   useEffect(() => {
@@ -149,6 +188,18 @@ export function ComponentFormDialog({
         description: component?.description || "",
         status: component?.status || "operational",
         monitorIds: component?.monitorIds || [],
+        monitorWeights: Object.fromEntries(
+          (component?.monitors ?? []).map((monitor) => [
+            monitor.id,
+            monitor.weight,
+          ]),
+        ),
+        showcase: component?.showcase ?? true,
+        onlyShowIfDegraded: component?.onlyShowIfDegraded ?? false,
+        aggregationMethod: component?.aggregationMethod ?? "worst_case",
+        failureThreshold: component?.failureThreshold ?? 1,
+        autoCreateIncidents: component?.autoCreateIncidents ?? false,
+        serviceId: component?.serviceId ?? "",
       });
       setMonitorSearchTerm("");
       setIsMonitorDropdownOpen(false);
@@ -173,7 +224,7 @@ export function ComponentFormDialog({
   const filteredMonitors = monitors.filter(
     (monitor) =>
       monitor.name.toLowerCase().includes(monitorSearchTerm.toLowerCase()) ||
-      monitor.type.toLowerCase().includes(monitorSearchTerm.toLowerCase())
+      monitor.type.toLowerCase().includes(monitorSearchTerm.toLowerCase()),
   );
 
   const onSubmit = async (data: ComponentFormData) => {
@@ -188,6 +239,13 @@ export function ComponentFormDialog({
           description: data.description || null,
           status: data.status,
           monitorIds: data.monitorIds,
+          monitorWeights: data.monitorWeights,
+          showcase: data.showcase,
+          onlyShowIfDegraded: data.onlyShowIfDegraded,
+          aggregationMethod: data.aggregationMethod,
+          failureThreshold: data.failureThreshold,
+          autoCreateIncidents: data.autoCreateIncidents,
+          serviceId: data.serviceId || null,
         };
 
         const result = await updateComponent(updateData);
@@ -208,11 +266,14 @@ export function ComponentFormDialog({
           description: data.description || undefined,
           status: data.status,
           monitorIds: data.monitorIds,
-          showcase: true,
-          onlyShowIfDegraded: false,
+          monitorWeights: data.monitorWeights,
+          showcase: data.showcase,
+          onlyShowIfDegraded: data.onlyShowIfDegraded,
           position: 0,
-          aggregationMethod: "worst_case",
-          failureThreshold: 1,
+          aggregationMethod: data.aggregationMethod,
+          failureThreshold: data.failureThreshold,
+          autoCreateIncidents: data.autoCreateIncidents,
+          serviceId: data.serviceId || null,
         };
 
         const result = await createComponent(createData);
@@ -239,7 +300,7 @@ export function ComponentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {component ? "Edit Component" : "Add Component"}
@@ -389,7 +450,7 @@ export function ComponentFormDialog({
                         onClick={() =>
                           setValue(
                             "monitorIds",
-                            monitorIds.filter((id) => id !== monitorId)
+                            monitorIds.filter((id) => id !== monitorId),
                           )
                         }
                         className="ml-1 hover:text-destructive p-0.5"
@@ -406,6 +467,120 @@ export function ComponentFormDialog({
             </p>
           </div>
 
+          <fieldset className="space-y-3 rounded-md border p-3">
+            <legend className="px-1 text-sm font-medium">
+              Public presentation
+            </legend>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="component-showcase"
+                checked={watch("showcase")}
+                onCheckedChange={(value) =>
+                  setValue("showcase", value === true)
+                }
+              />
+              <Label htmlFor="component-showcase">
+                Show on the public status page
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="component-degraded-only"
+                checked={watch("onlyShowIfDegraded")}
+                onCheckedChange={(value) =>
+                  setValue("onlyShowIfDegraded", value === true)
+                }
+              />
+              <Label htmlFor="component-degraded-only">
+                Show in the list only when degraded
+              </Label>
+            </div>
+            <Label htmlFor="component-service">Linked service</Label>
+            <select
+              id="component-service"
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              {...register("serviceId")}
+            >
+              <option value="">No linked service</option>
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Services hold internal ownership and dependencies. This component
+              controls what visitors see. Linking does not publish internal
+              service details.
+            </p>
+          </fieldset>
+          <fieldset className="space-y-3 rounded-md border p-3">
+            <legend className="px-1 text-sm font-medium">
+              Monitor-driven health
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              Linked monitors update health automatically. Components without
+              monitors keep their manual status. Uptime uses successful checks,
+              independently of incident history.
+            </p>
+            <Label htmlFor="component-aggregation">Aggregation</Label>
+            <select
+              id="component-aggregation"
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              {...register("aggregationMethod")}
+            >
+              <option value="worst_case">Worst monitor</option>
+              <option value="best_case">Best monitor</option>
+              <option value="majority_vote">Majority vote</option>
+              <option value="weighted_average">Weighted vote</option>
+            </select>
+            {watch("aggregationMethod") === "weighted_average" &&
+              monitorIds.map((id) => (
+                <div key={id} className="space-y-1">
+                  <Label htmlFor={`monitor-weight-${id}`}>
+                    {monitors.find((monitor) => monitor.id === id)?.name ??
+                      "Monitor"}{" "}
+                    weight
+                  </Label>
+                  <Input
+                    id={`monitor-weight-${id}`}
+                    type="number"
+                    min={1}
+                    max={100}
+                    defaultValue={1}
+                    {...register(`monitorWeights.${id}`, {
+                      valueAsNumber: true,
+                    })}
+                  />
+                </div>
+              ))}
+            <Label htmlFor="component-threshold">
+              Failing monitors required
+            </Label>
+            <Input
+              id="component-threshold"
+              type="number"
+              min={1}
+              max={100}
+              {...register("failureThreshold", { valueAsNumber: true })}
+            />
+            <p className="text-xs text-muted-foreground">
+              This counts failing monitors, not consecutive checks. Monitor
+              alert thresholds are configured on each monitor.
+            </p>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="component-auto-incidents"
+                checked={watch("autoCreateIncidents")}
+                onCheckedChange={(value) =>
+                  setValue("autoCreateIncidents", value === true)
+                }
+              />
+              <Label htmlFor="component-auto-incidents">
+                Automatically publish outage and recovery incidents
+              </Label>
+            </div>
+          </fieldset>
           <div className="flex gap-2 justify-end pt-2">
             <Button
               type="button"

@@ -7,6 +7,9 @@
  * Endpoint: GET /api/status-pages/[id]/rss
  */
 
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
+import { getLocaleForLanguage } from "@/lib/status-page-translations";
 import { db } from "@/utils/db";
 import { statusPages, incidents } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -75,9 +78,10 @@ export async function GET(
     // Fetch recent incidents (last 30 days or 50 most recent)
     const recentIncidents = await db.query.incidents.findMany({
       where: eq(incidents.statusPageId, statusPageId),
-      orderBy: desc(incidents.createdAt),
+      orderBy: desc(incidents.updatedAt),
       limit: 50,
       with: {
+        updates: { where: (updates, { lte }) => lte(updates.displayAt, new Date()), orderBy: (updates, { desc }) => [desc(updates.createdAt)], limit: 50 },
         affectedComponents: {
           with: {
             component: {
@@ -95,37 +99,18 @@ export async function GET(
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.APP_URL ||
       "http://localhost:3000";
-    const statusPageUrl = `${baseUrl}/status/${statusPageId}`;
+    const statusPageUrl = getPublicStatusPageUrl({ subdomain: statusPage.subdomain, customDomain: statusPage.customDomain, customDomainVerified: statusPage.customDomainVerified, appUrl: baseUrl, statusPageDomain: getEffectiveStatusPageDomain() });
     const rssUrl = `${baseUrl}/api/status-pages/${statusPageId}/rss`;
 
     // Build RSS feed XML
-    const rssItems = recentIncidents.map((incident) => {
-      // FIX: Use actual incident detail route instead of anchor
+    const entries = recentIncidents.flatMap((incident) => {
+      const updates = incident.updates.length ? incident.updates : [{ id: incident.id, body: incident.body, status: incident.status, createdAt: incident.createdAt, displayAt: incident.createdAt }];
+      return updates.map((update) => ({ incident, update }));
+    }).sort((a, b) => (b.update.displayAt?.getTime() ?? 0) - (a.update.displayAt?.getTime() ?? 0)).slice(0, 50);
+    const rssItems = entries.map(({ incident, update }) => {
       const incidentUrl = `${statusPageUrl}/incidents/${incident.id}`;
-      const affectedComponents = incident.affectedComponents
-        .map((ic) => ic.component?.name || "Unknown")
-        .join(", ");
-
-      // Create description with incident details
-      const description = `
-<![CDATA[
-<p><strong>Status:</strong> ${escapeXml(incident.status)}</p>
-<p><strong>Impact:</strong> ${escapeXml(incident.impact)}</p>
-${affectedComponents ? `<p><strong>Affected Services:</strong> ${escapeXml(affectedComponents)}</p>` : ""}
-${incident.body ? `<div><strong>Description:</strong><br/>${escapeXml(incident.body)}</div>` : ""}
-]]>
-      `.trim();
-
-      return `
-    <item>
-      <title>${escapeXml(incident.name)}</title>
-      <link>${escapeXml(incidentUrl)}</link>
-      <guid isPermaLink="true">${escapeXml(incidentUrl)}</guid>
-      <pubDate>${toRFC822(incident.createdAt || new Date())}</pubDate>
-      <description>${description}</description>
-      <category>${escapeXml(incident.impact)}</category>
-      ${affectedComponents ? `<category>${escapeXml(affectedComponents)}</category>` : ""}
-    </item>`;
+      const description = `<p><strong>Status:</strong> ${escapeXml(update.status)}</p><p><strong>Impact:</strong> ${escapeXml(incident.impact)}</p><div>${escapeXml(update.body || "")}</div>`;
+      return `<item><title>${escapeXml(incident.name)}</title><link>${escapeXml(incidentUrl)}</link><guid isPermaLink="false">urn:supercheck:incident-update:${escapeXml(update.id)}</guid><pubDate>${toRFC822(update.displayAt || update.createdAt || new Date())}</pubDate><description><![CDATA[${description}]]></description><category>${escapeXml(incident.impact)}</category></item>`;
     }).join("\n");
 
     // Build complete RSS feed
@@ -135,7 +120,7 @@ ${incident.body ? `<div><strong>Description:</strong><br/>${escapeXml(incident.b
     <title>${escapeXml(statusPage.name)} - Status Updates</title>
     <link>${escapeXml(statusPageUrl)}</link>
     <description>${escapeXml(statusPage.pageDescription || `Real-time status updates for ${statusPage.name}`)}</description>
-    <language>en-us</language>
+    <language>${escapeXml(getLocaleForLanguage(statusPage.language))}</language>
     <lastBuildDate>${toRFC822(new Date())}</lastBuildDate>
     <atom:link href="${escapeXml(rssUrl)}" rel="self" type="application/rss+xml" />
     <generator>Supercheck Status Page</generator>
@@ -149,7 +134,7 @@ ${rssItems}
       status: 200,
       headers: {
         "Content-Type": "application/rss+xml; charset=utf-8",
-        "Cache-Control": "public, max-age=300, s-maxage=300", // Cache for 5 minutes
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30", // Short shared-cache window; browsers always revalidate
         "X-Content-Type-Options": "nosniff",
       },
     });

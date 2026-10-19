@@ -14,6 +14,7 @@ import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 export type SlackIncidentEvent = {
   type: "incident.created" | "incident.updated" | "incident.resolved";
   timestamp: string;
+  incident_update_id?: string;
   statusPageId: string;
   statusPageName: string;
   statusPageUrl: string;
@@ -203,6 +204,10 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
     short: false,
   });
 
+  if (event.incident_update_id) {
+    fields.push({ title: "Update ID", value: event.incident_update_id, short: false });
+  }
+
   // Return Slack message payload using attachment format with fields
   // This matches the format used by monitor notifications
   return {
@@ -228,7 +233,7 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
  */
 export async function deliverSlackMessage(
   webhookUrl: string,
-  event: SlackIncidentEvent
+  event: SlackIncidentEvent,
 ): Promise<SlackDeliveryResult> {
   // Validate webhook URL
   try {
@@ -321,7 +326,7 @@ export async function deliverSlackMessage(
     if (attempt < SLACK_CONFIG.MAX_RETRIES) {
       const delayMs = Math.min(
         SLACK_CONFIG.INITIAL_DELAY_MS * Math.pow(2, attempt),
-        SLACK_CONFIG.MAX_DELAY_MS
+        SLACK_CONFIG.MAX_DELAY_MS,
       );
 
       // Add jitter to prevent thundering herd

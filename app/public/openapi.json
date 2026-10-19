@@ -4155,8 +4155,8 @@
     "/api/status-pages/check": {
       "get": {
         "operationId": "checkStatusPageSubdomain",
-        "summary": "Check status page subdomain",
-        "description": "Verify a status page subdomain is published and return its ID.",
+        "summary": "Verify that a status page subdomain is published",
+        "description": "Verify that a status page subdomain is published and return its ID.",
         "tags": [
           "Status Pages"
         ],
@@ -4202,8 +4202,8 @@
       },
       "post": {
         "operationId": "checkStatusPageSubdomainPost",
-        "summary": "Check status page subdomain (POST)",
-        "description": "Verify a status page subdomain is published and return its ID. Public endpoint (no authentication required).",
+        "summary": "Verify that a status page subdomain is published (POST)",
+        "description": "Verify that a status page subdomain is published and return its ID. Public endpoint (no authentication required).",
         "tags": [
           "Status Pages"
         ],

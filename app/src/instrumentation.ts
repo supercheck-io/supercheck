@@ -89,6 +89,13 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize monitor schedulers:', error);
     }
 
+    try {
+      const { initializeStatusPageScheduler } = await import('@/lib/status-page-scheduler');
+      await initializeStatusPageScheduler();
+    } catch (error) {
+      console.error('[Instrumentation] Failed to initialize status page scheduler:', error);
+    }
+
     // Initialize email template processor
     try {
       console.log('[Instrumentation] Loading email template processor...');

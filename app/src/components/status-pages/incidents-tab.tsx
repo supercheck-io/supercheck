@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +71,7 @@ type IncidentStatus =
 type IncidentImpact = "none" | "minor" | "major" | "critical";
 
 type Incident = {
+  sreIncidentId?: string | null;
   id: string;
   name: string;
   status: IncidentStatus;
@@ -509,6 +511,7 @@ export function IncidentsTab({
                             maxLength={25}
                           />
                         </div>
+                        {incident.sreIncidentId && <Link className="text-xs text-muted-foreground underline underline-offset-4" href={`/incidents/${incident.sreIncidentId}`}>Internal SRE incident</Link>}
                       </TableCell>
                       <TableCell>
                         <Badge

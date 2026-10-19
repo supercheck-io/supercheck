@@ -1,5 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
+import { getClientIP } from "@/lib/session-security";
+import { allowStatusPageSubscription } from "@/lib/status-page-subscription-rate-limit";
 import { db } from "@/utils/db";
 import {
   statusPages,
@@ -9,7 +12,7 @@ import {
   statusPageIncidentSubscriptions,
   incidents,
 } from "@/db/schema";
-import { eq, and, inArray, isNull, isNotNull, count } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
@@ -22,11 +25,11 @@ const subscribeSchema = z.union([
   // Email subscription
   z.object({
     statusPageId: z.string().uuid(),
-    email: z.string().email("Please enter a valid email address"),
+    email: z.string().trim().toLowerCase().email("Please enter a valid email address"),
     subscribeToAllComponents: z.boolean().default(true),
-    selectedComponentIds: z.array(z.string().uuid()).optional(),
+    selectedComponentIds: z.array(z.string().uuid()).max(100).optional(),
     subscribeToAllIncidents: z.boolean().default(true),
-    selectedIncidentIds: z.array(z.string().uuid()).optional(),
+    selectedIncidentIds: z.array(z.string().uuid()).max(100).optional(),
     subscriptionMode: z.literal("email").optional().default("email"),
   }),
   // Webhook subscription
@@ -36,9 +39,9 @@ const subscribeSchema = z.union([
     subscriptionMode: z.literal("webhook"),
     description: z.string().max(500).optional(),
     subscribeToAllComponents: z.boolean().default(true),
-    selectedComponentIds: z.array(z.string().uuid()).optional(),
+    selectedComponentIds: z.array(z.string().uuid()).max(100).optional(),
     subscribeToAllIncidents: z.boolean().default(true),
-    selectedIncidentIds: z.array(z.string().uuid()).optional(),
+    selectedIncidentIds: z.array(z.string().uuid()).max(100).optional(),
   }),
   // Slack subscription
   z.object({
@@ -46,9 +49,9 @@ const subscribeSchema = z.union([
     endpoint: z.string().url("Please enter a valid Slack webhook URL"),
     subscriptionMode: z.literal("slack"),
     subscribeToAllComponents: z.boolean().default(true),
-    selectedComponentIds: z.array(z.string().uuid()).optional(),
+    selectedComponentIds: z.array(z.string().uuid()).max(100).optional(),
     subscribeToAllIncidents: z.boolean().default(true),
-    selectedIncidentIds: z.array(z.string().uuid()).optional(),
+    selectedIncidentIds: z.array(z.string().uuid()).max(100).optional(),
   }),
 ]);
 
@@ -384,10 +387,15 @@ function isIncidentInterestRequested(params: {
   );
 }
 
-export async function subscribeToStatusPage(data: SubscribeInput) {
+export async function subscribeToStatusPage(data: SubscribeInput): Promise<{ success: boolean; message: string; requiresVerification?: boolean; subscriberId?: string; webhookSecret?: string }> {
   try {
     // Validate input
     const validatedData = subscribeSchema.parse(data);
+    if (!await allowStatusPageSubscription(getClientIP(await headers()), validatedData.statusPageId)) {
+      return { success: false, message: "Too many subscription requests. Please try again later." };
+    }
+
+    if (validatedData.subscribeToAllComponents === false && !validatedData.selectedComponentIds?.length && !validatedData.selectedIncidentIds?.length) return { success: false, message: "Choose at least one component or incident." };
 
     // Check if status page exists and is published
     const statusPage = await db.query.statusPages.findFirst({
@@ -406,6 +414,11 @@ export async function subscribeToStatusPage(data: SubscribeInput) {
         success: false,
         message: "This status page is not currently accepting subscriptions",
       };
+    }
+
+    if (validatedData.selectedComponentIds?.length) {
+      const selected = await db.select({ id: statusPageComponents.id }).from(statusPageComponents).where(and(eq(statusPageComponents.statusPageId, statusPage.id), eq(statusPageComponents.showcase, true), inArray(statusPageComponents.id, validatedData.selectedComponentIds)));
+      if (selected.length !== new Set(validatedData.selectedComponentIds).size) return { success: false, message: "A selected component is unavailable." };
     }
 
     // Respect page-level subscription toggle
@@ -516,7 +529,7 @@ async function handleEmailSubscription(
     where: (subscribers, { and, eq }) =>
       and(
         eq(subscribers.statusPageId, statusPage.id as string),
-        eq(subscribers.email, data.email as string)
+        sql`lower(${subscribers.email}) = ${data.email as string}`
       ),
   });
 
@@ -592,8 +605,9 @@ async function handleEmailSubscription(
     
     if (existingSubscriber.verifiedAt) {
       return {
-        success: false,
-        message: "This email is already subscribed to updates",
+        success: true,
+        message: "Please check your email to verify your subscription.",
+        requiresVerification: true,
       };
     } else {
       // If exists but not verified, update the verification token and resend

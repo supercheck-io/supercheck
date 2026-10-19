@@ -8,6 +8,8 @@
  * Endpoint: GET /api/status-pages/[id]/ical
  */
 
+import { getPublicStatusPageUrl } from "@/lib/domain-utils";
+import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 import { db } from "@/utils/db";
 import { statusPages, incidents } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -122,6 +124,8 @@ export async function GET(
         id: true,
         name: true,
         subdomain: true,
+        customDomain: true,
+        customDomainVerified: true,
         status: true,
         allowRssFeed: true,
         pageDescription: true,
@@ -154,6 +158,7 @@ export async function GET(
             component: {
               columns: {
                 name: true,
+                showcase: true,
               },
             },
           },
@@ -166,7 +171,7 @@ export async function GET(
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.APP_URL ||
       "http://localhost:3000";
-    const statusPageUrl = `${baseUrl}/status/${statusPageId}`;
+    const statusPageUrl = getPublicStatusPageUrl({ subdomain: statusPage.subdomain, customDomain: statusPage.customDomain, customDomainVerified: statusPage.customDomainVerified, appUrl: baseUrl, statusPageDomain: getEffectiveStatusPageDomain() });
     const domain = new URL(baseUrl).hostname;
 
     // Build iCalendar VEVENT entries
@@ -174,12 +179,13 @@ export async function GET(
       .map((incident) => {
         const incidentUrl = `${statusPageUrl}/incidents/${incident.id}`;
         const affectedComponents = incident.affectedComponents
+          .filter((record) => record.component?.showcase)
           .map((ic) => ic.component?.name || "Unknown")
           .join(", ");
 
-        const startDate = incident.createdAt || new Date();
+        const startDate = incident.scheduledFor || incident.createdAt || new Date();
         // Use resolvedAt as end date, or current time if still active
-        const endDate = incident.resolvedAt || new Date();
+        const endDate = incident.scheduledUntil || incident.resolvedAt || new Date();
 
         // Build description
         const descriptionParts: string[] = [];
@@ -242,7 +248,7 @@ export async function GET(
           `${statusPage.subdomain}-status.ics`,
           "inline"
         ),
-        "Cache-Control": "public, max-age=300, s-maxage=300",
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30",
         "X-Content-Type-Options": "nosniff",
       },
     });

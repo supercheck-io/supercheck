@@ -1,3 +1,5 @@
+import { resolveSubscribers } from "./resolve-subscribers";
+import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
 import {
   incidents,
@@ -5,7 +7,7 @@ import {
   statusPageSubscribers,
   incidentComponents,
 } from "@/db/schema";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   deliverSlackMessage,
   shouldQuarantine,
@@ -20,11 +22,14 @@ import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
  */
 export async function sendSlackNotifications(
   incidentId: string,
-  statusPageId: string
+  statusPageId: string,
+  update?: NotificationUpdate,
+  subscriberId?: string,
+  isCreation = false,
 ) {
   try {
     console.log(
-      `[Slack Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`
+      `[Slack Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`,
     );
 
     // Fetch incident details
@@ -33,9 +38,7 @@ export async function sendSlackNotifications(
     });
 
     if (!incident) {
-      console.warn(
-        `[Slack Notifications] Incident not found: ${incidentId}`
-      );
+      console.warn(`[Slack Notifications] Incident not found: ${incidentId}`);
       return {
         success: false,
         message: "Incident not found",
@@ -44,9 +47,11 @@ export async function sendSlackNotifications(
     }
 
     // Check if notifications should be sent
-    if (!incident.deliverNotifications) {
+    if (
+      !(update ? update.deliverNotifications : incident.deliverNotifications)
+    ) {
       console.log(
-        `[Slack Notifications] Notifications disabled for incident ${incidentId}`
+        `[Slack Notifications] Notifications disabled for incident ${incidentId}`,
       );
       return {
         success: true,
@@ -62,7 +67,7 @@ export async function sendSlackNotifications(
 
     if (!statusPage) {
       console.warn(
-        `[Slack Notifications] Status page not found: ${statusPageId}`
+        `[Slack Notifications] Status page not found: ${statusPageId}`,
       );
       return {
         success: false,
@@ -72,9 +77,12 @@ export async function sendSlackNotifications(
     }
 
     // Check if Slack subscriptions are enabled
-    if (!statusPage.allowSlackSubscribers) {
+    if (
+      statusPage.status !== "published" ||
+      !statusPage.allowSlackSubscribers
+    ) {
       console.log(
-        `[Slack Notifications] Slack subscriptions disabled for status page ${statusPageId}`
+        `[Slack Notifications] Slack subscriptions disabled for status page ${statusPageId}`,
       );
       return {
         success: true,
@@ -84,38 +92,43 @@ export async function sendSlackNotifications(
     }
 
     // Get affected components
-    const affectedComponentsRecords = await db.query.incidentComponents.findMany({
-      where: eq(incidentComponents.incidentId, incidentId),
-      with: {
-        component: {
-          columns: {
-            name: true,
+    const affectedComponentsRecords =
+      await db.query.incidentComponents.findMany({
+        where: eq(incidentComponents.incidentId, incidentId),
+        with: {
+          component: {
+            columns: {
+              name: true,
+              showcase: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const affectedComponents = affectedComponentsRecords.map(
-      (ic) => ic.component?.name || "Unknown Component"
+    const affectedComponents = affectedComponentsRecords.filter((record) => record.component?.showcase).map(
+      (ic) => ic.component?.name || "Unknown Component",
     );
 
     // Get all verified Slack subscribers for this status page
-    const subscribers = await db.query.statusPageSubscribers.findMany({
-      where: and(
-        eq(statusPageSubscribers.statusPageId, statusPageId),
-        eq(statusPageSubscribers.mode, "slack"),
-        isNotNull(statusPageSubscribers.verifiedAt) // Ensure verified
-      ),
-    });
+    const recipients = await resolveSubscribers(
+      statusPageId,
+      incidentId,
+      "slack",
+      subscriberId,
+    );
+    const subscribers = subscriberId
+      ? recipients.filter((s) => s.id === subscriberId)
+      : recipients;
 
     // Filter verified subscribers and those not quarantined
     const activeSubscribers = subscribers.filter(
-      (s) => s.verifiedAt !== null && s.quarantinedAt === null
+      (s) =>
+        s.verifiedAt !== null && s.quarantinedAt === null && s.purgeAt === null,
     );
 
     if (activeSubscribers.length === 0) {
       console.log(
-        `[Slack Notifications] No active Slack subscribers for status page ${statusPageId}`
+        `[Slack Notifications] No active Slack subscribers for status page ${statusPageId}`,
       );
       return {
         success: true,
@@ -125,12 +138,14 @@ export async function sendSlackNotifications(
     }
 
     console.log(
-      `[Slack Notifications] Found ${activeSubscribers.length} active subscribers`
+      `[Slack Notifications] Found ${activeSubscribers.length} active subscribers`,
     );
 
     // Construct notification URLs
     const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      "http://localhost:3000";
     const statusPageUrl = getPublicStatusPageUrl({
       subdomain: statusPage.subdomain,
       customDomain: statusPage.customDomain,
@@ -142,21 +157,28 @@ export async function sendSlackNotifications(
     // Prepare Slack event payload
     const slackEvent: SlackIncidentEvent = {
       type:
-        incident.status === "resolved"
+        (update?.status ?? incident.status) === "resolved"
           ? "incident.resolved"
-          : incident.status === "investigating"
-          ? "incident.created"
-          : "incident.updated",
-      timestamp: new Date().toISOString(),
+          : !update || isCreation
+            ? "incident.created"
+            : "incident.updated",
+      timestamp: (
+        update?.createdAt ??
+        incident.createdAt ??
+        new Date()
+      ).toISOString(),
+      ...(update ? { incident_update_id: update.id } : {}),
       statusPageId,
       statusPageName: statusPage.name,
       statusPageUrl,
       incident: {
         id: incident.id,
         name: incident.name,
-        status: incident.status,
+        status: update?.status ?? incident.status,
         impact: incident.impact,
-        body: incident.body || "No additional details provided.",
+        body:
+          (update ? update.body : incident.body) ||
+          "No additional details provided.",
       },
       affectedComponents,
     };
@@ -169,24 +191,24 @@ export async function sendSlackNotifications(
       try {
         if (!subscriber.endpoint) {
           console.warn(
-            `[Slack Notifications] Subscriber ${subscriber.id} missing webhook URL`
+            `[Slack Notifications] Subscriber ${subscriber.id} missing webhook URL`,
           );
           failureCount++;
           return;
         }
 
         console.log(
-          `[Slack Notifications] Delivering Slack message to ${subscriber.endpoint}`
+          `[Slack Notifications] Delivering Slack message to ${subscriber.id}`,
         );
 
         const result = await deliverSlackMessage(
           subscriber.endpoint,
-          slackEvent
+          slackEvent,
         );
 
         if (result.success) {
           console.log(
-            `[Slack Notifications] Slack message delivered successfully to ${subscriber.endpoint}`
+            `[Slack Notifications] Slack message delivered successfully to ${subscriber.id}`,
           );
           successCount++;
 
@@ -201,7 +223,7 @@ export async function sendSlackNotifications(
             .where(eq(statusPageSubscribers.id, subscriber.id));
         } else {
           console.error(
-            `[Slack Notifications] Failed to deliver Slack message to ${subscriber.endpoint}: ${result.error}`
+            `[Slack Notifications] Failed to deliver Slack message to ${subscriber.id}: ${result.error}`,
           );
           failureCount++;
 
@@ -216,7 +238,7 @@ export async function sendSlackNotifications(
 
           if (shouldQuarantine(newFailureCount)) {
             console.warn(
-              `[Slack Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`
+              `[Slack Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`,
             );
             updates.quarantinedAt = new Date();
           }
@@ -229,7 +251,7 @@ export async function sendSlackNotifications(
       } catch (error) {
         console.error(
           `[Slack Notifications] Error delivering Slack message to subscriber:`,
-          error
+          error,
         );
         failureCount++;
       }

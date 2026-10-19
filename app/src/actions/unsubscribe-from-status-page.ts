@@ -75,8 +75,15 @@ export async function getSubscriberByToken(token: string) {
 
     const subscriber = await db.query.statusPageSubscribers.findFirst({
       where: eq(statusPageSubscribers.unsubscribeToken, token),
+      // SECURITY: explicit allow-list; never return tokens or webhook secrets.
+      columns: {
+        id: true,
+        email: true,
+        statusPageId: true,
+        purgeAt: true,
+      },
       with: {
-        statusPage: true,
+        statusPage: { columns: { name: true, language: true } },
       },
     });
 

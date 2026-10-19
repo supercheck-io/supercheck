@@ -100,6 +100,7 @@ export async function getPublicIncidentDetail(
             id: true,
             name: true,
             status: true,
+            showcase: true,
           },
         },
       },
@@ -107,8 +108,8 @@ export async function getPublicIncidentDetail(
 
     // Get all updates with explicit column selection
     const updates = await db.query.incidentUpdates.findMany({
-      where: (incidentUpdates, { eq }) =>
-        eq(incidentUpdates.incidentId, incidentId),
+      where: (incidentUpdates, { eq, and, lte }) =>
+        and(eq(incidentUpdates.incidentId, incidentId), lte(incidentUpdates.displayAt, new Date())),
       columns: {
         id: true,
         body: true,
@@ -117,15 +118,15 @@ export async function getPublicIncidentDetail(
         createdAt: true,
         // EXCLUDED: incidentId (redundant), createdByUserId, deliverNotifications
       },
-      orderBy: (incidentUpdates, { desc }) => [desc(incidentUpdates.createdAt)],
+      orderBy: (incidentUpdates, { desc }) => [desc(incidentUpdates.displayAt)],
     });
 
     return {
       success: true,
       incident: {
         ...incident,
-        affectedComponents: affectedComponents.map((ic) => ic.component),
-        updates,
+        affectedComponents: affectedComponents.filter((ic) => ic.component?.showcase).map((ic) => ({ id: ic.component.id, name: ic.component.name, status: ic.component.status })),
+        updates: updates.map((u) => ({ ...u, createdAt: u.displayAt ?? u.createdAt })),
       },
       language: statusPage.language,
     };

@@ -1,5 +1,6 @@
 "use client";
 
+import { DeliveryHistory } from "./delivery-history";
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,8 @@ import {
   ArrowUp,
   ArrowDown,
   CalendarIcon,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
@@ -65,6 +68,7 @@ import {
   getStatusPageSubscribers,
   deleteSubscriber,
   resendVerificationEmail,
+  rotateSubscriberWebhookSecret,
 } from "@/actions/get-status-page-subscribers";
 
 type Subscriber = {
@@ -91,6 +95,18 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
     null
   );
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [rotateSubscriberId, setRotateSubscriberId] = useState<string | null>(null);
+  const [rotatedSecret, setRotatedSecret] = useState<string | null>(null);
+
+  const handleRotateSecret = async () => {
+    if (!rotateSubscriberId) return;
+    setActionLoading(rotateSubscriberId);
+    const result = await rotateSubscriberWebhookSecret(rotateSubscriberId);
+    setActionLoading(null);
+    setRotateSubscriberId(null);
+    if (result.success && result.webhookSecret) setRotatedSecret(result.webhookSecret);
+    else toast.error(result.message);
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -386,8 +402,9 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="pt-0 space-y-6">
-        {/* Stats Cards */}
+        <CardContent className="pt-0 space-y-6">
+          <DeliveryHistory statusPageId={statusPageId} />
+          {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <div className="p-4 border rounded-lg bg-muted/30">
             <div className="flex items-center gap-3">
@@ -633,6 +650,15 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {subscriber.mode === "webhook" && (
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
+                              aria-label="Rotate webhook signing secret"
+                              title="Rotate webhook signing secret"
+                              disabled={actionLoading === subscriber.id}
+                              onClick={() => setRotateSubscriberId(subscriber.id)}>
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                          )}
                           {!subscriber.verifiedAt && (
                             <Button
                               variant="ghost"
@@ -751,6 +777,34 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
         )}
 
         {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!rotateSubscriberId} onOpenChange={(open) => { if (!open) setRotateSubscriberId(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Rotate webhook signing secret?</AlertDialogTitle>
+              <AlertDialogDescription>The previous secret stops signing new deliveries immediately. Update your webhook receiver with the new secret, which is shown once.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleRotateSecret}>Rotate secret</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={!!rotatedSecret} onOpenChange={(open) => { if (!open) setRotatedSecret(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Save your new signing secret</AlertDialogTitle>
+              <AlertDialogDescription>Copy this secret now. It will not be shown again.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input aria-label="New webhook signing secret" value={rotatedSecret ?? ""} readOnly className="font-mono" />
+            <AlertDialogFooter>
+              <Button variant="outline" onClick={async () => {
+                try { await navigator.clipboard.writeText(rotatedSecret!); toast.success("Secret copied"); }
+                catch { toast.error("Could not copy. Select and copy the secret manually."); }
+              }}><Copy className="mr-2 h-4 w-4" />Copy secret</Button>
+              <AlertDialogAction onClick={() => setRotatedSecret(null)}>Done</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>

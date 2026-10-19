@@ -269,6 +269,11 @@ export function StatusPageDetail({
                 <span className="sm:hidden">View</span>
               </Link>
             </Button>
+            {statusPage.status !== "archived" && <Button variant="outline" disabled={isPublishing || !canUpdate} onClick={async () => {
+              setIsPublishing(true);
+              try { const result = await unpublishStatusPage(statusPage.id, true); if (result.success) { toast.success("Status page archived"); router.refresh(); } else toast.error(result.message); }
+              finally { setIsPublishing(false); }
+            }}>Archive</Button>}
             {statusPage.status === "published" ? (
               <Button
                 variant="destructive"

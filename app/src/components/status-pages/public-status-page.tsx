@@ -24,6 +24,10 @@ import {
   getLocaleForLanguage,
 } from "@/lib/status-page-translations";
 import { SupportContactButton } from "./support-contact-button";
+import {
+  checkUptimePercentage,
+  type DailyCheckCounts,
+} from "@/lib/status-page-uptime";
 import { StatusPageBranding } from "./status-page-branding";
 
 type ComponentStatus =
@@ -41,6 +45,12 @@ type IncidentStatus =
 type IncidentImpact = "none" | "minor" | "major" | "critical";
 
 type StatusPage = {
+  allowPageSubscribers?: boolean | null;
+  allowIncidentSubscribers?: boolean | null;
+  allowEmailSubscribers?: boolean | null;
+  allowWebhookSubscribers?: boolean | null;
+  allowSlackSubscribers?: boolean | null;
+  allowRssFeed?: boolean | null;
   id: string;
   name: string;
   subdomain: string;
@@ -61,6 +71,7 @@ type StatusPage = {
 };
 
 type Component = {
+  dailyMetrics?: DailyCheckCounts[];
   id: string;
   name: string;
   description: string | null;
@@ -125,6 +136,8 @@ export function PublicStatusPage({
     year: "numeric",
   });
 
+  const uptimeDateFormatter = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+
   // Apply custom favicon for client-side navigation
   useStatusPageFavicon(statusPage.faviconLogo);
 
@@ -132,7 +145,7 @@ export function PublicStatusPage({
   const calculateSystemStatus = () => {
     if (components.length === 0) return "operational";
 
-    const statuses = components.map((c) => c.status);
+    const statuses = components.filter((c) => c.showcase).map((c) => c.status);
 
     if (statuses.includes("major_outage")) return "major_outage";
     if (statuses.includes("partial_outage")) return "partial_outage";
@@ -247,97 +260,32 @@ export function PublicStatusPage({
     return true;
   });
 
-  // Generate 90 days of uptime data based on incidents for a specific component
+  // UTC days with observed checks. Missing checks never imply 100% uptime.
   const generateUptimeData = (componentId?: string): UptimeDayData[] => {
-    const days = [];
-    const statusPageCreatedDate = statusPage.createdAt
-      ? startOfDay(new Date(statusPage.createdAt))
-      : startOfDay(new Date());
-
-    // Filter incidents by component if componentId is provided
-    const relevantIncidents = componentId
-      ? incidents.filter((incident) =>
-          incident.affectedComponents?.some((c) => c.id === componentId)
-        )
-      : incidents;
-
-    // Group incidents by date
-    const incidentsByDate = new Map<string, Incident[]>();
-    relevantIncidents.forEach((incident) => {
-      if (incident.createdAt) {
-        const dateKey = format(
-          startOfDay(new Date(incident.createdAt)),
-          "yyyy-MM-dd"
-        );
-        if (!incidentsByDate.has(dateKey)) {
-          incidentsByDate.set(dateKey, []);
-        }
-        incidentsByDate.get(dateKey)!.push(incident);
-      }
+    const metrics =
+      components.find((component) => component.id === componentId)
+        ?.dailyMetrics ?? [];
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    return Array.from({ length: 90 }, (_, index) => {
+      const date = new Date(today);
+      date.setUTCDate(date.getUTCDate() - 89 + index);
+      const metric = metrics.find(
+        (day) => day.date === date.toISOString().slice(0, 10),
+      );
+      const uptime = checkUptimePercentage(metric ? [metric] : []);
+      return {
+        date,
+        uptime,
+        status: uptime === null ? "nodata" : uptime === 100 ? "up" : "incident",
+      };
     });
-
-    // Determine highest impact for each day
-    const getHighestImpact = (
-      dayIncidents: Incident[]
-    ): IncidentImpact | null => {
-      if (dayIncidents.length === 0) return null;
-
-      const impactOrder: IncidentImpact[] = [
-        "critical",
-        "major",
-        "minor",
-        "none",
-      ];
-      for (const impact of impactOrder) {
-        if (dayIncidents.some((inc) => inc.impact === impact)) {
-          return impact;
-        }
-      }
-      return "none";
-    };
-
-    for (let i = 89; i >= 0; i--) {
-      const date = startOfDay(subDays(new Date(), i));
-      const dateKey = format(date, "yyyy-MM-dd");
-      const dayIncidents = incidentsByDate.get(dateKey) || [];
-      const hasIncidents = dayIncidents.length > 0;
-      const highestImpact = getHighestImpact(dayIncidents);
-
-      // Show gray bars for days before the status page was created (no data)
-      const isBeforeCreation = date < statusPageCreatedDate;
-
-      if (isBeforeCreation) {
-        days.push({
-          date,
-          isUp: null, // null indicates no data
-          status: "nodata" as const,
-          hasIncidents: false,
-          highestImpact: null,
-          dayIncidents: [],
-        });
-      } else {
-        // For days after creation, show green if no incidents, otherwise show incident color
-        days.push({
-          date,
-          isUp: !hasIncidents,
-          status: hasIncidents ? ("incident" as const) : ("up" as const),
-          hasIncidents,
-          highestImpact,
-          dayIncidents,
-        });
-      }
-    }
-    return days;
   };
 
-  // Define a type for the uptime day data
   type UptimeDayData = {
     date: Date;
-    isUp: boolean | null;
+    uptime: number | null;
     status: "up" | "incident" | "nodata";
-    hasIncidents: boolean;
-    highestImpact: IncidentImpact | null;
-    dayIncidents: Incident[];
   };
 
   const UptimeBar = ({
@@ -352,21 +300,9 @@ export function PublicStatusPage({
         return "bg-gray-400 dark:bg-gray-600 hover:bg-gray-500 dark:hover:bg-gray-500";
       }
 
-      if (!day.hasIncidents) {
-        return colors.green;
-      }
-
-      // Color based on incident impact
-      switch (day.highestImpact) {
-        case "critical":
-          return colors.red;
-        case "major":
-          return colors.orange;
-        case "minor":
-          return colors.yellow;
-        default:
-          return "#6b7280"; // gray-500
-      }
+      if (day.uptime === 100) return colors.green;
+      if (day.uptime === 0) return colors.red;
+      return colors.yellow;
     };
 
     return (
@@ -402,49 +338,20 @@ export function PublicStatusPage({
               pointerEvents: "none",
             }}
           >
-            <div className="font-semibold mb-2 text-white" suppressHydrationWarning>
-              {fullDateFormatter.format(data[hoveredDay].date)}
+            <div
+              className="font-semibold mb-2 text-white"
+              suppressHydrationWarning
+            >
+              {uptimeDateFormatter.format(data[hoveredDay].date)}
             </div>
 
             {data[hoveredDay].status === "nodata" ? (
               <div className="text-gray-300 dark:text-gray-400">
                 {t.noDataAvailable}
               </div>
-            ) : !data[hoveredDay].hasIncidents ? (
-              <div className="text-green-400">{t.noDowntimeRecorded}</div>
             ) : (
-              <div className="space-y-2">
-                {data[hoveredDay].dayIncidents.map((incident) => (
-                  <div
-                    key={incident.id}
-                    className="border-l-2 border-gray-600 pl-2"
-                  >
-                    <div className="font-medium text-white">
-                      {incident.name}
-                    </div>
-                    <div
-                      className="text-xs text-gray-400 mt-0.5"
-                      style={{ whiteSpace: "nowrap" }}
-                    >
-                      {t.impact}:{" "}
-                      <span
-                        className={
-                          incident.impact === "critical"
-                            ? "text-red-400"
-                            : incident.impact === "major"
-                              ? "text-orange-400"
-                              : incident.impact === "minor"
-                                ? "text-yellow-400"
-                                : "text-gray-400"
-                        }
-                      >
-                        {translateIncidentImpact(incident.impact, t)}
-                      </span>
-                      {" · "}
-                      {t.status}: {translateIncidentStatus(incident.status, t)}
-                    </div>
-                  </div>
-                ))}
+              <div>
+                {data[hoveredDay].uptime?.toFixed(2)}% {t.uptime}
               </div>
             )}
 
@@ -457,7 +364,11 @@ export function PublicStatusPage({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div
+      dir={activeLanguage === "ar" ? "rtl" : "ltr"}
+      lang={activeLanguage}
+      className="min-h-screen bg-gray-50 dark:bg-gray-950"
+    >
       {/* Header */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
@@ -487,6 +398,18 @@ export function PublicStatusPage({
               language={activeLanguage}
             />
             <SubscribeDialog
+              components={components.filter((component) => component.showcase)}
+              incidents={incidents}
+              allowIncidentSubscribers={
+                statusPage.allowIncidentSubscribers ?? false
+              }
+              allowPageSubscribers={statusPage.allowPageSubscribers ?? false}
+              allowEmailSubscribers={statusPage.allowEmailSubscribers ?? false}
+              allowWebhookSubscribers={
+                statusPage.allowWebhookSubscribers ?? false
+              }
+              allowSlackSubscribers={statusPage.allowSlackSubscribers ?? false}
+              allowRssFeed={statusPage.allowRssFeed ?? false}
               statusPageId={statusPage.id}
               statusPageName={statusPage.headline || statusPage.name}
               language={language || statusPage.language || "en"}
@@ -553,22 +476,13 @@ export function PublicStatusPage({
             <div className="space-y-0 bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 shadow-sm">
               {visibleComponents.map((component) => {
                 const componentStatus = getComponentStatusDisplay(
-                  component.status
+                  component.status,
                 );
                 // Generate uptime data specific to this component
                 const uptimeData = generateUptimeData(component.id);
-                // Only count days after status page creation (exclude "nodata" days)
-                const validDays = uptimeData.filter(
-                  (d) => d.status !== "nodata"
+                const uptimePercentage = checkUptimePercentage(
+                  component.dailyMetrics ?? [],
                 );
-                const uptimePercentage =
-                  validDays.length > 0
-                    ? (
-                        (validDays.filter((d) => d.isUp).length /
-                          validDays.length) *
-                        100
-                      ).toFixed(1)
-                    : "0.0";
 
                 return (
                   <div key={component.id} className="p-3 sm:p-5">
@@ -593,7 +507,9 @@ export function PublicStatusPage({
                         {React.createElement(componentStatus.icon, {
                           className: "h-3 w-3 sm:h-3.5 sm:w-3.5",
                         })}
-                        <span className="hidden sm:inline">{componentStatus.text}</span>
+                        <span className="hidden sm:inline">
+                          {componentStatus.text}
+                        </span>
                         <span className="sm:hidden">
                           {componentStatus.text === t.operational
                             ? t.operational
@@ -607,7 +523,11 @@ export function PublicStatusPage({
                       <UptimeBar data={uptimeData} />
                       <div className="flex items-center justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                         <span>{t.daysAgo}</span>
-                        <span>{uptimePercentage}% {t.uptime}</span>
+                        <span>
+                          {uptimePercentage === null
+                            ? t.noDataAvailable
+                            : `${uptimePercentage.toFixed(2)}% ${t.uptime}`}
+                        </span>
                         <span>{t.today}</span>
                       </div>
                     </div>
@@ -631,7 +551,7 @@ export function PublicStatusPage({
               if (incident.createdAt) {
                 const dateKey = format(
                   new Date(incident.createdAt),
-                  "yyyy-MM-dd"
+                  "yyyy-MM-dd",
                 );
                 if (!incidentsByDate.has(dateKey)) {
                   incidentsByDate.set(dateKey, []);
@@ -663,7 +583,10 @@ export function PublicStatusPage({
                       key={format(date, "yyyy-MM-dd")}
                       className="pb-5 border-b dark:border-gray-800 last:border-b-0"
                     >
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3" suppressHydrationWarning>
+                      <h3
+                        className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3"
+                        suppressHydrationWarning
+                      >
                         {fullDateFormatter.format(date)}
                       </h3>
 
@@ -693,7 +616,7 @@ export function PublicStatusPage({
 
                             // Impact badge color mapping
                             const getImpactBadgeColor = (
-                              impact: IncidentImpact
+                              impact: IncidentImpact,
                             ) => {
                               switch (impact) {
                                 case "critical":
@@ -733,17 +656,23 @@ export function PublicStatusPage({
                                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:flex-nowrap sm:flex-shrink-0">
                                     <span
                                       className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getImpactBadgeColor(
-                                        incident.impact
+                                        incident.impact,
                                       )}`}
                                     >
-                                      {translateIncidentImpact(incident.impact, t)}
+                                      {translateIncidentImpact(
+                                        incident.impact,
+                                        t,
+                                      )}
                                     </span>
                                     <span
                                       className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getStatusColor(
-                                        incident.status
+                                        incident.status,
                                       )}`}
                                     >
-                                      {translateIncidentStatus(incident.status, t)}
+                                      {translateIncidentStatus(
+                                        incident.status,
+                                        t,
+                                      )}
                                     </span>
                                   </div>
                                 </div>
@@ -780,7 +709,7 @@ export function PublicStatusPage({
                         <button
                           onClick={() =>
                             setCurrentPage((prev) =>
-                              Math.min(totalPages, prev + 1)
+                              Math.min(totalPages, prev + 1),
                             )
                           }
                           disabled={currentPage === totalPages}

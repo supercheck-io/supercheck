@@ -205,7 +205,10 @@ export async function GET(
         status: statusPageComponents.status,
       })
       .from(statusPageComponents)
-      .where(eq(statusPageComponents.statusPageId, statusPageId));
+      .where(and(
+      eq(statusPageComponents.statusPageId, statusPageId),
+      eq(statusPageComponents.showcase, true)
+    ));
 
     const componentStatuses = pageComponents.map((c) => c.status);
     const { message, color } = calculateOverallStatus(componentStatuses);
@@ -232,7 +235,7 @@ export async function GET(
       status: 200,
       headers: {
         ...SVG_HEADERS,
-        "Cache-Control": "public, max-age=300, s-maxage=300",
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30",
       },
     });
   } catch (error) {

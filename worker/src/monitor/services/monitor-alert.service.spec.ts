@@ -24,7 +24,7 @@ describe('MonitorAlertService', () => {
     lastCheckAt: new Date('2026-06-23T00:00:00Z'),
   };
 
-  function createService() {
+  function createService(maintenance = false) {
     const valuesMock = jest.fn(() => ({
       returning: jest.fn().mockResolvedValue([
         { id: 'history-1', status: 'sent' },
@@ -54,6 +54,18 @@ describe('MonitorAlertService', () => {
         values: valuesMock,
       })),
     };
+    const maintenanceQuery = {
+      from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest
+        .fn()
+        .mockResolvedValue(maintenance ? [{ id: 'maintenance' }] : []),
+    };
+    const selectProviders = db.select.getMockImplementation()!;
+    (db.select as jest.Mock).mockImplementation((fields) =>
+      Object.keys(fields).length === 1 ? maintenanceQuery : selectProviders(),
+    );
     const dbService = { db };
     const configService = {
       get: jest.fn((key: string) =>
@@ -102,6 +114,16 @@ describe('MonitorAlertService', () => {
 
     return { service, db, valuesMock, sreAlertTriageQueueService };
   }
+
+  it('suppresses monitor notifications during a scheduled maintenance window', async () => {
+    const { service, valuesMock, sreAlertTriageQueueService } =
+      createService(true);
+    await service.sendNotification('monitor-1', 'failure', 'Timeout');
+    expect(valuesMock).not.toHaveBeenCalled();
+    expect(
+      sreAlertTriageQueueService.enqueueAlertHistoryRows,
+    ).not.toHaveBeenCalled();
+  });
 
   it('enqueues created alert-history rows after monitor notifications', async () => {
     const { service, valuesMock, sreAlertTriageQueueService } = createService();

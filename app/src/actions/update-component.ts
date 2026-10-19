@@ -1,5 +1,6 @@
 "use server";
 
+import { sreServices } from "@/db/schema";
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
@@ -45,6 +46,11 @@ const updateComponentSchema = z.object({
   aggregationMethod: z
     .enum(["worst_case", "best_case", "weighted_average", "majority_vote"])
     .optional(),
+  autoCreateIncidents: z.boolean().optional(),
+  serviceId: z.string().uuid().nullable().optional(),
+  monitorWeights: z
+    .record(z.string().uuid(), z.number().int().min(1).max(100))
+    .optional(),
   failureThreshold: z.number().int().min(1).max(100).optional(),
 });
 
@@ -64,11 +70,11 @@ export async function updateComponent(data: UpdateComponentData) {
         {
           organizationId,
           projectId: project.id,
-        }
+        },
       );
     } catch {
       console.warn(
-        `[SECURITY] User ${userId} attempted to update component without permission`
+        `[SECURITY] User ${userId} attempted to update component without permission`,
       );
       return {
         success: false,
@@ -84,13 +90,13 @@ export async function updateComponent(data: UpdateComponentData) {
       where: and(
         eq(statusPages.id, validatedData.statusPageId),
         eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
+        eq(statusPages.projectId, project.id),
       ),
     });
 
     if (!statusPage) {
       console.warn(
-        `[SECURITY] User ${userId} attempted to update component for status page ${validatedData.statusPageId} without ownership`
+        `[SECURITY] User ${userId} attempted to update component for status page ${validatedData.statusPageId} without ownership`,
       );
       return {
         success: false,
@@ -102,7 +108,7 @@ export async function updateComponent(data: UpdateComponentData) {
     const existingComponent = await db.query.statusPageComponents.findFirst({
       where: and(
         eq(statusPageComponents.id, validatedData.id),
-        eq(statusPageComponents.statusPageId, validatedData.statusPageId)
+        eq(statusPageComponents.statusPageId, validatedData.statusPageId),
       ),
     });
 
@@ -121,8 +127,8 @@ export async function updateComponent(data: UpdateComponentData) {
         .where(
           and(
             inArray(monitors.id, validatedData.monitorIds),
-            eq(monitors.projectId, project.id)
-          )
+            eq(monitors.projectId, project.id),
+          ),
         );
 
       if (validMonitors.length !== validatedData.monitorIds.length) {
@@ -131,6 +137,21 @@ export async function updateComponent(data: UpdateComponentData) {
           message: "One or more monitors not found or access denied",
         };
       }
+    }
+
+    if (validatedData.serviceId) {
+      const service = await db.query.sreServices.findFirst({
+        where: and(
+          eq(sreServices.id, validatedData.serviceId),
+          eq(sreServices.organizationId, organizationId),
+          eq(sreServices.projectId, project.id),
+        ),
+      });
+      if (!service)
+        return {
+          success: false,
+          message: "Service not found or access denied",
+        };
     }
 
     // Build update object with only provided fields
@@ -154,6 +175,11 @@ export async function updateComponent(data: UpdateComponentData) {
     if (validatedData.failureThreshold !== undefined)
       updateData.failureThreshold = validatedData.failureThreshold;
 
+    if (validatedData.autoCreateIncidents !== undefined)
+      updateData.autoCreateIncidents = validatedData.autoCreateIncidents;
+    if (validatedData.serviceId !== undefined)
+      updateData.serviceId = validatedData.serviceId;
+
     // Update the component
     const [component] = await db
       .update(statusPageComponents)
@@ -161,8 +187,8 @@ export async function updateComponent(data: UpdateComponentData) {
       .where(
         and(
           eq(statusPageComponents.id, validatedData.id),
-          eq(statusPageComponents.statusPageId, validatedData.statusPageId)
-        )
+          eq(statusPageComponents.statusPageId, validatedData.statusPageId),
+        ),
       )
       .returning();
 
@@ -179,14 +205,16 @@ export async function updateComponent(data: UpdateComponentData) {
           validatedData.monitorIds.map((monitorId) => ({
             componentId: validatedData.id,
             monitorId,
-            weight: 1,
+            weight: validatedData.monitorWeights?.[monitorId] ?? 1,
             createdAt: new Date(),
-          }))
+          })),
         );
 
         // Preserve explicit manual status updates; only aggregate when status not provided
         if (validatedData.status === undefined) {
-          await statusAggregationService.updateComponentStatus(validatedData.id);
+          await statusAggregationService.updateComponentStatus(
+            validatedData.id,
+          );
         }
       }
     }
