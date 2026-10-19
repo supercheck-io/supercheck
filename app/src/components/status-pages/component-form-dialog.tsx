@@ -461,6 +461,7 @@ export function ComponentFormDialog({
               </div>
 
               <Popover
+                modal
                 open={isMonitorPickerOpen}
                 onOpenChange={setIsMonitorPickerOpen}
               >
@@ -491,7 +492,9 @@ export function ComponentFormDialog({
                     <CommandInput placeholder="Search monitors..." />
                     <CommandList>
                       <CommandEmpty>
-                        No monitors available in this project.
+                        {monitors.length === 0
+                          ? "No monitors available in this project."
+                          : "No monitors match your search."}
                       </CommandEmpty>
                       <CommandGroup>
                         {monitors.map((monitor) => {
@@ -657,18 +660,11 @@ export function ComponentFormDialog({
                                 control={control}
                                 name={`monitorWeights.${monitorId}`}
                                 render={({ field }) => (
-                                  <Input
+                                  <MonitorWeightInput
                                     id={`monitor-weight-${monitorId}`}
-                                    type="number"
-                                    min={1}
-                                    max={100}
-                                    value={field.value ?? 1}
-                                    onChange={(event) => {
-                                      const next = event.target.valueAsNumber;
-                                      field.onChange(
-                                        Number.isNaN(next) ? 1 : next,
-                                      );
-                                    }}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
                                     disabled={isSubmitting}
                                   />
                                 )}
@@ -842,5 +838,54 @@ export function ComponentFormDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+function MonitorWeightInput({
+  id,
+  value,
+  onChange,
+  onBlur,
+  disabled,
+}: {
+  id: string;
+  value: number | undefined;
+  onChange: (value: number) => void;
+  onBlur: () => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(String(value ?? 1));
+
+  return (
+    <Input
+      id={id}
+      type="number"
+      min={1}
+      max={100}
+      value={draft}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        const next = event.target.valueAsNumber;
+        if (!Number.isNaN(next) && next >= 1 && next <= 100) {
+          onChange(next);
+        }
+      }}
+      onBlur={() => {
+        const next = Math.trunc(Number(draft));
+        if (draft.trim() === "" || Number.isNaN(next)) {
+          setDraft(String(value ?? 1));
+        } else if (next < 1) {
+          setDraft("1");
+          onChange(1);
+        } else if (next > 100) {
+          setDraft("100");
+          onChange(100);
+        }
+        onBlur();
+      }}
+      disabled={disabled}
+    />
   );
 }

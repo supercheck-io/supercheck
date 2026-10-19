@@ -222,7 +222,7 @@ export function SettingsTab({
     handleSubmit,
     control,
     watch,
-    getValues,
+    resetField,
     reset,
     formState: { isSubmitting, isDirty, errors },
   } = useForm<SettingsFormValues>({
@@ -390,16 +390,13 @@ export function SettingsTab({
 
       if (result.success) {
         toast.success("Branding reset to defaults");
-        // The reset persists immediately, so make the restored values the new
-        // form baseline instead of leaving the form marked as dirty.
-        reset({
-          ...getValues(),
-          cssGreens: "#2ecc71",
-          cssYellows: "#f1c40f",
-          cssOranges: "#e67e22",
-          cssBlues: "#3498db",
-          cssReds: "#e74c3c",
-        });
+        // The reset persists immediately, so update each color's baseline
+        // without clearing unsaved edits in other fields.
+        resetField("cssGreens", { defaultValue: "#2ecc71" });
+        resetField("cssYellows", { defaultValue: "#f1c40f" });
+        resetField("cssOranges", { defaultValue: "#e67e22" });
+        resetField("cssBlues", { defaultValue: "#3498db" });
+        resetField("cssReds", { defaultValue: "#e74c3c" });
 
         // Reset logo and favicon URLs
         setLogoUrl(null);
@@ -1048,9 +1045,7 @@ export function SettingsTab({
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 <div>
-                  <Label htmlFor="logo-upload" className="text-sm">
-                    Page logo
-                  </Label>
+                  <p className="text-sm font-medium">Page logo</p>
                   <p className="text-xs text-muted-foreground">
                     630 × 420 px recommended · max 5 MB
                   </p>
@@ -1059,7 +1054,7 @@ export function SettingsTab({
                   type="file"
                   accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
                   onChange={(e) => handleFileChange(e, "logo")}
-                  className="hidden"
+                  className="peer sr-only"
                   id="logo-upload"
                   disabled={isUploadingLogo || !canUpdate}
                 />
@@ -1067,7 +1062,7 @@ export function SettingsTab({
                   htmlFor="logo-upload"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
-                    "cursor-pointer",
+                    "cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2",
                     (isUploadingLogo || !canUpdate) &&
                       "pointer-events-none opacity-50",
                   )}
@@ -1099,9 +1094,7 @@ export function SettingsTab({
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 <div>
-                  <Label htmlFor="favicon-upload" className="text-sm">
-                    Favicon
-                  </Label>
+                  <p className="text-sm font-medium">Favicon</p>
                   <p className="text-xs text-muted-foreground">
                     96 × 96 px recommended · max 5 MB
                   </p>
@@ -1110,7 +1103,7 @@ export function SettingsTab({
                   type="file"
                   accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
                   onChange={(e) => handleFileChange(e, "favicon")}
-                  className="hidden"
+                  className="peer sr-only"
                   id="favicon-upload"
                   disabled={isUploadingFavicon || !canUpdate}
                 />
@@ -1118,7 +1111,7 @@ export function SettingsTab({
                   htmlFor="favicon-upload"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" }),
-                    "cursor-pointer",
+                    "cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2",
                     (isUploadingFavicon || !canUpdate) &&
                       "pointer-events-none opacity-50",
                   )}

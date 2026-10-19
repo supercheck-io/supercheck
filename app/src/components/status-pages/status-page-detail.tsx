@@ -328,14 +328,14 @@ export function StatusPageDetail({
 
         <TabsContent value="overview" className="space-y-4">
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+          <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-4 lg:gap-4">
             <Card className="overflow-hidden">
               <CardContent className="p-4 lg:p-6">
                 <div className="flex items-center gap-3 lg:gap-4">
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-blue-100 dark:bg-blue-900/50">
                     <Layers className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">
                       {components.length}
                     </div>
@@ -352,7 +352,7 @@ export function StatusPageDetail({
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-orange-100 dark:bg-orange-900/50">
                     <OctagonAlert className="h-6 w-6 text-orange-500 dark:text-orange-400" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.activeIncidents ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Active Incidents
@@ -367,7 +367,7 @@ export function StatusPageDetail({
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-green-100 dark:bg-green-900/50">
                     <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.subscribers ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Subscribers
@@ -390,7 +390,7 @@ export function StatusPageDetail({
                         : "text-gray-400 dark:text-gray-500"
                     }`} />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.failedMonitors ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Failed Monitors
@@ -448,29 +448,31 @@ export function StatusPageDetail({
                   </p>
                 </div>
               ) : (
-                <DataTable
-                  columns={statusPageColumns}
-                  data={(() => {
-                    // Collect all monitors from all components
-                    const allMonitors = components.flatMap((c) =>
-                      c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
-                    );
-
-                    // Filter out duplicate monitors by ID
-                    const uniqueMonitors = allMonitors.filter(
-                      (monitor, index, self) =>
-                        index === self.findIndex((m) => m.id === monitor.id)
-                    );
-
-                    return uniqueMonitors;
-                  })()}
-                  isLoading={false}
-                  onRowClick={(row) =>
-                    router.push(`/monitors/${row.original.id}`)
-                  }
-                  hideToolbar={true}
-                  pageSize={5}
-                />
+                <div className="overflow-x-auto">
+                  <DataTable
+                    columns={statusPageColumns}
+                    data={(() => {
+                      // Collect all monitors from all components
+                      const allMonitors = components.flatMap((c) =>
+                        c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
+                      );
+  
+                      // Filter out duplicate monitors by ID
+                      const uniqueMonitors = allMonitors.filter(
+                        (monitor, index, self) =>
+                          index === self.findIndex((m) => m.id === monitor.id)
+                      );
+  
+                      return uniqueMonitors;
+                    })()}
+                    isLoading={false}
+                    onRowClick={(row) =>
+                      router.push(`/monitors/${row.original.id}`)
+                    }
+                    hideToolbar={true}
+                    pageSize={5}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
