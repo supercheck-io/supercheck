@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { loginLockoutHooks } from "@/lib/security/login-lockout-hooks";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
@@ -226,6 +227,7 @@ function getCaptchaPlugin() {
 }
 
 export const auth = betterAuth({
+  hooks: loginLockoutHooks,
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL,
   // Trusted origins for CORS and CSRF protection

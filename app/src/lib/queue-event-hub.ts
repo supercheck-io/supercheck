@@ -326,6 +326,12 @@ class QueueEventHub extends EventEmitter {
       }
     }
 
+    while (this.runMetaCache.size > 5000) {
+      const oldest = this.runMetaCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.runMetaCache.delete(oldest);
+    }
+
     let status: NormalizedQueueEvent["status"];
 
     switch (event) {

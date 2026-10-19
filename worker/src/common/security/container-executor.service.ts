@@ -209,6 +209,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   /** Max combined stdout+stderr size in bytes (10 MB) */
   private static readonly MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+  private static readonly LOG_SNAPSHOT_HEADROOM_BYTES = 64 * 1024;
   private static readonly EXEC_SOCKET_TIMEOUT_MS = 30_000;
   private static readonly DEFAULT_ARTIFACT_SOCKET_TIMEOUT_MS = 5 * 60_000;
   private static readonly PAYLOAD_CHUNK_BYTES = 700 * 1024;
@@ -1731,11 +1732,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   private async fetchPodLogsSnapshot(podName: string): Promise<string> {
     const chunks: Buffer[] = [];
+    let bytes = 0;
+    let truncated = false;
     const sink = new Writable({
       write: (chunk, _encoding, callback) => {
-        chunks.push(
-          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
-        );
+        const buffer = Buffer.isBuffer(chunk)
+          ? chunk
+          : Buffer.from(String(chunk));
+        const remaining = ContainerExecutorService.MAX_OUTPUT_BYTES - bytes;
+        if (buffer.length > remaining) truncated = true;
+        if (remaining > 0) {
+          // Copy the retained bytes so a large incoming chunk is not kept alive.
+          const retained = Buffer.from(buffer.subarray(0, remaining));
+          chunks.push(retained);
+          bytes += retained.length;
+        }
         callback();
       },
     });
@@ -1745,11 +1756,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       podName,
       'execution',
       sink,
-      { follow: false, timestamps: false },
+      {
+        follow: false,
+        timestamps: false,
+        // Kubernetes may return slightly fewer bytes than limitBytes, so ask for
+        // headroom and treat anything beyond MAX_OUTPUT_BYTES as overflow.
+        limitBytes:
+          ContainerExecutorService.MAX_OUTPUT_BYTES +
+          ContainerExecutorService.LOG_SNAPSHOT_HEADROOM_BYTES,
+      },
     );
     await finished(sink);
 
-    return Buffer.concat(chunks).toString('utf8');
+    const output = Buffer.concat(chunks, bytes).toString('utf8');
+    return truncated
+      ? `${output}\n[Supercheck output truncated at 10 MiB]`
+      : output;
   }
 
   private async waitForExecutionOutcome(

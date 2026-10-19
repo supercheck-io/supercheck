@@ -1,3 +1,4 @@
+import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, member, projects } from "@/db/schema";
@@ -53,7 +54,7 @@ export async function POST(
     const runId = params.runId;
 
     // Require authentication (supports both Bearer tokens and session cookies)
-    const { userId } = await requireAuthContext();
+    const { userId, isCliAuth, project: tokenProject } = await requireAuthContext();
 
     logger.info({ runId, userId }, "Cancellation requested");
 
@@ -111,14 +112,15 @@ export async function POST(
 
     // RBAC: Verify user has access to this organization
     // Check if user is a member of the organization
-    const orgMember = await db.query.member.findFirst({
+    const superAdmin = await isSuperAdmin(userId);
+    const orgMember = superAdmin ? null : await db.query.member.findFirst({
       where: and(
         eq(member.userId, userId),
         eq(member.organizationId, organizationIdForRbac)
       ),
     });
 
-    if (!orgMember) {
+    if (!superAdmin && !orgMember) {
       logger.warn(
         { runId, userId, orgId: organizationIdForRbac },
         "Access denied - not a member of organization"
@@ -133,6 +135,14 @@ export async function POST(
 
     // RBAC: Check if user has permission to cancel runs in this project
     const projectIdForRbac = run.runProjectId || run.jobProjectId;
+
+    // Project-scoped CLI tokens may only act on their own project, even for super admins.
+    if (isCliAuth && tokenProject?.id !== projectIdForRbac) {
+      return NextResponse.json(
+        { error: "Access denied - token is not scoped to this run's project" },
+        { status: 403 }
+      );
+    }
     const canCancel = await canCancelRunInProject(
       userId,
       projectIdForRbac ?? null,

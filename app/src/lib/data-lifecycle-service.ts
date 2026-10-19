@@ -1533,131 +1533,46 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
     }
   }
 
-  /**
-   * Check if S3 is available and bucket exists
-   * Returns false if bucket doesn't exist (not an error, just not configured yet)
-   */
-  private async checkS3Available(): Promise<boolean> {
-    const bucketName = String(
-      this.config.customConfig?.bucketName || "playwright-test-artifacts"
-    );
-
-    try {
-      const { S3Client, HeadBucketCommand } = await import(
-        "@aws-sdk/client-s3"
-      );
-
-      const s3Client = new S3Client({
-        region: process.env.AWS_REGION || "us-east-1",
-        endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
-        forcePathStyle: true,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
-        },
-      });
-
-      await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
-      return true;
-    } catch (error: unknown) {
-      const err = error as {
-        $metadata?: { httpStatusCode?: number };
-        Code?: string;
-        message?: string;
-      };
-      if (
-        err?.$metadata?.httpStatusCode === 404 ||
-        err?.Code === "NoSuchBucket"
-      ) {
-        // Bucket doesn't exist - this is expected if S3 isn't set up yet
-        return false;
-      }
-      // Other errors (network, auth, etc.) - log but don't fail
-      console.warn(
-        `[DATA_LIFECYCLE] [playground_artifacts] S3 health check failed:`,
-        err?.message || String(error)
-      );
-      return false;
-    }
-  }
-
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    // Check if S3 is available before attempting stats collection
-    const isAvailable = await this.checkS3Available();
-    if (!isAvailable) {
-      return { totalRecords: 0, oldRecords: 0 };
-    }
-
     const maxAgeHours = Number(this.config.customConfig?.maxAgeHours || 24);
     const cutoffTime = Date.now() - maxAgeHours * 60 * 60 * 1000;
-    const bucketName = String(
-      this.config.customConfig?.bucketName || "playwright-test-artifacts"
-    );
-
-    try {
-      const { S3Client, ListObjectsV2Command } = await import(
-        "@aws-sdk/client-s3"
-      );
-
-      const s3Client = new S3Client({
-        region: process.env.AWS_REGION || "us-east-1",
-        endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
-        forcePathStyle: true,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
-        },
-      });
-
-      let totalObjects = 0;
-      let oldObjects = 0;
-      let continuationToken: string | undefined;
-
-      do {
-        const response = await s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucketName,
-            ContinuationToken: continuationToken,
-            MaxKeys: 1000,
-          })
-        );
-
-        if (response.Contents) {
-          totalObjects += response.Contents.length;
-
-          for (const obj of response.Contents) {
-            if (obj.LastModified && obj.LastModified.getTime() < cutoffTime) {
-              oldObjects++;
-            }
+    const buckets = new Set([
+      String(this.config.customConfig?.bucketName || process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts"),
+      process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts",
+    ]);
+    const { S3Client, ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+    const s3Client = new S3Client({
+      region: process.env.AWS_REGION || "us-east-1",
+      endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
+      },
+    });
+    let totalRecords = 0;
+    let oldRecords = 0;
+    for (const bucket of buckets) {
+      try {
+        let continuationToken: string | undefined;
+        do {
+          const response = await s3Client.send(new ListObjectsV2Command({
+            Bucket: bucket, ContinuationToken: continuationToken, MaxKeys: 1000,
+          }));
+          for (const obj of response.Contents || []) {
+            totalRecords++;
+            if (obj.LastModified && obj.LastModified.getTime() < cutoffTime) oldRecords++;
           }
+          continuationToken = response.NextContinuationToken;
+        } while (continuationToken);
+      } catch (error: unknown) {
+        const err = error as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+        if (err.name !== "NoSuchBucket" && err.Code !== "NoSuchBucket" && err.$metadata?.httpStatusCode !== 404) {
+          console.error("[DATA_LIFECYCLE] [playground_artifacts] Failed to get bucket stats:", bucket, error);
         }
-
-        continuationToken = response.NextContinuationToken;
-      } while (continuationToken);
-
-      return { totalRecords: totalObjects, oldRecords: oldObjects };
-    } catch (error: unknown) {
-      const err = error as {
-        $metadata?: { httpStatusCode?: number };
-        Code?: string;
-      };
-      // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
-      if (
-        err?.$metadata?.httpStatusCode === 404 ||
-        err?.Code === "NoSuchBucket"
-      ) {
-        console.warn(
-          `[DATA_LIFECYCLE] [playground_artifacts] S3 bucket '${bucketName}' does not exist. Skipping stats collection.`
-        );
-        return { totalRecords: 0, oldRecords: 0 };
       }
-
-      console.error(
-        "[DATA_LIFECYCLE] [playground_artifacts] Failed to get stats:",
-        error
-      );
-      return { totalRecords: 0, oldRecords: 0 };
     }
+    return { totalRecords, oldRecords };
   }
 
   async execute(dryRun = false): Promise<CleanupOperationResult> {

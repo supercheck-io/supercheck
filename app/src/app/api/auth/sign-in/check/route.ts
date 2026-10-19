@@ -1,24 +1,7 @@
-/**
- * Login Pre-Check API Endpoint
- * 
- * This endpoint is called BEFORE the actual sign-in attempt to:
- * 1. Check if the account is locked out due to failed attempts
- * 2. After sign-in failure (called from client), record the failed attempt
- * 3. After sign-in success (called from client), clear the lockout
- * 
- * SECURITY HARDENING:
- * - "pre-check" is the only action allowed without rate limiting (read-only check)
- * - "failed" action is rate-limited to prevent abuse (DoS via lockout)
- * - "success" action is rate-limited and only clears lockout if called from same IP
- * - Fail-closed on errors for all security-sensitive actions
- */
+/** Read-only login preflight; credential outcomes are recorded by server auth hooks. */
 
 import { NextRequest, NextResponse } from "next/server";
-import { 
-  checkLockout, 
-  recordFailedAttempt, 
-  clearLockout 
-} from "@/lib/security/login-lockout";
+import { checkLockout } from "@/lib/security/login-lockout";
 import { getClientIP } from "@/lib/session-security";
 import { getRedisConnection } from "@/lib/queue";
 
@@ -59,14 +42,6 @@ async function checkEndpointRateLimit(ip: string): Promise<boolean> {
   }
 }
 
-/**
- * POST /api/auth/sign-in/check
- * 
- * Actions:
- * - action: "pre-check" - Check if email/IP is locked out before attempting sign-in
- * - action: "failed" - Record a failed sign-in attempt (rate-limited)
- * - action: "success" - Clear lockout after successful sign-in (rate-limited)
- */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -84,6 +59,10 @@ export async function POST(request: NextRequest) {
         { error: "Valid email is required" },
         { status: 400 }
       );
+    }
+
+    if (action !== "pre-check") {
+      return NextResponse.json({ error: "Invalid action. Use 'pre-check'." }, { status: 400 });
     }
 
     // Normalize email for consistent lockout tracking
@@ -127,46 +106,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      case "failed": {
-        // Record failed attempt for both email and IP
-        // SECURITY: This is rate-limited above to prevent DoS via lockout flooding
-        const [emailResult, ipResult] = await Promise.all([
-          recordFailedAttempt(normalizedEmail),
-          recordFailedAttempt(clientIP),
-        ]);
-
-        // Return the more restrictive result
-        const result = emailResult.isLocked ? emailResult : ipResult;
-        
-        return NextResponse.json({
-          isLocked: result.isLocked,
-          attemptsRemaining: Math.min(
-            emailResult.attemptsRemaining || 0,
-            ipResult.attemptsRemaining || 0
-          ),
-          message: result.message,
-          lockoutSeconds: result.lockoutSeconds,
-          lockoutUntil: result.lockoutUntil?.toISOString(),
-        });
-      }
-
-      case "success": {
-        // Clear lockout for both email and IP after successful login
-        // SECURITY: This is rate-limited above to prevent abuse
-        await Promise.all([
-          clearLockout(normalizedEmail),
-          clearLockout(clientIP),
-        ]);
-
-        return NextResponse.json({
-          success: true,
-          message: "Lockout cleared",
-        });
-      }
-
       default:
         return NextResponse.json(
-          { error: "Invalid action. Use 'pre-check', 'failed', or 'success'." },
+          { error: "Invalid action. Use 'pre-check'." },
           { status: 400 }
         );
     }

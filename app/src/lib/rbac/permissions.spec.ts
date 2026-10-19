@@ -90,6 +90,15 @@ describe('RBAC Permissions', () => {
   });
 
   describe('hasPermission', () => {
+    it.each([Role.PROJECT_ADMIN, Role.PROJECT_EDITOR])('scopes variable writes and secret access for %s', (role) => {
+      const context: PermissionContext = { userId: 'user-1', role, projectId: 'other', assignedProjectIds: ['assigned'] };
+      for (const action of ['create', 'update', 'delete', 'view_secrets']) {
+        expect(hasPermission(context, 'variable', action)).toBe(false);
+      }
+      expect(hasPermission(context, 'variable', 'view')).toBe(true);
+      expect(hasPermission({ ...context, projectId: 'assigned' }, 'variable', 'view_secrets')).toBe(true);
+    });
+
     describe('SUPER_ADMIN permissions', () => {
       const context: PermissionContext = {
         userId: 'user-1',

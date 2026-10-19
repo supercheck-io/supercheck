@@ -33,22 +33,50 @@ export async function GET(request: Request) {
       "X-Accel-Buffering": "no", // Disable Nginx buffering for real-time SSE
     };
 
+    let cleanupStream = () => {};
+    let cancelled = false;
     const stream = new ReadableStream({
       async start(controller) {
         const hub = getQueueEventHub();
         await hub.ready();
+        if (cancelled || request.signal.aborted) {
+          controller.close();
+          return;
+        }
 
         // Track whether the stream has been closed to prevent
         // 'Controller is already closed' errors from async callbacks
         let isClosed = false;
 
+        let keepAlive: ReturnType<typeof setInterval> | undefined;
+        let unsubscribe = () => {};
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          request.signal.removeEventListener("abort", cleanup);
+          isClosed = true;
+          clearInterval(keepAlive);
+          unsubscribe();
+          try {
+            controller.close();
+          } catch {
+            // ignore errors closing stream
+          }
+        };
+
+        cleanupStream = cleanup;
+        request.signal.addEventListener("abort", cleanup);
+        if (isClosed || cancelled || request.signal.aborted) cleanup();
+
         const safeEnqueue = (data: Uint8Array) => {
-          if (isClosed) return;
+          if (isClosed || cancelled || request.signal.aborted) return;
           try {
             controller.enqueue(data);
           } catch {
             // Controller was closed between our check and enqueue
             isClosed = true;
+            cleanupStream();
           }
         };
 
@@ -65,7 +93,7 @@ export async function GET(request: Request) {
 	        } | null>();
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
-          if (isClosed) return;
+          if (isClosed || cancelled || request.signal.aborted) return;
           // Only send job and test events (Playwright jobs are in 'test' category)
           if (event.category !== "job" && event.category !== "test") {
             return;
@@ -206,26 +234,20 @@ export async function GET(request: Request) {
           }
         };
 
-        const unsubscribe = hub.subscribe(sendEvent);
+        if (isClosed) return;
+        unsubscribe = hub.subscribe(sendEvent);
 
         safeEnqueue(encoder.encode(": connected\n\n"));
 
-        const keepAlive = setInterval(() => {
+        keepAlive = setInterval(() => {
           safeEnqueue(encoder.encode(": ping\n\n"));
         }, 30000);
 
-        const cleanup = () => {
-          isClosed = true;
-          clearInterval(keepAlive);
-          unsubscribe();
-          try {
-            controller.close();
-          } catch {
-            // ignore errors closing stream
-          }
-        };
 
-        request.signal.addEventListener("abort", cleanup);
+      },
+      cancel() {
+        cancelled = true;
+        cleanupStream();
       },
     });
 

@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
     "X-SSE-Reconnect-After": String(SSE_CONFIG.MAX_CONNECTION_DURATION_MS),
   };
 
+  let cleanupStream = () => {};
+  let cancelled = false;
   const stream = new ReadableStream({
     async start(controller) {
       let aborted = false;
@@ -53,7 +55,9 @@ export async function GET(request: NextRequest) {
 
       // Cleanup function
       const cleanup = () => {
+        if (aborted) return;
         aborted = true;
+        request.signal.removeEventListener("abort", cleanup);
         if (heartbeatIntervalId) {
           clearInterval(heartbeatIntervalId);
           heartbeatIntervalId = null;
@@ -73,8 +77,14 @@ export async function GET(request: NextRequest) {
         }
       };
 
+      cleanupStream = cleanup;
+
       // Setup abort handling
       request.signal.addEventListener("abort", cleanup);
+      if (cancelled || request.signal.aborted) {
+        cleanup();
+        return;
+      }
 
       // Function to send queue stats (only sends if changed)
       const sendStats = async (force = false) => {
@@ -92,7 +102,7 @@ export async function GET(request: NextRequest) {
               controller.enqueue(encoder.encode(message));
             } catch {
               // Controller was closed between our check and enqueue
-              aborted = true;
+              cleanup();
               return;
             }
           }
@@ -114,7 +124,6 @@ export async function GET(request: NextRequest) {
             controller.enqueue(encoder.encode(reconnectMessage));
           } catch {
             // Controller already closed
-            aborted = true;
           }
           cleanup();
           return true;
@@ -127,6 +136,7 @@ export async function GET(request: NextRequest) {
       try {
         const hub = getQueueEventHub();
         await hub.ready();
+        if (aborted) return;
 
         const handleQueueEvent = (event: NormalizedQueueEvent) => {
           // Trigger refresh for all job/test lifecycle events to update counts
@@ -145,6 +155,7 @@ export async function GET(request: NextRequest) {
 
       // Send initial stats
       await sendStats(true);
+      if (aborted) return;
 
       // Set up heartbeat to keep connection alive
       heartbeatIntervalId = setInterval(() => {
@@ -162,6 +173,10 @@ export async function GET(request: NextRequest) {
         if (checkMaxDuration()) return;
         await sendStats(); // Only sends if stats changed
       }, SSE_CONFIG.RECONCILIATION_INTERVAL_MS);
+    },
+    cancel() {
+      cancelled = true;
+      cleanupStream();
     },
   });
 

@@ -5,6 +5,7 @@
   "pages": [
     "playground",
     "tests",
+    "requirements",
     "---Test Types---",
     "browser-test",
     "api-test",

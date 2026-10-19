@@ -417,6 +417,28 @@ describe("Artifact retention strategies", () => {
     expect(result.success).toBe(true);
   });
 
+  it("counts both artifact buckets and every listing page", async () => {
+    const old = new Date(Date.now() - 48 * 3600000);
+    send.mockImplementation(async command => {
+      if (!(command instanceof ListObjectsV2Command)) throw new Error("Unexpected operation");
+      if (command.input.Bucket === "playwright-test-artifacts" && !command.input.ContinuationToken) {
+        return { Contents: [{ Key: "old", LastModified: old }], NextContinuationToken: "page-2" };
+      }
+      return { Contents: [{ Key: "new", LastModified: new Date() }] };
+    });
+    const strategy = new PlaygroundArtifactsCleanupStrategy({ entityType: "playground_artifacts", enabled: true, cronSchedule: "0 5 * * *", customConfig: { maxAgeHours: 24 } });
+    await expect(strategy.getStats()).resolves.toEqual({ totalRecords: 3, oldRecords: 1 });
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+  it("counts K6 artifacts even if the Playwright bucket does not exist", async () => {
+    send.mockImplementation(async command => {
+      if (command.input.Bucket === "playwright-test-artifacts") throw Object.assign(new Error("missing"), { name: "NoSuchBucket" });
+      return { Contents: [{ Key: "k6", LastModified: new Date() }] };
+    });
+    const strategy = new PlaygroundArtifactsCleanupStrategy({ entityType: "playground_artifacts", enabled: true, cronSchedule: "0 5 * * *", customConfig: { maxAgeHours: 24 } });
+    await expect(strategy.getStats()).resolves.toEqual({ totalRecords: 1, oldRecords: 0 });
+  });
+
   it("reports bucket access errors as failures", async () => {
     send.mockRejectedValue(new Error("Access denied"));
     const result = await new PlaygroundArtifactsCleanupStrategy({ entityType: "playground_artifacts", enabled: true, cronSchedule: "0 5 * * *", customConfig: { maxAgeHours: 24 } }).execute();

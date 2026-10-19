@@ -87,11 +87,15 @@ jest.mock("ai", () => ({
         // AI response no longer includes tags per prompt instructions
       },
     ]),
-    usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+    usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
   }),
 }));
 
+jest.mock("@/lib/ai/ai-rate-limiter", () => ({ aiRateLimiter: { checkAndTrackTokens: jest.fn().mockResolvedValue({ allowed: true }) } }));
+
 // Import after mocks
+import { generateText } from "ai";
+import { aiRateLimiter } from "@/lib/ai/ai-rate-limiter";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getActiveOrganization } from "@/lib/session";
@@ -382,6 +386,7 @@ describe("extractRequirementsFromDocument", () => {
       expect(result.success).toBe(true);
       expect(result.requirements).toBeDefined();
       expect(result.requirements?.length).toBeGreaterThan(0);
+      expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalledWith(testOrgId, 150, "plus");
       
       // Verify EVERY requirement has exactly ["ai"] as tags
       result.requirements?.forEach(req => {
@@ -393,6 +398,15 @@ describe("extractRequirementsFromDocument", () => {
   // ============================================================================
   // ALLOWED FILE TYPES TESTS
   // ============================================================================
+
+  it("accounts for input/output usage even when model output is invalid", async () => {
+    (generateText as jest.Mock).mockResolvedValueOnce({ text: "not JSON", usage: { inputTokens: 100, outputTokens: 70 } });
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("Requirements".padEnd(100, "."), "test.txt", { type: "text/plain" }));
+    const result = await extractRequirementsFromDocument(formData);
+    expect(result.success).toBe(false);
+    expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalledWith(testOrgId, 170, "plus");
+  });
 
   describe("Allowed File Types", () => {
     it("should accept .txt files", async () => {
