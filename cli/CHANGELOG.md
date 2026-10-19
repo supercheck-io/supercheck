@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `job update <id> --tests <ids...>` to replace the tests in an existing job, including dry-run support.
+
 - Publish deployment locks only after their owner information is written, so an interrupted lock creation cannot leave an empty lock that blocks later deploys.
 
 ## 0.3.2 - 2026-10-18

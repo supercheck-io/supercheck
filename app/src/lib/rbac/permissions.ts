@@ -407,6 +407,7 @@ export function hasPermission(
       "apiKey",
       "notification",
       "requirement",
+      "variable",
       "sre_service",
       "sre_incident",
       "sre_investigation",

@@ -152,17 +152,7 @@ function SignInPageContent() {
           router.push(`/verify-email?email=${encodeURIComponent(email)}&invite=${encodeURIComponent(inviteToken)}`);
           return;
         }
-        // Step 3a: Record failed attempt
-        const failedResult = await fetch("/api/auth/sign-in/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "failed", email }),
-        });
-        const failedData = await failedResult.json();
-
-        // Invite flow UX: show clear guidance for first-time invitees.
-        // Keep recording failed attempts for security/rate limiting, but avoid
-        // lockout-style messaging that implies repeated password failures.
+        // Invitees receive guidance while server hooks enforce lockout.
         if (inviteToken) {
           setError(getInviteSignInGuidance(error.message));
           return;
@@ -170,19 +160,8 @@ function SignInPageContent() {
 
         // Keep pre-lockout errors generic. Exposing attempts remaining only for
         // known accounts enables account enumeration.
-        if (failedData.isLocked) {
-          setError(failedData.message || "Too many failed attempts. Account temporarily locked.");
-        } else {
-          setError(error.message || "An error occurred");
-        }
+        setError(error.message || "An error occurred");
       } else {
-        // Step 3b: Clear lockout on successful sign-in
-        await fetch("/api/auth/sign-in/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "success", email }),
-        }).catch(() => { /* ignore errors on cleanup */ });
-
         // If user signed in with an invite token, auto-accept the invitation
         if (inviteToken) {
           try {

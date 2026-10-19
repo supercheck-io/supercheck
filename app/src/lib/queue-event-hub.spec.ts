@@ -164,3 +164,23 @@ describe("queue event hub refresh", () => {
     expect(mockQueueEvents).not.toHaveBeenCalled();
   });
 });
+
+
+it("bounds metadata cache while keeping recent events available", async () => {
+  delete globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__;
+  mockGetQueues.mockResolvedValue(queuesFor());
+  jest.spyOn(process, "once").mockImplementation(() => process);
+  const hub = getQueueEventHub();
+  await hub.ready();
+  const monitorId = "00000000-0000-4000-8000-000000000001";
+  const normalize = hub["normalizeEvent"].bind(hub);
+  for (let i = 0; i < 5001; i++) {
+    const event = await normalize("monitor", "monitor-eu", "active", { jobId: `${monitorId}:${i}:eu` });
+    expect(event?.entityId).toBe(monitorId);
+  }
+  expect(hub["runMetaCache"].size).toBe(5000);
+  expect(hub["runMetaCache"].has(`${monitorId}:0:eu`)).toBe(false);
+  expect(hub["runMetaCache"].has(`${monitorId}:5000:eu`)).toBe(true);
+  jest.restoreAllMocks();
+  delete globalThis.__SUPER_CHECK_QUEUE_EVENT_HUB__;
+});

@@ -1,3 +1,4 @@
+import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, member, projects } from "@/db/schema";
@@ -111,14 +112,15 @@ export async function POST(
 
     // RBAC: Verify user has access to this organization
     // Check if user is a member of the organization
-    const orgMember = await db.query.member.findFirst({
+    const superAdmin = await isSuperAdmin(userId);
+    const orgMember = superAdmin ? null : await db.query.member.findFirst({
       where: and(
         eq(member.userId, userId),
         eq(member.organizationId, organizationIdForRbac)
       ),
     });
 
-    if (!orgMember) {
+    if (!superAdmin && !orgMember) {
       logger.warn(
         { runId, userId, orgId: organizationIdForRbac },
         "Access denied - not a member of organization"

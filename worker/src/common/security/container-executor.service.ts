@@ -1731,11 +1731,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
   private async fetchPodLogsSnapshot(podName: string): Promise<string> {
     const chunks: Buffer[] = [];
+    let bytes = 0;
+    let truncated = false;
     const sink = new Writable({
       write: (chunk, _encoding, callback) => {
-        chunks.push(
-          Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
-        );
+        const buffer = Buffer.isBuffer(chunk)
+          ? chunk
+          : Buffer.from(String(chunk));
+        const remaining = ContainerExecutorService.MAX_OUTPUT_BYTES - bytes;
+        if (buffer.length > remaining) truncated = true;
+        if (remaining > 0) {
+          // Copy the retained bytes so a large incoming chunk is not kept alive.
+          const retained = Buffer.from(buffer.subarray(0, remaining));
+          chunks.push(retained);
+          bytes += retained.length;
+        }
         callback();
       },
     });
@@ -1745,11 +1755,18 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       podName,
       'execution',
       sink,
-      { follow: false, timestamps: false },
+      {
+        follow: false,
+        timestamps: false,
+        limitBytes: ContainerExecutorService.MAX_OUTPUT_BYTES + 1,
+      },
     );
     await finished(sink);
 
-    return Buffer.concat(chunks).toString('utf8');
+    const output = Buffer.concat(chunks, bytes).toString('utf8');
+    return truncated
+      ? `${output}\n[Supercheck output truncated at 10 MiB]`
+      : output;
   }
 
   private async waitForExecutionOutcome(

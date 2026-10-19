@@ -83,6 +83,11 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (this.config.alertEmails?.length) {
+      this.logger.warn(
+        'QUEUE_ALERT_EMAILS is not supported; configure QUEUE_ALERT_SLACK_WEBHOOK_URL or QUEUE_ALERT_WEBHOOK_URL for delivery.',
+      );
+    }
     await this.initializeRedis();
     await this.syncQueues();
     this.startMonitoring();

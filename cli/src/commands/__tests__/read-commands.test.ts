@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockUnauthenticatedGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
@@ -24,11 +25,12 @@ let outputFormat = 'table'
 let authenticated = true
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, delete: jest.fn() }),
+  createAuthenticatedClient: () => ({ get: mockGet, patch: mockPatch, post: mockPost, delete: jest.fn() }),
   getResolvedConfigBaseUrl: () => 'https://config.test',
 }))
 
 jest.unstable_mockModule('../../api/client.js', () => ({
+  ApiClient: class {},
   getApiClient: () => ({ get: mockUnauthenticatedGet }),
 }))
 
@@ -104,6 +106,7 @@ jest.unstable_mockModule('../../utils/validation.js', () => ({
     script.includes('k6') && declaredType !== 'k6' ? 'script does not match declared test type' : null,
 }))
 
+const { jobCommand } = await import('../jobs.js')
 const { tagCommand } = await import('../tags.js')
 const { auditCommand } = await import('../audit.js')
 const { alertCommand } = await import('../alerts.js')
@@ -127,6 +130,7 @@ describe('read-only and operational commands', () => {
     outputFormat = 'table'
     authenticated = true
     for (const command of [
+      jobCommand,
       tagCommand,
       auditCommand,
       alertCommand,
@@ -141,6 +145,19 @@ describe('read-only and operational commands', () => {
     ]) {
       resetCommandState(command)
     }
+  })
+
+  describe('job update', () => {
+    it('replaces the job test list using the PATCH schema', async () => {
+      mockPatch.mockResolvedValueOnce({ data: { id: 'job-1' } })
+      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', 'test-1', 'test-2'])
+      expect(mockPatch).toHaveBeenCalledWith('/api/jobs/job-1', { tests: [{ id: 'test-1' }, { id: 'test-2' }] })
+    })
+    it('shows test replacements without mutating on dry run', async () => {
+      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', 'test-1', '--dry-run'])
+      expect(mockPatch).not.toHaveBeenCalled()
+      expect(mockOutputDetail).toHaveBeenCalledWith({ dryRun: true, payload: { tests: [{ id: 'test-1' }] } })
+    })
   })
 
   describe('tag', () => {

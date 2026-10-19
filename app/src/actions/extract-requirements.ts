@@ -16,6 +16,7 @@
  */
 
 import { generateText } from "ai";
+import { aiRateLimiter } from "@/lib/ai/ai-rate-limiter";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -427,7 +428,9 @@ If truly no testable requirements exist, return: []
  * Uses shared provider utilities and security sanitization
  */
 async function extractWithAI(
-  documentText: string
+  documentText: string,
+  organizationId: string,
+  tier?: string
 ): Promise<ExtractedRequirement[]> {
   // Step 1: Validate AI configuration before making request
   validateAIConfiguration();
@@ -471,9 +474,10 @@ async function extractWithAI(
 
     const duration = Date.now() - startTime;
     // Access usage properties safely with type assertion
-    const usageData = usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+    const usageData = usage as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
     tokensUsed = usageData.totalTokens ?? 
-      ((usageData.promptTokens ?? 0) + (usageData.completionTokens ?? 0));
+      ((usageData.inputTokens ?? 0) + (usageData.outputTokens ?? 0));
+    await aiRateLimiter.checkAndTrackTokens(organizationId, tokensUsed, tier);
 
     console.log(
       `[AI Extraction] Completed in ${duration}ms, tokens: ${tokensUsed}, model: ${getActualModelName()}`
@@ -667,9 +671,10 @@ export async function extractRequirementsFromDocument(
 
     // 3. Check AI rate limits before making AI request
     // Uses Redis-based sliding window rate limiting (same as create-test, fix-test)
+    let tier: string | undefined;
     try {
       const activeOrg = await getActiveOrganization();
-      const tier = (activeOrg as unknown as Record<string, unknown> | undefined)
+      tier = (activeOrg as unknown as Record<string, unknown> | undefined)
         ?.tier as string | undefined;
 
       await AuthService.checkRateLimit({
@@ -691,7 +696,7 @@ export async function extractRequirementsFromDocument(
     // 4. Extract requirements using AI
     let requirements: ExtractedRequirement[];
     try {
-      requirements = await extractWithAI(documentText);
+      requirements = await extractWithAI(documentText, organizationId, tier);
     } catch (aiError) {
       await deleteDocumentRecord(documentId);
       return {

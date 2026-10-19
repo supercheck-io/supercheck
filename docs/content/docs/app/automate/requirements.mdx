@@ -1,0 +1,34 @@
+---
+title: Requirements
+description: Track requirements and the tests that cover them
+icon: ListChecks
+---
+
+Use **Requirements** to keep testable expectations alongside your tests. Each requirement has a title, description, priority, tags, and linked tests. Coverage shows which requirements have linked tests and whether those tests are passing or failing.
+
+## Add a requirement
+
+1. Select the project and open **Requirements**.
+2. Choose **Create Requirement** and describe one behavior you want to verify.
+3. Set its priority and save it.
+4. Link existing tests, or create a test from the requirement.
+
+Coverage updates when linked tests run in jobs. Linking a test records the relationship; run it to collect an outcome. Review the linked tests when a requirement changes.
+
+## Extract requirements from a document
+
+Choose **Upload Document** to extract requirements with AI from a PRD or specification. Supported formats are PDF, DOCX, Markdown, and plain text. The upload dialog accepts documents up to 10 MB.
+
+Review the extracted titles, descriptions, and priorities before adding them. AI-generated requirements carry an `ai` tag. Extraction uses your instance's configured AI provider and counts toward its organization AI limits. Avoid uploading credentials or documents you are not permitted to send to that provider.
+
+## Review coverage
+
+Filter the list by priority, coverage status, tags, or search text. Use the linked tests to investigate failing coverage, and export requirements as CSV when you need a copy for review.
+
+Project viewers can read requirements. Creating, editing, extracting, and deleting requirements follow your project role's permissions.
+
+## Read requirements through the API
+
+Authenticated integrations can list the active project's requirements with `GET /api/requirements`. The endpoint supports `page`, `pageSize`, `search`, `priority`, and `status`. Use the API's project and organization context to select the intended project.
+
+See [Tests](/docs/app/automate/tests) and [Jobs](/docs/app/automate/jobs) to create and run coverage.

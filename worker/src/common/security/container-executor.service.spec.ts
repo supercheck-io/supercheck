@@ -531,6 +531,31 @@ describe('ContainerExecutorService', () => {
       });
     });
 
+    it.each([0, 1])(
+      'caps log snapshots with %i overflow bytes',
+      async (overflow) => {
+        const limit = 10 * 1024 * 1024;
+        service['logClient'] = {
+          log: jest.fn(async (_namespace, _pod, _container, sink: Writable) => {
+            sink.write(Buffer.alloc(limit - 2, 'a'));
+            sink.end(Buffer.alloc(2 + overflow, 'b'));
+          }),
+        } as unknown as NonNullable<(typeof service)['logClient']>;
+        const output = await service['fetchPodLogsSnapshot']('pod');
+        const marker = '\n[Supercheck output truncated at 10 MiB]';
+        expect(output).toBe(
+          'a'.repeat(limit - 2) + 'bb' + (overflow ? marker : ''),
+        );
+        expect(service['logClient'].log).toHaveBeenCalledWith(
+          expect.any(String),
+          'pod',
+          'execution',
+          expect.any(Writable),
+          { follow: false, timestamps: false, limitBytes: limit + 1 },
+        );
+      },
+    );
+
     it.each([false, true])(
       'preserves artifact collection and fails if the pod terminates before collection=%s',
       async (earlyTermination) => {

@@ -320,14 +320,16 @@ jobCommand
   .command('update <id>')
   .description('Update job configuration')
   .option('--name <name>', 'Job name')
+  .option('--tests <ids...>', 'Replace tests with these test IDs')
   .option('--description <description>', 'Job description')
   .option('--schedule <cron>', 'Cron schedule expression')
   .option('--status <status>', '[deprecated] Job status is runtime state and cannot be updated via the CLI')
   .option('--dry-run', 'Show what would be sent without updating')
-  .action(async (id: string, options: { name?: string; description?: string; schedule?: string; status?: string; dryRun?: boolean }) => {
+  .action(async (id: string, options: { tests?: string[]; name?: string; description?: string; schedule?: string; status?: string; dryRun?: boolean }) => {
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = {}
+    if (options.tests !== undefined) body.tests = options.tests.map((id) => ({ id }))
     if (options.name !== undefined) body.name = options.name
     if (options.description !== undefined) body.description = options.description
     if (options.schedule !== undefined) body.cronSchedule = options.schedule
@@ -336,7 +338,7 @@ jobCommand
     }
 
     if (Object.keys(body).length === 0) {
-      logger.warn('No fields to update. Use --name, --description, or --schedule.')
+      logger.warn('No fields to update. Use --name, --description, --schedule, or --tests.')
       return
     }
 

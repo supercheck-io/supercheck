@@ -24,6 +24,7 @@ import {
 } from "./permissions";
 import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
+import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCachedAuthSession } from "@/lib/session-cache";
 
@@ -348,6 +349,8 @@ export async function canCancelRunInProject(
   organizationId: string
 ): Promise<boolean> {
   try {
+    if (await isSuperAdmin(userId)) return true;
+
     // Check organization role first
     const userRole = await getUserOrgRole(userId, organizationId);
     if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
@@ -952,10 +955,7 @@ export function withRateLimit(
       context: { userId: string; user: Record<string, unknown> }
     ) => Promise<NextResponse>
   ): Promise<NextResponse> => {
-    const clientId =
-      req.headers.get("x-forwarded-for") ||
-      req.headers.get("x-real-ip") ||
-      "unknown";
+    const clientId = getClientIP(req.headers);
 
     const now = Date.now();
     const clientRequests = requests.get(clientId);
@@ -1000,20 +1000,18 @@ export function withRateLimit(
       }
     }
 
-    // Get auth context if available, else use anonymous
+    // Auth failure may fall back to anonymous; handler failures must never replay.
+    let context: { userId: string; user: Record<string, unknown> } = { userId: "anonymous", user: {} };
     try {
       const authResult = await requireAuth();
-      return await handler(req, {
+      context = {
         userId: authResult.userId,
         user: authResult.user as unknown as Record<string, unknown>,
-      });
+      };
     } catch {
-      // Allow anonymous rate limiting
-      return await handler(req, {
-        userId: "anonymous",
-        user: {} as Record<string, unknown>,
-      });
+      // Anonymous callers still share the IP rate limit.
     }
+    return handler(req, context);
   };
 }
 

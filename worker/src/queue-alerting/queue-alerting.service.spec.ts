@@ -154,6 +154,20 @@ describe('QueueAlertingService', () => {
       });
     });
 
+    it('warns when unsupported email delivery is configured', async () => {
+      const service = createService({
+        QUEUE_ALERT_EMAILS: 'oncall@example.test',
+      });
+      const warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => {});
+      await service.onModuleInit();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('QUEUE_ALERT_EMAILS is not supported'),
+      );
+      await service.onModuleDestroy();
+    });
+
     it('does not touch Redis or start a loop when alerting is disabled', async () => {
       const service = createService({ QUEUE_ALERTING_ENABLED: 'false' });
 

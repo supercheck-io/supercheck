@@ -13,7 +13,7 @@ import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { eq, sql } from 'drizzle-orm';
-import { logImpersonationEvent } from '@/lib/audit-logger';
+import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 
 
@@ -94,7 +94,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     // Prevent self-deletion
     const currentAdmin = await getCurrentUser();
-    if (currentAdmin && resolvedParams.id === currentAdmin.id) {
+    if (!currentAdmin) throw new Error('Authentication required');
+    if (resolvedParams.id === currentAdmin.id) {
       return NextResponse.json(
         { success: false, error: 'Cannot delete your own account' },
         { status: 400 }
@@ -103,7 +104,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     // Verify user exists before attempting deletion
     const [targetUser] = await db
-      .select({ id: user.id })
+      .select({ id: user.id, email: user.email })
       .from(user)
       .where(eq(user.id, resolvedParams.id))
       .limit(1);
@@ -152,6 +153,9 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       await tx.delete(user).where(eq(user.id, userId));
     });
     
+    await logAdminEvent(currentAdmin.id, 'user_deleted', userId, 'user', userId, {
+      targetEmail: targetUser.email,
+    });
     return NextResponse.json({
       success: true,
       data: { message: 'User deleted successfully' }

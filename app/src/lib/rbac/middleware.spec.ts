@@ -88,6 +88,8 @@ import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
 
 import {
+  withRateLimit,
+  canCancelRunInProject,
   requireAuth,
   requireSuperAdmin,
   getUserRole,
@@ -1155,5 +1157,34 @@ describe("RBAC Middleware", () => {
         expect(result).toBe(false);
       });
     });
+  });
+});
+
+
+describe("global run cancellation", () => {
+  beforeEach(() => jest.clearAllMocks());
+  it("allows database-backed super admins without tenant membership", async () => {
+    mockIsSuperAdmin.mockResolvedValue(true);
+    await expect(canCancelRunInProject("admin", "project", "other-org")).resolves.toBe(true);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+  });
+  it("keeps ordinary nonmembers denied", async () => {
+    mockIsSuperAdmin.mockResolvedValue(false);
+    mockDbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
+    await expect(canCancelRunInProject("user", "project", "other-org")).resolves.toBe(false);
+  });
+});
+
+
+describe("rate limit boundary", () => {
+  it("shares a limit across forwarded suffixes and never replays a failed handler", async () => {
+    const limiter = withRateLimit(1, 60_000);
+    const handler = jest.fn().mockRejectedValue(new Error("handler failed"));
+    const request = (suffix: string) => ({ headers: new Headers({ "x-forwarded-for": `192.0.2.1, ${suffix}` }), url: "http://localhost", method: "POST" } as NextRequest);
+    await expect(limiter(request("proxy-a"), handler)).rejects.toThrow("handler failed");
+    expect(handler).toHaveBeenCalledTimes(1);
+    const blocked = await limiter(request("proxy-b"), handler);
+    expect(blocked.status).toBe(429);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
