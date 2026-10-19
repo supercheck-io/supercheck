@@ -16,6 +16,8 @@ import {
   uuid,
   boolean,
   uniqueIndex,
+  index,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql, relations } from 'drizzle-orm';
 import {
@@ -26,6 +28,7 @@ import {
 import { organization, projects } from './organization';
 import { user } from './auth';
 import { monitors } from './monitor';
+import { sreServices } from './sre';
 import type {
   StatusPageStatus,
   ComponentStatus,
@@ -90,6 +93,7 @@ export const statusPages = pgTable('status_pages', {
   heroCover: varchar('hero_cover', { length: 500 }),
   customDomain: varchar('custom_domain', { length: 255 }),
   customDomainVerified: boolean('custom_domain_verified').default(false),
+  customDomainLastCheckedAt: timestamp('custom_domain_last_checked_at'),
   theme: jsonb('theme').default({}),
 
   createdAt: timestamp('created_at').defaultNow(),
@@ -99,32 +103,50 @@ export const statusPages = pgTable('status_pages', {
 /**
  * Status page components linked to monitors
  */
-export const statusPageComponents = pgTable('status_page_components', {
-  id: uuid('id')
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  statusPageId: uuid('status_page_id')
-    .notNull()
-    .references(() => statusPages.id, { onDelete: 'cascade' }),
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  status: varchar('status', { length: 50 })
-    .$type<ComponentStatus>()
-    .notNull()
-    .default('operational'),
-  showcase: boolean('showcase').default(true),
-  onlyShowIfDegraded: boolean('only_show_if_degraded').default(false),
-  automationEmail: varchar('automation_email', { length: 255 }),
-  startDate: timestamp('start_date'),
-  position: integer('position').default(0),
-  // Aggregation settings for multiple monitors
-  aggregationMethod: varchar('aggregation_method', { length: 50 })
-    .default('worst_case')
-    .notNull(),
-  failureThreshold: integer('failure_threshold').default(1).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+export const statusPageComponents = pgTable(
+  'status_page_components',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    statusPageId: uuid('status_page_id')
+      .notNull()
+      .references(() => statusPages.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    status: varchar('status', { length: 50 })
+      .$type<ComponentStatus>()
+      .notNull()
+      .default('operational'),
+    showcase: boolean('showcase').default(true),
+    onlyShowIfDegraded: boolean('only_show_if_degraded').default(false),
+    serviceId: uuid('service_id').references(
+      (): AnyPgColumn => sreServices.id,
+      { onDelete: 'set null' },
+    ),
+    automationEmail: varchar('automation_email', { length: 255 }),
+    startDate: timestamp('start_date'),
+    position: integer('position').default(0),
+    // Aggregation settings for multiple monitors
+    aggregationMethod: varchar('aggregation_method', { length: 50 })
+      .default('worst_case')
+      .notNull(),
+    failureThreshold: integer('failure_threshold').default(1).notNull(),
+    autoCreateIncidents: boolean('auto_create_incidents')
+      .default(false)
+      .notNull(),
+    lastReconciledAt: timestamp('last_reconciled_at'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => ({
+    serviceIdx: index('status_page_components_service_idx').on(table.serviceId),
+    reconciliationIdx: index('status_page_components_reconciliation_idx').on(
+      table.lastReconciledAt,
+      table.id,
+    ),
+  }),
+);
 
 /**
  * Join table to link status page components with multiple monitors
@@ -149,58 +171,80 @@ export const statusPageComponentMonitors = pgTable(
 /**
  * Incidents with workflow support
  */
-export const incidents = pgTable('incidents', {
-  id: uuid('id')
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  statusPageId: uuid('status_page_id')
-    .notNull()
-    .references(() => statusPages.id, { onDelete: 'cascade' }),
-  createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-    onDelete: 'no action',
+export const incidents = pgTable(
+  'incidents',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    statusPageId: uuid('status_page_id')
+      .notNull()
+      .references(() => statusPages.id, { onDelete: 'cascade' }),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, {
+      onDelete: 'no action',
+    }),
+    sourceComponentId: uuid('source_component_id').references(
+      () => statusPageComponents.id,
+      { onDelete: 'set null' },
+    ),
+    name: varchar('name', { length: 255 }).notNull(),
+    status: varchar('status', { length: 50 })
+      .$type<IncidentStatus>()
+      .notNull()
+      .default('investigating'),
+    impact: varchar('impact', { length: 50 })
+      .$type<IncidentImpact>()
+      .notNull()
+      .default('minor'),
+    impactOverride: varchar('impact_override', { length: 50 }),
+    body: text('body'),
+    scheduledFor: timestamp('scheduled_for'),
+    scheduledUntil: timestamp('scheduled_until'),
+    scheduledRemindPrior: boolean('scheduled_remind_prior').default(true),
+    autoTransitionToMaintenanceState: boolean(
+      'auto_transition_to_maintenance_state',
+    ).default(true),
+    autoTransitionToOperationalState: boolean(
+      'auto_transition_to_operational_state',
+    ).default(true),
+    scheduledAutoInProgress: boolean('scheduled_auto_in_progress').default(
+      true,
+    ),
+    scheduledAutoCompleted: boolean('scheduled_auto_completed').default(true),
+    autoTransitionDeliverNotificationsAtStart: boolean(
+      'auto_transition_deliver_notifications_at_start',
+    ).default(true),
+    autoTransitionDeliverNotificationsAtEnd: boolean(
+      'auto_transition_deliver_notifications_at_end',
+    ).default(true),
+    reminderIntervals: varchar('reminder_intervals', { length: 100 }).default(
+      '[3,6,12,24]',
+    ),
+    metadata: jsonb('metadata').default({}),
+    deliverNotifications: boolean('deliver_notifications').default(true),
+    backfillDate: timestamp('backfill_date'),
+    backfilled: boolean('backfilled').default(false),
+    monitoringAt: timestamp('monitoring_at'),
+    resolvedAt: timestamp('resolved_at'),
+    sreIncidentId: uuid('sre_incident_id'),
+    shortlink: varchar('shortlink', { length: 255 }),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => ({
+    automaticOpenIdx: uniqueIndex('incidents_open_automatic_component_idx')
+      .on(table.sourceComponentId)
+      .where(
+        sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`,
+      ),
+    sourceComponentIdx: index('incidents_source_component_idx').on(
+      table.sourceComponentId,
+    ),
+    srePageIdx: index('incidents_sre_page_idx')
+      .on(table.statusPageId, table.sreIncidentId)
+      .where(sql`${table.sreIncidentId} is not null`),
   }),
-  name: varchar('name', { length: 255 }).notNull(),
-  status: varchar('status', { length: 50 })
-    .$type<IncidentStatus>()
-    .notNull()
-    .default('investigating'),
-  impact: varchar('impact', { length: 50 })
-    .$type<IncidentImpact>()
-    .notNull()
-    .default('minor'),
-  impactOverride: varchar('impact_override', { length: 50 }),
-  body: text('body'),
-  scheduledFor: timestamp('scheduled_for'),
-  scheduledUntil: timestamp('scheduled_until'),
-  scheduledRemindPrior: boolean('scheduled_remind_prior').default(true),
-  autoTransitionToMaintenanceState: boolean(
-    'auto_transition_to_maintenance_state',
-  ).default(true),
-  autoTransitionToOperationalState: boolean(
-    'auto_transition_to_operational_state',
-  ).default(true),
-  scheduledAutoInProgress: boolean('scheduled_auto_in_progress').default(true),
-  scheduledAutoCompleted: boolean('scheduled_auto_completed').default(true),
-  autoTransitionDeliverNotificationsAtStart: boolean(
-    'auto_transition_deliver_notifications_at_start',
-  ).default(true),
-  autoTransitionDeliverNotificationsAtEnd: boolean(
-    'auto_transition_deliver_notifications_at_end',
-  ).default(true),
-  reminderIntervals: varchar('reminder_intervals', { length: 100 }).default(
-    '[3,6,12,24]',
-  ),
-  metadata: jsonb('metadata').default({}),
-  deliverNotifications: boolean('deliver_notifications').default(true),
-  backfillDate: timestamp('backfill_date'),
-  backfilled: boolean('backfilled').default(false),
-  monitoringAt: timestamp('monitoring_at'),
-  resolvedAt: timestamp('resolved_at'),
-  sreIncidentId: uuid('sre_incident_id'),
-  shortlink: varchar('shortlink', { length: 255 }),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+);
 
 /**
  * Incident updates with notification controls
@@ -229,20 +273,28 @@ export const incidentUpdates = pgTable('incident_updates', {
 /**
  * Affected components for incidents
  */
-export const incidentComponents = pgTable('incident_components', {
-  id: uuid('id')
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  incidentId: uuid('incident_id')
-    .notNull()
-    .references(() => incidents.id, { onDelete: 'cascade' }),
-  componentId: uuid('component_id')
-    .notNull()
-    .references(() => statusPageComponents.id, { onDelete: 'cascade' }),
-  oldStatus: varchar('old_status', { length: 50 }),
-  newStatus: varchar('new_status', { length: 50 }),
-  createdAt: timestamp('created_at').defaultNow(),
-});
+export const incidentComponents = pgTable(
+  'incident_components',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    incidentId: uuid('incident_id')
+      .notNull()
+      .references(() => incidents.id, { onDelete: 'cascade' }),
+    componentId: uuid('component_id')
+      .notNull()
+      .references(() => statusPageComponents.id, { onDelete: 'cascade' }),
+    oldStatus: varchar('old_status', { length: 50 }),
+    newStatus: varchar('new_status', { length: 50 }),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    componentIdx: index('incident_components_component_idx').on(
+      table.componentId,
+    ),
+  }),
+);
 
 /**
  * Incident templates for common issues
@@ -567,3 +619,67 @@ export const statusPageMetricsSelectSchema =
 
 export const postmortemsInsertSchema = createInsertSchema(postmortems);
 export const postmortemsSelectSchema = createSelectSchema(postmortems);
+
+/** Transactional notification outbox and per-recipient delivery history. */
+export const statusPageNotificationEvents = pgTable(
+  'status_page_notification_events',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    incidentId: uuid('incident_id')
+      .notNull()
+      .references(() => incidents.id, { onDelete: 'cascade' }),
+    updateId: uuid('update_id')
+      .notNull()
+      .references(() => incidentUpdates.id, { onDelete: 'cascade' }),
+    isCreation: boolean('is_creation').default(false).notNull(),
+    expandedAt: timestamp('expanded_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    updateUnique: uniqueIndex('status_page_notification_event_update_idx').on(
+      table.updateId,
+    ),
+    incidentIdx: index('status_page_notification_events_incident_idx').on(
+      table.incidentId,
+    ),
+    pendingIdx: index('status_page_notification_events_pending_idx')
+      .on(table.createdAt)
+      .where(sql`${table.expandedAt} is null`),
+  }),
+);
+
+export const statusPageNotificationDeliveries = pgTable(
+  'status_page_notification_deliveries',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => statusPageNotificationEvents.id, {
+        onDelete: 'cascade',
+      }),
+    subscriberId: uuid('subscriber_id')
+      .notNull()
+      .references(() => statusPageSubscribers.id, { onDelete: 'cascade' }),
+    mode: varchar('mode', { length: 50 }).notNull(),
+    status: varchar('status', { length: 20 }).default('pending').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    leasedUntil: timestamp('leased_until'),
+    lastError: text('last_error'),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    recipientUnique: uniqueIndex(
+      'status_page_notification_delivery_recipient_idx',
+    ).on(table.eventId, table.subscriberId),
+    subscriberIdx: index(
+      'status_page_notification_deliveries_subscriber_idx',
+    ).on(table.subscriberId),
+    pendingIdx: index('status_page_notification_deliveries_pending_idx')
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'pending'`),
+  }),
+);

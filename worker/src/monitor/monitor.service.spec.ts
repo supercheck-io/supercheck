@@ -1373,6 +1373,34 @@ describe('MonitorService', () => {
     });
   });
 
+  it('does not consume an alert attempt when scheduled maintenance suppresses delivery', async () => {
+    const monitor = {
+      ...mockMonitor,
+      status: 'down',
+      alertConfig: { enabled: true, alertOnFailure: true, failureThreshold: 1 },
+    };
+    mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+      id: 'result-suppressed',
+      consecutiveFailureCount: 1,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 0,
+      alertsSentForRecovery: 0,
+    });
+    mockAlertService.sendNotification.mockResolvedValueOnce({
+      suppressed: true,
+    });
+    const result = await service['evaluateAndSendAlert']({
+      monitorId: monitor.id,
+      monitor: monitor as typeof schema.monitors.$inferSelect,
+      previousStatus: 'up',
+      currentStatus: 'down',
+      reason: 'Maintenance',
+      metadata: {},
+    });
+    expect(result.alertSent).toBe(false);
+    expect(mockDbService.db.update).not.toHaveBeenCalled();
+  });
+
   it('keeps aggregate failure thresholds when only one of two configured locations reports', async () => {
     const monitor = {
       ...mockMonitor,

@@ -5,6 +5,7 @@ export interface EmailOptions {
   subject: string;
   text: string;
   html: string;
+  headers?: Record<string, string>;
 }
 
 export interface MultiRecipientEmailOptions {
@@ -42,6 +43,9 @@ function buildSmtpTransporter(): Transporter | SmtpConfigError {
   }
 
   return nodemailer.createTransport({
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
     host: smtpHost,
     port: smtpPort,
     secure: smtpSecure,
@@ -54,6 +58,7 @@ function buildSmtpTransporter(): Transporter | SmtpConfigError {
     },
     connectionTimeout: 10000,
     greetingTimeout: 5000,
+    socketTimeout: 30000,
   });
 }
 
@@ -63,6 +68,7 @@ function isSmtpConfigError(value: Transporter | SmtpConfigError): value is SmtpC
 
 export class EmailService {
   private static instance: EmailService;
+  private transporter?: Transporter;
 
   public static getInstance(): EmailService {
     if (!EmailService.instance) {
@@ -77,22 +83,23 @@ export class EmailService {
   async sendEmail(
     options: EmailOptions
   ): Promise<{ success: boolean; message: string; error?: string }> {
-    const transporterOrError = buildSmtpTransporter();
+    const transporterOrError = this.transporter ?? buildSmtpTransporter();
     if (isSmtpConfigError(transporterOrError)) {
       return { success: false, message: "", error: transporterOrError.error };
     }
 
     const transporter = transporterOrError;
+    this.transporter = transporter;
     const fromEmail = process.env.SMTP_FROM_EMAIL!;
 
     try {
-      await transporter.verify();
       await transporter.sendMail({
         from: fromEmail,
         to: options.to,
         subject: options.subject,
         text: options.text,
         html: options.html,
+        headers: options.headers,
       });
       return { success: true, message: "Email sent successfully via SMTP" };
     } catch (error) {
@@ -112,7 +119,7 @@ export class EmailService {
   async sendEmailToMultiple(
     options: MultiRecipientEmailOptions
   ): Promise<MultiRecipientResult> {
-    const transporterOrError = buildSmtpTransporter();
+    const transporterOrError = this.transporter ?? buildSmtpTransporter();
     if (isSmtpConfigError(transporterOrError)) {
       return {
         sentCount: 0,
@@ -124,6 +131,7 @@ export class EmailService {
     }
 
     const transporter = transporterOrError;
+    this.transporter = transporter;
     const fromEmail = process.env.SMTP_FROM_EMAIL!;
 
     try {

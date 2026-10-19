@@ -1,3 +1,5 @@
+jest.mock("@/lib/status-page-subscription-rate-limit", () => ({ allowStatusPageSubscription: jest.fn(async () => true) }));
+jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
 jest.mock("@/utils/db", () => ({
   db: {
     query: {

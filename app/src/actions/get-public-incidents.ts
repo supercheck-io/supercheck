@@ -2,7 +2,7 @@
 
 import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or, gte, ne } from "drizzle-orm";
 import { z } from "zod";
 
 // UUID validation schema
@@ -59,7 +59,8 @@ export async function getPublicIncidents(statusPageId: string) {
     // Previously: fetched components and updates individually per incident in a loop
     // SECURITY: Only select public-safe fields
     const incidentsList = await db.query.incidents.findMany({
-      where: eq(incidents.statusPageId, statusPageId),
+      where: and(eq(incidents.statusPageId, statusPageId), or(ne(incidents.status, "resolved"), gte(incidents.createdAt, new Date(Date.now() - 90 * 86400000)))),
+      limit: 500,
       columns: {
         id: true,
         name: true,
@@ -86,12 +87,14 @@ export async function getPublicIncidents(statusPageId: string) {
               columns: {
                 id: true,
                 name: true,
+                showcase: true,
               },
             },
           },
         },
         // Eager load updates (only the latest)
         updates: {
+          where: (updates, { lte }) => lte(updates.displayAt, new Date()),
           columns: {
             id: true,
             body: true,
@@ -100,7 +103,7 @@ export async function getPublicIncidents(statusPageId: string) {
             createdAt: true,
             // EXCLUDED: incidentId (redundant), createdByUserId, deliverNotifications
           },
-          orderBy: (updates, { desc }) => [desc(updates.createdAt)],
+          orderBy: (updates, { desc }) => [desc(updates.displayAt)],
           limit: 1,
         },
       },
@@ -109,9 +112,9 @@ export async function getPublicIncidents(statusPageId: string) {
     // Transform to expected format
     const incidentsWithDetails = incidentsList.map((incident) => ({
       ...incident,
-      affectedComponentsCount: incident.affectedComponents.length,
-      affectedComponents: incident.affectedComponents.map((ic) => ic.component),
-      latestUpdate: incident.updates[0] || null,
+      affectedComponentsCount: incident.affectedComponents.filter((ic) => ic.component?.showcase).length,
+      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name }] : [])),
+      latestUpdate: incident.updates[0] ? { ...incident.updates[0], createdAt: incident.updates[0].displayAt ?? incident.updates[0].createdAt } : null,
     }));
 
     return {

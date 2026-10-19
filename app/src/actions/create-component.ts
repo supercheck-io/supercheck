@@ -1,5 +1,6 @@
 "use server";
 
+import { sreServices } from "@/db/schema";
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
@@ -39,6 +40,11 @@ const createComponentSchema = z.object({
   aggregationMethod: z
     .enum(["worst_case", "best_case", "weighted_average", "majority_vote"])
     .default("worst_case"),
+  autoCreateIncidents: z.boolean().optional(),
+  serviceId: z.string().uuid().nullable().optional(),
+  monitorWeights: z
+    .record(z.string().uuid(), z.number().int().min(1).max(100))
+    .optional(),
   failureThreshold: z.number().int().min(1).max(100).default(1),
 });
 
@@ -58,11 +64,11 @@ export async function createComponent(data: CreateComponentData) {
         {
           organizationId,
           projectId: project.id,
-        }
+        },
       );
     } catch {
       console.warn(
-        `[SECURITY] User ${userId} attempted to create component without permission`
+        `[SECURITY] User ${userId} attempted to create component without permission`,
       );
       return {
         success: false,
@@ -78,13 +84,13 @@ export async function createComponent(data: CreateComponentData) {
       where: and(
         eq(statusPages.id, validatedData.statusPageId),
         eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
+        eq(statusPages.projectId, project.id),
       ),
     });
 
     if (!statusPage) {
       console.warn(
-        `[SECURITY] User ${userId} attempted to create component for status page ${validatedData.statusPageId} without ownership`
+        `[SECURITY] User ${userId} attempted to create component for status page ${validatedData.statusPageId} without ownership`,
       );
       return {
         success: false,
@@ -100,8 +106,8 @@ export async function createComponent(data: CreateComponentData) {
         .where(
           and(
             inArray(monitors.id, validatedData.monitorIds),
-            eq(monitors.projectId, project.id)
-          )
+            eq(monitors.projectId, project.id),
+          ),
         );
 
       if (validMonitors.length !== validatedData.monitorIds.length) {
@@ -110,6 +116,21 @@ export async function createComponent(data: CreateComponentData) {
           message: "One or more monitors not found or access denied",
         };
       }
+    }
+
+    if (validatedData.serviceId) {
+      const service = await db.query.sreServices.findFirst({
+        where: and(
+          eq(sreServices.id, validatedData.serviceId),
+          eq(sreServices.organizationId, organizationId),
+          eq(sreServices.projectId, project.id),
+        ),
+      });
+      if (!service)
+        return {
+          success: false,
+          message: "Service not found or access denied",
+        };
     }
 
     // Create the component
@@ -125,6 +146,8 @@ export async function createComponent(data: CreateComponentData) {
         position: validatedData.position,
         aggregationMethod: validatedData.aggregationMethod,
         failureThreshold: validatedData.failureThreshold,
+        autoCreateIncidents: validatedData.autoCreateIncidents ?? false,
+        serviceId: validatedData.serviceId,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -136,9 +159,9 @@ export async function createComponent(data: CreateComponentData) {
         validatedData.monitorIds.map((monitorId) => ({
           componentId: component.id,
           monitorId,
-          weight: 1,
+          weight: validatedData.monitorWeights?.[monitorId] ?? 1,
           createdAt: new Date(),
-        }))
+        })),
       );
 
       // If caller didn't explicitly set status, derive from linked monitor statuses

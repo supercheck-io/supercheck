@@ -17,6 +17,8 @@ import { z } from "zod";
 
 import {
   alertHistory,
+  incidents as statusPageIncidents,
+  statusPages,
   jobs,
   monitors,
   sreAlertEvents,
@@ -192,6 +194,7 @@ export type SreIncidentChatHistory = {
 };
 
 export type SreIncidentDetail = {
+  publicIncident?: { id: string; statusPageId: string } | null;
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
     confidenceScore: string | null;
@@ -757,7 +760,8 @@ export async function getSreIncidentDetails(
         title: sreIncidents.title,
         severity: sreIncidents.severity,
         status: sreIncidents.status,
-        primaryServiceId: sreIncidents.primaryServiceId,
+        statusPageIncidentId: sreIncidents.statusPageIncidentId,
+      primaryServiceId: sreIncidents.primaryServiceId,
         primaryServiceName: sreServices.name,
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
@@ -976,10 +980,13 @@ export async function getSreIncidentDetails(
       ),
     );
     const chatHistory = chatHistories[0] ?? null;
+    const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
+
 
     return {
       success: true,
       detail: {
+        publicIncident: publicIncident ?? null,
         incident: {
           ...incident,
           evidenceCount: evidence.length,

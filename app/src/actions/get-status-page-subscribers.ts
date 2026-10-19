@@ -8,9 +8,42 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { z } from "zod";
+import { generateWebhookSecret } from "@/lib/webhook-utils";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid ID format");
+
+export async function rotateSubscriberWebhookSecret(subscriberId: string) {
+  try {
+    if (!uuidSchema.safeParse(subscriberId).success) {
+      return { success: false, message: "Invalid subscriber ID" };
+    }
+    const { organizationId, project } = await requireProjectContext();
+    await requirePermissions(
+      { status_page: ["update"] },
+      { organizationId, projectId: project.id },
+    );
+    const subscriber = await db.query.statusPageSubscribers.findFirst({
+      where: and(
+        eq(statusPageSubscribers.id, subscriberId),
+        eq(statusPageSubscribers.mode, "webhook"),
+        isNull(statusPageSubscribers.purgeAt),
+      ),
+    });
+    if (!subscriber || !(await verifyStatusPageOwnership(subscriber.statusPageId, organizationId, project.id))) {
+      return { success: false, message: "Subscriber not found or access denied" };
+    }
+    const webhookSecret = generateWebhookSecret();
+    const updated = await db.update(statusPageSubscribers).set({ webhookSecret, updatedAt: new Date() })
+      .where(and(eq(statusPageSubscribers.id, subscriberId), isNull(statusPageSubscribers.purgeAt)))
+      .returning({ id: statusPageSubscribers.id });
+    if (!updated.length) return { success: false, message: "Subscriber is no longer active" };
+    return { success: true, webhookSecret, message: "Signing secret rotated" };
+  } catch (error) {
+    console.error("Error rotating subscriber signing secret:", error);
+    return { success: false, message: "Failed to rotate signing secret" };
+  }
+}
 
 /**
  * Helper function to verify status page ownership
@@ -41,6 +74,19 @@ async function verifyStatusPageOwnership(
     },
   });
   return statusPage ?? null;
+}
+
+/**
+ * Slack incoming-webhook URLs are bearer credentials owned by the subscriber,
+ * so the dashboard only ever sees a masked form (host + last 4 characters).
+ */
+function maskSlackEndpoint(endpoint: string | null): string | null {
+  if (!endpoint) return endpoint;
+  try {
+    return `${new URL(endpoint).host}/…${endpoint.slice(-4)}`;
+  } catch {
+    return "…" + endpoint.slice(-4);
+  }
 }
 
 /**
@@ -86,6 +132,17 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         eq(statusPageSubscribers.statusPageId, statusPageId),
         isNull(statusPageSubscribers.purgeAt) // Only show active subscribers
       ),
+      // SECURITY: explicit allow-list; never serialize webhookSecret or
+      // verification/unsubscribe tokens to the client.
+      columns: {
+        id: true,
+        email: true,
+        endpoint: true,
+        mode: true,
+        verifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: (subscribers, { desc }) => [desc(subscribers.createdAt)],
     });
 
@@ -95,7 +152,9 @@ export async function getStatusPageSubscribers(statusPageId: string) {
 
     return {
       success: true,
-      subscribers,
+      subscribers: subscribers.map((s) =>
+        s.mode === "slack" ? { ...s, endpoint: maskSlackEndpoint(s.endpoint) } : s
+      ),
       stats: {
         total: subscribers.length,
         verified: verifiedCount,

@@ -128,7 +128,7 @@ const settingsSchema = z.object({
     .max(255)
     .regex(
       /^$|^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
-      "Invalid domain format"
+      "Invalid domain format",
     )
     .optional()
     .or(z.literal("")),
@@ -157,7 +157,7 @@ const normalizeHostname = (value: string): string => {
 // feature-flag helpers that are unavailable in the browser runtime.
 const isReservedCustomDomain = (
   customDomain: string,
-  statusPageDomain: string
+  statusPageDomain: string,
 ): boolean => {
   const hostname = normalizeHostname(customDomain);
   const baseDomain = normalizeHostname(statusPageDomain);
@@ -241,14 +241,17 @@ export function SettingsTab({
   });
 
   const customDomainValue = watch("customDomain");
-  const domainOwnership = getStatusPageDomainOwnershipRecord(customDomainValue || "", statusPage.id);
+  const domainOwnership = getStatusPageDomainOwnershipRecord(
+    customDomainValue || CUSTOM_DOMAIN_EXAMPLE_HOSTNAME,
+    statusPage.id,
+  );
   const effectiveStatusPageDomain = normalizeHostname(
-    statusPageDomain || appConfigStatusPageDomain || "supercheck.io"
+    statusPageDomain || appConfigStatusPageDomain || "supercheck.io",
   );
   const effectiveStatusPageCnameTarget = normalizeHostname(
     statusPageCnameTarget ||
       appConfigStatusPageCnameTarget ||
-      effectiveStatusPageDomain
+      effectiveStatusPageDomain,
   );
   const customDomainConfigMessage =
     isSelfHosted && !isPublicHostnameCandidate(effectiveStatusPageCnameTarget)
@@ -289,12 +292,10 @@ export function SettingsTab({
         const normalizedLanguage = data.language || "en";
         const normalizedHeadline = submittedHeadline || null;
         const normalizedDescription = submittedDescription || null;
-        const normalizedSupportUrl = normalizeStatusPageSupportContact(
-          submittedSupportUrl
-        );
-        const supportUrlInputValue = getStatusPageSupportContactInputValue(
-          normalizedSupportUrl
-        );
+        const normalizedSupportUrl =
+          normalizeStatusPageSupportContact(submittedSupportUrl);
+        const supportUrlInputValue =
+          getStatusPageSupportContactInputValue(normalizedSupportUrl);
         const normalizedCustomDomain = submittedCustomDomain || null;
 
         queryClient.setQueryData<StatusPageDetailResponse>(
@@ -318,7 +319,7 @@ export function SettingsTab({
                 ...(domainChanged ? { customDomainVerified: false } : {}),
               },
             };
-          }
+          },
         );
 
         await queryClient.invalidateQueries({
@@ -413,14 +414,14 @@ export function SettingsTab({
         {
           method: "POST",
           body: formData,
-        }
+        },
       );
 
       const result = await response.json();
 
       if (result.success) {
         toast.success(
-          `${type === "logo" ? "Logo" : "Favicon"} uploaded successfully`
+          `${type === "logo" ? "Logo" : "Favicon"} uploaded successfully`,
         );
 
         if (type === "logo") {
@@ -443,7 +444,7 @@ export function SettingsTab({
 
   const handleFileChange = (
     event: React.ChangeEvent<HTMLInputElement>,
-    type: "logo" | "favicon"
+    type: "logo" | "favicon",
   ) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -464,7 +465,7 @@ export function SettingsTab({
       ];
       if (!allowedTypes.includes(file.type)) {
         toast.error(
-          "Please upload a valid image file (PNG, JPG, GIF, SVG, or WebP)"
+          "Please upload a valid image file (PNG, JPG, GIF, SVG, or WebP)",
         );
         return;
       }
@@ -595,7 +596,8 @@ export function SettingsTab({
                   </p>
                 )}
                 <p className="text-sm text-muted-foreground">
-                  Add an email address or support website. Email addresses open the visitor&apos;s default mail app.
+                  Add an email address or support website. Email addresses open
+                  the visitor&apos;s default mail app.
                 </p>
               </div>
             </div>
@@ -628,8 +630,8 @@ export function SettingsTab({
                     <p className="font-medium text-sm">Custom domain setup</p>
                     <p className="text-muted-foreground">
                       Serve your status page from your own hostname (e.g.{" "}
-                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>) by creating a
-                      CNAME record that points to the target shown in the DNS
+                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>) by creating
+                      a CNAME record that points to the target shown in the DNS
                       Configuration section below. Enter the hostname, save, add
                       the CNAME, then click <strong>Verify DNS</strong>.
                     </p>
@@ -639,8 +641,8 @@ export function SettingsTab({
                       </p>
                       <p className="text-muted-foreground">
                         Reserved namespace:{" "}
-                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code>{" "}
-                        &middot; Custom hostname:{" "}
+                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code> &middot;
+                        Custom hostname:{" "}
                         <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>
                       </p>
                       {isSelfHosted && (
@@ -649,34 +651,59 @@ export function SettingsTab({
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="border-b bg-muted/50">
-                                  <th className="text-left px-3 py-1.5 font-medium">Zone</th>
-                                  <th className="text-left px-3 py-1.5 font-medium">Type</th>
-                                  <th className="text-left px-3 py-1.5 font-medium">Name</th>
-                                  <th className="text-left px-3 py-1.5 font-medium">Value</th>
-                                  <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
+                                  <th className="text-left px-3 py-1.5 font-medium">
+                                    Zone
+                                  </th>
+                                  <th className="text-left px-3 py-1.5 font-medium">
+                                    Type
+                                  </th>
+                                  <th className="text-left px-3 py-1.5 font-medium">
+                                    Name
+                                  </th>
+                                  <th className="text-left px-3 py-1.5 font-medium">
+                                    Value
+                                  </th>
+                                  <th className="text-left px-3 py-1.5 font-medium">
+                                    Proxy
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
                                 <tr className="border-b">
-                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_DOMAIN_EXAMPLE}</td>
-                                  <td className="px-3 py-1.5 font-mono">A / AAAA</td>
-                                  <td className="px-3 py-1.5 font-mono">cname</td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    {STATUS_PAGE_DOMAIN_EXAMPLE}
+                                  </td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    A / AAAA
+                                  </td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    cname
+                                  </td>
                                   <td className="px-3 py-1.5">app IP</td>
                                   <td className="px-3 py-1.5">DNS only</td>
                                 </tr>
                                 <tr>
-                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_ZONE}</td>
-                                  <td className="px-3 py-1.5 font-mono">CNAME</td>
-                                  <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
-                                  <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    {CUSTOM_DOMAIN_EXAMPLE_ZONE}
+                                  </td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    CNAME
+                                  </td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    {CUSTOM_DOMAIN_EXAMPLE_LABEL}
+                                  </td>
+                                  <td className="px-3 py-1.5 font-mono">
+                                    {STATUS_PAGE_CNAME_TARGET_EXAMPLE}
+                                  </td>
                                   <td className="px-3 py-1.5">DNS only</td>
                                 </tr>
                               </tbody>
                             </table>
                           </div>
                           <p className="text-muted-foreground">
-                            Skip the target A/AAAA row if a wildcard already covers it.
-                            Use <strong>DNS only</strong> during verification.
+                            Skip the target A/AAAA row if a wildcard already
+                            covers it. Use <strong>DNS only</strong> during
+                            verification.
                           </p>
                         </>
                       )}
@@ -685,17 +712,29 @@ export function SettingsTab({
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="border-b bg-muted/50">
-                                <th className="text-left px-3 py-1.5 font-medium">Type</th>
-                                <th className="text-left px-3 py-1.5 font-medium">Name</th>
-                                <th className="text-left px-3 py-1.5 font-medium">Value</th>
-                                <th className="text-left px-3 py-1.5 font-medium">Proxy</th>
+                                <th className="text-left px-3 py-1.5 font-medium">
+                                  Type
+                                </th>
+                                <th className="text-left px-3 py-1.5 font-medium">
+                                  Name
+                                </th>
+                                <th className="text-left px-3 py-1.5 font-medium">
+                                  Value
+                                </th>
+                                <th className="text-left px-3 py-1.5 font-medium">
+                                  Proxy
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
                               <tr>
                                 <td className="px-3 py-1.5 font-mono">CNAME</td>
-                                <td className="px-3 py-1.5 font-mono">{CUSTOM_DOMAIN_EXAMPLE_LABEL}</td>
-                                <td className="px-3 py-1.5 font-mono">{STATUS_PAGE_CNAME_TARGET_EXAMPLE}</td>
+                                <td className="px-3 py-1.5 font-mono">
+                                  {CUSTOM_DOMAIN_EXAMPLE_LABEL}
+                                </td>
+                                <td className="px-3 py-1.5 font-mono">
+                                  {STATUS_PAGE_CNAME_TARGET_EXAMPLE}
+                                </td>
                                 <td className="px-3 py-1.5">DNS only</td>
                               </tr>
                             </tbody>
@@ -703,15 +742,15 @@ export function SettingsTab({
                         </div>
                       )}
                       <p className="text-muted-foreground">
-                        The custom hostname can live in a different DNS zone than
-                        the reserved namespace. Always use the exact target shown
-                        in Settings.
+                        The custom hostname can live in a different DNS zone
+                        than the reserved namespace. Always use the exact target
+                        shown in Settings.
                       </p>
                     </div>
                     {isSelfHosted && (
                       <p className="text-muted-foreground">
-                        Routing is automatic after verification. Origin TLS still
-                        needs certificates for the custom hostname.
+                        Routing is automatic after verification. Origin TLS
+                        still needs certificates for the custom hostname.
                       </p>
                     )}
                   </PopoverContent>
@@ -775,8 +814,8 @@ export function SettingsTab({
 
               {hasReservedCustomDomain && (
                 <p className="text-sm text-amber-600">
-                  This domain is reserved for default status page routing.
-                  Use a different hostname and point its CNAME to{" "}
+                  This domain is reserved for default status page routing. Use a
+                  different hostname and point its CNAME to{" "}
                   <code className="bg-muted px-1 py-0.5 rounded text-xs">
                     {effectiveStatusPageCnameTarget}
                   </code>
@@ -792,11 +831,22 @@ export function SettingsTab({
                   </div>
                 )}
 
+              {statusPage.customDomain && !statusPage.customDomainVerified && (
+                <p
+                  role="status"
+                  className="text-sm text-amber-700 dark:text-amber-400"
+                >
+                  Pending verification — add the DNS records below, then select
+                  Verify DNS.
+                </p>
+              )}
 
               <div className="space-y-3 mt-6 text-sm text-muted-foreground bg-muted/30 rounded-md p-3 border">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-foreground/80">
-                    {customDomainValue ? "DNS Configuration" : "How to set up a custom domain"}
+                    {customDomainValue
+                      ? "DNS Configuration"
+                      : "How to set up a custom domain"}
                   </span>
                 </div>
 
@@ -807,55 +857,82 @@ export function SettingsTab({
                       resolves a public hostname for status-page routing.
                     </p>
                     <p>
-                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS
-                      hostname first. In the Docker Compose secure and external
-                      examples, the target shown here is derived automatically
-                      from it, usually as{" "}
-                      <code>cname.STATUS_PAGE_DOMAIN</code>. Setting{" "}
+                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS hostname
+                      first. In the Docker Compose secure and external examples,
+                      the target shown here is derived automatically from it,
+                      usually as <code>cname.STATUS_PAGE_DOMAIN</code>. Setting{" "}
                       <code>APP_DOMAIN</code> usually handles the reserved
                       namespace automatically in those templates.
                     </p>
                   </div>
-                ) : customDomainValue ? (
+                ) : (
                   <div className="space-y-3 pl-5.5">
                     {isSelfHosted && (
                       <p>
                         {getStatusPageCustomDomainTargetResolutionHint(
-                          effectiveStatusPageCnameTarget
+                          effectiveStatusPageCnameTarget,
                         )}{" "}
                         If that hostname is already covered by your existing
                         A/AAAA or wildcard DNS, you can reuse it.
                       </p>
                     )}
-                    <p>Create these DNS records to route traffic and prove ownership:</p>
+                    <p>
+                      {customDomainValue
+                        ? "Create these DNS records to route traffic and prove ownership:"
+                        : "Example DNS records — enter and save your hostname above to use your actual records:"}
+                    </p>
                     <div className="rounded-md border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b bg-muted/50">
-                            <th className="text-left px-3 py-1.5 font-medium">Type</th>
-                            <th className="text-left px-3 py-1.5 font-medium">Hostname</th>
-                            <th className="text-left px-3 py-1.5 font-medium">Target / Points to</th>
+                            <th className="text-left px-3 py-1.5 font-medium">
+                              Type
+                            </th>
+                            <th className="text-left px-3 py-1.5 font-medium">
+                              Hostname
+                            </th>
+                            <th className="text-left px-3 py-1.5 font-medium">
+                              Target / Points to
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
                             <td className="px-3 py-1.5 font-mono">CNAME</td>
-                            <td className="px-3 py-1.5 font-mono">{customDomainValue}</td>
-                            <td className="px-3 py-1.5 font-mono">{effectiveStatusPageCnameTarget}</td>
+                            <td className="px-3 py-1.5 font-mono">
+                              {customDomainValue ||
+                                CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
+                            </td>
+                            <td className="px-3 py-1.5 font-mono">
+                              {effectiveStatusPageCnameTarget}
+                            </td>
                           </tr>
                           <tr>
                             <td className="px-3 py-1.5 font-mono">TXT</td>
-                            <td className="px-3 py-1.5 font-mono break-all">{domainOwnership.name}</td>
-                            <td className="px-3 py-1.5 font-mono break-all">{domainOwnership.value}</td>
+                            <td className="px-3 py-1.5 font-mono break-all">
+                              {domainOwnership.name}
+                            </td>
+                            <td className="px-3 py-1.5 font-mono break-all">
+                              {domainOwnership.value}
+                            </td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
                     <ol className="list-decimal list-inside space-y-1">
-                      <li>Add the CNAME and TXT records above. Keep the TXT record for future verification.</li>
+                      <li>
+                        Add the CNAME and TXT records above. Keep the TXT record
+                        for future verification.
+                      </li>
                       <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
-                      <li>If you use Cloudflare, keep the record on DNS only during verification.</li>
-                      <li>Wait for DNS propagation, then click <strong>Verify DNS</strong>.</li>
+                      <li>
+                        If you use Cloudflare, keep the record on DNS only
+                        during verification.
+                      </li>
+                      <li>
+                        Wait for DNS propagation, then click{" "}
+                        <strong>Verify DNS</strong>.
+                      </li>
                       <li>Publish the status page before testing the URL.</li>
                     </ol>
                     <p>
@@ -863,17 +940,6 @@ export function SettingsTab({
                       of its subdomains as the custom domain value.
                     </p>
                   </div>
-                ) : (
-                  <ol className="list-decimal list-inside space-y-1 pl-5.5">
-                    <li>
-                      Enter your custom domain above (for example,{" "}
-                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>)
-                    </li>
-                    <li>Save your changes</li>
-                    <li>Review the DNS records shown here</li>
-                    <li>Wait for DNS propagation, then click <strong>Verify DNS</strong></li>
-                    <li>Publish the status page before testing the URL</li>
-                  </ol>
                 )}
               </div>
 
@@ -1391,8 +1457,6 @@ export function SettingsTab({
           </div>
 
           <Separator />
-
-
         </CardContent>
       </Card>
     </div>

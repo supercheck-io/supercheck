@@ -69,7 +69,7 @@ const LinkedMonitorsCell = ({
   monitors,
   legacyMonitor,
 }: {
-  monitors: { id: string; name: string; type: string; status: string }[];
+  monitors: { id: string; name: string; type: string; status: string; weight?: number }[];
   legacyMonitor: { id: string; name: string; type: string; status: string } | null;
 }) => {
   const [isOpen, setIsOpen] = useState(false);

@@ -191,6 +191,7 @@ export function SreIncidentDetailView({
             Incidents
           </Link>
         </Button>
+        {detail.publicIncident && <Button asChild variant="outline" size="sm"><Link href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}>View public status update</Link></Button>}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">

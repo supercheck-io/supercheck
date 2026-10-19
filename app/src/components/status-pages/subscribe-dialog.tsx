@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,9 +32,20 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { getTranslations, type TranslationKeys } from "@/lib/status-page-translations";
+import {
+  getTranslations,
+  type TranslationKeys,
+} from "@/lib/status-page-translations";
 
 type SubscribeDialogProps = {
+  components?: Array<{ id: string; name: string }>;
+  incidents?: Array<{ id: string; name: string }>;
+  allowIncidentSubscribers?: boolean;
+  allowPageSubscribers?: boolean;
+  allowEmailSubscribers?: boolean;
+  allowWebhookSubscribers?: boolean;
+  allowSlackSubscribers?: boolean;
+  allowRssFeed?: boolean;
   statusPageId: string;
   statusPageName: string;
   language?: string;
@@ -54,7 +66,10 @@ const createWebhookSchema = (t: TranslationKeys) =>
       .string()
       .url(t.validationInvalidUrl)
       .refine((url) => url.startsWith("https://"), t.validationWebhookHttps),
-    webhookDescription: z.string().max(500, t.validationDescriptionTooLong).optional(),
+    webhookDescription: z
+      .string()
+      .max(500, t.validationDescriptionTooLong)
+      .optional(),
   });
 
 const createSlackSchema = (t: TranslationKeys) =>
@@ -62,30 +77,49 @@ const createSlackSchema = (t: TranslationKeys) =>
     slackWebhookUrl: z
       .string()
       .url(t.validationInvalidUrl)
-      .refine(
-        (url) => {
-          try {
-            const parsed = new URL(url);
-            return parsed.hostname === 'hooks.slack.com';
-          } catch {
-            return false;
-          }
-        },
-        t.validationInvalidSlackUrl
-      ),
+      .refine((url) => {
+        try {
+          const parsed = new URL(url);
+          return parsed.hostname === "hooks.slack.com";
+        } catch {
+          return false;
+        }
+      }, t.validationInvalidSlackUrl),
   });
 
 export function SubscribeDialog({
+  components = [],
+  incidents = [],
+  allowIncidentSubscribers = false,
+  allowPageSubscribers = true,
+  allowEmailSubscribers = true,
+  allowWebhookSubscribers = true,
+  allowSlackSubscribers = true,
+  allowRssFeed = true,
   statusPageId,
   statusPageName,
   language = "en",
   trigger,
 }: SubscribeDialogProps) {
+  const [scoped, setScoped] = useState(false);
+  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
+  const [selectedIncidentIds, setSelectedIncidentIds] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<SubscriptionMode>("email");
-  const [copiedToClipboard, setCopiedToClipboard] = useState<CopyTarget | null>(null);
+  const [mode, setMode] = useState<SubscriptionMode>(
+    allowPageSubscribers && allowEmailSubscribers
+      ? "email"
+      : allowPageSubscribers && allowSlackSubscribers
+        ? "slack"
+        : allowPageSubscribers && allowWebhookSubscribers
+          ? "webhook"
+          : "rss",
+  );
+  const [copiedToClipboard, setCopiedToClipboard] = useState<CopyTarget | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
 
   const t = getTranslations(language);
 
@@ -114,23 +148,32 @@ export function SubscribeDialog({
     slackForm.reset();
     setCopiedToClipboard(null);
     setIsSuccess(false);
+    setScoped(false); setSelectedComponentIds([]); setSelectedIncidentIds([]);
+    setWebhookSecret(null);
   };
 
   const getFailureDescription = (
     message: string | undefined,
-    fallbackDescription: string
+    fallbackDescription: string,
   ) => {
     const normalizedMessage = message?.trim();
     return normalizedMessage ? normalizedMessage : fallbackDescription;
   };
 
-  const handleEmailSubscribe = async (data: z.infer<ReturnType<typeof createEmailSchema>>) => {
+  const handleEmailSubscribe = async (
+    data: z.infer<ReturnType<typeof createEmailSchema>>,
+  ) => {
+    if (!allowPageSubscribers || !allowEmailSubscribers) return;
+    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
         statusPageId,
         email: data.email,
-        subscribeToAllComponents: true,
+        subscribeToAllComponents: !scoped,
+        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
+        selectedComponentIds: scoped ? selectedComponentIds : [],
+        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
         subscriptionMode: "email",
       });
 
@@ -147,7 +190,7 @@ export function SubscribeDialog({
         toast.error(t.toastSubscriptionFailed, {
           description: getFailureDescription(
             result.message,
-            t.toastSubscriptionFailedDescription
+            t.toastSubscriptionFailedDescription,
           ),
         });
       }
@@ -159,8 +202,10 @@ export function SubscribeDialog({
   };
 
   const handleWebhookSubscribe = async (
-    data: z.infer<ReturnType<typeof createWebhookSchema>>
+    data: z.infer<ReturnType<typeof createWebhookSchema>>,
   ) => {
+    if (!allowPageSubscribers || !allowWebhookSubscribers) return;
+    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
@@ -168,23 +213,23 @@ export function SubscribeDialog({
         endpoint: data.webhookUrl,
         subscriptionMode: "webhook",
         description: data.webhookDescription,
-        subscribeToAllComponents: true,
+        subscribeToAllComponents: !scoped,
+        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
+        selectedComponentIds: scoped ? selectedComponentIds : [],
+        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
       });
 
       if (result.success) {
+        setWebhookSecret(result.webhookSecret ?? null);
         setIsSuccess(true);
         toast.success(t.toastWebhookSuccess, {
           description: t.toastWebhookSuccessDescription,
         });
-        setTimeout(() => {
-          setOpen(false);
-          resetForm();
-        }, 3000);
       } else {
         toast.error(t.toastWebhookFailed, {
           description: getFailureDescription(
             result.message,
-            t.toastWebhookFailedDescription
+            t.toastWebhookFailedDescription,
           ),
         });
       }
@@ -195,14 +240,21 @@ export function SubscribeDialog({
     }
   };
 
-  const handleSlackSubscribe = async (data: z.infer<ReturnType<typeof createSlackSchema>>) => {
+  const handleSlackSubscribe = async (
+    data: z.infer<ReturnType<typeof createSlackSchema>>,
+  ) => {
+    if (!allowPageSubscribers || !allowSlackSubscribers) return;
+    if (scoped && selectedComponentIds.length === 0 && selectedIncidentIds.length === 0) { toast.error(t.selectSubscriptionTarget); return; }
     setIsSubmitting(true);
     try {
       const result = await subscribeToStatusPage({
         statusPageId,
         endpoint: data.slackWebhookUrl,
         subscriptionMode: "slack",
-        subscribeToAllComponents: true,
+        subscribeToAllComponents: !scoped,
+        subscribeToAllIncidents: allowIncidentSubscribers && !scoped,
+        selectedComponentIds: scoped ? selectedComponentIds : [],
+        selectedIncidentIds: scoped && allowIncidentSubscribers ? selectedIncidentIds : [],
       });
 
       if (result.success) {
@@ -218,7 +270,7 @@ export function SubscribeDialog({
         toast.error(t.toastSlackFailed, {
           description: getFailureDescription(
             result.message,
-            t.toastSlackFailedDescription
+            t.toastSlackFailedDescription,
           ),
         });
       }
@@ -232,7 +284,7 @@ export function SubscribeDialog({
   const handleCopyToClipboard = async (
     text: string,
     target: CopyTarget,
-    successMessage?: string
+    successMessage?: string,
   ) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -251,8 +303,25 @@ export function SubscribeDialog({
   const tabTriggerClassName =
     "h-10 min-w-0 justify-center gap-1.5 px-2 text-xs sm:text-sm data-[state=inactive]:text-foreground/80 data-[state=inactive]:opacity-100";
 
+  if (
+    (!allowPageSubscribers ||
+      !(
+        allowEmailSubscribers ||
+        allowWebhookSubscribers ||
+        allowSlackSubscribers
+      )) &&
+    !allowRssFeed
+  )
+    return null;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        if (!value) resetForm();
+      }}
+    >
       <DialogTrigger asChild>
         {trigger || <Button>{t.subscribeToUpdates}</Button>}
       </DialogTrigger>
@@ -276,54 +345,101 @@ export function SubscribeDialog({
                   ? t.slackChannelReceiveNotifications
                   : t.webhookReceiveNotifications}
             </p>
+            {webhookSecret && (
+              <div className="space-y-2 text-start">
+                <Label htmlFor="webhook-signing-secret">
+                  {t.webhookSigningSecret}
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {t.webhookSecretDescription}
+                </p>
+                <Input
+                  id="webhook-signing-secret"
+                  value={webhookSecret}
+                  readOnly
+                  className="font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(webhookSecret);
+                      toast.success(t.secretCopied);
+                    } catch {
+                      toast.error(t.toastFailedToCopy);
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4 me-2" />
+                  {t.copySecret}
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
+            {mode !== "rss" && mode !== "ical" && (components.length > 0 || (allowIncidentSubscribers && incidents.length > 0)) && <fieldset className="space-y-2 rounded-md border p-3">
+              <legend className="px-1 text-sm font-medium">{t.subscribeToUpdates}</legend>
+              <div className="flex items-center gap-2"><Checkbox id="subscription-scope" checked={scoped} onCheckedChange={(value) => setScoped(value === true)} /><Label htmlFor="subscription-scope">{t.chooseSubscriptions}</Label></div>
+              {!scoped && <p className="text-sm text-muted-foreground">{t.allPageUpdates}</p>}
+              {scoped && <div className="max-h-40 space-y-2 overflow-y-auto">{components.map((component) => <div key={component.id} className="flex items-center gap-2"><Checkbox id={`subscribe-component-${component.id}`} checked={selectedComponentIds.includes(component.id)} onCheckedChange={(value) => setSelectedComponentIds((ids) => value ? [...ids, component.id] : ids.filter((id) => id !== component.id))} /><Label htmlFor={`subscribe-component-${component.id}`}>{component.name}</Label></div>)}{allowIncidentSubscribers && incidents.map((incident) => <div key={incident.id} className="flex items-center gap-2"><Checkbox id={`subscribe-incident-${incident.id}`} checked={selectedIncidentIds.includes(incident.id)} onCheckedChange={(value) => setSelectedIncidentIds((ids) => value ? [...ids, incident.id] : ids.filter((id) => id !== incident.id))} /><Label htmlFor={`subscribe-incident-${incident.id}`}>{incident.name}</Label></div>)}</div>}
+            </fieldset>}
             <Tabs
               value={mode}
               onValueChange={(v) => setMode(v as SubscriptionMode)}
             >
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-muted/80 p-1 text-foreground sm:grid-cols-5">
-                <TabsTrigger
-                  value="email"
-                  className={tabTriggerClassName}
-                  title={t.email}
-                >
-                  <Mail className={tabIconClassName} />
-                  <span className="truncate">{t.email}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="slack"
-                  className={tabTriggerClassName}
-                  title={t.slack}
-                >
-                  <Slack className={tabIconClassName} />
-                  <span className="truncate">{t.slack}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="webhook"
-                  className={tabTriggerClassName}
-                  title={t.webhook}
-                >
-                  <Webhook className={tabIconClassName} />
-                  <span className="truncate">{t.webhook}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="rss"
-                  className={tabTriggerClassName}
-                  title={t.rssFeed}
-                >
-                  <Rss className={tabIconClassName} />
-                  <span className="truncate">{t.rssFeed}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="ical"
-                  className={tabTriggerClassName}
-                  title={t.calendarFeed}
-                >
-                  <Calendar className={tabIconClassName} />
-                  <span className="truncate">{t.calendarFeed}</span>
-                </TabsTrigger>
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-muted/80 p-1 text-foreground sm:flex sm:flex-wrap">
+                {allowPageSubscribers && allowEmailSubscribers && (
+                  <TabsTrigger
+                    value="email"
+                    className={tabTriggerClassName}
+                    title={t.email}
+                  >
+                    <Mail className={tabIconClassName} />
+                    <span className="truncate">{t.email}</span>
+                  </TabsTrigger>
+                )}
+                {allowPageSubscribers && allowSlackSubscribers && (
+                  <TabsTrigger
+                    value="slack"
+                    className={tabTriggerClassName}
+                    title={t.slack}
+                  >
+                    <Slack className={tabIconClassName} />
+                    <span className="truncate">{t.slack}</span>
+                  </TabsTrigger>
+                )}
+                {allowPageSubscribers && allowWebhookSubscribers && (
+                  <TabsTrigger
+                    value="webhook"
+                    className={tabTriggerClassName}
+                    title={t.webhook}
+                  >
+                    <Webhook className={tabIconClassName} />
+                    <span className="truncate">{t.webhook}</span>
+                  </TabsTrigger>
+                )}
+                {allowRssFeed && (
+                  <TabsTrigger
+                    value="rss"
+                    className={tabTriggerClassName}
+                    title={t.rssFeed}
+                  >
+                    <Rss className={tabIconClassName} />
+                    <span className="truncate">{t.rssFeed}</span>
+                  </TabsTrigger>
+                )}
+                {allowRssFeed && (
+                  <TabsTrigger
+                    value="ical"
+                    className={tabTriggerClassName}
+                    title={t.calendarFeed}
+                  >
+                    <Calendar className={tabIconClassName} />
+                    <span className="truncate">{t.calendarFeed}</span>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               {/* Email Tab */}
@@ -563,7 +679,9 @@ export function SubscribeDialog({
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">{t.rssFeedUrl}</Label>
+                    <Label className="text-sm font-medium">
+                      {t.rssFeedUrl}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         value={rssUrl}
@@ -634,7 +752,9 @@ export function SubscribeDialog({
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">{t.calendarFeedUrl}</Label>
+                    <Label className="text-sm font-medium">
+                      {t.calendarFeedUrl}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         value={icalUrl}
@@ -649,7 +769,7 @@ export function SubscribeDialog({
                           handleCopyToClipboard(
                             icalUrl,
                             "ical",
-                            t.toastCalendarCopied
+                            t.toastCalendarCopied,
                           )
                         }
                         className="h-10 w-10 flex-shrink-0"

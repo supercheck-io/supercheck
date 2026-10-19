@@ -4,20 +4,17 @@ import { db } from "@/utils/db";
 import {
   incidents,
   incidentUpdates,
+  statusPageNotificationEvents,
   statusPageComponents,
   incidentComponents,
   statusPages,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { sendIncidentNotifications } from "@/lib/incident-notifications/send-incident-notifications";
-import { sendWebhookNotifications } from "@/lib/incident-notifications/send-webhook-notifications";
-import { sendSlackNotifications } from "@/lib/incident-notifications/send-slack-notifications";
 
 const updateIncidentStatusSchema = z.object({
   incidentId: z.string().uuid(),
@@ -55,11 +52,11 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         {
           organizationId,
           projectId: project.id,
-        }
+        },
       );
     } catch {
       console.warn(
-        `[SECURITY] User ${userId} attempted to update incident without permission`
+        `[SECURITY] User ${userId} attempted to update incident without permission`,
       );
       return {
         success: false,
@@ -75,13 +72,13 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
       where: and(
         eq(statusPages.id, validatedData.statusPageId),
         eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
+        eq(statusPages.projectId, project.id),
       ),
     });
 
     if (!statusPage) {
       console.warn(
-        `[SECURITY] User ${userId} attempted to update incident for status page ${validatedData.statusPageId} without ownership`
+        `[SECURITY] User ${userId} attempted to update incident for status page ${validatedData.statusPageId} without ownership`,
       );
       return {
         success: false,
@@ -93,7 +90,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
     const existingIncident = await db.query.incidents.findFirst({
       where: and(
         eq(incidents.id, validatedData.incidentId),
-        eq(incidents.statusPageId, validatedData.statusPageId)
+        eq(incidents.statusPageId, validatedData.statusPageId),
       ),
     });
 
@@ -111,9 +108,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         .set({
           status: validatedData.status,
           updatedAt: new Date(),
-          ...(validatedData.status === "resolved"
-            ? { resolvedAt: new Date() }
-            : {}),
+          resolvedAt: validatedData.status === "resolved" ? new Date() : null,
           ...(validatedData.status === "monitoring"
             ? { monitoringAt: new Date() }
             : {}),
@@ -121,22 +116,29 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         .where(
           and(
             eq(incidents.id, validatedData.incidentId),
-            eq(incidents.statusPageId, validatedData.statusPageId)
-          )
+            eq(incidents.statusPageId, validatedData.statusPageId),
+          ),
         )
         .returning();
 
       // Create incident update
-      await tx.insert(incidentUpdates).values({
-        incidentId: validatedData.incidentId,
-        createdByUserId: userId,
-        body: validatedData.body,
-        status: validatedData.status,
-        deliverNotifications: validatedData.deliverNotifications,
-        displayAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const [update] = await tx
+        .insert(incidentUpdates)
+        .values({
+          incidentId: validatedData.incidentId,
+          createdByUserId: userId,
+          body: validatedData.body,
+          status: validatedData.status,
+          deliverNotifications: validatedData.deliverNotifications,
+          displayAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      if (validatedData.deliverNotifications) {
+        await tx.insert(statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id });
+      }
 
       // If resolved and restore is true, restore affected components to operational
       // SECURITY: Only restore if no other active (non-resolved) incidents affect the same component
@@ -164,7 +166,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
             (aic) =>
               aic.incident &&
               aic.incident.id !== validatedData.incidentId &&
-              aic.incident.status !== "resolved"
+              aic.incident.status !== "resolved",
           );
 
           if (!hasOtherActiveIncidents) {
@@ -179,7 +181,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         }
       }
 
-      return incident;
+      return { incident, update };
     });
 
     // Log the audit event
@@ -187,10 +189,10 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
       userId,
       action: "incident_updated",
       resource: "incident",
-      resourceId: result.id,
+      resourceId: result.incident.id,
       metadata: {
         organizationId,
-        incidentName: result.name,
+        incidentName: result.incident.name,
         newStatus: validatedData.status,
         statusPageId: validatedData.statusPageId,
         projectId: project.id,
@@ -199,22 +201,6 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
       success: true,
     });
 
-    // Send notifications to subscribers using after() to ensure
-    // background work completes even in serverless/short-lived runtimes
-    if (validatedData.deliverNotifications) {
-      after(async () => {
-        try {
-          await Promise.allSettled([
-            sendIncidentNotifications(result.id, validatedData.statusPageId),
-            sendWebhookNotifications(result.id, validatedData.statusPageId),
-            sendSlackNotifications(result.id, validatedData.statusPageId),
-          ]);
-        } catch (error) {
-          console.error("Failed to send incident notifications:", error);
-        }
-      });
-    }
-
     // Revalidate the status page
     revalidatePath(`/status-pages/${validatedData.statusPageId}`);
     revalidatePath(`/status-pages/${validatedData.statusPageId}/public`);
@@ -222,7 +208,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
     return {
       success: true,
       message: "Incident updated successfully",
-      incident: result,
+      incident: result.incident,
     };
   } catch (error) {
     console.error("Error updating incident status:", error);

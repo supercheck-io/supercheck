@@ -16,6 +16,7 @@ import { validateWebhookUrlString } from "@/lib/url-validator";
 export type WebhookEvent = {
   type: "incident.created" | "incident.updated" | "incident.resolved";
   timestamp: string;
+  incident_update_id?: string;
   statusPageId: string;
   incident: {
     id: string;
@@ -57,12 +58,9 @@ const WEBHOOK_CONFIG = {
  */
 export function generateWebhookSignature(
   payload: string,
-  secret: string
+  secret: string,
 ): string {
-  return crypto
-    .createHmac("sha256", secret)
-    .update(payload)
-    .digest("hex");
+  return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 /**
@@ -71,13 +69,14 @@ export function generateWebhookSignature(
 export function verifyWebhookSignature(
   payload: string,
   signature: string,
-  secret: string
+  secret: string,
 ): boolean {
   const expectedSignature = generateWebhookSignature(payload, secret);
   // Use timing-safe comparison to prevent timing attacks
+  if (!/^[a-f0-9]{64}$/i.test(signature)) return false;
   return crypto.timingSafeEqual(
     Buffer.from(signature),
-    Buffer.from(expectedSignature)
+    Buffer.from(expectedSignature),
   );
 }
 
@@ -92,7 +91,7 @@ export function verifyWebhookSignature(
 export async function deliverWebhook(
   endpoint: string,
   event: WebhookEvent,
-  secret: string
+  secret: string,
 ): Promise<WebhookDeliveryResult> {
   // Validate endpoint URL
   const endpointValidation = validateWebhookUrlString(endpoint);
@@ -154,7 +153,11 @@ export async function deliverWebhook(
       lastError = `HTTP ${response.status}`;
 
       // Don't retry on 4xx errors (client errors) unless it's 429 (rate limit)
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 429
+      ) {
         return {
           success: false,
           statusCode: response.status,
@@ -188,7 +191,7 @@ export async function deliverWebhook(
     if (attempt < WEBHOOK_CONFIG.MAX_RETRIES) {
       const delayMs = Math.min(
         WEBHOOK_CONFIG.INITIAL_DELAY_MS * Math.pow(2, attempt),
-        WEBHOOK_CONFIG.MAX_DELAY_MS
+        WEBHOOK_CONFIG.MAX_DELAY_MS,
       );
 
       // Add jitter to prevent thundering herd

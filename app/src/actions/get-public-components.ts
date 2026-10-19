@@ -4,8 +4,11 @@ import { db } from "@/utils/db";
 import {
   statusPageComponents,
   statusPages,
+  statusPageComponentMonitors,
+  monitorAggregates,
+  monitorResults,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lt, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 // UUID validation schema
@@ -45,7 +48,7 @@ export async function getPublicComponents(statusPageId: string) {
     const statusPage = await db.query.statusPages.findFirst({
       where: and(
         eq(statusPages.id, statusPageId),
-        eq(statusPages.status, "published")
+        eq(statusPages.status, "published"),
       ),
       columns: { id: true }, // Only need to verify existence
     });
@@ -61,7 +64,10 @@ export async function getPublicComponents(statusPageId: string) {
     // PERFORMANCE FIX: Use Drizzle eager loading instead of N+1 queries
     // Previously: fetched monitors individually per component in a loop
     const components = await db.query.statusPageComponents.findMany({
-      where: eq(statusPageComponents.statusPageId, statusPageId),
+      where: and(
+        eq(statusPageComponents.statusPageId, statusPageId),
+        eq(statusPageComponents.showcase, true),
+      ),
       columns: {
         id: true,
         name: true,
@@ -96,6 +102,72 @@ export async function getPublicComponents(statusPageId: string) {
       },
     });
 
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const from = new Date(today);
+    from.setUTCDate(from.getUTCDate() - 89);
+    const componentIds = components.map((component) => component.id);
+    const historical =
+      componentIds.length === 0
+        ? []
+        : await db
+            .select({
+              componentId: statusPageComponentMonitors.componentId,
+              date: sql<string>`to_char(${monitorAggregates.periodStart}, 'YYYY-MM-DD')`,
+              totalChecks: sql<number>`sum(${monitorAggregates.totalChecks})::integer`,
+              successfulChecks: sql<number>`sum(${monitorAggregates.successfulChecks})::integer`,
+            })
+            .from(statusPageComponentMonitors)
+            .innerJoin(
+              monitorAggregates,
+              eq(
+                monitorAggregates.monitorId,
+                statusPageComponentMonitors.monitorId,
+              ),
+            )
+            .where(
+              and(
+                inArray(statusPageComponentMonitors.componentId, componentIds),
+                eq(monitorAggregates.periodType, "daily"),
+                isNull(monitorAggregates.location),
+                gte(monitorAggregates.periodStart, from),
+                lt(monitorAggregates.periodStart, today),
+              ),
+            )
+            .groupBy(
+              statusPageComponentMonitors.componentId,
+              monitorAggregates.periodStart,
+            );
+    const current =
+      componentIds.length === 0
+        ? []
+        : await db
+            .select({
+              componentId: statusPageComponentMonitors.componentId,
+              date: sql<string>`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
+              totalChecks: sql<number>`count(*)::integer`,
+              successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp})::integer`,
+            })
+            .from(statusPageComponentMonitors)
+            .innerJoin(
+              monitorResults,
+              eq(
+                monitorResults.monitorId,
+                statusPageComponentMonitors.monitorId,
+              ),
+            )
+            .where(
+              and(
+                inArray(statusPageComponentMonitors.componentId, componentIds),
+                gte(monitorResults.checkedAt, today),
+              ),
+            )
+            .groupBy(
+              statusPageComponentMonitors.componentId,
+              sql`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
+            );
+    const dailyMetrics = [...historical, ...current];
+
     // Transform the data to the expected format
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
@@ -109,6 +181,13 @@ export async function getPublicComponents(statusPageId: string) {
 
       return {
         ...component,
+        dailyMetrics: dailyMetrics
+          .filter((metric) => metric.componentId === component.id)
+          .map(({ date, totalChecks, successfulChecks }) => ({
+            date,
+            totalChecks,
+            successfulChecks,
+          })),
         monitors: linkedMonitors,
         monitorIds: linkedMonitors.map((m) => m.id),
       };
