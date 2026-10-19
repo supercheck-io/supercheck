@@ -99,6 +99,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
                 type: true,
                 status: true,
                 target: true,
+                frequencyMinutes: true,
+                enabled: true,
+                createdAt: true,
+                updatedAt: true,
               },
             },
           },
@@ -115,6 +119,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         name: true,
         type: true,
         status: true,
+        frequencyMinutes: true,
+        enabled: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 

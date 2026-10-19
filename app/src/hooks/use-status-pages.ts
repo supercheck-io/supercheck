@@ -112,6 +112,10 @@ export interface StatusPageMonitor {
   type: string;
   status?: string;
   target?: string;
+  frequencyMinutes: number | null;
+  enabled: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface StatusPageComponent {

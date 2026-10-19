@@ -36,7 +36,8 @@ import { useRouter } from "next/navigation";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { DataTable } from "@/components/monitors/data-table";
 import { statusPageColumns } from "@/components/monitors/status-page-columns";
-import type { Monitor } from "@/components/monitors/schema";
+import { toOverviewMonitor } from "./overview-monitor";
+import type { StatusPageMonitor } from "@/hooks/use-status-pages";
 
 type StatusPage = {
   id: string;
@@ -69,14 +70,6 @@ type StatusPage = {
   transactionalLogo: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
-};
-
-type StatusPageMonitor = {
-  id: string;
-  name: string;
-  type: string;
-  status?: string;
-  target?: string;
 };
 
 type Component = {
@@ -460,22 +453,7 @@ export function StatusPageDetail({
                   data={(() => {
                     // Collect all monitors from all components
                     const allMonitors = components.flatMap((c) =>
-                      c.monitors.map(
-                        (monitor) =>
-                          ({
-                            ...monitor,
-                            id: monitor.id,
-                            name: monitor.name,
-                            type: monitor.type,
-                            status: monitor.status || "pending",
-                            target: monitor.target || "", // Use the target field from monitor data
-                            frequencyMinutes: 5, // Required field but not available in StatusPageMonitor
-                            enabled: true, // Required field but not available in StatusPageMonitor
-                            createdAt: new Date().toISOString(), // Required field but not available in StatusPageMonitor
-                            updatedAt: new Date().toISOString(), // Required field but not available in StatusPageMonitor
-                            componentName: c.name, // Add component name for reference
-                          }) as Monitor & { componentName: string }
-                      )
+                      c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
                     );
 
                     // Filter out duplicate monitors by ID
