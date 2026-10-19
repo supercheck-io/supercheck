@@ -1,5 +1,6 @@
 import { Page, Locator, expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { waitForSignInUnlocked } from '../../utils/api-auth';
 import { routes } from '../../utils/env';
 
 /**
@@ -105,12 +106,30 @@ export class SignInPage extends BasePage {
 
   /**
    * Sign in and wait for redirect away from sign-in page
+   *
+   * The shared demo identity can be under a login lockout left by other specs
+   * (or by anyone else using the demo), which the page pre-check rejects before
+   * sending credentials. Wait that out, and retry once when a lock lands
+   * between the pre-check and the submit, instead of failing on the redirect
+   * wait with no explanation.
    * @param email - User email
    * @param password - User password
    */
   async signInAndWaitForDashboard(email: string, password: string): Promise<void> {
+    await waitForSignInUnlocked(this.page.request, email);
     await this.signIn(email, password);
-    await this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+
+    try {
+      await this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+    } catch (error) {
+      const waited = await waitForSignInUnlocked(this.page.request, email);
+      if (!waited) {
+        throw error;
+      }
+
+      await this.signIn(email, password);
+      await this.page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+    }
   }
 
   /**

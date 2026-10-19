@@ -12,6 +12,7 @@ import { test, expect } from '../../fixtures/auth.fixture';
 test.use({ storageState: { cookies: [], origins: [] } });
 
 import { SignInPage } from '../../pages/auth';
+import { waitForSignInUnlocked } from '../../utils/api-auth';
 import { env, routes } from '../../utils/env';
 
 const AUTH_MAX_ATTEMPTS = 3;
@@ -34,13 +35,25 @@ test.describe('Sign In @auth @smoke', () => {
     await signInPage.navigate();
 
     for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
+      // A lockout left by other specs rejects the submit before any request is
+      // sent, which would otherwise stall the response wait below.
+      await waitForSignInUnlocked(page.request, env.testUser.email);
+
       const responsePromise = page.waitForResponse(
         (response) =>
           response.url().includes('/api/auth/sign-in/email') &&
           response.request().method() === 'POST',
+        { timeout: 20_000 },
       );
       await signInPage.signIn(env.testUser.email, env.testUser.password);
-      const response = await responsePromise;
+      const response = await responsePromise.catch(() => null);
+
+      if (!response) {
+        // No request left the page, so the lock landed mid-flight: wait it out
+        // and retry the attempt instead of reporting a missing response.
+        await waitForSignInUnlocked(page.request, env.testUser.email);
+        continue;
+      }
 
       if (response.status() !== 429) {
         break;

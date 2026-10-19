@@ -49,22 +49,17 @@ export async function loginIfNeeded(page: Page): Promise<void> {
     }
 
     const signInPage = new SignInPage(page);
-    await signInPage.signIn(env.testUser.email, env.testUser.password);
-
-    // Race URL redirect vs error alert visibility
     const errorLocator = page.locator('[role="alert"], .text-destructive, [data-testid*="error"]').first();
-    const result = await Promise.race([
-      page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 }).then(() => 'redirected' as const),
-      errorLocator.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'error' as const).catch(() => 'timeout' as const),
-    ]);
 
-    if (result === 'error') {
-      const errorText = await errorLocator.textContent().catch(() => '');
-      throw new Error(`Login failed on sign-in page: ${errorText?.trim() || 'Unknown authentication error'}`);
-    }
-
-    if (page.url().includes('/sign-in')) {
-      throw new Error('Login failed: did not redirect away from sign-in page within 15 seconds.');
+    try {
+      await signInPage.signInAndWaitForDashboard(env.testUser.email, env.testUser.password);
+    } catch (error) {
+      const errorText = (await errorLocator.textContent().catch(() => ''))?.trim();
+      throw new Error(
+        `Login failed on sign-in page: ${
+          errorText || (error instanceof Error ? error.message : 'Unknown authentication error')
+        }`,
+      );
     }
 
     await page.waitForLoadState('domcontentloaded');

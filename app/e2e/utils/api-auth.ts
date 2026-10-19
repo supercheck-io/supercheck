@@ -17,6 +17,67 @@ const AUTH_MAX_ATTEMPTS = 3;
 const AUTH_RETRY_FALLBACK_SECONDS = 2;
 const AUTH_RETRY_MAX_SECONDS = 30;
 
+// Longest shell we are willing to sit out inside a single test. The demo
+// escalates to 5/15/60-minute lockouts, and those mean the run cannot proceed
+// with the shared identity, so they must fail loudly instead of stalling.
+const AUTH_LOCKOUT_MAX_WAIT_SECONDS = 35;
+
+type SignInLockoutState = {
+  isLocked?: boolean;
+  lockoutSeconds?: number;
+  message?: string;
+};
+
+/**
+ * Wait out an active login lockout before a sign-in is attempted.
+ *
+ * The demo enforces a progressive lockout (30s after 5 failed attempts, then
+ * 5/15/60 minutes). A locked identity is rejected by the sign-in pre-check
+ * before any credential request is sent, so a naive sign-in cannot tell a
+ * lockout from a broken form: it just times out waiting for a redirect.
+ * Returns true when the caller had to wait, false when the identity was free.
+ */
+export async function waitForSignInUnlocked(
+  request: APIRequestContext,
+  email: string,
+  maxWaitSeconds = AUTH_LOCKOUT_MAX_WAIT_SECONDS,
+): Promise<boolean> {
+  const deadline = Date.now() + maxWaitSeconds * 1_000;
+  let waited = false;
+
+  for (;;) {
+    // A failing pre-check must not become a new failure mode: fall through to
+    // the sign-in attempt, which reports the authoritative result.
+    const response = await request
+      .post('/api/auth/sign-in/check', {
+        data: { action: 'pre-check', email: email.trim() },
+      })
+      .catch(() => null);
+    if (!response) {
+      return waited;
+    }
+    const state = (await response.json().catch(() => ({}))) as SignInLockoutState;
+
+    if (!state.isLocked) {
+      return waited;
+    }
+
+    const remainingMs = Math.min(
+      (state.lockoutSeconds ?? AUTH_RETRY_FALLBACK_SECONDS) * 1_000 + 250,
+      deadline - Date.now(),
+    );
+    if (remainingMs <= 0) {
+      throw new Error(
+        `E2E sign-in for ${email} stayed locked longer than ${maxWaitSeconds}s: ` +
+          `${state.message ?? 'no lockout detail returned'}`,
+      );
+    }
+
+    waited = true;
+    await new Promise((resolve) => setTimeout(resolve, remainingMs));
+  }
+}
+
 function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
   const retryAfterHeader =
     response.headers()['retry-after'] ?? response.headers()['x-retry-after'];
@@ -38,6 +99,10 @@ export async function signInWithRetry(
   credentials: Credentials,
 ): Promise<APIResponse> {
   let response: APIResponse | undefined;
+
+  // Failed logins from other specs (enumeration, injection, invite flows) share
+  // the identity and the runner IP, so a lockout can be active before we start.
+  await waitForSignInUnlocked(request, credentials.email);
 
   for (let attempt = 1; attempt <= AUTH_MAX_ATTEMPTS; attempt += 1) {
     const currentResponse = await request.post('/api/auth/sign-in/email', {
