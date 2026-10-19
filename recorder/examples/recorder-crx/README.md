@@ -169,7 +169,7 @@ App and extension versions are independent. To cut a recorder release:
 2. Merge to `main`.
 3. Create and push a signed annotated tag: `git tag -s recorder-v<version> && git push origin recorder-v<version>`.
 
-`.github/workflows/recorder-publish.yml` builds the ZIP, submits it to the Chrome Web Store and Edge Add-ons (behind the `recorder-release` environment), and attaches the ZIP plus `SHA256SUMS.txt` to a GitHub release. The GitHub asset is the supported install path for enterprise/air-gapped environments; it does not auto-update.
+`.github/workflows/recorder-publish.yml` builds the ZIP, attaches it plus `SHA256SUMS.txt` to a GitHub release, and submits the same ZIP to the Chrome Web Store and Edge Add-ons (behind the `recorder-release` environment and `BPP_KEYS`). The GitHub asset is the supported install path for enterprise/air-gapped environments; it does not auto-update. Store submission is the only step that needs credentials: without `BPP_KEYS` the publish job fails, but the build and GitHub release still produce a sideloadable ZIP.
 
 ## API integration reference
 
