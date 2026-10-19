@@ -21,7 +21,8 @@ export async function verifySubscriber(token: string) {
       where: eq(statusPageSubscribers.verificationToken, token),
     });
 
-    if (!subscriber) {
+    // A removed/unsubscribed subscriber's old link must not read as "already verified".
+    if (!subscriber || subscriber.purgeAt) {
       return {
         success: false,
         message: "Invalid or expired verification link",
@@ -76,7 +77,6 @@ export async function verifySubscriber(token: string) {
         .update(statusPageSubscribers)
         .set({
           verifiedAt: new Date(),
-        verificationToken: null,
           updatedAt: new Date(),
         })
         .where(

@@ -113,7 +113,7 @@ export async function getPublicIncidents(statusPageId: string) {
     const incidentsWithDetails = incidentsList.map((incident) => ({
       ...incident,
       affectedComponentsCount: incident.affectedComponents.filter((ic) => ic.component?.showcase).length,
-      affectedComponents: incident.affectedComponents.filter((ic) => ic.component?.showcase).map((ic) => ({ id: ic.component.id, name: ic.component.name })),
+      affectedComponents: incident.affectedComponents.flatMap((ic) => (ic.component?.showcase ? [{ id: ic.component.id, name: ic.component.name }] : [])),
       latestUpdate: incident.updates[0] ? { ...incident.updates[0], createdAt: incident.updates[0].displayAt ?? incident.updates[0].createdAt } : null,
     }));
 

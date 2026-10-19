@@ -235,7 +235,7 @@ export async function GET(
       status: 200,
       headers: {
         ...SVG_HEADERS,
-        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30",
       },
     });
   } catch (error) {

@@ -126,7 +126,7 @@ export async function getPublicIncidentDetail(
       incident: {
         ...incident,
         affectedComponents: affectedComponents.filter((ic) => ic.component?.showcase).map((ic) => ({ id: ic.component.id, name: ic.component.name, status: ic.component.status })),
-        updates,
+        updates: updates.map((u) => ({ ...u, createdAt: u.displayAt ?? u.createdAt })),
       },
       language: statusPage.language,
     };

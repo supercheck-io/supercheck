@@ -134,7 +134,7 @@ ${rssItems}
       status: 200,
       headers: {
         "Content-Type": "application/rss+xml; charset=utf-8",
-        "Cache-Control": "public, max-age=0, must-revalidate", // Cache for 5 minutes
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30", // Short shared-cache window; browsers always revalidate
         "X-Content-Type-Options": "nosniff",
       },
     });

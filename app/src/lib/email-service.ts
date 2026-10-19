@@ -119,7 +119,7 @@ export class EmailService {
   async sendEmailToMultiple(
     options: MultiRecipientEmailOptions
   ): Promise<MultiRecipientResult> {
-    const transporterOrError = buildSmtpTransporter();
+    const transporterOrError = this.transporter ?? buildSmtpTransporter();
     if (isSmtpConfigError(transporterOrError)) {
       return {
         sentCount: 0,
@@ -131,6 +131,7 @@ export class EmailService {
     }
 
     const transporter = transporterOrError;
+    this.transporter = transporter;
     const fromEmail = process.env.SMTP_FROM_EMAIL!;
 
     try {

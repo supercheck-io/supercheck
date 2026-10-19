@@ -1029,17 +1029,19 @@ export class MonitorService {
                 metadata,
               );
 
-            if (notification?.suppressed) return;
+            // Maintenance suppression skips only counters and logging; the
+            // independent SSL expiration check below must still run.
+            const suppressed = notification?.suppressed === true;
 
             // Update alert counter for the appropriate alert type
-            if (shouldSendFailureAlert && latestResult) {
+            if (!suppressed && shouldSendFailureAlert && latestResult) {
               await this.dbService.db
                 .update(schema.monitorResults)
                 .set({ alertsSentForFailure: alertsSentForFailure + 1 })
                 .where(eq(schema.monitorResults.id, latestResult.id));
             }
 
-            if (shouldSendRecoveryAlert && latestResult) {
+            if (!suppressed && shouldSendRecoveryAlert && latestResult) {
               await this.dbService.db
                 .update(schema.monitorResults)
                 .set({
@@ -1049,7 +1051,10 @@ export class MonitorService {
             }
 
             // Only log important alert events
-            if (type === 'recovery' || alertsSentForFailure < 2) {
+            if (
+              !suppressed &&
+              (type === 'recovery' || alertsSentForFailure < 2)
+            ) {
               this.logger.log(
                 `Sent ${type} notification for monitor ${resultData.monitorId}`,
               );

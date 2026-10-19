@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
@@ -21,8 +21,16 @@ export async function reconcileStatusPages() {
       sql`select pg_try_advisory_xact_lock(73194722) as acquired`,
     );
     if (!lock[0]?.acquired) return;
+    // Only rows that are due to start or end; the checks below stay authoritative.
+    const dueAt = new Date();
     const scheduled = await tx.query.incidents.findMany({
-      where: inArray(incidents.status, ["scheduled", "monitoring"]),
+      where: and(
+        inArray(incidents.status, ["scheduled", "monitoring"]),
+        or(
+          and(eq(incidents.status, "scheduled"), lte(incidents.scheduledFor, dueAt)),
+          lte(incidents.scheduledUntil, dueAt),
+        ),
+      ),
     });
     for (const incident of scheduled) {
       const now = new Date();

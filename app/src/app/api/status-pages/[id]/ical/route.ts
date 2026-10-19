@@ -248,7 +248,7 @@ export async function GET(
           `${statusPage.subdomain}-status.ics`,
           "inline"
         ),
-        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30",
         "X-Content-Type-Options": "nosniff",
       },
     });
