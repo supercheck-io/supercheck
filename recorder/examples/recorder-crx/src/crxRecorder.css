@@ -192,3 +192,66 @@
   font-size: 14px;
   display: block;
 }
+
+/* Help button and card (end of toolbar) */
+.help-btn-portal {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.supercheck-help-button {
+  display: flex;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, inherit);
+  cursor: pointer;
+}
+
+.supercheck-help-button:hover,
+.supercheck-help-button:focus-visible {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  outline: none;
+}
+
+.supercheck-help-card {
+  position: fixed;
+  z-index: 1000;
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border, #454545);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-panel-background));
+  color: var(--vscode-foreground);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.supercheck-help-card dl {
+  margin: 8px 0;
+}
+
+.supercheck-help-card dt {
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.supercheck-help-card dd {
+  margin: 0;
+  color: var(--vscode-descriptionForeground, inherit);
+}
+
+.supercheck-help-links {
+  display: flex;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border, #454545);
+}
+
+.supercheck-help-links a {
+  color: #22c55e;
+}

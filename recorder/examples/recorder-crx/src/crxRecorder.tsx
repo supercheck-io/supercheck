@@ -20,6 +20,7 @@ import type { CallLog, ElementInfo, Mode, Source } from '@recorder/recorderTypes
 import { Recorder } from '@recorder/recorder';
 import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings, removeSettingsChangedListener } from './settings';
+import { RecorderHelp } from './recorderHelp';
 import './crxRecorder.css';
 import './form.css';
 
@@ -50,6 +51,7 @@ export const CrxRecorder: React.FC = ({
   const [recordingContext, setRecordingContext] = React.useState<RecordingContext | null>(null);
   const [savingToPlayground, setSavingToPlayground] = React.useState(false);
   const [toolbarPortal, setToolbarPortal] = React.useState<HTMLElement | null>(null);
+  const [helpPortal, setHelpPortal] = React.useState<HTMLElement | null>(null);
 
   // Load recording context on mount and listen for changes
   // This ensures we capture the context even if it's set slightly after mount
@@ -109,6 +111,16 @@ export const CrxRecorder: React.FC = ({
 
       // Find the first separator (usually after Record)
       const firstSeparator = toolbar.querySelector('.toolbar-separator');
+
+      // Help button always sits last in the toolbar.
+      let helpContainer = toolbar.querySelector('.help-btn-portal') as HTMLElement | null;
+      if (!helpContainer) {
+        helpContainer = document.createElement('div');
+        helpContainer.className = 'help-btn-portal';
+      }
+      if (toolbar.lastElementChild !== helpContainer)
+        toolbar.appendChild(helpContainer);
+      setHelpPortal(helpContainer);
 
       // Check if we already injected
       if (toolbar.querySelector('.save-btn-portal')) {
@@ -264,6 +276,7 @@ export const CrxRecorder: React.FC = ({
       <Recorder sources={sources} paused={paused} log={log} mode={mode} onEditedCode={dispatchEditedCode} onCursorActivity={dispatchCursorActivity} />
       {/* Portal the Save button into the toolbar */}
       {toolbarPortal && ReactDOM.createPortal(SaveButton, toolbarPortal)}
+      {helpPortal && ReactDOM.createPortal(<RecorderHelp />, helpPortal)}
     </div>
   </>;
 };
