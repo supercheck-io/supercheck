@@ -48,4 +48,17 @@ describe("subscriber reads never select secrets or tokens", () => {
     for (const key of SENSITIVE) expect(args.columns[key]).toBeUndefined();
     expect(args.with.statusPage.columns).toEqual({ name: true, language: true });
   });
+
+  it("masks Slack webhook URLs but leaves other endpoints intact", async () => {
+    const slack = "https://hooks.slack.com/services/T000/B000/SECRETVALUE1234";
+    const hook = "https://example.com/hook";
+    (db.query.statusPageSubscribers.findMany as jest.Mock).mockResolvedValue([
+      { id: "1", mode: "slack", endpoint: slack, email: null },
+      { id: "2", mode: "webhook", endpoint: hook, email: null },
+    ]);
+    const result = await getStatusPageSubscribers(pageId);
+    expect(result.subscribers[0].endpoint).toBe("hooks.slack.com/…1234");
+    expect(JSON.stringify(result)).not.toContain("SECRETVALUE");
+    expect(result.subscribers[1].endpoint).toBe(hook);
+  });
 });

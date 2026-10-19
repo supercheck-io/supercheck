@@ -77,6 +77,19 @@ async function verifyStatusPageOwnership(
 }
 
 /**
+ * Slack incoming-webhook URLs are bearer credentials owned by the subscriber,
+ * so the dashboard only ever sees a masked form (host + last 4 characters).
+ */
+function maskSlackEndpoint(endpoint: string | null): string | null {
+  if (!endpoint) return endpoint;
+  try {
+    return `${new URL(endpoint).host}/…${endpoint.slice(-4)}`;
+  } catch {
+    return "…" + endpoint.slice(-4);
+  }
+}
+
+/**
  * Get subscribers for a status page (authenticated, for internal management)
  *
  * SECURITY:
@@ -139,7 +152,9 @@ export async function getStatusPageSubscribers(statusPageId: string) {
 
     return {
       success: true,
-      subscribers,
+      subscribers: subscribers.map((s) =>
+        s.mode === "slack" ? { ...s, endpoint: maskSlackEndpoint(s.endpoint) } : s
+      ),
       stats: {
         total: subscribers.length,
         verified: verifiedCount,

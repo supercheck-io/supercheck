@@ -180,12 +180,10 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
       };
     }
 
+    // SECURITY: details stay in server logs; never echo raw errors to the client.
     return {
       success: false,
-      message: `Failed to test webhook: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`,
-      error,
+      message: "Failed to test webhook",
     };
   }
 }
