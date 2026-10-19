@@ -61,7 +61,7 @@ Press `Shift+Alt+C` to inspect elements without recording actions.
 
 The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and save tests to Supercheck. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
 
-The extension injects its page API only on the origins listed under [Supercheck-hosted sites](#supercheck-hosted-sites) and on the instance URL saved in Options. Other pages can detect that the extension is installed, but cannot read the stored credential or start a recording.
+The extension injects its page API only on the origins listed under [Supercheck-hosted sites](#supercheck-hosted-sites) and on the instance URL saved in Options. Other pages cannot use the recorder API, read the stored credential, or start a recording.
 
 ## Install without the stores
 

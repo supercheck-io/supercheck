@@ -136,7 +136,6 @@ function OptionsPage() {
         autoConnected: false,
       };
       applyConfig(next);
-      setHasStoredKey(Boolean(next.apiKey));
 
       if (suppressStorageSyncRef.current) {
         suppressStorageSyncRef.current = false;
