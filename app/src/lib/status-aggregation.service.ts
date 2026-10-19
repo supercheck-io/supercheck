@@ -25,7 +25,7 @@ export class StatusAggregationService {
    * Calculate the aggregated status for a component based on its monitors
    */
   async calculateComponentStatus(
-    componentId: string
+    componentId: string,
   ): Promise<ComponentStatus> {
     const component = await db.query.statusPageComponents.findFirst({
       where: eq(statusPageComponents.id, componentId),
@@ -42,16 +42,33 @@ export class StatusAggregationService {
       return "operational";
     }
 
-    const monitorStatuses: MonitorStatusData[] = component.monitors.map(
-      (ma) => ({
-        status: this.mapMonitorStatus(ma.monitor.status),
-        weight: ma.weight,
-      })
+    return this.calculateFromMonitors(
+      component.monitors.map((association) => ({
+        status: association.monitor.status,
+        weight: association.weight,
+      })),
+      component.aggregationMethod as AggregationMethod,
+      component.failureThreshold,
     );
+  }
 
+  /** Threshold counts failing monitors, independently of consecutive-check alert thresholds. */
+  calculateFromMonitors(
+    monitors: Array<{ status: string; weight: number }>,
+    method: AggregationMethod,
+    failureThreshold: number,
+  ): ComponentStatus {
+    if (!monitors.length) return "operational";
+    const failures = monitors.filter((monitor) =>
+      ["down", "error", "timeout"].includes(monitor.status),
+    ).length;
+    if (failures > 0 && failures < failureThreshold) return "operational";
     return this.aggregateStatuses(
-      monitorStatuses,
-      component.aggregationMethod as AggregationMethod
+      monitors.map((monitor) => ({
+        status: this.mapMonitorStatus(monitor.status),
+        weight: monitor.weight,
+      })),
+      method,
     );
   }
 
@@ -60,7 +77,7 @@ export class StatusAggregationService {
    */
   private aggregateStatuses(
     statuses: MonitorStatusData[],
-    method: AggregationMethod
+    method: AggregationMethod,
   ): ComponentStatus {
     switch (method) {
       case "worst_case":
@@ -126,76 +143,32 @@ export class StatusAggregationService {
    * Get weighted status based on monitor weights
    */
   private getWeightedStatus(statuses: MonitorStatusData[]): ComponentStatus {
-    // Count weighted status values
-    const statusWeights: Record<ComponentStatus, number> = {
-      operational: 0,
-      degraded_performance: 0,
-      partial_outage: 0,
-      major_outage: 0,
-      under_maintenance: 0,
-    };
-
-    let totalWeight = 0;
-
-    for (const { status, weight } of statuses) {
-      statusWeights[status] += weight;
-      totalWeight += weight;
-    }
-
-    // If no weights, return operational
-    if (totalWeight === 0) {
-      return "operational";
-    }
-
-    // Calculate percentages
-    const statusPercentages: Record<ComponentStatus, number> = {
-      operational: (statusWeights.operational / totalWeight) * 100,
-      degraded_performance:
-        (statusWeights.degraded_performance / totalWeight) * 100,
-      partial_outage: (statusWeights.partial_outage / totalWeight) * 100,
-      major_outage: (statusWeights.major_outage / totalWeight) * 100,
-      under_maintenance: (statusWeights.under_maintenance / totalWeight) * 100,
-    };
-
-    // Return status based on weighted percentages
-    if (statusPercentages.major_outage >= 50) return "major_outage";
-    if (statusPercentages.partial_outage >= 50) return "partial_outage";
-    if (statusPercentages.degraded_performance >= 50)
-      return "degraded_performance";
-    if (statusPercentages.under_maintenance >= 50) return "under_maintenance";
-
-    return "operational";
-  }
-
-  /**
-   * Get majority vote status
-   */
-  private getMajorityStatus(statuses: ComponentStatus[]): ComponentStatus {
-    const statusCounts: Record<ComponentStatus, number> = {
-      operational: 0,
-      degraded_performance: 0,
-      partial_outage: 0,
-      major_outage: 0,
-      under_maintenance: 0,
-    };
-
-    // Count occurrences
-    for (const status of statuses) {
-      statusCounts[status]++;
-    }
-
-    // Find the status with the highest count
-    let maxCount = 0;
-    let majorityStatus: ComponentStatus = "operational";
-
-    for (const [status, count] of Object.entries(statusCounts)) {
-      if (count > maxCount) {
-        maxCount = count;
-        majorityStatus = status as ComponentStatus;
+    const hierarchy: ComponentStatus[] = [
+      "major_outage",
+      "partial_outage",
+      "degraded_performance",
+      "under_maintenance",
+      "operational",
+    ];
+    const weights = new Map<ComponentStatus, number>();
+    for (const { status, weight } of statuses)
+      weights.set(status, (weights.get(status) ?? 0) + Math.max(0, weight));
+    let selected: ComponentStatus = "operational";
+    let largest = 0;
+    for (const status of hierarchy) {
+      const weight = weights.get(status) ?? 0;
+      if (weight > largest) {
+        largest = weight;
+        selected = status;
       }
     }
+    return selected;
+  }
 
-    return majorityStatus;
+  private getMajorityStatus(statuses: ComponentStatus[]): ComponentStatus {
+    return this.getWeightedStatus(
+      statuses.map((status) => ({ status, weight: 1 })),
+    );
   }
 
   /**

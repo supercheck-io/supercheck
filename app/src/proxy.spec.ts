@@ -38,18 +38,25 @@ describe("proxy custom domain routing", () => {
     process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
 
     const { proxy } = await import("./proxy");
-    const request = new NextRequest("https://abc123.supercheck.example.com/", {
+    const request = new NextRequest("https://f134b5f9f2b048069deaf7cfb924a0b3.supercheck.example.com/", {
       headers: {
-        host: "abc123.supercheck.example.com",
-        "x-forwarded-host": "abc123.supercheck.example.com",
+        host: "f134b5f9f2b048069deaf7cfb924a0b3.supercheck.example.com",
+        "x-forwarded-host": "f134b5f9f2b048069deaf7cfb924a0b3.supercheck.example.com",
       },
     });
 
     const response = proxy(request);
 
     expect(response.headers.get("x-middleware-rewrite")).toContain(
-      "/status/abc123"
+      "/status/f134b5f9f2b048069deaf7cfb924a0b3"
     );
+  });
+
+  it("keeps ordinary service subdomains out of status routing", async () => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const request = new NextRequest("https://www.supercheck.example.com/", { headers: { host: "www.supercheck.example.com" } });
+    expect(proxy(request).headers.get("x-middleware-rewrite")).toBeNull();
   });
 
   it("does not treat IPv4 hosts as custom domains", async () => {

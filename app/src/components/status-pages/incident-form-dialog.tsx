@@ -25,6 +25,7 @@ import {
   createIncident,
   type CreateIncidentData,
 } from "@/actions/create-incident";
+import { getSreIncidents } from "@/actions/sre-incidents";
 import { toast } from "sonner";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,6 +59,10 @@ type IncidentFormDialogProps = {
 };
 
 const incidentFormSchema = z.object({
+  sreIncidentId: z.string(),
+  scheduledFor: z.string(),
+  scheduledUntil: z.string(),
+  deliverNotifications: z.boolean(),
   name: z.string().min(1, "Title is required").max(200, "Title is too long"),
   body: z
     .string()
@@ -127,11 +132,16 @@ export function IncidentFormDialog({
     control,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<IncidentFormData>({
     resolver: zodResolver(incidentFormSchema),
     defaultValues: {
       name: "",
+      sreIncidentId: "",
+      scheduledFor: "",
+      scheduledUntil: "",
+      deliverNotifications: true,
       body: "",
       status: "investigating",
       impact: "minor",
@@ -147,6 +157,10 @@ export function IncidentFormDialog({
     if (open) {
       reset({
         name: "",
+        sreIncidentId: "",
+        scheduledFor: "",
+        scheduledUntil: "",
+        deliverNotifications: true,
         body: "",
         status: "investigating",
         impact: "minor",
@@ -156,6 +170,16 @@ export function IncidentFormDialog({
     }
   }, [open, reset]);
 
+  const [sreIncidents, setSreIncidents] = useState<
+    Array<{ id: string; title: string }>
+  >([]);
+  useEffect(() => {
+    if (open)
+      void getSreIncidents().then((result) => {
+        if (result.success) setSreIncidents(result.incidents);
+      });
+  }, [open]);
+
   const onSubmit = async (data: IncidentFormData) => {
     setIsSubmitting(true);
 
@@ -163,12 +187,19 @@ export function IncidentFormDialog({
       const createData: CreateIncidentData = {
         statusPageId,
         name: data.name,
+        sreIncidentId: data.sreIncidentId || undefined,
+        scheduledFor: data.scheduledFor
+          ? new Date(data.scheduledFor)
+          : undefined,
+        scheduledUntil: data.scheduledUntil
+          ? new Date(data.scheduledUntil)
+          : undefined,
+        deliverNotifications: data.deliverNotifications,
         body: data.body || undefined,
         status: data.status,
         impact: data.impact,
         affectedComponentIds: data.affectedComponentIds,
         componentStatus: data.componentStatus,
-        deliverNotifications: true,
       };
 
       const result = await createIncident(createData);
@@ -203,6 +234,66 @@ export function IncidentFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="public-sre-incident">
+              Link an internal SRE incident (optional)
+            </Label>
+            <select
+              id="public-sre-incident"
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              {...register("sreIncidentId")}
+            >
+              <option value="">No linked SRE incident</option>
+              {sreIncidents.map((incident) => (
+                <option key={incident.id} value={incident.id}>
+                  {incident.title}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Only the title and message you write below are published. Internal
+              evidence and investigation notes stay private. Public updates are
+              managed separately.
+            </p>
+          </div>
+          {watch("status") === "scheduled" && (
+            <fieldset className="space-y-2 rounded-md border p-3">
+              <legend className="px-1 text-sm font-medium">
+                Maintenance window
+              </legend>
+              <Label htmlFor="maintenance-start">
+                Starts (your local time)
+              </Label>
+              <Input
+                id="maintenance-start"
+                type="datetime-local"
+                required
+                {...register("scheduledFor")}
+              />
+              <Label htmlFor="maintenance-end">Ends (your local time)</Label>
+              <Input
+                id="maintenance-end"
+                type="datetime-local"
+                required
+                {...register("scheduledUntil")}
+              />
+              <p className="text-xs text-muted-foreground">
+                The incident starts and completes automatically. Linked monitors
+                continue collecting checks; alerts are suppressed during the
+                window.
+              </p>
+            </fieldset>
+          )}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="incident-notify"
+              checked={watch("deliverNotifications")}
+              onCheckedChange={(value) =>
+                setValue("deliverNotifications", value === true)
+              }
+            />
+            <Label htmlFor="incident-notify">Notify subscribers</Label>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="name">Title *</Label>
             <Input
@@ -309,7 +400,7 @@ export function IncidentFormDialog({
                               field.onChange([...field.value, component.id]);
                             } else {
                               field.onChange(
-                                field.value.filter((id) => id !== component.id)
+                                field.value.filter((id) => id !== component.id),
                               );
                             }
                           }}

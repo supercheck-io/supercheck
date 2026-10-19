@@ -1021,12 +1021,14 @@ export class MonitorService {
               isStatusChange: isStatusChange,
             };
 
-            await this.monitorAlertService.sendNotification(
+            const notification = await this.monitorAlertService.sendNotification(
               resultData.monitorId,
               type,
               reason,
               metadata,
             );
+
+            if (notification?.suppressed) return;
 
             // Update alert counter for the appropriate alert type
             if (shouldSendFailureAlert && latestResult) {
@@ -2797,12 +2799,14 @@ export class MonitorService {
         alertsSentForRecovery,
       };
 
-      await this.monitorAlertService.sendNotification(
+      const notification = await this.monitorAlertService.sendNotification(
         monitorId,
         alertType,
         reason,
         alertMetadata,
       );
+
+      if (notification?.suppressed) return { alertSent: false };
 
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         const updatedAggregatedAlertState =

@@ -35,10 +35,13 @@ Your page is created in **draft mode**. Configure components and settings before
 
 ### Publishing
 
-1. Add at least one component
+1. Add at least one showcased component
 2. Configure branding in Settings
 3. Click **Publish** to make the page public
 4. Share the URL with your users
+
+Use **Archive** in page management to remove a published page from public access while keeping its
+records in the dashboard.
 
 ## Public Status Page
 
@@ -48,9 +51,11 @@ Once published, your status page displays real-time system health to users:
 
 **What users see:**
 - **Status Banner** — Overall system health (All Systems Operational, Partial Outage, etc.)
-- **Components** — Individual services with current status and 90-day uptime chart
-- **Past Incidents** — Recent incident history grouped by date
+- **Components** — Public components with current status and check-based 90-day uptime
+- **Incident History** — Active incidents and up to 500 recent incidents from the last 90 days, grouped by date
 - **Subscribe Button** — Subscribe to receive incident notifications
+
+The public layout follows right-to-left direction for Arabic. Pages support 24 translated languages.
 
 ### Status Badges
 
@@ -94,7 +99,7 @@ The badge is a public endpoint — no authentication required. It includes CORS 
 </Callout>
 
 <Callout type="tip">
-Badges may take up to 5 minutes to reflect an update. For real-time updates, link directly to your status page.
+The badge is cached briefly. For the latest status, link directly to your status page.
 </Callout>
 
 **Testing Your Badge:**
@@ -127,7 +132,7 @@ https://yourdomain.com/api/status-pages/[status-page-id]/ical
 The feed includes the last 50 incidents with impact level, status, affected services, and links to incident details.
 
 <Callout type="info">
-The iCal feed uses the same toggle as the RSS feed. Enable **RSS Feed** in your status page settings to activate both feeds.
+The iCal feed shares the **Feeds (RSS and iCal)** setting with RSS. Enable it in your status page settings to activate both feeds.
 </Callout>
 
 ### Incident Details
@@ -138,9 +143,12 @@ Users can click any incident to view the full timeline of updates:
 
 ## Subscribing to Updates
 
-Users can subscribe to receive notifications when incidents are created, updated, or resolved.
+Users can subscribe to receive notifications when incidents are created, updated, or resolved, when
+the page and channel settings allow subscriptions. Visitors can select components and incidents to
+follow. With no specific selections, the subscription covers the whole page; with selections, a
+matching component or incident is sufficient to receive an update.
 
-<Tabs items={['Email', 'Slack', 'Webhook', 'RSS', 'iCal']}>
+<Tabs items={['Email', 'Slack', 'Webhook', 'Feeds']}>
 <Tab value="Email">
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
@@ -177,17 +185,35 @@ For custom integrations, subscribe via webhook:
 
 1. Select **Webhook** tab
 2. Enter your webhook endpoint URL
-3. Receive JSON payloads for all incident events
+3. Copy the signing secret shown once after subscribing
+4. Receive signed JSON events for matching incidents and component scopes
+
+Requests include an `X-Webhook-Signature` HMAC-SHA256 header over the raw JSON body. Events include
+`incident_update_id`; verify the signature before processing and deduplicate by update ID because
+network ambiguity can cause an at-least-once retry.
+
+To replace a signing secret, open **Subscribers** in the status page settings and choose
+**Rotate webhook signing secret** for that subscriber. Copy the replacement before closing
+the dialog and update your receiver. New deliveries immediately use the replacement secret.
+
+For a Node.js receiver, verify the raw request bytes before parsing JSON:
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const expected = createHmac("sha256", signingSecret).update(rawBody).digest("hex");
+const actual = (request.headers.get("X-Webhook-Signature") ?? "").replace(/^sha256=/, "");
+const valid = actual.length === expected.length &&
+  timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+if (!valid) throw new Error("Invalid webhook signature");
+```
 
 </Tab>
-<Tab value="RSS">
+<Tab value="Feeds">
 
-Subscribe via RSS for feed readers and monitoring tools.
-
-</Tab>
-<Tab value="iCal">
-
-Subscribe via iCal to receive incidents in your calendar application.
+Subscribe to the status page's feeds. RSS includes incident updates, while iCal shows incidents in
+calendar applications. Feed text uses the page language, and links use the page's active public
+domain.
 
 1. Copy the iCal URL: `https://yourdomain.com/api/status-pages/[id]/ical`
 2. Add a new calendar subscription in your app
@@ -200,7 +226,9 @@ Supports Google Calendar, Apple Calendar, Outlook, and any app that accepts `.ic
 
 ## Components
 
-Components represent individual services or features on your status page.
+Components represent public-facing services or features on your status page. Internal services
+remain the ownership and dependency catalog; a component can link to a service while exposing only
+its public component details.
 
 ![Components Tab](/screenshots/status-page-components.png)
 
@@ -217,13 +245,22 @@ Components represent individual services or features on your status page.
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
-**Linked Monitors**
+**Linked Monitors and health**
 
-Associate monitors with components for reference. Linked monitors appear in the Overview tab and help you track which monitors relate to each service.
+Linked components refresh from monitor aggregate results every 10 seconds. Choose worst case, best
+case, weighted vote, or majority vote aggregation. Weighted vote uses monitor weights as votes; the
+status with the greatest combined weight wins, with ties resolved to the worse status. The failure
+threshold is the minimum number of failing linked monitors; it is separate from the monitor's
+consecutive-check alert threshold. A component without linked monitors remains manually managed.
+You can choose whether a component is
+showcased publicly, shown in the list only while degraded, and whether component health should
+automatically create and resolve public incidents. Automatic incidents are off by default.
 
-<Callout type="info">
-Component status is managed manually. Update component status when creating or resolving incidents.
-</Callout>
+The page banner and badge use showcased components. Hiding a component from the list while healthy
+does not remove its degraded health from the overall status. Uptime is calculated from successful
+observed checks divided by total observed checks over the last 90 UTC days. Days without check data
+are shown as having no data; incident dates do not determine uptime. This is check-based reporting,
+not a time-weighted SLA.
 
 </Tab>
 <Tab value="Status Types">
@@ -269,12 +306,21 @@ Incidents communicate service disruptions to your users.
 4. Update status if changed
 5. Choose whether to notify subscribers
 
+An SRE incident may be linked to a public status-page incident. The link preserves the investigation
+record internally; only the title and message you author for the public incident appear on the
+status page. Investigation notes, evidence, and other SRE details are not copied to the public page.
+In management, use **View public status update** to open the linked status-page incident and
+**Internal SRE incident** to return to the private investigation.
+
 **Scheduled Maintenance**
 
-1. Create incident with **Scheduled** status
-2. Set start and end times
+1. Create an incident with **Scheduled** status
+2. Set the maintenance start and end times
 3. Enable automatic status transitions
-4. Configure reminder notifications
+
+At the start time the incident moves into its active maintenance status; at the end it resolves.
+Monitor alerts are suppressed during the maintenance window, while checks continue to be collected
+and included in uptime. Reminder notifications are not currently available.
 
 </Tab>
 <Tab value="Workflow">
@@ -341,6 +387,7 @@ Manage users who receive incident notifications.
 - Export to CSV
 - Delete subscribers
 - View statistics (total, verified, pending)
+- Review notification delivery attempts and retry failed deliveries
 
 ### Notification Types
 
@@ -400,15 +447,16 @@ Configure branding and notification settings.
 </Tab>
 <Tab value="Notifications">
 
-- **Page Subscriptions** — Allow visitors to subscribe to all status updates
+- **Page Subscriptions** — Allow visitors to subscribe to page updates
 - **Email, Webhook, and Slack Notifications** — Enable each supported subscriber channel independently
-- **Incident Subscriptions** — Allow subscriptions to individual incidents
-- **RSS Feed** — Enable RSS feed for subscribers
+- **Incident Subscriptions** — Allow visitors to select individual incidents
+- **Feeds (RSS and iCal)** — Enable or disable both public feeds
 
 </Tab>
 <Tab value="Custom Domains">
 
 Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
+Custom domains support CNAME subdomains only; apex domains are not supported. The settings form shows example CNAME and TXT records before a hostname is entered and a pending verification state after it is saved. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
 
 #### Set Up a Custom Domain
 

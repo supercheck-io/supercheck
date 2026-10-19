@@ -4,22 +4,23 @@ import { db } from "@/utils/db";
 import {
   incidents,
   incidentUpdates,
+  statusPageNotificationEvents,
   incidentComponents,
   statusPageComponents,
   statusPages,
+  sreIncidents,
 } from "@/db/schema";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { eq, and } from "drizzle-orm";
-import { sendIncidentNotifications } from "@/lib/incident-notifications/send-incident-notifications";
-import { sendWebhookNotifications } from "@/lib/incident-notifications/send-webhook-notifications";
-import { sendSlackNotifications } from "@/lib/incident-notifications/send-slack-notifications";
+import { eq, and, inArray } from "drizzle-orm";
 
 const createIncidentSchema = z.object({
+  sreIncidentId: z.string().uuid().optional(),
+  scheduledFor: z.coerce.date().optional(),
+  scheduledUntil: z.coerce.date().optional(),
   statusPageId: z.string().uuid(),
   name: z
     .string()
@@ -66,11 +67,11 @@ export async function createIncident(data: CreateIncidentData) {
         {
           organizationId,
           projectId: project.id,
-        }
+        },
       );
     } catch {
       console.warn(
-        `[SECURITY] User ${userId} attempted to create incident without permission`
+        `[SECURITY] User ${userId} attempted to create incident without permission`,
       );
       return {
         success: false,
@@ -86,13 +87,13 @@ export async function createIncident(data: CreateIncidentData) {
       where: and(
         eq(statusPages.id, validatedData.statusPageId),
         eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
+        eq(statusPages.projectId, project.id),
       ),
     });
 
     if (!statusPage) {
       console.warn(
-        `[SECURITY] User ${userId} attempted to create incident for status page ${validatedData.statusPageId} without ownership`
+        `[SECURITY] User ${userId} attempted to create incident for status page ${validatedData.statusPageId} without ownership`,
       );
       return {
         success: false,
@@ -100,8 +101,86 @@ export async function createIncident(data: CreateIncidentData) {
       };
     }
 
+    if (
+      validatedData.status === "scheduled" &&
+      (!validatedData.scheduledFor ||
+        !validatedData.scheduledUntil ||
+        validatedData.scheduledFor >= validatedData.scheduledUntil ||
+        validatedData.scheduledUntil <= new Date())
+    ) {
+      return {
+        success: false,
+        message: "Choose a future maintenance end after its start.",
+      };
+    }
+    if (validatedData.sreIncidentId) {
+      await requirePermissions(
+        { sre_incident: ["view"] },
+        { organizationId, projectId: project.id },
+      );
+      const source = await db.query.sreIncidents.findFirst({
+        where: and(
+          eq(sreIncidents.id, validatedData.sreIncidentId),
+          eq(sreIncidents.organizationId, organizationId),
+          eq(sreIncidents.projectId, project.id),
+        ),
+      });
+      if (!source)
+        return {
+          success: false,
+          message: "SRE incident not found or access denied",
+        };
+    }
+
+    if (validatedData.affectedComponentIds.length) {
+      const selected = await db
+        .select({ id: statusPageComponents.id })
+        .from(statusPageComponents)
+        .where(
+          and(
+            eq(statusPageComponents.statusPageId, validatedData.statusPageId),
+            inArray(
+              statusPageComponents.id,
+              validatedData.affectedComponentIds,
+            ),
+          ),
+        );
+      if (selected.length !== new Set(validatedData.affectedComponentIds).size)
+        return {
+          success: false,
+          message: "A selected component is not on this status page.",
+        };
+    }
     // Create the incident and initial update in a transaction
     const result = await db.transaction(async (tx) => {
+      await tx
+        .select({ id: statusPages.id })
+        .from(statusPages)
+        .where(eq(statusPages.id, validatedData.statusPageId))
+        .for("update");
+      if (validatedData.sreIncidentId) {
+        const linked = await tx.query.incidents.findFirst({
+          where: and(
+            eq(incidents.statusPageId, validatedData.statusPageId),
+            eq(incidents.sreIncidentId, validatedData.sreIncidentId),
+          ),
+        });
+        if (linked)
+          throw new Error(
+            "This SRE incident already has a public incident on this page.",
+          );
+      }
+      if (validatedData.sreIncidentId) {
+        const [source] = await tx
+          .select()
+          .from(sreIncidents)
+          .where(eq(sreIncidents.id, validatedData.sreIncidentId))
+          .for("update");
+        if (source.statusPageIncidentId)
+          throw new Error(
+            "This SRE incident is already linked to a public incident.",
+          );
+      }
       // Create the incident
       const [incident] = await tx
         .insert(incidents)
@@ -109,6 +188,12 @@ export async function createIncident(data: CreateIncidentData) {
           statusPageId: validatedData.statusPageId,
           createdByUserId: userId,
           name: validatedData.name,
+          sreIncidentId: validatedData.sreIncidentId,
+          scheduledFor: validatedData.status === "scheduled" ? validatedData.scheduledFor : null,
+          scheduledUntil: validatedData.status === "scheduled" ? validatedData.scheduledUntil : null,
+          scheduledRemindPrior: false,
+          autoTransitionDeliverNotificationsAtStart: validatedData.deliverNotifications,
+          autoTransitionDeliverNotificationsAtEnd: validatedData.deliverNotifications,
           status: validatedData.status,
           impact: validatedData.impact,
           body: validatedData.body || null,
@@ -118,17 +203,35 @@ export async function createIncident(data: CreateIncidentData) {
         })
         .returning();
 
+      if (validatedData.sreIncidentId)
+        await tx
+          .update(sreIncidents)
+          .set({ statusPageIncidentId: incident.id, updatedAt: new Date() })
+          .where(eq(sreIncidents.id, validatedData.sreIncidentId));
       // Create initial incident update
-      await tx.insert(incidentUpdates).values({
-        incidentId: incident.id,
-        createdByUserId: userId,
-        body: validatedData.body || `Incident created: ${validatedData.name}`,
-        status: validatedData.status,
-        deliverNotifications: validatedData.deliverNotifications,
-        displayAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const [update] = await tx
+        .insert(incidentUpdates)
+        .values({
+          incidentId: incident.id,
+          createdByUserId: userId,
+          body: validatedData.body || `Incident created: ${validatedData.name}`,
+          status: validatedData.status,
+          deliverNotifications: validatedData.deliverNotifications,
+          displayAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      if (validatedData.deliverNotifications) {
+        await tx
+          .insert(statusPageNotificationEvents)
+          .values({
+            incidentId: incident.id,
+            updateId: update.id,
+            isCreation: true,
+          });
+      }
 
       // Link affected components and update their status
       if (validatedData.affectedComponentIds.length > 0) {
@@ -137,7 +240,7 @@ export async function createIncident(data: CreateIncidentData) {
           const component = await tx.query.statusPageComponents.findFirst({
             where: and(
               eq(statusPageComponents.id, componentId),
-              eq(statusPageComponents.statusPageId, validatedData.statusPageId)
+              eq(statusPageComponents.statusPageId, validatedData.statusPageId),
             ),
           });
 
@@ -147,26 +250,30 @@ export async function createIncident(data: CreateIncidentData) {
               incidentId: incident.id,
               componentId,
               oldStatus: component.status,
-              newStatus: validatedData.componentStatus,
+              newStatus:
+                validatedData.status === "scheduled"
+                  ? "under_maintenance"
+                  : validatedData.componentStatus,
               createdAt: new Date(),
             });
 
-            // Update component status
-            await tx
-              .update(statusPageComponents)
-              .set({
-                status: validatedData.componentStatus,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(statusPageComponents.id, componentId),
-                  eq(
-                    statusPageComponents.statusPageId,
-                    validatedData.statusPageId
-                  )
-                )
-              );
+            // Future maintenance does not change health at announcement time.
+            if (validatedData.status !== "scheduled")
+              await tx
+                .update(statusPageComponents)
+                .set({
+                  status: validatedData.componentStatus,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(statusPageComponents.id, componentId),
+                    eq(
+                      statusPageComponents.statusPageId,
+                      validatedData.statusPageId,
+                    ),
+                  ),
+                );
           }
         }
       }
@@ -190,22 +297,6 @@ export async function createIncident(data: CreateIncidentData) {
       },
       success: true,
     });
-
-    // Send notifications to subscribers using after() to ensure
-    // background work completes even in serverless/short-lived runtimes
-    if (validatedData.deliverNotifications) {
-      after(async () => {
-        try {
-          await Promise.allSettled([
-            sendIncidentNotifications(result.id, validatedData.statusPageId),
-            sendWebhookNotifications(result.id, validatedData.statusPageId),
-            sendSlackNotifications(result.id, validatedData.statusPageId),
-          ]);
-        } catch (error) {
-          console.error("Failed to send incident notifications:", error);
-        }
-      });
-    }
 
     // Revalidate the status page
     revalidatePath(`/status-pages/${validatedData.statusPageId}`);

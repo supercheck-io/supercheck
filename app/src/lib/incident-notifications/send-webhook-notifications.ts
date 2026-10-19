@@ -1,10 +1,8 @@
+import { resolveSubscribers } from "./resolve-subscribers";
+import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
-import {
-  incidents,
-  statusPages,
-  statusPageSubscribers,
-} from "@/db/schema";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { incidents, statusPages, statusPageSubscribers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   deliverWebhook,
   shouldQuarantine,
@@ -17,11 +15,14 @@ import {
  */
 export async function sendWebhookNotifications(
   incidentId: string,
-  statusPageId: string
+  statusPageId: string,
+  update?: NotificationUpdate,
+  subscriberId?: string,
+  isCreation = false,
 ) {
   try {
     console.log(
-      `[Webhook Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`
+      `[Webhook Notifications] Sending notifications for incident ${incidentId} on status page ${statusPageId}`,
     );
 
     // Fetch incident details
@@ -30,9 +31,7 @@ export async function sendWebhookNotifications(
     });
 
     if (!incident) {
-      console.warn(
-        `[Webhook Notifications] Incident not found: ${incidentId}`
-      );
+      console.warn(`[Webhook Notifications] Incident not found: ${incidentId}`);
       return {
         success: false,
         message: "Incident not found",
@@ -41,9 +40,11 @@ export async function sendWebhookNotifications(
     }
 
     // Check if notifications should be sent
-    if (!incident.deliverNotifications) {
+    if (
+      !(update ? update.deliverNotifications : incident.deliverNotifications)
+    ) {
       console.log(
-        `[Webhook Notifications] Notifications disabled for incident ${incidentId}`
+        `[Webhook Notifications] Notifications disabled for incident ${incidentId}`,
       );
       return {
         success: true,
@@ -59,7 +60,7 @@ export async function sendWebhookNotifications(
 
     if (!statusPage) {
       console.warn(
-        `[Webhook Notifications] Status page not found: ${statusPageId}`
+        `[Webhook Notifications] Status page not found: ${statusPageId}`,
       );
       return {
         success: false,
@@ -69,9 +70,12 @@ export async function sendWebhookNotifications(
     }
 
     // Check if webhook subscriptions are enabled
-    if (!statusPage.allowWebhookSubscribers) {
+    if (
+      statusPage.status !== "published" ||
+      !statusPage.allowWebhookSubscribers
+    ) {
       console.log(
-        `[Webhook Notifications] Webhook subscriptions disabled for status page ${statusPageId}`
+        `[Webhook Notifications] Webhook subscriptions disabled for status page ${statusPageId}`,
       );
       return {
         success: true,
@@ -81,22 +85,25 @@ export async function sendWebhookNotifications(
     }
 
     // Get all verified webhook subscribers for this status page
-    const subscribers = await db.query.statusPageSubscribers.findMany({
-      where: and(
-        eq(statusPageSubscribers.statusPageId, statusPageId),
-        eq(statusPageSubscribers.mode, "webhook"),
-        isNotNull(statusPageSubscribers.verifiedAt) // Ensure verified
-      ),
-    });
+    const recipients = await resolveSubscribers(
+      statusPageId,
+      incidentId,
+      "webhook",
+      subscriberId,
+    );
+    const subscribers = subscriberId
+      ? recipients.filter((s) => s.id === subscriberId)
+      : recipients;
 
     // Filter verified subscribers and those not quarantined
     const activeSubscribers = subscribers.filter(
-      (s) => s.verifiedAt !== null && s.quarantinedAt === null
+      (s) =>
+        s.verifiedAt !== null && s.quarantinedAt === null && s.purgeAt === null,
     );
 
     if (activeSubscribers.length === 0) {
       console.log(
-        `[Webhook Notifications] No active webhook subscribers for status page ${statusPageId}`
+        `[Webhook Notifications] No active webhook subscribers for status page ${statusPageId}`,
       );
       return {
         success: true,
@@ -106,25 +113,32 @@ export async function sendWebhookNotifications(
     }
 
     console.log(
-      `[Webhook Notifications] Found ${activeSubscribers.length} active subscribers`
+      `[Webhook Notifications] Found ${activeSubscribers.length} active subscribers`,
     );
 
     // Prepare webhook event payload
     const webhookEvent: WebhookEvent = {
       type:
-        incident.status === "resolved"
+        (update?.status ?? incident.status) === "resolved"
           ? "incident.resolved"
-          : incident.status === "investigating"
-          ? "incident.created"
-          : "incident.updated",
-      timestamp: new Date().toISOString(),
+          : !update || isCreation
+            ? "incident.created"
+            : "incident.updated",
+      timestamp: (
+        update?.createdAt ??
+        incident.createdAt ??
+        new Date()
+      ).toISOString(),
+      ...(update ? { incident_update_id: update.id } : {}),
       statusPageId,
       incident: {
         id: incident.id,
         name: incident.name,
-        status: incident.status,
+        status: update?.status ?? incident.status,
         impact: incident.impact,
-        body: incident.body || "No additional details provided.",
+        body:
+          (update ? update.body : incident.body) ||
+          "No additional details provided.",
       },
     };
 
@@ -136,25 +150,25 @@ export async function sendWebhookNotifications(
       try {
         if (!subscriber.endpoint || !subscriber.webhookSecret) {
           console.warn(
-            `[Webhook Notifications] Subscriber ${subscriber.id} missing endpoint or secret`
+            `[Webhook Notifications] Subscriber ${subscriber.id} missing endpoint or secret`,
           );
           failureCount++;
           return;
         }
 
         console.log(
-          `[Webhook Notifications] Delivering webhook to ${subscriber.endpoint}`
+          `[Webhook Notifications] Delivering webhook to ${subscriber.id}`,
         );
 
         const result = await deliverWebhook(
           subscriber.endpoint,
           webhookEvent,
-          subscriber.webhookSecret
+          subscriber.webhookSecret,
         );
 
         if (result.success) {
           console.log(
-            `[Webhook Notifications] Webhook delivered successfully to ${subscriber.endpoint}`
+            `[Webhook Notifications] Webhook delivered successfully to ${subscriber.id}`,
           );
           successCount++;
 
@@ -169,7 +183,7 @@ export async function sendWebhookNotifications(
             .where(eq(statusPageSubscribers.id, subscriber.id));
         } else {
           console.error(
-            `[Webhook Notifications] Failed to deliver webhook to ${subscriber.endpoint}: ${result.error}`
+            `[Webhook Notifications] Failed to deliver webhook to ${subscriber.id}: ${result.error}`,
           );
           failureCount++;
 
@@ -184,7 +198,7 @@ export async function sendWebhookNotifications(
 
           if (shouldQuarantine(newFailureCount)) {
             console.warn(
-              `[Webhook Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`
+              `[Webhook Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`,
             );
             updates.quarantinedAt = new Date();
           }
@@ -197,7 +211,7 @@ export async function sendWebhookNotifications(
       } catch (error) {
         console.error(
           `[Webhook Notifications] Error delivering webhook to subscriber:`,
-          error
+          error,
         );
         failureCount++;
       }

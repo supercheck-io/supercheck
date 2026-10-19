@@ -1,0 +1,212 @@
+import { and, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { db } from "@/utils/db";
+import {
+  incidents,
+  incidentUpdates,
+  statusPages,
+  statusPageSubscribers,
+  statusPageNotificationEvents as events,
+  statusPageNotificationDeliveries as deliveries,
+} from "@/db/schema";
+import { resolveSubscribers } from "./resolve-subscribers";
+import { sendIncidentNotifications } from "./send-incident-notifications";
+import { sendWebhookNotifications } from "./send-webhook-notifications";
+import { sendSlackNotifications } from "./send-slack-notifications";
+import type { Queue } from "bullmq";
+
+export async function enqueuePendingDeliveries(queue: Queue) {
+  await db.transaction(async (tx) => {
+    const lock = await tx.execute(sql`select pg_try_advisory_xact_lock(73194723) as acquired`);
+    if (!lock[0]?.acquired) return;
+    const pending = await tx
+      .select()
+      .from(events)
+      .where(isNull(events.expandedAt))
+      .orderBy(events.createdAt)
+      .limit(25)
+      .for("update", { skipLocked: true });
+    for (const event of pending) {
+      const incident = await tx.query.incidents.findFirst({
+        where: eq(incidents.id, event.incidentId),
+      });
+      if (!incident) continue;
+      const page = await tx.query.statusPages.findFirst({
+        where: eq(statusPages.id, incident.statusPageId),
+      });
+      if (page?.status === "published") {
+        for (const mode of ["email", "webhook", "slack"] as const) {
+          if (
+            !(mode === "email"
+              ? page.allowEmailSubscribers
+              : mode === "webhook"
+                ? page.allowWebhookSubscribers
+                : page.allowSlackSubscribers)
+          )
+            continue;
+          const recipients = await resolveSubscribers(
+            page.id,
+            incident.id,
+            mode,
+          );
+          for (let offset = 0; offset < recipients.length; offset += 500)
+            await tx
+              .insert(deliveries)
+              .values(
+                recipients.slice(offset, offset + 500).map((recipient) => ({
+                  eventId: event.id,
+                  subscriberId: recipient.id,
+                  mode,
+                })),
+              )
+              .onConflictDoNothing();
+        }
+      }
+      await tx
+        .update(events)
+        .set({ expandedAt: new Date() })
+        .where(eq(events.id, event.id));
+    }
+  });
+  await db
+    .update(deliveries)
+    .set({
+      status: "failed",
+      lastError: "Delivery attempt interrupted; retry limit reached.",
+      leasedUntil: null,
+    })
+    .where(
+      and(
+        eq(deliveries.status, "pending"),
+        sql`${deliveries.attempts} >= 4`,
+        or(
+          isNull(deliveries.leasedUntil),
+          lte(deliveries.leasedUntil, new Date()),
+        ),
+      ),
+    );
+  const pending = await db
+    .select({ id: deliveries.id })
+    .from(deliveries)
+    .innerJoin(events, eq(events.id, deliveries.eventId))
+    .where(
+      and(
+        eq(deliveries.status, "pending"),
+        lt(deliveries.attempts, 4),
+        or(
+          isNull(deliveries.leasedUntil),
+          lte(deliveries.leasedUntil, new Date()),
+        ),
+        sql`not exists (
+    select 1 from status_page_notification_deliveries earlier_delivery
+    join status_page_notification_events earlier_event on earlier_event.id = earlier_delivery.event_id
+    where earlier_delivery.subscriber_id = ${deliveries.subscriberId}
+      and earlier_event.incident_id = ${events.incidentId}
+      and earlier_delivery.status = 'pending'
+      and (earlier_event.created_at, earlier_event.id) < (${events.createdAt}, ${events.id})
+  ) and not exists (
+    select 1 from status_page_notification_events earlier_event
+    where earlier_event.incident_id = ${events.incidentId}
+      and earlier_event.expanded_at is null
+      and (earlier_event.created_at, earlier_event.id) < (${events.createdAt}, ${events.id})
+  )`,
+      ),
+    )
+    .limit(100);
+  for (const delivery of pending) {
+    const previous = await queue.getJob(delivery.id);
+    if (previous) {
+      const state = await previous.getState();
+      if (state === "completed" || state === "failed") await previous.remove();
+    }
+    await queue.add("deliver", { deliveryId: delivery.id }, { jobId: delivery.id, attempts: 4, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: { age: 86400, count: 1000 }, removeOnFail: { age: 604800, count: 1000 } });
+  }
+  // Completed unsubscribe grace periods have no remaining delivery entitlement.
+  await db
+    .delete(statusPageSubscribers)
+    .where(lt(statusPageSubscribers.purgeAt, new Date()));
+}
+
+export async function processDelivery(deliveryId: string) {
+  const [delivery] = await db
+    .update(deliveries)
+    .set({
+      attempts: sql`${deliveries.attempts} + 1`,
+      leasedUntil: new Date(Date.now() + 120000),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(deliveries.id, deliveryId),
+        eq(deliveries.status, "pending"),
+        lt(deliveries.attempts, 4),
+        or(
+          isNull(deliveries.leasedUntil),
+          lte(deliveries.leasedUntil, new Date()),
+        ),
+      ),
+    )
+    .returning();
+  if (!delivery) return;
+  try {
+  const event = await db.query.statusPageNotificationEvents.findFirst({
+    where: eq(events.id, delivery.eventId),
+  });
+  if (!event) return;
+  const incident = await db.query.incidents.findFirst({
+    where: eq(incidents.id, event.incidentId),
+  });
+  const update = await db.query.incidentUpdates.findFirst({
+    where: eq(incidentUpdates.id, event.updateId),
+  });
+  if (!incident || !update) return;
+
+
+    const result =
+      delivery.mode === "email"
+        ? await sendIncidentNotifications(
+            incident.id,
+            incident.statusPageId,
+            update,
+            delivery.subscriberId,
+          )
+        : delivery.mode === "webhook"
+          ? await sendWebhookNotifications(
+              incident.id,
+              incident.statusPageId,
+              update,
+              delivery.subscriberId,
+              event.isCreation,
+            )
+          : await sendSlackNotifications(
+              incident.id,
+              incident.statusPageId,
+              update,
+              delivery.subscriberId,
+              event.isCreation,
+            );
+    if (!result.success) throw new Error(result.message);
+    await db
+      .update(deliveries)
+      .set({
+        status: result.sentCount === 0 ? "skipped" : "delivered",
+        lastError: null,
+        leasedUntil: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(deliveries.id, delivery.id));
+  } catch (error) {
+    await db
+      .update(deliveries)
+      .set({
+        status: delivery.attempts >= 4 ? "failed" : "pending",
+        leasedUntil: null,
+        lastError:
+          error instanceof Error
+            ? error.message.slice(0, 1000)
+            : "Delivery failed",
+        updatedAt: new Date(),
+      })
+      .where(eq(deliveries.id, delivery.id));
+    throw error;
+  }
+}

@@ -68,6 +68,7 @@ export async function getPublicStatusPageByCustomDomain(hostname: string) {
         customDomainVerified: true,
         // Subscriber settings
         allowPageSubscribers: true,
+        allowIncidentSubscribers: true,
         allowEmailSubscribers: true,
         allowWebhookSubscribers: true,
         allowSlackSubscribers: true,

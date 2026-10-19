@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lte, gt, ne } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
@@ -70,6 +70,16 @@ export class MonitorAlertService {
     if (!monitor.alertConfig?.enabled) {
       this.logger.log(`[NOTIFY] Alerts not enabled for monitor ${monitorId}`);
       return;
+    }
+
+    const maintenance = await db.select({ id: schema.incidents.id }).from(schema.statusPageComponentMonitors)
+      .innerJoin(schema.incidentComponents, eq(schema.incidentComponents.componentId, schema.statusPageComponentMonitors.componentId))
+      .innerJoin(schema.incidents, eq(schema.incidents.id, schema.incidentComponents.incidentId))
+      .where(and(eq(schema.statusPageComponentMonitors.monitorId, monitorId), ne(schema.incidents.status, 'resolved'), lte(schema.incidents.scheduledFor, new Date()), gt(schema.incidents.scheduledUntil, new Date())))
+      .limit(1);
+    if (maintenance.length) {
+      this.logger.log(`[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`);
+      return { suppressed: true };
     }
 
     // Get notification providers

@@ -51,6 +51,7 @@ type IncidentUpdateDialogProps = {
 };
 
 const updateFormSchema = z.object({
+  deliverNotifications: z.boolean(),
   status: z.enum([
     "investigating",
     "identified",
@@ -95,12 +96,14 @@ export function IncidentUpdateDialog({
     control,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<UpdateFormData>({
     resolver: zodResolver(updateFormSchema),
     defaultValues: {
       status: "investigating",
       body: "",
+      deliverNotifications: true,
       restoreComponentStatus: false,
     },
   });
@@ -113,6 +116,7 @@ export function IncidentUpdateDialog({
       reset({
         status: incident.status,
         body: "",
+        deliverNotifications: true,
         restoreComponentStatus: false,
       });
     }
@@ -128,7 +132,7 @@ export function IncidentUpdateDialog({
         statusPageId,
         status: data.status,
         body: data.body,
-        deliverNotifications: true,
+        deliverNotifications: data.deliverNotifications,
         restoreComponentStatus: data.restoreComponentStatus,
       };
 
@@ -164,6 +168,16 @@ export function IncidentUpdateDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="update-notify"
+              checked={watch("deliverNotifications")}
+              onCheckedChange={(value) =>
+                setValue("deliverNotifications", value === true)
+              }
+            />
+            <Label htmlFor="update-notify">Notify subscribers</Label>
+          </div>
           <div className="p-2.5 bg-muted rounded-md">
             <p className="text-sm font-medium truncate">{incident.name}</p>
             <p className="text-xs text-muted-foreground">

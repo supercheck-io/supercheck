@@ -305,6 +305,13 @@ export type TranslationKeys = {
   statusPageLabel: string;
   feedbackHelperText: string;
 
+  chooseSubscriptions: string;
+  allPageUpdates: string;
+  selectSubscriptionTarget: string;
+  webhookSigningSecret: string;
+  webhookSecretDescription: string;
+  copySecret: string;
+  secretCopied: string;
   // Misc
   preview: string;
   copyToClipboard: string;
@@ -313,6 +320,13 @@ export type TranslationKeys = {
 
 const translations: Record<SupportedLanguage, TranslationKeys> = {
   en: {
+    chooseSubscriptions: "Choose components or incidents",
+    allPageUpdates: "Receive all page updates.",
+    selectSubscriptionTarget: "Select at least one component or incident.",
+    webhookSigningSecret: "Webhook signing secret",
+    webhookSecretDescription: "Shown only once. Copy it now and use it to verify X-Webhook-Signature.",
+    copySecret: "Copy secret",
+    secretCopied: "Signing secret copied",
     allSystemsOperational: "All Systems Operational",
     allServicesRunningNormally: "All services are running normally",
     degradedPerformance: "Degraded Performance",
@@ -531,6 +545,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ar: {
+    chooseSubscriptions: "اختر المكوّنات أو الحوادث",
+    allPageUpdates: "تلقي جميع تحديثات الصفحة.",
+    selectSubscriptionTarget: "اختر مكوّناً أو حادثاً واحداً على الأقل.",
+    webhookSigningSecret: "سر توقيع Webhook",
+    webhookSecretDescription: "يُعرض مرة واحدة فقط. انسخه الآن واستخدمه للتحقق من X-Webhook-Signature.",
+    copySecret: "نسخ السر",
+    secretCopied: "تم نسخ سر التوقيع",
     allSystemsOperational: "جميع الأنظمة تعمل بشكل طبيعي",
     allServicesRunningNormally: "جميع الخدمات تعمل بشكل طبيعي",
     degradedPerformance: "أداء متدهور",
@@ -743,6 +764,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   cs: {
+    chooseSubscriptions: "Vyberte komponenty nebo incidenty",
+    allPageUpdates: "Dostávat všechny aktualizace stránky.",
+    selectSubscriptionTarget: "Vyberte alespoň jednu komponentu nebo incident.",
+    webhookSigningSecret: "Podpisový tajný klíč webhooku",
+    webhookSecretDescription: "Zobrazí se pouze jednou. Zkopírujte jej nyní a ověřujte jím X-Webhook-Signature.",
+    copySecret: "Kopírovat tajný klíč",
+    secretCopied: "Podpisový tajný klíč byl zkopírován",
     allSystemsOperational: "Všechny systémy fungují",
     allServicesRunningNormally: "Všechny služby fungují normálně",
     degradedPerformance: "Snížený výkon",
@@ -955,6 +983,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   da: {
+    chooseSubscriptions: "Vælg komponenter eller hændelser",
+    allPageUpdates: "Modtag alle sideopdateringer.",
+    selectSubscriptionTarget: "Vælg mindst én komponent eller hændelse.",
+    webhookSigningSecret: "Webhook-signaturhemmelighed",
+    webhookSecretDescription: "Vises kun én gang. Kopiér den nu, og brug den til at verificere X-Webhook-Signature.",
+    copySecret: "Kopiér hemmelighed",
+    secretCopied: "Signaturhemmelighed kopieret",
     allSystemsOperational: "Alle systemer er operationelle",
     allServicesRunningNormally: "Alle tjenester kører normalt",
     degradedPerformance: "Forringet ydeevne",
@@ -1167,6 +1202,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   de: {
+    chooseSubscriptions: "Komponenten oder Vorfälle auswählen",
+    allPageUpdates: "Alle Seitenaktualisierungen erhalten.",
+    selectSubscriptionTarget: "Wähle mindestens eine Komponente oder einen Vorfall aus.",
+    webhookSigningSecret: "Webhook-Signaturschlüssel",
+    webhookSecretDescription: "Wird nur einmal angezeigt. Kopiere ihn jetzt und verwende ihn, um X-Webhook-Signature zu überprüfen.",
+    copySecret: "Schlüssel kopieren",
+    secretCopied: "Signaturschlüssel kopiert",
     allSystemsOperational: "Alle Systeme funktionsfähig",
     allServicesRunningNormally: "Alle Dienste laufen normal",
     degradedPerformance: "Eingeschränkte Leistung",
@@ -1379,6 +1421,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   es: {
+    chooseSubscriptions: "Elige componentes o incidentes",
+    allPageUpdates: "Recibe todas las actualizaciones de la página.",
+    selectSubscriptionTarget: "Selecciona al menos un componente o incidente.",
+    webhookSigningSecret: "Secreto de firma del webhook",
+    webhookSecretDescription: "Solo se muestra una vez. Cópialo ahora y úsalo para verificar X-Webhook-Signature.",
+    copySecret: "Copiar secreto",
+    secretCopied: "Secreto de firma copiado",
     allSystemsOperational: "Todos los sistemas operativos",
     allServicesRunningNormally: "Todos los servicios funcionan con normalidad",
     degradedPerformance: "Rendimiento degradado",
@@ -1591,6 +1640,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   fi: {
+    chooseSubscriptions: "Valitse komponentit tai häiriöt",
+    allPageUpdates: "Vastaanota kaikki sivun päivitykset.",
+    selectSubscriptionTarget: "Valitse vähintään yksi komponentti tai häiriö.",
+    webhookSigningSecret: "Webhook-allekirjoituksen salaisuus",
+    webhookSecretDescription: "Näytetään vain kerran. Kopioi se nyt ja käytä sitä X-Webhook-Signature-otsakkeen tarkistamiseen.",
+    copySecret: "Kopioi salaisuus",
+    secretCopied: "Allekirjoituksen salaisuus kopioitu",
     allSystemsOperational: "Kaikki järjestelmät toiminnassa",
     allServicesRunningNormally: "Kaikki palvelut toimivat normaalisti",
     degradedPerformance: "Heikentynyt suorituskyky",
@@ -1803,6 +1859,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   fr: {
+    chooseSubscriptions: "Choisissez des composants ou des incidents",
+    allPageUpdates: "Recevez toutes les mises à jour de la page.",
+    selectSubscriptionTarget: "Sélectionnez au moins un composant ou un incident.",
+    webhookSigningSecret: "Secret de signature du webhook",
+    webhookSecretDescription: "Affiché une seule fois. Copiez-le maintenant pour vérifier X-Webhook-Signature.",
+    copySecret: "Copier le secret",
+    secretCopied: "Secret de signature copié",
     allSystemsOperational: "Tous les systèmes opérationnels",
     allServicesRunningNormally: "Tous les services fonctionnent normalement",
     degradedPerformance: "Performance dégradée",
@@ -2015,6 +2078,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hi: {
+    chooseSubscriptions: "कॉम्पोनेंट या घटनाएँ चुनें",
+    allPageUpdates: "पेज के सभी अपडेट पाएँ।",
+    selectSubscriptionTarget: "कम से कम एक कॉम्पोनेंट या घटना चुनें।",
+    webhookSigningSecret: "Webhook हस्ताक्षर सीक्रेट",
+    webhookSecretDescription: "यह केवल एक बार दिखेगा। इसे अभी कॉपी करें और X-Webhook-Signature की पुष्टि के लिए इस्तेमाल करें।",
+    copySecret: "सीक्रेट कॉपी करें",
+    secretCopied: "हस्ताक्षर सीक्रेट कॉपी हो गया",
     allSystemsOperational: "सभी सिस्टम चालू हैं",
     allServicesRunningNormally: "सभी सेवाएं सामान्य रूप से चल रही हैं",
     degradedPerformance: "कम प्रदर्शन",
@@ -2227,6 +2297,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hr: {
+    chooseSubscriptions: "Odaberite komponente ili incidente",
+    allPageUpdates: "Primajte sva ažuriranja stranice.",
+    selectSubscriptionTarget: "Odaberite barem jednu komponentu ili incident.",
+    webhookSigningSecret: "Tajni ključ za potpisivanje webhooka",
+    webhookSecretDescription: "Prikazuje se samo jednom. Kopirajte ga sada i upotrijebite za provjeru zaglavlja X-Webhook-Signature.",
+    copySecret: "Kopiraj tajni ključ",
+    secretCopied: "Tajni ključ za potpisivanje je kopiran",
     allSystemsOperational: "Svi sustavi su operativni",
     allServicesRunningNormally: "Svi servisi rade normalno",
     degradedPerformance: "Smanjena izvedba",
@@ -2435,6 +2512,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hu: {
+    chooseSubscriptions: "Válassz összetevőket vagy incidenseket",
+    allPageUpdates: "Kapd meg az oldal összes frissítését.",
+    selectSubscriptionTarget: "Válassz legalább egy összetevőt vagy incidenst.",
+    webhookSigningSecret: "Webhook-aláírási titok",
+    webhookSecretDescription: "Csak egyszer jelenik meg. Másold ki most, és ezzel ellenőrizd az X-Webhook-Signature értékét.",
+    copySecret: "Titok másolása",
+    secretCopied: "Az aláírási titok másolva",
     allSystemsOperational: "Minden rendszer működik",
     allServicesRunningNormally: "Minden szolgáltatás normálisan működik",
     degradedPerformance: "Csökkent teljesítmény",
@@ -2647,6 +2731,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   it: {
+    chooseSubscriptions: "Scegli componenti o incidenti",
+    allPageUpdates: "Ricevi tutti gli aggiornamenti della pagina.",
+    selectSubscriptionTarget: "Seleziona almeno un componente o incidente.",
+    webhookSigningSecret: "Segreto di firma del webhook",
+    webhookSecretDescription: "Viene mostrato una sola volta. Copialo ora e usalo per verificare X-Webhook-Signature.",
+    copySecret: "Copia segreto",
+    secretCopied: "Segreto di firma copiato",
     allSystemsOperational: "Tutti i sistemi operativi",
     allServicesRunningNormally: "Tutti i servizi funzionano normalmente",
     degradedPerformance: "Prestazioni degradate",
@@ -2859,6 +2950,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ja: {
+    chooseSubscriptions: "コンポーネントまたはインシデントを選択",
+    allPageUpdates: "ページのすべての更新を受け取る",
+    selectSubscriptionTarget: "コンポーネントまたはインシデントを1つ以上選択してください。",
+    webhookSigningSecret: "Webhook署名シークレット",
+    webhookSecretDescription: "このシークレットは一度だけ表示されます。今すぐコピーして、X-Webhook-Signatureの検証に使用してください。",
+    copySecret: "シークレットをコピー",
+    secretCopied: "署名シークレットをコピーしました",
     allSystemsOperational: "すべてのシステムが正常に稼働中",
     allServicesRunningNormally: "すべてのサービスが正常に動作しています",
     degradedPerformance: "パフォーマンス低下",
@@ -3071,6 +3169,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ko: {
+    chooseSubscriptions: "컴포넌트 또는 인시던트 선택",
+    allPageUpdates: "페이지의 모든 업데이트 받기",
+    selectSubscriptionTarget: "컴포넌트 또는 인시던트를 하나 이상 선택하세요.",
+    webhookSigningSecret: "Webhook 서명 시크릿",
+    webhookSecretDescription: "한 번만 표시됩니다. 지금 복사해 X-Webhook-Signature를 검증하는 데 사용하세요.",
+    copySecret: "시크릿 복사",
+    secretCopied: "서명 시크릿을 복사했습니다",
     allSystemsOperational: "모든 시스템 정상 운영 중",
     allServicesRunningNormally: "모든 서비스가 정상적으로 운영되고 있습니다",
     degradedPerformance: "성능 저하",
@@ -3283,6 +3388,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   nl: {
+    chooseSubscriptions: "Kies componenten of incidenten",
+    allPageUpdates: "Ontvang alle pagina-updates.",
+    selectSubscriptionTarget: "Selecteer ten minste één component of incident.",
+    webhookSigningSecret: "Webhook-handtekeningsgeheim",
+    webhookSecretDescription: "Wordt maar één keer getoond. Kopieer het nu en gebruik het om X-Webhook-Signature te verifiëren.",
+    copySecret: "Geheim kopiëren",
+    secretCopied: "Handtekeningsgeheim gekopieerd",
     allSystemsOperational: "Alle systemen operationeel",
     allServicesRunningNormally: "Alle diensten werken normaal",
     degradedPerformance: "Verminderde prestaties",
@@ -3495,6 +3607,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   no: {
+    chooseSubscriptions: "Velg komponenter eller hendelser",
+    allPageUpdates: "Motta alle sideoppdateringer.",
+    selectSubscriptionTarget: "Velg minst én komponent eller hendelse.",
+    webhookSigningSecret: "Signeringshemmelighet for webhook",
+    webhookSecretDescription: "Vises bare én gang. Kopier den nå, og bruk den til å bekrefte X-Webhook-Signature.",
+    copySecret: "Kopier hemmelighet",
+    secretCopied: "Signeringshemmeligheten er kopiert",
     allSystemsOperational: "Alle systemer er operative",
     allServicesRunningNormally: "Alle tjenester kjører normalt",
     degradedPerformance: "Redusert ytelse",
@@ -3707,6 +3826,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   pl: {
+    chooseSubscriptions: "Wybierz komponenty lub incydenty",
+    allPageUpdates: "Otrzymuj wszystkie aktualizacje strony.",
+    selectSubscriptionTarget: "Wybierz co najmniej jeden komponent lub incydent.",
+    webhookSigningSecret: "Klucz tajny do podpisywania webhooka",
+    webhookSecretDescription: "Jest wyświetlany tylko raz. Skopiuj go teraz i użyj do weryfikacji X-Webhook-Signature.",
+    copySecret: "Kopiuj klucz tajny",
+    secretCopied: "Skopiowano klucz do podpisu",
     allSystemsOperational: "Wszystkie systemy działają",
     allServicesRunningNormally: "Wszystkie usługi działają normalnie",
     degradedPerformance: "Obniżona wydajność",
@@ -3919,6 +4045,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   pt: {
+    chooseSubscriptions: "Escolha componentes ou incidentes",
+    allPageUpdates: "Receba todas as atualizações da página.",
+    selectSubscriptionTarget: "Selecione pelo menos um componente ou incidente.",
+    webhookSigningSecret: "Segredo de assinatura do webhook",
+    webhookSecretDescription: "É exibido apenas uma vez. Copie-o agora e use-o para verificar X-Webhook-Signature.",
+    copySecret: "Copiar segredo",
+    secretCopied: "Segredo de assinatura copiado",
     allSystemsOperational: "Todos os sistemas operacionais",
     allServicesRunningNormally: "Todos os serviços estão funcionando normalmente",
     degradedPerformance: "Desempenho degradado",
@@ -4131,6 +4264,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ro: {
+    chooseSubscriptions: "Alege componente sau incidente",
+    allPageUpdates: "Primește toate actualizările paginii.",
+    selectSubscriptionTarget: "Selectează cel puțin o componentă sau un incident.",
+    webhookSigningSecret: "Secret pentru semnarea webhookului",
+    webhookSecretDescription: "Este afișat o singură dată. Copiază-l acum și folosește-l pentru a verifica X-Webhook-Signature.",
+    copySecret: "Copiază secretul",
+    secretCopied: "Secretul de semnare a fost copiat",
     allSystemsOperational: "Toate sistemele funcționale",
     allServicesRunningNormally: "Toate serviciile funcționează normal",
     degradedPerformance: "Performanță degradată",
@@ -4343,6 +4483,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ru: {
+    chooseSubscriptions: "Выберите компоненты или инциденты",
+    allPageUpdates: "Получать все обновления страницы.",
+    selectSubscriptionTarget: "Выберите хотя бы один компонент или инцидент.",
+    webhookSigningSecret: "Секрет подписи вебхука",
+    webhookSecretDescription: "Показывается только один раз. Скопируйте его сейчас и используйте для проверки X-Webhook-Signature.",
+    copySecret: "Копировать секрет",
+    secretCopied: "Секрет подписи скопирован",
     allSystemsOperational: "Все системы работают",
     allServicesRunningNormally: "Все сервисы работают нормально",
     degradedPerformance: "Снижение производительности",
@@ -4555,6 +4702,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   sv: {
+    chooseSubscriptions: "Välj komponenter eller incidenter",
+    allPageUpdates: "Ta emot alla siduppdateringar.",
+    selectSubscriptionTarget: "Välj minst en komponent eller incident.",
+    webhookSigningSecret: "Signeringshemlighet för webhook",
+    webhookSecretDescription: "Visas bara en gång. Kopiera den nu och använd den för att verifiera X-Webhook-Signature.",
+    copySecret: "Kopiera hemlighet",
+    secretCopied: "Signeringshemligheten har kopierats",
     allSystemsOperational: "Alla system fungerar",
     allServicesRunningNormally: "Alla tjänster fungerar normalt",
     degradedPerformance: "Försämrad prestanda",
@@ -4767,6 +4921,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   tr: {
+    chooseSubscriptions: "Bileşenleri veya olayları seçin",
+    allPageUpdates: "Sayfadaki tüm güncellemeleri alın.",
+    selectSubscriptionTarget: "En az bir bileşen veya olay seçin.",
+    webhookSigningSecret: "Webhook imzalama gizli anahtarı",
+    webhookSecretDescription: "Yalnızca bir kez gösterilir. Şimdi kopyalayın ve X-Webhook-Signature değerini doğrulamak için kullanın.",
+    copySecret: "Gizli anahtarı kopyala",
+    secretCopied: "İmzalama gizli anahtarı kopyalandı",
     allSystemsOperational: "Tüm sistemler çalışıyor",
     allServicesRunningNormally: "Tüm hizmetler normal çalışıyor",
     degradedPerformance: "Düşük performans",
@@ -4979,6 +5140,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   uk: {
+    chooseSubscriptions: "Виберіть компоненти або інциденти",
+    allPageUpdates: "Отримувати всі оновлення сторінки.",
+    selectSubscriptionTarget: "Виберіть принаймні один компонент або інцидент.",
+    webhookSigningSecret: "Секрет підпису вебхука",
+    webhookSecretDescription: "Показується лише один раз. Скопіюйте його зараз і використовуйте для перевірки X-Webhook-Signature.",
+    copySecret: "Копіювати секрет",
+    secretCopied: "Секрет підпису скопійовано",
     allSystemsOperational: "Усі системи працюють",
     allServicesRunningNormally: "Усі сервіси працюють нормально",
     degradedPerformance: "Знижена продуктивність",
@@ -5191,6 +5359,13 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   zh: {
+    chooseSubscriptions: "选择组件或事件",
+    allPageUpdates: "接收页面的所有更新。",
+    selectSubscriptionTarget: "请至少选择一个组件或事件。",
+    webhookSigningSecret: "Webhook 签名密钥",
+    webhookSecretDescription: "此密钥仅显示一次。请立即复制，并使用它验证 X-Webhook-Signature。",
+    copySecret: "复制密钥",
+    secretCopied: "签名密钥已复制",
     allSystemsOperational: "所有系统运行正常",
     allServicesRunningNormally: "所有服务正常运行",
     degradedPerformance: "性能下降",
@@ -5525,5 +5700,5 @@ export function translateIncidentImpact(
  * Check if a language code is supported.
  */
 export function isLanguageSupported(code: string): boolean {
-  return code in translations;
+  return Object.prototype.hasOwnProperty.call(translations, code);
 }

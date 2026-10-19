@@ -1,15 +1,14 @@
+import { resolveSubscribers } from "./resolve-subscribers";
+import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
-import {
-  incidents,
-  statusPages,
-  statusPageSubscribers,
-  incidentComponents,
-} from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { incidents, statusPages, incidentComponents } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
-import { getTranslations } from "@/lib/status-page-translations";
-import { format } from "date-fns";
+import {
+  getTranslations,
+  getLocaleForLanguage,
+} from "@/lib/status-page-translations";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
@@ -19,7 +18,9 @@ import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
  */
 export async function sendIncidentNotifications(
   incidentId: string,
-  statusPageId: string
+  statusPageId: string,
+  update?: NotificationUpdate,
+  subscriberId?: string,
 ) {
   try {
     // Fetch incident details
@@ -29,7 +30,7 @@ export async function sendIncidentNotifications(
 
     if (!incident) {
       console.warn(
-        `[Incident Notifications] Incident not found: ${incidentId}`
+        `[Incident Notifications] Incident not found: ${incidentId}`,
       );
       return {
         success: false,
@@ -39,7 +40,9 @@ export async function sendIncidentNotifications(
     }
 
     // Check if notifications should be sent
-    if (!incident.deliverNotifications) {
+    if (
+      !(update ? update.deliverNotifications : incident.deliverNotifications)
+    ) {
       return {
         success: true,
         message: "Notifications disabled for this incident",
@@ -54,7 +57,7 @@ export async function sendIncidentNotifications(
 
     if (!statusPage) {
       console.warn(
-        `[Incident Notifications] Status page not found: ${statusPageId}`
+        `[Incident Notifications] Status page not found: ${statusPageId}`,
       );
       return {
         success: false,
@@ -64,7 +67,10 @@ export async function sendIncidentNotifications(
     }
 
     // Check if email subscriptions are enabled
-    if (!statusPage.allowEmailSubscribers) {
+    if (
+      statusPage.status !== "published" ||
+      !statusPage.allowEmailSubscribers
+    ) {
       return {
         success: true,
         message: "Email subscriptions not enabled for this status page",
@@ -73,33 +79,39 @@ export async function sendIncidentNotifications(
     }
 
     // Get affected components
-    const affectedComponentsRecords = await db.query.incidentComponents.findMany({
-      where: eq(incidentComponents.incidentId, incidentId),
-      with: {
-        component: {
-          columns: {
-            name: true,
+    const affectedComponentsRecords =
+      await db.query.incidentComponents.findMany({
+        where: eq(incidentComponents.incidentId, incidentId),
+        with: {
+          component: {
+            columns: {
+              name: true,
+              showcase: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const affectedComponents = affectedComponentsRecords.map(
-      (ic) => ic.component?.name || "Unknown Component"
+    const affectedComponents = affectedComponentsRecords.filter((record) => record.component?.showcase).map(
+      (ic) => ic.component?.name || "Unknown Component",
     );
 
     // Get all verified, active subscribers for this status page
     // SECURITY: Filter out unsubscribed users (purgeAt != null)
-    const subscribers = await db.query.statusPageSubscribers.findMany({
-      where: and(
-        eq(statusPageSubscribers.statusPageId, statusPageId),
-        eq(statusPageSubscribers.mode, "email"),
-        isNull(statusPageSubscribers.purgeAt) // Don't send to unsubscribed users
-      ),
-    });
+    const recipients = await resolveSubscribers(
+      statusPageId,
+      incidentId,
+      "email",
+      subscriberId,
+    );
+    const subscribers = subscriberId
+      ? recipients.filter((s) => s.id === subscriberId)
+      : recipients;
 
     // Filter verified subscribers (have verifiedAt timestamp)
-    const verifiedSubscribers = subscribers.filter((s) => s.verifiedAt !== null);
+    const verifiedSubscribers = subscribers.filter(
+      (s) => s.verifiedAt !== null && s.quarantinedAt === null,
+    );
 
     if (verifiedSubscribers.length === 0) {
       return {
@@ -111,7 +123,9 @@ export async function sendIncidentNotifications(
 
     // Construct notification URLs
     const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      "http://localhost:3000";
     const statusPageUrl = getPublicStatusPageUrl({
       subdomain: statusPage.subdomain,
       customDomain: statusPage.customDomain,
@@ -125,18 +139,27 @@ export async function sendIncidentNotifications(
     const t = getTranslations(language);
 
     const formatIncidentTimestamp = (date: Date | null) => {
-      return date ? format(date, "PPpp") : t.emailJustNow;
+      return date
+        ? new Intl.DateTimeFormat(getLocaleForLanguage(language), {
+            dateStyle: "long",
+            timeStyle: "short",
+            timeZone: statusPage.timezone || "UTC",
+          }).format(date)
+        : t.emailJustNow;
     };
 
     const emailParamsTemplate = {
       statusPageName: statusPage.name,
       statusPageUrl,
       incidentName: incident.name,
-      incidentStatus: incident.status,
+      incidentStatus: update?.status ?? incident.status,
       incidentImpact: incident.impact,
-      incidentDescription: incident.body || t.emailNoDetails,
+      incidentDescription:
+        (update ? update.body : incident.body) || t.emailNoDetails,
       affectedComponents,
-      updateTimestamp: formatIncidentTimestamp(incident.createdAt),
+      updateTimestamp: formatIncidentTimestamp(
+        update?.createdAt ?? incident.createdAt,
+      ),
       supportUrl: statusPage.supportUrl,
       language,
     };
@@ -150,7 +173,7 @@ export async function sendIncidentNotifications(
       try {
         if (!subscriber.email) {
           console.warn(
-            `[Incident Notifications] Subscriber ${subscriber.id} has no email address`
+            `[Incident Notifications] Subscriber ${subscriber.id} has no email address`,
           );
           return { success: false };
         }
@@ -173,20 +196,28 @@ export async function sendIncidentNotifications(
           subject: emailContent.subject,
           text: emailContent.text,
           html: emailContent.html,
+          ...(subscriber.unsubscribeToken
+            ? {
+                headers: {
+                  "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${subscriber.unsubscribeToken}>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
+              }
+            : {}),
         });
 
         if (result.success) {
           return { success: true };
         } else {
           console.error(
-            `[Incident Notifications] Failed to send email to ${subscriber.email}: ${result.error}`
+            `[Incident Notifications] Failed to send email to ${subscriber.id}: ${result.error}`,
           );
           return { success: false };
         }
       } catch (error) {
         console.error(
           `[Incident Notifications] Error sending email to subscriber:`,
-          error
+          error,
         );
         return { success: false };
       }

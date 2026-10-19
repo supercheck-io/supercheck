@@ -76,6 +76,7 @@ export async function verifySubscriber(token: string) {
         .update(statusPageSubscribers)
         .set({
           verifiedAt: new Date(),
+        verificationToken: null,
           updatedAt: new Date(),
         })
         .where(

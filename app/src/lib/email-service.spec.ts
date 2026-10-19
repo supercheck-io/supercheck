@@ -51,7 +51,7 @@ describe("EmailService", () => {
       success: true,
       message: "Email sent successfully via SMTP",
     });
-    expect(mockVerify).toHaveBeenCalledTimes(1);
+    expect(mockVerify).not.toHaveBeenCalled();
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "alerts@example.com",

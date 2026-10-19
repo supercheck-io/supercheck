@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { statusPages } from "@/db/schema";
+import { statusPages, statusPageComponents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
@@ -62,6 +62,9 @@ export async function publishStatusPage(statusPageId: string) {
         message: "Status page not found or access denied",
       };
     }
+
+    const visibleComponent = await db.query.statusPageComponents.findFirst({ where: and(eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.showcase, true)), columns: { id: true } });
+    if (!visibleComponent) return { success: false, message: "Add at least one public component before publishing." };
 
     // Update status page status to published
     const [updatedStatusPage] = await db
@@ -127,7 +130,7 @@ export async function publishStatusPage(statusPageId: string) {
   }
 }
 
-export async function unpublishStatusPage(statusPageId: string) {
+export async function unpublishStatusPage(statusPageId: string, archive = false) {
   try {
     // Validate UUID format
     if (!z.string().uuid().safeParse(statusPageId).success) {
@@ -185,7 +188,7 @@ export async function unpublishStatusPage(statusPageId: string) {
     const [updatedStatusPage] = await db
       .update(statusPages)
       .set({
-        status: "draft",
+        status: archive === true ? "archived" : "draft",
         updatedAt: new Date(),
       })
       .where(
@@ -208,7 +211,7 @@ export async function unpublishStatusPage(statusPageId: string) {
     // Log the audit event
     await logAuditEvent({
       userId,
-      action: "status_page_unpublished",
+      action: archive === true ? "status_page_archived" : "status_page_unpublished",
       resource: "status_page",
       resourceId: statusPageId,
       metadata: {

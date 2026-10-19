@@ -93,7 +93,7 @@ function handleCors(request: NextRequest): NextResponse | null {
 // ============================================================================
 
 // Pre-compile regex patterns for performance
-const VALID_SUBDOMAIN_PATTERN = /^[a-zA-Z0-9-]{1,63}$/;
+const VALID_SUBDOMAIN_PATTERN = /^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i;
 const PORT_PATTERN = /:\d+$/;
 const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
@@ -161,7 +161,7 @@ function extractSubdomain(cleanHostname: string): string | null {
 
   const subdomain = cleanHostname.slice(0, -domainSuffix.length);
 
-  // Valid subdomain: alphanumeric and hyphens only, 1-63 chars
+  // Status pages use generated UUID labels; reserve ordinary service hostnames.
   // Using pre-compiled regex for performance
   return VALID_SUBDOMAIN_PATTERN.test(subdomain) ? subdomain : null;
 }
