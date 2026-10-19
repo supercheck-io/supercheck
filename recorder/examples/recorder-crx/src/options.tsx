@@ -48,6 +48,36 @@ function hostOf(url: string): string {
   }
 }
 
+const DOCS_URL = 'https://supercheck.io/docs/recorder';
+
+/**
+ * Small "i" button that reveals a short explanation on hover or keyboard
+ * focus. Keeps the form compact while the detail stays one click away.
+ */
+function InfoTip({ label, children, learnMore }: { label: string; children: React.ReactNode; learnMore?: string }) {
+  const id = React.useId();
+  return (
+    <span className='info-tip'>
+      <button type='button' className='info-tip-button' aria-label={`About ${label}`} aria-describedby={id}>
+        <svg viewBox='0 0 16 16' width='14' height='14' aria-hidden='true'>
+          <circle cx='8' cy='8' r='7' fill='none' stroke='currentColor' strokeWidth='1.5' />
+          <rect x='7.25' y='7' width='1.5' height='4.5' rx='0.75' fill='currentColor' />
+          <circle cx='8' cy='4.75' r='0.9' fill='currentColor' />
+        </svg>
+      </button>
+      <span role='tooltip' id={id} className='info-tip-body'>
+        {children}
+        {learnMore && (
+          <>
+            {' '}
+            <a href={`${DOCS_URL}${learnMore}`} target='_blank' rel='noopener noreferrer'>Learn more</a>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function OptionsPage() {
   const [config, setConfig] = React.useState<SupercheckConfig | null>(null);
   const [settings, setSettings] = React.useState<CrxSettings>(defaultSettings);
@@ -374,7 +404,13 @@ function OptionsPage() {
       <main className='options-main'>
         {/* Connection Section */}
         <section className='options-section'>
-          <h2>Supercheck Connection</h2>
+          <h2>
+            Supercheck Connection
+            <InfoTip label='the connection' learnMore='#connect-to-supercheck'>
+              Supercheck Cloud, the demo and QA sites connect automatically once you sign in. Self-hosted
+              instances need their URL saved here once.
+            </InfoTip>
+          </h2>
 
           <div className='connection-status' role='status' aria-live='polite'>
             <span className={`status-indicator ${connectionState.status}`} />
@@ -404,7 +440,13 @@ function OptionsPage() {
               </div>
 
               <div className='form-group'>
-                <label htmlFor='instanceUrl'>Supercheck instance URL</label>
+                <label htmlFor='instanceUrl'>
+                  Supercheck instance URL
+                  <InfoTip label='the instance URL' learnMore='#self-hosted-supercheck'>
+                    The address you open Supercheck at. Saving it is what lets this extension trust that site.
+                    Changing it removes the credential stored for the previous instance.
+                  </InfoTip>
+                </label>
                 <input
                   id='instanceUrl'
                   type='url'
@@ -420,7 +462,7 @@ function OptionsPage() {
                 />
                 {urlError && <span className='field-error'>{urlError}</span>}
                 <span className='field-hint' id='instanceUrl-hint'>
-                  Use the HTTPS URL of your deployment. Changing it clears the credential saved for the previous instance.
+                  Use the HTTPS URL of your deployment.
                 </span>
               </div>
 
@@ -445,7 +487,13 @@ function OptionsPage() {
               {showAdvanced && (
                 <div id='advanced-connection' className='advanced-panel'>
                   <div className='form-group'>
-                    <label htmlFor='apiKey'>Recorder API key</label>
+                    <label htmlFor='apiKey'>
+                      Recorder API key
+                      <InfoTip label='the recorder API key' learnMore='#manual-api-key-advanced'>
+                        Only needed when you cannot sign in to the instance from this browser. Keys belong to one
+                        instance and are never sent to another.
+                      </InfoTip>
+                    </label>
                     <input
                       id='apiKey'
                       type='password'
@@ -456,8 +504,7 @@ function OptionsPage() {
                       placeholder='Paste an existing recorder key'
                     />
                     <span className='field-hint'>
-                      Optional. Use a recorder-scoped key from this instance when you cannot sign in here.
-                      Keys are per instance; paste the key issued by {hostOf(instanceUrl)}.
+                      Paste the key issued by {hostOf(instanceUrl)}.
                     </span>
                   </div>
                   <button
@@ -475,10 +522,21 @@ function OptionsPage() {
 
         {/* Recorder Settings Section */}
         <section className='options-section'>
-          <h2>Recorder Settings</h2>
+          <h2>
+            Recorder Settings
+            <InfoTip label='recorder settings' learnMore='#record-a-test'>
+              Preferences for how the recorder generates code and where it opens. They apply to every recording.
+            </InfoTip>
+          </h2>
 
           <div className='form-group'>
-            <label htmlFor='testIdAttributeName'>Test ID Attribute</label>
+            <label htmlFor='testIdAttributeName'>
+              Test ID Attribute
+              <InfoTip label='the test ID attribute'>
+                The HTML attribute your app uses for test hooks, such as data-testid or data-qa. Recorded
+                selectors use it through getByTestId() when an element has it.
+              </InfoTip>
+            </label>
             <input
               id='testIdAttributeName'
               type='text'
@@ -486,9 +544,6 @@ function OptionsPage() {
               onChange={e => handleSettingChange('testIdAttributeName', e.target.value)}
               placeholder='data-testid'
             />
-            <span className='field-hint'>
-              Attribute used for getByTestId() selectors
-            </span>
           </div>
 
           <div className='form-group checkbox-group'>
@@ -499,10 +554,11 @@ function OptionsPage() {
                 onChange={e => handleSettingChange('sidepanel', e.target.checked)}
               />
               Open in side panel
+              <InfoTip label='the side panel option'>
+                Opens the recorder docked beside the page so you can keep both in view. Turn it off to use a
+                popup window instead.
+              </InfoTip>
             </label>
-            <span className='field-hint'>
-              Open recorder in browser side panel instead of popup
-            </span>
           </div>
         </section>
 
