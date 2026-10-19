@@ -61,9 +61,19 @@ function OptionsPage() {
 
   const instanceUrlRef = React.useRef(instanceUrl);
   instanceUrlRef.current = instanceUrl;
+  const savedInstanceUrlRef = React.useRef<string | undefined>(undefined);
+  savedInstanceUrlRef.current = config?.instanceUrl;
   // Set while the page itself writes storage so the change listener does not
   // replace the status message this page is about to show.
   const suppressStorageSyncRef = React.useRef(false);
+
+  // storage.onChanged only fires when a value actually changes, so a no-op
+  // write would leave the flag set and swallow the next real change.
+  const releaseStorageSuppression = () => {
+    window.setTimeout(() => {
+      suppressStorageSyncRef.current = false;
+    }, 500);
+  };
 
   const describeFailure = React.useCallback((
     reason: string | undefined,
@@ -135,6 +145,7 @@ function OptionsPage() {
         instanceUrl: DEFAULT_INSTANCE_URL,
         autoConnected: false,
       };
+      const previousSavedUrl = savedInstanceUrlRef.current ?? DEFAULT_INSTANCE_URL;
       applyConfig(next);
 
       if (suppressStorageSyncRef.current) {
@@ -151,12 +162,13 @@ function OptionsPage() {
         return;
       }
 
-      // Do not overwrite a URL the user is editing when a disconnect arrives.
-      const userIsEditing = !isSameInstance(instanceUrlRef.current, next.instanceUrl);
-      if (!userIsEditing) {
+      // The credential is gone, so never keep showing "Connected". Only leave
+      // the URL field alone when the user is mid-edit (it differs from what
+      // was saved before this change).
+      const userIsEditing = !isSameInstance(instanceUrlRef.current, previousSavedUrl);
+      if (!userIsEditing)
         setInstanceUrl(next.instanceUrl || DEFAULT_INSTANCE_URL);
-        setConnectionState({ status: 'disconnected' });
-      }
+      setConnectionState({ status: 'disconnected' });
     });
   }, [applyConfig]);
 
@@ -236,6 +248,7 @@ function OptionsPage() {
         message: error instanceof Error ? error.message : 'Failed to save the instance URL',
       });
     } finally {
+      releaseStorageSuppression();
       setSaving(false);
     }
   };
@@ -290,6 +303,7 @@ function OptionsPage() {
         message: error instanceof Error ? error.message : 'Connection failed',
       });
     } finally {
+      releaseStorageSuppression();
       setSaving(false);
     }
   };
@@ -316,6 +330,7 @@ function OptionsPage() {
         message: error instanceof Error ? error.message : 'Disconnect failed',
       });
     } finally {
+      releaseStorageSuppression();
       setSaving(false);
     }
   };

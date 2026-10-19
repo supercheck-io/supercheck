@@ -159,3 +159,20 @@ test('separates rate limiting from an invalid key', async () => {
     },
   );
 });
+
+test('does not treat a 200 without the success marker as a valid credential', async () => {
+  await withStorage(
+    { instanceUrl: 'https://self.example.com', apiKey: 'ext-test' },
+    async () => {
+      await withFetch(
+        (async () => new Response('<html>ok</html>', { status: 200 })) as FetchImpl,
+        async () => {
+          await expect(apiClient.verifyConnection()).resolves.toEqual({
+            valid: false,
+            reason: 'server_error',
+          });
+        },
+      );
+    },
+  );
+});

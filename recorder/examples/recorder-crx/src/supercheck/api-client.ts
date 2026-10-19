@@ -73,6 +73,8 @@ function parseRetryAfter(response: Response): number | undefined {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
+const VERIFY_TIMEOUT_MS = 10000;
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -233,6 +235,7 @@ class SupercheckApiClient {
       const response = await fetch(`${baseUrl}/api/extension/projects`, {
         method: 'GET',
         headers: { 'x-api-key': key },
+        signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
       });
 
       if (response.status === 404 || response.status === 405)
@@ -254,6 +257,7 @@ class SupercheckApiClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: key }),
+        signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
       });
 
       if (response.status === 429) {
@@ -269,7 +273,7 @@ class SupercheckApiClient {
         return { valid: false, reason: response.status >= 500 ? 'server_error' : 'invalid' };
 
       const data = await response.json();
-      return { valid: Boolean(data.valid) };
+      return { valid: Boolean(data.valid), user: data.user };
     } catch {
       return {
         valid: false,
@@ -295,7 +299,12 @@ class SupercheckApiClient {
     if (!response.ok)
       return { valid: false, reason: 'server_error' };
 
-    return { valid: true };
+    // A 2xx from a catch-all host (SPA fallback, captive portal) is not proof
+    // the credential was accepted; require the endpoint's own success marker.
+    const body = await response.json().catch(() => null);
+    return body?.success === true
+      ? { valid: true }
+      : { valid: false, reason: 'server_error' };
   }
 
   /**
