@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { invitation, member, organization, projects, projectMembers, session, user as userTable } from '@/db/schema';
-import { eq, and, inArray, desc, asc, gt } from 'drizzle-orm';
+import { invitation, member, organization, planLimits, projects, projectMembers, session, user as userTable } from '@/db/schema';
+import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
-import { isCloudHosted } from '@/lib/feature-flags';
+import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
+import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 
 export async function GET(
   request: NextRequest,
@@ -14,6 +15,9 @@ export async function GET(
 ) {
   const params = await context.params;
   const { token } = params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+    return NextResponse.json({ error: "Invalid invitation token" }, { status: 400 });
+  }
 
   try {
     // Get invitation details with inviter info
@@ -97,6 +101,9 @@ export async function POST(
 ) {
   const params = await context.params;
   const { token } = params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+    return NextResponse.json({ error: "Invalid invitation token" }, { status: 400 });
+  }
 
   try {
     // Try to get current user, but don't require authentication
@@ -217,12 +224,28 @@ export async function POST(
       return NextResponse.json({ error: 'Please sign in again to accept the invitation' }, { status: 401 });
     }
 
-    await db.transaction(async (tx) => {
+    await withPlanLimitLock(invite.organizationId, "members", async (tx) => {
       // Serialize acceptance with signup and other invitations for this user.
       // The user lock makes the membership check authoritative across requests.
       const [acceptingUser] = await tx.select({ id: userTable.id }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
+      // Plan limits only exist when Polar billing is active; cloud mode without
+      // Polar (dev, staging, e2e) has no plans to enforce.
+      if (isPolarEnabled()) {
+        const [org] = await tx.select({ plan: organization.subscriptionPlan }).from(organization)
+          .where(eq(organization.id, invite.organizationId)).limit(1).for("update");
+        const [existingMember] = await tx.select({ id: member.id }).from(member)
+          .where(and(eq(member.organizationId, invite.organizationId), eq(member.userId, currentUser.id))).limit(1);
+        if (!existingMember) {
+          if (!org || (org.plan !== "plus" && org.plan !== "pro")) throw new Error("INVITE_MEMBER_LIMIT");
+          const [limits] = await tx.select({ max: planLimits.maxTeamMembers }).from(planLimits)
+            .where(eq(planLimits.plan, org.plan)).limit(1);
+          const [members] = await tx.select({ count: sql<number>`count(*)::int` }).from(member)
+            .where(eq(member.organizationId, invite.organizationId));
+          if (!limits || Number(members?.count ?? 0) >= limits.max) throw new Error("INVITE_MEMBER_LIMIT");
+        }
+      }
       // Claim the pending invitation before any membership/session changes.
       // A concurrent acceptance/cancellation must not succeed twice.
       const [claimed] = await tx.update(invitation).set({ status: 'accepted' })
@@ -268,6 +291,8 @@ export async function POST(
             .filter((projectId) => projectId.length > 0)
         )
       );
+
+      if (normalizedSelectedProjectIds.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
 
       if (requiresProjectAssignments && normalizedSelectedProjectIds.length === 0) {
         throw new Error("INVITE_PROJECT_SCOPE_MISMATCH");
@@ -352,6 +377,9 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "INVITE_MEMBER_LIMIT") {
+      return NextResponse.json({ error: "The organization has reached its current plan's member limit. Ask an owner to upgrade or free a seat." }, { status: 402 });
+    }
     if (error instanceof Error && error.message === 'INVITE_SESSION_CHANGED') {
       return NextResponse.json({ error: 'Session changed. Please sign in again.' }, { status: 401 });
     }

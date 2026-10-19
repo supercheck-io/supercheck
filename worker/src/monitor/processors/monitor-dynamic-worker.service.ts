@@ -134,7 +134,10 @@ export class MonitorDynamicWorkerService
         // owns this shared command connection and closes it during shutdown.
         connection: this.connection,
         concurrency: 1,
-        lockDuration: 5 * 60 * 1000,
+        // A synthetic check may run 5 minutes plus pod startup and artifact
+        // extraction; keep the lock comfortably above that so a slow check is
+        // not reported as stalled and rerun.
+        lockDuration: 15 * 60 * 1000,
         stalledInterval: 30000,
         maxStalledCount: 2,
         metrics: { maxDataPoints: 60 },

@@ -1,3 +1,7 @@
+jest.mock("@/lib/billing/usage-sync-lease", () => ({
+  withUsageSyncLease: jest.fn(async (run) => run(() => {})),
+}));
+import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
 /** @jest-environment node */
 
 jest.mock("@/utils/db", () => ({
@@ -101,6 +105,7 @@ describe("PolarUsageService retry idempotency", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(withUsageSyncLease).mockImplementation(async (run) => run(() => {}));
   });
 
   afterAll(() => {
@@ -287,34 +292,19 @@ describe("PolarUsageService retry idempotency", () => {
       }),
     );
 
-    const lockQueries = transaction.mock.calls.map(([strings]) =>
-      Array.from(strings as TemplateStringsArray).join(""),
-    );
-    expect(lockQueries).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("pg_try_advisory_xact_lock"),
-      ]),
-    );
-    expect(mockPostgresClient.begin).toHaveBeenCalledTimes(2);
+    expect(withUsageSyncLease).toHaveBeenCalledTimes(2);
+    expect(mockPostgresClient.begin).not.toHaveBeenCalled();
   });
 
-  it("skips safely when another scheduler owns the transaction lock", async () => {
-    const transaction = jest.fn().mockResolvedValue([{ locked: false }]);
-    mockPostgresClient.begin.mockImplementation(
-      async (callback: (sql: typeof transaction) => Promise<unknown>) =>
-        callback(transaction),
-    );
-
+  it("skips safely when another scheduler owns the renewable lease", async () => {
+    jest.mocked(withUsageSyncLease).mockResolvedValueOnce(null);
     await expect(polarUsageService.syncPendingEvents()).resolves.toEqual({
-      processed: 0,
-      succeeded: 0,
-      failed: 0,
-      errors: [],
+      processed: 0, succeeded: 0, failed: 0, errors: [],
     });
-
     expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
-    expect(mockPostgresClient.begin).toHaveBeenCalledTimes(1);
+    expect(mockPostgresClient.begin).not.toHaveBeenCalled();
   });
+
   it.each([
     ["inserted", { inserted: 1 }, true],
     ["duplicate", { inserted: 0, duplicates: 1 }, true],

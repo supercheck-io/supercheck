@@ -48,7 +48,7 @@ The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/
 |---|---|
 | Extension is not detected | Reload the extension and the Supercheck tab, using the same browser profile |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
-| Extension stays **Not connected to Supercheck** after sign-in | The account already has an active recorder key, which is not re-issued automatically. Revoke it in Supercheck, then reload an authenticated page so the extension can store a new key |
+| Extension stays **Not connected to Supercheck** after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, revoke the old key in **Settings → API keys**, then reload an authenticated page to reconnect. If disconnect could not reach the server, keep the configuration and retry. |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |

@@ -29,7 +29,7 @@ export async function POST(
     try {
       // Use requireUserAuthContext() instead of withRateLimit's built-in
       // requireAuth() so that CLI Bearer-token requests are supported.
-      ({ userId } = await requireUserAuthContext());
+      ({ userId } = await requireUserAuthContext((await params).id));
 
       const resolvedParams = await params;
       projectId = resolvedParams.id;

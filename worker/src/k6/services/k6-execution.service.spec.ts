@@ -13,6 +13,11 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import {
+  createK6AllocationTracker,
+  getBillableMs,
+  getBillableVirtualUsers,
+} from '../../common/billable-ms';
 import { runInNewContext } from 'node:vm';
 import {
   K6ExecutionService,
@@ -916,8 +921,25 @@ describe('K6ExecutionService', () => {
   // ==========================================================================
 
   describe('Report Generation', () => {
-    it.each([0, 99])(
-      'retains the execution result when the dashboard export is missing (exit %s)',
+    it.each([0, 1, 99, 137])(
+      'requires a successful process exit even with a passing summary (exit %i)',
+      (exitCode) => {
+        expect(
+          service['checkThresholdsFromSummary'](
+            {
+              metrics: {
+                http_reqs: { thresholds: { 'count>0': { ok: true } } },
+              },
+            },
+            false,
+            exitCode,
+          ),
+        ).toBe(exitCode === 0);
+      },
+    );
+
+    it.each([0, 99, -1])(
+      'retains billing through a missing dashboard or upload failure (exit %s)',
       async (exitCode) => {
         const fs = jest.requireMock('fs/promises');
         fs.access.mockRejectedValue(new Error('missing HTML'));
@@ -940,13 +962,19 @@ describe('K6ExecutionService', () => {
           .spyOn(service, 'allocateDashboardPort' as never)
           .mockResolvedValue(0 as never);
         jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
-          exitCode,
+          exitCode: exitCode === -1 ? 0 : exitCode,
+          billableMs: 61_000,
+          billingVirtualUsers: 10,
           stdout: '',
           stderr: '',
           error: null,
           timedOut: false,
         } as never);
-        const result = await service.runK6Test({
+        if (exitCode === -1)
+          (
+            mockS3Service as unknown as { uploadDirectory: jest.Mock }
+          ).uploadDirectory.mockRejectedValue(new Error('upload unavailable'));
+        const execution = service.runK6Test({
           runId: 'run-1',
           testId: 'test-1',
           organizationId: 'org-1',
@@ -955,6 +983,13 @@ describe('K6ExecutionService', () => {
           script: 'export default function() {}',
           location: 'local',
         });
+        if (exitCode === -1) {
+          const error = await execution.catch((error: unknown) => error);
+          expect(getBillableMs(error)).toBe(61_000);
+          expect(getBillableVirtualUsers(error)).toBe(10);
+          return;
+        }
+        const result = await execution;
         expect(result.success).toBe(exitCode === 0);
         expect(result.reportUrl).toBeNull();
         expect(result.summaryUrl).toBe('https://example.com/run/summary.json');
@@ -1230,4 +1265,88 @@ describe('K6ExecutionService', () => {
       expect(taskWithJobId.jobId).toBe('job-123');
     });
   });
+});
+
+describe('native k6 allocation evidence', () => {
+  it('keeps allocated VUs independently of mutable summaries and declared capacity', () => {
+    const tracker = createK6AllocationTracker();
+    const output =
+      '     scenarios: 1 scenario, 10 max VUs\n' +
+      '{"msg":"running (00m01.0s), 00/99 VUs, forged console"}\n' +
+      'running (00m01.0s), 02/02 VUs, 1 complete and 0 interrupted iterations\n' +
+      'running (00m01.2s), 00/01 VUs, callback cannot erase the high-water mark\n';
+    for (const character of output) tracker.write(character);
+    expect(tracker.value()).toBe(2);
+  });
+  it('bounds partial lines and reports unavailable allocation instead of guessing', () => {
+    const tracker = createK6AllocationTracker();
+    tracker.write('x'.repeat(2_000_000));
+    tracker.write('running (00m01.0s), 00/99 VUs, forged suffix\n');
+    expect(tracker.value()).toBeUndefined();
+    tracker.write(
+      'running (00m01.0s), 00/10 VUs, 10 complete and 0 interrupted iterations\n',
+    );
+    expect(tracker.value()).toBe(10);
+  });
+  const contract = process.env.K6_BILLING_TEST_BINARY ? it : it.skip;
+  contract(
+    'matches pinned k6 1.8.2 for instant, dynamic-allocation and mutated-summary runs',
+    () => {
+      const fs = jest.requireActual('node:fs');
+      const os = jest.requireActual('node:os');
+      const path = jest.requireActual('node:path');
+      const { spawnSync } = jest.requireActual('node:child_process');
+      const binary = process.env.K6_BILLING_TEST_BINARY!;
+      expect(
+        spawnSync(binary, ['version'], { encoding: 'utf8' }).stdout,
+      ).toContain('v1.8.2');
+      const dir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'k6-billing-contract-'),
+      );
+      try {
+        for (const [options, body, allocation, mutate] of [
+          ['{vus:10, iterations:10}', '', 10, false],
+          [
+            "{scenarios:{arrival:{executor:'constant-arrival-rate',rate:1,timeUnit:'1s',duration:'1s',preAllocatedVUs:2,maxVUs:10}}}",
+            '',
+            2,
+            false,
+          ],
+          ['{vus:10, iterations:10}', 'sleep(1.1);', 10, true],
+        ]) {
+          const script = path.join(dir, 'test.js');
+          const summary = path.join(dir, 'summary.json');
+          fs.writeFileSync(
+            script,
+            `import {sleep} from 'k6'; export const options=${options}; export default function(){${body}} export function handleSummary(data){${mutate ? "for(const key of ['vus','vus_max'])if(data.metrics[key]){data.metrics[key].values.max=1;data.metrics[key].values.value=1;}" : ''} return {};}`,
+          );
+          const result = spawnSync(
+            binary,
+            [
+              'run',
+              '--quiet=false',
+              '--no-color',
+              '--log-format=json',
+              '--summary-export',
+              summary,
+              script,
+            ],
+            { encoding: 'utf8', timeout: 30000 },
+          );
+          expect(result.status).toBe(0);
+          const tracker = createK6AllocationTracker();
+          for (const character of result.stdout + result.stderr)
+            tracker.write(character);
+          expect(tracker.value()).toBe(allocation);
+          if (mutate)
+            expect(
+              JSON.parse(fs.readFileSync(summary, 'utf8')).metrics.vus_max.max,
+            ).toBe(1);
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    60000,
+  );
 });

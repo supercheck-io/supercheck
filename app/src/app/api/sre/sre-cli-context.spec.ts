@@ -13,14 +13,14 @@ jest.mock("./_auth", () => ({
     context: cliContext,
   })),
 }));
-jest.mock("@/actions/sre-connectors", () => ({
+jest.mock("@/lib/server-actions/sre-connectors", () => ({
   getSreConnectors: jest.fn(async () => ({ success: true, connectors: [] })),
   getSreConnectorSetupOptions: jest.fn(async () => ({
     success: true,
     options: { services: [], privateAgents: [] },
   })),
 }));
-jest.mock("@/actions/sre-integration-bindings", () => ({
+jest.mock("@/lib/server-actions/sre-integration-bindings", () => ({
   getSreIntegrationBindings: jest.fn(async () => ({
     success: true,
     bindings: [],
@@ -30,7 +30,7 @@ jest.mock("@/actions/sre-integration-bindings", () => ({
     options: { notificationProviders: [], connectors: [], services: [] },
   })),
 }));
-jest.mock("@/actions/sre-diagnostic-queries", () => ({
+jest.mock("@/lib/server-actions/sre-diagnostic-queries", () => ({
   getSreDiagnosticQueries: jest.fn(async () => ({
     success: true,
     queries: [],
@@ -40,10 +40,10 @@ jest.mock("@/actions/sre-diagnostic-queries", () => ({
     options: { connectors: [] },
   })),
 }));
-jest.mock("@/actions/private-agents", () => ({
+jest.mock("@/lib/server-actions/private-agents", () => ({
   getPrivateAgents: jest.fn(async () => ({ success: true, agents: [] })),
 }));
-jest.mock("@/actions/sre-onboarding", () => ({
+jest.mock("@/lib/server-actions/sre-onboarding", () => ({
   getSreOnboardingStatus: jest.fn(async () => ({
     success: true,
     status: { complete: false },
@@ -66,11 +66,11 @@ describe("SRE API CLI context", () => {
 
     expect(responses.every((response) => response.status === 200)).toBe(true);
     for (const moduleName of [
-      "@/actions/sre-connectors",
-      "@/actions/sre-integration-bindings",
-      "@/actions/sre-diagnostic-queries",
-      "@/actions/private-agents",
-      "@/actions/sre-onboarding",
+      "@/lib/server-actions/sre-connectors",
+      "@/lib/server-actions/sre-integration-bindings",
+      "@/lib/server-actions/sre-diagnostic-queries",
+      "@/lib/server-actions/private-agents",
+      "@/lib/server-actions/sre-onboarding",
     ]) {
       const actionModule = jest.requireMock(moduleName) as Record<
         string,

@@ -88,7 +88,7 @@ After creating providers, attach them to monitors or jobs in their **Alerts** se
 |-------|---------|----------|
 | **Failure** | Consecutive failures reach threshold | Error |
 | **Recovery** | Consecutive successes reach threshold after being down | Success |
-| **SSL Expiring** | Certificate expires within configured days | Warning |
+| **SSL Expiring** | Enabled website monitor's certificate expires within its configured warning window | Warning; at most once every 24 hours |
 
 </Tab>
 <Tab value="Jobs">
@@ -115,14 +115,17 @@ The number of consecutive failures required before sending the first failure ale
 
 **Recovery Threshold**
 
-The number of consecutive successes required before sending a recovery alert. This ensures the service is truly stable before confirming recovery.
+The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert.
+
+SSL expiration warnings are evaluated independently of the monitor's up/down result. Enable **SSL Expiration Alerts** on a website monitor and set its warning window; a warning is sent at most once every 24 hours while the certificate remains within that window.
 
 **Alert Limiting**
 
 To prevent notification spam during extended outages:
 - Maximum **3 alerts** per failure or recovery sequence
 - First alert sent when threshold is reached
-- Counter resets when status changes (from up→down or down→up)
+- Recovery counting starts only after an actual down period; each healthy check after downtime advances the configured threshold
+- Up to 3 alerts can be sent per failure or recovery sequence, spaced by the configured reminder intervals
 
 </Tab>
 <Tab value="Example">

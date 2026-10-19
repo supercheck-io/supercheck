@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import {
   getSreIntegrationBindings,
   getSreIntegrationBindingSetupOptions,
-} from "@/actions/sre-integration-bindings";
-import { getSreConnectors, getSreConnectorSetupOptions } from "@/actions/sre-connectors";
+} from "@/lib/server-actions/sre-integration-bindings";
+import { getSreConnectors, getSreConnectorSetupOptions } from "@/lib/server-actions/sre-connectors";
 import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {

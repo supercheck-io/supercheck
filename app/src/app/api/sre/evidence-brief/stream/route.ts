@@ -126,9 +126,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let cancelled = false;
+  const cancellation = new AbortController();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (data: unknown) => controller.enqueue(encodeData(data));
+      const send = (data: unknown) => {
+        if (!cancelled && !request.signal.aborted) controller.enqueue(encodeData(data));
+      };
 
       try {
         const result = await runSreEvidenceBriefGeneration({
@@ -139,7 +143,7 @@ export async function POST(request: NextRequest) {
           generateBrief: (input) =>
             streamEvidenceBrief(input, (chunk) => {
               send({ type: "content", content: chunk });
-            }),
+            }, AbortSignal.any([request.signal, cancellation.signal])),
         });
 
         if (!result.success) {
@@ -174,9 +178,10 @@ export async function POST(request: NextRequest) {
           error: errorMessage(error, "Failed to generate evidence brief"),
         });
       } finally {
-        controller.close();
+        if (!cancelled) controller.close();
       }
     },
+    cancel() { cancelled = true; cancellation.abort(); },
   });
 
   return new Response(stream, {

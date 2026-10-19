@@ -18,6 +18,7 @@ import {
 } from '../../common/utils/script-analysis';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { decodeStoredTestScript } from '../../common/utils/test-script';
+import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
   TestResult,
@@ -111,10 +112,12 @@ export function ensureProperTraceConfiguration(
 // Interface defining the result from the internal _executePlaywright function
 interface PlaywrightExecutionResult {
   success: boolean;
+  cancelled?: boolean;
   error: string | null;
   stdout: string;
   stderr: string;
   executionTimeMs?: number; // Actual execution time in milliseconds
+  billableMs?: number; // Container run time evidenced by Kubernetes
 }
 
 @Injectable()
@@ -360,6 +363,13 @@ export class ExecutionService implements OnModuleDestroy {
    * Runs a single test defined by the task data.
    * Container-only execution: No host filesystem dependencies
    */
+  async hasActiveExecution(
+    runId: string,
+    options?: { boundUncertainty?: boolean },
+  ): Promise<boolean> {
+    return this.containerExecutorService.hasActiveExecution(runId, options);
+  }
+
   async runSingleTest(
     task: TestExecutionTask,
     bypassConcurrencyCheck = false,
@@ -417,6 +427,8 @@ export class ExecutionService implements OnModuleDestroy {
     const entityType = isMonitorExecution ? 'monitor' : 'test';
     let finalResult: TestResult;
     let s3Url: string | null = null;
+    // Container run time once the execution pod has actually started.
+    let billableMs = 0;
 
     // Create temp directory for extracted reports (OS-managed temp)
     const extractedReportsDir = path.join(
@@ -493,6 +505,7 @@ export class ExecutionService implements OnModuleDestroy {
         runtimeEnv,
       );
 
+      billableMs = execResult.billableMs ?? 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -506,9 +519,7 @@ export class ExecutionService implements OnModuleDestroy {
         runtimeSecrets,
       );
 
-      // Check if this was a cancellation (exit code 137 = SIGKILL)
-      const wasCancelled =
-        !execResult.success && execResult.error?.includes('code 137');
+      const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${testId}] Execution was cancelled (exit code 137)`);
         throw new Error('Execution cancelled by user');
@@ -565,6 +576,7 @@ export class ExecutionService implements OnModuleDestroy {
           stderr: execResult.stderr,
           error: null,
           executionTimeMs: execResult.executionTimeMs,
+          billableMs,
         };
         this.logger.log(
           `[Playwright Test] ${testId} passed (${execResult.executionTimeMs ?? 0}ms)`,
@@ -627,6 +639,7 @@ export class ExecutionService implements OnModuleDestroy {
           stdout: execResult.stdout,
           stderr: execResult.stderr,
           executionTimeMs: execResult.executionTimeMs,
+          billableMs,
         };
         this.logger.error(
           `[Playwright Test] ${testId} failed: ${specificError} (${execResult.executionTimeMs ?? 0}ms)`,
@@ -640,8 +653,7 @@ export class ExecutionService implements OnModuleDestroy {
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
 
       // Use 'error' status for cancellation, 'failed' for other errors
       const finalStatus = isCancellation ? 'error' : 'failed';
@@ -680,8 +692,9 @@ export class ExecutionService implements OnModuleDestroy {
       this.logger.error(
         `[Playwright Test] ${testId} ${isCancellation ? 'cancelled' : 'crashed'}: ${errorMessage}`,
       );
-      // Propagate the error to the BullMQ processor so the job is marked as failed
-      throw error;
+      // Propagate the error to the BullMQ processor so the job is marked as failed.
+      // Carry container run time so metering charges only work that ran.
+      throw attachBillableMs(error, billableMs);
     } finally {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
@@ -745,6 +758,8 @@ export class ExecutionService implements OnModuleDestroy {
     const s3ReportKeyPrefix = `${runId}/report`;
     let finalResult: TestExecutionResult;
     let s3Url: string | null = null;
+    // Container run time once the execution pod has actually started.
+    let jobBillableMs = 0;
     let finalError: string | null = null;
     const timestamp = new Date().toISOString();
     let overallSuccess = false; // Default to failure
@@ -926,6 +941,7 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       const taskSecrets = task.secrets ?? {};
+      jobBillableMs = execResult.billableMs ?? 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         taskSecrets,
@@ -944,9 +960,7 @@ export class ExecutionService implements OnModuleDestroy {
       stderr_log = execResult.stderr;
       finalError = execResult.error;
 
-      // Check if this was a cancellation (exit code 137 = SIGKILL)
-      const wasCancelled =
-        !execResult.success && execResult.error?.includes('code 137');
+      const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${runId}] Execution was cancelled (exit code 137)`);
         throw new Error('Execution cancelled by user');
@@ -1009,6 +1023,7 @@ export class ExecutionService implements OnModuleDestroy {
         })),
         timestamp,
         duration: durationStr,
+        billableMs: jobBillableMs,
         stdout: stdout_log,
         stderr: stderr_log,
       };
@@ -1048,8 +1063,7 @@ export class ExecutionService implements OnModuleDestroy {
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
 
       this.logger.error(
         `[${runId}] Unhandled error during job execution: ${errorMessage}`,
@@ -1087,6 +1101,7 @@ export class ExecutionService implements OnModuleDestroy {
         reportUrl: null,
         results: [],
         timestamp,
+        billableMs: jobBillableMs,
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
@@ -1282,10 +1297,12 @@ export class ExecutionService implements OnModuleDestroy {
 
       return {
         success: execResult.success,
+        cancelled: execResult.cancelled,
         error: extractedError, // Use the extracted error message
         stdout: execResult.stdout,
         stderr: execResult.stderr,
         executionTimeMs: execResult.executionTimeMs,
+        billableMs: execResult.billableMs ?? 0,
       };
     } catch (error) {
       return {
@@ -1670,9 +1687,11 @@ export class ExecutionService implements OnModuleDestroy {
     } = {},
   ): Promise<{
     success: boolean;
+    cancelled?: boolean;
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
+    billableMs?: number;
     error?: string;
   }> {
     const startTime = Date.now();
@@ -1768,9 +1787,11 @@ export class ExecutionService implements OnModuleDestroy {
 
     return {
       success: containerResult.success,
+      cancelled: containerResult.cancelled,
       stdout: redactedStdout,
       stderr: redactedStderr,
       executionTimeMs: containerResult.duration,
+      billableMs: containerResult.billableMs ?? 0,
       error: redactedError,
     };
   }

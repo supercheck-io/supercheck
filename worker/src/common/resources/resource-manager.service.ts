@@ -243,16 +243,17 @@ export class ResourceManagerService extends EventEmitter {
       timestamp: new Date(),
     });
 
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       // Execute with timeout
       const result = await Promise.race([
         operation(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
             () => reject(new Error(`Operation timeout: ${timeoutMs}ms`)),
             timeoutMs,
-          ),
-        ),
+          );
+        }),
       ]);
 
       const executionTime = Date.now() - startTime;
@@ -281,6 +282,7 @@ export class ResourceManagerService extends EventEmitter {
       throw error;
     } finally {
       // Cleanup resource tracking
+      clearTimeout(timeout);
       this.activeResources.delete(operationId);
     }
   }

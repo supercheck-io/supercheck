@@ -14,6 +14,7 @@
  * - Security (URL validation, credential masking)
  */
 
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
 import { of } from 'rxjs';
@@ -174,6 +175,7 @@ describe('MonitorService', () => {
     checkAndSendAlerts: jest.fn().mockResolvedValue(undefined),
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
     sendNotification: jest.fn().mockResolvedValue(undefined),
+    sendSslExpirationNotification: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockExecutionService = {
@@ -582,7 +584,7 @@ describe('MonitorService', () => {
       expect(result).toBeNull();
       expect(mockUsageTrackerService.shouldBlockExecution).toHaveBeenCalledWith(
         mockMonitor.organizationId,
-        { checkSpendingLimit: true },
+        { checkSpendingLimit: true, monitorId: mockMonitor.id },
       );
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
       expect(
@@ -775,6 +777,78 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('SSL Checks', () => {
+    it('rejects a date-valid certificate with an untrusted chain or hostname', async () => {
+      tlsState.daysUntilExpiry = 90;
+      tlsState.authorized = false;
+      const result = await service['executeSslCheck'](mockJobData.target, {});
+      expect(result).toMatchObject({
+        status: 'down',
+        isUp: false,
+        details: { sslCertificate: { valid: false } },
+      });
+    });
+
+    it('honors the configured warning threshold for SSL-only checks', async () => {
+      tlsState.daysUntilExpiry = 45;
+      const result = await service['executeSslCheck'](mockJobData.target, {
+        sslDaysUntilExpirationWarning: 60,
+      });
+      expect(result?.details?.warningMessage).toContain('45 days');
+    });
+
+    it('checks SSL expiration on the live result path and throttles daily', async () => {
+      const monitor = {
+        ...mockMonitor,
+        alertConfig: { enabled: true, alertOnSslExpiration: true },
+      };
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(monitor);
+      const lastAlert = jest
+        .spyOn(service, 'getLastSslAlert' as never)
+        .mockResolvedValue(null as never);
+      const result: MonitorExecutionResult = {
+        monitorId: monitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+        details: {
+          sslCertificate: { daysRemaining: 10 },
+        } as MonitorExecutionResult['details'],
+      };
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+      lastAlert.mockResolvedValue(new Date() as never);
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+      monitor.alertConfig.alertOnSslExpiration = false;
+      lastAlert.mockResolvedValue(null as never);
+      await service.saveMonitorResults([result], { persisted: true });
+      expect(
+        mockAlertService.sendSslExpirationNotification,
+      ).toHaveBeenCalledTimes(1);
+    });
+    it('throttles SSL alerts on delivered history rows only', async () => {
+      const findFirst = jest.fn().mockResolvedValue(null);
+      const queries = mockDbService.db.query as Record<string, unknown>;
+      const previous = queries.alertHistory;
+      queries.alertHistory = { findFirst };
+      try {
+        await service['getLastSslAlert']('monitor-1');
+      } finally {
+        queries.alertHistory = previous;
+      }
+      expect(findFirst).toHaveBeenCalledTimes(1);
+      const where = findFirst.mock.calls[0][0].where;
+      const query = new PgDialect().sqlToQuery(where);
+      expect(query.params).toEqual(
+        expect.arrayContaining(['ssl_expiring', 'sent']),
+      );
+    });
+
     it('should skip SSL check when disabled', async () => {
       const websiteJobData = {
         ...mockJobData,
@@ -925,6 +999,134 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Multi-location Alert Thresholds', () => {
+    it.each([1, 2, 3, 4, 5])(
+      'sends recovery at threshold %i after a failure, including later up results',
+      async (recoveryThreshold) => {
+        for (const multiLocation of [false, true]) {
+          mockAlertService.sendNotification.mockClear();
+          let state = service['readAggregatedAlertState'](null);
+          let previousStatus = 'down';
+          for (let success = 1; success <= recoveryThreshold; success++) {
+            const latestResult = {
+              id: 'recovered-result',
+              consecutiveSuccessCount: success,
+              alertsSentForRecovery: 0,
+              details: { recoverySequence: true },
+            };
+            mockDbService.db.query.monitorResults.findFirst.mockResolvedValue(
+              latestResult,
+            );
+            const monitor = {
+              ...mockMonitor,
+              status: previousStatus,
+              config: { aggregatedAlertState: state },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: true,
+                recoveryThreshold,
+              },
+            };
+            await service['evaluateAndSendAlert']({
+              monitorId: monitor.id,
+              monitor:
+                monitor as unknown as typeof schema.monitors.$inferSelect,
+              previousStatus,
+              currentStatus: 'up',
+              reason: 'Recovered',
+              metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+            });
+            expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(
+              success === recoveryThreshold ? 1 : 0,
+            );
+            state = service['getNextAggregatedAlertState'](
+              state,
+              previousStatus,
+              'up',
+            );
+            previousStatus = 'up';
+          }
+        }
+      },
+    );
+
+    it('does not send recovery alerts for a monitor that has always been healthy', async () => {
+      for (const multiLocation of [false, true]) {
+        mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+          consecutiveSuccessCount: 2,
+          details: { recoverySequence: false },
+        });
+        await service['evaluateAndSendAlert']({
+          monitorId: mockMonitor.id,
+          monitor: {
+            ...mockMonitor,
+            config: { aggregatedAlertState: { consecutiveSuccessCount: 1 } },
+            alertConfig: {
+              enabled: true,
+              alertOnRecovery: true,
+              recoveryThreshold: 2,
+            },
+          } as unknown as typeof schema.monitors.$inferSelect,
+          previousStatus: 'up',
+          currentStatus: 'up',
+          reason: 'Healthy',
+          metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+        });
+      }
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('persists recovery eligibility through the success streak and resets it on failure', async () => {
+      let lastResult: Record<string, unknown> = { isUp: false };
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      for (const isUp of [true, true, false, true]) {
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+        expect(lastResult.details).toMatchObject({ recoverySequence: isUp });
+      }
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+    it('continues failure counters per location, ignoring other regions', async () => {
+      const rows: Array<Record<string, unknown>> = [];
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          rows.push(value);
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async (query: { where: unknown }) => {
+          const { params } = new PgDialect().sqlToQuery(query.where as never);
+          const wanted = params.find((p) => p === 'eu' || p === 'us-east');
+          return [...rows].reverse().find((row) => row.location === wanted);
+        },
+      );
+      const save = (location: string, isUp: boolean) =>
+        service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location,
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+      await save('eu', false);
+      await save('us-east', true);
+      await save('eu', false);
+      expect(rows.map((row) => row.consecutiveFailureCount)).toEqual([1, 0, 2]);
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {
         ...mockMonitor,
@@ -1343,6 +1545,41 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Synthetic Test Monitoring', () => {
+    it('does not bill a synthetic check whose container never started', async () => {
+      mockDbService.getTestById.mockResolvedValue({
+        id: 'test-1',
+        title: 'Health',
+        script: 'test("health", async () => {});',
+      });
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        organizationId: 'org-1',
+      });
+      mockUsageTrackerService.completeRunWithUsage.mockClear();
+      mockUsageTrackerService.trackPlaywrightExecution.mockClear();
+      mockExecutionService.runSingleTest.mockResolvedValue({
+        success: false,
+        error: 'Execution timed out waiting for pod',
+        executionTimeMs: 120_000,
+        billableMs: 0,
+        testId: 'test-1-execution-unique',
+        reportUrl: null,
+      });
+      await (
+        service as unknown as {
+          executeSyntheticTest: (
+            id: string,
+            config: { testId: string },
+          ) => Promise<unknown>;
+        }
+      ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.trackPlaywrightExecution,
+      ).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])(
       'preserves the check result when receipt failure is %s',
       async (failReceipt) => {
@@ -1356,7 +1593,8 @@ describe('MonitorService', () => {
         });
         mockExecutionService.runSingleTest.mockResolvedValue({
           success: true,
-          executionTimeMs: 1234,
+          executionTimeMs: 2000,
+          billableMs: 1234,
           testId: 'test-1-execution-unique',
           reportUrl: 'https://example.com/report',
         });

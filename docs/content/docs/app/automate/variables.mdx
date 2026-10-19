@@ -50,7 +50,7 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 ![Add Secret](/screenshots/add-secret.png)
 
 <Callout type="info">
-Secret values are masked by default in the UI. Users with secret-view permission can explicitly reveal a value via the dedicated action.
+Secret values are masked by default in the UI. Users with secret-view permission can reveal an existing value only through the audited reveal action. Changing a secret back to a regular variable requires supplying a replacement value; the update action never decrypts and converts the stored secret implicitly.
 </Callout>
 
 At execution time, the worker narrows the injected secret payload when it can reliably identify direct calls such as `getSecret('API_KEY')`. Dynamic keys, aliases, or unsupported source syntax use the project secret set to preserve compatibility. This source-based optimization does not limit which project secrets a test is authorized to request.

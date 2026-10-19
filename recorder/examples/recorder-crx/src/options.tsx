@@ -146,11 +146,18 @@ function OptionsPage() {
   const handleDisconnect = async () => {
     setSaving(true);
     try {
-      await clearConfig();
+      const { revoked } = await clearConfig();
       apiClient.clearCache();
       setConfig(null);
       setApiKey('');
-      setConnectionState({ status: 'disconnected' });
+      setConnectionState({
+        status: 'disconnected',
+        error: revoked
+          ? undefined
+          : 'Disconnected, but the key could not be revoked on the server. Revoke it from your Supercheck settings.',
+      });
+    } catch (error) {
+      setConnectionState({ status: 'error', error: error instanceof Error ? error.message : 'Disconnect failed' });
     } finally {
       setSaving(false);
     }
@@ -191,7 +198,7 @@ function OptionsPage() {
                     ? connectionState.error
                     : connectionState.status === 'error'
                       ? connectionState.error
-                      : 'Not connected'}
+                      : (connectionState.error ?? 'Not connected')}
             </span>
           </div>
 

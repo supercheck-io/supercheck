@@ -22,7 +22,7 @@ export async function PATCH(
   const { id } = params;
 
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
     const data = await request.json();
     const { status } = data;
 
@@ -45,7 +45,14 @@ export async function PATCH(
       );
     }
 
+    if (isCliAuth && tokenProjectId !== currentMonitor.projectId) {
+      return NextResponse.json({ error: "CLI token does not authorize this project" }, { status: 403 });
+    }
+
     // Check permission to manage/update monitor
+    if (!currentMonitor.organizationId || !currentMonitor.projectId) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
     if (currentMonitor.organizationId && currentMonitor.projectId) {
       const canManage = await hasPermissionForUser(userId, 'monitor', 'manage', {
         organizationId: currentMonitor.organizationId,
@@ -122,4 +129,4 @@ export async function PATCH(
       { status: 500 }
     );
   }
-} 
+}

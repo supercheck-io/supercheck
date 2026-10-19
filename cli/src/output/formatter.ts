@@ -318,10 +318,10 @@ function summarizeArray(_key: string, items: unknown[]): string {
  * Nested objects are rendered as indented sub-sections.
  * Arrays of objects show a summary count with identifiers.
  */
-export function outputDetail(data: Record<string, unknown>): void {
-  data = redact(data)
+export function outputDetail(data: Record<string, unknown>, options: { redact?: boolean } = {}): void {
+  if (options.redact !== false) data = redact(data)
   if (currentFormat === 'json') {
-    logger.output(JSON.stringify(data, null, 2))
+    logger.output(JSON.stringify(data, null, 2), options)
     return
   }
 

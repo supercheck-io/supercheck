@@ -2,6 +2,17 @@
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { POST } from "./route";
+import { PUT as updateMember, DELETE as removeMember } from "../[memberId]/route";
+import { GET as listMembers } from "../route";
+import { DELETE as cancelInvite, POST as resendInvite } from "./[invitationId]/route";
+import { GET as orgStats } from "../../stats/route";
+import { GET as orgInvites } from "../../invitations/route";
+import { GET as orgDetail, PUT as orgUpdate, DELETE as orgDelete } from "../../[id]/route";
+import { POST as createProject } from "../../../projects/route";
+import { GET as billingCurrent } from "../../../billing/current/route";
+import { GET as billingUsage } from "../../../billing/usage/route";
+import { GET as billingSettings, PATCH as updateBillingSettings } from "../../../billing/settings/route";
+import { GET as billingNotifications } from "../../../billing/notifications/route";
 import { db } from "@/utils/db";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
@@ -111,4 +122,36 @@ describe("seat limit", () => {
     expect(response.headers.get("Retry-After")).toBe("2");
     expect(mockInsert).not.toHaveBeenCalled();
   });
+});
+
+const memberParams = { params: Promise.resolve({ memberId: "victim" }) };
+const inviteParams = { params: Promise.resolve({ invitationId: "invite" }) };
+const orgParams = { params: Promise.resolve({ id: "other-org" }) };
+it.each([
+  ["invite member", () => POST(request())],
+  ["change member roles", () => updateMember(request(), memberParams)],
+  ["remove member", () => removeMember(request(), memberParams)],
+  ["list members", () => listMembers()],
+  ["cancel invite", () => cancelInvite(request(), inviteParams)],
+  ["resend invite", () => resendInvite(request(), inviteParams)],
+  ["organization statistics", () => orgStats()],
+  ["organization invitations", () => orgInvites()],
+  ["organization details", () => orgDetail(request(), orgParams)],
+  ["rename organization", () => orgUpdate(request(), orgParams)],
+  ["delete organization", () => orgDelete(request(), orgParams)],
+  ["create another project", () => createProject(request())],
+  ["billing totals", () => billingCurrent()],
+  ["billing usage", () => billingUsage()],
+  ["billing settings", () => billingSettings()],
+  ["change billing settings", () => updateBillingSettings(request())],
+  ["billing notifications", () => billingNotifications(request())],
+])("project tokens cannot perform organization-wide %s even if the owner is an org_owner", async (_name, invoke) => {
+  const { requireUserAuthContext } = jest.requireMock("@/lib/auth-context");
+  requireUserAuthContext.mockResolvedValueOnce({ userId: "org-owner", organizationId: "host", projectId: "only-project-a", isCliAuth: true });
+  const response = await (invoke as () => Promise<Response>)();
+  expect(response.status).toBe(403);
+  expect(mockSelect).not.toHaveBeenCalled();
+  expect(mockInsert).not.toHaveBeenCalled();
+  expect(db.transaction).not.toHaveBeenCalled();
+  expect(getUserOrgRole).not.toHaveBeenCalled();
 });

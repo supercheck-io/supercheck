@@ -3,6 +3,7 @@ jest.mock('fs/promises');
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
+  computeBillableMs,
   ContainerExecutionOptions,
   ContainerExecutorService,
 } from './container-executor.service';
@@ -322,6 +323,63 @@ describe('ContainerExecutorService', () => {
     });
   });
 
+  describe('hasActiveExecution', () => {
+    function failingApi() {
+      service['ensureKubernetesClients'] = jest
+        .fn()
+        .mockResolvedValue(undefined);
+      service['batchApi'] = {
+        listNamespacedJob: jest
+          .fn()
+          .mockRejectedValue(new Error('apiserver down')),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+    }
+
+    it('assumes a run is active while Kubernetes cannot be queried', async () => {
+      failingApi();
+      await expect(service.hasActiveExecution('run-1')).resolves.toBe(true);
+      await expect(
+        service.hasActiveExecution('run-1', { boundUncertainty: true }),
+      ).resolves.toBe(true);
+    });
+
+    it('fails loudly after a prolonged outage instead of delaying forever', async () => {
+      failingApi();
+      for (let i = 0; i < 30; i++) {
+        await expect(
+          service.hasActiveExecution('run-2', { boundUncertainty: true }),
+        ).resolves.toBe(true);
+      }
+      await expect(
+        service.hasActiveExecution('run-2', { boundUncertainty: true }),
+      ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
+    });
+
+    it('never throws for unbounded callers such as the stalled-run sweep', async () => {
+      failingApi();
+      for (let i = 0; i < 40; i++) {
+        await expect(service.hasActiveExecution('run-3')).resolves.toBe(true);
+      }
+    });
+
+    it('resets the uncertainty count once Kubernetes answers', async () => {
+      failingApi();
+      for (let i = 0; i < 29; i++) {
+        await service.hasActiveExecution('run-4', { boundUncertainty: true });
+      }
+      service['batchApi'] = {
+        listNamespacedJob: jest.fn().mockResolvedValue({ items: [] }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      await expect(
+        service.hasActiveExecution('run-4', { boundUncertainty: true }),
+      ).resolves.toBe(false);
+      failingApi();
+      await expect(
+        service.hasActiveExecution('run-4', { boundUncertainty: true }),
+      ).resolves.toBe(true);
+    });
+  });
+
   describe('kubernetes execution', () => {
     it('retains the numeric exit-code fallback for a generic Kubernetes Error', async () => {
       service['coreApi'] = {
@@ -340,9 +398,110 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/run',
         1000,
+        { startedAtMs: null, finishedAtMs: null },
         jest.fn(),
       );
       expect(outcome).toMatchObject({ exitCode: 1, message: undefined });
+    });
+
+    it('records container start and finish times as billable evidence', async () => {
+      const evidence = { startedAtMs: null, finishedAtMs: null } as {
+        startedAtMs: number | null;
+        finishedAtMs: number | null;
+      };
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: {
+                  terminated: {
+                    exitCode: 0,
+                    startedAt: '2026-10-18T10:00:00.000Z',
+                    finishedAt: '2026-10-18T10:00:30.000Z',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(computeBillableMs(evidence)).toBe(30_000);
+    });
+
+    it('bills zero when the container never started', () => {
+      expect(computeBillableMs({ startedAtMs: null, finishedAtMs: null })).toBe(
+        0,
+      );
+      expect(
+        computeBillableMs({ startedAtMs: null, finishedAtMs: Date.now() }),
+      ).toBe(0);
+    });
+
+    it('bills zero for a container whose reported start is the zero time', async () => {
+      const evidence = { startedAtMs: null, finishedAtMs: null } as {
+        startedAtMs: number | null;
+        finishedAtMs: number | null;
+      };
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: {
+                  terminated: {
+                    exitCode: 128,
+                    reason: 'StartError',
+                    startedAt: '1970-01-01T00:00:00Z',
+                    finishedAt: '1970-01-01T00:00:00Z',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(evidence.startedAtMs).toBeNull();
+      expect(computeBillableMs(evidence, 1000)).toBe(0);
+    });
+
+    it('never bills past the job deadline or a negative span', () => {
+      const now = Date.now();
+      expect(
+        computeBillableMs(
+          { startedAtMs: now - 10 * 60_000, finishedAtMs: null },
+          60_000,
+        ),
+      ).toBe(60_000 + 150_000);
+      expect(
+        computeBillableMs({ startedAtMs: now, finishedAtMs: now - 5_000 }),
+      ).toBe(0);
+    });
+
+    it('bills a still-running container from its start until now', () => {
+      const started = Date.now() - 5_000;
+      const billable = computeBillableMs({
+        startedAtMs: started,
+        finishedAtMs: null,
+      });
+      expect(billable).toBeGreaterThanOrEqual(5_000);
+      expect(billable).toBeLessThan(10_000);
     });
 
     it('reports OOM termination as failure rather than user cancellation', async () => {
@@ -362,6 +521,7 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/run',
         1000,
+        { startedAtMs: null, finishedAtMs: null },
         jest.fn(),
       );
       expect(outcome).toMatchObject({
@@ -390,6 +550,7 @@ describe('ContainerExecutorService', () => {
               _pod,
               _workspace,
               _timeout,
+              _evidence,
               collect: () => Promise<void>,
             ) => {
               if (!earlyTermination) await collect();
@@ -446,6 +607,7 @@ describe('ContainerExecutorService', () => {
           'pod',
           '/tmp/run',
           1000,
+          { startedAtMs: null, finishedAtMs: null },
           async () => {
             now = 2000;
           },
@@ -477,6 +639,7 @@ describe('ContainerExecutorService', () => {
         'pod',
         '/tmp/supercheck/run-test',
         30000,
+        { startedAtMs: null, finishedAtMs: null },
         collectArtifacts,
       );
       expect(outcome.exitCode).toBe(7);
@@ -759,6 +922,17 @@ describe('ContainerExecutorService', () => {
             clearCancellationSignal: jest.fn().mockResolvedValue(undefined),
           } as any,
         );
+
+      it.each(['true', '1'])(
+        'allows runtime opt-out for self-hosted production (%s)',
+        (value) => {
+          process.env.NODE_ENV = 'production';
+          process.env.SELF_HOSTED = value;
+          expect(() =>
+            build({ EXECUTION_RUNTIME_CLASS_NAME: 'none' }),
+          ).not.toThrow();
+        },
+      );
 
       it('only warns about a malformed selector outside cloud production', () => {
         process.env.NODE_ENV = 'test';

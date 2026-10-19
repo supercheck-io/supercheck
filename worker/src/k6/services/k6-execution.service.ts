@@ -1,3 +1,8 @@
+import {
+  attachBillableMs,
+  getBillableMs,
+  createK6AllocationTracker,
+} from '../../common/billable-ms';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -62,9 +67,13 @@ export interface K6ExecutionTask {
 
 export interface K6ExecutionResult {
   success: boolean;
+  cancelled?: boolean;
   timedOut: boolean;
   runId: string;
   durationMs: number;
+  /** Container run time evidenced by Kubernetes across all launches; 0 if none started. */
+  billableMs?: number;
+  billingVirtualUsers?: number;
   summary: Record<string, unknown> | null;
   thresholdsPassed: boolean;
   reportUrl: string | null;
@@ -250,6 +259,13 @@ export class K6ExecutionService {
   /**
    * Execute a k6 performance test
    */
+  async hasActiveExecution(
+    runId: string,
+    options?: { boundUncertainty?: boolean },
+  ): Promise<boolean> {
+    return this.containerExecutorService.hasActiveExecution(runId, options);
+  }
+
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
     const resolved = await this.variableResolverService.resolveProjectVariables(
       task.projectId,
@@ -264,6 +280,9 @@ export class K6ExecutionService {
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
     const startTime = Date.now();
+    // Container run time summed over every launch (dashboard-port retries).
+    let totalBillableMs = 0;
+    let billingVirtualUsers: number | undefined;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
@@ -324,6 +343,9 @@ export class K6ExecutionService {
 
       const args = [
         'run',
+        '--quiet=false',
+        '--no-color',
+        '--log-format=json',
         '--summary-export',
         `${k6OutputDir}/${summaryFileName}`,
         // Include p(99) in summary.json - K6 defaults only include p(90) and p(95)
@@ -349,6 +371,9 @@ export class K6ExecutionService {
         stderr: string;
         error: string | null;
         timedOut: boolean;
+        cancelled?: boolean;
+        billableMs?: number;
+        billingVirtualUsers?: number;
       } | null = null;
       for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
         const dashboardPort = this.useDashboardPortPool
@@ -388,6 +413,13 @@ export class K6ExecutionService {
             this.releaseDashboardPort(dashboardPort);
           }
         }
+
+        totalBillableMs += execResult.billableMs ?? 0;
+        if (execResult.billingVirtualUsers !== undefined)
+          billingVirtualUsers = Math.max(
+            billingVirtualUsers ?? 0,
+            execResult.billingVirtualUsers,
+          );
 
         const portConflict =
           execResult.stderr.includes('address already in use') ||
@@ -599,9 +631,12 @@ export class K6ExecutionService {
 
       finalResult = {
         success: overallSuccess,
+        cancelled: execResult.cancelled,
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
+        billableMs: totalBillableMs,
+        billingVirtualUsers,
         summary,
         thresholdsPassed,
         reportUrl,
@@ -662,6 +697,8 @@ export class K6ExecutionService {
         timedOut: false,
         runId,
         durationMs: Date.now() - startTime,
+        billableMs: totalBillableMs,
+        billingVirtualUsers,
         summary: null,
         thresholdsPassed: false,
         reportUrl: null,
@@ -672,7 +709,7 @@ export class K6ExecutionService {
         error: getErrorMessage(error),
       };
 
-      throw error;
+      throw attachBillableMs(error, totalBillableMs, billingVirtualUsers);
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 
@@ -778,8 +815,13 @@ export class K6ExecutionService {
     stderr: string;
     error: string | null;
     timedOut: boolean;
+    cancelled?: boolean;
+    billableMs?: number;
+    billingVirtualUsers?: number;
   }> {
     const _startTime = Date.now();
+    const allocation = createK6AllocationTracker();
+    let observedBillableMs = 0;
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
       `[${runId}] k6 environment override keys: ${Object.keys(overrideEnv).join(', ')}`,
@@ -865,10 +907,14 @@ export class K6ExecutionService {
             networkMode: 'bridge', // k6 needs network access
             autoRemove: false, // Don't auto-remove - we need to extract files first
             image: this.k6DockerImage, // Use K6-specific Docker image
-            onStdoutChunk: (chunk) => consoleStream.write(chunk),
+            onStdoutChunk: (chunk) => {
+              allocation.write(chunk);
+              return consoleStream.write(chunk);
+            },
           },
         );
 
+      observedBillableMs = containerResult.billableMs ?? 0;
       await consoleStream.flush();
 
       // Clean up active runs tracking
@@ -933,6 +979,9 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
+        cancelled: containerResult.cancelled,
+        billableMs: containerResult.billableMs ?? 0,
+        billingVirtualUsers: allocation.value(),
         error: redactedError || null,
         timedOut,
       };
@@ -944,6 +993,8 @@ export class K6ExecutionService {
 
       return {
         exitCode: 1,
+        billableMs: Math.max(observedBillableMs, getBillableMs(error)),
+        billingVirtualUsers: allocation.value(),
         stdout: '',
         stderr: getErrorMessage(error),
         error: getErrorMessage(error),
@@ -971,12 +1022,9 @@ export class K6ExecutionService {
       return false;
     }
 
-    // K6 exit code 99 definitively means threshold failure
-    // This takes precedence over summary.json parsing since k6 knows best
-    if (exitCode === 99) {
-      this.logger.debug(
-        'Thresholds failed: k6 exit code 99 (threshold breach)',
-      );
+    // A summary can survive a crash; every nonzero exit still means failure.
+    if (exitCode !== 0) {
+      this.logger.debug(`Thresholds failed: k6 exit code ${exitCode}`);
       return false;
     }
 

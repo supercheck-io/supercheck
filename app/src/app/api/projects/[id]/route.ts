@@ -15,7 +15,7 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -107,7 +107,7 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -198,7 +198,7 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId } = await requireUserAuthContext((await params).id);
     const projectId = resolvedParams.id;
     
     // Get project to determine organization

@@ -8,7 +8,10 @@ import { Role } from '@/lib/rbac/permissions';
 
 export async function GET() {
   try {
-    const { userId, organizationId } = await requireUserAuthContext();
+    const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    if (isCliAuth) {
+      return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
+    }
     
     if (!organizationId) {
       return NextResponse.json(

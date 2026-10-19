@@ -200,7 +200,9 @@ The number of consecutive failures required before sending the first failure ale
 
 **Recovery Threshold**
 
-The number of consecutive successes required before sending a recovery alert. This ensures the service is truly stable before confirming recovery.
+The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert. Up to 3 alerts can be sent per failure or recovery sequence, spaced by the configured reminder intervals.
+
+For website monitors, enable **SSL Expiration Alerts** to receive a separate warning when a certificate reaches the configured **SSL Expiration Warning Days**. These warnings are evaluated independently of the monitor's up/down result and are limited to one per 24 hours while the certificate remains within the warning window.
 
 **Alert Limiting**
 

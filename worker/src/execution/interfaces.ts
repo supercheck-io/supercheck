@@ -17,6 +17,7 @@ export interface TestResult {
   stdout: string;
   stderr: string;
   executionTimeMs?: number; // Actual test execution time in milliseconds (for synthetic monitors)
+  billableMs?: number; // Container run time evidenced by Kubernetes; 0 when no container started
 }
 
 // Represents a test script to be executed as part of a job
@@ -41,6 +42,7 @@ export interface TestExecutionResult {
   }>;
   timestamp: string;
   duration?: string;
+  billableMs?: number; // Container run time evidenced by Kubernetes; 0 when no container started
   stdout?: string;
   stderr?: string;
   // Additional properties for notifications

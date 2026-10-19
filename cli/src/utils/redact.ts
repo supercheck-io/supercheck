@@ -3,6 +3,7 @@ const credentialKey = /^(?:xauth|xsignature|xsig|signature|authorization|proxyau
 // (notification providers, untyped API error bodies) is treated as credential-bearing, so the default fails closed.
 const monitorTypes = new Set(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test'])
 let reveal = false
+export function canRevealSecrets(): boolean { return reveal }
 export function setRevealSecrets(value: boolean): void { reveal = value }
 const cliTokens = (text: string) => text.replace(/(?:sck_(?:live|test|trigger)_|job_)[a-zA-Z0-9]{12,}/g, '[REDACTED]')
 function maskUrl(raw: string): string {

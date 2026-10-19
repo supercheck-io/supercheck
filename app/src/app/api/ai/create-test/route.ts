@@ -157,6 +157,8 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
+      signal: request.signal,
+      userId, orgId, tier,
       prompt,
       maxTokens: 4000,
       temperature: 0.2, // Slightly higher temperature for creative code generation

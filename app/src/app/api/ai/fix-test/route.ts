@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, testId);
+    if (!(await AuthService.canAccessTestReport(session, testId, testType))) {
+      return NextResponse.json({ error: "Test report not found" }, { status: 404 });
+    }
 
     const headersList = await headers();
     const clientIp =

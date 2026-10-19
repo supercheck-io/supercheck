@@ -124,6 +124,45 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
     ]);
   });
 
+  it('keeps retry attempts and final completion separately idempotent', async () => {
+    const retry = {
+      ...completion,
+      runId: `${runId}:attempt:0`,
+      metadata: { executionRunId: runId, retryAttempt: 0 },
+    };
+    await persistExecutionReceipt(database, retry, async () => {});
+    await persistExecutionReceipt(database, retry, async () => {});
+    await persistExecutionReceipt(database, completion, persistResult);
+    const receipts = await database
+      .select()
+      .from(schema.executionUsageReceipts);
+    expect(receipts).toHaveLength(2);
+    expect(receipts.map((receipt) => receipt.runId)).toEqual(
+      expect.arrayContaining([runId, `${runId}:attempt:0`]),
+    );
+    expect(
+      receipts.reduce((sum, receipt) => sum + Number(receipt.units), 0),
+    ).toBeCloseTo((2 * 61) / 60, 3);
+  });
+
+  it('parks positive k6 runtime without native allocation instead of silently charging one VU', async () => {
+    await persistExecutionReceipt(
+      database,
+      { ...completion, eventType: 'k6_execution', durationMs: 61_000 },
+      persistResult,
+    );
+    const [receipt] = await database
+      .select()
+      .from(schema.executionUsageReceipts);
+    expect(Number(receipt.units)).toBe(0);
+    expect(receipt.nextAttemptAt).toBeNull();
+    expect(receipt.lastError).toContain('allocation evidence missing');
+    expect(receipt.metadata).toMatchObject({
+      durationMs: 61_000,
+      requiresAllocationReconciliation: true,
+    });
+  });
+
   afterAll(async () => {
     if (originalToken === undefined) delete process.env.POLAR_ACCESS_TOKEN;
     else process.env.POLAR_ACCESS_TOKEN = originalToken;

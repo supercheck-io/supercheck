@@ -1,5 +1,5 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError, DelayedError } from 'bullmq';
 import {
   Logger,
   OnApplicationBootstrap,
@@ -21,6 +21,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
+import { getBillableMs } from '../../common/billable-ms';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
@@ -75,6 +76,28 @@ export class PlaywrightExecutionProcessor
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
+    const terminal = data.runId
+      ? await this.dbService.getTerminalRun(data.runId)
+      : undefined;
+    if (terminal) {
+      const outcome = {
+        success: terminal.status === 'passed',
+        error: terminal.errorDetails,
+        reportUrl: null,
+      };
+      return 'testId' in data && !('jobId' in data)
+        ? { ...outcome, testId: data.testId, stdout: '', stderr: '' }
+        : {
+            ...outcome,
+            jobId: (data as JobExecutionTask).jobId,
+            results: [],
+            timestamp: new Date().toISOString(),
+          };
+    }
+    if (data.runId && (await this.hasActiveExecutionOrFail(data.runId))) {
+      await job.moveToDelayed(Date.now() + 10_000, job.token);
+      throw new DelayedError();
+    }
 
     // Determine if this is a test or a job
     if ('testId' in data && !('jobId' in data)) {
@@ -84,10 +107,35 @@ export class PlaywrightExecutionProcessor
     }
   }
 
+  /**
+   * Whether a live execution exists for the run. If Kubernetes stays
+   * unreachable past the bounded wait, fail the run terminally (no retry, no
+   * usage) so it cannot sit queued forever with no sweeper looking at it.
+   */
+  private async hasActiveExecutionOrFail(runId: string): Promise<boolean> {
+    try {
+      return await this.executionService.hasActiveExecution(runId, {
+        boundUncertainty: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.dbService
+        .updateRunStatus(runId, 'failed', '0', message)
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
+          ),
+        );
+      throw new UnrecoverableError(message);
+    }
+  }
+
   private async processTest(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
     const runId = job.data.runId; // runId is the database run ID for playground tests
     const startTime = new Date();
+    let usagePersisted = false;
+    let observedBillableMs = 0;
 
     try {
       // Check for hard stop before execution (billing limit enforcement)
@@ -135,8 +183,15 @@ export class PlaywrightExecutionProcessor
 
       // Delegate the actual execution to the service
       const result = await this.executionService.runSingleTest(job.data);
+      observedBillableMs = result.billableMs ?? 0;
 
-      await job.updateProgress(100);
+      await job
+        .updateProgress(100)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to publish completion progress: ${String(error)}`,
+          ),
+        );
 
       // Check if this was a cancellation
       const isCancellation =
@@ -154,6 +209,8 @@ export class PlaywrightExecutionProcessor
       const durationMs =
         result.executionTimeMs ?? endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
+      // Meter only container run time evidenced by Kubernetes.
+      const billableMs = result.billableMs ?? 0;
 
       // Update the runs table status for playground tests (critical for preventing stale runs)
       if (runId) {
@@ -173,7 +230,7 @@ export class PlaywrightExecutionProcessor
             {
               organizationId: job.data.organizationId,
               runId,
-              durationMs,
+              durationMs: billableMs,
               eventType: 'playwright_execution',
               metadata: { testId, type: 'single_test' },
             },
@@ -184,10 +241,12 @@ export class PlaywrightExecutionProcessor
         }
       }
 
+      usagePersisted = true;
+
       // Track Playwright usage for billing (if organizationId is available)
-      if (job.data.organizationId) {
+      if (job.data.organizationId && billableMs > 0) {
         await this.usageTrackerService
-          .trackPlaywrightExecution(job.data.organizationId, durationMs, {
+          .trackPlaywrightExecution(job.data.organizationId, billableMs, {
             testId,
             runId,
             type: 'single_test',
@@ -204,14 +263,46 @@ export class PlaywrightExecutionProcessor
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
+      if (
+        !isCancellation &&
+        !(error instanceof UnrecoverableError) &&
+        (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
+      ) {
+        if (
+          Math.max(getBillableMs(error), observedBillableMs) > 0 &&
+          !usagePersisted &&
+          job.data.organizationId &&
+          runId
+        ) {
+          await this.usageTrackerService.completeRunWithUsage(
+            {
+              organizationId: job.data.organizationId,
+              runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
+              eventType: 'playwright_execution',
+              durationMs: Math.max(getBillableMs(error), observedBillableMs),
+              metadata: {
+                executionRunId: runId,
+                retryAttempt: job.attemptsMade ?? 0,
+              },
+            },
+            async () => {},
+          );
+        }
+        throw error;
+      }
 
       this.logger.error(
         `[${testId}] Test execution job ID: ${job.id} failed. Error: ${errorMessage}`,
         (error as Error).stack,
       );
-      await job.updateProgress(100);
+      await job
+        .updateProgress(100)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to publish completion progress: ${String(error)}`,
+          ),
+        );
 
       // Update the runs table status for playground tests on error
       if (runId) {
@@ -219,13 +310,50 @@ export class PlaywrightExecutionProcessor
         const errorDetails = isCancellation
           ? 'Cancellation requested by user'
           : errorMessage;
-        await this.dbService
-          .updateRunStatus(runId, errorStatus, '0', errorDetails)
-          .catch((err: Error) =>
-            this.logger.error(
-              `[${testId}] Failed to update run error status: ${err.message}`,
-            ),
-          );
+        await (
+          job.data.organizationId &&
+          Math.max(getBillableMs(error), observedBillableMs) > 0 &&
+          !usagePersisted
+            ? this.usageTrackerService.completeRunWithUsage(
+                {
+                  organizationId: job.data.organizationId,
+                  runId,
+                  durationMs: Math.max(
+                    getBillableMs(error),
+                    observedBillableMs,
+                  ),
+                  eventType: 'playwright_execution',
+                  metadata: {
+                    testId,
+                    type: 'single_test',
+                    executionError: true,
+                  },
+                },
+                (transaction) =>
+                  this.dbService.updateRunStatus(
+                    runId,
+                    errorStatus,
+                    String(
+                      Math.floor(
+                        Math.max(getBillableMs(error), observedBillableMs) /
+                          1000,
+                      ),
+                    ),
+                    errorDetails,
+                    transaction,
+                  ),
+              )
+            : this.dbService.updateRunStatus(
+                runId,
+                errorStatus,
+                '0',
+                errorDetails,
+              )
+        ).catch((err: Error) =>
+          this.logger.error(
+            `[${testId}] Failed to update run error status: ${err.message}`,
+          ),
+        );
       }
 
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
@@ -252,6 +380,8 @@ export class PlaywrightExecutionProcessor
     const { jobId: originalJobId } = jobData;
     const jobIdForLookup = jobData.originalJobId || jobData.jobId;
     const startTime = new Date();
+    let usagePersisted = false;
+    let observedBillableMs = 0;
 
     this.logger.log(
       `[${runId}] Job execution job ID: ${job.id} received for processing${originalJobId ? ` (job ${originalJobId})` : ''}`,
@@ -339,8 +469,15 @@ export class PlaywrightExecutionProcessor
     try {
       // Delegate the actual execution to the service
       const result = await this.executionService.runJob(job.data);
+      observedBillableMs = result.billableMs ?? 0;
 
-      await job.updateProgress(100);
+      await job
+        .updateProgress(100)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to publish completion progress: ${String(error)}`,
+          ),
+        );
       this.logger.log(
         `[${runId}] Job execution job ID: ${job.id} completed. Overall Success: ${result.success}`,
       );
@@ -349,6 +486,8 @@ export class PlaywrightExecutionProcessor
       const endTime = new Date();
       const durationMs = endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
+      // Meter only container run time evidenced by Kubernetes.
+      const billableMs = result.billableMs ?? 0;
 
       // Check if execution service already set error status (for cancellations)
       // Don't override 'error' status with 'failed'
@@ -369,7 +508,7 @@ export class PlaywrightExecutionProcessor
         {
           organizationId: jobData.organizationId,
           runId,
-          durationMs,
+          durationMs: billableMs,
           eventType: 'playwright_execution',
           metadata: {
             jobId: originalJobId,
@@ -386,18 +525,24 @@ export class PlaywrightExecutionProcessor
           ),
       );
 
-      // Track Playwright usage for billing
-      await this.usageTrackerService
-        .trackPlaywrightExecution(jobData.organizationId, durationMs, {
-          runId,
-          jobId: originalJobId,
-          testCount: result.results?.length || 0,
-        })
-        .catch((err: Error) =>
-          this.logger.warn(
-            `[${runId}] Failed to track Playwright usage: ${err.message}`,
-          ),
-        );
+      usagePersisted = true;
+
+      // Track Playwright usage for billing (only when a container actually ran)
+      if (billableMs > 0) {
+        await this.usageTrackerService
+          .trackPlaywrightExecution(jobData.organizationId, billableMs, {
+            runId,
+            jobId: originalJobId,
+            testCount: result.results?.length || 0,
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[${runId}] Failed to track Playwright usage: ${err.message}`,
+            ),
+          );
+      }
+
+      usagePersisted = true;
 
       // Update job status based on all current run statuses
       if (originalJobId) {
@@ -437,8 +582,34 @@ export class PlaywrightExecutionProcessor
         error instanceof Error ? error.message : String(error);
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation') ||
-        errorMessage.includes('code 137');
+        errorMessage.includes('cancellation');
+      if (
+        !isCancellation &&
+        !(error instanceof UnrecoverableError) &&
+        (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
+      ) {
+        if (
+          Math.max(getBillableMs(error), observedBillableMs) > 0 &&
+          !usagePersisted &&
+          job.data.organizationId &&
+          runId
+        ) {
+          await this.usageTrackerService.completeRunWithUsage(
+            {
+              organizationId: job.data.organizationId,
+              runId: `${runId}:attempt:${job.attemptsMade ?? 0}`,
+              eventType: 'playwright_execution',
+              durationMs: Math.max(getBillableMs(error), observedBillableMs),
+              metadata: {
+                executionRunId: runId,
+                retryAttempt: job.attemptsMade ?? 0,
+              },
+            },
+            async () => {},
+          );
+        }
+        throw error;
+      }
 
       // Update database with error status
       const errorStatus = isCancellation ? 'error' : 'failed';
@@ -447,13 +618,42 @@ export class PlaywrightExecutionProcessor
         : errorMessage;
 
       // Update run status first
-      await this.dbService
-        .updateRunStatus(runId, errorStatus, '0', errorDetails)
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to update run error status: ${err.message}`,
-          ),
-        );
+      await (
+        jobData.organizationId &&
+        Math.max(getBillableMs(error), observedBillableMs) > 0 &&
+        !usagePersisted
+          ? this.usageTrackerService.completeRunWithUsage(
+              {
+                organizationId: jobData.organizationId,
+                runId,
+                durationMs: Math.max(getBillableMs(error), observedBillableMs),
+                eventType: 'playwright_execution',
+                metadata: { jobId: jobIdForLookup, executionError: true },
+              },
+              (transaction) =>
+                this.dbService.updateRunStatus(
+                  runId,
+                  errorStatus,
+                  String(
+                    Math.floor(
+                      Math.max(getBillableMs(error), observedBillableMs) / 1000,
+                    ),
+                  ),
+                  errorDetails,
+                  transaction,
+                ),
+            )
+          : this.dbService.updateRunStatus(
+              runId,
+              errorStatus,
+              '0',
+              errorDetails,
+            )
+      ).catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to update run error status: ${err.message}`,
+        ),
+      );
 
       // Update job status based on all current run statuses
       if (originalJobId) {
@@ -486,7 +686,13 @@ export class PlaywrightExecutionProcessor
         );
       }
 
-      await job.updateProgress(100);
+      await job
+        .updateProgress(100)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to publish completion progress: ${String(error)}`,
+          ),
+        );
 
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellation) {

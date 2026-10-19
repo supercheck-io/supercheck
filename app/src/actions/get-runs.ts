@@ -7,7 +7,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import {
   requireAuth,
   getUserRole,
-  getUserOrgRole,
+  hasPermissionForUser,
 } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 
@@ -59,12 +59,12 @@ export async function getRun(
         trigger: runs.trigger,
         location: runs.location,
         jobType: jobs.jobType,
-        projectId: jobs.projectId,
-        organizationId: jobs.organizationId,
+        projectId: projects.id,
+        organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .leftJoin(projects, eq(jobs.projectId, projects.id))
+      .leftJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
       .leftJoin(
         reports,
         and(
@@ -84,11 +84,15 @@ export async function getRun(
     // Check if user has access to this run's organization
     const userRole = await getUserRole(userId);
 
-    if (userRole !== Role.SUPER_ADMIN && run.organizationId) {
-      const orgRole = await getUserOrgRole(userId, run.organizationId);
+    if (!run.organizationId || !run.projectId) return null;
+    if (userRole !== Role.SUPER_ADMIN) {
+      const canView = await hasPermissionForUser(userId, "run", "view", {
+        organizationId: run.organizationId,
+        projectId: run.projectId,
+      });
 
-      if (!orgRole) {
-        throw new Error("Access denied: Not a member of this organization");
+      if (!canView) {
+        throw new Error("Access denied: Insufficient permissions to view this run");
       }
     }
 

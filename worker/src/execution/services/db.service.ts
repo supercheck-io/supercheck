@@ -266,7 +266,12 @@ export class DbService implements OnModuleInit {
       }
 
       // Update the database
-      await database.update(runs).set(updateData).where(eq(runs.id, runId));
+      await database
+        .update(runs)
+        .set(updateData)
+        .where(
+          and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])),
+        );
 
       this.logger.log(
         `Successfully updated run ${runId} with status ${status}`,
@@ -495,6 +500,17 @@ export class DbService implements OnModuleInit {
       );
       return [];
     }
+  }
+
+  /** A committed terminal result makes a redelivered queue task a replay. */
+  async getTerminalRun(runId: string) {
+    return this.db.query.runs.findFirst({
+      where: and(
+        eq(runs.id, runId),
+        inArray(runs.status, ['passed', 'failed', 'error', 'blocked']),
+      ),
+      columns: { id: true, status: true, errorDetails: true },
+    });
   }
 
   async getRunStatusesForJob(

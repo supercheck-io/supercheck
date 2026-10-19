@@ -104,12 +104,14 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     for (const queue of queues) {
       this.queues.add(queue);
     }
+    void this.sendHeartbeat();
   }
 
   removeQueues(queues: string[]): void {
     for (const queue of queues) {
       this.queues.delete(queue);
     }
+    void this.sendHeartbeat();
   }
 
   getQueues(): string[] {

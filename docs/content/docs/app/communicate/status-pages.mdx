@@ -408,7 +408,7 @@ Configure branding and notification settings.
 </Tab>
 <Tab value="Custom Domains">
 
-Use a custom hostname such as `status.example.net`. Configure DNS, verify the page, then confirm HTTPS before sharing the URL.
+Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
 
 #### Set Up a Custom Domain
 
@@ -420,7 +420,7 @@ Use a custom hostname such as `status.example.net`. Configure DNS, verify the pa
 ```mermaid
 %%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
 flowchart LR
-    Domain[Save hostname in Settings] --> DNS[Add the displayed CNAME]
+    Domain[Save hostname in Settings] --> DNS[Add the displayed CNAME and TXT]
     DNS --> Verify[Verify DNS and publish]
     Verify --> HTTPS[Confirm HTTPS]
     HTTPS --> Share[Share the URL]
@@ -437,7 +437,7 @@ flowchart LR
 | Step | Action |
 |---|---|
 | **1. Save** | Enter the custom hostname in the status page's **Settings**, then save. |
-| **2. Configure DNS** | Add a **CNAME** from your custom hostname to the exact target shown in Settings. Some providers require only the hostname label, such as `status`. |
+| **2. Configure DNS** | Add the **CNAME** from your custom hostname to the exact target shown in Settings, and add the displayed **TXT** proof at `_supercheck-challenge.<custom-hostname>`. Some providers require only the hostname label, such as `status`. |
 | **3. Verify** | Wait for propagation, then select **Verify DNS**. Ensure the page is published. |
 | **4. Check HTTPS** | Open the custom URL and confirm the certificate is valid before sharing it. |
 
@@ -449,7 +449,7 @@ flowchart LR
 | Target shown in Settings | `cname.example.com` | A/AAAA pointing to your app; omit if the wildcard covers it |
 | Custom status page | `status.example.net` | CNAME to `cname.example.com` |
 
-Set `STATUS_PAGE_DOMAIN` to the public namespace for default URLs. Keep custom hostnames outside that namespace. The target may use A/AAAA or wildcard DNS; the custom hostname must use a CNAME only.
+Set `STATUS_PAGE_DOMAIN` to the public namespace for default URLs. Keep custom hostnames outside that namespace. The CNAME target may use A/AAAA or wildcard DNS. Verification requires both the custom hostname's CNAME and its page-specific TXT proof (`supercheck-domain-verification=<status-page-id>`). Keep the TXT record in place; changing or removing it prevents verification. Previously verified pages continue to serve, but new verification and re-verification require the TXT record.
 
 <Callout type="warn">
 For Cloudflare, use **DNS only** during verification and initial HTTPS checks. Enable the proxy only after the origin serves HTTPS for the custom hostname; use **Full** or **Full (Strict)** TLS mode.
@@ -475,6 +475,7 @@ Clear the domain field in **Settings** and save. The default page URL continues 
 | Problem | Check |
 |---|---|
 | CNAME missing or wrong target | Confirm the target matches Settings, then wait for DNS propagation. Check with [DNS Checker](https://dnschecker.org). |
+| TXT proof missing or wrong | Copy the TXT name and value shown in Settings exactly, then wait for DNS propagation before verifying again. |
 | Target is not publicly resolvable | Point the target hostname to your app using A/AAAA or wildcard DNS. Keep the custom hostname as a CNAME only. |
 | Domain already in use | Remove it from the other status page first. |
 | 404 | Publish the page, verify DNS, and check that the hostname is outside the reserved `STATUS_PAGE_DOMAIN` namespace. |

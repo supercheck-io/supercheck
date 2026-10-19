@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/popover";
 import {
   getStatusPageCustomDomainTargetResolutionHint,
+  getStatusPageDomainOwnershipRecord,
   STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
 } from "@/lib/status-page-domain-guidance";
 
@@ -240,6 +241,7 @@ export function SettingsTab({
   });
 
   const customDomainValue = watch("customDomain");
+  const domainOwnership = getStatusPageDomainOwnershipRecord(customDomainValue || "", statusPage.id);
   const effectiveStatusPageDomain = normalizeHostname(
     statusPageDomain || appConfigStatusPageDomain || "supercheck.io"
   );
@@ -825,7 +827,7 @@ export function SettingsTab({
                         A/AAAA or wildcard DNS, you can reuse it.
                       </p>
                     )}
-                    <p>Create this customer-facing DNS record:</p>
+                    <p>Create these DNS records to route traffic and prove ownership:</p>
                     <div className="rounded-md border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead>
@@ -841,11 +843,16 @@ export function SettingsTab({
                             <td className="px-3 py-1.5 font-mono">{customDomainValue}</td>
                             <td className="px-3 py-1.5 font-mono">{effectiveStatusPageCnameTarget}</td>
                           </tr>
+                          <tr>
+                            <td className="px-3 py-1.5 font-mono">TXT</td>
+                            <td className="px-3 py-1.5 font-mono break-all">{domainOwnership.name}</td>
+                            <td className="px-3 py-1.5 font-mono break-all">{domainOwnership.value}</td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
                     <ol className="list-decimal list-inside space-y-1">
-                      <li>Add the CNAME record above</li>
+                      <li>Add the CNAME and TXT records above. Keep the TXT record for future verification.</li>
                       <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
                       <li>If you use Cloudflare, keep the record on DNS only during verification.</li>
                       <li>Wait for DNS propagation, then click <strong>Verify DNS</strong>.</li>

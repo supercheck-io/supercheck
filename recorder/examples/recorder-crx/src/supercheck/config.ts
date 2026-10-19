@@ -52,12 +52,38 @@ export async function saveConfig(config: Partial<SupercheckConfig>): Promise<voi
   }
 }
 
+/** How long to wait for the instance when revoking the key on disconnect. */
+const REVOKE_TIMEOUT_MS = 5000;
+
 /**
- * Clear all Supercheck configuration (logout)
+ * Clear all Supercheck configuration (logout).
+ *
+ * Local credentials are always removed: the user asked to disconnect, and an
+ * unreachable or changed instance must not leave the key stuck in this browser.
+ * The held key is revoked on the server first, best-effort. When that fails the
+ * caller gets `revoked: false` so it can tell the user to revoke the key from
+ * their Supercheck settings.
  */
-export async function clearConfig(): Promise<void> {
+export async function clearConfig(): Promise<{ revoked: boolean }> {
+  let revoked = true;
   try {
+    const config = await getConfig();
+    if (config.apiKey) {
+      try {
+        const response = await fetch(`${config.instanceUrl.replace(/\/$/, '')}/api/extension/auth`, {
+          method: 'DELETE',
+          headers: { 'x-api-key': config.apiKey },
+          signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
+        });
+        // 401 means the key is already invalid, which is the outcome we want.
+        revoked = response.ok || response.status === 401;
+      } catch (error) {
+        console.warn('[Supercheck] Could not reach the instance to revoke the key:', error);
+        revoked = false;
+      }
+    }
     await chrome.storage.sync.remove(STORAGE_KEY);
+    return { revoked };
   } catch (error) {
     console.error('[Supercheck] Failed to clear config:', error);
     throw error;

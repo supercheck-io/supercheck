@@ -110,6 +110,8 @@ Check the target URL, selectors, credentials, waits, and assertions. Run the scr
 
 After a failed run, use AI Fix to review suggested changes. Apply only changes you understand, then run the test again.
 
+Keep the run's organization selected and make sure you can view its project. AI Fix checks access to the report before using an AI credit. Cloud AI Create and Fix also share an hourly organization token guard; if it is reached, wait before retrying. Closing or cancelling a generated response stops the active provider request.
+
 ![AI Fix Button](/screenshots/ai-fix-button.png)
 
 ### Use AI Fix
@@ -161,15 +163,20 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 |----------|-----------|
 | **Browser Fundamentals** | UI Smoke (navigation), Browser selection with tags, Comprehensive Browser Test |
 | **Auth Flows** | Auth flow (login + logout) |
-| **Responsive & Devices** | Mobile/responsive layout, Device emulation (geo, locale, timezone) |
+| **Responsive & Devices** | Mobile / responsive layout, Device emulation (geo, locale, timezone) |
+| **Data-Driven** | Data-Driven Test (File Variable) |
+| **Diagnostics** | Failure Diagnostics |
+| **Authentication** | Passkey Registration and Sign-In |
+| **AI Applications** | WebMCP Tools (Experimental, Chromium) |
+| **Reliability** | Shared Resource Lock |
 
 </Tab>
 <Tab value="API">
 
 | Category | Templates |
 |----------|-----------|
-| **API Health** | Health/JSON contract |
-| **API CRUD** | Create + read + cleanup |
+| **API Health** | Health / JSON contract |
+| **API CRUD** | Simulated API CRUD |
 | **Authentication** | Authenticated request |
 | **API Coverage** | Comprehensive API Test |
 
@@ -178,15 +185,15 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 
 | Category | Templates |
 |----------|-----------|
-| **Database Checks** | SELECT health check, Safe UPDATE with RETURNING, Database Discovery & Query |
-| **Transactions** | Insert with rollback |
+| **Database Checks** | SELECT health check, Query plan analysis, Database Discovery & Query |
+| **Transactions** | Read-only transaction |
 
 </Tab>
 <Tab value="Custom">
 
 | Category | Templates |
 |----------|-----------|
-| **Cross-layer** | Custom test fixtures, Form with API stubbing, Device emulation showcase, API + UI end-to-end, GitHub API + Browser Integration |
+| **Cross-layer** | Custom test fixtures, Form with API stubbing, Device emulation showcase, API response + UI input, GitHub API + Browser Integration |
 
 </Tab>
 <Tab value="Performance">
@@ -196,7 +203,9 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 | **Smoke & Health** | Smoke Check (API), Basic Performance Test |
 | **Load Profiles** | Ramping Load, Advanced Thresholds |
 | **Resilience** | Spike + Recovery, Stress Test, Breakpoint Test |
-| **Reliability** | Soak/Endurance |
+| **Reliability** | Soak / Endurance |
+| **Protocols** | WebSocket + API Load Test, gRPC + API Load Test |
+| **Data-Driven** | Data-Driven Performance Test (File Variable) |
 | **API Coverage** | API Checklist (GET + POST + auth), Checks & Assertions |
 
 </Tab>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getSreOnboardingStatus } from "@/actions/sre-onboarding";
+import { getSreOnboardingStatus } from "@/lib/server-actions/sre-onboarding";
 import { requireSreApiPermissions } from "../_auth";
 
 export async function GET() {

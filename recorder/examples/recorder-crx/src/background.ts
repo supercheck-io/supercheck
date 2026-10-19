@@ -19,6 +19,7 @@ import type { CrxApplication } from 'playwright-crx';
 import playwright, { crx, _debug, _setUnderTest, _isUnderTest as isUnderTest } from 'playwright-crx';
 import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings } from './settings';
+import { clearConfig } from './supercheck/config';
 
 type CrxMode = Mode | 'detached';
 
@@ -324,8 +325,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle DISCONNECT from content script
   if (message.type === 'INTERNAL_DISCONNECT') {
-    chrome.storage.sync.remove('supercheckConfig').then(() => {
-      sendResponse({ success: true });
+    clearConfig().then(({ revoked }) => {
+      sendResponse({ success: true, revoked });
     }).catch(error => {
       console.error('[Supercheck] Failed to clear config:', error);
       sendResponse({ success: false, error: error.message });

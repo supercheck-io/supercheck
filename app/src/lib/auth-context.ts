@@ -51,10 +51,19 @@ export interface AuthContext {
  * Allows catch blocks to distinguish auth errors (401) from server errors (500).
  */
 export class AuthError extends Error {
-  constructor(message: string) {
+  /** 401 when unauthenticated, 403 when authenticated but not permitted. */
+  readonly status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403 = 401) {
     super(message);
     this.name = "AuthError";
+    this.status = status;
   }
+}
+
+/** HTTP status for an auth failure: 403 for scope denials, otherwise 401. */
+export function authErrorStatus(error: unknown): 401 | 403 {
+  return error instanceof AuthError ? error.status : 401;
 }
 
 /**
@@ -132,6 +141,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       projectId: apikey.projectId,
       enabled: apikey.enabled,
       expiresAt: apikey.expiresAt,
+      permissions: apikey.permissions,
     })
     .from(apikey)
     .where(
@@ -152,6 +162,17 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       "Invalid CLI token attempted"
     );
     return null;
+  }
+
+  // Legacy keys may predate capability markers; explicit scopes must allow CLI access.
+  if (matchedKey.permissions != null) {
+    try {
+      const permissions: unknown = typeof matchedKey.permissions === "string"
+        ? JSON.parse(matchedKey.permissions) : matchedKey.permissions;
+      if (!Array.isArray(permissions) || !permissions.includes("cli:full")) return null;
+    } catch {
+      return null;
+    }
   }
 
   // CLI tokens must be project-scoped
@@ -325,6 +346,7 @@ export async function requireAuthContext(): Promise<AuthContext> {
  */
 export interface UserAuthContext {
   userId: string;
+  projectId: string | null;
   /** Organization ID — from CLI token's project scope, or session's active org */
   organizationId: string | null;
   /** Whether this request was authenticated via CLI token (vs session cookie) */
@@ -348,7 +370,7 @@ export interface UserAuthContext {
  * }
  * ```
  */
-export async function requireUserAuthContext(): Promise<UserAuthContext> {
+export async function requireUserAuthContext(targetProjectId?: string): Promise<UserAuthContext> {
   // 1. Check for Bearer token first (CLI auth)
   const bearerToken = await getBearerToken();
 
@@ -365,9 +387,14 @@ export async function requireUserAuthContext(): Promise<UserAuthContext> {
       throw new AuthError("Invalid or expired CLI token");
     }
 
+    if (targetProjectId && targetProjectId !== cliContext.project.id) {
+      throw new AuthError("CLI token does not authorize this project", 403);
+    }
+
     return {
       userId: cliContext.userId,
       organizationId: cliContext.organizationId,
+      projectId: cliContext.project.id,
       isCliAuth: true,
     };
   }
@@ -379,6 +406,7 @@ export async function requireUserAuthContext(): Promise<UserAuthContext> {
   return {
     userId,
     organizationId: activeOrg?.id ?? null,
+    projectId: null,
     isCliAuth: false,
   };
 }

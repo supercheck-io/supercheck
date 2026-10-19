@@ -136,8 +136,9 @@ function getPermissionResource(entityType: string): "test" | "monitor" | "run" |
 export async function GET(request: Request) {
   // Require authentication (supports both Bearer tokens and session cookies)
   let userId: string;
+  let authContext: Awaited<ReturnType<typeof requireUserAuthContext>>;
   try {
-    const authContext = await requireUserAuthContext();
+    authContext = await requireUserAuthContext();
     userId = authContext.userId;
   } catch (error) {
     if (isAuthError(error)) {
@@ -244,7 +245,7 @@ export async function GET(request: Request) {
           return notFound();
         }
 
-        if (!organizationId || !run.projectId) {
+        if (!organizationId || !run.projectId || (authContext.isCliAuth && authContext.projectId !== run.projectId)) {
           return notFound();
         }
 
@@ -330,7 +331,7 @@ export async function GET(request: Request) {
       entityId
     );
 
-    if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId) {
+    if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId || (authContext.isCliAuth && authContext.projectId !== accessContext.projectId)) {
       return notFound();
     }
 

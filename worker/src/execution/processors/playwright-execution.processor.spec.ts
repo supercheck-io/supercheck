@@ -15,14 +15,17 @@
 
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
+import { attachBillableMs } from '../../common/billable-ms';
 
 // Mock dependencies
 const mockExecutionService = {
   runSingleTest: jest.fn(),
+  hasActiveExecution: jest.fn().mockResolvedValue(false),
   runJob: jest.fn(),
 };
 
 const mockDbService = {
+  getTerminalRun: jest.fn(),
   updateRunStatus: jest.fn(),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
@@ -136,6 +139,7 @@ describe('PlaywrightExecutionProcessor', () => {
     stdout: 'Test passed',
     stderr: '',
     executionTimeMs: 5000,
+    billableMs: 5000,
   };
 
   const mockFailedResult = {
@@ -146,6 +150,7 @@ describe('PlaywrightExecutionProcessor', () => {
     stdout: '',
     stderr: 'Error: expect(received).toBe(expected)',
     executionTimeMs: 3000,
+    billableMs: 3000,
   };
 
   const mockJobSuccessResult = {
@@ -157,6 +162,7 @@ describe('PlaywrightExecutionProcessor', () => {
     timestamp: new Date().toISOString(),
     stdout: 'All tests passed',
     stderr: '',
+    billableMs: 60_000,
   };
 
   const createMockJob = <T>(data: T, id = 'mock-job-id'): Job<T> => {
@@ -189,6 +195,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockCancellationService.isCancelled.mockResolvedValue(false);
     mockExecutionService.runSingleTest.mockResolvedValue(mockSuccessResult);
     mockExecutionService.runJob.mockResolvedValue(mockJobSuccessResult);
+    mockDbService.getTerminalRun.mockResolvedValue(undefined);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.updateJobStatus.mockResolvedValue(undefined);
     mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
@@ -210,6 +217,126 @@ describe('PlaywrightExecutionProcessor', () => {
   // ==========================================================================
 
   describe('Single Test Execution', () => {
+    it('keeps successful execution and metering when completion progress fails', async () => {
+      const job = createMockJob(mockTestTask);
+      (job.updateProgress as jest.Mock).mockImplementation(
+        async (value: number) => {
+          if (value === 100) throw new Error('Redis progress unavailable');
+        },
+      );
+      expect((await processor.process(job)).success).toBe(true);
+      expect(mockUsageTrackerService.completeRunWithUsage).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMs: 5000 }),
+        expect.any(Function),
+      );
+    });
+
+    it('does not execute a committed run again after a post-commit notification failure', async () => {
+      let committed = false;
+      mockDbService.getTerminalRun.mockImplementation(async () =>
+        committed ? { status: 'passed', errorDetails: null } : undefined,
+      );
+      mockUsageTrackerService.completeRunWithUsage.mockImplementation(
+        async (_input: unknown, persist: (tx: unknown) => Promise<void>) => {
+          await persist(mockDbService.db);
+          committed = true;
+        },
+      );
+      mockJobNotificationService.handleJobNotifications.mockRejectedValueOnce(
+        new Error('Notification unavailable'),
+      );
+      const job = createMockJob(mockJobTask);
+      await expect(processor.process(job)).rejects.toThrow(
+        'Notification unavailable',
+      );
+      await expect(processor.process(job)).resolves.toMatchObject({
+        success: true,
+      });
+      expect(mockExecutionService.runJob).toHaveBeenCalledTimes(1);
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('delays a duplicate attempt without changing status or starting another pod', async () => {
+      mockExecutionService.hasActiveExecution.mockResolvedValueOnce(true);
+      const job = createMockJob(mockTestTask);
+      job.moveToDelayed = jest.fn().mockResolvedValue(undefined);
+      await expect(processor.process(job)).rejects.toThrow();
+      expect(job.moveToDelayed).toHaveBeenCalledWith(
+        expect.any(Number),
+        job.token,
+      );
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
+      mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
+        new Error('Unable to verify Kubernetes execution state for run-456'),
+      );
+      const job = createMockJob(mockTestTask);
+      await expect(processor.process(job)).rejects.toThrow(
+        /Unable to verify Kubernetes execution state/,
+      );
+      expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+        runId,
+        'failed',
+        '0',
+        expect.stringContaining('Unable to verify Kubernetes execution state'),
+      );
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each(['test', 'job'])(
+      'allows a transient %s failure to retry before persisting a successful terminal result',
+      async (kind) => {
+        const task = kind === 'test' ? mockTestTask : mockJobTask;
+        const job = createMockJob(task);
+        job.opts = { attempts: 2 };
+        job.attemptsMade = 0;
+        const execute =
+          kind === 'test'
+            ? mockExecutionService.runSingleTest
+            : mockExecutionService.runJob;
+        // The container ran for 7s before the transient failure.
+        execute.mockRejectedValueOnce(
+          attachBillableMs(new Error('temporary failure'), 7000),
+        );
+        await expect(processor.process(job)).rejects.toThrow(
+          'temporary failure',
+        );
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            runId: `${task.runId}:attempt:0`,
+            eventType: 'playwright_execution',
+            durationMs: 7000,
+          }),
+          expect.any(Function),
+        );
+        expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).not.toHaveBeenCalled();
+        job.attemptsMade = 1;
+        expect((await processor.process(job)).success).toBe(true);
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          runId,
+          'passed',
+          expect.anything(),
+          undefined,
+          expect.anything(),
+        );
+      },
+    );
     describe('Positive Cases', () => {
       it('should execute single test successfully', async () => {
         const job = createMockJob(mockTestTask);
@@ -823,11 +950,103 @@ describe('PlaywrightExecutionProcessor', () => {
       });
     });
 
+    describe('Container-start metering', () => {
+      it.each(['test', 'job'])(
+        'charges nothing when a %s attempt fails before any container started',
+        async (kind) => {
+          const task = kind === 'test' ? mockTestTask : mockJobTask;
+          const job = createMockJob(task);
+          job.opts = { attempts: 2 };
+          job.attemptsMade = 0;
+          const execute =
+            kind === 'test'
+              ? mockExecutionService.runSingleTest
+              : mockExecutionService.runJob;
+          // e.g. variable resolution or concurrency-limit failure: no evidence
+          execute.mockRejectedValueOnce(new Error('Maximum concurrent limit'));
+          await expect(processor.process(job)).rejects.toThrow();
+          expect(
+            mockUsageTrackerService.completeRunWithUsage,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it('writes the failed status without any usage input when the final attempt never started a container', async () => {
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          new Error('Variable resolution failed'),
+        );
+        await expect(
+          processor.process(createMockJob(mockTestTask)),
+        ).rejects.toThrow();
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).not.toHaveBeenCalled();
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          runId,
+          'failed',
+          '0',
+          'Variable resolution failed',
+        );
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('charges the container run time when a failure happens after start', async () => {
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          attachBillableMs(new Error('Report upload failed'), 9000),
+        );
+        await expect(
+          processor.process(createMockJob(mockTestTask)),
+        ).rejects.toThrow();
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({ durationMs: 9000 }),
+          expect.any(Function),
+        );
+      });
+
+      it('does not meter a job that was cancelled before its container started', async () => {
+        mockExecutionService.runJob.mockResolvedValue({
+          ...mockJobSuccessResult,
+          success: false,
+          error: 'Cancellation requested by user',
+          billableMs: 0,
+        });
+        await processor.process(createMockJob(mockJobTask));
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({ durationMs: 0 }),
+          expect.any(Function),
+        );
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('meters a timed-out single test from container start, not processor start', async () => {
+        mockExecutionService.runSingleTest.mockResolvedValue({
+          ...mockFailedResult,
+          error: 'Execution timed out after 120000ms',
+          executionTimeMs: 150_000,
+          billableMs: 120_000,
+        });
+        await processor.process(createMockJob(mockTestTask));
+        expect(
+          mockUsageTrackerService.completeRunWithUsage,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({ durationMs: 120_000 }),
+          expect.any(Function),
+        );
+      });
+    });
+
     describe('Error Type Detection', () => {
       it.each([
         ['cancelled', 'Cancellation requested by user'],
         ['cancellation', 'Cancellation requested by user'],
-        ['code 137', 'Cancellation requested by user'],
       ])(
         'should detect %s as cancellation',
         async (errorSubstring, expectedMessage) => {
@@ -850,6 +1069,20 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await expect(processor.process(job)).rejects.toThrow(
           'Timeout exceeded',
+        );
+      });
+      it('does not attribute a generic SIGKILL to a user', async () => {
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          new Error('Process exited with code 137'),
+        );
+        await expect(
+          processor.process(createMockJob(mockTestTask)),
+        ).rejects.toThrow('code 137');
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          runId,
+          'failed',
+          '0',
+          'Process exited with code 137',
         );
       });
     });

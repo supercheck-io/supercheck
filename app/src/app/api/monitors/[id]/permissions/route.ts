@@ -26,7 +26,7 @@ export async function GET(
   }
 
   try {
-    const { userId } = await requireUserAuthContext();
+    const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Find the monitor to get project and organization IDs
     const monitor = await db.query.monitors.findFirst({
@@ -39,6 +39,10 @@ export async function GET(
 
     if (!monitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    if (isCliAuth && tokenProjectId !== monitor.projectId) {
+      return NextResponse.json({ error: "CLI token does not authorize this project" }, { status: 403 });
     }
 
     if (!monitor.organizationId || !monitor.projectId) {

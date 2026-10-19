@@ -42,7 +42,7 @@ export async function createJob(data: CreateJobData) {
     try {
       await requirePermissions({
         job: ["create"],
-      });
+      }, { organizationId, projectId: project.id });
     } catch (error) {
       console.warn(
         `User ${userId} attempted to create job without permission:`,

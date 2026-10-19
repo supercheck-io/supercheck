@@ -791,6 +791,14 @@ describe('Reconciliation', () => {
     );
   });
 
+  it('pages large queues and deduplicates jobs that move across mutable pages', async () => {
+    const page = Array.from({ length: 250 }, (_, id) => ({ id: String(id), data: { organizationId: 'org-1' } }));
+    mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
+    expect(mockQueue.getJobs).toHaveBeenNthCalledWith(2, expect.any(Array), 250, 499);
+    expect(mockRedisSet).toHaveBeenCalledWith('capacity:running:org-1', '251', expect.any(String), expect.any(Number));
+  });
+
   it('should gracefully handle empty queues', async () => {
     mockQueue.getJobs.mockResolvedValue([]);
     mockRedisScan.mockResolvedValue(['0', []]);
@@ -812,7 +820,7 @@ describe('Reconciliation', () => {
     await reconcileCapacityCounters(mockQueues, true);
     expect(mockQueue.getJobs).toHaveBeenCalledWith([
       'active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children',
-    ]);
+    ], 0, 249);
     expect(mockRedisDel).not.toHaveBeenCalledWith('capacity:running:org-1');
     expect(mockRedisSet).not.toHaveBeenCalled();
   });

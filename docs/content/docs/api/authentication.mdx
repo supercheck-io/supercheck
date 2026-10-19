@@ -130,3 +130,5 @@ When rate limited (`429`), the `Retry-After` header indicates how long to wait:
 HTTP/1.1 429 Too Many Requests
 Retry-After: 60
 ```
+
+Organization and billing administration, including member management and creating projects, require an interactive browser session. Project-scoped CLI tokens receive `403` for these operations, even when their owner is an organization administrator. Tokens still support scoped organization/project discovery, authentication context, and authorized resource operations within their project.

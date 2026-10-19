@@ -91,6 +91,7 @@ type AggregatedAlertState = {
   consecutiveSuccessCount: number;
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
+  recoverySequence?: boolean;
   executionGroupId?: string;
 };
 
@@ -163,7 +164,10 @@ export class MonitorService {
       }
       const billing = await this.usageTrackerService.shouldBlockExecution(
         monitor.organizationId ?? '',
-        { checkSpendingLimit: jobData.type === 'synthetic_test' },
+        {
+          checkSpendingLimit: jobData.type === 'synthetic_test',
+          monitorId: jobData.monitorId,
+        },
       );
       if (billing.blocked) {
         // Billing holds are not probe failures and must not trigger downtime
@@ -557,6 +561,9 @@ export class MonitorService {
         })),
       },
     });
+    for (const result of results) {
+      await this.checkSslExpirationAlert(result, monitor);
+    }
     if (groupEvaluation) {
       await this.dbService.db
         .update(schema.monitorResults)
@@ -1885,7 +1892,8 @@ export class MonitorService {
     const timeout =
       (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT) * 1000;
     const daysUntilExpirationWarning =
-      config?.daysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
+      config?.sslDaysUntilExpirationWarning ??
+      SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
     this.logger.debug(
       `SSL Check: ${target}, Timeout: ${timeout}ms, Warning threshold: ${daysUntilExpirationWarning} days`,
@@ -2029,6 +2037,16 @@ export class MonitorService {
           isUp = false;
           details = {
             errorMessage: 'Certificate has expired',
+            sslCertificate,
+            responseTimeMs,
+          };
+        } else if (!certificateInfo.authorized) {
+          status = 'down';
+          isUp = false;
+          details = {
+            errorMessage:
+              certificateInfo.authorizationError?.message ||
+              'Certificate trust or hostname verification failed',
             sslCertificate,
             responseTimeMs,
           };
@@ -2225,6 +2243,12 @@ export class MonitorService {
     monitor: Monitor | null,
   ): Promise<void> {
     try {
+      if (
+        !monitor?.alertConfig?.enabled ||
+        !monitor.alertConfig.alertOnSslExpiration
+      ) {
+        return;
+      }
       // Removed debug log
 
       // Check if SSL certificate info is available and has warning
@@ -2289,9 +2313,6 @@ export class MonitorService {
             },
           );
 
-          // Record that we sent an SSL alert
-          await this.recordSslAlert(resultData.monitorId);
-
           // Only log important SSL alerts
           this.logger.log(
             `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
@@ -2316,6 +2337,9 @@ export class MonitorService {
         where: and(
           eq(schema.alertHistory.monitorId, monitorId),
           eq(schema.alertHistory.type, 'ssl_expiring'),
+          // Only delivered alerts throttle: failed deliveries must be retried
+          // on the next check instead of being suppressed for 24 hours.
+          eq(schema.alertHistory.status, 'sent'),
         ),
         orderBy: [desc(schema.alertHistory.sentAt)],
       });
@@ -2330,44 +2354,19 @@ export class MonitorService {
     }
   }
 
-  /**
-   * Records that an SSL alert was sent for a monitor
-   */
-  private async recordSslAlert(monitorId: string): Promise<void> {
-    try {
-      const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: eq(schema.monitors.id, monitorId),
-      });
-
-      if (!monitor) {
-        return;
-      }
-
-      const updatedConfig = {
-        ...((monitor.config as Record<string, unknown>) || {}),
-        lastSslAlertSentAt: new Date().toISOString(),
-      } as typeof monitor.config;
-
-      await this.dbService.db
-        .update(schema.monitors)
-        .set({ config: updatedConfig })
-        .where(eq(schema.monitors.id, monitorId));
-    } catch (error) {
-      this.logger.error(
-        `Error recording SSL alert for monitor ${monitorId}:`,
-        error,
-      );
-    }
-  }
-
   private async saveMonitorResultToDb(
     resultData: MonitorExecutionResult,
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
+      // Counters are tracked per location: another region's latest result must
+      // not reset or advance this location's failure/recovery sequence.
       const lastResult = await this.dbService.db.query.monitorResults.findFirst(
         {
-          where: eq(schema.monitorResults.monitorId, resultData.monitorId),
+          where: and(
+            eq(schema.monitorResults.monitorId, resultData.monitorId),
+            eq(schema.monitorResults.location, resultData.location),
+          ),
           orderBy: [desc(schema.monitorResults.checkedAt)],
         },
       );
@@ -2428,7 +2427,13 @@ export class MonitorService {
         checkedAt: resultData.checkedAt,
         status: resultData.status,
         responseTimeMs: resultData.responseTimeMs,
-        details: resultData.details,
+        details: {
+          ...resultData.details,
+          recoverySequence:
+            resultData.isUp &&
+            (lastResult?.isUp === false ||
+              lastResult?.details?.recoverySequence === true),
+        },
         isUp: resultData.isUp,
         isStatusChange: isStatusChange,
         consecutiveFailureCount: consecutiveFailureCount,
@@ -2506,6 +2511,7 @@ export class MonitorService {
       alertsSentForRecovery: toSafeCounter(
         rawAlertState?.alertsSentForRecovery,
       ),
+      recoverySequence: rawAlertState?.recoverySequence === true,
     };
   }
 
@@ -2526,6 +2532,7 @@ export class MonitorService {
           ? previousState.alertsSentForFailure
           : 0,
         alertsSentForRecovery: 0,
+        recoverySequence: false,
       };
     }
 
@@ -2540,6 +2547,9 @@ export class MonitorService {
       alertsSentForRecovery: continuingRecoverySequence
         ? previousState.alertsSentForRecovery
         : 0,
+      recoverySequence:
+        previousStatus === 'down' ||
+        (continuingRecoverySequence && previousState.recoverySequence === true),
     };
   }
 
@@ -2707,7 +2717,13 @@ export class MonitorService {
           );
         }
       }
-    } else if (currentStatus === 'up' && previousStatus === 'down') {
+    } else if (
+      currentStatus === 'up' &&
+      (previousStatus === 'down' ||
+        (isMultiLocationEvaluation
+          ? aggregatedAlertState?.recoverySequence
+          : latestResult?.details?.recoverySequence) === true)
+    ) {
       alertType = 'recovery';
       const recoveryThreshold =
         (monitorAlertConfig?.recoveryThreshold as number) || 1;
@@ -3028,7 +3044,11 @@ export class MonitorService {
         where: eq(schema.monitors.id, monitorId),
       });
 
-      if (monitor?.organizationId) {
+      // Meter container run time evidenced by Kubernetes, not the wall-clock
+      // response time, which includes scheduling and image pulls. A check whose
+      // container never started is not billed.
+      const billableMs = testResult.billableMs ?? 0;
+      if (monitor?.organizationId && billableMs > 0) {
         // Persist exact usage before returning a completed synthetic result.
         // The execution ID is unique per check, including each location.
         await this.usageTrackerService
@@ -3037,7 +3057,7 @@ export class MonitorService {
               organizationId: monitor.organizationId,
               runId: testResult.testId,
               eventType: 'playwright_execution',
-              durationMs: responseTimeMs,
+              durationMs: billableMs,
               metadata: {
                 monitorId,
                 testId: test.id,
@@ -3054,7 +3074,7 @@ export class MonitorService {
             );
           });
         await this.usageTrackerService
-          .trackPlaywrightExecution(monitor.organizationId, responseTimeMs, {
+          .trackPlaywrightExecution(monitor.organizationId, billableMs, {
             runId: testResult.testId,
             monitorId,
             testId: test.id,

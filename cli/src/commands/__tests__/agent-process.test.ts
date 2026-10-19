@@ -165,6 +165,20 @@ describe('CLI agent workflows through the real entrypoint', () => {
     const result = run('skills', 'sync'); expect(result.status).toBe(0); expect(JSON.parse(result.stdout).content).toContain('supercheck.state.json')
     expect(read().requests).toEqual([])
   })
+  it('prints the full generated schema without redacting its field descriptors', () => {
+    const result = run('schema', 'config')
+    expect(result.status).toBe(0)
+    const output = JSON.parse(result.stdout)
+    expect(JSON.stringify(output.schema)).not.toContain('[REDACTED]')
+    expect(output.schema).toHaveProperty('properties.variables')
+    expect(read().requests).toEqual([])
+  })
+  it('requires explicit reveal before creating a one-time trigger credential', () => {
+    const result = run('job', 'keys', 'create', id, '--name', 'CI')
+    expect(result.status).not.toBe(0)
+    expect(result.stderr + result.stdout).toContain('--show-secrets')
+    expect(read().requests.filter(request => request.method === 'POST')).toEqual([])
+  })
   it('rejects schema typos and redacts provider credentials unless deliberately revealed', () => {
     config({ notifcationProviders: [] })
     expect(run('config', 'validate').status).toBe(3)

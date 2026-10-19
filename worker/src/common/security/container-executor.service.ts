@@ -126,8 +126,48 @@ export interface ContainerExecutionResult {
   stdout: string;
   stderr: string;
   duration: number;
+  /**
+   * Wall-clock time the execution container actually ran, from the container
+   * status reported by Kubernetes. Zero when there is no evidence the container
+   * started (preflight/validation failures, scheduling or image-pull timeouts,
+   * cancellation while pending). Billing and usage metering must use this, not
+   * `duration`.
+   */
+  billableMs?: number;
   timedOut: boolean;
+  cancelled?: boolean;
   error?: string;
+}
+
+/** Last container-start evidence observed while polling an execution pod. */
+interface ContainerStartEvidence {
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+}
+
+/** Billable time for a container: zero unless Kubernetes reported it started. */
+/** Kubernetes reports the zero time (epoch) for containers that never started. */
+const MIN_PLAUSIBLE_START_MS = Date.UTC(2000, 0, 1);
+/** Job activeDeadline is the timeout plus 120s; allow the same grace here. */
+const BILLABLE_DEADLINE_GRACE_MS = 150_000;
+
+export function computeBillableMs(
+  evidence: ContainerStartEvidence,
+  timeoutMs?: number,
+): number {
+  if (
+    evidence.startedAtMs === null ||
+    evidence.startedAtMs < MIN_PLAUSIBLE_START_MS
+  ) {
+    return 0;
+  }
+  const end = evidence.finishedAtMs ?? Date.now();
+  const elapsed = Math.max(0, end - evidence.startedAtMs);
+  // A container cannot outlive its Job's deadline, so never bill past it
+  // (guards against clock skew or malformed timestamps).
+  return timeoutMs === undefined
+    ? elapsed
+    : Math.min(elapsed, timeoutMs + BILLABLE_DEADLINE_GRACE_MS);
 }
 
 /** Internal validated resource limits */
@@ -158,6 +198,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       { name: 'attempts', value: '3' },
     ]);
   private static readonly SLOW_POD_STARTUP_WARN_MS = 5_000;
+  /** Consecutive unverifiable activity checks (10s apart) before failing loudly. */
+  private static readonly MAX_UNCERTAIN_EXECUTION_CHECKS = 30;
   private static readonly OUTCOME_POLL_FAST_UNTIL_MS = 15_000;
   private static readonly OUTCOME_POLL_MEDIUM_UNTIL_MS = 120_000;
   private static readonly OUTCOME_POLL_FAST_MS = 1_000;
@@ -218,6 +260,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private logClient: k8s.Log | null = null;
   private execClient: k8s.Exec | null = null;
   private readonly runningJobs: Map<string, string> = new Map();
+  private readonly uncertainExecutionChecks: Map<string, number> = new Map();
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
   private readonly execFailureLogged: Set<string> = new Set();
 
@@ -245,8 +288,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .get<string>('WORKER_IMAGE')
       ?.trim();
     const isCloudProduction =
-      process.env.NODE_ENV === 'production' &&
-      process.env.SELF_HOSTED?.toLowerCase() !== 'true';
+      process.env.NODE_ENV === 'production' && !isSelfHostedEnvironment();
     if (isCloudProduction && !configuredImage) {
       throw new Error(
         'WORKER_IMAGE must be explicitly configured in cloud production',
@@ -412,7 +454,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     this.runningJobs.clear();
   }
 
-  async hasActiveExecution(runId: string): Promise<boolean> {
+  /**
+   * Whether a live execution Job exists for the run. When Kubernetes cannot be
+   * queried the answer is "assume active" so a live run is never duplicated or
+   * marked terminal. Queue processors pass `boundUncertainty` so a prolonged API
+   * outage fails loudly instead of re-delaying the run forever.
+   */
+  async hasActiveExecution(
+    runId: string,
+    options: { boundUncertainty?: boolean } = {},
+  ): Promise<boolean> {
     if (this.runningJobs.has(runId)) return true;
 
     try {
@@ -421,18 +472,30 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         namespace: this.executionNamespace,
         labelSelector: `supercheck.io/run-id=${this.buildLabelValue(runId)}`,
       });
+      this.uncertainExecutionChecks.delete(runId);
       return jobs.items.some(
         (job) =>
-          (job.status?.active ?? 0) > 0 &&
+          (job.status?.succeeded ?? 0) === 0 &&
           !job.status?.completionTime &&
           (job.status?.failed ?? 0) === 0,
       );
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Unable to verify Kubernetes execution state for ${runId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Unable to verify Kubernetes execution state for ${runId}: ${reason}`,
       );
+      if (options.boundUncertainty) {
+        const uncertain = (this.uncertainExecutionChecks.get(runId) ?? 0) + 1;
+        if (
+          uncertain > ContainerExecutorService.MAX_UNCERTAIN_EXECUTION_CHECKS
+        ) {
+          this.uncertainExecutionChecks.delete(runId);
+          throw new Error(
+            `Unable to verify Kubernetes execution state for ${runId} after ${ContainerExecutorService.MAX_UNCERTAIN_EXECUTION_CHECKS} attempts: ${reason}`,
+          );
+        }
+        this.uncertainExecutionChecks.set(runId, uncertain);
+      }
       // Fail safe: uncertainty must not cause a live run to be marked terminal.
       return true;
     }
@@ -781,6 +844,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     let podStartupDurationMs = 0;
     let artifactExtractionDurationMs = 0;
     let artifactsExtracted = false;
+    const startEvidence: ContainerStartEvidence = {
+      startedAtMs: null,
+      finishedAtMs: null,
+    };
     const logCollector = this.createLogCollector(options);
 
     try {
@@ -868,6 +935,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         podName,
         workspace,
         limits.timeoutMs,
+        startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
             const extractSource = this.rewriteTmpPath(
@@ -951,7 +1019,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: combinedLogs,
         stderr: '',
         duration,
+        billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
+        cancelled: killed,
         error: timedOut
           ? `Execution timed out after ${limits.timeoutMs}ms`
           : killed
@@ -967,6 +1037,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         stdout: logCollector.getOutput(),
         stderr: error instanceof Error ? error.message : String(error),
         duration: Date.now() - startTime,
+        billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
         error: error instanceof Error ? error.message : String(error),
       };
@@ -1685,6 +1756,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     podName: string,
     workspace: string,
     timeoutMs: number,
+    startEvidence: ContainerStartEvidence,
     collectArtifacts: () => Promise<void>,
   ): Promise<{
     exitCode: number;
@@ -1718,6 +1790,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(
             `Pod ${podName} no longer exists — treating as cancellation`,
           );
+          // Charge only what actually ran; a pod deleted while still pending
+          // has no start evidence and is billed zero.
+          if (startEvidence.startedAtMs !== null) {
+            startEvidence.finishedAtMs ??= Date.now();
+          }
           return {
             exitCode: 137,
             timedOut: false,
@@ -1728,10 +1805,23 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         throw podError;
       }
 
-      const terminated = pod.status?.containerStatuses?.find(
+      const executionState = pod.status?.containerStatuses?.find(
         (container) => container.name === 'execution',
-      )?.state?.terminated;
+      )?.state;
+      const terminated = executionState?.terminated;
+      const startedAtRaw =
+        executionState?.running?.startedAt ?? terminated?.startedAt;
+      if (startedAtRaw && startEvidence.startedAtMs === null) {
+        const parsed = new Date(startedAtRaw).getTime();
+        if (Number.isFinite(parsed) && parsed >= MIN_PLAUSIBLE_START_MS) {
+          startEvidence.startedAtMs = parsed;
+        }
+      }
       if (terminated) {
+        if (terminated.finishedAt) {
+          const finished = new Date(terminated.finishedAt).getTime();
+          if (Number.isFinite(finished)) startEvidence.finishedAtMs = finished;
+        }
         const timedOut =
           terminated.reason === 'DeadlineExceeded' ||
           terminated.message?.includes('DeadlineExceeded') === true;

@@ -52,7 +52,7 @@ function describeSchema(schema: z.ZodTypeAny): unknown {
   return { type: def.typeName.replace('Zod', '').toLowerCase(), ...(def.checks ? { constraints: def.checks } : {}) }
 }
 export const schemaCommand = new Command('schema').description('Inspect configuration input fields without loading repository code')
-schemaCommand.command('config').description('Describe the installed configuration schema').action(() => outputDetail({ version: CLI_VERSION, schema: describeSchema(supercheckConfigSchema) }))
+schemaCommand.command('config').description('Describe the installed configuration schema').action(() => outputDetail({ version: CLI_VERSION, schema: describeSchema(supercheckConfigSchema) }, { redact: false }))
 export const capabilitiesCommand = new Command('capabilities')
   .description('Inspect installed capabilities and optionally verify server context')
   .option('--online', 'Verify the current server context using credentials')

@@ -2,6 +2,7 @@
 
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 jest.mock("@/utils/auth", () => ({
   auth: {
@@ -40,7 +41,7 @@ jest.mock("@/utils/db", () => {
   const from = jest.fn(() => ({ where }));
 
   return {
-    db: { select: jest.fn(() => ({ from })) },
+    db: { select: jest.fn(() => ({ from })), update: jest.fn() },
     __where: where,
     __setPersistedRows: (rows: unknown[]) => {
       persistedRows = rows;
@@ -64,6 +65,7 @@ jest.mock("@/lib/logger/pino-config", () => {
 });
 
 import { DELETE, POST } from "./route";
+import { db } from "@/utils/db";
 
 const { requireAuthContext: mockRequireAuthContext } = jest.requireMock("@/lib/auth-context") as {
   requireAuthContext: jest.Mock;
@@ -105,6 +107,18 @@ const postRequest = (body: Record<string, unknown> = {}) =>
   });
 
 describe("Extension auth route", () => {
+  it("allows a recorder to revoke only the key it holds without a session", async () => {
+    const returning = jest.fn(async () => [{ id: 'extension-key' }]);
+    const revokeWhere = jest.fn((_condition: SQL) => ({ returning }));
+    jest.mocked(db.update).mockReturnValue({ set: () => ({ where: revokeWhere }) } as never);
+    const response = await DELETE(new NextRequest('http://localhost/api/extension/auth', { method: 'DELETE', headers: { 'x-api-key': 'ext_test_credential' } }));
+    expect(response.status).toBe(200);
+    expect(mockAuth.api.getSession).not.toHaveBeenCalled();
+    const query = new PgDialect().sqlToQuery(revokeWhere.mock.calls[0][0]);
+    expect(query.sql).toContain('"prefix"');
+    expect(query.params).toContain('ext');
+    expect(query.params).not.toContain('ext_test_credential');
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     __setPersistedRows([]);

@@ -440,7 +440,7 @@ CONFIDENCE:
       val != null ? `${val}${unit}` : "N/A";
     
     // Get job name (prioritize provided name, then run data)
-    const jobName = providedJobName || baselineRun.jobName || compareRun.jobName || "N/A";
+    const jobName = AISecurityService.escapeForPrompt(providedJobName || baselineRun.jobName || compareRun.jobName || "N/A");
     
     const baselineMetrics = `
 - Job Name: ${jobName}
@@ -499,12 +499,12 @@ CONFIDENCE:
 
 <HTML_REPORTS_CONTEXT>
 ${baselineReportHtml ? `<BASELINE_REPORT_SNIPPET>
-${baselineReportHtml.substring(0, 3000)}
+${AISecurityService.escapeForPrompt(baselineReportHtml.substring(0, 3000))}
 ${baselineReportHtml.length > 3000 ? "... [truncated]" : ""}
 </BASELINE_REPORT_SNIPPET>` : ""}
 
 ${compareReportHtml ? `<COMPARE_REPORT_SNIPPET>
-${compareReportHtml.substring(0, 3000)}
+${AISecurityService.escapeForPrompt(compareReportHtml.substring(0, 3000))}
 ${compareReportHtml.length > 3000 ? "... [truncated]" : ""}
 </COMPARE_REPORT_SNIPPET>` : ""}
 </HTML_REPORTS_CONTEXT>`

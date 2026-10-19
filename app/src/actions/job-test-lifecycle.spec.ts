@@ -189,6 +189,7 @@ describe("job and test lifecycle actions", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(requirePermissions).toHaveBeenCalledWith({ job: ["create"] }, { organizationId: "org-1", projectId: "project-1" });
       expect(jobsInsert.values).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationId: "org-1",

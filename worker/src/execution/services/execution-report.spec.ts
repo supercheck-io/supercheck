@@ -51,6 +51,35 @@ function test(title: string, statuses: string[]) {
 }
 
 describe('ExecutionService report evaluation', () => {
+  it.each([true, false])(
+    'preserves explicit cancellation=%s instead of inferring it from exit 137',
+    async (cancelled) => {
+      const execution = createService();
+      Object.assign(execution, {
+        containerExecutorService: {
+          resolveWorkerDir: async () => '/worker',
+          resolveBrowsersPath: async () => '/browsers',
+        },
+      });
+      jest.spyOn(execution, 'executeCommandSafely' as never).mockResolvedValue({
+        success: false,
+        cancelled,
+        error: 'Process exited with code 137',
+        stdout: '',
+        stderr: '',
+      } as never);
+      try {
+        const result = await execution['executePlaywrightDirectly'](
+          { scriptContent: 'test', fileName: 'test.spec.ts' },
+          '/tmp/reports',
+          false,
+        );
+        expect(result.cancelled).toBe(cancelled);
+      } finally {
+        execution.onModuleDestroy();
+      }
+    },
+  );
   let service: ExecutionService;
   let directory: string;
 

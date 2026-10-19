@@ -24,6 +24,7 @@ interface AIStreamRequest {
   tier?: string;
   // Idempotency key to prevent duplicate requests
   idempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 interface AIStreamResponse {
@@ -143,6 +144,7 @@ export class AIStreamingService {
     orgId,
     tier,
     idempotencyKey,
+    signal,
   }: AIStreamRequest): Promise<AIStreamResponse> {
     const startTime = Date.now();
 
@@ -182,7 +184,13 @@ export class AIStreamingService {
       this.validateConfiguration();
 
       // Step 2: Security: Check rate limits before making request
-      await this.checkRateLimit(userId, orgId, tier);
+      // Routes consume request limits; the service checks the token budget.
+      if (orgId && !isSelfHosted()) {
+        const budget = await aiRateLimiter.checkAndTrackTokens(orgId, 0, tier);
+        if (!budget.allowed) throw new Error("Rate limit exceeded: hourly token budget");
+      } else {
+        await this.checkRateLimit(userId, undefined, tier);
+      }
 
       // Step 3: Get universal service configuration
       const config = this.getServiceConfiguration();
@@ -199,6 +207,12 @@ export class AIStreamingService {
 
 
       // Step 4: Create streaming response
+      const cancellation = new AbortController();
+      const abortSignal = AbortSignal.any([
+        cancellation.signal,
+        AbortSignal.timeout(config.timeout),
+        ...(signal ? [signal] : []),
+      ]);
       const result = await streamText({
         model: this.getProviderModel(),
         prompt,
@@ -206,8 +220,19 @@ export class AIStreamingService {
           temperature: temperature || config.temperature,
         }),
         maxRetries: config.maxRetries,
-        abortSignal: AbortSignal.timeout(config.timeout),
+        abortSignal,
         maxOutputTokens: maxTokens,
+        onFinish: async ({ totalUsage }) => {
+          if (orgId && !isSelfHosted()) {
+            await aiRateLimiter.checkAndTrackTokens(orgId, totalUsage.totalTokens ?? 0, tier);
+          }
+        },
+        onAbort: async ({ steps }) => {
+          const tokens = steps.reduce((sum, step) => sum + (step.usage.totalTokens ?? 0), 0);
+          if (orgId && !isSelfHosted() && tokens > 0) {
+            await aiRateLimiter.checkAndTrackTokens(orgId, tokens, tier);
+          }
+        },
       });
 
       // Capture the idempotency key and cache key for use in the stream callback
@@ -215,6 +240,7 @@ export class AIStreamingService {
       const CACHE_TTL_SECONDS = 300; // 5 minutes
 
       // Create a custom readable stream that handles the AI response
+      let cancelled = false;
       const stream = new ReadableStream({
         async start(controller) {
           try {
@@ -229,6 +255,7 @@ export class AIStreamingService {
 
             // Stream the text chunks
             for await (const chunk of result.textStream) {
+              if (cancelled || signal?.aborted) return;
               chunkCount++;
               totalContentLength += chunk.length;
               collectedContent.push(chunk); // Collect for idempotency caching
@@ -279,10 +306,13 @@ export class AIStreamingService {
               promptTokens?: number; 
               completionTokens?: number; 
               totalTokens?: number;
+              inputTokens?: number;
+              outputTokens?: number;
             } | undefined;
-            const promptTokens = usageData?.promptTokens ?? 0;
-            const completionTokens = usageData?.completionTokens ?? 0;
+            const promptTokens = usageData?.inputTokens ?? usageData?.promptTokens ?? 0;
+            const completionTokens = usageData?.outputTokens ?? usageData?.completionTokens ?? 0;
             totalTokens = usageData?.totalTokens ?? (promptTokens + completionTokens);
+            if (cancelled || signal?.aborted) return;
 
             // Send completion message with metadata
             const duration = Date.now() - startTime;
@@ -327,8 +357,9 @@ export class AIStreamingService {
               }
             }
 
-            controller.close();
+            if (!cancelled && !signal?.aborted) controller.close();
           } catch (error) {
+            if (cancelled || signal?.aborted) return;
             const duration = Date.now() - startTime;
             const errorMessage =
               error instanceof Error
@@ -357,6 +388,10 @@ export class AIStreamingService {
             );
             controller.close();
           }
+        },
+        cancel() {
+          cancelled = true;
+          cancellation.abort();
         },
       });
 

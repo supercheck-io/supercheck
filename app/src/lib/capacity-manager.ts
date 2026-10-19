@@ -670,8 +670,8 @@ export class CapacityManager {
       try {
         const { db } = await import('@/utils/db');
         const { runs } = await import('@/db/schema');
-        const { eq } = await import('drizzle-orm');
-        await db.update(runs).set({ status: 'running' }).where(eq(runs.id, jobData.runId));
+        const { and, eq, inArray } = await import('drizzle-orm');
+        await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, jobData.runId), eq(runs.status, 'queued')));
         logger.info({ runId: jobData.runId }, "Updated run status from queued to running");
       } catch (dbError) {
         logger.warn({ err: dbError, runId: jobData.runId }, "Failed to update run status in database");
@@ -694,11 +694,11 @@ export class CapacityManager {
         try {
           const { db } = await import('@/utils/db');
           const { runs } = await import('@/db/schema');
-          const { eq } = await import('drizzle-orm');
+          const { and, eq, inArray } = await import('drizzle-orm');
           await db.update(runs).set({
             status: 'failed',
             completedAt: new Date(),
-          }).where(eq(runs.id, jobData.runId));
+          }).where(and(eq(runs.id, jobData.runId), inArray(runs.status, ['queued', 'running'])));
           logger.warn({ runId: jobData.runId }, "Marked orphaned run as failed after promotion failure");
         } catch (dbError) {
           logger.error({ err: dbError, runId: jobData.runId }, "Failed to mark run as failed after promotion error");
@@ -1031,15 +1031,17 @@ export async function reconcileCapacityCounters(
     // in backoff and work waiting on a disabled or paused region.
     const actualRunningByOrg: Record<string, number> = {};
     
-    const allActiveJobs = await Promise.all(
-      executionQueues.map(q => q.getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children']))
-    );
-
-    for (const jobs of allActiveJobs) {
-      for (const job of jobs) {
-        // organizationId is always present in job data (required field)
-        const orgId = job.data?.organizationId || 'global';
-        actualRunningByOrg[orgId] = (actualRunningByOrg[orgId] || 0) + 1;
+    for (const queue of executionQueues) {
+      const seen = new Set<string>();
+      for (let offset = 0; ; offset += 250) {
+        const jobs = await queue.getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized', 'waiting-children'], offset, offset + 249);
+        for (const job of jobs) {
+          if (job.id && seen.has(job.id)) continue;
+          if (job.id) seen.add(job.id);
+          const orgId = job.data?.organizationId || 'global';
+          actualRunningByOrg[orgId] = (actualRunningByOrg[orgId] || 0) + 1;
+        }
+        if (jobs.length < 250) break;
       }
     }
 

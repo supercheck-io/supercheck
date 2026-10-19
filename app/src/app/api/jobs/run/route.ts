@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
             completedAt: new Date(),
             errorDetails: errorMessage,
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return NextResponse.json({ error: errorMessage }, { status: 400 });
       }
 
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
             completedAt: new Date(),
             errorDetails: errorMessage,
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return NextResponse.json({ error: errorMessage }, { status: 400 });
       }
 
@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
                 completedAt: new Date(),
                 errorDetails: errorMessage,
               })
-              .where(eq(runs.id, runId));
+              .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
             return NextResponse.json(
               {
                 error: "Invalid k6 script",
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
               completedAt: new Date(),
               errorDetails: "Failed to validate k6 script",
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
           return NextResponse.json(
             { error: "Failed to validate k6 script" },
             { status: 400 }
@@ -339,7 +339,7 @@ export async function POST(request: NextRequest) {
 
     if (testScripts.length === 0) {
         console.error(`[${jobId}/${runId}] No valid test scripts found after fetching. Aborting run.`);
-        await db.update(runs).set({ status: "failed", completedAt: new Date(), errorDetails: "No valid test scripts found for the job." }).where(eq(runs.id, runId));
+        await db.update(runs).set({ status: "failed", completedAt: new Date(), errorDetails: "No valid test scripts found for the job." }).where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return NextResponse.json(
             { error: "No valid test scripts could be prepared for the job." },
             { status: 400 }
@@ -376,7 +376,7 @@ export async function POST(request: NextRequest) {
               completedAt: new Date(),
               errorDetails: errorMessage,
             })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
           return NextResponse.json({ error: errorMessage }, { status: 400 });
         }
 
@@ -405,7 +405,7 @@ export async function POST(request: NextRequest) {
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         } catch (statusError) {
           console.error("Failed to persist admitted K6 run status:", {
             jobId,
@@ -439,7 +439,7 @@ export async function POST(request: NextRequest) {
           await db
             .update(runs)
             .set({ status: queueResult.status })
-            .where(eq(runs.id, runId));
+            .where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
         } catch (statusError) {
           console.error("Failed to persist admitted Playwright run status:", {
             jobId,
@@ -526,7 +526,7 @@ export async function POST(request: NextRequest) {
             completedAt: new Date(),
             errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
-          .where(eq(runs.id, runId));
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
       } catch (dbError) {
         console.error(`[${jobId || 'unknown'}/${runId}] Failed to update run status to failed after queueing error:`, dbError);
       }
