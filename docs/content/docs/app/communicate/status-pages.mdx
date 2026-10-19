@@ -433,7 +433,12 @@ sequenceDiagram
 
 ## Settings
 
-Configure branding and notification settings.
+Configure page identity, custom domains, subscriptions, and branding. Settings are split into focused cards, and a save bar appears at the bottom of the screen whenever the form has unsaved changes.
+
+- **General** — Internal page name, public headline, description, support contact, and language
+- **Custom domain** — Custom hostname, verification status, and DNS records
+- **Subscriptions** — Visitor-facing email, webhook, Slack, incident, and feed options
+- **Branding** — Logo, favicon, and status colors
 
 ![Settings Tab](/screenshots/status-page-settings.png)
 
@@ -457,7 +462,7 @@ Configure branding and notification settings.
 <Tab value="Custom Domains">
 
 Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
-Custom domains support CNAME subdomains only; apex domains are not supported. The settings form shows example CNAME and TXT records before a hostname is entered and a pending verification state after it is saved. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
+Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading opens the full setup guide. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
 
 #### Set Up a Custom Domain
 

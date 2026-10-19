@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { InfoHint, InfoHintText } from "@/components/status-pages/info-hint";
 
 type StatusPageResult = {
   id: string;
@@ -77,7 +78,15 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="name">Status Page Name *</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor="name">Status Page Name *</Label>
+          <InfoHint label="Internal name details">
+            <InfoHintText>
+              Internal name used in the dashboard. Visitors see the public
+              headline instead.
+            </InfoHintText>
+          </InfoHint>
+        </div>
         <Input
           id="name"
           placeholder="My Service Status"
@@ -87,13 +96,18 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
         {errors.name && (
           <p className="text-sm text-red-500">{errors.name.message}</p>
         )}
-        <p className="text-sm text-muted-foreground">
-          This is the internal name for your status page
-        </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="headline">Public Headline</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor="headline">Public Headline</Label>
+          <InfoHint label="Public heading details">
+            <InfoHintText>
+              Main heading on the public page. Falls back to the name when left
+              empty.
+            </InfoHintText>
+          </InfoHint>
+        </div>
         <Input
           id="headline"
           placeholder="Service Status Dashboard"
@@ -103,39 +117,36 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
         {errors.headline && (
           <p className="text-sm text-red-500">{errors.headline.message}</p>
         )}
-        <p className="text-sm text-muted-foreground">
-          This headline will be displayed at the top of your public status page
-        </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor="description">Description</Label>
+          <InfoHint label="Public summary details">
+            <InfoHintText>
+              Short summary shown below the headline on the public page.
+            </InfoHintText>
+          </InfoHint>
+        </div>
         <Textarea
           id="description"
           placeholder="Stay updated on the status of our services"
           {...register("pageDescription")}
           rows={3}
           disabled={isCreating}
+          className="resize-none"
         />
         {errors.pageDescription && (
           <p className="text-sm text-red-500">{errors.pageDescription.message}</p>
         )}
-        <p className="text-sm text-muted-foreground">
-          A brief description of what this status page is for
-        </p>
       </div>
 
-      <div className="p-4 bg-muted rounded-lg">
-        <h4 className="font-medium mb-2">What happens next?</h4>
-        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-          <li>A unique subdomain will be automatically generated</li>
-          <li>Your status page will be created in draft mode</li>
-          <li>You can add components, customize branding, and manage incidents</li>
-          <li>Publish when you&apos;re ready to make it public</li>
-        </ul>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Creates a draft with an auto-generated subdomain. Add components next,
+        then publish when you&apos;re ready.
+      </p>
 
-      <div className="flex gap-3 justify-end">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isCreating}>
           Cancel
         </Button>

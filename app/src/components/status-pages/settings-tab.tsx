@@ -33,13 +33,27 @@ import {
   Palette,
   Settings2,
   Upload,
-  Info,
   Mail,
   Webhook,
   MessageSquare,
   Rss,
-  Languages,
+  ChevronDown,
+  Image as ImageIcon,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { CopyButton } from "@/components/ui/copy-button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  InfoHint,
+  InfoHintText,
+  InfoHintTitle,
+} from "@/components/status-pages/info-hint";
 import { toast } from "sonner";
 import {
   updateStatusPageSettings,
@@ -60,21 +74,12 @@ import {
   statusPageSupportContactSchema,
 } from "@/lib/status-page-support";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   getStatusPageCustomDomainTargetResolutionHint,
   getStatusPageDomainOwnershipRecord,
   STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
 } from "@/lib/status-page-domain-guidance";
 
 const CUSTOM_DOMAIN_EXAMPLE_HOSTNAME = "status.example.net";
-const CUSTOM_DOMAIN_EXAMPLE_LABEL = "status";
-const CUSTOM_DOMAIN_EXAMPLE_ZONE = "example.net";
-const STATUS_PAGE_DOMAIN_EXAMPLE = "example.com";
-const STATUS_PAGE_CNAME_TARGET_EXAMPLE = "cname.example.com";
 
 type StatusPage = {
   id: string;
@@ -202,6 +207,9 @@ export function SettingsTab({
   } = useAppConfig();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
+  const [dnsOpen, setDnsOpen] = useState(
+    Boolean(statusPage.customDomain && !statusPage.customDomainVerified),
+  );
 
   // Upload states
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -214,7 +222,7 @@ export function SettingsTab({
     handleSubmit,
     control,
     watch,
-    setValue,
+    getValues,
     reset,
     formState: { isSubmitting, isDirty, errors },
   } = useForm<SettingsFormValues>({
@@ -267,6 +275,8 @@ export function SettingsTab({
       const submittedDescription = data.pageDescription?.trim() ?? "";
       const submittedSupportUrl = data.supportUrl?.trim() ?? "";
       const submittedCustomDomain = data.customDomain?.trim() ?? "";
+      const submittedDomainChanged =
+        (submittedCustomDomain || null) !== (statusPage.customDomain || null);
 
       if (
         submittedCustomDomain &&
@@ -328,6 +338,9 @@ export function SettingsTab({
         });
 
         toast.success("Settings saved successfully");
+        if (submittedDomainChanged) {
+          setDnsOpen(Boolean(submittedCustomDomain));
+        }
         reset({
           ...data,
           headline: normalizedHeadline ?? "",
@@ -377,12 +390,16 @@ export function SettingsTab({
 
       if (result.success) {
         toast.success("Branding reset to defaults");
-        // Reset form values
-        setValue("cssGreens", "#2ecc71", { shouldDirty: true });
-        setValue("cssYellows", "#f1c40f", { shouldDirty: true });
-        setValue("cssOranges", "#e67e22", { shouldDirty: true });
-        setValue("cssBlues", "#3498db", { shouldDirty: true });
-        setValue("cssReds", "#e74c3c", { shouldDirty: true });
+        // The reset persists immediately, so make the restored values the new
+        // form baseline instead of leaving the form marked as dirty.
+        reset({
+          ...getValues(),
+          cssGreens: "#2ecc71",
+          cssYellows: "#f1c40f",
+          cssOranges: "#e67e22",
+          cssBlues: "#3498db",
+          cssReds: "#e74c3c",
+        });
 
         // Reset logo and favicon URLs
         setLogoUrl(null);
@@ -474,703 +491,524 @@ export function SettingsTab({
     }
   };
 
-  return (
-    <div className="space-y-5 relative">
-      {/* Save Button */}
-      <div className="absolute -top-15 right-2">
-        <Button
-          onClick={handleSubmit(onSubmit)}
-          disabled={isSubmitting || !canUpdate || !isDirty}
-          title={
-            !canUpdate
-              ? "You don't have permission to save settings"
-              : !isDirty
-                ? "No changes to save"
-                : ""
-          }
-        >
-          {isSubmitting ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-2" />
-          )}
-          Save Settings
-        </Button>
-      </div>
+  const subscriptionOptions = [
+    {
+      name: "allowPageSubscribers" as const,
+      title: "Page subscriptions",
+      description: "Let visitors subscribe to every update on this page.",
+      icon: Bell,
+    },
+    {
+      name: "allowEmailSubscribers" as const,
+      title: "Email notifications",
+      description: "Send incident and recovery updates by email.",
+      icon: Mail,
+    },
+    {
+      name: "allowWebhookSubscribers" as const,
+      title: "Webhook notifications",
+      description: "Let subscribers receive updates at their own endpoint.",
+      icon: Webhook,
+    },
+    {
+      name: "allowSlackSubscribers" as const,
+      title: "Slack notifications",
+      description: "Send updates to Slack channels through webhooks.",
+      icon: MessageSquare,
+    },
+    {
+      name: "allowIncidentSubscribers" as const,
+      title: "Incident subscriptions",
+      description: "Let visitors follow a single incident.",
+      icon: AlertTriangle,
+    },
+    {
+      name: "allowRssFeed" as const,
+      title: "RSS and iCal feeds",
+      description: "Publish feeds for readers and calendar apps.",
+      icon: Rss,
+    },
+  ];
 
-      {/* General Settings & Configuration Card - Combined */}
+  const brandColors = [
+    {
+      name: "cssGreens" as const,
+      label: "Operational",
+      placeholder: "#2ecc71",
+    },
+    {
+      name: "cssYellows" as const,
+      label: "Degraded",
+      placeholder: "#f1c40f",
+    },
+    {
+      name: "cssOranges" as const,
+      label: "Partial outage",
+      placeholder: "#e67e22",
+    },
+    {
+      name: "cssBlues" as const,
+      label: "Maintenance",
+      placeholder: "#3498db",
+    },
+    {
+      name: "cssReds" as const,
+      label: "Major outage",
+      placeholder: "#e74c3c",
+    },
+  ];
+
+  const normalizedCustomDomainValue = normalizeHostname(customDomainValue || "");
+  const savedCustomDomain = normalizeHostname(statusPage.customDomain || "");
+  const customDomainChanged =
+    normalizedCustomDomainValue !== savedCustomDomain;
+  const isSavedDomainInField =
+    Boolean(customDomainValue) && normalizedCustomDomainValue === savedCustomDomain;
+  const domainVerified = isSavedDomainInField && !!statusPage.customDomainVerified;
+  const domainPending =
+    isSavedDomainInField && !!statusPage.customDomain && !statusPage.customDomainVerified;
+  const dnsHostname = customDomainValue || CUSTOM_DOMAIN_EXAMPLE_HOSTNAME;
+
+  return (
+    <div className={cn("space-y-5", isDirty && "pb-24")}>
+      {/* General */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Settings2 className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-lg">Settings</CardTitle>
+            <CardTitle className="text-lg">General</CardTitle>
           </div>
           <CardDescription>
-            Configure your status page information, domain, and subscriptions
+            Page identity, contact details, and language for visitors.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Basic Information Section */}
-          <div>
-            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Info className="h-4 w-4 text-muted-foreground" />
-              Basic Information
-            </h4>
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Name */}
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium">
-                  Page Name
-                </Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="My Status Page"
-                  disabled={!canUpdate}
-                />
-                {errors.name && (
-                  <p className="text-sm text-red-500">{errors.name.message}</p>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  Internal name for your reference
-                </p>
-              </div>
-
-              {/* Headline */}
-              <div className="space-y-2">
-                <Label htmlFor="headline" className="text-sm font-medium">
-                  Headline
-                </Label>
-                <Input
-                  id="headline"
-                  {...register("headline")}
-                  placeholder="System Status"
-                  maxLength={255}
-                  disabled={!canUpdate}
-                />
-                {errors.headline && (
-                  <p className="text-sm text-red-500">
-                    {errors.headline.message}
-                  </p>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  Display heading on your public status page
-                </p>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-medium">
-                  Description
-                </Label>
-                <Textarea
-                  id="description"
-                  {...register("pageDescription")}
-                  placeholder="Describe your services and what this status page tracks..."
-                  disabled={!canUpdate}
-                  className="resize-none"
-                  rows={2}
-                />
-                {errors.pageDescription && (
-                  <p className="text-sm text-red-500">
-                    {errors.pageDescription.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Support URL */}
-              <div className="space-y-2">
-                <Label htmlFor="supportUrl" className="text-sm font-medium">
-                  Support contact
-                </Label>
-                <Input
-                  id="supportUrl"
-                  type="text"
-                  {...register("supportUrl")}
-                  placeholder="support@example.com or https://support.example.com"
-                  disabled={!canUpdate}
-                />
-                {errors.supportUrl && (
-                  <p className="text-sm text-red-500">
-                    {errors.supportUrl.message}
-                  </p>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  Add an email address or support website. Email addresses open
-                  the visitor&apos;s default mail app.
-                </p>
-              </div>
+        <CardContent className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="name">Page name</Label>
+              <InfoHint label="Internal name details">
+                <InfoHintText>
+                  Internal name used across the dashboard. Visitors see the
+                  headline instead.
+                </InfoHintText>
+              </InfoHint>
             </div>
+            <Input
+              id="name"
+              {...register("name")}
+              placeholder="My status page"
+              disabled={!canUpdate}
+            />
+            {errors.name && (
+              <p className="text-sm text-red-500">{errors.name.message}</p>
+            )}
           </div>
 
-          <Separator />
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="headline">Headline</Label>
+              <InfoHint label="Public heading details">
+                <InfoHintText>
+                  Main heading on the public page. Falls back to the page name
+                  when left empty.
+                </InfoHintText>
+              </InfoHint>
+            </div>
+            <Input
+              id="headline"
+              {...register("headline")}
+              placeholder="System status"
+              maxLength={255}
+              disabled={!canUpdate}
+            />
+            {errors.headline && (
+              <p className="text-sm text-red-500">{errors.headline.message}</p>
+            )}
+          </div>
 
-          {/* Domain & Subscriptions Section */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Custom Domain */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Globe className="h-4 w-4 text-muted-foreground" />
-                Custom Domain
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label="Custom domain setup help"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    side="top"
-                    align="start"
-                    className="w-96 text-xs space-y-3"
-                  >
-                    <p className="font-medium text-sm">Custom domain setup</p>
-                    <p className="text-muted-foreground">
-                      Serve your status page from your own hostname (e.g.{" "}
-                      <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>) by creating
-                      a CNAME record that points to the target shown in the DNS
-                      Configuration section below. Enter the hostname, save, add
-                      the CNAME, then click <strong>Verify DNS</strong>.
-                    </p>
-                    <div className="space-y-2">
-                      <p className="font-medium text-foreground/90">
-                        Cloudflare example
-                      </p>
-                      <p className="text-muted-foreground">
-                        Reserved namespace:{" "}
-                        <code>{STATUS_PAGE_DOMAIN_EXAMPLE}</code> &middot;
-                        Custom hostname:{" "}
-                        <code>{CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}</code>
-                      </p>
-                      {isSelfHosted && (
-                        <>
-                          <div className="rounded-md border overflow-hidden">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="border-b bg-muted/50">
-                                  <th className="text-left px-3 py-1.5 font-medium">
-                                    Zone
-                                  </th>
-                                  <th className="text-left px-3 py-1.5 font-medium">
-                                    Type
-                                  </th>
-                                  <th className="text-left px-3 py-1.5 font-medium">
-                                    Name
-                                  </th>
-                                  <th className="text-left px-3 py-1.5 font-medium">
-                                    Value
-                                  </th>
-                                  <th className="text-left px-3 py-1.5 font-medium">
-                                    Proxy
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="border-b">
-                                  <td className="px-3 py-1.5 font-mono">
-                                    {STATUS_PAGE_DOMAIN_EXAMPLE}
-                                  </td>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    A / AAAA
-                                  </td>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    cname
-                                  </td>
-                                  <td className="px-3 py-1.5">app IP</td>
-                                  <td className="px-3 py-1.5">DNS only</td>
-                                </tr>
-                                <tr>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    {CUSTOM_DOMAIN_EXAMPLE_ZONE}
-                                  </td>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    CNAME
-                                  </td>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    {CUSTOM_DOMAIN_EXAMPLE_LABEL}
-                                  </td>
-                                  <td className="px-3 py-1.5 font-mono">
-                                    {STATUS_PAGE_CNAME_TARGET_EXAMPLE}
-                                  </td>
-                                  <td className="px-3 py-1.5">DNS only</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                          <p className="text-muted-foreground">
-                            Skip the target A/AAAA row if a wildcard already
-                            covers it. Use <strong>DNS only</strong> during
-                            verification.
-                          </p>
-                        </>
-                      )}
-                      {!isSelfHosted && (
-                        <div className="rounded-md border overflow-hidden">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="border-b bg-muted/50">
-                                <th className="text-left px-3 py-1.5 font-medium">
-                                  Type
-                                </th>
-                                <th className="text-left px-3 py-1.5 font-medium">
-                                  Name
-                                </th>
-                                <th className="text-left px-3 py-1.5 font-medium">
-                                  Value
-                                </th>
-                                <th className="text-left px-3 py-1.5 font-medium">
-                                  Proxy
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr>
-                                <td className="px-3 py-1.5 font-mono">CNAME</td>
-                                <td className="px-3 py-1.5 font-mono">
-                                  {CUSTOM_DOMAIN_EXAMPLE_LABEL}
-                                </td>
-                                <td className="px-3 py-1.5 font-mono">
-                                  {STATUS_PAGE_CNAME_TARGET_EXAMPLE}
-                                </td>
-                                <td className="px-3 py-1.5">DNS only</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <p className="text-muted-foreground">
-                        The custom hostname can live in a different DNS zone
-                        than the reserved namespace. Always use the exact target
-                        shown in Settings.
-                      </p>
-                    </div>
-                    {isSelfHosted && (
-                      <p className="text-muted-foreground">
-                        Routing is automatic after verification. Origin TLS
-                        still needs certificates for the custom hostname.
-                      </p>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                Use your own domain for your status page.
+          <div className="space-y-2 md:col-span-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="description">Description</Label>
+              <InfoHint label="Public summary details">
+                <InfoHintText>
+                  Short summary shown below the headline on the public page.
+                </InfoHintText>
+              </InfoHint>
+            </div>
+            <Textarea
+              id="description"
+              {...register("pageDescription")}
+              placeholder="Describe your services and what this status page tracks..."
+              disabled={!canUpdate}
+              className="resize-none"
+              rows={2}
+            />
+            {errors.pageDescription && (
+              <p className="text-sm text-red-500">
+                {errors.pageDescription.message}
               </p>
-              <div className="flex gap-2 mt-5">
-                <Input
-                  placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
-                  {...register("customDomain")}
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="supportUrl">Support contact</Label>
+              <InfoHint label="Contact options">
+                <InfoHintText>
+                  Shown as a contact button on the public page. Email addresses
+                  open the visitor&apos;s mail app; URLs open in a new tab.
+                </InfoHintText>
+              </InfoHint>
+            </div>
+            <Input
+              id="supportUrl"
+              type="text"
+              {...register("supportUrl")}
+              placeholder="support@example.com or https://support.example.com"
+              disabled={!canUpdate}
+            />
+            {errors.supportUrl && (
+              <p className="text-sm text-red-500">
+                {errors.supportUrl.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="language">Language</Label>
+              <InfoHint label="Translation details">
+                <InfoHintText>
+                  Applies to public page text and subscriber emails.
+                </InfoHintText>
+              </InfoHint>
+            </div>
+            <Controller
+              control={control}
+              name="language"
+              render={({ field }) => (
+                <Select
+                  value={field.value || "en"}
+                  onValueChange={field.onChange}
                   disabled={!canUpdate}
-                  className="font-mono text-sm"
-                />
-                {customDomainValue &&
-                  customDomainValue !== statusPage.customDomain && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={true}
-                      title="Save changes first"
-                    >
-                      Save First
-                    </Button>
-                  )}
-                {customDomainValue &&
-                  customDomainValue === statusPage.customDomain && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={handleVerifyDNS}
-                      disabled={
-                        isVerifyingDNS ||
-                        !canUpdate ||
-                        hasReservedCustomDomain ||
-                        Boolean(customDomainConfigMessage)
-                      }
-                    >
-                      {isVerifyingDNS ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Verify DNS"
-                      )}
-                    </Button>
-                  )}
-              </div>
-              {errors.customDomain && (
-                <p className="text-sm text-red-500">
-                  {errors.customDomain.message}
-                </p>
-              )}
-
-              {customDomainConfigMessage && (
-                <p className="text-sm text-amber-600">
-                  {customDomainConfigMessage}
-                </p>
-              )}
-
-              {hasReservedCustomDomain && (
-                <p className="text-sm text-amber-600">
-                  This domain is reserved for default status page routing. Use a
-                  different hostname and point its CNAME to{" "}
-                  <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                    {effectiveStatusPageCnameTarget}
-                  </code>
-                  .
-                </p>
-              )}
-
-              {statusPage.customDomainVerified &&
-                customDomainValue === statusPage.customDomain && (
-                  <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 dark:bg-green-950 p-2 rounded">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Domain verified and active
-                  </div>
-                )}
-
-              {statusPage.customDomain && !statusPage.customDomainVerified && (
-                <p
-                  role="status"
-                  className="text-sm text-amber-700 dark:text-amber-400"
                 >
-                  Pending verification — add the DNS records below, then select
-                  Verify DNS.
-                </p>
+                  <SelectTrigger id="language" className="w-full">
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORTED_LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.nativeLabel} ({lang.label})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
-
-              <div className="space-y-3 mt-6 text-sm text-muted-foreground bg-muted/30 rounded-md p-3 border">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground/80">
-                    {customDomainValue
-                      ? "DNS Configuration"
-                      : "How to set up a custom domain"}
-                  </span>
-                </div>
-
-                {customDomainConfigMessage ? (
-                  <div className="space-y-2 pl-5.5">
-                    <p>
-                      Custom domains stay unavailable until your deployment
-                      resolves a public hostname for status-page routing.
-                    </p>
-                    <p>
-                      Set <code>STATUS_PAGE_DOMAIN</code> to a real DNS hostname
-                      first. In the Docker Compose secure and external examples,
-                      the target shown here is derived automatically from it,
-                      usually as <code>cname.STATUS_PAGE_DOMAIN</code>. Setting{" "}
-                      <code>APP_DOMAIN</code> usually handles the reserved
-                      namespace automatically in those templates.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 pl-5.5">
-                    {isSelfHosted && (
-                      <p>
-                        {getStatusPageCustomDomainTargetResolutionHint(
-                          effectiveStatusPageCnameTarget,
-                        )}{" "}
-                        If that hostname is already covered by your existing
-                        A/AAAA or wildcard DNS, you can reuse it.
-                      </p>
-                    )}
-                    <p>
-                      {customDomainValue
-                        ? "Create these DNS records to route traffic and prove ownership:"
-                        : "Example DNS records — enter and save your hostname above to use your actual records:"}
-                    </p>
-                    <div className="rounded-md border overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b bg-muted/50">
-                            <th className="text-left px-3 py-1.5 font-medium">
-                              Type
-                            </th>
-                            <th className="text-left px-3 py-1.5 font-medium">
-                              Hostname
-                            </th>
-                            <th className="text-left px-3 py-1.5 font-medium">
-                              Target / Points to
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td className="px-3 py-1.5 font-mono">CNAME</td>
-                            <td className="px-3 py-1.5 font-mono">
-                              {customDomainValue ||
-                                CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
-                            </td>
-                            <td className="px-3 py-1.5 font-mono">
-                              {effectiveStatusPageCnameTarget}
-                            </td>
-                          </tr>
-                          <tr>
-                            <td className="px-3 py-1.5 font-mono">TXT</td>
-                            <td className="px-3 py-1.5 font-mono break-all">
-                              {domainOwnership.name}
-                            </td>
-                            <td className="px-3 py-1.5 font-mono break-all">
-                              {domainOwnership.value}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1">
-                      <li>
-                        Add the CNAME and TXT records above. Keep the TXT record
-                        for future verification.
-                      </li>
-                      <li>{STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}</li>
-                      <li>
-                        If you use Cloudflare, keep the record on DNS only
-                        during verification.
-                      </li>
-                      <li>
-                        Wait for DNS propagation, then click{" "}
-                        <strong>Verify DNS</strong>.
-                      </li>
-                      <li>Publish the status page before testing the URL.</li>
-                    </ol>
-                    <p>
-                      Do not use <code>{effectiveStatusPageDomain}</code> or any
-                      of its subdomains as the custom domain value.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Language */}
-              <div className="space-y-3 mt-6">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Languages className="h-4 w-4 text-muted-foreground" />
-                  Status Page Language
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  Language for public-facing text and subscriber emails
-                </p>
-                <Controller
-                  control={control}
-                  name="language"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value || "en"}
-                      onValueChange={field.onChange}
-                      disabled={!canUpdate}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SUPPORTED_LANGUAGES.map((lang) => (
-                          <SelectItem key={lang.code} value={lang.code}>
-                            {lang.nativeLabel} ({lang.label})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Subscriptions */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Bell className="h-4 w-4 text-muted-foreground" />
-                Subscriptions
-              </h4>
-              <div className="space-y-2">
-                {/* Page Subscriptions */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-primary/10 rounded">
-                      <Bell className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">
-                        Page Subscriptions
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Allow visitors to subscribe to all status updates
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowPageSubscribers"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Email Notifications */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-blue-500/10 rounded">
-                      <Mail className="h-4 w-4 text-blue-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">
-                        Email Notifications
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Send email alerts for incidents and updates
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowEmailSubscribers"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Webhook Notifications */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-orange-500/10 rounded">
-                      <Webhook className="h-4 w-4 text-orange-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">
-                        Webhook Notifications
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Trigger webhooks for status changes and incidents
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowWebhookSubscribers"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Slack Notifications */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-purple-500/10 rounded">
-                      <MessageSquare className="h-4 w-4 text-purple-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">
-                        Slack Notifications
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Send updates to Slack channels via webhooks
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowSlackSubscribers"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Incident Subscriptions */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-red-500/10 rounded">
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">
-                        Incident Subscriptions
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Enable subscriptions to specific incident updates
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowIncidentSubscribers"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* RSS Feed */}
-                <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-1.5 bg-amber-500/10 rounded">
-                      <Rss className="h-4 w-4 text-amber-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">Feeds (RSS and iCal)</div>
-                      <div className="text-xs text-muted-foreground">
-                        Provide RSS and iCal feeds for updates and calendar subscriptions
-                      </div>
-                    </div>
-                  </div>
-                  <Controller
-                    control={control}
-                    name="allowRssFeed"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={!canUpdate}
-                        className="ml-3"
-                      />
-                    )}
-                  />
-                </div>
-              </div>
-            </div>
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Page Branding Card */}
+      {/* Custom domain */}
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Custom domain</CardTitle>
+            <InfoHint label="Domain setup details">
+              <InfoHintTitle>Custom domain setup</InfoHintTitle>
+              <InfoHintText>
+                Point a CNAME from your hostname to{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  {effectiveStatusPageCnameTarget}
+                </code>
+                . The hostname can live in any DNS zone.
+              </InfoHintText>
+              <InfoHintText>
+                {getStatusPageCustomDomainTargetResolutionHint(
+                  effectiveStatusPageCnameTarget,
+                )}
+              </InfoHintText>
+              <InfoHintText>
+                If a wildcard or A/AAAA record already covers that target, you
+                can reuse it.
+              </InfoHintText>
+              <InfoHintText>
+                On Cloudflare, keep the record on DNS only during verification.{" "}
+                {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
+              </InfoHintText>
+              <InfoHintText>
+                Do not use{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  {effectiveStatusPageDomain}
+                </code>{" "}
+                or any of its subdomains.
+              </InfoHintText>
+              {isSelfHosted && (
+                <InfoHintText>
+                  Routing is automatic after verification. Origin TLS still needs
+                  a certificate for the custom hostname.
+                </InfoHintText>
+              )}
+            </InfoHint>
+          </div>
+          <CardDescription>
+            Serve this status page from your own hostname, like
+            status.example.com.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
+              {...register("customDomain")}
+              disabled={!canUpdate}
+              className="font-mono text-sm sm:max-w-md"
+            />
+            {customDomainValue ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleVerifyDNS}
+                disabled={
+                  isVerifyingDNS ||
+                  !canUpdate ||
+                  customDomainChanged ||
+                  hasReservedCustomDomain ||
+                  Boolean(customDomainConfigMessage)
+                }
+                title={
+                  customDomainChanged ? "Save changes to enable verification" : ""
+                }
+                className="shrink-0"
+              >
+                {isVerifyingDNS ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Verify DNS"
+                )}
+              </Button>
+            ) : null}
+          </div>
+
+          {customDomainChanged && customDomainValue && (
+            <p className="text-xs text-muted-foreground">
+              Save changes to enable domain verification.
+            </p>
+          )}
+
+          {errors.customDomain && (
+            <p className="text-sm text-red-500">
+              {errors.customDomain.message}
+            </p>
+          )}
+
+          {customDomainConfigMessage && (
+            <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{customDomainConfigMessage}</p>
+            </div>
+          )}
+
+          {hasReservedCustomDomain && (
+            <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                This domain is reserved for default status page routing. Use a
+                different hostname and point its CNAME to{" "}
+                <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900/60">
+                  {effectiveStatusPageCnameTarget}
+                </code>
+                .
+              </p>
+            </div>
+          )}
+
+          {domainVerified && (
+            <div className="inline-flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-sm text-green-700 dark:bg-green-950/50 dark:text-green-300">
+              <CheckCircle2 className="h-4 w-4" />
+              Domain verified and active
+            </div>
+          )}
+
+          {domainPending && (
+            <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+              Pending verification. Add the records below, then select Verify DNS.
+            </p>
+          )}
+
+          {!customDomainConfigMessage && (
+          <Collapsible open={dnsOpen} onOpenChange={setDnsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="-ml-2 h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200",
+                    dnsOpen && "rotate-180",
+                  )}
+                />
+                DNS records
+                <Badge
+                  variant="secondary"
+                  className="ml-1 h-5 px-1.5 text-[10px] font-medium"
+                >
+                  2
+                </Badge>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-1 space-y-4 rounded-lg border bg-muted/30 p-4">
+                {customDomainConfigMessage ? (
+                  <p className="text-sm text-muted-foreground">
+                    Custom domains stay unavailable until your deployment
+                    resolves a public hostname for status-page routing. Set{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      STATUS_PAGE_DOMAIN
+                    </code>{" "}
+                    to a real DNS hostname first. In the Docker Compose secure
+                    and external examples, the target is derived automatically,
+                    usually as{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      cname.STATUS_PAGE_DOMAIN
+                    </code>
+                    .
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      {customDomainValue
+                        ? "Create these records at your DNS provider."
+                        : "Example records. Enter and save a hostname above to see your exact values."}
+                    </p>
+
+                    <div className="space-y-2">
+                      <DnsRecord
+                        type="CNAME"
+                        purpose="Routes traffic"
+                        fields={[
+                          { label: "Host", value: dnsHostname },
+                          {
+                            label: "Target",
+                            value: effectiveStatusPageCnameTarget,
+                          },
+                        ]}
+                      />
+                      <DnsRecord
+                        type="TXT"
+                        purpose="Proves ownership"
+                        fields={[
+                          { label: "Name", value: domainOwnership.name },
+                          { label: "Value", value: domainOwnership.value },
+                        ]}
+                      />
+                    </div>
+
+                    <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                      <li>
+                        Add both records and keep them on DNS only (no proxy)
+                        while verifying.
+                      </li>
+                      <li>
+                        Wait for propagation. The CNAME target must already
+                        resolve publicly.
+                      </li>
+                      <li>
+                        Select Verify DNS, then publish the page before opening
+                        the URL.
+                      </li>
+                    </ol>
+
+                    <p className="text-xs text-muted-foreground">
+                      Keep the TXT record for future ownership checks.{" "}
+                      {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
+                    </p>
+                  </>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Subscriptions */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Subscriptions</CardTitle>
+            <InfoHint label="Subscription options">
+              <InfoHintText>
+                These switches control which subscription options appear on the
+                public page. Turning one off hides it without removing existing
+                subscribers.
+              </InfoHintText>
+            </InfoHint>
+          </div>
+          <CardDescription>
+            Choose how visitors can follow updates from this page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 lg:grid-cols-2">
+          {subscriptionOptions.map((option) => {
+            const Icon = option.icon;
+            return (
+              <div
+                key={option.name}
+                className="flex items-start justify-between gap-3 rounded-lg border p-3"
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{option.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {option.description}
+                    </p>
+                  </div>
+                </div>
+                <Controller
+                  control={control}
+                  name={option.name}
+                  render={({ field }) => (
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={!canUpdate}
+                      aria-label={`Allow ${option.title.toLowerCase()}`}
+                      className="mt-0.5"
+                    />
+                  )}
+                />
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {/* Branding */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <Palette className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-lg">Page Branding</CardTitle>
+              <CardTitle className="text-lg">Branding</CardTitle>
+              <InfoHint label="Branding assets">
+                <InfoHintText>
+                  The logo and favicon appear on the public page and in
+                  subscriber emails. Colors apply to component and incident
+                  states.
+                </InfoHintText>
+              </InfoHint>
             </div>
             <CardDescription className="mt-1.5">
-              Customize the look and feel of your status page
+              Logo, favicon, and status colors for the public page.
             </CardDescription>
           </div>
           <Button
@@ -1181,284 +1019,243 @@ export function SettingsTab({
             title={
               !canUpdate ? "You don't have permission to reset branding" : ""
             }
+            className="shrink-0"
           >
             {isResetting ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <RotateCcw className="h-4 w-4 mr-2" />
             )}
-            Reset Branding to Defaults
+            Reset
           </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Logo and Favicon Upload */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Upload className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-semibold">Upload Assets</h4>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Page Logo */}
-              <div className="space-y-2">
-                <Label className="text-sm">Page logo</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                  {logoUrl && (
-                    <div className="mb-3">
-                      <Image
-                        src={logoUrl}
-                        alt="Page logo preview"
-                        width={200}
-                        height={96}
-                        className="max-h-24 mx-auto object-contain"
-                        unoptimized
-                      />
-                    </div>
-                  )}
-                  <p className="text-sm text-blue-600 mb-1">
-                    {logoUrl ? "Change logo" : "Upload logo"}
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
-                    onChange={(e) => handleFileChange(e, "logo")}
-                    className="hidden"
-                    id="logo-upload"
-                    disabled={isUploadingLogo}
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="flex items-center gap-4 rounded-lg border border-dashed p-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40">
+                {logoUrl ? (
+                  <Image
+                    src={logoUrl}
+                    alt="Page logo preview"
+                    width={128}
+                    height={128}
+                    className="h-full w-full object-contain"
+                    unoptimized
                   />
-                  <label htmlFor="logo-upload">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2"
-                      disabled={isUploadingLogo || !canUpdate}
-                      asChild
-                      title={
-                        !canUpdate ? "You don't have permission to upload" : ""
-                      }
-                    >
-                      <span className="cursor-pointer">
-                        {isUploadingLogo ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          "Upload image"
-                        )}
-                      </span>
-                    </Button>
-                  </label>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Recommended size: 630px x 420px (Max 5MB)
-                  </p>
-                </div>
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                )}
               </div>
-
-              {/* Fav Icon */}
-              <div className="space-y-2">
-                <Label className="text-sm">Fav icon</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                  {faviconUrl && (
-                    <div className="mb-3">
-                      <Image
-                        src={faviconUrl}
-                        alt="Favicon preview"
-                        width={96}
-                        height={96}
-                        className="max-h-24 mx-auto object-contain"
-                        unoptimized
-                      />
-                    </div>
-                  )}
-                  <p className="text-sm text-blue-600 mb-1">
-                    {faviconUrl ? "Change favicon" : "Upload favicon"}
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
-                    onChange={(e) => handleFileChange(e, "favicon")}
-                    className="hidden"
-                    id="favicon-upload"
-                    disabled={isUploadingFavicon}
-                  />
-                  <label htmlFor="favicon-upload">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2"
-                      disabled={isUploadingFavicon || !canUpdate}
-                      asChild
-                      title={
-                        !canUpdate ? "You don't have permission to upload" : ""
-                      }
-                    >
-                      <span className="cursor-pointer">
-                        {isUploadingFavicon ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          "Upload image"
-                        )}
-                      </span>
-                    </Button>
-                  </label>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Recommended size: 96px x 96px (Max 5MB)
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <Label htmlFor="logo-upload" className="text-sm">
+                    Page logo
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    630 × 420 px recommended · max 5 MB
                   </p>
                 </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
+                  onChange={(e) => handleFileChange(e, "logo")}
+                  className="hidden"
+                  id="logo-upload"
+                  disabled={isUploadingLogo || !canUpdate}
+                />
+                <label
+                  htmlFor="logo-upload"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "cursor-pointer",
+                    (isUploadingLogo || !canUpdate) &&
+                      "pointer-events-none opacity-50",
+                  )}
+                >
+                  {isUploadingLogo ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {logoUrl ? "Replace logo" : "Upload logo"}
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 rounded-lg border border-dashed p-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40">
+                {faviconUrl ? (
+                  <Image
+                    src={faviconUrl}
+                    alt="Favicon preview"
+                    width={64}
+                    height={64}
+                    className="h-full w-full object-contain"
+                    unoptimized
+                  />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <Label htmlFor="favicon-upload" className="text-sm">
+                    Favicon
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    96 × 96 px recommended · max 5 MB
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
+                  onChange={(e) => handleFileChange(e, "favicon")}
+                  className="hidden"
+                  id="favicon-upload"
+                  disabled={isUploadingFavicon || !canUpdate}
+                />
+                <label
+                  htmlFor="favicon-upload"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "cursor-pointer",
+                    (isUploadingFavicon || !canUpdate) &&
+                      "pointer-events-none opacity-50",
+                  )}
+                >
+                  {isUploadingFavicon ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {faviconUrl ? "Replace favicon" : "Upload favicon"}
+                </label>
               </div>
             </div>
           </div>
 
           <Separator />
 
-          {/* Branding Colors */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Palette className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-semibold">Status Colors</h4>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Customize the colors used on your status page to match your brand
+            <h4 className="text-sm font-semibold">Status colors</h4>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Used for component and incident states on the public page.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="cssGreens" className="text-sm font-medium">
-                  Operational
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="cssGreens"
-                    type="color"
-                    {...register("cssGreens")}
-                    className="w-10 h-9 p-1 cursor-pointer"
-                    disabled={!canUpdate}
-                  />
-                  <Input
-                    {...register("cssGreens")}
-                    placeholder="#2ecc71"
-                    className="flex-1 font-mono text-sm"
-                    disabled={!canUpdate}
-                  />
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {brandColors.map((color) => (
+                <div key={color.name} className="space-y-1.5">
+                  <Label htmlFor={color.name} className="text-sm font-medium">
+                    {color.label}
+                  </Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      id={color.name}
+                      type="color"
+                      {...register(color.name)}
+                      className="h-9 w-10 cursor-pointer p-1"
+                      disabled={!canUpdate}
+                    />
+                    <Input
+                      {...register(color.name)}
+                      placeholder={color.placeholder}
+                      className="flex-1 font-mono text-sm"
+                      disabled={!canUpdate}
+                      aria-label={`${color.label} hex value`}
+                    />
+                  </div>
+                  {errors[color.name] && (
+                    <p className="text-sm text-red-500">
+                      {errors[color.name]?.message}
+                    </p>
+                  )}
                 </div>
-                {errors.cssGreens && (
-                  <p className="text-sm text-red-500">
-                    {errors.cssGreens.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cssYellows" className="text-sm font-medium">
-                  Degraded
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="cssYellows"
-                    type="color"
-                    {...register("cssYellows")}
-                    className="w-10 h-9 p-1 cursor-pointer"
-                    disabled={!canUpdate}
-                  />
-                  <Input
-                    {...register("cssYellows")}
-                    placeholder="#f1c40f"
-                    className="flex-1 font-mono text-sm"
-                    disabled={!canUpdate}
-                  />
-                </div>
-                {errors.cssYellows && (
-                  <p className="text-sm text-red-500">
-                    {errors.cssYellows.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cssOranges" className="text-sm font-medium">
-                  Partial Outage
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="cssOranges"
-                    type="color"
-                    {...register("cssOranges")}
-                    className="w-10 h-9 p-1 cursor-pointer"
-                    disabled={!canUpdate}
-                  />
-                  <Input
-                    {...register("cssOranges")}
-                    placeholder="#e67e22"
-                    className="flex-1 font-mono text-sm"
-                    disabled={!canUpdate}
-                  />
-                </div>
-                {errors.cssOranges && (
-                  <p className="text-sm text-red-500">
-                    {errors.cssOranges.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cssBlues" className="text-sm font-medium">
-                  Maintenance
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="cssBlues"
-                    type="color"
-                    {...register("cssBlues")}
-                    className="w-10 h-9 p-1 cursor-pointer"
-                    disabled={!canUpdate}
-                  />
-                  <Input
-                    {...register("cssBlues")}
-                    placeholder="#3498db"
-                    className="flex-1 font-mono text-sm"
-                    disabled={!canUpdate}
-                  />
-                </div>
-                {errors.cssBlues && (
-                  <p className="text-sm text-red-500">
-                    {errors.cssBlues.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cssReds" className="text-sm font-medium">
-                  Major Outage
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="cssReds"
-                    type="color"
-                    {...register("cssReds")}
-                    className="w-10 h-9 p-1 cursor-pointer"
-                    disabled={!canUpdate}
-                  />
-                  <Input
-                    {...register("cssReds")}
-                    placeholder="#e74c3c"
-                    className="flex-1 font-mono text-sm"
-                    disabled={!canUpdate}
-                  />
-                </div>
-                {errors.cssReds && (
-                  <p className="text-sm text-red-500">
-                    {errors.cssReds.message}
-                  </p>
-                )}
-              </div>
+              ))}
             </div>
           </div>
-
-          <Separator />
         </CardContent>
       </Card>
+
+      {isDirty && (
+        <div className="fixed bottom-4 left-1/2 z-30 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center justify-between gap-3 rounded-xl border bg-background/95 p-2 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          >
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Unsaved changes
+            </p>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => reset()}
+                disabled={isSubmitting}
+              >
+                Discard
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSubmit(onSubmit)}
+                disabled={isSubmitting || !canUpdate}
+                title={
+                  !canUpdate
+                    ? "You don't have permission to save settings"
+                    : undefined
+                }
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DnsRecord({
+  type,
+  purpose,
+  fields,
+}: {
+  type: string;
+  purpose: string;
+  fields: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <div className="rounded-md border bg-background">
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <span className="font-mono text-xs font-medium">{type}</span>
+        <span className="text-[11px] text-muted-foreground">{purpose}</span>
+      </div>
+      <dl className="divide-y">
+        {fields.map((field) => (
+          <div
+            key={field.label}
+            className="flex items-start justify-between gap-3 px-3 py-2"
+          >
+            <dt className="w-14 shrink-0 text-xs text-muted-foreground">
+              {field.label}
+            </dt>
+            <dd className="min-w-0 flex-1 text-right">
+              <code className="break-all font-mono text-xs">{field.value}</code>
+            </dd>
+            <CopyButton
+              value={field.value}
+              className="mt-0.5 shrink-0 opacity-100"
+            />
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

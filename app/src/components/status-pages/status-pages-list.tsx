@@ -356,7 +356,7 @@ export default function StatusPagesList() {
                 Create Status Page
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
+            <DialogContent className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl">
               <DialogHeader>
                 <DialogTitle>Create Status Page</DialogTitle>
                 <DialogDescription>
