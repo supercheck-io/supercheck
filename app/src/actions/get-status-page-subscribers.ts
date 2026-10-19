@@ -119,6 +119,17 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         eq(statusPageSubscribers.statusPageId, statusPageId),
         isNull(statusPageSubscribers.purgeAt) // Only show active subscribers
       ),
+      // SECURITY: explicit allow-list; never serialize webhookSecret or
+      // verification/unsubscribe tokens to the client.
+      columns: {
+        id: true,
+        email: true,
+        endpoint: true,
+        mode: true,
+        verifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: (subscribers, { desc }) => [desc(subscribers.createdAt)],
     });
 
