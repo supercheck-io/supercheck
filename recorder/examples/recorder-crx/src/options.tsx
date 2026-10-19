@@ -236,8 +236,9 @@ function OptionsPage() {
       return;
     }
 
+    // Back on the saved instance: re-check the stored key instead of assuming it still works.
     if (config?.apiKey)
-      setConnectionState({ status: 'connected', email: config.userEmail });
+      void verifySavedConnection(config);
   };
 
   const handleSaveInstance = async () => {
