@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { useOrganizations } from "@/hooks/use-organizations";
+import { useOrganizations, type OrganizationSummary } from "@/hooks/use-organizations";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -14,15 +14,17 @@ import {
 export function LeaveOrganizationDialog() {
   const { activeOrganization } = useOrganizations();
   const [open, setOpen] = useState(false);
+  const [confirmedOrganization, setConfirmedOrganization] = useState<OrganizationSummary | null>(null);
   const [pending, setPending] = useState(false);
-  if (!activeOrganization) return null;
-  const isOwner = activeOrganization.role === "org_owner";
+  const organization = confirmedOrganization ?? activeOrganization;
+  if (!organization) return null;
+  const isOwner = organization.role === "org_owner";
   const leave = async () => {
     setPending(true);
     try {
       const response = await fetch("/api/organizations/leave", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId: activeOrganization.id }),
+        body: JSON.stringify({ organizationId: organization.id }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to leave organization");
@@ -35,13 +37,13 @@ export function LeaveOrganizationDialog() {
   };
   return (
     <>
-      <DropdownMenuItem onSelect={(event) => { event.preventDefault(); setOpen(true); }}>
+      <DropdownMenuItem onSelect={(event) => { event.preventDefault(); setConfirmedOrganization(activeOrganization ?? null); setOpen(true); }}>
         Leave organization
       </DropdownMenuItem>
       <AlertDialog open={open} onOpenChange={value => { if (!pending) setOpen(value); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Leave {activeOrganization.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Leave {organization.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               {isOwner
                 ? "Organization owners must transfer ownership or delete the organization before leaving."

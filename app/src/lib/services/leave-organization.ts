@@ -49,7 +49,7 @@ export async function leaveOrganization(expectedOrganizationId: string) {
       )));
     await logAuditEvent({
       userId, organizationId, action: "member_left", resource: "member", resourceId: userId, success: true,
-    }, tx);
+    }, tx, { strict: true });
   });
   clearRequestCache();
   // The normal setup flow selects a remaining organization or creates personal defaults.

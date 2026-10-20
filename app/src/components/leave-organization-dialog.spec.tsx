@@ -49,3 +49,13 @@ it("keeps the dialog and displays a server error without reloading", async () =>
   expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   expect(reloadProjectContext).not.toHaveBeenCalled();
 });
+it("keeps the confirmed organization fixed if active organization data changes", async () => {
+  const { rerender } = render(<LeaveOrganizationDialog />);
+  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  (useOrganizations as jest.Mock).mockReturnValue({ activeOrganization: { id: "org-2", name: "Other team", role: "project_viewer" } });
+  rerender(<LeaveOrganizationDialog />);
+  const dialog = screen.getByRole("alertdialog");
+  expect(within(dialog).getByText("Leave Invited team?")).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Leave organization" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/organizations/leave", expect.objectContaining({ body: JSON.stringify({ organizationId: "org-1" }) })));
+});

@@ -41,7 +41,7 @@ it.each(["project_viewer", "project_editor", "project_admin", "org_admin"])("let
   expect(query.params).toEqual(["user-1", "org-1", "project-1", "project-2"]);
   expect(query.sql).toContain('"active_organization_id"');
   expect(query.sql).toContain('"active_project_id"');
-  expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "member_left", organizationId: "org-1", userId: "user-1" }), tx);
+  expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "member_left", organizationId: "org-1", userId: "user-1" }), tx, { strict: true });
   expect(clearRequestCache).toHaveBeenCalledTimes(1);
 });
 it("allows leaving an organization with no projects", async () => {
