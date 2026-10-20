@@ -15,7 +15,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Requirements:
 
-- **Node.js 20 or later.** Individual packages state their supported version in `engines` and CI; use the version required by the package you touch.
+- **Node.js 24 for app, worker, and docs development.** Individual packages state their supported version in `engines` and CI; the CLI retains its own minimum Node.js version.
 - **Docker Compose v2** for self-hosted deployment work.
 - **Linux** (Ubuntu 22.04+, Debian 12+) for anything that exercises the K3s and gVisor execution sandbox. macOS and Windows can develop the app, worker, CLI, recorder, and docs, but cannot run the sandboxed execution stack.
 

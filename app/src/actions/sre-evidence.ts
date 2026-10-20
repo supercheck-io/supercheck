@@ -8,6 +8,7 @@ import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestr
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
 const generateBriefSchema = z.object({
   incidentId: z.string().uuid(),
@@ -54,6 +55,9 @@ export async function generateSreEvidenceBrief(input: {
         error: "Insufficient permissions to investigate this incident",
       };
     }
+
+    await subscriptionService.blockUntilSubscribed(organizationId);
+    await subscriptionService.requireValidPolarCustomer(organizationId);
 
     const rateLimit = await checkSreEvidenceBriefRateLimit(
       userId,
@@ -103,6 +107,9 @@ export async function generateSreEvidenceBrief(input: {
       evidenceCount: result.evidenceCount,
     };
   } catch (error) {
+    if (error instanceof SubscriptionAccessDeniedError) {
+      return { success: false, error: error.message };
+    }
     console.error("Error generating SRE evidence brief:", error);
     return {
       success: false,
