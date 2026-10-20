@@ -306,4 +306,58 @@ describe("SreAiConsole", () => {
       "false",
     );
   });
+
+  it("refreshes once per sheet open and shows a chat abandoned mid-stream", () => {
+    const onRequestHistoryRefresh = jest.fn();
+    const { rerender } = render(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "saved-chat",
+            incidentId: null,
+            title: "Saved chat",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+        ]}
+        onRequestHistoryRefresh={onRequestHistoryRefresh}
+      />,
+    );
+
+    expect(onRequestHistoryRefresh).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(onRequestHistoryRefresh).toHaveBeenCalledTimes(1);
+    // Keeping the sheet open must not keep refetching.
+    expect(onRequestHistoryRefresh).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SreAiConsole
+        initialHistories={[
+          {
+            conversationId: "abandoned-chat",
+            incidentId: null,
+            title: "Question abandoned mid-stream",
+            updatedAt: "2026-10-10",
+            messages: [],
+          },
+          {
+            conversationId: "saved-chat",
+            incidentId: null,
+            title: "Saved chat",
+            updatedAt: "2026-10-09",
+            messages: [],
+          },
+        ]}
+        onRequestHistoryRefresh={onRequestHistoryRefresh}
+      />,
+    );
+
+    expect(screen.getAllByText("Question abandoned mid-stream")).toHaveLength(1);
+    expect(screen.getAllByText("Saved chat")).toHaveLength(1);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(onRequestHistoryRefresh).toHaveBeenCalledTimes(2);
+  });
 });

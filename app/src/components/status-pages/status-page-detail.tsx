@@ -31,6 +31,16 @@ import {
   publishStatusPage,
   unpublishStatusPage,
 } from "@/actions/publish-status-page";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { getPublicStatusPageUrl } from "@/lib/domain-utils";
@@ -88,6 +98,8 @@ type Component = {
   updatedAt: Date | null;
 };
 
+type PendingAction = "unpublish" | "archive";
+
 type StatusPageDetailProps = {
   statusPage: StatusPage;
   statusPageDomain?: string;
@@ -115,6 +127,8 @@ export function StatusPageDetail({
 }: StatusPageDetailProps) {
   const router = useRouter();
   const [isPublishing, setIsPublishing] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [confirmAction, setConfirmAction] = useState<PendingAction | null>(null);
   const [appUrl, setAppUrl] = useState<string>();
 
   useEffect(() => {
@@ -169,29 +183,77 @@ export function StatusPageDetail({
     }
   };
 
-  const handleUnpublish = async () => {
-    setIsPublishing(true);
+  const handleDestructiveAction = async (action: PendingAction) => {
+    const isArchive = action === "archive";
+    setPendingAction(action);
     try {
-      const result = await unpublishStatusPage(statusPage.id);
+      const result = await unpublishStatusPage(statusPage.id, isArchive);
       if (result.success) {
-        toast.success("Status page unpublished successfully", {
-          description: "Your status page is no longer publicly accessible",
-        });
+        toast.success(
+          isArchive
+            ? "Status page archived"
+            : "Status page unpublished successfully",
+          {
+            description: isArchive
+              ? "The page is no longer publicly accessible. Its records stay in the dashboard."
+              : "Your status page is no longer publicly accessible and has been returned to draft.",
+          },
+        );
         router.refresh();
-      } else {
-        toast.error("Failed to unpublish status page", {
-          description: result.message,
-        });
+        return true;
       }
+
+      toast.error(
+        isArchive
+          ? "Failed to archive status page"
+          : "Failed to unpublish status page",
+        { description: result.message },
+      );
+      return false;
     } catch (error) {
-      console.error("Error unpublishing status page:", error);
-      toast.error("Failed to unpublish status page", {
-        description: "An unexpected error occurred",
-      });
+      console.error(
+        `Error ${isArchive ? "archiving" : "unpublishing"} status page:`,
+        error,
+      );
+      toast.error(
+        isArchive
+          ? "Failed to archive status page"
+          : "Failed to unpublish status page",
+        { description: "An unexpected error occurred" },
+      );
+      return false;
     } finally {
-      setIsPublishing(false);
+      setPendingAction(null);
     }
   };
+
+  const runConfirmedAction = async () => {
+    const action = confirmAction;
+    if (!action || pendingAction || !canUpdate) {
+      return;
+    }
+
+    const succeeded = await handleDestructiveAction(action);
+
+    if (succeeded) {
+      setConfirmAction(null);
+    }
+  };
+
+  const confirmCopy =
+    confirmAction === "archive"
+      ? {
+          title: `Archive "${statusPage.name}"?`,
+          description:
+            "Archiving takes this page off the public internet and marks it archived. Components, incidents, and subscribers are kept, and you can publish the page again later if you need it live.",
+          actionLabel: "Archive page",
+        }
+      : {
+          title: `Unpublish "${statusPage.name}"?`,
+          description:
+            "Unpublishing takes this page offline immediately. Visitors will see a not-found page until you publish it again. Components, incidents, and subscribers are kept.",
+          actionLabel: "Unpublish page",
+        };
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
@@ -212,7 +274,7 @@ export function StatusPageDetail({
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-semibold truncate">{statusPage.name}</h1>
+              <h1 className="min-w-0 max-w-full truncate text-xl sm:text-2xl font-semibold">{statusPage.name}</h1>
               <Badge
                 className={`text-xs px-2 py-1 rounded-md ${getStatusBadgeColor(
                   statusPage.status
@@ -235,7 +297,7 @@ export function StatusPageDetail({
             {publicStatusPageUrl ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
                 <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
-                <span className="font-mono text-xs sm:text-sm truncate">
+                <span className="min-w-0 truncate font-mono text-xs sm:text-sm">
                   {publicStatusPageUrl}
                 </span>
                 <Button
@@ -249,7 +311,7 @@ export function StatusPageDetail({
               </div>
             ) : null}
           </div>
-          <div className="flex gap-2 sm:gap-3 flex-shrink-0">
+          <div className="flex flex-wrap gap-2 sm:flex-shrink-0 sm:justify-end sm:gap-3">
             <Button
               asChild
               variant="outline"
@@ -262,22 +324,34 @@ export function StatusPageDetail({
                 <span className="sm:hidden">View</span>
               </Link>
             </Button>
-            {statusPage.status !== "archived" && <Button variant="outline" disabled={isPublishing || !canUpdate} onClick={async () => {
-              setIsPublishing(true);
-              try { const result = await unpublishStatusPage(statusPage.id, true); if (result.success) { toast.success("Status page archived"); router.refresh(); } else toast.error(result.message); }
-              finally { setIsPublishing(false); }
-            }}>Archive</Button>}
+            {statusPage.status !== "archived" && (
+              <Button
+                variant="destructive"
+                disabled={isPublishing || pendingAction !== null || !canUpdate}
+                onClick={() => setConfirmAction("archive")}
+                title={
+                  !canUpdate ? "You don't have permission to archive" : undefined
+                }
+              >
+                {pendingAction === "archive" ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                Archive
+              </Button>
+            )}
             {statusPage.status === "published" ? (
               <Button
                 variant="destructive"
                 size="default"
-                onClick={handleUnpublish}
-                disabled={isPublishing || !canUpdate}
+                onClick={() => setConfirmAction("unpublish")}
+                disabled={
+                  isPublishing || pendingAction !== null || !canUpdate
+                }
                 title={
                   !canUpdate ? "You don't have permission to unpublish" : ""
                 }
               >
-                {isPublishing ? (
+                {pendingAction === "unpublish" ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <EyeOff className="h-4 w-4 mr-2" />
@@ -302,6 +376,44 @@ export function StatusPageDetail({
             )}
           </div>
         </div>
+
+        <AlertDialog
+          open={confirmAction !== null}
+          onOpenChange={(open) => {
+            if (!open && !pendingAction) {
+              setConfirmAction(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmCopy.description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pendingAction !== null}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/30"
+                disabled={pendingAction !== null || !canUpdate}
+                onClick={(event) => {
+                  // Keep the dialog open so the pending state is visible while
+                  // the public page is taken offline.
+                  event.preventDefault();
+                  void runConfirmedAction();
+                }}
+              >
+                {pendingAction ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                {confirmCopy.actionLabel}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
           <TabsTrigger value="overview" aria-label="Overview" className="flex items-center gap-2">
