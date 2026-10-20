@@ -52,12 +52,20 @@ export function installAgentSkill(options: { target: AgentTarget; path?: string;
   let pointer: string | undefined
   if (pointerFile) {
     const current = existsSync(pointerFile) ? readFileSync(pointerFile, 'utf8') : ''
-    const start = current.indexOf(BEGIN)
-    const end = current.indexOf(END)
-    // Only the owned block is ever rewritten; the rest of the user's file is untouched.
-    const next = start !== -1 && end > start
-      ? current.slice(0, start) + POINTER + current.slice(end + END.length)
-      : `${current}${current && !current.endsWith('\n') ? '\n' : ''}${current ? '\n' : ''}${POINTER}\n`
+    // Only a single, well-formed owned block is ever rewritten. Anything ambiguous (stray, duplicated or
+    // reversed markers, or markers quoted inside user text) is refused rather than guessed at.
+    const lines = current.split('\n')
+    const begins = lines.flatMap((l, i) => (l.trim() === BEGIN ? [i] : []))
+    const ends = lines.flatMap((l, i) => (l.trim() === END ? [i] : []))
+    const mentions = (current.match(/supercheck:(begin|end)/g) ?? []).length
+    let next: string
+    if (begins.length === 0 && ends.length === 0 && mentions === 0) {
+      next = `${current}${current && !current.endsWith('\n') ? '\n' : ''}${current ? '\n' : ''}${POINTER}\n`
+    } else if (begins.length === 1 && ends.length === 1 && begins[0] < ends[0] && mentions === 2) {
+      next = [...lines.slice(0, begins[0]), POINTER, ...lines.slice(ends[0] + 1)].join('\n')
+    } else {
+      throw new CLIError(`${pointerFile} contains unexpected supercheck markers. Fix or remove them by hand, then run again.`, ExitCode.ConfigError)
+    }
     writeFileSync(pointerFile, next)
     pointer = pointerFile
   }

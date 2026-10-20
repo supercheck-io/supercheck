@@ -1,4 +1,5 @@
-import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
+import { readSmallFile } from './safe-read.js'
 import { join, relative, resolve } from 'node:path'
 
 /**
@@ -43,8 +44,9 @@ const ROUTE_HINTS: [RegExp, string][] = [[/login|sign-?in|auth/i, 'auth'], [/sig
 
 function readJson(path: string): Record<string, unknown> | null {
   try {
-    if (lstatSync(path).isSymbolicLink() || statSync(path).size > MAX_JSON_BYTES) return null
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
+    const text = readSmallFile(path, MAX_JSON_BYTES)
+    if (text === null) return null
+    const parsed: unknown = JSON.parse(text)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
   } catch { return null }
 }
@@ -113,9 +115,12 @@ export function discoverRepository(rootInput: string): DiscoverResult {
     const [c] = pool
     const runner = packageManager === 'unknown' ? 'npm run' : packageManager === 'npm' ? 'npm run' : packageManager
     const dir = c.pkgPath === 'package.json' ? null : c.pkgPath.slice(0, -'/package.json'.length)
+    // Directory names come from the repository: only emit a shell command for plainly safe paths.
+    const safeDir = dir === null || /^[A-Za-z0-9._/@-]+$/.test(dir)
+    if (!safeDir) warnings.push('devCommand omitted: the app directory name contains unusual characters.')
     app = {
       framework: c.framework,
-      devCommand: c.script ? `${dir ? `cd ${dir} && ` : ''}${runner} ${c.script}` : null,
+      devCommand: c.script && safeDir ? `${dir ? `cd ${dir} && ` : ''}${runner} ${c.script}` : null,
       baseUrl: c.port ? `http://localhost:${c.port}` : null,
       baseUrlConfidence: c.port ? 'low' : null,
       evidence: [c.pkgPath],
@@ -148,8 +153,9 @@ export function discoverRepository(rootInput: string): DiscoverResult {
   // Key names only from the committed example file; real .env files are never opened.
   let envKeys: string[] = []
   try {
-    if (rootNames.has('.env.example') && !lstatSync(join(root, '.env.example')).isSymbolicLink()) {
-      envKeys = readFileSync(join(root, '.env.example'), 'utf8').split('\n').map((l) => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(l)?.[1]).filter((k): k is string => Boolean(k)).slice(0, 100)
+    const example = rootNames.has('.env.example') ? readSmallFile(join(root, '.env.example'), 128 * 1024) : null
+    if (example !== null) {
+      envKeys = example.split('\n').map((l) => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/.exec(l)?.[1]).filter((k): k is string => Boolean(k)).slice(0, 100)
     }
   } catch { /* unreadable: omit */ }
   if (playwrightConfigs.length && !storageState.length && /auth|login/i.test(pwTests.join(' '))) warnings.push('Auth-related tests found but no storage state file detected.')

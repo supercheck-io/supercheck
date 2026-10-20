@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { getApiClient } from '../api/client.js'
 import { getStoredBaseUrl, getToken } from '../auth/store.js'
@@ -7,6 +7,7 @@ import { outputDetail } from '../output/formatter.js'
 import { ApiRequestError } from '../utils/errors.js'
 import { discoverRepository } from '../utils/discover.js'
 import { readPlan } from './plan.js'
+import { readSmallFile } from '../utils/safe-read.js'
 
 const DEFAULT_API_URL = 'https://app.supercheck.io'
 
@@ -51,7 +52,9 @@ export function deriveOnboarding(facts: {
 
 export function countStateResources(path: string): number {
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { targets?: Record<string, Record<string, unknown>> }
+    const text = readSmallFile(path)
+    if (text === null) return 0
+    const parsed = JSON.parse(text) as { targets?: Record<string, Record<string, unknown>> }
     return Object.values(parsed.targets ?? {}).reduce((sum, bucket) => sum + (bucket && typeof bucket === 'object' ? Object.keys(bucket).length : 0), 0)
   } catch { return 0 }
 }
@@ -68,9 +71,12 @@ export const onboardCommand = new Command('onboard')
     const token = getToken()
     let authenticated: boolean | 'unknown' = false
     let context: unknown = null
-    if (token) {
+    // The token is only ever sent to the URL of the stored login (or an explicit real SUPERCHECK_URL),
+    // never to a URL declared by repository files: this command loads neither .env nor config.
+    const client = token ? getApiClient({ baseUrl: getStoredBaseUrl() ?? DEFAULT_API_URL, token, timeout: 8000 }) : null
+    if (token && client) {
       try {
-        const { data } = await getApiClient({ baseUrl: getStoredBaseUrl() ?? DEFAULT_API_URL, token }).get('/api/context', { retries: 0, timeout: 8000 })
+        const { data } = await client.get('/api/context')
         authenticated = true
         context = data
       } catch (error) {
@@ -80,7 +86,7 @@ export const onboardCommand = new Command('onboard')
 
     let planState: 'active' | 'inactive' | 'unknown' | null = null
     if (authenticated === true) {
-      try { planState = ((await readPlan()).state as 'active' | 'inactive' | 'unknown') ?? 'unknown' } catch { planState = 'unknown' }
+      try { planState = ((await readPlan(client!)).state as 'active' | 'inactive' | 'unknown') ?? 'unknown' } catch { planState = 'unknown' }
     }
 
     const deployedResources = countStateResources(resolve(cwd, 'supercheck.state.json'))

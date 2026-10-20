@@ -89,6 +89,12 @@ const program = new Command()
       actionCommand.parent?.name() === 'notification' ||
       actionCommand.parent?.name() === 'notifications'
 
+    // Commands that inspect an untrusted checkout must never load its .env or execute its config.
+    // Identify them by their top-level command, not by a (possibly coincidental) subcommand name.
+    let topLevel: Command = actionCommand
+    while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
+    if (['discover', 'onboard', 'plan', 'ci', 'agent'].includes(topLevel.name())) return
+
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
     const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name()) && (actionCommand.parent?.name() ?? '') === program.name()

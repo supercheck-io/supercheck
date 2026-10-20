@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
+import type { ApiClient } from '../api/client.js'
 import { outputDetail } from '../output/formatter.js'
 import { ApiRequestError } from '../utils/errors.js'
 
@@ -13,9 +14,9 @@ interface SubscriptionStatus {
 }
 
 /** Plan visibility for agents. `unknown` is never treated as a free or paid plan. */
-export async function readPlan(): Promise<Record<string, unknown>> {
+export async function readPlan(client: Pick<ApiClient, 'get'> = createAuthenticatedClient()): Promise<Record<string, unknown>> {
   try {
-    const { data } = await createAuthenticatedClient().get<SubscriptionStatus>('/api/subscription/status')
+    const { data } = await client.get<SubscriptionStatus>('/api/subscription/status')
     return {
       state: data.isActive ? 'active' : 'inactive',
       plan: data.plan ?? null,
