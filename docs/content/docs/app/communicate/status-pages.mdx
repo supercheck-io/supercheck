@@ -7,7 +7,7 @@ icon: Tally4
 Create public status pages to communicate system health, incidents, and scheduled maintenance to your users.
 
 <Callout type="info">
-Status pages are hosted on unique subdomains and are publicly accessible without authentication.
+Status pages are served from a unique subdomain, or your own verified custom domain, and are publicly accessible without authentication.
 </Callout>
 
 ## Managing Status Pages
@@ -31,12 +31,26 @@ Click **Manage** to access the management interface:
 
 ![Create Status Page](/screenshots/status-page-create.png)
 
-Your page is created in **draft mode**. Configure components and settings before publishing.
+Your page is created in **draft mode** with an auto-generated subdomain. Use the **Quick setup guide** (the info icon next to the page name) for the recommended order of steps.
+
+```mermaid
+flowchart LR
+    A[Create page<br/>draft] --> B[Add components]
+    B --> C[Link monitors]
+    C --> D[Configure Settings]
+    D --> E[Publish]
+    E --> F[Post incidents]
+
+    classDef step fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef live fill:#047857,stroke:#34d399,color:#fff
+    class A,B,C,D step
+    class E,F live
+```
 
 ### Publishing
 
-1. Add at least one showcased component
-2. Configure branding in Settings
+1. Add at least one component that is shown on the public page (required)
+2. Optionally configure branding, subscriptions, and a custom domain in **Settings**
 3. Click **Publish** to make the page public
 4. Share the URL with your users
 
@@ -238,14 +252,23 @@ its public component details.
 1. Go to **Components** tab
 2. Click **Add Component**
 3. Enter:
-   - **Name** — Service name (e.g., "API", "Website", "Database")
-   - **Description** — Brief explanation
-   - **Status** — Current operational status
-   - **Linked Monitors** — Associate monitors for reference
+   - **Basics** — Name (e.g., "API"), optional description, and status. The status is manual until a monitor is linked.
+   - **Monitors** — Search and link monitors. Once linked, choose the aggregation method and **Failing monitors required**; for weighted aggregation, set a weight from 1 to 100 per monitor. Optionally publish outage and recovery incidents automatically.
+   - **Visibility** — Show the component on the public page, show it only while degraded, and optionally link an internal service (internal only; never published).
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
 **Linked Monitors and health**
+
+```mermaid
+flowchart LR
+    M[Linked monitors] --> T{Failing monitors<br/>at or above threshold?}
+    T -- No --> O[Operational]
+    T -- Yes --> A[Aggregation method<br/>decides status]
+    A --> C[Component status]
+    O --> C
+    C --> P[Page banner and badge]
+```
 
 Linked components refresh from monitor aggregate results every 10 seconds. Choose worst case, best
 case, weighted vote, or majority vote aggregation. Weighted vote uses monitor weights as votes; the
@@ -289,12 +312,14 @@ Incidents communicate service disruptions to your users.
 2. Click **Create Incident**
 3. Enter:
    - **Title** — Brief description (e.g., "API Response Delays")
-   - **Message** — Initial update for users
-   - **Status** — Current investigation status
-   - **Impact** — Severity level
-   - **Affected Components** — Which services are impacted
-4. Choose whether to notify subscribers
-5. Click **Create**
+   - **Initial message** — First update, published immediately
+   - **Status** and **Impact** — Current stage and severity
+   - **Maintenance window** — Start and end times, shown only for **Scheduled** incidents. The end must be after the start and in the future.
+   - **Affected components** — Select at least one. If the page has no components, add one first; incident creation is disabled until then.
+   - **Component status during incident** — Status applied to the selected components while the incident is active
+   - **Link internal SRE incident** — Optional; only your public title and message are published
+4. Leave **Notify subscribers** selected in the footer to send the update
+5. Click **Create Incident**
 
 ![Create Incident](/screenshots/status-page-create-incident.png)
 
@@ -433,17 +458,22 @@ sequenceDiagram
 
 ## Settings
 
-Configure branding and notification settings.
+Configure page identity, custom domains, subscriptions, and branding. Settings are split into focused cards, and a save bar appears at the bottom of the screen whenever the form has unsaved changes.
+
+- **General** — Internal page name, public headline, description, support contact, and language
+- **Custom domain** — Custom hostname, verification status, and DNS records
+- **Subscriptions** — Visitor-facing email, webhook, Slack, incident, and feed options
+- **Branding** — Logo, favicon, and status colors
 
 ![Settings Tab](/screenshots/status-page-settings.png)
 
-<Tabs items={['Branding', 'Notifications', 'Custom Domains']}>
+<Tabs items={['Branding', 'Subscriptions', 'Custom Domains']}>
 <Tab value="Branding">
 
-- **Logo** — Header logo for status page
-- **Favicon** — Browser tab icon
+- **Logo** — Header logo for status page (630 × 420 px recommended, max 5 MB)
+- **Favicon** — Browser tab icon (96 × 96 px recommended, max 5 MB)
 - **Status Colors** — Customize colors for each status type
-- **Custom Domain** — Use your own domain (e.g., `status.example.net`)
+- **Reset** — Restores default colors and removes the logo and favicon immediately; it does not wait for **Save changes**
 
 </Tab>
 <Tab value="Notifications">
@@ -457,7 +487,7 @@ Configure branding and notification settings.
 <Tab value="Custom Domains">
 
 Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
-Custom domains support CNAME subdomains only; apex domains are not supported. The settings form shows example CNAME and TXT records before a hostname is entered and a pending verification state after it is saved. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
+Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading summarizes the DNS rules. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
 
 #### Set Up a Custom Domain
 

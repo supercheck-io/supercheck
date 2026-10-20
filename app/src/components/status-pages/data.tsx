@@ -16,34 +16,39 @@ export interface StatusPageStep {
 
 export const statusPageSteps: StatusPageStep[] = [
   {
-    title: "Add Components",
+    title: "Add components",
     description:
-      "Track different parts of your service (API, Website, Database)",
+      "Track the parts of your service visitors care about, such as API, website, or database.",
     icon: Layers,
   },
   {
-    title: "Create Incidents",
-    description: "Communicate about outages or scheduled maintenance",
-    icon: AlertCircle,
-  },
-  {
-    title: "Enable Subscriptions",
-    description: "Allow users to subscribe for email or webhook updates",
-    icon: Users,
-  },
-  {
-    title: "Customize Branding",
-    description: "Add your logo, colors, and custom domain in Settings",
-    icon: Palette,
-  },
-  {
-    title: "Link Monitors",
-    description: "Connect monitors to automatically update component status",
+    title: "Link monitors",
+    description:
+      "Connect monitors so each component status updates automatically.",
     icon: Link2,
   },
   {
-    title: "Publish Page",
-    description: "Make your status page live when you're ready",
+    title: "Set up subscriptions",
+    description:
+      "Choose how visitors follow updates: email, webhook, Slack, or feeds.",
+    icon: Users,
+  },
+  {
+    title: "Customize branding",
+    description:
+      "Add your logo, favicon, status colors, and custom domain in Settings.",
+    icon: Palette,
+  },
+  {
+    title: "Publish the page",
+    description:
+      "Needs at least one public component. Draft pages are not visible to visitors.",
     icon: Rocket,
+  },
+  {
+    title: "Communicate incidents",
+    description:
+      "Post updates about outages and scheduled maintenance once the page is live.",
+    icon: AlertCircle,
   },
 ];

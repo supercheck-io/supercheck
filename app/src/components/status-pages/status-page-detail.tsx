@@ -304,23 +304,23 @@ export function StatusPageDetail({
         </div>
 
         <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
+          <TabsTrigger value="overview" aria-label="Overview" className="flex items-center gap-2">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="components" className="flex items-center gap-2">
+          <TabsTrigger value="components" aria-label="Components" className="flex items-center gap-2">
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">Components</span>
           </TabsTrigger>
-          <TabsTrigger value="incidents" className="flex items-center gap-2">
+          <TabsTrigger value="incidents" aria-label="Incidents" className="flex items-center gap-2">
             <OctagonAlert className="h-4 w-4" />
             <span className="hidden sm:inline">Incidents</span>
           </TabsTrigger>
-          <TabsTrigger value="subscribers" className="flex items-center gap-2">
+          <TabsTrigger value="subscribers" aria-label="Subscribers" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Subscribers</span>
           </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2">
+          <TabsTrigger value="settings" aria-label="Settings" className="flex items-center gap-2">
             <Settings2 className="h-4 w-4" />
             <span className="hidden sm:inline">Settings</span>
           </TabsTrigger>
@@ -328,15 +328,15 @@ export function StatusPageDetail({
 
         <TabsContent value="overview" className="space-y-4">
           {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-4 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+              <CardContent className="p-4 lg:p-6">
+                <div className="flex items-center gap-3 lg:gap-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-blue-100 dark:bg-blue-900/50">
                     <Layers className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold">
+                  <div className="min-w-0">
+                    <div className="text-xl font-bold lg:text-2xl">
                       {components.length}
                     </div>
                     <div className="text-sm text-muted-foreground">
@@ -347,13 +347,13 @@ export function StatusPageDetail({
               </CardContent>
             </Card>
             <Card className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+              <CardContent className="p-4 lg:p-6">
+                <div className="flex items-center gap-3 lg:gap-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-orange-100 dark:bg-orange-900/50">
                     <OctagonAlert className="h-6 w-6 text-orange-500 dark:text-orange-400" />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold">{stats?.activeIncidents ?? 0}</div>
+                  <div className="min-w-0">
+                    <div className="text-xl font-bold lg:text-2xl">{stats?.activeIncidents ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Active Incidents
                     </div>
@@ -362,13 +362,13 @@ export function StatusPageDetail({
               </CardContent>
             </Card>
             <Card className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/50">
+              <CardContent className="p-4 lg:p-6">
+                <div className="flex items-center gap-3 lg:gap-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-green-100 dark:bg-green-900/50">
                     <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold">{stats?.subscribers ?? 0}</div>
+                  <div className="min-w-0">
+                    <div className="text-xl font-bold lg:text-2xl">{stats?.subscribers ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Subscribers
                     </div>
@@ -377,9 +377,9 @@ export function StatusPageDetail({
               </CardContent>
             </Card>
             <Card className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`flex items-center justify-center w-12 h-12 rounded-lg ${
+              <CardContent className="p-4 lg:p-6">
+                <div className="flex items-center gap-3 lg:gap-4">
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 ${
                     (stats?.failedMonitors ?? 0) > 0
                       ? "bg-red-100 dark:bg-red-900/50"
                       : "bg-gray-100 dark:bg-gray-800/50"
@@ -390,8 +390,8 @@ export function StatusPageDetail({
                         : "text-gray-400 dark:text-gray-500"
                     }`} />
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold">{stats?.failedMonitors ?? 0}</div>
+                  <div className="min-w-0">
+                    <div className="text-xl font-bold lg:text-2xl">{stats?.failedMonitors ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
                       Failed Monitors
                     </div>
@@ -403,7 +403,7 @@ export function StatusPageDetail({
 
           {/* Linked Monitors Section */}
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 lg:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Activity className="h-5 w-5 text-muted-foreground" />
@@ -448,29 +448,31 @@ export function StatusPageDetail({
                   </p>
                 </div>
               ) : (
-                <DataTable
-                  columns={statusPageColumns}
-                  data={(() => {
-                    // Collect all monitors from all components
-                    const allMonitors = components.flatMap((c) =>
-                      c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
-                    );
+                <div className="overflow-x-auto">
+                  <DataTable
+                    columns={statusPageColumns}
+                    data={(() => {
+                      // Collect all monitors from all components
+                      const allMonitors = components.flatMap((c) =>
+                        c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
+                      );
 
-                    // Filter out duplicate monitors by ID
-                    const uniqueMonitors = allMonitors.filter(
-                      (monitor, index, self) =>
-                        index === self.findIndex((m) => m.id === monitor.id)
-                    );
+                      // Filter out duplicate monitors by ID
+                      const uniqueMonitors = allMonitors.filter(
+                        (monitor, index, self) =>
+                          index === self.findIndex((m) => m.id === monitor.id)
+                      );
 
-                    return uniqueMonitors;
-                  })()}
-                  isLoading={false}
-                  onRowClick={(row) =>
-                    router.push(`/monitors/${row.original.id}`)
-                  }
-                  hideToolbar={true}
-                  pageSize={5}
-                />
+                      return uniqueMonitors;
+                    })()}
+                    isLoading={false}
+                    onRowClick={(row) =>
+                      router.push(`/monitors/${row.original.id}`)
+                    }
+                    hideToolbar={true}
+                    pageSize={5}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>

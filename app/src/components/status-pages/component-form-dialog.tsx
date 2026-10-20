@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -21,7 +22,22 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, X, Search } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { InfoHint, InfoHintText } from "@/components/status-pages/info-hint";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown, Loader2, X } from "lucide-react";
 import {
   createComponent,
   type CreateComponentData,
@@ -109,26 +125,57 @@ type ComponentFormData = z.infer<typeof componentFormSchema>;
 const statusOptions: {
   value: ComponentStatus;
   label: string;
-  color: string;
+  dotClassName: string;
 }[] = [
-  { value: "operational", label: "Operational", color: "text-green-600" },
+  {
+    value: "operational",
+    label: "Operational",
+    dotClassName: "bg-green-500",
+  },
   {
     value: "degraded_performance",
-    label: "Degraded Performance",
-    color: "text-yellow-600",
+    label: "Degraded performance",
+    dotClassName: "bg-yellow-500",
   },
   {
     value: "partial_outage",
-    label: "Partial Outage",
-    color: "text-orange-600",
+    label: "Partial outage",
+    dotClassName: "bg-orange-500",
   },
-  { value: "major_outage", label: "Major Outage", color: "text-red-600" },
+  {
+    value: "major_outage",
+    label: "Major outage",
+    dotClassName: "bg-red-500",
+  },
   {
     value: "under_maintenance",
-    label: "Under Maintenance",
-    color: "text-blue-600",
+    label: "Under maintenance",
+    dotClassName: "bg-blue-500",
   },
 ];
+
+const aggregationOptions = [
+  {
+    value: "worst_case",
+    label: "Worst monitor",
+    description: "A single failing monitor decides the component status.",
+  },
+  {
+    value: "best_case",
+    label: "Best monitor",
+    description: "Only fails when every linked monitor fails.",
+  },
+  {
+    value: "majority_vote",
+    label: "Majority vote",
+    description: "Follows the status most monitors report.",
+  },
+  {
+    value: "weighted_average",
+    label: "Weighted average",
+    description: "Combines monitor statuses using per-monitor weights.",
+  },
+] as const;
 
 export function ComponentFormDialog({
   open,
@@ -139,9 +186,7 @@ export function ComponentFormDialog({
   onSuccess,
 }: ComponentFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [monitorSearchTerm, setMonitorSearchTerm] = useState("");
-  const [isMonitorDropdownOpen, setIsMonitorDropdownOpen] = useState(false);
-  const monitorDropdownRef = useRef<HTMLDivElement>(null);
+  const [isMonitorPickerOpen, setIsMonitorPickerOpen] = useState(false);
 
   const {
     register,
@@ -169,6 +214,10 @@ export function ComponentFormDialog({
   });
 
   const monitorIds = watch("monitorIds");
+  const monitorWeights = watch("monitorWeights");
+  const aggregationMethod = watch("aggregationMethod");
+  const showcase = watch("showcase");
+
   const [services, setServices] = useState<Array<{ id: string; name: string }>>(
     [],
   );
@@ -201,36 +250,35 @@ export function ComponentFormDialog({
         autoCreateIncidents: component?.autoCreateIncidents ?? false,
         serviceId: component?.serviceId ?? "",
       });
-      setMonitorSearchTerm("");
-      setIsMonitorDropdownOpen(false);
+      setIsMonitorPickerOpen(false);
     }
   }, [open, component, reset]);
 
-  // Click outside handler for dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        monitorDropdownRef.current &&
-        !monitorDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsMonitorDropdownOpen(false);
-      }
-    };
+  const toggleMonitor = (monitorId: string) => {
+    if (monitorIds.includes(monitorId)) {
+      setValue(
+        "monitorIds",
+        monitorIds.filter((id) => id !== monitorId),
+        { shouldDirty: true },
+      );
+      return;
+    }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const filteredMonitors = monitors.filter(
-    (monitor) =>
-      monitor.name.toLowerCase().includes(monitorSearchTerm.toLowerCase()) ||
-      monitor.type.toLowerCase().includes(monitorSearchTerm.toLowerCase()),
-  );
+    setValue("monitorIds", [...monitorIds, monitorId], { shouldDirty: true });
+    setValue(`monitorWeights.${monitorId}`, monitorWeights?.[monitorId] ?? 1, {
+      shouldDirty: true,
+    });
+  };
 
   const onSubmit = async (data: ComponentFormData) => {
     setIsSubmitting(true);
 
     try {
+      // Degraded-only visibility has no effect while the component is hidden.
+      const onlyShowIfDegraded = data.showcase
+        ? data.onlyShowIfDegraded
+        : false;
+
       if (component) {
         const updateData: UpdateComponentData = {
           id: component.id,
@@ -241,7 +289,7 @@ export function ComponentFormDialog({
           monitorIds: data.monitorIds,
           monitorWeights: data.monitorWeights,
           showcase: data.showcase,
-          onlyShowIfDegraded: data.onlyShowIfDegraded,
+          onlyShowIfDegraded,
           aggregationMethod: data.aggregationMethod,
           failureThreshold: data.failureThreshold,
           autoCreateIncidents: data.autoCreateIncidents,
@@ -268,7 +316,7 @@ export function ComponentFormDialog({
           monitorIds: data.monitorIds,
           monitorWeights: data.monitorWeights,
           showcase: data.showcase,
-          onlyShowIfDegraded: data.onlyShowIfDegraded,
+          onlyShowIfDegraded,
           position: 0,
           aggregationMethod: data.aggregationMethod,
           failureThreshold: data.failureThreshold,
@@ -298,290 +346,493 @@ export function ComponentFormDialog({
     }
   };
 
+  const linkedService = services.find(
+    (service) => service.id === watch("serviceId"),
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>
             {component ? "Edit Component" : "Add Component"}
           </DialogTitle>
           <DialogDescription>
             {component
-              ? "Update component details"
-              : "Track the health of a service or feature"}
+              ? "Update what visitors see and how health is calculated."
+              : "Track the health of a service or feature on your status page."}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              placeholder="API Server"
-              {...register("name")}
-              disabled={isSubmitting}
-            />
-            {errors.name && (
-              <p className="text-xs text-red-500">{errors.name.message}</p>
-            )}
-          </div>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            {/* Basics */}
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold">Basics</h3>
+                <p className="text-xs text-muted-foreground">
+                  What visitors see in the component list.
+                </p>
+              </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              placeholder="RESTful API for client applications"
-              {...register("description")}
-              rows={2}
-              disabled={isSubmitting}
-            />
-            {errors.description && (
-              <p className="text-xs text-red-500">
-                {errors.description.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Status *</Label>
-            <Controller
-              control={control}
-              name="status"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <span className={option.color}>{option.label}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Linked Monitors</Label>
-            <div ref={monitorDropdownRef} className="relative">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Name *</Label>
                 <Input
-                  placeholder="Search monitors..."
-                  value={monitorSearchTerm}
-                  onChange={(e) => {
-                    setMonitorSearchTerm(e.target.value);
-                    setIsMonitorDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsMonitorDropdownOpen(true)}
-                  className="pl-8 h-9 text-sm"
+                  id="name"
+                  placeholder="API Server"
+                  {...register("name")}
                   disabled={isSubmitting}
                 />
+                {errors.name && (
+                  <p className="text-xs text-red-500">{errors.name.message}</p>
+                )}
               </div>
 
-              {isMonitorDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                  {monitors.length === 0 ? (
-                    <div className="p-2 text-xs text-muted-foreground">
-                      No monitors available
-                    </div>
-                  ) : filteredMonitors.length === 0 ? (
-                    <div className="p-2 text-xs text-muted-foreground">
-                      No matches found
-                    </div>
-                  ) : (
-                    <div className="p-1">
-                      {filteredMonitors.map((monitor) => (
-                        <div
-                          key={monitor.id}
-                          className="flex items-center p-2 hover:bg-accent rounded cursor-pointer text-sm"
-                          onClick={() => {
-                            if (!monitorIds.includes(monitor.id)) {
-                              setValue("monitorIds", [
-                                ...monitorIds,
-                                monitor.id,
-                              ]);
-                            }
-                            setMonitorSearchTerm("");
-                            setIsMonitorDropdownOpen(false);
-                          }}
-                        >
-                          <Checkbox
-                            checked={monitorIds.includes(monitor.id)}
-                            className="mr-2"
-                            disabled={isSubmitting}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
-                              {monitor.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {monitor.type}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="RESTful API for client applications"
+                  {...register("description")}
+                  rows={2}
+                  disabled={isSubmitting}
+                  className="resize-none"
+                />
+                {errors.description && (
+                  <p className="text-xs text-red-500">
+                    {errors.description.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5 sm:max-w-[50%]">
+                <Label htmlFor="component-status">Status *</Label>
+                <Controller
+                  control={control}
+                  name="status"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="component-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "h-2 w-2 rounded-full",
+                                  option.dotClassName,
+                                )}
+                              />
+                              {option.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {monitorIds.length > 0
+                    ? "Linked monitors recalculate this automatically."
+                    : "Manual status until a monitor is linked."}
+                </p>
+              </div>
+            </section>
+
+            {/* Monitors */}
+            <section className="space-y-3 border-t pt-5">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Monitors</h3>
+                <InfoHint label="Monitor linking">
+                  <InfoHintText>
+                    Linked monitors drive component health. Components without
+                    monitors keep the status you set manually.
+                  </InfoHintText>
+                </InfoHint>
+              </div>
+
+              <Popover
+                modal
+                open={isMonitorPickerOpen}
+                onOpenChange={setIsMonitorPickerOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isMonitorPickerOpen}
+                    className="w-full justify-between font-normal"
+                    disabled={isSubmitting}
+                  >
+                    <span className="truncate text-muted-foreground">
+                      {monitorIds.length > 0
+                        ? `${monitorIds.length} monitor${
+                            monitorIds.length === 1 ? "" : "s"
+                          } linked`
+                        : "Link monitors (optional)"}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[var(--radix-popover-trigger-width)] p-0"
+                  align="start"
+                >
+                  <Command>
+                    <CommandInput placeholder="Search monitors..." />
+                    <CommandList>
+                      <CommandEmpty>
+                        {monitors.length === 0
+                          ? "No monitors available in this project."
+                          : "No monitors match your search."}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {monitors.map((monitor) => {
+                          const isSelected = monitorIds.includes(monitor.id);
+                          return (
+                            <CommandItem
+                              key={monitor.id}
+                              value={`${monitor.name} ${monitor.type} ${monitor.id}`}
+                              onSelect={() => toggleMonitor(monitor.id)}
+                            >
+                              <span
+                                className={cn(
+                                  "mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border",
+                                  isSelected
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "opacity-50",
+                                )}
+                              >
+                                {isSelected && <Check className="h-3 w-3" />}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm">
+                                  {monitor.name}
+                                </span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {monitor.type}
+                                </span>
+                              </span>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {monitorIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {monitorIds.map((monitorId) => {
+                    const monitor = monitors.find((m) => m.id === monitorId);
+                    return monitor ? (
+                      <Badge
+                        key={monitorId}
+                        variant="secondary"
+                        className="gap-1 pr-1 font-normal"
+                      >
+                        {monitor.name}
+                        <button
+                          type="button"
+                          onClick={() => toggleMonitor(monitorId)}
+                          aria-label={`Remove ${monitor.name}`}
+                          className="rounded-sm p-0.5 hover:bg-background/60 hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ) : null;
+                  })}
                 </div>
               )}
-            </div>
 
-            {monitorIds.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {monitorIds.map((monitorId) => {
-                  const monitor = monitors.find((m) => m.id === monitorId);
-                  return monitor ? (
-                    <Badge
-                      key={monitorId}
-                      variant="secondary"
-                      className="text-xs pr-1"
-                    >
-                      {monitor.name}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setValue(
-                            "monitorIds",
-                            monitorIds.filter((id) => id !== monitorId),
-                          )
+              {monitorIds.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No monitors linked. Status stays manual.
+                </p>
+              ) : (
+                <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="component-aggregation">
+                          Aggregation
+                        </Label>
+                        <InfoHint label="Status aggregation">
+                          <InfoHintText>
+                            How monitor states combine into one component
+                            status.
+                          </InfoHintText>
+                        </InfoHint>
+                      </div>
+                      <Controller
+                        control={control}
+                        name="aggregationMethod"
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={isSubmitting}
+                          >
+                            <SelectTrigger id="component-aggregation">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {aggregationOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {
+                          aggregationOptions.find(
+                            (option) => option.value === aggregationMethod,
+                          )?.description
                         }
-                        className="ml-1 hover:text-destructive p-0.5"
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="component-threshold">
+                          Failing monitors required
+                        </Label>
+                        <InfoHint label="Failure threshold">
+                          <InfoHintText>
+                            Counts failing monitors, not consecutive checks. At
+                            or above this number, the aggregation above decides
+                            the component status. Monitor alert thresholds are
+                            configured on each monitor.
+                          </InfoHintText>
+                        </InfoHint>
+                      </div>
+                      <Input
+                        id="component-threshold"
+                        type="number"
+                        min={1}
+                        max={100}
+                        {...register("failureThreshold", {
+                          valueAsNumber: true,
+                        })}
+                        disabled={isSubmitting}
+                        aria-invalid={Boolean(errors.failureThreshold)}
+                        aria-describedby={
+                          errors.failureThreshold
+                            ? "component-threshold-error"
+                            : undefined
+                        }
+                      />
+                      {errors.failureThreshold && (
+                        <p
+                          id="component-threshold-error"
+                          className="text-xs text-red-500"
+                        >
+                          Enter a whole number from 1 to 100.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {aggregationMethod === "weighted_average" && (
+                    <div className="space-y-3 border-t pt-3">
+                      <p className="text-xs text-muted-foreground">
+                        Weight each monitor from 1 to 100.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {monitorIds.map((monitorId) => {
+                          const monitor = monitors.find(
+                            (m) => m.id === monitorId,
+                          );
+                          if (!monitor) return null;
+                          return (
+                            <div key={monitorId} className="space-y-1">
+                              <Label
+                                htmlFor={`monitor-weight-${monitorId}`}
+                                className="text-xs font-normal text-muted-foreground"
+                              >
+                                {monitor.name}
+                              </Label>
+                              <Controller
+                                control={control}
+                                name={`monitorWeights.${monitorId}`}
+                                render={({ field }) => (
+                                  <MonitorWeightInput
+                                    id={`monitor-weight-${monitorId}`}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
+                                    disabled={isSubmitting}
+                                  />
+                                )}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-start gap-3 border-t pt-3">
+                    <Checkbox
+                      id="component-auto-incidents"
+                      checked={watch("autoCreateIncidents")}
+                      onCheckedChange={(value) =>
+                        setValue("autoCreateIncidents", value === true, {
+                          shouldDirty: true,
+                        })
+                      }
+                      disabled={isSubmitting}
+                      className="mt-0.5"
+                    />
+                    <div className="space-y-0.5">
+                      <Label
+                        htmlFor="component-auto-incidents"
+                        className="font-medium"
                       >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </Badge>
-                  ) : null;
-                })}
+                        Publish outage and recovery incidents automatically
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Creates a public incident when this component degrades.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Visibility */}
+            <section className="space-y-4 border-t pt-5">
+              <div>
+                <h3 className="text-sm font-semibold">Visibility</h3>
+                <p className="text-xs text-muted-foreground">
+                  Control where this component appears.
+                </p>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Link monitors to track component health (optional)
-            </p>
+
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="component-showcase"
+                    checked={showcase}
+                    onCheckedChange={(value) => {
+                      const nextValue = value === true;
+                      setValue("showcase", nextValue, { shouldDirty: true });
+                      if (!nextValue) {
+                        setValue("onlyShowIfDegraded", false, {
+                          shouldDirty: true,
+                        });
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="component-showcase" className="font-medium">
+                      Show on the public status page
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Hidden components leave the public component list but keep
+                      tracking health in the dashboard.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "flex items-start gap-3",
+                    !showcase && "opacity-50",
+                  )}
+                >
+                  <Checkbox
+                    id="component-degraded-only"
+                    checked={watch("onlyShowIfDegraded")}
+                    onCheckedChange={(value) =>
+                      setValue("onlyShowIfDegraded", value === true, {
+                        shouldDirty: true,
+                      })
+                    }
+                    disabled={isSubmitting || !showcase}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="component-degraded-only"
+                      className="font-medium"
+                    >
+                      Show only when degraded
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Keeps the list quiet while everything is operational.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="component-service">
+                    Linked internal service
+                  </Label>
+                  <InfoHint label="Service linking">
+                    <InfoHintText>
+                      Services hold internal ownership and dependencies. Linking
+                      one does not publish any service details.
+                    </InfoHintText>
+                  </InfoHint>
+                </div>
+                <Controller
+                  control={control}
+                  name="serviceId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || "none"}
+                      onValueChange={(value) =>
+                        field.onChange(value === "none" ? "" : value)
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="component-service">
+                        <SelectValue placeholder="No linked service" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No linked service</SelectItem>
+                        {services.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {linkedService && (
+                  <p className="text-xs text-muted-foreground">
+                    Linked to {linkedService.name}. Internal only.
+                  </p>
+                )}
+              </div>
+            </section>
           </div>
 
-          <fieldset className="space-y-3 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">
-              Public presentation
-            </legend>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="component-showcase"
-                checked={watch("showcase")}
-                onCheckedChange={(value) =>
-                  setValue("showcase", value === true)
-                }
-              />
-              <Label htmlFor="component-showcase">
-                Show on the public status page
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="component-degraded-only"
-                checked={watch("onlyShowIfDegraded")}
-                onCheckedChange={(value) =>
-                  setValue("onlyShowIfDegraded", value === true)
-                }
-              />
-              <Label htmlFor="component-degraded-only">
-                Show in the list only when degraded
-              </Label>
-            </div>
-            <Label htmlFor="component-service">Linked service</Label>
-            <select
-              id="component-service"
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-              {...register("serviceId")}
-            >
-              <option value="">No linked service</option>
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              Services hold internal ownership and dependencies. This component
-              controls what visitors see. Linking does not publish internal
-              service details.
-            </p>
-          </fieldset>
-          <fieldset className="space-y-3 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">
-              Monitor-driven health
-            </legend>
-            <p className="text-xs text-muted-foreground">
-              Linked monitors update health automatically. Components without
-              monitors keep their manual status. Uptime uses successful checks,
-              independently of incident history.
-            </p>
-            <Label htmlFor="component-aggregation">Aggregation</Label>
-            <select
-              id="component-aggregation"
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-              {...register("aggregationMethod")}
-            >
-              <option value="worst_case">Worst monitor</option>
-              <option value="best_case">Best monitor</option>
-              <option value="majority_vote">Majority vote</option>
-              <option value="weighted_average">Weighted vote</option>
-            </select>
-            {watch("aggregationMethod") === "weighted_average" &&
-              monitorIds.map((id) => (
-                <div key={id} className="space-y-1">
-                  <Label htmlFor={`monitor-weight-${id}`}>
-                    {monitors.find((monitor) => monitor.id === id)?.name ??
-                      "Monitor"}{" "}
-                    weight
-                  </Label>
-                  <Input
-                    id={`monitor-weight-${id}`}
-                    type="number"
-                    min={1}
-                    max={100}
-                    defaultValue={1}
-                    {...register(`monitorWeights.${id}`, {
-                      valueAsNumber: true,
-                    })}
-                  />
-                </div>
-              ))}
-            <Label htmlFor="component-threshold">
-              Failing monitors required
-            </Label>
-            <Input
-              id="component-threshold"
-              type="number"
-              min={1}
-              max={100}
-              {...register("failureThreshold", { valueAsNumber: true })}
-            />
-            <p className="text-xs text-muted-foreground">
-              This counts failing monitors, not consecutive checks. Monitor
-              alert thresholds are configured on each monitor.
-            </p>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="component-auto-incidents"
-                checked={watch("autoCreateIncidents")}
-                onCheckedChange={(value) =>
-                  setValue("autoCreateIncidents", value === true)
-                }
-              />
-              <Label htmlFor="component-auto-incidents">
-                Automatically publish outage and recovery incidents
-              </Label>
-            </div>
-          </fieldset>
-          <div className="flex gap-2 justify-end pt-2">
+          <DialogFooter className="border-t bg-muted/30 px-6 py-3">
             <Button
               type="button"
               variant="outline"
@@ -597,9 +848,57 @@ export function ComponentFormDialog({
               )}
               {component ? "Update" : "Add"} Component
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MonitorWeightInput({
+  id,
+  value,
+  onChange,
+  onBlur,
+  disabled,
+}: {
+  id: string;
+  value: number | undefined;
+  onChange: (value: number) => void;
+  onBlur: () => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(String(value ?? 1));
+
+  return (
+    <Input
+      id={id}
+      type="number"
+      min={1}
+      max={100}
+      value={draft}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        const next = event.target.valueAsNumber;
+        if (!Number.isNaN(next) && next >= 1 && next <= 100) {
+          onChange(next);
+        }
+      }}
+      onBlur={() => {
+        const next = Math.trunc(Number(draft));
+        if (draft.trim() === "" || Number.isNaN(next)) {
+          setDraft(String(value ?? 1));
+        } else if (next < 1) {
+          setDraft("1");
+          onChange(1);
+        } else if (next > 100) {
+          setDraft("100");
+          onChange(100);
+        }
+        onBlur();
+      }}
+      disabled={disabled}
+    />
   );
 }
