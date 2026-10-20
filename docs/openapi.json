@@ -5539,7 +5539,7 @@
       "post": {
         "operationId": "inviteOrganizationMember",
         "summary": "Invite a member",
-        "description": "Create a pending invitation and send email. Rate limited per user (`INVITE_RATE_LIMIT_MAX`, default 10/hour). Requires org_admin or org_owner. Only org_owner can invite org_admin. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
+        "description": "Create a pending invitation and send email. Counts accepted invitations per user (`INVITE_RATE_LIMIT_MAX`, default 10/hour). Authorization, invalid or duplicate requests, and rejected inserts do not consume quota. Requires org_admin or org_owner. Only org_owner can invite org_admin. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
