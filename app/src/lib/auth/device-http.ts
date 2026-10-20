@@ -86,11 +86,8 @@ export function deviceBaseUrl(request: NextRequest): string {
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.BETTER_AUTH_URL;
   try {
-    if (configured) {
-      // Keep a self-hosted path prefix (e.g. https://host/supercheck) but never query/hash.
-      const url = new URL(configured);
-      return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-    }
+    // Supercheck is served from the origin root (no basePath), so only the origin is meaningful.
+    if (configured) return new URL(configured).origin;
   } catch {
     // fall through
   }

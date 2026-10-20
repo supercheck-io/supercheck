@@ -29,9 +29,9 @@ describe("deviceBaseUrl", () => {
     process.env.APP_URL = "https://configured.example.com";
     expect(deviceBaseUrl(post("a=1", { host: "evil.example" }))).toBe("https://configured.example.com");
   });
-  it("keeps a self-hosted path prefix but drops trailing slashes, query and hash", () => {
+  it("uses only the origin: path, query and hash in APP_URL are ignored", () => {
     process.env.APP_URL = "https://host.example.com/supercheck/?x=1#h";
-    expect(deviceBaseUrl(post("a=1", {}))).toBe("https://host.example.com/supercheck");
+    expect(deviceBaseUrl(post("a=1", {}))).toBe("https://host.example.com");
   });
 });
 
