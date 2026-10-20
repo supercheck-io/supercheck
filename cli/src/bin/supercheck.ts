@@ -2,6 +2,7 @@ import { agentCommand } from '../commands/agent.js'
 import { discoverCommand } from '../commands/discover.js'
 import { onboardCommand } from '../commands/onboard.js'
 import { planCommand } from '../commands/plan.js'
+import { linkCommand } from '../commands/link.js'
 import { ciCommand } from '../commands/ci.js'
 import { classifyError } from '../utils/error-codes.js'
 import { assertDeclaredOrigin, verifyContext } from '../utils/managed.js'
@@ -93,7 +94,7 @@ const program = new Command()
     // Identify them by their top-level command, not by a (possibly coincidental) subcommand name.
     let topLevel: Command = actionCommand
     while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
-    if (['discover', 'onboard', 'plan', 'ci', 'agent'].includes(topLevel.name())) return
+    if (['discover', 'onboard', 'plan', 'ci', 'agent', 'link'].includes(topLevel.name())) return
 
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
@@ -139,6 +140,7 @@ program.addCommand(agentCommand)
 program.addCommand(discoverCommand)
 program.addCommand(onboardCommand)
 program.addCommand(planCommand)
+program.addCommand(linkCommand)
 program.addCommand(ciCommand)
 program.addCommand(loginCommand)
 program.addCommand(logoutCommand)

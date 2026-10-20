@@ -7,6 +7,8 @@ import { deriveOnboarding, countStateResources } from '../onboard.js'
 import { githubWorkflow } from '../ci.js'
 import { installAgentSkill } from '../agent.js'
 import { classifyError } from '../../utils/error-codes.js'
+import { planLink, readConfigIdentity } from '../../utils/link-config.js'
+import { failedVerifications } from '../deploy.js'
 import { ApiRequestError } from '../../utils/errors.js'
 
 let dir: string
@@ -156,5 +158,61 @@ describe('classifyError', () => {
     expect(classifyError(api(503))).toMatchObject({ code: 'SERVICE_UNAVAILABLE', retryable: true })
     expect(classifyError(api(400))?.code).toBe('VALIDATION_FAILED')
     expect(classifyError(new Error('boom'))).toBeUndefined()
+  })
+})
+
+describe('planLink', () => {
+  const template = (org: string, project: string, url = 'https://app.supercheck.io') => `export default defineConfig({
+  project: {
+    organization: ${JSON.stringify(org)},
+    project: ${JSON.stringify(project)},
+  },
+  api: {
+    baseUrl: process.env.SUPERCHECK_URL ?? ${JSON.stringify(url)},
+  },
+})
+`
+  const target = { organization: { id: 'org-1', slug: 'acme' }, project: { id: 'proj-1', slug: 'web' }, apiUrl: 'http://localhost:3010' }
+
+  it('fills init placeholders and the default API URL, touching nothing else', () => {
+    const plan = planLink(template('my-org', 'my-project'), target)
+    expect(plan.changes.map((c) => c.field)).toEqual(['organization', 'project', 'api.baseUrl'])
+    expect(readConfigIdentity(plan.text)).toEqual({ organization: 'org-1', project: 'proj-1' })
+    expect(plan.text).toContain('process.env.SUPERCHECK_URL ?? "http://localhost:3010"')
+    expect(plan.text.replace(/org-1|proj-1|http:\/\/localhost:3010/g, '').length).toBe(template('my-org', 'my-project').replace(/my-org|my-project|https:\/\/app\.supercheck\.io/g, '').length)
+  })
+  it('is a no-op when already linked (by id or slug)', () => {
+    expect(planLink(template('org-1', 'proj-1', 'http://localhost:3010'), target).changes).toEqual([])
+    expect(planLink(template('acme', 'web', 'http://localhost:3010'), target).changes).toEqual([])
+  })
+  it('refuses to retarget a different real project unless forced', () => {
+    const plan = planLink(template('other-org', 'other-proj'), target)
+    expect(plan.conflicts.map((c) => c.field)).toEqual(['organization', 'project'])
+    expect(plan.text).toBe(template('other-org', 'other-proj'))
+    expect(planLink(template('other-org', 'other-proj'), target, true).changes).toHaveLength(3)
+  })
+  it('does not edit configs it cannot recognise, or rewrite a custom API URL expression', () => {
+    expect(planLink('export default {}', target).unrecognized).toBe(true)
+    const custom = template('my-org', 'my-project').replace('process.env.SUPERCHECK_URL ?? "https://app.supercheck.io"', '"https://custom.example.com"')
+    expect(planLink(custom, target).changes.map((c) => c.field)).toEqual(['organization', 'project'])
+  })
+})
+
+describe('onboarding link state', () => {
+  const base = { configExists: true, testCount: 1, authenticated: true as boolean | 'unknown', planState: 'active' as const, deployedResources: 0, hasCi: false }
+  it('asks to link before anything cloud-related, and flags conflicts for a human', () => {
+    expect(deriveOnboarding({ ...base, linkState: 'needs_link' })).toMatchObject({ state: 'needs_link', next: { command: 'supercheck link' } })
+    expect(deriveOnboarding({ ...base, linkState: 'conflict' }).next.requiresHuman).toBe(true)
+    expect(deriveOnboarding({ ...base, linkState: 'ok' }).state).toBe('ready_to_deploy')
+  })
+})
+
+describe('deploy --verify outcome', () => {
+  it('does not fail a deploy because k6 or over-cap tests were intentionally skipped', () => {
+    expect(failedVerifications([{ status: 'passed' }, { status: 'skipped' }])).toEqual([])
+    expect(failedVerifications(undefined)).toEqual([])
+  })
+  it('fails on failed or errored runs', () => {
+    expect(failedVerifications([{ status: 'passed' }, { status: 'failed' }, { status: 'error' }, { status: 'skipped' }])).toHaveLength(2)
   })
 })

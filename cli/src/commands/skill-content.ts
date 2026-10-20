@@ -12,7 +12,7 @@ Run \`supercheck onboard --json\` at any point: it is read-only and tells you th
 3. Write the test under _supercheck_/playwright/*.pw.ts or _supercheck_/k6/*.k6.ts (see \`supercheck skills authoring\`).
 4. Run exactly that test: \`supercheck test run --offline --file <path> --json\`. A zero-test result is not a pass. Never weaken assertions, add skips, or raise load to make it pass.
 5. Authenticate: \`supercheck login --json\`. It prints a URL and a code and returns immediately. Show them to the user, ask them to approve in the browser, then run the same command again to finish. Never print or store a token in the repository.
-6. Check \`supercheck whoami --json\` and \`supercheck plan --json\`. Cloud deploy needs an active plan; you cannot buy one: ask the user to open the billing page.
+6. If \`onboard\` reports needs_link, run \`supercheck link\`: it only edits the organization, project and default API URL lines of supercheck.config.ts and refuses to retarget a config that points at a different project unless the user approves --force. Then check \`supercheck whoami --json\` and \`supercheck plan --json\`. Cloud deploy needs an active plan; you cannot buy one: ask the user to open the billing page.
 7. Preview: \`supercheck deploy --dry-run --json\`. Apply only what the user already authorized: \`supercheck deploy --force --json --verify\` (--verify runs each created or updated browser/API test once and waits). Never add --delete.
 8. If a run times out, keep the runId and use \`supercheck run wait <runId>\`; do not trigger again.
 9. Offer CI: \`supercheck ci init --github\` (see \`supercheck skills ci\`).`,
@@ -51,7 +51,7 @@ Supercheck runs Playwright and k6 tests locally and in the cloud. The CLI is the
 1. \`supercheck onboard --json\` - read-only status and the single next command. Start here.
 2. \`supercheck discover --json\` - facts about this repo (framework, tests, routes, CI).
 3. Write ONE focused test, then \`supercheck test run --offline --file <path> --json\`.
-4. \`supercheck login --json\` - prints a URL and code; a person approves in the browser; run it again to finish.
+4. \`supercheck login --json\` - prints a URL and code; a person approves in the browser; run it again to finish. Then \`supercheck link\` to point the config at that project.
 5. \`supercheck deploy --dry-run --json\`, then (only if authorized) \`supercheck deploy --force --json --verify\`.
 6. \`supercheck ci init --github\` when the user wants CI.
 

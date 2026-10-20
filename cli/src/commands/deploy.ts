@@ -146,6 +146,10 @@ async function applyChange(
 }
 
 const VERIFY_LIMIT = 5
+/** Skipped tests (k6, over the cap) were deliberately not run, so they never fail a deploy; errors and failed runs do. */
+export function failedVerifications(verification: Record<string, unknown>[] | undefined): Record<string, unknown>[] {
+  return (verification ?? []).filter((v) => v.status !== 'passed' && v.status !== 'skipped')
+}
 async function verifyDeployedTests(
   client: ReturnType<typeof createAuthenticatedClient>,
   changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> } }[],
@@ -335,7 +339,7 @@ export const deployCommand = new Command('deploy')
         verification = await verifyDeployedTests(client, ordered, results, parseIntStrict(options.verifyTimeout ?? '300', '--verify-timeout', { min: 1 }) * 1000)
       }
       emit({ status: failed ? 'partial' : 'success', results, succeeded, failed, skipped: ordered.length - results.length, statePath: state.path, ...(verification ? { verification } : {}) })
-      const unverified = verification?.filter((v) => v.status !== 'passed') ?? []
+      const unverified = failedVerifications(verification)
       if (unverified.length > 0 && failed === 0) {
         throw new CLIError(`Deploy succeeded but ${unverified.length} cloud verification run(s) did not pass. Inspect the run IDs in the output; do not re-trigger blindly.`, ExitCode.GeneralError, { verification })
       }

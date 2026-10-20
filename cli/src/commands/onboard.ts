@@ -8,10 +8,11 @@ import { ApiRequestError } from '../utils/errors.js'
 import { discoverRepository } from '../utils/discover.js'
 import { readPlan } from './plan.js'
 import { readSmallFile } from '../utils/safe-read.js'
+import { planLink } from '../utils/link-config.js'
 
 const DEFAULT_API_URL = 'https://app.supercheck.io'
 
-export type OnboardState = 'needs_init' | 'needs_tests' | 'needs_auth' | 'needs_plan' | 'ready_to_deploy' | 'deployed'
+export type OnboardState = 'needs_init' | 'needs_tests' | 'needs_auth' | 'needs_link' | 'needs_plan' | 'ready_to_deploy' | 'deployed'
 
 interface Next { action: string; command: string | null; why: string; requiresHuman?: boolean }
 
@@ -24,6 +25,8 @@ export function deriveOnboarding(facts: {
   testCount: number
   authenticated: boolean | 'unknown'
   planState: 'active' | 'inactive' | 'unknown' | null
+  /** Does supercheck.config.ts target the project you are logged in to? */
+  linkState?: 'ok' | 'needs_link' | 'conflict'
   deployedResources: number
   hasCi: boolean
 }): { state: OnboardState; next: Next; alsoConsider: Next[] } {
@@ -36,6 +39,12 @@ export function deriveOnboarding(facts: {
   }
   if (facts.authenticated !== true) {
     return { state: 'needs_auth', next: { action: 'login', command: 'supercheck login --json', why: facts.authenticated === 'unknown' ? 'Could not verify the stored credential (network); log in again or retry' : 'Prints a URL and code and returns immediately; a person approves in the browser, then run it again', requiresHuman: true }, alsoConsider: [localRun] }
+  }
+  if (facts.linkState === 'needs_link') {
+    return { state: 'needs_link', next: { action: 'link', command: 'supercheck link', why: 'supercheck.config.ts still has placeholder or default values; this points it at the project you are logged in to (edits only those lines)' }, alsoConsider: [localRun] }
+  }
+  if (facts.linkState === 'conflict') {
+    return { state: 'needs_link', next: { action: 'review_link', command: 'supercheck link --dry-run', why: 'supercheck.config.ts targets a different project than you are logged in to; confirm with the user before running `supercheck link --force`', requiresHuman: true }, alsoConsider: [localRun] }
   }
   if (facts.planState === 'inactive') {
     return { state: 'needs_plan', next: { action: 'choose_plan', command: 'supercheck plan --json', why: 'Cloud deploy needs an active plan; a person must choose one in the dashboard billing page', requiresHuman: true }, alsoConsider: [localRun] }
@@ -89,9 +98,19 @@ export const onboardCommand = new Command('onboard')
       try { planState = ((await readPlan(client!)).state as 'active' | 'inactive' | 'unknown') ?? 'unknown' } catch { planState = 'unknown' }
     }
 
+    let linkState: 'ok' | 'needs_link' | 'conflict' = 'ok'
+    const ctx = context as { organization?: { id?: string; slug?: string | null }; project?: { id?: string; slug?: string | null } } | null
+    if (authenticated === true && configExists && ctx?.organization?.id && ctx.project?.id) {
+      const configFile = facts.existingTests.supercheck.config
+      const text = configFile ? readSmallFile(resolve(cwd, configFile)) : null
+      if (text !== null) {
+        const plan = planLink(text, { organization: { id: ctx.organization.id, slug: ctx.organization.slug }, project: { id: ctx.project.id, slug: ctx.project.slug }, apiUrl: (getStoredBaseUrl() ?? DEFAULT_API_URL).replace(/\/+$/, '') })
+        linkState = plan.conflicts.length > 0 ? 'conflict' : plan.changes.length > 0 ? 'needs_link' : 'ok'
+      }
+    }
     const deployedResources = countStateResources(resolve(cwd, 'supercheck.state.json'))
     const hasCi = existsSync(resolve(cwd, '.github/workflows/supercheck.yml'))
-    const derived = deriveOnboarding({ configExists, testCount, authenticated, planState, deployedResources, hasCi })
+    const derived = deriveOnboarding({ configExists, testCount, authenticated, planState, linkState, deployedResources, hasCi })
 
     outputDetail({
       schemaVersion: '1.0',
