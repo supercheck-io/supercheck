@@ -107,6 +107,21 @@ export function setToken(token: string): void {
 }
 
 /**
+ * Persist a token and its API target in one atomic write, dropping any stale
+ * organization/project selection from a previous login.
+ */
+export function setCredentials(token: string, baseUrl: string): void {
+  if (!validateTokenFormat(token)) {
+    throw new AuthenticationError(
+      `Invalid token format. Token must start with one of: ${VALID_CLI_PREFIXES.join(', ')}`,
+    )
+  }
+  store.set({ token, baseUrl })
+  store.delete('organization')
+  store.delete('project')
+}
+
+/**
  * Remove stored credentials.
  */
 export function clearAuth(): void {
