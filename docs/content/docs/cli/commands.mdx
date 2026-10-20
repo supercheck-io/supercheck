@@ -133,7 +133,7 @@ When the server has browser login enabled, `supercheck login` starts a device-au
 
 ### `supercheck link`
 
-Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the placeholder `organization` and `project` values and the default API URL written by `supercheck init`, treating the file as text (it is never executed). If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; review it with `--dry-run`, and pass `--force` only after confirming the change.
+Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the `organization` and `project` values and the default API URL written by `supercheck init`, treating the file as text (it is never executed) and writing values as quoted strings. Identifiers returned by the server must be plain identifiers or nothing is written. If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; `--dry-run` shows that conflict without failing, and `--force` replaces the existing values, so use it only after confirming the change.
 
 ### `supercheck onboard`
 

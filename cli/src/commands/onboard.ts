@@ -9,6 +9,7 @@ import { discoverRepository } from '../utils/discover.js'
 import { readPlan } from './plan.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { planLink } from '../utils/link-config.js'
+import { isTokenSafeUrl, sanitizeApiUrl } from '../utils/api-url.js'
 
 const DEFAULT_API_URL = 'https://app.supercheck.io'
 
@@ -78,11 +79,14 @@ export const onboardCommand = new Command('onboard')
     const testCount = facts.existingTests.supercheck.playwright + facts.existingTests.supercheck.k6
 
     const token = getToken()
-    let authenticated: boolean | 'unknown' = false
-    let context: unknown = null
     // The token is only ever sent to the URL of the stored login (or an explicit real SUPERCHECK_URL),
     // never to a URL declared by repository files: this command loads neither .env nor config.
-    const client = token ? getApiClient({ baseUrl: getStoredBaseUrl() ?? DEFAULT_API_URL, token, timeout: 8000 }) : null
+    const loginUrl = sanitizeApiUrl(getStoredBaseUrl() ?? DEFAULT_API_URL)
+    const urlOk = loginUrl !== null && isTokenSafeUrl(loginUrl)
+    // A credential that exists but cannot be checked safely (insecure URL) is reported as unknown, never sent.
+    let authenticated: boolean | 'unknown' = token && !urlOk ? 'unknown' : false
+    let context: unknown = null
+    const client = token && urlOk ? getApiClient({ baseUrl: loginUrl, token, timeout: 8000 }) : null
     if (token && client) {
       try {
         const { data } = await client.get('/api/context')
@@ -104,7 +108,7 @@ export const onboardCommand = new Command('onboard')
       const configFile = facts.existingTests.supercheck.config
       const text = configFile ? readSmallFile(resolve(cwd, configFile)) : null
       if (text !== null) {
-        const plan = planLink(text, { organization: { id: ctx.organization.id, slug: ctx.organization.slug }, project: { id: ctx.project.id, slug: ctx.project.slug }, apiUrl: (getStoredBaseUrl() ?? DEFAULT_API_URL).replace(/\/+$/, '') })
+        const plan = planLink(text, { organization: { id: ctx.organization.id, slug: ctx.organization.slug }, project: { id: ctx.project.id, slug: ctx.project.slug }, apiUrl: loginUrl ?? DEFAULT_API_URL })
         linkState = plan.conflicts.length > 0 ? 'conflict' : plan.changes.length > 0 ? 'needs_link' : 'ok'
       }
     }
