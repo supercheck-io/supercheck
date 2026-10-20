@@ -493,7 +493,13 @@ export async function isImpersonatedSession(): Promise<boolean> {
     return Boolean(dbSession?.impersonatedBy);
   } catch (error) {
     // Fail closed, but leave a trace: callers show a generic refusal, so this is the only clue to a DB problem.
-    console.error("Could not determine impersonation state; refusing credential minting:", error);
+    // Log only the error's name and code: drizzle's message embeds the failed query's parameters, and here that
+    // parameter is the caller's live session token.
+    console.error(
+      "Could not determine impersonation state; refusing credential minting:",
+      (error as { name?: string })?.name ?? "Error",
+      (error as { code?: string })?.code ?? "",
+    );
     return true;
   }
 }
