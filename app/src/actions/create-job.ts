@@ -236,7 +236,7 @@ export async function createJob(data: CreateJobData) {
     }
   } catch (validationError) {
     if (validationError instanceof SubscriptionAccessDeniedError) {
-      return { success: false, message: validationError.message };
+      return { success: false, message: validationError.message, error: validationError.message };
     }
     console.error("Validation error:", validationError);
     return {

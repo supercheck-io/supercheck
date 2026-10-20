@@ -37,7 +37,7 @@ it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
     jest.mocked(subscriptionService[guard]).mockRejectedValue(
       new SubscriptionAccessDeniedError("Subscription required", "subscription_required"),
     );
-    expect(await createJob(input)).toEqual({ success: false, message: "Subscription required" });
+    expect(await createJob(input)).toEqual({ success: false, message: "Subscription required", error: "Subscription required" });
     expect(mockInsert).not.toHaveBeenCalled();
   },
 );
