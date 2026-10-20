@@ -51,6 +51,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   InfoHint,
+  InfoHintList,
   InfoHintText,
   InfoHintTitle,
 } from "@/components/status-pages/info-hint";
@@ -73,13 +74,11 @@ import {
   normalizeStatusPageSupportContact,
   statusPageSupportContactSchema,
 } from "@/lib/status-page-support";
-import {
-  getStatusPageCustomDomainTargetResolutionHint,
-  getStatusPageDomainOwnershipRecord,
-  STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE,
-} from "@/lib/status-page-domain-guidance";
+import { getStatusPageDomainOwnershipRecord } from "@/lib/status-page-domain-guidance";
 
 const CUSTOM_DOMAIN_EXAMPLE_HOSTNAME = "status.example.net";
+const DNS_RECORD_COUNT = 2;
+const codeClassName = "rounded bg-muted px-1 py-0.5 text-xs";
 
 type StatusPage = {
   id: string;
@@ -717,41 +716,60 @@ export function SettingsTab({
           <div className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Custom domain</CardTitle>
-            <InfoHint label="Domain setup details">
-              <InfoHintTitle>Custom domain setup</InfoHintTitle>
-              <InfoHintText>
-                Point a CNAME from your hostname to{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                  {effectiveStatusPageCnameTarget}
-                </code>
-                . The hostname can live in any DNS zone.
-              </InfoHintText>
-              <InfoHintText>
-                {getStatusPageCustomDomainTargetResolutionHint(
-                  effectiveStatusPageCnameTarget,
+            <InfoHint
+              label="Domain setup details"
+              side="bottom"
+              className="h-6 w-6"
+              contentClassName="w-[34rem]"
+            >
+              <InfoHintTitle>How custom domains work</InfoHintTitle>
+              <InfoHintList>
+                <li>
+                  Point a <strong>CNAME</strong> from a subdomain such as{" "}
+                  <code className={codeClassName}>
+                    {CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
+                  </code>{" "}
+                  to{" "}
+                  <code className={codeClassName}>
+                    {effectiveStatusPageCnameTarget}
+                  </code>
+                  . Apex domains are not supported.
+                </li>
+                <li>
+                  Add the <strong>TXT</strong> ownership record shown under DNS
+                  records, then select Verify DNS.
+                </li>
+                <li>
+                  Keep the records on <strong>DNS only</strong> (no proxy) while
+                  verifying, and use a CNAME only. Do not add A/AAAA records on
+                  the same hostname.
+                </li>
+                <li>
+                  Hostnames under{" "}
+                  <code className={codeClassName}>
+                    {effectiveStatusPageDomain}
+                  </code>{" "}
+                  are reserved for default page URLs.
+                </li>
+                {isSelfHosted ? (
+                  <>
+                    <li>
+                      The target{" "}
+                      <code className={codeClassName}>
+                        {effectiveStatusPageCnameTarget}
+                      </code>{" "}
+                      must already resolve publicly, for example through an
+                      existing A/AAAA or wildcard record.
+                    </li>
+                    <li>
+                      Routing is automatic after verification. Your ingress
+                      still needs a TLS certificate for the custom hostname.
+                    </li>
+                  </>
+                ) : (
+                  <li>HTTPS is handled for you once the domain is verified.</li>
                 )}
-              </InfoHintText>
-              <InfoHintText>
-                If a wildcard or A/AAAA record already covers that target, you
-                can reuse it.
-              </InfoHintText>
-              <InfoHintText>
-                On Cloudflare, keep the record on DNS only during verification.{" "}
-                {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
-              </InfoHintText>
-              <InfoHintText>
-                Do not use{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                  {effectiveStatusPageDomain}
-                </code>{" "}
-                or any of its subdomains.
-              </InfoHintText>
-              {isSelfHosted && (
-                <InfoHintText>
-                  Routing is automatic after verification. Origin TLS still
-                  needs a certificate for the custom hostname.
-                </InfoHintText>
-              )}
+              </InfoHintList>
             </InfoHint>
           </div>
           <CardDescription>
@@ -760,10 +778,10 @@ export function SettingsTab({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Label htmlFor="customDomain">Hostname</Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               id="customDomain"
-              aria-label="Custom domain hostname"
               placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
               {...register("customDomain")}
               disabled={!canUpdate}
@@ -867,7 +885,7 @@ export function SettingsTab({
                     variant="secondary"
                     className="ml-1 h-5 px-1.5 text-[10px] font-medium"
                   >
-                    2
+                    {DNS_RECORD_COUNT}
                   </Badge>
                 </Button>
               </CollapsibleTrigger>
@@ -907,8 +925,9 @@ export function SettingsTab({
                       while verifying.
                     </li>
                     <li>
-                      Wait for propagation. The CNAME target must already
-                      resolve publicly.
+                      {isSelfHosted
+                        ? "Wait for propagation. The CNAME target must already resolve publicly."
+                        : "Wait for DNS propagation, which can take a few minutes."}
                     </li>
                     <li>
                       Select Verify DNS, then publish the page before opening
@@ -917,8 +936,7 @@ export function SettingsTab({
                   </ol>
 
                   <p className="text-xs text-muted-foreground">
-                    Keep the TXT record for future ownership checks.{" "}
-                    {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
+                    Keep the TXT record in place for future ownership checks.
                   </p>
                 </div>
               </CollapsibleContent>

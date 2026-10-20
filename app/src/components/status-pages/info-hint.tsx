@@ -16,6 +16,8 @@ type InfoHintProps = {
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
   className?: string;
+  /** Extra classes for the popover panel, e.g. a wider width. */
+  contentClassName?: string;
 };
 
 /**
@@ -28,6 +30,7 @@ export function InfoHint({
   side = "top",
   align = "start",
   className,
+  contentClassName,
 }: InfoHintProps) {
   return (
     <Popover>
@@ -47,7 +50,11 @@ export function InfoHint({
         side={side}
         align={align}
         sideOffset={6}
-        className="w-80 max-w-[calc(100vw-2rem)] space-y-2 text-sm leading-relaxed"
+        collisionPadding={16}
+        className={cn(
+          "w-80 max-w-[calc(100vw-2rem)] space-y-2 text-sm leading-relaxed",
+          contentClassName,
+        )}
       >
         {children}
       </PopoverContent>
@@ -61,4 +68,12 @@ export function InfoHintTitle({ children }: { children: ReactNode }) {
 
 export function InfoHintText({ children }: { children: ReactNode }) {
   return <p className="text-muted-foreground">{children}</p>;
+}
+
+export function InfoHintList({ children }: { children: ReactNode }) {
+  return (
+    <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground marker:text-muted-foreground/60">
+      {children}
+    </ul>
+  );
 }
