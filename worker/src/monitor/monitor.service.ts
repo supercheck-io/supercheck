@@ -751,14 +751,14 @@ export class MonitorService {
     cycleId: string,
     location: string,
   ): Promise<boolean> {
-    const [cycle] = await this.dbService.db
-      .select({ status: schema.monitorCycles.status })
-      .from(schema.monitorCycles)
-      .where(eq(schema.monitorCycles.id, cycleId))
-      .limit(1);
-    if (!cycle) return false;
-    if (cycle.status !== 'open') return true;
     try {
+      const [cycle] = await this.dbService.db
+        .select({ status: schema.monitorCycles.status })
+        .from(schema.monitorCycles)
+        .where(eq(schema.monitorCycles.id, cycleId))
+        .limit(1);
+      if (!cycle) return false;
+      if (cycle.status !== 'open') return true;
       await this.dbService.db
         .insert(schema.monitorCycleArrivals)
         .values({ cycleId, location })

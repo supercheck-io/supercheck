@@ -487,6 +487,7 @@ export class MonitorDynamicWorkerService
       await this.monitorService.saveDistributedMonitorResult(errorResult, {
         executionGroupId,
         expectedLocations,
+        ...(job.data.monitorCycle ? { monitorCycle: true } : {}),
         ...(existing ? { persisted: true } : {}),
       });
     } catch (aggregationError) {

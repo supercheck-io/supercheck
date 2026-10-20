@@ -16,13 +16,16 @@ describe("monitor cycle helpers", () => {
   });
 
   it.each([
-    [undefined, 180_000],
-    ["abc", 180_000],
-    ["5", 30_000],
-    ["120", 120_000],
-    ["99999", 900_000],
-  ])("clamps the deadline %j to %d ms", (value, expected) => {
-    expect(missingCycleDeadlineMs({ MISSING_CYCLE_DEADLINE_SECONDS: value })).toBe(expected);
+    [undefined, undefined, (300 + 60) * 1000],
+    ["abc", undefined, (300 + 60) * 1000],
+    ["5", undefined, (60 + 60) * 1000],
+    ["120", undefined, (120 + 60) * 1000],
+    ["99999", undefined, (1800 + 60) * 1000],
+    ["300", { timeoutSeconds: 120 }, (300 + 240) * 1000],
+    ["300", { timeoutSeconds: 99999 }, (300 + 600) * 1000],
+    ["300", { timeoutSeconds: -4 }, (300 + 60) * 1000],
+  ])("sizes the deadline for env %j and config %j to %d ms", (value, config, expected) => {
+    expect(missingCycleDeadlineMs({ MISSING_CYCLE_DEADLINE_SECONDS: value }, config)).toBe(expected);
   });
 
   it("derives a stable, BullMQ-safe, per-key id", () => {
@@ -34,8 +37,10 @@ describe("monitor cycle helpers", () => {
   });
 
   it("mirrors the worker aggregation defaults", () => {
-    expect(monitorCyclePolicy(null)).toEqual({ strategy: "all", threshold: 100 });
-    expect(monitorCyclePolicy({ enabled: false, locations: ["eu"], threshold: 10 })).toEqual({ strategy: "all", threshold: 100 });
+    // Without multi-location config the legacy path let the first result decide; cycles use "any".
+    expect(monitorCyclePolicy(null)).toEqual({ strategy: "any", threshold: 100 });
+    expect(monitorCyclePolicy({ enabled: false, locations: ["eu"], threshold: 10 })).toEqual({ strategy: "any", threshold: 100 });
+    expect(monitorCyclePolicy({ enabled: true, locations: [], threshold: 10 })).toEqual({ strategy: "any", threshold: 100 });
     expect(monitorCyclePolicy({ enabled: true, locations: ["eu", "us"], threshold: 67, strategy: "any" })).toEqual({ strategy: "any", threshold: 67 });
     expect(
       monitorCyclePolicy({ enabled: true, locations: ["eu", "us"] } as never),

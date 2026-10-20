@@ -52,6 +52,9 @@ export const monitorCycles = pgTable(
     openDeadlineIdx: index('monitor_cycles_open_deadline_idx')
       .on(table.deadlineAt)
       .where(sql`${table.status} = 'open'`),
+    retentionIdx: index('monitor_cycles_retention_idx')
+      .on(table.closedAt)
+      .where(sql`${table.closedAt} IS NOT NULL`),
     notifyPendingIdx: index('monitor_cycles_notify_pending_idx')
       .on(table.closedAt)
       .where(sql`${table.status} = 'closed' AND ${table.notifiedAt} IS NULL`),

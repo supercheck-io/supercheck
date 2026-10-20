@@ -30,6 +30,9 @@ CREATE INDEX IF NOT EXISTS "monitor_cycles_monitor_idx" ON "monitor_cycles" ("mo
 -- The control plane polls only open cycles that passed their deadline.
 CREATE INDEX IF NOT EXISTS "monitor_cycles_open_deadline_idx" ON "monitor_cycles" ("deadline_at") WHERE "status" = 'open';
 --> statement-breakpoint
+-- Bounded retention sweeps: finished cycles ordered by closure time.
+CREATE INDEX IF NOT EXISTS "monitor_cycles_retention_idx" ON "monitor_cycles" ("closed_at") WHERE "closed_at" IS NOT NULL;
+--> statement-breakpoint
 -- Closed cycles whose notification receipt is still outstanding (crash repair).
 CREATE INDEX IF NOT EXISTS "monitor_cycles_notify_pending_idx" ON "monitor_cycles" ("closed_at") WHERE "status" = 'closed' AND "notified_at" IS NULL;
 --> statement-breakpoint

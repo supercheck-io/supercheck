@@ -1977,6 +1977,22 @@ describe('MonitorService', () => {
         expect(mockRedisService.getClient().get).toHaveBeenCalled();
       });
 
+      it('retries the hint without re-running the check when the cycle lookup fails', async () => {
+        mockDbService.db.select.mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest
+            .fn()
+            .mockRejectedValue(new Error('relation does not exist')),
+        });
+        await expect(
+          service.saveDistributedMonitorResult(result('eu-central'), group),
+        ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+        expect(aggregate).not.toHaveBeenCalled();
+        expect(insertValues).not.toHaveBeenCalled();
+      });
+
       it('retries the hint without re-running the check when the insert fails', async () => {
         cycleRow([{ status: 'open' }]);
         onConflict.mockRejectedValue(new Error('connection reset'));

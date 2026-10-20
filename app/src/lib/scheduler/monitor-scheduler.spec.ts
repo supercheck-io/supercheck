@@ -23,6 +23,11 @@ jest.mock("@/lib/queue", () => ({
   },
 }));
 
+jest.mock("@/lib/monitor-cycles", () => ({
+  ...jest.requireActual("@/lib/monitor-cycles"),
+  abortMonitorCycle: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock("@/lib/location-registry", () => ({
   getFirstVisibleProjectRestrictionCode: jest.fn(),
 }));
@@ -72,6 +77,7 @@ import {
   resolveMonitorLocations,
 } from "@/lib/monitor-location-routing";
 import { processScheduledMonitor } from "./monitor-scheduler";
+import { abortMonitorCycle, MonitorCycleClosedError, monitorCycleId } from "@/lib/monitor-cycles";
 
 const mockMonitorsFindFirst = db.query.monitors.findFirst as jest.Mock;
 const mockMonitorResultsFindFirst = db.query.monitorResults.findFirst as jest.Mock;
@@ -151,6 +157,60 @@ describe("monitor-scheduler", () => {
     await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow("incomplete cycle enqueue");
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "down" }));
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ location: "eu-central", isUp: false }));
+  });
+
+  describe("missing-cycle closure", () => {
+    const data = { monitorId: "monitor-1", type: "website", target: "https://example.com" };
+    const job = (overrides: Record<string, unknown> = {}) =>
+      ({ id: "repeat:abc:1000", attemptsMade: 0, opts: { attempts: 3 }, data, ...overrides }) as never;
+    beforeEach(() => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      mockResolveMonitorLocations.mockResolvedValue(["eu-central", "us-east"]);
+      (getQueues as jest.Mock).mockResolvedValue({ monitorExecutionQueue: { "eu-central": {}, "us-east": {} } });
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: ["eu-central", "us-east"], skippedLocations: [] });
+    });
+    afterEach(() => { delete process.env.MISSING_CYCLE_CLOSURE_ENABLED; });
+
+    it("passes the scheduler job id and the configured regions, retrying until the last attempt", async () => {
+      (enqueueMonitorLocationJobs as jest.Mock).mockResolvedValue("group");
+      await processScheduledMonitor(job({ attemptsMade: 1 }));
+      expect(enqueueMonitorLocationJobs).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), ["eu-central", "us-east"], expect.anything(),
+        expect.objectContaining({ key: "repeat:abc:1000", configuredLocations: ["eu-central", "us-east"], abortOnFailure: false }),
+      );
+      await processScheduledMonitor(job({ attemptsMade: 2 }));
+      expect(enqueueMonitorLocationJobs).toHaveBeenLastCalledWith(
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        expect.objectContaining({ abortOnFailure: true }),
+      );
+    });
+
+    it("aborts the cycle on a final failure that happens before publication", async () => {
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central", "us-east"] });
+      await expect(processScheduledMonitor(job({ attemptsMade: 2 }))).rejects.toThrow("no jobs enqueued");
+      expect(abortMonitorCycle).toHaveBeenCalledWith(monitorCycleId("monitor-1", "repeat:abc:1000"));
+    });
+
+    it("keeps the cycle for a retry while attempts remain", async () => {
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central"] });
+      await expect(processScheduledMonitor(job({ attemptsMade: 0 }))).rejects.toThrow();
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
+
+    it("does not abort or double-count when the flag is off", async () => {
+      delete process.env.MISSING_CYCLE_CLOSURE_ENABLED;
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central"] });
+      await expect(processScheduledMonitor(job({ attemptsMade: 2 }))).rejects.toThrow();
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
+
+    it("skips publication into an already closed cycle without a second scheduling failure", async () => {
+      (enqueueMonitorLocationJobs as jest.Mock).mockRejectedValue(new MonitorCycleClosedError("c", "closed"));
+      mockUpdateSet.mockClear();
+      expect(await processScheduledMonitor(job({ attemptsMade: 1 }))).toEqual({ success: false });
+      expect(mockUpdateSet).not.toHaveBeenCalled();
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
   });
 
   it.each(["up", "down"])("updates status-change time only when changing %s to down", async (status) => {

@@ -488,6 +488,44 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       }
     },
   );
+  it('carries the cycle marker into a final failure so it records a hint, never legacy evaluation', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const service = new MonitorDynamicWorkerService(
+      { saveDistributedMonitorResult: save } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn().mockResolvedValue(undefined),
+            },
+          },
+        },
+      } as unknown as DbService,
+    );
+    const job = {
+      data: {
+        monitorId: 'monitor-1',
+        executionGroupId: 'cycle-1',
+        executionLocation: 'eu',
+        expectedLocations: ['eu'],
+        monitorCycle: true,
+      },
+      opts: { attempts: 3 },
+      attemptsMade: 2,
+      getState: jest.fn().mockResolvedValue('failed'),
+    } as unknown as Job<MonitorJobDataDto>;
+    await service['handleFinalJobFailure'](job, new Error('probe crashed'));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorId: 'monitor-1', isUp: false }),
+      {
+        executionGroupId: 'cycle-1',
+        expectedLocations: ['eu'],
+        monitorCycle: true,
+      },
+    );
+  });
   it('defers aggregation contention without spending a failed attempt', async () => {
     const monitorService = {
       executeMonitor: jest.fn().mockResolvedValue({

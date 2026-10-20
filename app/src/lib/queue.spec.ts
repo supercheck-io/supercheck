@@ -21,6 +21,7 @@ describe("queue location refresh", () => {
   const flowClose = jest.fn();
   const persistMonitorCycle = jest.fn().mockResolvedValue({ created: true });
   const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
+  const MonitorCycleClosedError = class extends Error { cycleId = "c"; status = "closed"; };
   const set = jest.fn().mockResolvedValue("OK");
   const pipeline = jest.fn(() => {
     const results: Array<[null, string | number]> = [];
@@ -123,6 +124,7 @@ describe("queue location refresh", () => {
       ...jest.requireActual("./monitor-cycles"),
       persistMonitorCycle,
       abortMonitorCycle,
+      MonitorCycleClosedError,
     }));
     jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames }));
     queueModule = await import("./queue");
@@ -331,6 +333,26 @@ describe("queue location refresh", () => {
       const { monitorExecutionQueue } = await queueModule.getQueues();
       flowAddBulk.mockResolvedValue([{ job: { getState: async () => "unknown" } }]);
       await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle({ abortOnFailure: false }))).rejects.toThrow("incomplete cycle enqueue");
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it("aborts when the cycle cannot be persisted or Redis setup fails after a final attempt", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      persistMonitorCycle.mockRejectedValueOnce(new Error("database unavailable"));
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).rejects.toThrow("database unavailable");
+      expect(abortMonitorCycle).toHaveBeenCalledTimes(1);
+      expect(flowAddBulk).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it("refuses to publish into a cycle that already closed and leaves its outcome alone", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      persistMonitorCycle.mockRejectedValueOnce(new MonitorCycleClosedError());
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).rejects.toBeInstanceOf(MonitorCycleClosedError);
+      expect(flowAddBulk).not.toHaveBeenCalled();
       expect(abortMonitorCycle).not.toHaveBeenCalled();
       expect(set).not.toHaveBeenCalled();
     });

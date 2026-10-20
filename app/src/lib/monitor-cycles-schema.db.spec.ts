@@ -13,7 +13,7 @@ jest.mock("@/utils/db", () => ({
     return mockDatabase;
   },
 }));
-import { abortMonitorCycle, monitorCycleId, persistMonitorCycle } from "./monitor-cycles";
+import { abortMonitorCycle, MonitorCycleClosedError, monitorCycleId, persistMonitorCycle } from "./monitor-cycles";
 const execFileAsync = promisify(execFile);
 const name = `monitor_cycles_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -173,4 +173,13 @@ it("aborts only open cycles", async () => {
   await abortMonitorCycle(id);
   const [still] = await client`SELECT status FROM monitor_cycles WHERE id = ${id}`;
   expect(still.status).toBe("closed");
+});
+
+it("refuses to publish again into a closed cycle but tolerates a retry of an open one", async () => {
+  const id = monitorCycleId(monitorId, "retry-after-deadline");
+  const input = { id, monitorId, configuredLocations: ["eu"], policy: { strategy: "all" as const, threshold: 100 } };
+  await persistMonitorCycle(input);
+  await expect(persistMonitorCycle(input)).resolves.toEqual({ created: false });
+  await client`UPDATE monitor_cycles SET status = 'closed', closed_by = 'deadline', result_status = 'down' WHERE id = ${id}`;
+  await expect(persistMonitorCycle(input)).rejects.toBeInstanceOf(MonitorCycleClosedError);
 });

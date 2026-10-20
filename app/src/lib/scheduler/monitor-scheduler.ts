@@ -20,7 +20,13 @@ import {
 } from '@/lib/monitor-location-routing';
 
 import { recordSchedulingFailure } from '@/lib/monitor-scheduling-failure';
-import { monitorCyclePolicy } from '@/lib/monitor-cycles';
+import {
+  abortMonitorCycle,
+  MonitorCycleClosedError,
+  missingCycleClosureEnabled,
+  monitorCycleId,
+  monitorCyclePolicy,
+} from '@/lib/monitor-cycles';
 
 const logger = queueLogger;
 
@@ -58,13 +64,32 @@ export async function processScheduledMonitor(
   const executionJobData = data.jobData ?? data;
   const retryLimit = data.retryLimit || 3;
 
+  const finalAttempt = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
   try {
     await enqueueMonitorExecutionJobs(executionJobData, retryLimit, {
       // Retries of one scheduled cycle share the scheduler job id, hence one durable cycle.
       key: job.id,
-      finalAttempt: job.attemptsMade + 1 >= (job.opts?.attempts ?? 1),
+      finalAttempt,
     });
   } catch (error) {
+    if (error instanceof MonitorCycleClosedError) {
+      // The cycle already closed (deadline passed while publication kept failing). Publishing now
+      // would discard every result, and a second scheduling failure would double count the outage.
+      logger.warn(
+        { monitorId: executionJobData.monitorId, cycleId: error.cycleId },
+        'Skipping publication into an already closed monitor cycle',
+      );
+      return { success: false };
+    }
+    // Failures before publication (no live workers, routing, queue lookup) can leave a cycle from an
+    // earlier attempt open with no jobs; with no retry left it must not close as missing-region downtime.
+    if (finalAttempt && job.id && missingCycleClosureEnabled()) {
+      await abortMonitorCycle(
+        monitorCycleId(executionJobData.monitorId, job.id),
+      ).catch((abortError) =>
+        logger.warn({ err: abortError }, 'Unable to abort monitor cycle'),
+      );
+    }
     // Record every enqueue failure so the monitor cannot remain falsely up.
     const errorMessage = error instanceof Error ? error.message : String(error);
     await recordSchedulingFailure(executionJobData.monitorId, errorMessage);

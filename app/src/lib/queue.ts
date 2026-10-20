@@ -17,7 +17,9 @@ import { omitExecutionSecrets } from "./execution-payload";
 import { ExecutionQueueError } from "./execution-errors";
 import {
   abortMonitorCycle,
+  MonitorCycleClosedError,
   missingCycleClosureEnabled,
+  missingCycleDeadlineMs,
   monitorCycleId,
   monitorCyclePolicy,
   persistMonitorCycle,
@@ -1818,18 +1820,20 @@ export async function enqueueMonitorLocationJobs(
   const executionGroupId = closureCycle
     ? monitorCycleId(task.monitorId, closureCycle.key ?? crypto.randomUUID())
     : `${task.monitorId}-${crypto.randomUUID()}`;
-  if (closureCycle) {
-    await persistMonitorCycle({
-      id: executionGroupId,
-      monitorId: task.monitorId,
-      configuredLocations: closureCycle.configuredLocations,
-      policy: closureCycle.policy,
-    });
-  }
   const redis = await getRedisConnection();
   const flow = new FlowProducer({ connection: redis });
   flow.on("error", (error) => queueLogger.error({ err: error }, "Monitor flow Redis error"));
   try {
+    if (closureCycle) {
+      // Persisted inside the guarded block so any later failure reaches the abort below.
+      await persistMonitorCycle({
+        id: executionGroupId,
+        monitorId: task.monitorId,
+        configuredLocations: closureCycle.configuredLocations,
+        policy: closureCycle.policy,
+        deadlineMs: missingCycleDeadlineMs(process.env, task.config as { timeoutSeconds?: number } | undefined),
+      });
+    }
     const nodes = await flow.addBulk(locations.map((location) => {
       const queue = queues[location];
       if (!queue) throw new Error(`No monitor queue for location "${location}"`);
@@ -1848,7 +1852,8 @@ export async function enqueueMonitorLocationJobs(
   } catch (error) {
     if (closureCycle) {
       // A scheduler retry reuses this id, so no sticky Redis marker; abort only when no retry remains.
-      if (closureCycle.abortOnFailure) {
+      // A cycle that already closed is left as it is (the closure owns its outcome).
+      if (closureCycle.abortOnFailure && !(error instanceof MonitorCycleClosedError)) {
         await abortMonitorCycle(executionGroupId)
           .catch((abortError) => queueLogger.warn({ err: abortError, executionGroupId }, "Unable to abort failed monitor cycle"));
       }
