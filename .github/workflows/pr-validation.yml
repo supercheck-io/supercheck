@@ -120,8 +120,8 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: app/.jest-cache
-          key: node-v22-jest-app-${{ hashFiles('app/jest.config.js', 'app/package-lock.json') }}
-          restore-keys: node-v22-jest-app-
+          key: node-v24-jest-app-${{ hashFiles('app/jest.config.js', 'app/package-lock.json') }}
+          restore-keys: node-v24-jest-app-
 
       - name: Type check
         working-directory: ./app
@@ -196,8 +196,8 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: worker/.jest-cache
-          key: node-v22-jest-worker-${{ hashFiles('worker/jest.config.js', 'worker/package-lock.json') }}
-          restore-keys: node-v22-jest-worker-
+          key: node-v24-jest-worker-${{ hashFiles('worker/jest.config.js', 'worker/package-lock.json') }}
+          restore-keys: node-v24-jest-worker-
 
       - name: Type check
         working-directory: ./worker
