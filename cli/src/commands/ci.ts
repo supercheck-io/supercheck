@@ -1,11 +1,17 @@
 import { Command } from 'commander'
 import { existsSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { outputDetail } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { discoverRepository } from '../utils/discover.js'
 
 type Manager = 'npm' | 'pnpm' | 'yarn'
+
+/** True when `file` is a path strictly inside `cwd` (platform separators, no `..` escapes, not cwd itself). */
+export function isInsideProject(cwd: string, file: string): boolean {
+  const rel = relative(cwd, file)
+  return !(rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+}
 
 export function githubWorkflow(manager: Manager, usesPlaywright: boolean): string {
   const setupPm = manager === 'pnpm' ? '      - uses: pnpm/action-setup@v4\n' : ''
@@ -84,7 +90,7 @@ ciCommand.command('init')
     if (!options.github) throw new CLIError('Specify a provider: supercheck ci init --github', ExitCode.ConfigError)
     const cwd = process.cwd()
     const file = resolve(cwd, options.path)
-    if (!file.startsWith(cwd + '/') ) throw new CLIError('Workflow path must be inside the project.', ExitCode.ConfigError)
+    if (!isInsideProject(cwd, file)) throw new CLIError('Workflow path must be inside the project.', ExitCode.ConfigError)
     for (let current = file; current.length > cwd.length; current = dirname(current)) {
       try { if (lstatSync(current).isSymbolicLink()) throw new CLIError(`Refusing to write through a symlink: ${current}`, ExitCode.ConfigError) } catch (error) { if (error instanceof CLIError) throw error }
     }

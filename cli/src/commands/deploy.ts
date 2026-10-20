@@ -150,7 +150,7 @@ const VERIFY_LIMIT = 5
 export function failedVerifications(verification: Record<string, unknown>[] | undefined): Record<string, unknown>[] {
   return (verification ?? []).filter((v) => v.status !== 'passed' && v.status !== 'skipped')
 }
-async function verifyDeployedTests(
+export async function verifyDeployedTests(
   client: ReturnType<typeof createAuthenticatedClient>,
   changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> } }[],
   results: Record<string, unknown>[],
@@ -160,10 +160,11 @@ async function verifyDeployedTests(
   const targets = changes.flatMap((change, index) => {
     if (change.type !== 'test' || !['create', 'update'].includes(change.action)) return []
     const id = typeof results[index]?.id === 'string' ? String(results[index].id) : change.id
-    return id ? [{ id, name: change.name, testType: change.local?.definition.testType }] : []
+    return id ? [{ id, name: change.name, testType: normalizeTestTypeForApi(change.local?.definition?.testType) }] : []
   })
   for (const target of targets) {
-    if (target.testType === 'k6') { out.push({ id: target.id, name: target.name, status: 'skipped', reason: 'Performance tests are not run implicitly; use `supercheck test execute` with explicit authorization.' }); continue }
+    // Only a positively identified browser test is ever run. Performance (any spelling) and unknown types are skipped.
+    if (target.testType !== 'browser') { out.push({ id: target.id, name: target.name, status: 'skipped', reason: target.testType === 'performance' ? 'Performance tests are not run implicitly; use `supercheck test execute` with explicit authorization.' : 'Test type could not be determined; not run implicitly.' }); continue }
     if (out.filter((o) => o.status !== 'skipped').length >= VERIFY_LIMIT) { out.push({ id: target.id, name: target.name, status: 'skipped', reason: `Verification is limited to ${VERIFY_LIMIT} tests per deploy.` }); continue }
     let runId: string | undefined
     try {
@@ -190,6 +191,8 @@ export const deployCommand = new Command('deploy')
   .option('--verify', 'After a successful deploy, execute the created or updated browser/API tests once in the cloud and wait for the result')
   .option('--verify-timeout <seconds>', 'With --verify: maximum wait per test', '300')
   .action(async (options: { config?: string; dryRun?: boolean; force?: boolean; delete?: boolean; verify?: boolean; verifyTimeout?: string }) => {
+    // Validate before any write so a typo cannot leave a half-reported deploy.
+    const verifyTimeoutMs = options.verify ? parseIntStrict(options.verifyTimeout ?? '300', '--verify-timeout', { min: 1 }) * 1000 : 0
     const cwd = process.cwd()
     const { config, configPath, declaredBaseUrl } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
@@ -336,7 +339,7 @@ export const deployCommand = new Command('deploy')
       // run implicitly because they consume load budget and need explicit authorization of target, load and spend.
       let verification: Record<string, unknown>[] | undefined
       if (options.verify && !options.dryRun && failed === 0) {
-        verification = await verifyDeployedTests(client, ordered, results, parseIntStrict(options.verifyTimeout ?? '300', '--verify-timeout', { min: 1 }) * 1000)
+        verification = await verifyDeployedTests(client, ordered, results, verifyTimeoutMs)
       }
       emit({ status: failed ? 'partial' : 'success', results, succeeded, failed, skipped: ordered.length - results.length, statePath: state.path, ...(verification ? { verification } : {}) })
       const unverified = failedVerifications(verification)

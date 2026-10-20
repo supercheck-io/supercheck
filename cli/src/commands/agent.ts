@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { outputDetail } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { CLI_VERSION } from '../version.js'
@@ -31,7 +31,7 @@ function render(target: AgentTarget): string {
 /** Refuse destinations that escape the working directory or pass through symlinks. */
 function assertInside(cwd: string, path: string): void {
   const rel = relative(cwd, path)
-  if (rel.startsWith('..') || isAbsolute(rel)) throw new CLIError(`Refusing to write outside the project: ${path}`, ExitCode.ConfigError)
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new CLIError(`Refusing to write outside the project: ${path}`, ExitCode.ConfigError)
   let current = path
   while (current.length > cwd.length) {
     try { if (lstatSync(current).isSymbolicLink()) throw new CLIError(`Refusing to write through a symlink: ${current}`, ExitCode.ConfigError) } catch (error) { if (error instanceof CLIError) throw error }
@@ -42,14 +42,15 @@ function assertInside(cwd: string, path: string): void {
 export function installAgentSkill(options: { target: AgentTarget; path?: string; force?: boolean; pointer?: string; cwd?: string }): Record<string, unknown> {
   const cwd = options.cwd ?? process.cwd()
   const file = options.path ? resolve(cwd, options.path, 'SKILL.md') : resolve(cwd, targetPath(options.target))
-  if (options.path !== undefined && options.path.startsWith('/')) { /* explicit absolute --path is the user's choice */ } else assertInside(cwd, file)
+  // An explicit --path is the user's own choice (the legacy `skills install --path` accepted any directory);
+  // only the default targets are confined to the project and refused through symlinks.
+  if (options.path === undefined) assertInside(cwd, file)
   const pointerFile = options.pointer ? resolve(cwd, options.pointer) : undefined
   if (pointerFile) assertInside(cwd, pointerFile) // validate every destination before writing anything
   if (existsSync(file) && !options.force) throw new CLIError(`Skill already exists: ${file}. Use --force to replace it.`, ExitCode.ConfigError)
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, render(options.target), { flag: options.force ? 'w' : 'wx' })
 
-  let pointer: string | undefined
+  // Decide the pointer file's new content BEFORE writing anything, so a bad pointer cannot leave a half install.
+  let pointerNext: string | undefined
   if (pointerFile) {
     const current = existsSync(pointerFile) ? readFileSync(pointerFile, 'utf8') : ''
     // Only a single, well-formed owned block is ever rewritten. Anything ambiguous (stray, duplicated or
@@ -66,7 +67,15 @@ export function installAgentSkill(options: { target: AgentTarget; path?: string;
     } else {
       throw new CLIError(`${pointerFile} contains unexpected supercheck markers. Fix or remove them by hand, then run again.`, ExitCode.ConfigError)
     }
-    writeFileSync(pointerFile, next)
+    pointerNext = next
+  }
+
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, render(options.target), { flag: options.force ? 'w' : 'wx' })
+  let pointer: string | undefined
+  if (pointerFile && pointerNext !== undefined) {
+    mkdirSync(dirname(pointerFile), { recursive: true })
+    writeFileSync(pointerFile, pointerNext)
     pointer = pointerFile
   }
   return { installed: true, target: options.target, path: file, ...(pointer ? { pointer } : {}), version: CLI_VERSION }

@@ -107,3 +107,21 @@ describe('device login selection', () => {
     await expect(runDeviceLogin({ url: 'http://app.example.com' }, deps())).rejects.toMatchObject({ exitCode: 3 })
   })
 })
+
+describe('login --wait in JSON mode', () => {
+  it('prints the URL and code as the first JSON line, then the result, so an agent can show the code', async () => {
+    let offset = 0
+    const d = deps()
+    d.now = () => (offset += 2000, 1_700_000_000_000 + offset)
+    d.requestCode.mockResolvedValue({ ...pendingGrant, interval: 1 })
+    d.pollToken = jest.fn<LoginDeps['pollToken']>(async () => ({
+      kind: 'success', accessToken: 'sck_live_' + 'a'.repeat(32), expiresIn: 7776000, context: { project: { id: 'p', name: 'P' } },
+    }))
+    await runDeviceLogin({ url: 'https://app.example.com', wait: true, browser: false }, d)
+    const lines = output.mock.calls.map((c) => JSON.parse(String(c[0])))
+    expect(lines[0]).toMatchObject({ state: 'authorization_pending', next: { userCode: 'BCDF-GHJK', url: 'https://app.example.com/device' } })
+    expect(lines.at(-1)).toMatchObject({ state: 'authenticated', authenticated: true })
+    expect(JSON.stringify(lines)).not.toContain(pendingGrant.deviceCode)
+  }, 15000)
+})
+

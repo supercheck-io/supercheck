@@ -25,7 +25,9 @@ export function classifyError(error: unknown, hasCredentials = true): ErrorClass
     const code = bodyCode(error.responseBody)
     if (status === 401) {
       return hasCredentials
-        ? { code: 'TOKEN_INVALID', retryable: false, nextActions: [{ command: 'supercheck login --reauth', why: 'Replace the rejected or expired credential' }] }
+        ? { code: 'TOKEN_INVALID', retryable: false, nextActions: process.env.SUPERCHECK_TOKEN
+          ? [{ command: 'export SUPERCHECK_TOKEN=<new CLI token>', why: 'SUPERCHECK_TOKEN is set and was rejected; browser login cannot override it. Replace or unset it' }]
+          : [{ command: 'supercheck login --reauth', why: 'Replace the rejected or expired credential' }] }
         : { code: 'AUTH_REQUIRED', retryable: false, nextActions: [{ command: 'supercheck login --json', why: 'Authenticate in the browser' }] }
     }
     if (status === 402) {

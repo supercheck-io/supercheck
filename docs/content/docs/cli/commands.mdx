@@ -96,7 +96,9 @@ JSON errors on stderr carry a stable `code` agents can branch on, with `retryabl
 | `RATE_LIMITED` / `SERVICE_UNAVAILABLE` | Retryable |
 | `VALIDATION_FAILED` | The request was rejected as invalid |
 | `CONFIRMATION_REQUIRED` | A write needs `--force` |
-| `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
+| `AUTHORIZATION_PENDING` | `login` without `--json` or a terminal started a browser login that is not approved yet (exit `2`); approve it, then run `login` again |
+| `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `DEVICE_CODE_CONSUMED`, `DEVICE_LOGIN_UNVERIFIED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
+| `CONTEXT_MISMATCH` | The config's API URL, organization or project does not match the logged-in context; see `supercheck link` |
 
 In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
 
@@ -127,7 +129,7 @@ The token is verified against the API before being stored locally.
 When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself.
 
 - Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
-- Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. Add `--wait` to block instead.
+- Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
 - `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
 - If the server does not enable browser login, the command explains how to use `--token`.
 

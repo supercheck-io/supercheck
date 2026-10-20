@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discoverRepository } from '../../utils/discover.js'
 import { deriveOnboarding, countStateResources } from '../onboard.js'
-import { githubWorkflow } from '../ci.js'
+import { githubWorkflow, isInsideProject } from '../ci.js'
 import { installAgentSkill } from '../agent.js'
 import { classifyError } from '../../utils/error-codes.js'
 import { planLink, readConfigIdentity } from '../../utils/link-config.js'
@@ -214,5 +214,35 @@ describe('deploy --verify outcome', () => {
   })
   it('fails on failed or errored runs', () => {
     expect(failedVerifications([{ status: 'passed' }, { status: 'failed' }, { status: 'error' }, { status: 'skipped' }])).toHaveLength(2)
+  })
+})
+
+describe('install ordering and path rules', () => {
+  it('writes nothing when the pointer file has bad markers', () => {
+    write('AGENTS.md', '<!-- supercheck:begin -->\nstray only\n')
+    expect(() => installAgentSkill({ target: 'generic', cwd: dir, pointer: 'AGENTS.md' })).toThrow(/unexpected supercheck markers/)
+    expect(existsSync(join(dir, '.agents/skills/supercheck/SKILL.md'))).toBe(false)
+    // and a retry after fixing the file works without --force
+    write('AGENTS.md', '# fine\n')
+    expect(() => installAgentSkill({ target: 'generic', cwd: dir, pointer: 'AGENTS.md' })).not.toThrow()
+  })
+  it('keeps accepting an explicit --path outside the project (legacy skills install behaviour)', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'sc-explicit-'))
+    try {
+      const r = installAgentSkill({ target: 'generic', cwd: dir, path: outside })
+      expect(String(r.path)).toBe(join(outside, 'SKILL.md'))
+      expect(existsSync(join(outside, 'SKILL.md'))).toBe(true)
+    } finally { rmSync(outside, { recursive: true, force: true }) }
+  })
+  it('accepts an in-project directory whose name merely starts with two dots', () => {
+    expect(() => installAgentSkill({ target: 'generic', cwd: dir, pointer: '..notes/AGENTS.md' })).not.toThrow()
+  })
+  it('isInsideProject only accepts paths strictly inside the project', () => {
+    expect(isInsideProject('/p', '/p/.github/workflows/x.yml')).toBe(true)
+    expect(isInsideProject('/p', '/p/..foo/x.yml')).toBe(true)
+    expect(isInsideProject('/p', '/p')).toBe(false)
+    expect(isInsideProject('/p', '/p/../x.yml')).toBe(false)
+    expect(isInsideProject('/p', '/other/x.yml')).toBe(false)
+    expect(isInsideProject('/', '/x.yml')).toBe(true)
   })
 })
