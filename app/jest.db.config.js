@@ -28,4 +28,13 @@ const dbJestConfig = {
   maxWorkers: 1,
 };
 
-module.exports = async () => createJestConfig(dbJestConfig)();
+module.exports = async () => {
+  const jestConfig = await createJestConfig(dbJestConfig)();
+  // better-auth and friends are ESM-only; mirror jest.config.js so specs that
+  // import the real RBAC layer can run against a real database.
+  jestConfig.transformIgnorePatterns = [
+    "/node_modules/(?!(better-auth|@better-auth|rou3|better-call|@noble|jose|nanostores)/)",
+    "^.+\\.module\\.(css|sass|scss)$",
+  ];
+  return jestConfig;
+};

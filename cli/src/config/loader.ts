@@ -1,3 +1,4 @@
+import { loadProjectEnv } from './project-env.js'
 import { createJiti } from 'jiti'
 import { deepmergeCustom } from 'deepmerge-ts'
 import { existsSync } from 'node:fs'
@@ -146,8 +147,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
   const cwd = options.cwd ?? process.cwd()
 
   // Load .env file if present (quiet: true suppresses injection logs)
-  const { config: loadEnv } = await import('dotenv')
-  loadEnv({ path: resolve(cwd, '.env'), quiet: true })
+  loadProjectEnv(resolve(cwd, '.env'))
 
   const configPath = resolveConfigPath(cwd, options.configPath)
   if (!configPath) {

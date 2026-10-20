@@ -65,6 +65,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CORS_ALLOWED_ORIGINS` | App-side: comma-separated additional trusted origins for browser integrations | Empty |
+| `DEVICE_AUTH_ENABLED` | Let `supercheck login` sign in through the browser (device authorization). When `false` the CLI asks users to create a token in the dashboard instead. Needs Redis and database migration 0032 | `false` |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |

@@ -88,6 +88,7 @@ import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
 
 import {
+  isImpersonatedSession,
   withRateLimit,
   canCancelRunInProject,
   requireAuth,
@@ -163,6 +164,51 @@ describe("RBAC Middleware", () => {
   // ==========================================================================
   // AUTHENTICATION TESTS
   // ==========================================================================
+
+  describe("isImpersonatedSession", () => {
+    const rowFor = (row: unknown[] | Error) => {
+      const chain = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: row instanceof Error ? jest.fn().mockRejectedValue(row) : jest.fn().mockResolvedValue(row),
+      };
+      mockDbSelect.mockReturnValue(chain as unknown);
+    };
+
+    it("is false for a normal session and when signed out", async () => {
+      rowFor([{ impersonatedBy: null }]);
+      expect(await isImpersonatedSession()).toBe(false);
+      mockAuthGetSession.mockResolvedValue(null);
+      expect(await isImpersonatedSession()).toBe(false);
+    });
+
+    it("is true when the session was started by a super admin impersonating the user", async () => {
+      rowFor([{ impersonatedBy: "admin-1" }]);
+      expect(await isImpersonatedSession()).toBe(true);
+    });
+
+    it("fails closed (and logs) when the impersonation state cannot be read", async () => {
+      const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      rowFor(new Error("db down"));
+      expect(await isImpersonatedSession()).toBe(true);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("never writes the session token (a query parameter in drizzle errors) to the log", async () => {
+      const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      rowFor(new Error("Failed query: select ... where token = $1\nparams: mock-session-token"));
+      await isImpersonatedSession();
+      expect(JSON.stringify(spy.mock.calls)).not.toContain("mock-session-token");
+      spy.mockRestore();
+    });
+
+    it("trusts an impersonation flag already present on the auth session", async () => {
+      mockAuthGetSession.mockResolvedValue({ ...mockSession, session: { ...mockSession.session, impersonatedBy: "admin-1" } });
+      rowFor([{ impersonatedBy: null }]);
+      expect(await isImpersonatedSession()).toBe(true);
+    });
+  });
 
   describe("Authentication", () => {
     describe("requireAuth", () => {
