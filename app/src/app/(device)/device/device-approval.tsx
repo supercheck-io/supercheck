@@ -141,9 +141,17 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         Device details are reported by the requesting program and are not verified.
       </p>
 
-      <fieldset className="space-y-2" disabled={busy}>
+      <fieldset className="space-y-2" disabled={busy || billingState === "opening"}>
         <legend className="text-sm font-medium">Project the CLI can access</legend>
-        <RadioGroup value={projectId} onValueChange={setProjectId} className="space-y-1">
+        <RadioGroup
+          value={projectId}
+          onValueChange={(next) => {
+            // A billing message belongs to the project it was shown for; never carry it to another organization.
+            setProjectId(next);
+            setBillingState("idle");
+          }}
+          className="space-y-1"
+        >
           {projects.map((project) => (
             <div key={project.id} className="flex items-center gap-2 rounded-md border p-2">
               <RadioGroupItem value={project.id} id={`project-${project.id}`} />

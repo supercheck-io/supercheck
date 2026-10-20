@@ -131,6 +131,28 @@ describe("/device page", () => {
     expect(screen.queryByRole("button", { name: "Choose a plan" })).not.toBeInTheDocument();
   });
 
+  it("looks plans up only for organizations with an eligible project, and tolerates mixed failures", async () => {
+    mockMemberships.mockResolvedValue([
+      { organizationId: "o1", role: "org_owner" },
+      { organizationId: "o2", role: "org_owner" },
+      { organizationId: "o3", role: "project_viewer" },
+    ]);
+    mockOrgs.mockResolvedValue([{ id: "o1", name: "One" }, { id: "o2", name: "Two" }, { id: "o3", name: "Three" }]);
+    mockProjects.mockImplementation(async (_user: string, org: string) => [
+      { id: `p-${org}`, name: `P-${org}`, organizationId: org, isDefault: true, role: org === "o3" ? "project_viewer" : "org_owner" },
+    ]);
+    mockAccess.mockImplementation(async (org: string) => {
+      if (org === "o1") throw new Error("polar down");
+      return { isActive: false };
+    });
+    await render_("BCDF-GHJK");
+    const asked = mockAccess.mock.calls.map((c) => c[0]).sort();
+    expect(asked).toEqual(["o1", "o2"]); // o3 has no project the user may issue keys for
+    expect(screen.queryByText("P-o3")).not.toBeInTheDocument();
+    // default project is the first eligible one (o1, lookup failed -> no notice); the failed lookup never blocks the page
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+
   it("shows no notice when the plan is active or the lookup fails", async () => {
     await render_("BCDF-GHJK");
     expect(screen.queryByRole("note")).not.toBeInTheDocument();

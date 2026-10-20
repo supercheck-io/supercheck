@@ -137,14 +137,20 @@ export default async function DevicePage({
         .where(inArray(organization.id, orgIds))
     : [];
   const orgNames = new Map(orgRows.map((o) => [o.id, o.name]));
-  const ownedOrgs = new Set(memberships.filter((m) => m.role === "org_owner").map((m) => m.organizationId));
+  const ownedOrgs = new Set(memberships.filter((m) => m.role?.toLowerCase() === "org_owner").map((m) => m.organizationId));
   // Plan state per organization. Self-hosted installs always report an active plan, so the plan step only
   // appears where billing applies. A failed lookup is "unknown" and shows nothing (the server enforces plans anyway).
   const planByOrg = new Map<string, boolean | null>();
+  const eligibleOrgIds = [...new Set(projectGroups.flat().filter((p) => p.role && canManageAPIKeys(p.role)).map((p) => p.organizationId))];
   await Promise.all(
-    orgIds.map(async (id) => {
+    eligibleOrgIds.map(async (id) => {
       try {
-        planByOrg.set(id, (await subscriptionService.getSubscriptionAccessStatus(id)).isActive);
+        // Never let a slow billing provider hold up the consent page; unknown shows no notice.
+        const access = await Promise.race([
+          subscriptionService.getSubscriptionAccessStatus(id),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("plan lookup timed out")), 3000)),
+        ]);
+        planByOrg.set(id, access.isActive);
       } catch {
         planByOrg.set(id, null);
       }
