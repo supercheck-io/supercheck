@@ -251,7 +251,11 @@ export async function deleteExpiredDeliveries(
 function heldLease(delivery: { id: string; attempts: number }) {
   return and(
     eq(deliveries.id, delivery.id),
-    eq(deliveries.status, "pending"),
+    // On the final attempt the lease-expiry sweep may already have marked the
+    // row failed while this send was still running; the real outcome wins.
+    delivery.attempts >= 4
+      ? inArray(deliveries.status, ["pending", "failed"])
+      : eq(deliveries.status, "pending"),
     eq(deliveries.attempts, delivery.attempts),
   );
 }

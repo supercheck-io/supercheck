@@ -240,8 +240,26 @@ describe("processDelivery settle guard", () => {
 
     // mockWhereCalls[0] is the lease; the settle write follows it.
     const { sql: text, params } = render(mockWhereCalls[1]);
-    expect(text).toContain('"status"');
-    expect(text).toContain('"attempts"');
+    expect(text).toMatch(/"id" = \$1 and \S+"status" = \$2 and \S+"attempts" = \$3/);
     expect(params).toEqual(expect.arrayContaining(["delivery", "pending", 2]));
+  });
+
+  it("scopes the orphan skip to the held lease", async () => {
+    mockLeased = [lease({ attempts: 2 })];
+    queries.incidents.findFirst.mockResolvedValue(undefined);
+
+    await processDelivery("delivery");
+
+    expect(render(mockWhereCalls[1]).params).toEqual(["delivery", "pending", 2]);
+  });
+
+  it("lets the final attempt overwrite a sweep-failed row", async () => {
+    mockLeased = [lease({ attempts: 4 })];
+
+    await processDelivery("delivery");
+
+    const { sql: text, params } = render(mockWhereCalls[1]);
+    expect(text).toMatch(/"status" in \(\$2, \$3\) and \S+"attempts" = \$4/);
+    expect(params).toEqual(["delivery", "pending", "failed", 4]);
   });
 });
