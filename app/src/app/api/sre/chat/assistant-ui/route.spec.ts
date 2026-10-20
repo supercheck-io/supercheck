@@ -4,7 +4,9 @@ import { NextRequest } from "next/server";
 
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 jest.mock("@/lib/services/subscription-service", () => ({
-  SubscriptionAccessDeniedError: class extends Error {},
+  SubscriptionAccessDeniedError: class extends Error {
+    constructor(message: string, readonly reason: string) { super(message); }
+  },
   subscriptionService: {
     blockUntilSubscribed: jest.fn(async () => {}),
     requireValidPolarCustomer: jest.fn(async () => {}),

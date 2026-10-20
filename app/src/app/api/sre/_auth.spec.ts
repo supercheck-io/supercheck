@@ -13,7 +13,35 @@ jest.mock("@/lib/rbac/middleware", () => ({
 
 import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireSreApiPermissions, requireSreSameOriginRequest } from "./_auth";
+import { requireSreApiPermissions, requireSreSameOriginRequest, requireSreSubscription } from "./_auth";
+import { subscriptionService } from "@/lib/services/subscription-service";
+
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {},
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
+
+describe("requireSreSubscription", () => {
+  beforeEach(() => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+    jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
+  });
+  it("passes the authenticated organization to both existing service checks", async () => {
+    expect(await requireSreSubscription("org")).toBeNull();
+    expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");
+    expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org");
+  });
+  it("fails closed without exposing unexpected provider errors", async () => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockRejectedValue(new Error("private database details"));
+    const result = await requireSreSubscription("org");
+    expect(result?.status).toBe(503);
+    expect(await result?.text()).not.toContain("private database details");
+    expect(subscriptionService.requireValidPolarCustomer).not.toHaveBeenCalled();
+  });
+});
 
 const mockRequireProjectContext = requireAuthContext as jest.Mock;
 const mockCheckPermissionWithContext = checkPermissionWithContext as jest.Mock;
