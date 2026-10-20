@@ -9,7 +9,7 @@ import {
   guardDeviceAuthEnabled,
   readDeviceBody,
 } from "@/lib/auth/device-http";
-import { requireAuth } from "@/lib/rbac/middleware";
+import { isImpersonatedSession, requireAuth } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getClientIP } from "@/lib/session-security";
@@ -43,6 +43,11 @@ export async function POST(request: NextRequest) {
     ({ userId } = await requireAuth());
   } catch {
     return deviceJson({ error: "authentication_required" }, 401);
+  }
+
+  // A key minted while impersonating would belong to the impersonated user and outlive the impersonation.
+  if (await isImpersonatedSession()) {
+    return deviceJson({ error: "impersonation_not_allowed" }, 403);
   }
 
   const ip = getClientIP(request.headers);

@@ -5,7 +5,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import {
   issueCliApiKeyAtomically,
   MAX_CLI_TOKENS_PER_PROJECT,
@@ -109,6 +109,14 @@ export async function POST(request: NextRequest) {
     if (!canCreate) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // A token minted while impersonating would belong to the impersonated user and outlive the impersonation.
+    if (!context.isCliAuth && (await isImpersonatedSession())) {
+      return NextResponse.json(
+        { error: "CLI tokens cannot be created while impersonating a user" },
         { status: 403 }
       );
     }

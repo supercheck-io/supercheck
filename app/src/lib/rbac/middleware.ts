@@ -475,6 +475,26 @@ export async function requireAuth(): Promise<{
 }
 
 /**
+ * True when the current browser session is a super-admin impersonating another user. Credential-minting
+ * actions must refuse in that state: the resulting key would belong to the impersonated user and outlive the
+ * impersonation. Fails closed (reports true) when the state cannot be determined.
+ */
+export async function isImpersonatedSession(): Promise<boolean> {
+  try {
+    const authSession = await getCachedAuthSession();
+    if (!authSession) return false;
+    const [dbSession] = await db
+      .select({ impersonatedBy: session.impersonatedBy })
+      .from(session)
+      .where(eq(session.token, authSession.session.token))
+      .limit(1);
+    return Boolean(dbSession?.impersonatedBy);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Require super admin privileges
  */
 export async function requireSuperAdmin(): Promise<{

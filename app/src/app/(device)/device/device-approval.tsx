@@ -35,6 +35,7 @@ const ERROR_COPY: Record<string, string> = {
   expired: "This code expired. Run `supercheck login` again for a new one.",
   too_many_attempts: "Too many attempts for this code. Run `supercheck login` again.",
   forbidden: "You are not allowed to create CLI keys in that project.",
+  impersonation_not_allowed: "CLI keys cannot be created while impersonating a user. Stop impersonating, then try again.",
   rate_limited: "Too many requests. Wait a minute and try again.",
   authentication_required: "Your session expired. Reload the page to sign in again.",
 };
