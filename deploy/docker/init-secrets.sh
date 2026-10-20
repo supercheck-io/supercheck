@@ -157,6 +157,7 @@ S3_ENDPOINT=http://rustfs:9000
 # Optional deployment-wide controls (shared by app and worker):
 # SRE_ENABLED=false           # Disable AI SRE requests and automation
 # SRE_AUTOMATION_ENABLED=true # Opt in to alert-triggered triage (may incur AI costs)
+# DEVICE_AUTH_ENABLED=true # Let the CLI sign in through the browser (supercheck login)
 
 # OpenAI (default provider)
 # AI_PROVIDER=openai
