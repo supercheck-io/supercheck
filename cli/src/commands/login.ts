@@ -4,6 +4,7 @@ import {
   setBaseUrl,
   clearAuth,
   getToken,
+  getStoredToken,
   getStoredBaseUrl,
   validateTokenFormat,
 } from '../auth/store.js'
@@ -19,7 +20,11 @@ export const loginCommand = new Command('login')
   .description('Authenticate with Supercheck')
   .option('--token <token>', 'Provide a CLI token directly (for CI/CD)')
   .option('--url <url>', 'Supercheck API URL (for self-hosted instances)')
-  .action(async (options: { token?: string; url?: string }) => {
+  .option('--reauth', 'Start a new browser login even if you are already signed in')
+  .option('--no-browser', 'Print the login URL and code without opening a browser')
+  .option('--wait', 'Wait for browser approval instead of returning immediately (default in interactive terminals)')
+  .option('--timeout <seconds>', 'With --wait: give up after this many seconds', '900')
+  .action(async (options: { token?: string; url?: string; reauth?: boolean; browser?: boolean; wait?: boolean; timeout?: string }) => {
     if (options.token) {
       const token = options.token.trim()
       if (!validateTokenFormat(token)) {
@@ -66,26 +71,23 @@ export const loginCommand = new Command('login')
       return
     }
 
-    // Interactive login — not yet implemented
-    logger.newline()
-    logger.info('To authenticate, create a CLI token in the Dashboard:')
-    logger.info('  Dashboard → Organization Admin → CLI Tokens → Create Token')
-    logger.newline()
-    if (options.url) {
-      logger.info(`Then run: supercheck login --token <your-token> --url ${options.url}`)
-    } else {
-      logger.info('Then run: supercheck login --token <your-token>')
-    }
-    logger.newline()
-    throw new CLIError('AUTH_REQUIRED: Set SUPERCHECK_TOKEN from your secret store or use login --token. Browser login is not available.', ExitCode.AuthError)
+    // Browser (device) login. Loaded lazily so token-only flows never touch the device client.
+    const { runDeviceLogin } = await import('./login-device.js')
+    await runDeviceLogin(options)
   })
 
 export const logoutCommand = new Command('logout')
   .description('Remove stored authentication credentials')
   .action(() => {
+    const hadStored = getStoredToken() !== null
     clearAuth()
-    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: false }))
-    logger.success('Logged out successfully. Stored credentials removed.')
+    // Only a *usable* environment credential counts (a malformed or trigger-key value is rejected by getToken).
+    const envToken = getToken() !== null
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: envToken, removedStoredCredentials: hadStored, ...(hadStored ? { keyRevoked: false } : {}), ...(envToken ? { note: 'SUPERCHECK_TOKEN is still set in the environment' } : {}) }))
+    logger.success(hadStored ? 'Logged out successfully. Stored credentials removed.' : 'No stored credentials were found.')
+    // The key itself stays valid until it expires or is revoked: be explicit so nobody assumes otherwise.
+    if (hadStored) logger.info('The key was removed from this machine only. To invalidate it, revoke it under Organization Admin → CLI Tokens.')
+    if (envToken) logger.warn('SUPERCHECK_TOKEN is still set in your environment and will keep being used. Unset it to finish signing out.')
   })
 
 export const whoamiCommand = new Command('whoami')
@@ -175,6 +177,8 @@ export const whoamiCommand = new Command('whoami')
       throw new CLIError(
         'Failed to verify authentication. Your token may be expired or invalid.',
         ExitCode.AuthError,
+        // Lets the JSON error handler classify this like any other 401/403 (code, retryable, nextActions).
+        { status: (error as ApiRequestError).statusCode },
       )
     }
   })

@@ -189,7 +189,7 @@ function ResetPasswordPageContent() {
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm px-4">
-      <form onSubmit={handleSubmit}>
+      <form method="post" onSubmit={handleSubmit}>
         <FieldGroup>
           {/* Header */}
           <div className="flex flex-col items-center gap-3 text-center">

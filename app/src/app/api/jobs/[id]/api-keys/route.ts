@@ -4,7 +4,7 @@ import { apikey, jobs, user } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -131,6 +131,14 @@ export async function POST(
     }
 
     const userId = authCtx.userId;
+
+    // A trigger key minted while impersonating would belong to the impersonated user.
+    if (!authCtx.isCliAuth && (await isImpersonatedSession())) {
+      return NextResponse.json(
+        { error: "Trigger keys cannot be created while impersonating a user" },
+        { status: 403 }
+      );
+    }
 
     // Parse and validate request body
     let requestBody;

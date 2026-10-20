@@ -3912,6 +3912,390 @@ paths:
                       $ref: "#/components/schemas/LocationDisplayMetadata"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/auth/device/code:
+    post:
+      operationId: requestDeviceCode
+      summary: Start a browser login for the CLI
+      description: RFC 8628 device authorization request. Public; returns a short user
+        code to confirm in the browser. No credential is returned. Available
+        only when the server enables browser login (`DEVICE_AUTH_ENABLED=true`);
+        otherwise returns 503 `device_auth_disabled`.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                client_id:
+                  type: string
+                  enum:
+                    - supercheck-cli
+                client_name:
+                  type: string
+                  maxLength: 64
+                cli_version:
+                  type: string
+                  maxLength: 32
+                hostname:
+                  type: string
+                  maxLength: 64
+              required:
+                - client_id
+      responses:
+        "200":
+          description: Device authorization started.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device_code:
+                    type: string
+                    description: Secret polled by the CLI. Never display or log it.
+                  user_code:
+                    type: string
+                    example: BCDF-GHJK
+                  verification_uri:
+                    type: string
+                    format: uri
+                  verification_uri_complete:
+                    type: string
+                    format: uri
+                  expires_in:
+                    type: integer
+                    example: 900
+                  interval:
+                    type: integer
+                    example: 5
+                required:
+                  - device_code
+                  - user_code
+                  - verification_uri
+                  - expires_in
+                  - interval
+        "400":
+          description: Malformed request body.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - invalid_request
+                required:
+                  - error
+        "401":
+          description: Unknown client id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - invalid_client
+                required:
+                  - error
+        "429":
+          description: Too many requests.
+        "500":
+          description: Server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - server_error
+                required:
+                  - error
+        "503":
+          description: Browser login is disabled on this server.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - device_auth_disabled
+                required:
+                  - error
+      security: []
+  /api/auth/device/token:
+    post:
+      operationId: exchangeDeviceCode
+      summary: Exchange an approved device code for a CLI key
+      description: RFC 8628 device access token request. Poll no faster than the
+        returned `interval`. On success a project-scoped CLI key (90-day expiry)
+        is created and returned exactly once; a lost response cannot be
+        recovered, revoke the unused key under CLI tokens and log in again.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                    - urn:ietf:params:oauth:grant-type:device_code
+                client_id:
+                  type: string
+                  enum:
+                    - supercheck-cli
+                device_code:
+                  type: string
+              required:
+                - grant_type
+                - client_id
+                - device_code
+      responses:
+        "200":
+          description: "Approved. Response is not cacheable (`Cache-Control: no-store`)."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: Project-scoped CLI key (`sck_live_*`).
+                  token_type:
+                    type: string
+                    enum:
+                      - Bearer
+                  expires_in:
+                    type: integer
+                  context:
+                    type: object
+                    description: Non-secret user, organization and project the key belongs to.
+                required:
+                  - access_token
+                  - token_type
+                  - expires_in
+        "400":
+          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - authorization_pending
+                      - slow_down
+                      - access_denied
+                      - expired_token
+                      - invalid_grant
+                      - invalid_client
+                      - invalid_request
+                      - unsupported_grant_type
+                      - token_limit_reached
+                      - device_auth_disabled
+                      - rate_limited
+                  interval:
+                    type: integer
+                    description: Minimum seconds before the next poll, when applicable.
+                required:
+                  - error
+        "401":
+          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - authorization_pending
+                      - slow_down
+                      - access_denied
+                      - expired_token
+                      - invalid_grant
+                      - invalid_client
+                      - invalid_request
+                      - unsupported_grant_type
+                      - token_limit_reached
+                      - device_auth_disabled
+                      - rate_limited
+                  interval:
+                    type: integer
+                    description: Minimum seconds before the next poll, when applicable.
+                required:
+                  - error
+        "409":
+          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - authorization_pending
+                      - slow_down
+                      - access_denied
+                      - expired_token
+                      - invalid_grant
+                      - invalid_client
+                      - invalid_request
+                      - unsupported_grant_type
+                      - token_limit_reached
+                      - device_auth_disabled
+                      - rate_limited
+                  interval:
+                    type: integer
+                    description: Minimum seconds before the next poll, when applicable.
+                required:
+                  - error
+        "429":
+          description: Polling too fast or rate limited.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - slow_down
+                  interval:
+                    type: integer
+                required:
+                  - error
+        "500":
+          description: Server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - server_error
+                required:
+                  - error
+        "503":
+          description: Browser login is disabled on this server.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - device_auth_disabled
+                required:
+                  - error
+      security: []
+  /api/auth/device/approve:
+    post:
+      operationId: approveDeviceCode
+      summary: Approve a CLI login (browser session only)
+      description: Records consent for one project. Requires a signed-in browser
+        session and a same-origin request; no key is created until the CLI
+        exchanges the code.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_code:
+                  type: string
+                project_id:
+                  type: string
+                  format: uuid
+              required:
+                - user_code
+                - project_id
+      responses:
+        "200":
+          description: Recorded.
+        "400":
+          description: Invalid request.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Cross-origin request, or the signed-in user may not create CLI keys
+            in that project.
+        "404":
+          description: Unknown code.
+        "409":
+          description: Code already handled.
+        "410":
+          description: Code expired.
+        "429":
+          description: Too many requests.
+        "500":
+          description: Server error.
+        "503":
+          description: Browser login is disabled.
+      security:
+        - sessionCookie: []
+  /api/auth/device/deny:
+    post:
+      operationId: denyDeviceCode
+      summary: Deny a CLI login (browser session only)
+      description: Terminally denies the request; also revokes an approval that has
+        not yet been exchanged.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_code:
+                  type: string
+              required:
+                - user_code
+      responses:
+        "200":
+          description: Recorded.
+        "400":
+          description: Invalid request.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Cross-origin request.
+        "404":
+          description: Unknown code.
+        "409":
+          description: Code already handled.
+        "410":
+          description: Code expired.
+        "429":
+          description: Too many requests.
+        "500":
+          description: Server error.
+        "503":
+          description: Browser login is disabled.
+      security:
+        - sessionCookie: []
 components:
   securitySchemes:
     bearerAuth:

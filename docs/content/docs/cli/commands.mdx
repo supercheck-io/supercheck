@@ -84,6 +84,23 @@ supercheck schema config --json
 
 `diff --json` and `deploy --dry-run --json` return plans on stdout. Successful deploys return per-resource results, including server-assigned IDs and the state-file path. `pull --dry-run --json` describes the remote resources and config path it would write. Other mutation `--dry-run --json` commands return the proposed request payload.
 
+JSON errors on stderr carry a stable `code` agents can branch on, with `retryable` and suggested `nextActions` where useful. Existing `error` strings and exit codes are unchanged.
+
+| Code | Meaning |
+|------|---------|
+| `AUTH_REQUIRED` | No credential; run `supercheck login` |
+| `TOKEN_INVALID` | Credential expired, revoked or rejected; run `supercheck login --reauth` |
+| `PERMISSION_DENIED` | Authenticated but not allowed (role or project) |
+| `SUBSCRIPTION_REQUIRED` | No active plan; a person must choose one in the dashboard |
+| `SPENDING_LIMIT_REACHED` | The organization's spending limit blocks execution |
+| `RATE_LIMITED` / `SERVICE_UNAVAILABLE` | Retryable |
+| `VALIDATION_FAILED` | The request was rejected as invalid |
+| `CONFIRMATION_REQUIRED` | A write needs `--force` |
+| `PAYMENT_REQUIRED` | The server answered 402 without a recognised reason; run `supercheck plan` |
+| `AUTHORIZATION_PENDING` | `login` without `--json` or a terminal started a browser login that is not approved yet (exit `2`); approve it, then run `login` again |
+| `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `DEVICE_CODE_CONSUMED`, `DEVICE_LOGIN_UNVERIFIED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
+| `CONTEXT_MISMATCH` | The config's API URL, organization or project does not match the logged-in context; see `supercheck link` |
+
 In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
 
 Deploy records returned IDs in `supercheck.state.json`, keyed by API origin and actual organization/project. Share this generated mapping with CI so subsequent deploys manage the same resources. The transient `.lock` coordinates deploys only on a shared local filesystem; do not commit it. Names alone do not establish ownership; pull an existing resource or set its explicit ID. Deploy does not rename local test files.
@@ -103,10 +120,48 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints setup guidance and exits with authentication error `2`; browser login is not available. |
+| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser (see below) when the server supports it. |
 | `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
+| `--reauth` | No | Start a new browser login even if you are already signed in |
+| `--no-browser` | No | Print the login URL and code without opening a browser |
+| `--wait` | No | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
+| `--timeout <seconds>` | No | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
 The token is verified against the API before being stored locally.
+
+#### Browser login
+
+When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself.
+
+- Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
+- Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
+- `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
+- If the organization you pick has no active plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Run `supercheck plan` afterwards to confirm.
+- If the server does not enable browser login, the command explains how to use `--token`.
+
+### `supercheck link`
+
+Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the `organization` and `project` values and the default API URL written by `supercheck init`, treating the file as text (it is never executed) and writing values as quoted strings. Identifiers returned by the server must be plain identifiers or nothing is written. If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; `--dry-run` shows that conflict without failing, and `--force` replaces the existing values, so use it only after confirming the change.
+
+### `supercheck onboard`
+
+Read-only status for the current directory: the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
+
+### `supercheck discover`
+
+Prints bounded, read-only facts about the repository: package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env`, or follow symlinks.
+
+### `supercheck plan`
+
+Shows whether the organization has an active subscription. An unknown result is never treated as free or paid; the server enforces limits on every request.
+
+### `supercheck ci init --github`
+
+Writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. Refuses to overwrite an existing file without `--force`.
+
+### `supercheck agent install`
+
+Installs the Supercheck skill for a coding agent: `--target claude|cursor|codex|opencode|generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
 
 ### `supercheck whoami`
 
@@ -926,7 +981,10 @@ supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
 supercheck deploy --delete       # Delete remote resources absent from config
 supercheck deploy --force        # Skip confirmation
+supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
 ```
+
+`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
 
 `--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
 
@@ -996,9 +1054,9 @@ The doctor command checks:
 - **Playwright browsers** — chromium binary for local test execution
 - **k6** — binary for performance/load tests (optional)
 - **Authentication** — whether a valid token is stored
-- **Configuration** — whether `supercheck.config.ts` exists and is valid
+- **Configuration** — whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted)
 
-With `--fix`, doctor installs missing Playwright browsers automatically. For `@playwright/test` and `k6`, it prints the install command to run manually.
+With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.
 
 `diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
 
