@@ -104,7 +104,17 @@ export async function reconcileStatusPages() {
     for (const component of components) {
       // Components without linked checks retain their manual status.
 
-      await tx.update(statusPageComponents).set({ lastReconciledAt: reconciledAt }).where(eq(statusPageComponents.id, component.id));
+      // Lock the component row and re-read the suppression flag. The manual
+      // resolve action updates this same row; without the fresh read, the batch
+      // snapshot can still say "not suppressed" and recreate the incident the
+      // action just resolved.
+      const [lockedComponent] = await tx
+        .update(statusPageComponents)
+        .set({ lastReconciledAt: reconciledAt })
+        .where(eq(statusPageComponents.id, component.id))
+        .returning({
+          autoIncidentSuppressed: statusPageComponents.autoIncidentSuppressed,
+        });
       const page = await tx.query.statusPages.findFirst({
         where: eq(statusPages.id, component.statusPageId),
       });
@@ -156,9 +166,11 @@ export async function reconcileStatusPages() {
           .where(eq(statusPageComponents.id, component.id));
       // A manual resolve suppresses automatic incidents until the component
       // has actually recovered, so the next failing tick does not recreate it.
-      const suppressed =
-        component.autoIncidentSuppressed && status !== "operational";
-      if (component.autoIncidentSuppressed && !suppressed)
+      const wasSuppressed =
+        lockedComponent?.autoIncidentSuppressed ??
+        component.autoIncidentSuppressed;
+      const suppressed = wasSuppressed && status !== "operational";
+      if (wasSuppressed && !suppressed)
         await tx
           .update(statusPageComponents)
           .set({ autoIncidentSuppressed: false, updatedAt: new Date() })

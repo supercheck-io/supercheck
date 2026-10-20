@@ -73,6 +73,7 @@ export async function enqueuePendingDeliveries(queue: Queue) {
       lastError: "Delivery attempt interrupted; retry limit reached.",
       leasedUntil: null,
       enqueuedAt: null,
+      updatedAt: new Date(),
     })
     .where(
       and(
