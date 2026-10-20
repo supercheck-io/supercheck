@@ -2,6 +2,18 @@
 
 import { NextRequest } from "next/server";
 
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {
+    constructor(message: string, readonly reason: string) { super(message); }
+  },
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
+
+
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
@@ -131,6 +143,8 @@ function mockSuccessTransaction() {
 
 describe("SRE triage API", () => {
   beforeEach(() => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+    jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
     jest.clearAllMocks();
     process.env.SRE_ENABLED = "true";
     mockRequireProjectContext.mockResolvedValue(context);
@@ -146,6 +160,20 @@ describe("SRE triage API", () => {
       process.env.SRE_ENABLED = originalTriageFlag;
     }
   });
+
+  it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
+    "rejects direct model requests when %s denies access", async (guard) => {
+      jest.mocked(subscriptionService[guard]).mockRejectedValue(
+        new SubscriptionAccessDeniedError("Subscription required", "subscription_required"),
+      );
+      const response = await POST(new NextRequest("http://localhost/api/sre/triage", {
+        method: "POST", body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000001" }),
+      }));
+      expect(response.status).toBe(402);
+      expect(jest.requireMock("@/utils/db").db.select).not.toHaveBeenCalled();
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
+    },
+  );
 
   it("returns 503 without database work when disabled for an authenticated caller", async () => {
     process.env.SRE_ENABLED = "false";

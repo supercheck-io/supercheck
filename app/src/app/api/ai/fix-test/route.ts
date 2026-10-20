@@ -1,3 +1,4 @@
+import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIFixService } from "@/lib/ai/ai-service";
 import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
@@ -44,10 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const headersList = await headers();
-    const clientIp =
-      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      headersList.get("x-real-ip") ||
-      "unknown";
+    const clientIp = getClientIP(headersList);
 
     await AuthService.checkRateLimit({
       userId: session.user.id,

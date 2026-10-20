@@ -16,6 +16,7 @@ import { useTheme } from "next-themes";
 import { Moon, Sun, User, Monitor } from "lucide-react";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 import { resetChatwootSession } from "@/components/support/chatwoot-widget";
+import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
 import { clearQueryCache } from "@/lib/query-provider";
 
 export function NavUser() {
@@ -102,6 +103,7 @@ export function NavUser() {
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
+        <LeaveOrganizationDialog />
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

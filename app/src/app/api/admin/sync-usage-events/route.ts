@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
@@ -23,7 +24,12 @@ export async function POST(request: NextRequest) {
     const expectedSecret = process.env.CRON_SECRET;
     
     // Check if this is a valid cron request
-    const isCronJob = expectedSecret && cronSecret === expectedSecret;
+    const expected = Buffer.from(expectedSecret || "");
+    const supplied = Buffer.from(cronSecret || "");
+    const isCronJob =
+      expected.length > 0 &&
+      expected.length === supplied.length &&
+      timingSafeEqual(expected, supplied);
     
     // If not a cron job, require admin privileges (security fix)
     if (!isCronJob) {

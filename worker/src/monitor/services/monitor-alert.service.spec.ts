@@ -112,8 +112,33 @@ describe('MonitorAlertService', () => {
       sreAlertTriageQueueService,
     );
 
-    return { service, db, valuesMock, sreAlertTriageQueueService };
+    return {
+      service,
+      db,
+      valuesMock,
+      sreAlertTriageQueueService,
+      notificationService,
+    };
   }
+
+  it('reports zero delivery as retryable and partial success as delivered', async () => {
+    const { service, notificationService } = createService();
+    notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+      {
+        success: 0,
+        failed: 1,
+        results: [
+          { provider: { id: 'provider-1' }, success: false, error: 'offline' },
+        ],
+      },
+    );
+    expect(
+      await service.sendNotification('monitor-1', 'recovery', 'Recovered'),
+    ).toEqual({ delivered: false });
+    expect(
+      await service.sendNotification('monitor-1', 'recovery', 'Recovered'),
+    ).toEqual({ delivered: true });
+  });
 
   it('suppresses monitor notifications during a scheduled maintenance window', async () => {
     const { service, valuesMock, sreAlertTriageQueueService } =

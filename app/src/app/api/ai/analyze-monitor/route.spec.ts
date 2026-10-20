@@ -21,6 +21,7 @@ jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn() } }));
 
 import { POST } from "./route";
+import { headers } from "next/headers";
 import { usageTracker } from "@/lib/services/usage-tracker";
 
 const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock } };
@@ -56,6 +57,27 @@ describe("monitor AI analysis project authorization", () => {
     requireAuth.mockResolvedValue({ userId: "effective-user" });
     // Stop right after the authorization gate so no AI pipeline is needed.
     (usageTracker.consumeAICredit as jest.Mock).mockResolvedValue({ allowed: false, status: 402, reason: "stop" });
+  });
+
+  it("keeps the same rate-limit IP when a caller spoofs leftmost XFF", async () => {
+    const original = process.env.TRUSTED_PROXY_HOPS;
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    mockMonitor({ id: MONITOR_ID, organizationId: "org-1", projectId: "project-9" });
+    hasPermissionForUser.mockResolvedValue(true);
+    try {
+      for (const spoofed of ["6.6.6.6", "7.7.7.7"]) {
+        (headers as jest.Mock).mockResolvedValue(new Headers({
+          "x-forwarded-for": `${spoofed}, 203.0.113.9, 198.51.100.7`,
+        }));
+        await post();
+      }
+      expect(AuthService.checkRateLimit).toHaveBeenCalledTimes(2);
+      for (const [input] of AuthService.checkRateLimit.mock.calls) expect(input.ip).toBe("203.0.113.9");
+    } finally {
+      if (original === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+      else process.env.TRUSTED_PROXY_HOPS = original;
+      (headers as jest.Mock).mockResolvedValue(new Headers());
+    }
   });
 
   it("checks view access against the monitor's own project and lets permitted users continue", async () => {
