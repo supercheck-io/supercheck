@@ -195,6 +195,14 @@ describe("RBAC Middleware", () => {
       spy.mockRestore();
     });
 
+    it("never writes the session token (a query parameter in drizzle errors) to the log", async () => {
+      const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      rowFor(new Error("Failed query: select ... where token = $1\nparams: mock-session-token"));
+      await isImpersonatedSession();
+      expect(JSON.stringify(spy.mock.calls)).not.toContain("mock-session-token");
+      spy.mockRestore();
+    });
+
     it("trusts an impersonation flag already present on the auth session", async () => {
       mockAuthGetSession.mockResolvedValue({ ...mockSession, session: { ...mockSession.session, impersonatedBy: "admin-1" } });
       rowFor([{ impersonatedBy: null }]);
