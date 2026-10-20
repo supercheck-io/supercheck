@@ -111,6 +111,7 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
@@ -803,7 +804,10 @@ describe('MonitorService', () => {
       };
       mockDbService.db.query.monitors.findFirst.mockResolvedValue(monitor);
       const lastAlert = jest
-        .spyOn(service, 'getLastSslAlert' as never)
+        .spyOn(
+          (service as unknown as { evaluator: MonitorEvaluator }).evaluator,
+          'getLastSslAlert' as never,
+        )
         .mockResolvedValue(null as never);
       const result: MonitorExecutionResult = {
         monitorId: monitor.id,
