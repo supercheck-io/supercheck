@@ -72,6 +72,7 @@ describe("SRE evidence brief stream API", () => {
         method: "POST", body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000001" }),
       }));
       expect(response.status).toBe(402);
+      expect(jest.requireMock("@/lib/sre/evidence-brief-orchestrator").runSreEvidenceBriefGeneration).not.toHaveBeenCalled();
       expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
     },
   );

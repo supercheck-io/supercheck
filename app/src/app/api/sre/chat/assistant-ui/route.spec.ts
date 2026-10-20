@@ -211,6 +211,8 @@ describe("Copilot assistant-ui chat API", () => {
         method: "POST", body: JSON.stringify({ messages: [{ role: "user", parts: [{ type: "text", text: "check" }] }] }),
       }));
       expect(response.status).toBe(402);
+      expect(jest.requireMock("ai").streamText).not.toHaveBeenCalled();
+      expect(jest.requireMock("@/sre/lib/session-store").createSreConversation).not.toHaveBeenCalled();
       expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
     },
   );

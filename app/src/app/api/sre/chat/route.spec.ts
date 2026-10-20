@@ -105,6 +105,8 @@ describe("SRE chat API", () => {
         method: "POST", body: JSON.stringify({ message: "check" }),
       }));
       expect(response.status).toBe(402);
+      expect(mockRunSreAgent).not.toHaveBeenCalled();
+      expect(mockCreateSreConversation).not.toHaveBeenCalled();
       expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
     },
   );

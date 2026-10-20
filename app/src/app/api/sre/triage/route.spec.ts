@@ -170,6 +170,7 @@ describe("SRE triage API", () => {
         method: "POST", body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000001" }),
       }));
       expect(response.status).toBe(402);
+      expect(jest.requireMock("@/utils/db").db.select).not.toHaveBeenCalled();
       expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
     },
   );
