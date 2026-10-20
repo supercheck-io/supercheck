@@ -18,6 +18,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -81,6 +82,9 @@ export async function saveTest(
         error: "Insufficient permissions to create tests",
       };
     }
+
+    await subscriptionService.blockUntilSubscribed(organizationId);
+    await subscriptionService.requireValidPolarCustomer(organizationId);
 
     const existingTests = validatedData.id
       ? await db
@@ -275,6 +279,9 @@ export async function saveTest(
       return { id: newTestId, success: true };
     }
   } catch (error) {
+    if (error instanceof SubscriptionAccessDeniedError) {
+      return { id: "", success: false, error: error.message };
+    }
     console.error("Error saving test:", error);
     return {
       id: "",

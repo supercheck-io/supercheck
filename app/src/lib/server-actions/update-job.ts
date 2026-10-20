@@ -16,6 +16,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 import {
   getJobTestTypeMismatchError,
@@ -148,6 +149,17 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
               : "Invalid or unauthorized notification provider IDs",
         };
       }
+    }
+
+    // Edits can (re)schedule billable runs, so they need the same access as createJob.
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (accessError) {
+      if (accessError instanceof SubscriptionAccessDeniedError) {
+        return { success: false, message: accessError.message, error: accessError.message };
+      }
+      throw accessError;
     }
 
     const dbInstance = db;
