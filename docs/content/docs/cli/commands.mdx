@@ -84,6 +84,20 @@ supercheck schema config --json
 
 `diff --json` and `deploy --dry-run --json` return plans on stdout. Successful deploys return per-resource results, including server-assigned IDs and the state-file path. `pull --dry-run --json` describes the remote resources and config path it would write. Other mutation `--dry-run --json` commands return the proposed request payload.
 
+JSON errors on stderr carry a stable `code` agents can branch on, with `retryable` and suggested `nextActions` where useful. Existing `error` strings and exit codes are unchanged.
+
+| Code | Meaning |
+|------|---------|
+| `AUTH_REQUIRED` | No credential; run `supercheck login` |
+| `TOKEN_INVALID` | Credential expired, revoked or rejected; run `supercheck login --reauth` |
+| `PERMISSION_DENIED` | Authenticated but not allowed (role or project) |
+| `SUBSCRIPTION_REQUIRED` | No active plan; a person must choose one in the dashboard |
+| `SPENDING_LIMIT_REACHED` | The organization's spending limit blocks execution |
+| `RATE_LIMITED` / `SERVICE_UNAVAILABLE` | Retryable |
+| `VALIDATION_FAILED` | The request was rejected as invalid |
+| `CONFIRMATION_REQUIRED` | A write needs `--force` |
+| `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
+
 In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
 
 Deploy records returned IDs in `supercheck.state.json`, keyed by API origin and actual organization/project. Share this generated mapping with CI so subsequent deploys manage the same resources. The transient `.lock` coordinates deploys only on a shared local filesystem; do not commit it. Names alone do not establish ownership; pull an existing resource or set its explicit ID. Deploy does not rename local test files.
@@ -117,9 +131,13 @@ When the server has browser login enabled, `supercheck login` starts a device-au
 - `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
 - If the server does not enable browser login, the command explains how to use `--token`.
 
+### `supercheck link`
+
+Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the placeholder `organization` and `project` values and the default API URL written by `supercheck init`, treating the file as text (it is never executed). If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; review it with `--dry-run`, and pass `--force` only after confirming the change.
+
 ### `supercheck onboard`
 
-Read-only status for the current directory: the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
+Read-only status for the current directory: the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
 
 ### `supercheck discover`
 
@@ -955,7 +973,10 @@ supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
 supercheck deploy --delete       # Delete remote resources absent from config
 supercheck deploy --force        # Skip confirmation
+supercheck deploy --force --verify   # Then run each created/updated test once in the cloud
 ```
+
+`--verify` executes every browser and API test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
 
 `--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
 
