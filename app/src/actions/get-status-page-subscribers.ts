@@ -9,6 +9,7 @@ import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { z } from "zod";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
+import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid ID format");
@@ -42,6 +43,60 @@ export async function rotateSubscriberWebhookSecret(subscriberId: string) {
   } catch (error) {
     console.error("Error rotating subscriber signing secret:", error);
     return { success: false, message: "Failed to rotate signing secret" };
+  }
+}
+
+/**
+ * Send a fresh ownership challenge to a pending webhook subscriber.
+ *
+ * SECURITY: Requires authentication, update permission, and status page
+ * ownership. The endpoint comes from the stored row, never from the caller.
+ */
+export async function resendWebhookVerification(subscriberId: string) {
+  try {
+    if (!uuidSchema.safeParse(subscriberId).success)
+      return { success: false, message: "Invalid subscriber ID" };
+
+    const { organizationId, project } = await requireProjectContext();
+    await requirePermissions(
+      { status_page: ["update"] },
+      { organizationId, projectId: project.id },
+    );
+
+    const subscriber = await db.query.statusPageSubscribers.findFirst({
+      where: and(
+        eq(statusPageSubscribers.id, subscriberId),
+        eq(statusPageSubscribers.mode, "webhook"),
+        isNull(statusPageSubscribers.purgeAt),
+      ),
+    });
+    if (!subscriber || !subscriber.endpoint)
+      return { success: false, message: "Subscriber not found" };
+
+    const statusPage = await verifyStatusPageOwnership(
+      subscriber.statusPageId,
+      organizationId,
+      project.id,
+    );
+    if (!statusPage)
+      return { success: false, message: "Access denied" };
+    if (subscriber.verifiedAt)
+      return { success: false, message: "Subscriber is already verified" };
+
+    const challenge = await sendWebhookChallenge({
+      subscriberId: subscriber.id,
+      endpoint: subscriber.endpoint,
+      statusPageId: subscriber.statusPageId,
+    });
+    return challenge.verified
+      ? { success: true, message: "Webhook endpoint verified" }
+      : {
+          success: false,
+          message: `Verification failed: ${challenge.error}`,
+        };
+  } catch (error) {
+    console.error("Error resending webhook verification:", error);
+    return { success: false, message: "Failed to resend verification" };
   }
 }
 

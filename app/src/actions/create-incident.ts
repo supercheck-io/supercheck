@@ -15,6 +15,10 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import {
+  formatSystemMessage,
+  getSystemMessages,
+} from "@/lib/status-page-system-messages";
 import { eq, and, inArray } from "drizzle-orm";
 
 const createIncidentSchema = z.object({
@@ -216,7 +220,12 @@ export async function createIncident(data: CreateIncidentData) {
         .values({
           incidentId: incident.id,
           createdByUserId: userId,
-          body: validatedData.body || `Incident created: ${validatedData.name}`,
+          body:
+            validatedData.body ||
+            formatSystemMessage(
+              getSystemMessages(statusPage.language).incidentCreatedBody,
+              { name: validatedData.name },
+            ),
           status: validatedData.status,
           deliverNotifications: validatedData.deliverNotifications,
           displayAt: new Date(),

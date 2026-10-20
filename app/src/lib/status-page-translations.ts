@@ -309,6 +309,7 @@ export type TranslationKeys = {
   allPageUpdates: string;
   selectSubscriptionTarget: string;
   webhookSigningSecret: string;
+  webhookVerificationPending: string;
   webhookSecretDescription: string;
   copySecret: string;
   secretCopied: string;
@@ -320,6 +321,7 @@ export type TranslationKeys = {
 
 const translations: Record<SupportedLanguage, TranslationKeys> = {
   en: {
+    webhookVerificationPending: "Check your webhook endpoint for the verification challenge. Notifications start after it is verified.",
     chooseSubscriptions: "Choose components or incidents",
     allPageUpdates: "Receive all page updates.",
     selectSubscriptionTarget: "Select at least one component or incident.",
@@ -545,6 +547,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ar: {
+    webhookVerificationPending: "تحقق من نقطة نهاية الـ webhook بحثًا عن تحدي التحقق. تبدأ الإشعارات بعد التحقق منها.",
     chooseSubscriptions: "اختر المكوّنات أو الحوادث",
     allPageUpdates: "تلقي جميع تحديثات الصفحة.",
     selectSubscriptionTarget: "اختر مكوّناً أو حادثاً واحداً على الأقل.",
@@ -764,6 +767,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   cs: {
+    webhookVerificationPending: "Zkontrolujte koncový bod webhooku, zda obdržel ověřovací výzvu. Oznámení začnou po ověření.",
     chooseSubscriptions: "Vyberte komponenty nebo incidenty",
     allPageUpdates: "Dostávat všechny aktualizace stránky.",
     selectSubscriptionTarget: "Vyberte alespoň jednu komponentu nebo incident.",
@@ -983,6 +987,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   da: {
+    webhookVerificationPending: "Tjek webhook-endpointet for verifikationsudfordringen. Underretninger starter, når det er verificeret.",
     chooseSubscriptions: "Vælg komponenter eller hændelser",
     allPageUpdates: "Modtag alle sideopdateringer.",
     selectSubscriptionTarget: "Vælg mindst én komponent eller hændelse.",
@@ -1202,6 +1207,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   de: {
+    webhookVerificationPending: "Prüfen Sie den Webhook-Endpunkt auf die Verifizierungsaufforderung. Benachrichtigungen beginnen nach der Verifizierung.",
     chooseSubscriptions: "Komponenten oder Vorfälle auswählen",
     allPageUpdates: "Alle Seitenaktualisierungen erhalten.",
     selectSubscriptionTarget: "Wähle mindestens eine Komponente oder einen Vorfall aus.",
@@ -1421,6 +1427,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   es: {
+    webhookVerificationPending: "Comprueba si el endpoint del webhook recibió el desafío de verificación. Las notificaciones empiezan cuando se verifique.",
     chooseSubscriptions: "Elige componentes o incidentes",
     allPageUpdates: "Recibe todas las actualizaciones de la página.",
     selectSubscriptionTarget: "Selecciona al menos un componente o incidente.",
@@ -1640,6 +1647,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   fi: {
+    webhookVerificationPending: "Tarkista webhook-päätepisteestä vahvistushaaste. Ilmoitukset alkavat, kun se on vahvistettu.",
     chooseSubscriptions: "Valitse komponentit tai häiriöt",
     allPageUpdates: "Vastaanota kaikki sivun päivitykset.",
     selectSubscriptionTarget: "Valitse vähintään yksi komponentti tai häiriö.",
@@ -1859,6 +1867,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   fr: {
+    webhookVerificationPending: "Vérifiez que votre point de terminaison webhook a reçu le défi de vérification. Les notifications commencent après validation.",
     chooseSubscriptions: "Choisissez des composants ou des incidents",
     allPageUpdates: "Recevez toutes les mises à jour de la page.",
     selectSubscriptionTarget: "Sélectionnez au moins un composant ou un incident.",
@@ -2078,6 +2087,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hi: {
+    webhookVerificationPending: "सत्यापन चुनौती के लिए अपने webhook एंडपॉइंट की जाँच करें। सत्यापित होने के बाद सूचनाएँ शुरू होंगी।",
     chooseSubscriptions: "कॉम्पोनेंट या घटनाएँ चुनें",
     allPageUpdates: "पेज के सभी अपडेट पाएँ।",
     selectSubscriptionTarget: "कम से कम एक कॉम्पोनेंट या घटना चुनें।",
@@ -2297,6 +2307,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hr: {
+    webhookVerificationPending: "Provjerite je li webhook endpoint primio izazov za provjeru. Obavijesti počinju nakon provjere.",
     chooseSubscriptions: "Odaberite komponente ili incidente",
     allPageUpdates: "Primajte sva ažuriranja stranice.",
     selectSubscriptionTarget: "Odaberite barem jednu komponentu ili incident.",
@@ -2512,6 +2523,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   hu: {
+    webhookVerificationPending: "Ellenőrizze a webhook végpontján az ellenőrzési kihívást. Az értesítések az ellenőrzés után indulnak.",
     chooseSubscriptions: "Válassz összetevőket vagy incidenseket",
     allPageUpdates: "Kapd meg az oldal összes frissítését.",
     selectSubscriptionTarget: "Válassz legalább egy összetevőt vagy incidenst.",
@@ -2731,6 +2743,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   it: {
+    webhookVerificationPending: "Controlla che l'endpoint webhook abbia ricevuto la sfida di verifica. Le notifiche iniziano dopo la verifica.",
     chooseSubscriptions: "Scegli componenti o incidenti",
     allPageUpdates: "Ricevi tutti gli aggiornamenti della pagina.",
     selectSubscriptionTarget: "Seleziona almeno un componente o incidente.",
@@ -2950,6 +2963,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ja: {
+    webhookVerificationPending: "Webhook エンドポイントで確認チャレンジを受け取ってください。確認後に通知が開始されます。",
     chooseSubscriptions: "コンポーネントまたはインシデントを選択",
     allPageUpdates: "ページのすべての更新を受け取る",
     selectSubscriptionTarget: "コンポーネントまたはインシデントを1つ以上選択してください。",
@@ -3169,6 +3183,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ko: {
+    webhookVerificationPending: "webhook 엔드포인트에서 확인 챌린지를 확인하세요. 확인이 완료되면 알림이 시작됩니다.",
     chooseSubscriptions: "컴포넌트 또는 인시던트 선택",
     allPageUpdates: "페이지의 모든 업데이트 받기",
     selectSubscriptionTarget: "컴포넌트 또는 인시던트를 하나 이상 선택하세요.",
@@ -3388,6 +3403,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   nl: {
+    webhookVerificationPending: "Controleer je webhook-endpoint op de verificatie-uitdaging. Meldingen starten na verificatie.",
     chooseSubscriptions: "Kies componenten of incidenten",
     allPageUpdates: "Ontvang alle pagina-updates.",
     selectSubscriptionTarget: "Selecteer ten minste één component of incident.",
@@ -3607,6 +3623,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   no: {
+    webhookVerificationPending: "Sjekk webhook-endepunktet for verifiseringsutfordringen. Varsler starter etter verifisering.",
     chooseSubscriptions: "Velg komponenter eller hendelser",
     allPageUpdates: "Motta alle sideoppdateringer.",
     selectSubscriptionTarget: "Velg minst én komponent eller hendelse.",
@@ -3826,6 +3843,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   pl: {
+    webhookVerificationPending: "Sprawdź punkt końcowy webhooka pod kątem wyzwania weryfikacyjnego. Powiadomienia rozpoczną się po weryfikacji.",
     chooseSubscriptions: "Wybierz komponenty lub incydenty",
     allPageUpdates: "Otrzymuj wszystkie aktualizacje strony.",
     selectSubscriptionTarget: "Wybierz co najmniej jeden komponent lub incydent.",
@@ -4045,6 +4063,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   pt: {
+    webhookVerificationPending: "Verifique se o endpoint do webhook recebeu o desafio de verificação. As notificações começam após a verificação.",
     chooseSubscriptions: "Escolha componentes ou incidentes",
     allPageUpdates: "Receba todas as atualizações da página.",
     selectSubscriptionTarget: "Selecione pelo menos um componente ou incidente.",
@@ -4264,6 +4283,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ro: {
+    webhookVerificationPending: "Verificați endpointul webhook pentru provocarea de verificare. Notificările încep după verificare.",
     chooseSubscriptions: "Alege componente sau incidente",
     allPageUpdates: "Primește toate actualizările paginii.",
     selectSubscriptionTarget: "Selectează cel puțin o componentă sau un incident.",
@@ -4483,6 +4503,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   ru: {
+    webhookVerificationPending: "Проверьте, получил ли вебхук-эндпоинт запрос на подтверждение. Уведомления начнутся после проверки.",
     chooseSubscriptions: "Выберите компоненты или инциденты",
     allPageUpdates: "Получать все обновления страницы.",
     selectSubscriptionTarget: "Выберите хотя бы один компонент или инцидент.",
@@ -4702,6 +4723,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   sv: {
+    webhookVerificationPending: "Kontrollera webhook-endpointen efter verifieringsutmaningen. Aviseringar börjar efter verifiering.",
     chooseSubscriptions: "Välj komponenter eller incidenter",
     allPageUpdates: "Ta emot alla siduppdateringar.",
     selectSubscriptionTarget: "Välj minst en komponent eller incident.",
@@ -4921,6 +4943,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   tr: {
+    webhookVerificationPending: "Webhook uç noktasında doğrulama sorgusunu kontrol edin. Bildirimler doğrulandıktan sonra başlar.",
     chooseSubscriptions: "Bileşenleri veya olayları seçin",
     allPageUpdates: "Sayfadaki tüm güncellemeleri alın.",
     selectSubscriptionTarget: "En az bir bileşen veya olay seçin.",
@@ -5140,6 +5163,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   uk: {
+    webhookVerificationPending: "Перевірте, чи отримав вебхук-ендпоінт запит на підтвердження. Сповіщення почнуться після перевірки.",
     chooseSubscriptions: "Виберіть компоненти або інциденти",
     allPageUpdates: "Отримувати всі оновлення сторінки.",
     selectSubscriptionTarget: "Виберіть принаймні один компонент або інцидент.",
@@ -5359,6 +5383,7 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
   },
 
   zh: {
+    webhookVerificationPending: "请检查 Webhook 端点是否收到验证挑战。验证通过后将开始发送通知。",
     chooseSubscriptions: "选择组件或事件",
     allPageUpdates: "接收页面的所有更新。",
     selectSubscriptionTarget: "请至少选择一个组件或事件。",

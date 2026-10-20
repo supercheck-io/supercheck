@@ -24,7 +24,10 @@ export async function initializeStatusPageScheduler() {
         await reconcileStatusPages();
         await enqueuePendingDeliveries(queue!);
         const due = await db
-          .select({ id: statusPages.id, domain: statusPages.customDomain })
+          .select({
+            id: statusPages.id,
+            domain: statusPages.customDomain,
+          })
           .from(statusPages)
           .where(
             and(
@@ -41,13 +44,13 @@ export async function initializeStatusPageScheduler() {
           .limit(5);
         for (const page of due) {
           if (!page.domain) continue;
+          // Observability only: a DNS miss never unverifies or detaches a
+          // published custom domain. The operator fixes the records.
           const result = await checkStatusPageDomain(page.domain, page.id);
+          if (result !== "valid") console.warn("Status page custom domain DNS check failed", { statusPageId: page.id, result });
           await db
             .update(statusPages)
-            .set({
-              customDomainLastCheckedAt: new Date(),
-              ...(result === "invalid" ? { customDomainVerified: false } : {}),
-            })
+            .set({ customDomainLastCheckedAt: new Date() })
             .where(
               and(
                 eq(statusPages.id, page.id),

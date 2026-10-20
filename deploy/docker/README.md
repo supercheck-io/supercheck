@@ -45,6 +45,7 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
 | `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages when set to `true` (default: `false`) |
+| `STATUS_PAGE_DELIVERY_RETENTION_DAYS` | Days to keep delivered, failed, and skipped status-page notification delivery rows (default: `30`; valid range `1`–`3650`) |
 | `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:3000`; external-services variant requires an explicit value) |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.

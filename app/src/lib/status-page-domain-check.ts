@@ -7,11 +7,21 @@ import {
 import { getStatusPageDomainOwnershipRecord } from "./status-page-domain-guidance";
 import { getStatusPageDomainVerificationTargets } from "./status-page-domain";
 
-/** DNS failures are transient unless authoritative records are missing or mismatched. */
+export type DomainCheckResult = "valid" | "invalid" | "unavailable";
+
+/**
+ * DNS failures never detach a verified custom domain. A published page keeps
+ * its hostname until an operator changes it; a failed lookup only means the
+ * hostname is not resolving right now, which is recoverable by fixing DNS.
+ *
+ * The result is still classified for logging and tests: "invalid" is a
+ * successful lookup whose records point elsewhere, while "unavailable" means
+ * the resolver could not answer (ENOTFOUND, ENODATA, EAI_AGAIN, timeouts).
+ */
 export async function checkStatusPageDomain(
   domain: string,
   pageId: string,
-): Promise<"valid" | "invalid" | "unavailable"> {
+): Promise<DomainCheckResult> {
   const normalize = (value: string) => value.toLowerCase().replace(/\.$/, "");
   try {
     const targets = getStatusPageDomainVerificationTargets().map(normalize);
@@ -32,10 +42,10 @@ export async function checkStatusPageDomain(
     )
       ? "valid"
       : "unavailable";
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === "ENOTFOUND" || code === "ENODATA"
-      ? "invalid"
-      : "unavailable";
+  } catch {
+    // ENOTFOUND, ENODATA, EAI_AGAIN, and timeouts all mean the resolver could
+    // not give an answer. Only a successful lookup with mismatched records is
+    // definitive evidence that the domain no longer belongs to this page.
+    return "unavailable";
   }
 }

@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
+import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 
@@ -773,7 +774,7 @@ async function handleWebhookSubscription(
       };
     }
 
-    // Delete old unverified webhook if exists
+    // Retry verification for an existing pending webhook.
     if (existingSubscriber && !existingSubscriber.verifiedAt) {
       await db
         .update(statusPageSubscribers)
@@ -797,9 +798,17 @@ async function handleWebhookSubscription(
         selectedIncidentIds: data.selectedIncidentIds,
       });
 
+      const challenge = await sendWebhookChallenge({
+        subscriberId: existingSubscriber.id,
+        endpoint: endpoint,
+        statusPageId: statusPage.id as string,
+      });
       return {
         success: true,
-        message: "Webhook subscription updated successfully",
+        requiresVerification: !challenge.verified,
+        message: challenge.verified
+          ? "Webhook subscription verified and updated successfully"
+          : `Webhook subscription saved, but endpoint verification failed: ${challenge.error}. Resend the challenge from Subscribers once the endpoint is ready.`,
         subscriberId: existingSubscriber.id,
       };
     }
@@ -808,7 +817,7 @@ async function handleWebhookSubscription(
     const unsubscribeToken = generateHexToken();
     const webhookSecret = generateWebhookSecret();
 
-    // Create webhook subscriber (immediately verified - no email verification needed)
+    // Create the webhook subscriber pending proof of endpoint ownership.
     const inserted = await insertVerifiedSubscriberWithinLimit({
       statusPageId: statusPage.id as string,
       organizationId: statusPage.organizationId as string | null,
@@ -819,7 +828,7 @@ async function handleWebhookSubscription(
         unsubscribeToken,
         webhookSecret, // Persist the webhook secret for HMAC verification
         skipConfirmationNotification: false,
-        verifiedAt: new Date(), // Webhooks are immediately verified
+        verifiedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -828,6 +837,11 @@ async function handleWebhookSubscription(
       return subscriberLimitFailure(inserted);
     }
     const subscriber = inserted.row;
+    const challenge = await sendWebhookChallenge({
+      subscriberId: subscriber.id,
+      endpoint,
+      statusPageId: statusPage.id as string,
+    });
 
     await syncComponentSubscriptions({
       subscriberId: subscriber.id,
@@ -848,7 +862,10 @@ async function handleWebhookSubscription(
 
     return {
       success: true,
-      message: "Webhook subscription successful! Your endpoint will receive incident notifications.",
+      requiresVerification: !challenge.verified,
+      message: challenge.verified
+        ? "Webhook subscription verified! Your endpoint will receive incident notifications."
+        : `Webhook subscription saved, but endpoint verification failed: ${challenge.error}. Resend the challenge from Subscribers once the endpoint is ready.`,
       subscriberId: subscriber.id,
       webhookSecret, // Return secret for documentation purposes
     };

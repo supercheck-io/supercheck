@@ -6,6 +6,9 @@ import path from "node:path";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq } from "drizzle-orm";
+import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
+import { sendWebhookVerificationChallenge } from "@/lib/webhook-delivery.service";
+import { sendWebhookChallenge } from "./incident-notifications/webhook-verification";
 import * as schema from "@/db/schema";
 
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
@@ -23,11 +26,22 @@ jest.mock("./incident-notifications/send-webhook-notifications", () => ({
 jest.mock("./incident-notifications/send-slack-notifications", () => ({
   sendSlackNotifications: jest.fn(async () => ({ success: true })),
 }));
+jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
+jest.mock("@/lib/rbac/middleware", () => ({
+  requirePermissions: jest.fn(async () => undefined),
+}));
+jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkSubscriberLimit: jest.fn() }));
+jest.mock("@/lib/webhook-delivery.service", () => ({ sendWebhookVerificationChallenge: jest.fn() }));
+jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
+import { updateIncidentStatus } from "@/actions/update-incident-status";
+import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { checkUptimePercentage } from "@/lib/status-page-uptime";
 import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import {
+  deleteExpiredDeliveries,
   enqueuePendingDeliveries,
   processDelivery,
 } from "./incident-notifications/delivery-worker";
@@ -84,10 +98,24 @@ beforeEach(async () => {
     .insert(schema.organization)
     .values({ name: "Test", createdAt: new Date() })
     .returning();
+  const [project] = await mockDatabase
+    .insert(schema.projects)
+    .values({ organizationId: organization.id, name: "Project" })
+    .returning();
+  const [testUser] = await mockDatabase
+    .insert(schema.user)
+    .values({ name: "Test User", email: `${randomUUID()}@example.com` })
+    .returning();
+  jest.mocked(requireProjectContext).mockResolvedValue({
+    userId: testUser.id,
+    organizationId: organization.id,
+    project: { id: project.id, name: "Project" },
+  } as never);
   const [page] = await mockDatabase
     .insert(schema.statusPages)
     .values({
       organizationId: organization.id,
+      projectId: project.id,
       name: "Status",
       subdomain: randomUUID().replaceAll("-", ""),
       status: "published",
@@ -357,4 +385,218 @@ it("persists delivery history and never queues a resolution ahead of an earlier 
       await mockDatabase.query.statusPageNotificationDeliveries.findMany()
     ).every((delivery) => delivery.subscriberId === subscriber.id),
   ).toBe(true);
+});
+
+it("queues every pending delivery in one tick instead of stopping at 100", async () => {
+  const [incident] = await mockDatabase
+    .insert(schema.incidents)
+    .values({ statusPageId: pageId, name: "Fanout" })
+    .returning();
+  const [update] = await mockDatabase
+    .insert(schema.incidentUpdates)
+    .values({ incidentId: incident.id, body: "Fanout", status: "investigating", deliverNotifications: true })
+    .returning();
+  await mockDatabase.insert(schema.statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id, isCreation: true });
+  await mockDatabase.insert(schema.statusPageSubscribers).values(
+    Array.from({ length: 120 }, (_, index) => ({
+      statusPageId: pageId,
+      mode: "email" as const,
+      email: `subscriber-${index}@example.com`,
+      verifiedAt: new Date(),
+    })),
+  );
+  const queue = { add: jest.fn(), getJob: jest.fn(async () => null) };
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(await mockDatabase.query.statusPageNotificationDeliveries.findMany()).toHaveLength(120);
+  expect(queue.add).toHaveBeenCalledTimes(120);
+});
+
+it("does not re-queue rows that a worker already holds, so later backlog rows advance", async () => {
+  const [incident] = await mockDatabase
+    .insert(schema.incidents)
+    .values({ statusPageId: pageId, name: "Backlog" })
+    .returning();
+  const [update] = await mockDatabase
+    .insert(schema.incidentUpdates)
+    .values({ incidentId: incident.id, body: "Backlog", status: "investigating", deliverNotifications: true })
+    .returning();
+  await mockDatabase
+    .insert(schema.statusPageNotificationEvents)
+    .values({ incidentId: incident.id, updateId: update.id, isCreation: true });
+  const subscribers = await mockDatabase
+    .insert(schema.statusPageSubscribers)
+    .values(
+      Array.from({ length: 2 }, (_, index) => ({
+        statusPageId: pageId,
+        mode: "email" as const,
+        email: `backlog-${index}@example.com`,
+        verifiedAt: new Date(),
+      })),
+    )
+    .returning();
+
+  const queue = { add: jest.fn(), getJob: jest.fn(async () => null) };
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).toHaveBeenCalledTimes(2);
+
+  // Immediately after enqueueing, both rows are leased to their BullMQ jobs.
+  queue.add.mockClear();
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).not.toHaveBeenCalled();
+
+  // Once a lease lapses (lost worker), that row is eligible again; the other
+  // row stays held so the backlog cannot pin the same first rows forever.
+  const queued = await mockDatabase.query.statusPageNotificationDeliveries.findMany();
+  const lapsed = queued.find(
+    (delivery) => delivery.subscriberId === subscribers[0].id,
+  );
+  if (!lapsed) throw new Error("delivery for the first subscriber missing");
+  await mockDatabase
+    .update(schema.statusPageNotificationDeliveries)
+    .set({ enqueuedAt: new Date(Date.now() - 10 * 60 * 1000) })
+    .where(eq(schema.statusPageNotificationDeliveries.id, lapsed.id));
+  queue.add.mockClear();
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).toHaveBeenCalledTimes(1);
+});
+
+it("deletes only terminal deliveries older than the retention window", async () => {
+  const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Retention" }).returning();
+  const [update] = await mockDatabase.insert(schema.incidentUpdates).values({ incidentId: incident.id, body: "Retention", status: "investigating" }).returning();
+  const [event] = await mockDatabase.insert(schema.statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id }).returning();
+  const [oldSubscriber, recentSubscriber] = await mockDatabase
+    .insert(schema.statusPageSubscribers)
+    .values([
+      { statusPageId: pageId, mode: "email", email: "old@example.com", verifiedAt: new Date() },
+      { statusPageId: pageId, mode: "email", email: "recent@example.com", verifiedAt: new Date() },
+    ])
+    .returning();
+  await mockDatabase.insert(schema.statusPageNotificationDeliveries).values([
+    { eventId: event.id, subscriberId: oldSubscriber.id, mode: "email", status: "delivered", updatedAt: new Date(Date.now() - 31 * 86400000) },
+    { eventId: event.id, subscriberId: recentSubscriber.id, mode: "email", status: "delivered", updatedAt: new Date(Date.now() - 29 * 86400000) },
+  ]);
+  await deleteExpiredDeliveries(30);
+  const remaining = await mockDatabase.query.statusPageNotificationDeliveries.findMany();
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0].subscriberId).toBe(recentSubscriber.id);
+});
+
+it("does not recreate a manually resolved automatic incident until the component recovers", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const [automatic] = await mockDatabase.query.incidents.findMany();
+  expect(automatic.status).toBe("investigating");
+
+  // Manual resolve sets the suppression flag (covered by the action test below).
+  await mockDatabase.update(schema.incidents).set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() }).where(eq(schema.incidents.id, automatic.id));
+  await mockDatabase.update(schema.statusPageComponents).set({ autoIncidentSuppressed: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(1);
+
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.autoIncidentSuppressed).toBe(false);
+
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(2);
+});
+
+it("writes automatic incident text in the configured page language", async () => {
+  await mockDatabase.update(schema.statusPages).set({ language: "es" }).where(eq(schema.statusPages.id, pageId));
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+
+  const incident = await mockDatabase.query.incidents.findFirst();
+  const update = await mockDatabase.query.incidentUpdates.findFirst();
+  expect(incident?.name).toBe("API está experimentando una interrupción");
+  expect(update?.body).toBe("La monitorización detectó un problema de disponibilidad.");
+});
+
+it("sets suppression when an automatic incident is resolved manually", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const automatic = await mockDatabase.query.incidents.findFirst();
+
+  const result = await updateIncidentStatus({
+    incidentId: automatic!.id,
+    statusPageId: pageId,
+    status: "resolved",
+    body: "Resolved manually while the monitor is still down.",
+    deliverNotifications: true,
+    restoreComponentStatus: false,
+  });
+
+  expect(result.success).toBe(true);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.autoIncidentSuppressed).toBe(true);
+});
+
+async function pendingWebhook() {
+  const [row] = await mockDatabase.insert(schema.statusPageSubscribers).values({
+    statusPageId: pageId, mode: "webhook", endpoint: `https://${randomUUID()}.example.com/hook`,
+  }).returning();
+  return { subscriberId: row.id, statusPageId: pageId, endpoint: row.endpoint! };
+}
+
+it("serializes concurrent webhook activations against the verified subscriber limit", async () => {
+  jest.mocked(checkSubscriberLimit).mockImplementation(async (_org, count) => ({ allowed: count < 1, limit: 1, error: count >= 1 ? "Subscriber limit reached" : undefined }) as never);
+  jest.mocked(sendWebhookVerificationChallenge).mockResolvedValue({ success: true });
+  const pending = await Promise.all([pendingWebhook(), pendingWebhook()]);
+  const results = await Promise.all(pending.map(sendWebhookChallenge));
+  expect(results.filter((result) => result.verified)).toHaveLength(1);
+  const rows = await mockDatabase.query.statusPageSubscribers.findMany();
+  expect(rows.filter((row) => row.verifiedAt)).toHaveLength(1);
+});
+
+it("rejects an older ownership response after a newer challenge has replaced it", async () => {
+  jest.mocked(checkSubscriberLimit).mockResolvedValue({ allowed: true } as never);
+  const pending = await pendingWebhook();
+  let finishOld!: (result: { success: boolean }) => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  jest.mocked(sendWebhookVerificationChallenge)
+    .mockImplementationOnce(() => { started(); return new Promise((resolve) => { finishOld = resolve; }); })
+    .mockResolvedValueOnce({ success: false, error: "No echo" });
+  const older = sendWebhookChallenge(pending);
+  await ready;
+  await expect(sendWebhookChallenge(pending)).resolves.toMatchObject({ verified: false });
+  finishOld({ success: true });
+  await expect(older).resolves.toMatchObject({ verified: false });
+  expect((await mockDatabase.query.statusPageSubscribers.findFirst())?.verifiedAt).toBeNull();
+});
+
+it("does not reactivate a subscriber removed while endpoint verification was pending", async () => {
+  jest.mocked(checkSubscriberLimit).mockResolvedValue({ allowed: true } as never);
+  const pending = await pendingWebhook();
+  jest.mocked(sendWebhookVerificationChallenge).mockImplementationOnce(async () => {
+    await mockDatabase.update(schema.statusPageSubscribers).set({ purgeAt: new Date() }).where(eq(schema.statusPageSubscribers.id, pending.subscriberId));
+    return { success: true };
+  });
+  await expect(sendWebhookChallenge(pending)).resolves.toMatchObject({ verified: false });
+  expect((await mockDatabase.query.statusPageSubscribers.findFirst())?.verifiedAt).toBeNull();
+});
+
+it("locks the automatic component before its incident to avoid deadlocking reconciliation", async () => {
+  const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, sourceComponentId: componentId, name: "Automatic outage", status: "investigating" }).returning();
+  let action!: ReturnType<typeof updateIncidentStatus>;
+  await client.begin(async (reconciler) => {
+    await reconciler`SELECT id FROM status_page_components WHERE id = ${componentId} FOR UPDATE`;
+    action = updateIncidentStatus({ incidentId: incident.id, statusPageId: pageId, status: "resolved", body: "Resolved manually", deliverNotifications: false, restoreComponentStatus: false });
+    let waiting = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const rows = await client`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%update "status_page_components"%'`;
+      if (rows.length) { waiting = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(waiting).toBe(true);
+    await reconciler`SET LOCAL lock_timeout = '500ms'`;
+    // Reconciliation can still lock the incident while the action waits for
+    // its component. The old incident-first order timed out here.
+    await reconciler`SELECT id FROM incidents WHERE id = ${incident.id} FOR UPDATE`;
+  });
+  await expect(action).resolves.toMatchObject({ success: true });
 });

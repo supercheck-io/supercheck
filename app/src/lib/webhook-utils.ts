@@ -99,6 +99,18 @@ export function generateWebhookSecret(): string {
 }
 
 /**
+ * Single-use token proving control of a webhook endpoint. Only its hash is
+ * stored; the raw value is sent once in the verification request.
+ */
+export function generateWebhookVerificationToken(): string {
+  return toHex(getRandomBytes(32));
+}
+
+export function hashWebhookVerificationToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/**
  * Mask webhook endpoint for display (hide credentials)
  */
 export function maskWebhookEndpoint(endpoint: string): string {
