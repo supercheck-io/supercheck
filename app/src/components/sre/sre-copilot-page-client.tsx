@@ -31,6 +31,15 @@ export function SreCopilotPageClient({
     },
     [projectId, queryClient],
   );
+  const refreshHistories = useCallback(() => {
+    // Mark stale and refetch so a chat abandoned mid-stream (which never fired
+    // onFinish) shows up when the sheet opens. Invalidation does not refetch
+    // per render, so keeping the sheet open cannot start a request loop.
+    void queryClient.invalidateQueries({
+      queryKey: getSreCopilotHistoriesQueryKey(projectId),
+      refetchType: "active",
+    });
+  }, [projectId, queryClient]);
 
   if (!canInvestigate) {
     return (
@@ -71,6 +80,9 @@ export function SreCopilotPageClient({
       initialHistories={query.data.histories}
       loadError={query.data.success ? null : query.data.error}
       onHistoriesChange={query.data.success ? updateCachedHistories : undefined}
+      onRequestHistoryRefresh={
+        query.data.success ? refreshHistories : undefined
+      }
     />
   );
 }

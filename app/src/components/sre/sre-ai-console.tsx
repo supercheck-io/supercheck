@@ -34,6 +34,7 @@ type SreAiConsoleProps = {
   initialIncidentId?: string | null;
   loadError?: string | null;
   onHistoriesChange?: (histories: SreCopilotChatHistory[]) => void;
+  onRequestHistoryRefresh?: () => void;
 };
 
 function formatHistoryDate(value: string) {
@@ -57,6 +58,7 @@ export function SreAiConsole({
   initialIncidentId = null,
   loadError = null,
   onHistoriesChange,
+  onRequestHistoryRefresh,
 }: SreAiConsoleProps) {
   const initialHistory = initialIncidentId
     ? initialHistories.find(
@@ -110,6 +112,15 @@ export function SreAiConsole({
     setActiveMessages([]);
     setError(null);
     setThreadKey(`new-${Date.now()}`);
+  };
+
+  const handleHistoryOpenChange = (open: boolean) => {
+    setIsHistoryOpen(open);
+    // A chat abandoned mid-stream never reaches onConversationResolved, so the
+    // server is the only place that knows about it. Refresh once per open.
+    if (open && !isHistoryOpen) {
+      onRequestHistoryRefresh?.();
+    }
   };
 
   const selectHistory = (history: SreCopilotChatHistory) => {
@@ -175,7 +186,7 @@ export function SreAiConsole({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
-      <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+      <Sheet open={isHistoryOpen} onOpenChange={handleHistoryOpenChange}>
         <SheetContent side="left" className="w-[min(22rem,88vw)] gap-0 p-0">
           <SheetHeader className="border-b pr-12">
             <SheetTitle>Chat history</SheetTitle>
@@ -254,7 +265,7 @@ export function SreAiConsole({
               size="sm"
               aria-label="History"
               aria-expanded={isHistoryOpen}
-              onClick={() => setIsHistoryOpen(true)}
+              onClick={() => handleHistoryOpenChange(true)}
             >
               <HistoryIcon className="hidden h-4 w-4 sm:block" />
               <span aria-hidden="true" className="inline">
