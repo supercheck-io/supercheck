@@ -17,6 +17,24 @@ const RETENTION_BATCH = 500;
 const RETENTION_MAX_BATCHES = 20;
 const DEFAULT_RETENTION_DAYS = 14;
 const POISON_MAX_BACKOFF_MS = 5 * 60_000;
+/** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
+const POISON_GIVE_UP_AFTER = 20;
+/**
+ * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
+ * not stall every other organization's closures and alerts behind it.
+ */
+const DEFAULT_NOTIFY_BUDGET_MS = 45_000;
+
+function notifyBudgetMs(): number {
+  const raw = Number.parseInt(
+    process.env.MISSING_CYCLE_NOTIFY_BUDGET_MS ?? '',
+    10,
+  );
+  return Math.min(
+    120_000,
+    Math.max(500, Number.isFinite(raw) ? raw : DEFAULT_NOTIFY_BUDGET_MS),
+  );
+}
 
 /** Drizzle wraps driver errors; the cause (connection, TLS, SQLSTATE) is what operators need. */
 function describeError(error: unknown): string {
@@ -58,6 +76,8 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   private running: Promise<unknown> = Promise.resolve();
   private stopping = false;
   private lastRetentionAt = 0;
+  /** Closed this tick; notified only after every due cycle has been closed. */
+  private toNotify: string[] = [];
   /** Cycles whose closure keeps throwing: skipped with backoff so they cannot starve a batch. */
   private readonly failing = new Map<
     string,
@@ -122,6 +142,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     try {
       const arrivals = await this.processArrivals(now);
       const deadlines = await this.processDeadlines(now);
+      await this.flushNotifications();
       await this.repairNotifications(now);
       await this.sweepRetention(now);
       await this.refreshLag(now);
@@ -170,6 +191,12 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       )
       .orderBy(asc(schema.monitorCycles.deadlineAt))
       .limit(BATCH + this.failing.size);
+    if (due.length < BATCH + this.failing.size) {
+      // The query saw every open overdue cycle: forget entries that were closed, deleted or aborted.
+      const seen = new Set(due.map((row) => row.id));
+      for (const id of this.failing.keys())
+        if (!seen.has(id)) this.failing.delete(id);
+    }
     let processed = 0;
     for (const { id } of due) {
       if (this.stopping || processed >= BATCH) break;
@@ -204,7 +231,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       const outcome = await this.cycles.closeCycle(id, now);
       this.failing.delete(id);
       this.state.closed[outcome] = (this.state.closed[outcome] ?? 0) + 1;
-      if (outcome === 'closed') await this.notify(id);
+      if (outcome === 'closed') this.toNotify.push(id);
     } catch (error) {
       this.state.cycleFailures += 1;
       const failures = (this.failing.get(id)?.failures ?? 0) + 1;
@@ -216,21 +243,50 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures}): ${describeError(error)}`,
       );
+      if (failures >= POISON_GIVE_UP_AFTER) {
+        this.failing.delete(id);
+        await this.cycles.abortCycle(id).catch(() => undefined);
+        this.logger.error(
+          `Aborted cycle ${id} after ${failures} failed closures; investigate the cause above`,
+        );
+      }
     } finally {
       this.beat();
     }
   }
 
+  private async flushNotifications(): Promise<void> {
+    const ids = this.toNotify;
+    this.toNotify = [];
+    for (const id of ids) {
+      if (this.stopping) break;
+      await this.notify(id);
+    }
+  }
+
   private async notify(id: string): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
     try {
-      await this.cycles.notifyCycle(id);
+      await Promise.race([
+        this.cycles.notifyCycle(id),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(new Error(`notification exceeded ${notifyBudgetMs()} ms`)),
+            notifyBudgetMs(),
+          );
+        }),
+      ]);
     } catch (error) {
-      // Left without a receipt on purpose: the repair pass retries (at-least-once).
+      // No receipt: the repair pass retries with backoff, and each failure counts as an attempt
+      // (bounded), so a hanging or throwing delivery cannot loop on every tick.
       this.state.notifyFailures += 1;
       this.logger.error(
         `Notifying cycle ${id} failed: ${describeError(error)}`,
       );
+      await this.cycles.recordNotifyFailure(id).catch(() => undefined);
     } finally {
+      if (timer) clearTimeout(timer);
       this.beat();
     }
   }

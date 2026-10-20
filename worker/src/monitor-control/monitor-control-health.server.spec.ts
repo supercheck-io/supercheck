@@ -66,3 +66,15 @@ describe('control-plane metrics', () => {
     expect(text).toContain('supercheck_monitor_cycle_notify_failures_total 1');
   });
 });
+
+describe('control-plane liveness', () => {
+  it('stays alive while starting and while progress is recent', () => {
+    expect(
+      serverFor(snapshot({ lastSuccessAt: null })).isAlive(1_000_000),
+    ).toBe(true);
+    expect(serverFor(snapshot()).isAlive(1_000_000 + 60_000)).toBe(true);
+  });
+  it('reports a wedged loop so Kubernetes restarts the pod', () => {
+    expect(serverFor(snapshot()).isAlive(1_000_000 + 301_000)).toBe(false);
+  });
+});

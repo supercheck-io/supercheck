@@ -359,6 +359,8 @@ export class MonitorEvaluator {
       return { alertSent: false };
     }
 
+    // Set once the provider accepted the alert: later persistence errors are not delivery failures.
+    let delivered = false;
     try {
       this.logger.log(
         `Sending ${alertType} notification for monitor ${monitorId}`,
@@ -382,6 +384,7 @@ export class MonitorEvaluator {
       if (notification?.suppressed) return { alertSent: false };
       if (notification?.delivered === false)
         return { alertSent: false, deliveryFailed: true };
+      delivered = true;
 
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         const updatedAggregatedAlertState =
@@ -435,7 +438,7 @@ export class MonitorEvaluator {
         `Failed to send ${alertType} alert for monitor ${monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
-      return { alertSent: false, deliveryFailed: true };
+      return { alertSent: false, deliveryFailed: !delivered };
     }
   }
 

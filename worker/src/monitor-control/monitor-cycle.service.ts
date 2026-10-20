@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gt, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
@@ -397,6 +397,39 @@ export class MonitorCycleService {
         ),
       );
     return true;
+  }
+
+  /** A cycle that cannot be closed (persistent verification failure) must not stay open forever. */
+  async abortCycle(cycleId: string, now: Date = new Date()): Promise<void> {
+    await this.dbService.db
+      .update(schema.monitorCycles)
+      .set({ status: 'aborted', closedAt: now, notifiedAt: now })
+      .where(
+        and(
+          eq(schema.monitorCycles.id, cycleId),
+          eq(schema.monitorCycles.status, 'open'),
+        ),
+      );
+  }
+
+  /**
+   * A delivery step that threw (or timed out) before reporting a result still counts as an attempt,
+   * so repair backs off and gives up instead of retrying on every tick.
+   */
+  async recordNotifyFailure(cycleId: string): Promise<void> {
+    await this.dbService.db
+      .update(schema.monitorCycles)
+      .set({
+        notifyAttempts: sql`${schema.monitorCycles.notifyAttempts} + 1`,
+        notifiedAt: sql`CASE WHEN ${schema.monitorCycles.notifyAttempts} + 1 >= ${MAX_NOTIFY_ATTEMPTS} THEN (now() AT TIME ZONE 'utc') ELSE NULL END`,
+      })
+      .where(
+        and(
+          eq(schema.monitorCycles.id, cycleId),
+          eq(schema.monitorCycles.status, 'closed'),
+          isNull(schema.monitorCycles.notifiedAt),
+        ),
+      );
   }
 
   private async finish(

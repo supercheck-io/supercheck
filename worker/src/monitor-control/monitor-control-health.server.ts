@@ -26,7 +26,8 @@ export class MonitorControlHealthServer
     this.server = createServer((req, res) => {
       const snapshot = this.processor.snapshot();
       if (req.url === '/health/live') {
-        res.writeHead(200).end('ok');
+        const alive = this.isAlive();
+        res.writeHead(alive ? 200 : 503).end(alive ? 'ok' : 'stalled');
       } else if (req.url === '/health/ready') {
         const problem = controlPlaneConfigProblem();
         const ready = !problem && this.isReady();
@@ -51,6 +52,16 @@ export class MonitorControlHealthServer
       if (!this.server) return resolve();
       this.server.close(() => resolve());
     });
+  }
+
+  /**
+   * Liveness follows progress, not just the process: a loop that has not completed any work for
+   * several minutes is wedged (a hung dependency) and a restart is the only recovery.
+   */
+  isAlive(now = Date.now()): boolean {
+    const s = this.processor.snapshot();
+    if (!s.started || s.lastSuccessAt === null) return true; // startupProbe covers the first tick
+    return now - s.lastSuccessAt < Math.max(300_000, s.intervalMs * 60);
   }
 
   /** Ready only while ticks keep succeeding; a stalled loop must stop receiving traffic/rollouts. */

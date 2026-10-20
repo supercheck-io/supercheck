@@ -154,7 +154,8 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
     // Inside the grace period nothing is retried.
     await processor.tick(new Date(deadline.getTime() + 20_000));
     expect((await cycle('p5')).notifiedAt).toBeNull();
-    await processor.tick(new Date(deadline.getTime() + 120_000));
+    // The crash counted as one attempt, so repair waits two minutes after closure.
+    await processor.tick(new Date(deadline.getTime() + 130_000));
     expect((await cycle('p5')).notifiedAt).not.toBeNull();
     expect(sendNotification).toHaveBeenCalledTimes(1);
   });
@@ -259,6 +260,76 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       expect((await cycle('backoff')).notifiedAt).toBeNull();
       await processor.tick(new Date(deadline.getTime() + 200_000)); // past 3 minutes
       expect((await cycle('backoff')).notifiedAt).not.toBeNull();
+    });
+
+    it('does not let one hanging notification stall other cycles, and counts it as an attempt', async () => {
+      process.env.MISSING_CYCLE_NOTIFY_BUDGET_MS = '600';
+      await open('hang');
+      await open('quick');
+      const original = MonitorCycleService.prototype.notifyCycle;
+      const spy = jest
+        .spyOn(MonitorCycleService.prototype, 'notifyCycle')
+        .mockImplementation(function (this: MonitorCycleService, id: string) {
+          return id === 'hang'
+            ? new Promise<boolean>(() => undefined)
+            : original.call(this, id);
+        });
+      const started = Date.now();
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      spy.mockRestore();
+      delete process.env.MISSING_CYCLE_NOTIFY_BUDGET_MS;
+      expect(Date.now() - started).toBeLessThan(10_000);
+      expect((await cycle('quick')).status).toBe('closed');
+      expect((await cycle('quick')).notifiedAt).not.toBeNull();
+      expect(await cycle('hang')).toMatchObject({
+        status: 'closed',
+        notifiedAt: null,
+        notifyAttempts: 1,
+      });
+    });
+
+    it('closes every due cycle before sending any notification', async () => {
+      await open('o1');
+      await open('o2');
+      const order: string[] = [];
+      const closeSpy = jest.spyOn(MonitorCycleService.prototype, 'closeCycle');
+      const notifySpy = jest.spyOn(
+        MonitorCycleService.prototype,
+        'notifyCycle',
+      );
+      closeSpy.mockImplementation((id: string) => {
+        order.push(`close:${id}`);
+        return Promise.resolve('closed' as const);
+      });
+      notifySpy.mockImplementation(async (id: string) => {
+        order.push(`notify:${id}`);
+        return true;
+      });
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      closeSpy.mockRestore();
+      notifySpy.mockRestore();
+      const firstNotify = order.findIndex((entry) =>
+        entry.startsWith('notify:'),
+      );
+      const lastClose = order
+        .map((entry) => entry.startsWith('close:'))
+        .lastIndexOf(true);
+      expect(firstNotify).toBeGreaterThan(lastClose);
+    });
+
+    it('aborts an open cycle explicitly and records thrown notification failures as bounded attempts', async () => {
+      await open('abortme');
+      await processor['cycles'].abortCycle('abortme');
+      expect(await cycle('abortme')).toMatchObject({ status: 'aborted' });
+      await open('failing');
+      await processor['cycles'].closeCycle(
+        'failing',
+        new Date(deadline.getTime() + 1000),
+      );
+      for (let i = 0; i < 5; i++)
+        await processor['cycles'].recordNotifyFailure('failing');
+      expect(await cycle('failing')).toMatchObject({ notifyAttempts: 5 });
+      expect((await cycle('failing')).notifiedAt).not.toBeNull();
     });
   });
 });
