@@ -143,7 +143,7 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
   if (envToken) {
     // A new browser login would be stored but never used: SUPERCHECK_TOKEN always wins.
     throw new CLIError(
-      'AUTH_REQUIRED: SUPERCHECK_TOKEN is set and takes precedence over any stored login, and it was rejected or reauthentication was requested. Unset it (or replace it with a valid CLI token), then run `supercheck login` again.',
+      'AUTH_REQUIRED: SUPERCHECK_TOKEN is set and takes precedence over any stored login, so a new browser login would never be used (the token was rejected, was issued for a different server, or --reauth was requested). Unset it or replace it with a valid CLI token, then run `supercheck login` again.',
       ExitCode.AuthError,
     )
   }
@@ -178,6 +178,8 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       deadline: Date.now() + timeoutSeconds * 1000,
       onPending(pending) {
+        // Agents need the URL and code before the call blocks: emit the pending object as the first JSON line.
+        if (json) logger.output(JSON.stringify(printable(pending)))
         printInstructions(pending)
         if (options.browser !== false && !json && !process.env.CI) {
           openBrowser(pending.verificationUriComplete ?? pending.verificationUri)

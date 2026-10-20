@@ -1,6 +1,6 @@
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import pc from './colors.js'
 import { logger } from './logger.js'
@@ -23,6 +23,9 @@ export function isCommandAvailable(command: string): { available: boolean; versi
       stdio: 'pipe',
       timeout: 10_000,
       env: { ...process.env },
+      // Probe PATH only: on Windows a command in the current directory would otherwise win, and the current
+      // directory may be an untrusted repository.
+      cwd: existsSync(homedir()) ? homedir() : tmpdir(),
     }).toString().trim()
 
     // Extract first line only

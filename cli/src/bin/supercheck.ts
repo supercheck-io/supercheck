@@ -1,5 +1,12 @@
+import { agentCommand } from '../commands/agent.js'
+import { discoverCommand } from '../commands/discover.js'
+import { onboardCommand } from '../commands/onboard.js'
+import { planCommand } from '../commands/plan.js'
+import { linkCommand } from '../commands/link.js'
+import { ciCommand } from '../commands/ci.js'
+import { classifyError } from '../utils/error-codes.js'
 import { assertDeclaredOrigin, verifyContext } from '../utils/managed.js'
-import { getToken, getStoredBaseUrl } from '../auth/store.js'
+import { getToken, getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
 import { skillsCommand, schemaCommand, capabilitiesCommand } from '../commands/skills.js'
 import { redact, redactText, setRevealSecrets } from '../utils/redact.js'
 import { Command } from 'commander'
@@ -83,13 +90,15 @@ const program = new Command()
       actionCommand.parent?.name() === 'notification' ||
       actionCommand.parent?.name() === 'notifications'
 
+    // Commands that inspect an untrusted checkout must never load its .env or execute its config.
+    // Identify them by their top-level command, not by a (possibly coincidental) subcommand name.
+    let topLevel: Command = actionCommand
+    while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
+    if (['discover', 'onboard', 'plan', 'ci', 'agent', 'link'].includes(topLevel.name())) return
+
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
 
     const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name()) && (actionCommand.parent?.name() ?? '') === program.name()
-    if (diagnostic) {
-      const { config: loadEnv } = await import('dotenv')
-      loadEnv({ quiet: true })
-    }
     if (diagnostic && (getStoredBaseUrl() || actionOpts.url)) return
 
     const configPath =
@@ -123,6 +132,12 @@ program.hook('postAction', (_command, action) => {
 program.addCommand(skillsCommand)
 program.addCommand(schemaCommand)
 program.addCommand(capabilitiesCommand)
+program.addCommand(agentCommand)
+program.addCommand(discoverCommand)
+program.addCommand(onboardCommand)
+program.addCommand(planCommand)
+program.addCommand(linkCommand)
+program.addCommand(ciCommand)
 program.addCommand(loginCommand)
 program.addCommand(logoutCommand)
 program.addCommand(whoamiCommand)
@@ -179,12 +194,14 @@ async function main(): Promise<void> {
       : err && typeof err === 'object' && 'exitCode' in err && typeof err.exitCode === 'number'
         ? err.exitCode : ExitCode.GeneralError
     if ((program.opts().json || process.argv.includes('--json')) && code !== 0) {
+      const classified = classifyError(err, isAuthenticated())
       console.error(JSON.stringify(redact({
         error: err instanceof Error ? err.message : String(err),
         exitCode: code,
         ...(err instanceof ApiRequestError ? { status: err.statusCode, details: err.responseBody } : {}),
         ...(err instanceof CLIError && err.details !== undefined ? { details: err.details } : {}),
-        code: err instanceof Error && /^[A-Z_]+:/.test(err.message) ? err.message.split(':')[0] : undefined,
+        code: err instanceof Error && /^[A-Z_]+:/.test(err.message) ? err.message.split(':')[0] : classified?.code,
+        ...(classified ? { retryable: classified.retryable, nextActions: classified.nextActions.length ? classified.nextActions : undefined } : {}),
       })))
       process.exit(code)
     }

@@ -45,10 +45,10 @@ npx supercheck --version
 
 ## Quick start
 
-Create a project-scoped CLI token in **Organization Admin → CLI Tokens**, then:
+Sign in through your browser (or create a project-scoped CLI token in **Organization Admin → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
 
 ```bash
-supercheck login --token <cli-token>
+supercheck login     # opens your browser; approve the code shown in the terminal
 supercheck init      # scaffold supercheck.config.ts and example tests
 supercheck pull      # copy existing cloud resources into local files
 supercheck diff      # preview changes
@@ -183,11 +183,13 @@ Write operations that need confirmation never proceed without it in non-interact
 | `SUPERCHECK_URL` | API URL for self-hosted instances; overrides the stored login URL |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Proxy configuration |
 
+`SUPERCHECK_TOKEN`, `SUPERCHECK_TRIGGER_KEY`, `SUPERCHECK_URL`, proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, ...) and TLS settings (`NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, ...) are read only from the real environment or a stored login, never from a project `.env` file, so a cloned repository cannot choose your credential, where it is sent, or how the connection is protected. Export them in your shell or CI secret store. Commands that load `supercheck.config.ts` still execute it; do not run `deploy`, `pull` or `diff` in a repository you do not trust. `doctor`, `onboard`, `discover`, `link`, `plan`, `ci` and `agent` never run it (`doctor --fix` runs `npx playwright install` from the repository: use it only where you trust the repository).
+
 Run `supercheck whoami` to see the active API URL and project.
 
 ## Use with AI agents
 
-The CLI ships offline, versioned workflow guidance. `supercheck skills` prints an index and `supercheck skills <topic>` focused instructions. `supercheck skills install` writes a small pointer to `.agents/skills/supercheck/SKILL.md` and never overwrites an existing file without `--force`. `supercheck capabilities --json` reports what the installed CLI supports; `--online` also verifies the current API context, but does not prove every server feature or permission.
+The CLI ships offline, versioned workflow guidance. `supercheck skills` prints an index and `supercheck skills <topic>` focused instructions. `supercheck agent install --target claude|cursor|codex|opencode|generic` (or `supercheck skills install`) writes the skill and never overwrites an existing file without `--force`. `supercheck onboard --json` reports the current onboarding state and the single next command, `supercheck discover --json` prints repository facts, `supercheck plan` shows the subscription state, `supercheck ci init --github` writes a workflow, and `supercheck deploy --verify` runs each created or updated browser test once in the cloud. `supercheck capabilities --json` reports what the installed CLI supports; `--online` also verifies the current API context, but does not prove every server feature or permission.
 
 ## Compatibility
 

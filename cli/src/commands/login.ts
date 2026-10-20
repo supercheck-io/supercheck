@@ -4,6 +4,7 @@ import {
   setBaseUrl,
   clearAuth,
   getToken,
+  getStoredToken,
   getStoredBaseUrl,
   validateTokenFormat,
 } from '../auth/store.js'
@@ -78,9 +79,15 @@ export const loginCommand = new Command('login')
 export const logoutCommand = new Command('logout')
   .description('Remove stored authentication credentials')
   .action(() => {
+    const hadStored = getStoredToken() !== null
     clearAuth()
-    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: false }))
-    logger.success('Logged out successfully. Stored credentials removed.')
+    // Only a *usable* environment credential counts (a malformed or trigger-key value is rejected by getToken).
+    const envToken = getToken() !== null
+    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: envToken, removedStoredCredentials: hadStored, ...(hadStored ? { keyRevoked: false } : {}), ...(envToken ? { note: 'SUPERCHECK_TOKEN is still set in the environment' } : {}) }))
+    logger.success(hadStored ? 'Logged out successfully. Stored credentials removed.' : 'No stored credentials were found.')
+    // The key itself stays valid until it expires or is revoked: be explicit so nobody assumes otherwise.
+    if (hadStored) logger.info('The key was removed from this machine only. To invalidate it, revoke it under Organization Admin → CLI Tokens.')
+    if (envToken) logger.warn('SUPERCHECK_TOKEN is still set in your environment and will keep being used. Unset it to finish signing out.')
   })
 
 export const whoamiCommand = new Command('whoami')
@@ -170,6 +177,8 @@ export const whoamiCommand = new Command('whoami')
       throw new CLIError(
         'Failed to verify authentication. Your token may be expired or invalid.',
         ExitCode.AuthError,
+        // Lets the JSON error handler classify this like any other 401/403 (code, retryable, nextActions).
+        { status: (error as ApiRequestError).statusCode },
       )
     }
   })
