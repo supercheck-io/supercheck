@@ -977,28 +977,10 @@ export class MonitorService {
             // This ensures the monitor is truly stable before alerting recovery
             const recoveryThreshold = alertConfig?.recoveryThreshold || 1;
 
-            if (consecutiveSuccessCount === recoveryThreshold) {
-              // First recovery alert: threshold just reached
-              shouldSendRecoveryAlert =
-                (alertConfig?.alertOnRecovery || false) &&
-                alertsSentForRecovery === 0;
-            } else if (
-              consecutiveSuccessCount > recoveryThreshold &&
-              alertsSentForRecovery < 3
-            ) {
-              // Subsequent recovery alerts use exponential intervals to prevent alert flood
-              const subsequentInterval = Math.max(5, recoveryThreshold * 2);
-              const successesAfterThreshold =
-                consecutiveSuccessCount - recoveryThreshold;
-              const expectedAlerts = Math.floor(
-                successesAfterThreshold / subsequentInterval,
-              );
-              // Only alert if we've passed a new interval checkpoint
-              shouldSendRecoveryAlert =
-                (alertConfig?.alertOnRecovery || false) &&
-                expectedAlerts >= alertsSentForRecovery &&
-                successesAfterThreshold % subsequentInterval === 0;
-            }
+            shouldSendRecoveryAlert =
+              consecutiveSuccessCount >= recoveryThreshold &&
+              alertsSentForRecovery === 0 &&
+              (alertConfig?.alertOnRecovery || false);
           }
 
           this.logger.debug(
@@ -1069,9 +1051,9 @@ export class MonitorService {
               this.logger.debug(
                 `[ALERT_DEBUG] Skipping recovery alert for monitor ${resultData.monitorId} - waiting for ${recoveryThreshold - consecutiveSuccessCount} more consecutive successes (${consecutiveSuccessCount}/${recoveryThreshold})`,
               );
-            } else if (alertsSentForRecovery >= 3) {
+            } else if (alertsSentForRecovery >= 1) {
               this.logger.debug(
-                `[ALERT_DEBUG] Skipping recovery alert for monitor ${resultData.monitorId} - already sent 3 alerts for this recovery sequence`,
+                `[ALERT_DEBUG] Skipping recovery alert for monitor ${resultData.monitorId} - already sent one alert for this recovery sequence`,
               );
             }
           }
@@ -2604,7 +2586,7 @@ export class MonitorService {
    * Threshold behavior (aligned with single-location saveMonitorResult path):
    * - failureThreshold: Number of consecutive failures before first alert (default: 1)
    * - recoveryThreshold: Number of consecutive successes before recovery alert (default: 1)
-   * - Max 3 alerts per failure/recovery sequence with exponential intervals
+   * - Max 3 failure alerts with exponential reminders and one recovery alert
    *
    * @returns Alert action metadata { alertSent: boolean, alertType?: string }
    */
@@ -2736,29 +2718,10 @@ export class MonitorService {
       const recoveryThreshold =
         (monitorAlertConfig?.recoveryThreshold as number) || 1;
 
-      if (
-        consecutiveSuccessCount === recoveryThreshold &&
-        alertsSentForRecovery === 0
-      ) {
-        // First recovery alert: threshold just reached
-        shouldSendAlert =
-          (monitorAlertConfig?.alertOnRecovery as boolean) || false;
-      } else if (
-        consecutiveSuccessCount > recoveryThreshold &&
-        alertsSentForRecovery < 3
-      ) {
-        // Subsequent recovery alerts: exponential intervals (max 3 total)
-        const subsequentInterval = Math.max(5, recoveryThreshold * 2);
-        const successesAfterThreshold =
-          consecutiveSuccessCount - recoveryThreshold;
-        const expectedAlerts = Math.floor(
-          successesAfterThreshold / subsequentInterval,
-        );
-        shouldSendAlert =
-          (monitorAlertConfig?.alertOnRecovery as boolean) &&
-          expectedAlerts >= alertsSentForRecovery &&
-          successesAfterThreshold % subsequentInterval === 0;
-      }
+      shouldSendAlert =
+        consecutiveSuccessCount >= recoveryThreshold &&
+        alertsSentForRecovery === 0 &&
+        ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
 
       if (!shouldSendAlert) {
         if (
@@ -2768,9 +2731,9 @@ export class MonitorService {
           this.logger.debug(
             `[ALERT] Recovery threshold not yet met for monitor ${monitorId}: ${consecutiveSuccessCount}/${(monitorAlertConfig?.recoveryThreshold as number) || 1}`,
           );
-        } else if (alertsSentForRecovery >= 3) {
+        } else if (alertsSentForRecovery >= 1) {
           this.logger.debug(
-            `[ALERT] Skipping recovery alert for monitor ${monitorId} - already sent 3 alerts for this recovery sequence`,
+            `[ALERT] Skipping recovery alert for monitor ${monitorId} - already sent one alert for this recovery sequence`,
           );
         }
       }

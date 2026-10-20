@@ -1049,6 +1049,89 @@ describe('MonitorService', () => {
       },
     );
 
+    it.each([false, true])(
+      'sends one recovery per transition across a long healthy streak (multi-location=%s)',
+      async (multiLocation) => {
+        let state = service['readAggregatedAlertState'](null);
+        let previousStatus = 'down';
+        for (let success = 1; success <= 20; success++) {
+          const sent = mockAlertService.sendNotification.mock.calls.length;
+          mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+            id: 'recovered-result',
+            consecutiveSuccessCount: success,
+            alertsSentForRecovery: sent,
+            details: { recoverySequence: true },
+          });
+          await service['evaluateAndSendAlert']({
+            monitorId: mockMonitor.id,
+            monitor: {
+              ...mockMonitor,
+              config: { aggregatedAlertState: state },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: true,
+                recoveryThreshold: 2,
+              },
+            } as unknown as typeof schema.monitors.$inferSelect,
+            previousStatus,
+            currentStatus: 'up',
+            reason: 'Recovered',
+            metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+          });
+          expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(
+            success >= 2 ? 1 : 0,
+          );
+          state = service['getNextAggregatedAlertState'](
+            state,
+            previousStatus,
+            'up',
+          );
+          state.alertsSentForRecovery =
+            mockAlertService.sendNotification.mock.calls.length;
+          previousStatus = 'up';
+        }
+      },
+    );
+
+    it.each([false, true])(
+      'retries an initially suppressed recovery after threshold (multi-location=%s)',
+      async (multiLocation) => {
+        mockAlertService.sendNotification
+          .mockResolvedValueOnce({ suppressed: true })
+          .mockResolvedValueOnce(undefined);
+        for (const success of [2, 3]) {
+          mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+            id: 'recovered-result',
+            consecutiveSuccessCount: success,
+            alertsSentForRecovery: 0,
+            details: { recoverySequence: true },
+          });
+          await service['evaluateAndSendAlert']({
+            monitorId: mockMonitor.id,
+            monitor: {
+              ...mockMonitor,
+              config: {
+                aggregatedAlertState: {
+                  consecutiveSuccessCount: success - 1,
+                  recoverySequence: true,
+                },
+              },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: true,
+                recoveryThreshold: 2,
+              },
+            } as unknown as typeof schema.monitors.$inferSelect,
+            previousStatus: 'up',
+            currentStatus: 'up',
+            reason: 'Recovered',
+            metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+          });
+        }
+        expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(2);
+      },
+    );
+
     it('does not send recovery alerts for a monitor that has always been healthy', async () => {
       for (const multiLocation of [false, true]) {
         mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
