@@ -406,6 +406,55 @@ it("queues every pending delivery in one tick instead of stopping at 100", async
   expect(queue.add).toHaveBeenCalledTimes(120);
 });
 
+it("does not re-queue rows that a worker already holds, so later backlog rows advance", async () => {
+  const [incident] = await mockDatabase
+    .insert(schema.incidents)
+    .values({ statusPageId: pageId, name: "Backlog" })
+    .returning();
+  const [update] = await mockDatabase
+    .insert(schema.incidentUpdates)
+    .values({ incidentId: incident.id, body: "Backlog", status: "investigating", deliverNotifications: true })
+    .returning();
+  await mockDatabase
+    .insert(schema.statusPageNotificationEvents)
+    .values({ incidentId: incident.id, updateId: update.id, isCreation: true });
+  const subscribers = await mockDatabase
+    .insert(schema.statusPageSubscribers)
+    .values(
+      Array.from({ length: 2 }, (_, index) => ({
+        statusPageId: pageId,
+        mode: "email" as const,
+        email: `backlog-${index}@example.com`,
+        verifiedAt: new Date(),
+      })),
+    )
+    .returning();
+
+  const queue = { add: jest.fn(), getJob: jest.fn(async () => null) };
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).toHaveBeenCalledTimes(2);
+
+  // Immediately after enqueueing, both rows are leased to their BullMQ jobs.
+  queue.add.mockClear();
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).not.toHaveBeenCalled();
+
+  // Once a lease lapses (lost worker), that row is eligible again; the other
+  // row stays held so the backlog cannot pin the same first rows forever.
+  const queued = await mockDatabase.query.statusPageNotificationDeliveries.findMany();
+  const lapsed = queued.find(
+    (delivery) => delivery.subscriberId === subscribers[0].id,
+  );
+  if (!lapsed) throw new Error("delivery for the first subscriber missing");
+  await mockDatabase
+    .update(schema.statusPageNotificationDeliveries)
+    .set({ enqueuedAt: new Date(Date.now() - 10 * 60 * 1000) })
+    .where(eq(schema.statusPageNotificationDeliveries.id, lapsed.id));
+  queue.add.mockClear();
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(queue.add).toHaveBeenCalledTimes(1);
+});
+
 it("deletes only terminal deliveries older than the retention window", async () => {
   const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Retention" }).returning();
   const [update] = await mockDatabase.insert(schema.incidentUpdates).values({ incidentId: incident.id, body: "Retention", status: "investigating" }).returning();

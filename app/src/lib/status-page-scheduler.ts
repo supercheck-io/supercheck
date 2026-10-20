@@ -1,10 +1,7 @@
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import {
-  checkStatusPageDomain,
-  nextDomainVerificationState,
-} from "./status-page-domain-check";
+import { checkStatusPageDomain } from "./status-page-domain-check";
 import { Queue, Worker } from "bullmq";
 import { getRedisConnection } from "./queue";
 import { reconcileStatusPages } from "./status-page-reconciliation";
@@ -30,8 +27,6 @@ export async function initializeStatusPageScheduler() {
           .select({
             id: statusPages.id,
             domain: statusPages.customDomain,
-            verified: statusPages.customDomainVerified,
-            failureCount: statusPages.customDomainFailureCount,
           })
           .from(statusPages)
           .where(
@@ -49,21 +44,12 @@ export async function initializeStatusPageScheduler() {
           .limit(5);
         for (const page of due) {
           if (!page.domain) continue;
-          const result = await checkStatusPageDomain(page.domain, page.id);
-          const next = nextDomainVerificationState(result, {
-            verified: page.verified === true,
-            failureCount: page.failureCount ?? 0,
-          });
+          // Observability only: a DNS miss never unverifies or detaches a
+          // published custom domain. The operator fixes the records.
+          await checkStatusPageDomain(page.domain, page.id);
           await db
             .update(statusPages)
-            .set({
-              customDomainLastCheckedAt: new Date(),
-              customDomainFailureCount: next.failureCount,
-              customDomainVerified: next.verified,
-              ...(next.verified !== (page.verified === true)
-                ? { updatedAt: new Date() }
-                : {}),
-            })
+            .set({ customDomainLastCheckedAt: new Date() })
             .where(
               and(
                 eq(statusPages.id, page.id),

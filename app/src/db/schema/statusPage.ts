@@ -98,11 +98,6 @@ export const statusPages = pgTable(
     customDomain: varchar("custom_domain", { length: 255 }),
     customDomainVerified: boolean("custom_domain_verified").default(false),
     customDomainLastCheckedAt: timestamp("custom_domain_last_checked_at"),
-    // Consecutive definitive DNS mismatches; transient resolution failures do
-    // not increment it and verified domains are revoked at three.
-    customDomainFailureCount: integer("custom_domain_failure_count")
-      .default(0)
-      .notNull(),
     theme: jsonb("theme").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -617,6 +612,7 @@ export const statusPageNotificationDeliveries = pgTable("status_page_notificatio
   status: varchar("status", { length: 20 }).default("pending").notNull(),
   attempts: integer("attempts").default(0).notNull(),
   leasedUntil: timestamp("leased_until"),
+  enqueuedAt: timestamp("enqueued_at"),
   lastError: text("last_error"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({ recipientUnique: uniqueIndex("status_page_notification_delivery_recipient_idx").on(table.eventId, table.subscriberId), subscriberIdx: index("status_page_notification_deliveries_subscriber_idx").on(table.subscriberId), pendingIdx: index("status_page_notification_deliveries_pending_idx").on(table.updatedAt).where(sql`${table.status} = 'pending'`), retentionIdx: index("status_page_notification_deliveries_retention_idx").on(table.updatedAt).where(sql`${table.status} in ('delivered', 'failed', 'skipped')`) }));
+}, (table) => ({ recipientUnique: uniqueIndex("status_page_notification_delivery_recipient_idx").on(table.eventId, table.subscriberId), subscriberIdx: index("status_page_notification_deliveries_subscriber_idx").on(table.subscriberId), pendingIdx: index("status_page_notification_deliveries_pending_idx").on(table.updatedAt).where(sql`${table.status} = 'pending'`), enqueueIdx: index("status_page_notification_deliveries_enqueue_idx").on(table.enqueuedAt).where(sql`${table.status} = 'pending'`), retentionIdx: index("status_page_notification_deliveries_retention_idx").on(table.updatedAt).where(sql`${table.status} in ('delivered', 'failed', 'skipped')`) }));

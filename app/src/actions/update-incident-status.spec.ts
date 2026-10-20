@@ -12,6 +12,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
+import { incidentScheduleFields } from "@/lib/incident-schedule";
 import { updateIncidentStatus, updateIncidentStatusSchema } from "./update-incident-status";
 
 const input = {
@@ -37,5 +38,20 @@ describe("scheduled incident updates", () => {
       scheduledUntil: new Date(Date.now() + 60 * 60 * 1000),
     });
     expect(result.success).toBe(false);
+  });
+
+  it("clears the maintenance window when moving to a normal incident state", () => {
+    expect(
+      incidentScheduleFields("investigating", new Date(), new Date()),
+    ).toEqual({ scheduledFor: null, scheduledUntil: null });
+    expect(
+      incidentScheduleFields("resolved", new Date(), new Date()),
+    ).toEqual({ scheduledFor: null, scheduledUntil: null });
+  });
+
+  it("keeps the maintenance window while maintenance is in progress", () => {
+    expect(
+      incidentScheduleFields("monitoring", new Date(), new Date()),
+    ).toEqual({});
   });
 });

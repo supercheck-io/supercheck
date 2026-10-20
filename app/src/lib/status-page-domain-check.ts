@@ -7,29 +7,17 @@ import {
 import { getStatusPageDomainOwnershipRecord } from "./status-page-domain-guidance";
 import { getStatusPageDomainVerificationTargets } from "./status-page-domain";
 
-export const DOMAIN_UNVERIFY_FAILURE_LIMIT = 3;
-
 export type DomainCheckResult = "valid" | "invalid" | "unavailable";
 
-export function nextDomainVerificationState(
-  result: DomainCheckResult,
-  state: { verified: boolean; failureCount: number },
-): { verified: boolean; failureCount: number } {
-  if (result === "valid") return { verified: true, failureCount: 0 };
-  if (result === "unavailable")
-    return { verified: state.verified, failureCount: 0 };
-  const failureCount = Math.min(
-    state.failureCount + 1,
-    DOMAIN_UNVERIFY_FAILURE_LIMIT,
-  );
-  return {
-    verified:
-      failureCount >= DOMAIN_UNVERIFY_FAILURE_LIMIT ? false : state.verified,
-    failureCount,
-  };
-}
-
-/** DNS failures are transient unless authoritative records are missing or mismatched. */
+/**
+ * DNS failures never detach a verified custom domain. A published page keeps
+ * its hostname until an operator changes it; a failed lookup only means the
+ * hostname is not resolving right now, which is recoverable by fixing DNS.
+ *
+ * The result is still classified for logging and tests: "invalid" is a
+ * successful lookup whose records point elsewhere, while "unavailable" means
+ * the resolver could not answer (ENOTFOUND, ENODATA, EAI_AGAIN, timeouts).
+ */
 export async function checkStatusPageDomain(
   domain: string,
   pageId: string,

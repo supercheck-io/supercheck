@@ -14,11 +14,7 @@ import {
   resolve4,
   resolve6,
 } from "node:dns/promises";
-import {
-  DOMAIN_UNVERIFY_FAILURE_LIMIT,
-  checkStatusPageDomain,
-  nextDomainVerificationState,
-} from "./status-page-domain-check";
+import { checkStatusPageDomain } from "./status-page-domain-check";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -65,34 +61,13 @@ it("classifies an empty address answer as unavailable", async () => {
   );
 });
 
-it("unverifies only after three consecutive definitive mismatches", () => {
-  let state = { verified: true, failureCount: 0 };
-  state = nextDomainVerificationState("invalid", state);
-  expect(state).toEqual({ verified: true, failureCount: 1 });
-  state = nextDomainVerificationState("invalid", state);
-  expect(state).toEqual({ verified: true, failureCount: 2 });
-  state = nextDomainVerificationState("invalid", state);
-  expect(state).toEqual({ verified: false, failureCount: 3 });
-  expect(DOMAIN_UNVERIFY_FAILURE_LIMIT).toBe(3);
-});
+it("reports a mismatch without mutating the verified state", async () => {
+  (resolveCname as jest.Mock).mockResolvedValue(["other.example.com."]);
 
-it("resets the strike count on a valid or unavailable check", () => {
-  const afterTwo = { verified: true, failureCount: 2 };
-  expect(nextDomainVerificationState("unavailable", afterTwo)).toEqual({
-    verified: true,
-    failureCount: 0,
-  });
-  expect(nextDomainVerificationState("valid", afterTwo)).toEqual({
-    verified: true,
-    failureCount: 0,
-  });
-});
-
-it("keeps a domain unverified after the threshold has already passed", () => {
-  expect(
-    nextDomainVerificationState("invalid", {
-      verified: false,
-      failureCount: 3,
-    }),
-  ).toEqual({ verified: false, failureCount: 3 });
+  // The checker returns a classification; the scheduler only records the
+  // check time and never clears customDomainVerified. A verified, published
+  // hostname stays attached until an operator changes it.
+  await expect(
+    checkStatusPageDomain("status.example.net", "page"),
+  ).resolves.toBe("invalid");
 });

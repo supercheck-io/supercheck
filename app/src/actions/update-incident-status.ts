@@ -15,6 +15,7 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { incidentScheduleFields } from "@/lib/incident-schedule";
 
 export const updateIncidentStatusSchema = z
   .object({
@@ -146,12 +147,11 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
           ...(validatedData.status === "monitoring"
             ? { monitoringAt: new Date() }
             : {}),
-          ...(validatedData.status === "scheduled"
-            ? {
-                scheduledFor: validatedData.scheduledFor,
-                scheduledUntil: validatedData.scheduledUntil,
-              }
-            : {}),
+          ...incidentScheduleFields(
+            validatedData.status,
+            validatedData.scheduledFor,
+            validatedData.scheduledUntil,
+          ),
         })
         .where(
           and(

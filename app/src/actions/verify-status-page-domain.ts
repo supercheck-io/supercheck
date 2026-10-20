@@ -140,7 +140,6 @@ export async function verifyStatusPageDomain(statusPageId: string) {
           .update(statusPages)
           .set({
             customDomainVerified: true,
-            customDomainFailureCount: 0,
             customDomainLastCheckedAt: new Date(),
             updatedAt: new Date(),
           })

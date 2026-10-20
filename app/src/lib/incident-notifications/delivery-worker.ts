@@ -31,6 +31,10 @@ export const MAX_DELIVERIES_PER_TICK = 1000;
 export const DEFAULT_DELIVERY_RETENTION_DAYS = 30;
 const MAX_DELIVERY_RETENTION_DAYS = 3650;
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
+// While a row is queued its job holds the row; do not enqueue it again until
+// this lease lapses. The BullMQ job id is the delivery id, so a re-add after a
+// lost worker is idempotent.
+const ENQUEUE_LEASE_MS = 5 * 60 * 1000;
 const TERMINAL_DELIVERY_STATUSES = ["delivered", "failed", "skipped"] as const;
 let lastRetentionRunAt = 0;
 
@@ -68,6 +72,7 @@ export async function enqueuePendingDeliveries(queue: Queue) {
       status: "failed",
       lastError: "Delivery attempt interrupted; retry limit reached.",
       leasedUntil: null,
+      enqueuedAt: null,
     })
     .where(
       and(
@@ -102,6 +107,12 @@ export async function enqueuePendingDeliveries(queue: Queue) {
       queuedIds.push(delivery.id);
     }
     queued += pending.length;
+  }
+  if (queuedIds.length) {
+    await db
+      .update(deliveries)
+      .set({ enqueuedAt: new Date() })
+      .where(inArray(deliveries.id, queuedIds));
   }
   // Completed unsubscribe grace periods have no remaining delivery entitlement.
   await db
@@ -187,6 +198,13 @@ async function findPendableDeliveries(limit: number, excludeIds: string[]) {
         or(
           isNull(deliveries.leasedUntil),
           lte(deliveries.leasedUntil, new Date()),
+        ),
+        or(
+          isNull(deliveries.enqueuedAt),
+          lt(
+            deliveries.enqueuedAt,
+            new Date(Date.now() - ENQUEUE_LEASE_MS),
+          ),
         ),
         excludeIds.length
           ? notInArray(deliveries.id, excludeIds)
@@ -289,6 +307,7 @@ export async function processDelivery(deliveryId: string) {
         status: result.sentCount === 0 ? "skipped" : "delivered",
         lastError: null,
         leasedUntil: null,
+        enqueuedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(deliveries.id, delivery.id));
@@ -298,6 +317,7 @@ export async function processDelivery(deliveryId: string) {
       .set({
         status: delivery.attempts >= 4 ? "failed" : "pending",
         leasedUntil: null,
+        enqueuedAt: null,
         lastError:
           error instanceof Error
             ? error.message.slice(0, 1000)
