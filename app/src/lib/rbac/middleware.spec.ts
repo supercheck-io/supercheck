@@ -187,8 +187,17 @@ describe("RBAC Middleware", () => {
       expect(await isImpersonatedSession()).toBe(true);
     });
 
-    it("fails closed when the impersonation state cannot be read", async () => {
+    it("fails closed (and logs) when the impersonation state cannot be read", async () => {
+      const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
       rowFor(new Error("db down"));
+      expect(await isImpersonatedSession()).toBe(true);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("trusts an impersonation flag already present on the auth session", async () => {
+      mockAuthGetSession.mockResolvedValue({ ...mockSession, session: { ...mockSession.session, impersonatedBy: "admin-1" } });
+      rowFor([{ impersonatedBy: null }]);
       expect(await isImpersonatedSession()).toBe(true);
     });
   });

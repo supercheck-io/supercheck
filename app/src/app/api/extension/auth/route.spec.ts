@@ -25,6 +25,7 @@ jest.mock("@/lib/auth-context", () => ({
 
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
+  isImpersonatedSession: jest.fn(async () => false),
 }));
 
 jest.mock("@/utils/db", () => {
@@ -70,8 +71,9 @@ import { db } from "@/utils/db";
 const { requireAuthContext: mockRequireAuthContext } = jest.requireMock("@/lib/auth-context") as {
   requireAuthContext: jest.Mock;
 };
-const { checkPermissionWithContext: mockCanCreateKey } = jest.requireMock("@/lib/rbac/middleware") as {
+const { checkPermissionWithContext: mockCanCreateKey, isImpersonatedSession: mockImpersonated } = jest.requireMock("@/lib/rbac/middleware") as {
   checkPermissionWithContext: jest.Mock;
+  isImpersonatedSession: jest.Mock;
 };
 
 const { __setPersistedRows, __setLookupRows, __where } = jest.requireMock("@/utils/db") as {
@@ -127,6 +129,16 @@ describe("Extension auth route", () => {
       userId: "user-1", organizationId: "org-1", project: { id: "project-1", userRole: "project_editor" },
     });
     mockCanCreateKey.mockReturnValue(true);
+    mockImpersonated.mockResolvedValue(false);
+  });
+
+  it("refuses to create a recorder key while impersonating a user", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    mockImpersonated.mockResolvedValue(true);
+    const response = await POST(postRequest());
+    expect(response.status).toBe(403);
+    expect(JSON.stringify(await response.json())).toMatch(/impersonating/);
+    expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
   });
 
   it("forbids a viewer from creating a recorder API key", async () => {

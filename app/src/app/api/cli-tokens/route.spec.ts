@@ -91,6 +91,15 @@ describe("POST /api/cli-tokens", () => {
     expect(mockIssue).not.toHaveBeenCalled();
   });
 
+  it("does not apply the impersonation check to CLI-token authenticated requests", async () => {
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true });
+    mockImpersonated.mockResolvedValue(true);
+    mockIssue.mockResolvedValue(created());
+    const res = await POST(req({ name: "a" }));
+    expect(res.status).toBe(201);
+    expect(mockImpersonated).not.toHaveBeenCalled();
+  });
+
   it("returns a generic 500 without leaking internals", async () => {
     mockIssue.mockRejectedValue(new Error("connection string postgres://secret"));
     const res = await POST(req({ name: "a" }));
