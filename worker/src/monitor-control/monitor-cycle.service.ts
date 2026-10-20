@@ -273,11 +273,22 @@ export class MonitorCycleService {
       preparedAlertState: evaluation.alertState,
       metadata: {
         responseTime: evaluation.avgResponseTimeMs,
-        locationResults: rows.map((row) => ({
-          location: row.location,
-          isUp: row.isUp,
-          responseTime: row.responseTimeMs,
-        })),
+        // One entry per expected region, like the legacy path: the evaluator derives its
+        // multi-location mode from this count, so it must match the mode chosen at closure.
+        locationResults: [...new Set(cycle.expectedLocations)].map(
+          (location) => {
+            const row = rows.find(
+              (candidate) => candidate.location === location,
+            );
+            return row
+              ? {
+                  location,
+                  isUp: row.isUp,
+                  responseTime: row.responseTimeMs,
+                }
+              : { location, isUp: false, noResult: true };
+          },
+        ),
       },
     });
     for (const row of rows) {

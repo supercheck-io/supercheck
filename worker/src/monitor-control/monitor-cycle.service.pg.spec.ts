@@ -3,9 +3,6 @@
  * (CI sets it): races between closers cannot be proven with a mock. Migrations are applied by the
  * app's own runner into a throwaway database.
  */
-import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 import postgres = require('postgres');
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
@@ -14,6 +11,7 @@ import type { DbService } from '../db/db.service';
 import type { MonitorAlertService } from '../monitor/services/monitor-alert.service';
 import { MonitorCycleService } from './monitor-cycle.service';
 import type { BillingHoldService } from './billing-hold.service';
+import { createTestDatabase, seedMonitor } from './pg-test-database';
 
 jest.setTimeout(120_000);
 
@@ -21,13 +19,11 @@ const url = process.env.MONITOR_CYCLE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 
 suite('MonitorCycleService (PostgreSQL)', () => {
-  const name = `monitor_cycles_${randomUUID().replaceAll('-', '')}`;
-  let maintenance: ReturnType<typeof postgres>;
+  let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let client: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let service: MonitorCycleService;
   let monitorId: string;
-  let organizationId: string;
   const sendNotification = jest.fn().mockResolvedValue({ successful: 1 });
   const alertService = {
     sendNotification,
@@ -37,28 +33,8 @@ suite('MonitorCycleService (PostgreSQL)', () => {
   const billing = { isHeld } as unknown as BillingHoldService;
 
   beforeAll(async () => {
-    maintenance = postgres(url!, { max: 1, onnotice: () => {} });
-    await maintenance.unsafe(`CREATE DATABASE "${name}"`);
-    const target = new URL(url!);
-    target.pathname = `/${name}`;
-    const appRoot = resolve(__dirname, '../../../app');
-    execFileSync(
-      process.execPath,
-      [resolve(appRoot, 'scripts/db-migrate.js')],
-      {
-        cwd: appRoot,
-        env: {
-          ...process.env,
-          DATABASE_URL: target.toString(),
-          SELF_HOSTED: 'true',
-          NODE_ENV: 'test',
-          NODE_PATH: resolve(__dirname, '../../node_modules'),
-        },
-        timeout: 100_000,
-      },
-    );
-    client = postgres(target.toString(), { max: 8, onnotice: () => {} });
-    db = drizzle(client, { schema });
+    testDb = await createTestDatabase(url!);
+    ({ client, db } = testDb);
     service = new MonitorCycleService(
       { db } as unknown as DbService,
       alertService,
@@ -67,43 +43,13 @@ suite('MonitorCycleService (PostgreSQL)', () => {
   });
 
   afterAll(async () => {
-    if (client) await client.end({ timeout: 5 });
-    if (maintenance) {
-      await maintenance.unsafe(
-        `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`,
-      );
-      await maintenance.end({ timeout: 5 });
-    }
+    if (testDb) await testDb.drop();
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
     isHeld.mockResolvedValue({ blocked: false });
-    await client`TRUNCATE monitors, organization CASCADE`;
-    const [organization] = await db
-      .insert(schema.organization)
-      .values({ name: 'Org', createdAt: new Date() })
-      .returning();
-    organizationId = organization.id;
-    const [monitor] = await db
-      .insert(schema.monitors)
-      .values({
-        organizationId,
-        name: 'API',
-        type: 'http_request',
-        target: 'https://example.com',
-        status: 'up',
-        alertConfig: {
-          enabled: true,
-          notificationProviders: [],
-          alertOnFailure: true,
-          alertOnRecovery: true,
-          failureThreshold: 1,
-          recoveryThreshold: 1,
-        } as never,
-      })
-      .returning();
-    monitorId = monitor.id;
+    ({ monitorId } = await seedMonitor(db, client));
   });
 
   const t0 = new Date('2026-10-21T10:00:00Z');
