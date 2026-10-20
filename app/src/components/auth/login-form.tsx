@@ -115,7 +115,7 @@ export function LoginForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} data-testid="login-form">
       <Form {...form}>
-        <form onSubmit={onSubmit} data-testid="login-form-element">
+        <form method="post" onSubmit={onSubmit} data-testid="login-form-element">
           <FieldGroup>
             {/* Header */}
             <div className="flex flex-col items-center gap-3 text-center">

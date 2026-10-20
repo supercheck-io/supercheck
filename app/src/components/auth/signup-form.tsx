@@ -166,7 +166,7 @@ export function SignupForm({
   return (
     <div className={cn("flex flex-col gap-6", className)}>
       <Form {...form}>
-        <form onSubmit={onSubmit}>
+        <form method="post" onSubmit={onSubmit}>
           <FieldGroup>
             {/* Header */}
             <div className="flex flex-col items-center gap-3 text-center">
