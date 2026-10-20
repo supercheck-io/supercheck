@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS "monitor_cycles" (
   "result_status" text,
   "observed_locations" jsonb,
   "missing_locations" jsonb,
+  -- Closure decision and alert state, committed with the closure so notification can be repaired.
+  "evaluation" jsonb,
   "notified_at" timestamp,
   "created_at" timestamp NOT NULL DEFAULT now(),
   CONSTRAINT "monitor_cycles_status_check" CHECK ("status" IN ('open', 'closed', 'aborted')),

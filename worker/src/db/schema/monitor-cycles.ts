@@ -13,6 +13,22 @@ import {
 import { sql } from 'drizzle-orm';
 import { monitors } from './monitor';
 
+/** Decision and alert state committed with the closure (also drives notification repair). */
+export type MonitorCycleEvaluation = {
+  previousStatus: string;
+  currentStatus: 'up' | 'down';
+  alertState?: {
+    consecutiveFailureCount: number;
+    consecutiveSuccessCount: number;
+    alertsSentForFailure: number;
+    alertsSentForRecovery: number;
+    recoverySequence?: boolean;
+    executionGroupId?: string;
+  };
+  reason: string;
+  avgResponseTimeMs: number;
+};
+
 export type MonitorCycleStatus = 'open' | 'closed' | 'aborted';
 
 /** The cycle id doubles as monitor_results.execution_group_id. */
@@ -41,6 +57,7 @@ export const monitorCycles = pgTable(
     resultStatus: text('result_status').$type<'up' | 'down'>(),
     observedLocations: jsonb('observed_locations').$type<string[]>(),
     missingLocations: jsonb('missing_locations').$type<string[]>(),
+    evaluation: jsonb('evaluation').$type<MonitorCycleEvaluation>(),
     notifiedAt: timestamp('notified_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
