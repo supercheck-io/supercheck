@@ -1,10 +1,10 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import { db } from "@/utils/db";
-import { member } from "@/db/schema";
+import { member, organization } from "@/db/schema";
 import { getUserProjects } from "@/lib/session";
 import { canManageAPIKeys } from "@/lib/rbac/client-permissions";
 import {
@@ -128,13 +128,21 @@ export default async function DevicePage({
   const projectGroups = await Promise.all(
     memberships.map((m) => getUserProjects(userId, m.organizationId)),
   );
+  const orgIds = [...new Set(memberships.map((m) => m.organizationId))];
+  const orgRows = orgIds.length
+    ? await db
+        .select({ id: organization.id, name: organization.name })
+        .from(organization)
+        .where(inArray(organization.id, orgIds))
+    : [];
+  const orgNames = new Map(orgRows.map((o) => [o.id, o.name]));
   const options: DeviceProjectOption[] = projectGroups
     .flat()
     .filter((p) => p.role && canManageAPIKeys(p.role))
     .map((p) => ({
       id: p.id,
       name: p.name,
-      organizationName: p.organizationName ?? "Organization",
+      organizationName: p.organizationName ?? orgNames.get(p.organizationId) ?? "Organization",
       isDefault: p.isDefault,
     }));
 
