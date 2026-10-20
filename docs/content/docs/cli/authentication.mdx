@@ -23,7 +23,7 @@ CLI tokens are the primary authentication method. They are **project-scoped** an
 
 ### Signing in from the CLI
 
-`supercheck login` can create a project-scoped key for you through your browser, so you do not need to copy a token from the dashboard. You approve a short code and choose the project; the key expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project can hold up to 20 CLI tokens. See [`supercheck login`](/docs/cli/commands) for agent-friendly usage.
+`supercheck login` can create a project-scoped key for you through your browser, so you do not need to copy a token from the dashboard. You approve a short code and choose the project; the key expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project can hold up to 20 active (enabled and unexpired) CLI tokens; every browser login creates a new one, so revoke tokens you no longer use. See [`supercheck login`](/docs/cli/commands) for agent-friendly usage.
 
 ### Creating a Token
 
