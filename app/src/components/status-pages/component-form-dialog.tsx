@@ -634,9 +634,17 @@ export function ComponentFormDialog({
                         })}
                         disabled={isSubmitting}
                         aria-invalid={Boolean(errors.failureThreshold)}
+                        aria-describedby={
+                          errors.failureThreshold
+                            ? "component-threshold-error"
+                            : undefined
+                        }
                       />
                       {errors.failureThreshold && (
-                        <p className="text-xs text-red-500">
+                        <p
+                          id="component-threshold-error"
+                          className="text-xs text-red-500"
+                        >
                           Enter a whole number from 1 to 100.
                         </p>
                       )}
@@ -846,7 +854,6 @@ export function ComponentFormDialog({
     </Dialog>
   );
 }
-
 
 function MonitorWeightInput({
   id,
