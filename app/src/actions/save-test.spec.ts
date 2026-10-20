@@ -4,6 +4,14 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { saveTest } from "./save-test";
 import { PUT } from "@/app/api/tests/[id]/route";
 import { encodeStoredTestScript } from "@/lib/test-script";
+import { subscriptionService } from "@/lib/services/subscription-service";
+
+jest.mock("@/lib/services/subscription-service", () => ({
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
 
 const mockSet = jest.fn();
 let stored = {
@@ -52,6 +60,8 @@ jest.mock("@/lib/requirements-internal", () => ({
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 
 beforeEach(() => {
+  jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+  jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
   jest.mocked(checkPermissionWithContext).mockReturnValue(true);
   mockSet.mockClear();
   stored = {
@@ -61,6 +71,22 @@ beforeEach(() => {
     title: "Before",
     priority: "medium",
   };
+});
+
+it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
+  "rejects direct save action before writing when %s denies access",
+  async (guard) => {
+    jest.mocked(subscriptionService[guard]).mockRejectedValue(new Error("Subscription required"));
+    const result = await saveTest({ id: "test-id", title: "Renamed" });
+    expect(result).toEqual({ id: "", success: false, error: "Subscription required" });
+    expect(mockSet).not.toHaveBeenCalled();
+  },
+);
+
+it("checks the authenticated organization before a permitted save", async () => {
+  expect(await update("action", {})).toBe(true);
+  expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");
+  expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org");
 });
 
 async function update(
