@@ -5899,7 +5899,7 @@
             }
           },
           "401": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "Unknown client id.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5908,22 +5908,8 @@
                     "error": {
                       "type": "string",
                       "enum": [
-                        "authorization_pending",
-                        "slow_down",
-                        "access_denied",
-                        "expired_token",
-                        "invalid_grant",
-                        "invalid_client",
-                        "invalid_request",
-                        "unsupported_grant_type",
-                        "token_limit_reached",
-                        "device_auth_disabled",
-                        "rate_limited"
+                        "invalid_client"
                       ]
-                    },
-                    "interval": {
-                      "type": "integer",
-                      "description": "Minimum seconds before the next poll, when applicable."
                     }
                   },
                   "required": [
@@ -5937,7 +5923,7 @@
             "description": "Too many requests."
           },
           "503": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "Browser login is disabled on this server.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5946,22 +5932,50 @@
                     "error": {
                       "type": "string",
                       "enum": [
-                        "authorization_pending",
-                        "slow_down",
-                        "access_denied",
-                        "expired_token",
-                        "invalid_grant",
-                        "invalid_client",
-                        "invalid_request",
-                        "unsupported_grant_type",
-                        "token_limit_reached",
-                        "device_auth_disabled",
-                        "rate_limited"
+                        "device_auth_disabled"
                       ]
-                    },
-                    "interval": {
-                      "type": "integer",
-                      "description": "Minimum seconds before the next poll, when applicable."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_request"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "server_error"
+                      ]
                     }
                   },
                   "required": [
@@ -6156,7 +6170,7 @@
             }
           },
           "429": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "Polling too fast or rate limited.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6165,22 +6179,11 @@
                     "error": {
                       "type": "string",
                       "enum": [
-                        "authorization_pending",
-                        "slow_down",
-                        "access_denied",
-                        "expired_token",
-                        "invalid_grant",
-                        "invalid_client",
-                        "invalid_request",
-                        "unsupported_grant_type",
-                        "token_limit_reached",
-                        "device_auth_disabled",
-                        "rate_limited"
+                        "slow_down"
                       ]
                     },
                     "interval": {
-                      "type": "integer",
-                      "description": "Minimum seconds before the next poll, when applicable."
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -6191,7 +6194,7 @@
             }
           },
           "503": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "Browser login is disabled on this server.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6200,22 +6203,29 @@
                     "error": {
                       "type": "string",
                       "enum": [
-                        "authorization_pending",
-                        "slow_down",
-                        "access_denied",
-                        "expired_token",
-                        "invalid_grant",
-                        "invalid_client",
-                        "invalid_request",
-                        "unsupported_grant_type",
-                        "token_limit_reached",
-                        "device_auth_disabled",
-                        "rate_limited"
+                        "device_auth_disabled"
                       ]
-                    },
-                    "interval": {
-                      "type": "integer",
-                      "description": "Minimum seconds before the next poll, when applicable."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "server_error"
+                      ]
                     }
                   },
                   "required": [
@@ -6271,7 +6281,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Cross-origin request, or the user may not create CLI keys in that project."
+            "description": "Cross-origin request, or the signed-in user may not create CLI keys in that project."
           },
           "404": {
             "description": "Unknown code."
@@ -6287,6 +6297,9 @@
           },
           "503": {
             "description": "Browser login is disabled."
+          },
+          "500": {
+            "description": "Server error."
           }
         },
         "security": [
@@ -6333,7 +6346,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Cross-origin request, or the user may not create CLI keys in that project."
+            "description": "Cross-origin request."
           },
           "404": {
             "description": "Unknown code."
@@ -6349,6 +6362,9 @@
           },
           "503": {
             "description": "Browser login is disabled."
+          },
+          "500": {
+            "description": "Server error."
           }
         },
         "security": [
