@@ -120,6 +120,8 @@ export function SubscribeDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhookVerificationPending, setWebhookVerificationPending] =
+    useState(false);
 
   const t = getTranslations(language);
 
@@ -150,6 +152,7 @@ export function SubscribeDialog({
     setIsSuccess(false);
     setScoped(false); setSelectedComponentIds([]); setSelectedIncidentIds([]);
     setWebhookSecret(null);
+    setWebhookVerificationPending(false);
   };
 
   const getFailureDescription = (
@@ -221,6 +224,7 @@ export function SubscribeDialog({
 
       if (result.success) {
         setWebhookSecret(result.webhookSecret ?? null);
+        setWebhookVerificationPending(result.requiresVerification === true);
         setIsSuccess(true);
         toast.success(t.toastWebhookSuccess, {
           description: t.toastWebhookSuccessDescription,
@@ -343,7 +347,9 @@ export function SubscribeDialog({
                 ? t.checkEmailForVerification
                 : mode === "slack"
                   ? t.slackChannelReceiveNotifications
-                  : t.webhookReceiveNotifications}
+                  : webhookVerificationPending
+                    ? t.webhookVerificationPending
+                    : t.webhookReceiveNotifications}
             </p>
             {webhookSecret && (
               <div className="space-y-2 text-start">

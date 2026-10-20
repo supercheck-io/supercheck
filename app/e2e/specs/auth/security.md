@@ -25,7 +25,7 @@ This is a record of current automated coverage, not a blanket security certifica
 
 ### Login abuse protection
 
-Sign-in lockout is progressive and tracks both email and client IP.
+Sign-in lockout is progressive and tracks the client IP and the email+IP pair. There is no email-only lock: an attacker who knows an address cannot keep its owner locked out.
 
 | Failed attempts | Lockout |
 |-----------------|---------|

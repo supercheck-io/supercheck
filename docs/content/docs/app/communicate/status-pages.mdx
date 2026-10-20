@@ -75,6 +75,10 @@ Once published, your status page displays real-time system health to users:
 - **Subscribe Button** — Subscribe to receive incident notifications
 
 The public layout follows right-to-left direction for Arabic. Pages support 24 translated languages.
+System-generated incident and maintenance text (automatic outage and recovery updates, maintenance
+start and completion updates, and the fallback initial update) is written in the page language when
+the record is created. User-authored names, messages, and existing stored incidents are never
+translated. Unknown language codes fall back to English.
 
 ### Status Badges
 
@@ -204,10 +208,39 @@ For custom integrations, subscribe via webhook:
 
 1. Select **Webhook** tab
 2. Enter your webhook endpoint URL
-3. Copy the signing secret shown once after subscribing
-4. Receive signed JSON events for matching incidents and component scopes
+3. Return the ownership challenge described below
+4. Copy the signing secret shown once after subscribing
+5. Receive signed JSON events for matching incidents and component scopes
 
-Requests include an `X-Webhook-Signature` HMAC-SHA256 header over the raw JSON body. Events include
+**Endpoint ownership challenge**
+
+New webhook subscriptions start **pending** and receive no incident notifications until the endpoint
+proves it controls the URL. Supercheck sends one `POST` with this JSON body using the same SSRF
+validation and 10-second timeout as incident deliveries:
+
+```json
+{
+  "type": "supercheck.webhook.verification",
+  "token": "<single-use challenge>",
+  "statusPageId": "<uuid>",
+  "createdAt": "2026-10-20T00:00:00.000Z"
+}
+```
+
+Respond with any `2xx` status and echo the token in either the `x-supercheck-verification` response
+header or a JSON body field named `challenge`. Keep the response within 4 KiB:
+
+```json
+{ "challenge": "<token from the request body>" }
+```
+
+A `2xx` response without the matching token, a non-`2xx` response, or a timeout leaves the
+subscription pending. Pending subscriptions are listed as **Pending** under **Subscribers**; use the
+resend button there to retry when the endpoint is ready. Activation also requires space within the
+page’s subscriber limit. Existing webhook subscriptions created before ownership verification was introduced are
+grandfathered as verified during the migration, so an upgrade does not stop live deliveries.
+
+Incident requests include an `X-Webhook-Signature` HMAC-SHA256 header over the raw JSON body. Events include
 `incident_update_id`; verify the signature before processing and deduplicate by update ID because
 network ambiguity can cause an at-least-once retry.
 
@@ -284,6 +317,11 @@ You can choose whether a component is
 showcased publicly, shown in the list only while degraded, and whether component health should
 automatically create and resolve public incidents. Automatic incidents are off by default.
 
+If you resolve an automatic incident manually while its monitors are still failing, Supercheck does
+not recreate it on the next check. Automatic incidents stay suppressed for that component until its
+calculated status returns to **Operational**; a later outage creates a new incident normally. This
+prevents the same outage from reopening after a responder has already closed it.
+
 The page banner and badge use showcased components. Hiding a component from the list while healthy
 does not remove its degraded health from the overall status. Uptime is calculated from successful
 observed checks divided by total observed checks over the last 90 UTC days. Days without check data
@@ -335,6 +373,10 @@ Incidents communicate service disruptions to your users.
 3. Write update message
 4. Update status if changed
 5. Choose whether to notify subscribers
+
+If you set the status to **Scheduled**, both maintenance start and end times are required. The end
+must be after the start and in the future. The dialog and the server action enforce the same rule, so
+an update sent directly to the action without a valid window is rejected.
 
 An SRE incident may be linked to a public status-page incident. The link preserves the investigation
 record internally; only the title and message you author for the public incident appear on the
@@ -419,6 +461,12 @@ Manage users who receive incident notifications.
 - View statistics (total, verified, pending)
 - Review notification delivery attempts and retry failed deliveries
 - Slack webhook URLs are shown masked, since they act as credentials
+- Webhook subscribers stay **Pending** until they answer the ownership challenge; use the resend
+  action to issue a fresh challenge
+
+Delivered, failed, and skipped delivery rows are retained for 30 days by default, then deleted by the
+existing scheduler tick. Set `STATUS_PAGE_DELIVERY_RETENTION_DAYS` to a whole number from 1 to 3650 to
+change the window; invalid values fall back to 30. Pending deliveries are never removed by retention.
 
 ### Notification Types
 
@@ -481,7 +529,7 @@ Configure page identity, custom domains, subscriptions, and branding. Settings a
 - **Reset** — Restores default colors and removes the logo and favicon immediately; it does not wait for **Save changes**
 
 </Tab>
-<Tab value="Notifications">
+<Tab value="Subscriptions">
 
 - **Page Subscriptions** — Allow visitors to subscribe to page updates
 - **Email, Webhook, and Slack Notifications** — Enable each supported subscriber channel independently
@@ -492,7 +540,7 @@ Configure page identity, custom domains, subscriptions, and branding. Settings a
 <Tab value="Custom Domains">
 
 Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
-Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading summarizes the DNS rules. Existing verification is retained during transient DNS failures; DNS ownership is checked daily.
+Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading summarizes the DNS rules. DNS ownership is checked daily. Failed checks are logged without removing the verified hostname. If DNS stops resolving or points elsewhere, fix the records to restore service. To remove the hostname, change it in Settings.
 
 #### Set Up a Custom Domain
 

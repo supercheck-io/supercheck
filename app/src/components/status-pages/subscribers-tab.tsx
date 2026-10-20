@@ -68,6 +68,7 @@ import {
   getStatusPageSubscribers,
   deleteSubscriber,
   resendVerificationEmail,
+  resendWebhookVerification,
   rotateSubscriberWebhookSecret,
 } from "@/actions/get-status-page-subscribers";
 
@@ -227,6 +228,22 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
       toast.success("Verification email sent");
     } else {
       toast.error("Failed to send verification email", {
+        description: result.message,
+      });
+    }
+
+    setActionLoading(null);
+  };
+
+  const handleResendWebhookVerification = async (subscriberId: string) => {
+    setActionLoading(subscriberId);
+    const result = await resendWebhookVerification(subscriberId);
+
+    if (result.success) {
+      toast.success("Webhook endpoint verified");
+      await loadSubscribers();
+    } else {
+      toast.error("Webhook verification failed", {
         description: result.message,
       });
     }
@@ -664,11 +681,19 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                handleResendVerification(subscriber.id)
+                                subscriber.mode === "webhook"
+                                  ? handleResendWebhookVerification(
+                                      subscriber.id,
+                                    )
+                                  : handleResendVerification(subscriber.id)
                               }
                               disabled={actionLoading === subscriber.id}
                               className="h-8 w-8 p-0"
-                              title="Resend verification"
+                              title={
+                                subscriber.mode === "webhook"
+                                  ? "Resend verification challenge"
+                                  : "Resend verification"
+                              }
                             >
                               {actionLoading === subscriber.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

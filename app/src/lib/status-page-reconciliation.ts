@@ -13,6 +13,10 @@ import {
   type ComponentStatus,
   type AggregationMethod,
 } from "./status-aggregation.service";
+import {
+  formatSystemMessage,
+  getSystemMessages,
+} from "./status-page-system-messages";
 
 export async function reconcileStatusPages() {
   // A transaction lock makes the singleton tick safe across app replicas and retries.
@@ -61,14 +65,18 @@ export async function reconcileStatusPages() {
         .update(incidents)
         .set({ status, updatedAt: now, resolvedAt: ending ? now : null })
         .where(eq(incidents.id, incident.id));
+      const maintenancePage = await tx.query.statusPages.findFirst({
+        where: eq(statusPages.id, incident.statusPageId),
+      });
+      const messages = getSystemMessages(maintenancePage?.language ?? "en");
       const [update] = await tx
         .insert(incidentUpdates)
         .values({
           incidentId: incident.id,
           status,
           body: ending
-            ? "Scheduled maintenance completed."
-            : "Scheduled maintenance is in progress.",
+            ? messages.maintenanceEndBody
+            : messages.maintenanceStartBody,
           deliverNotifications: ending
             ? incident.autoTransitionDeliverNotificationsAtEnd
             : incident.autoTransitionDeliverNotificationsAtStart,
@@ -96,10 +104,21 @@ export async function reconcileStatusPages() {
     for (const component of components) {
       // Components without linked checks retain their manual status.
 
-      await tx.update(statusPageComponents).set({ lastReconciledAt: reconciledAt }).where(eq(statusPageComponents.id, component.id));
+      // Lock the component row and re-read the suppression flag. The manual
+      // resolve action updates this same row; without the fresh read, the batch
+      // snapshot can still say "not suppressed" and recreate the incident the
+      // action just resolved.
+      const [lockedComponent] = await tx
+        .update(statusPageComponents)
+        .set({ lastReconciledAt: reconciledAt })
+        .where(eq(statusPageComponents.id, component.id))
+        .returning({
+          autoIncidentSuppressed: statusPageComponents.autoIncidentSuppressed,
+        });
       const page = await tx.query.statusPages.findFirst({
         where: eq(statusPages.id, component.statusPageId),
       });
+      const messages = getSystemMessages(page?.language ?? "en");
       const active = await tx
         .select({ incident: incidents, link: incidentComponents })
         .from(incidentComponents)
@@ -145,6 +164,17 @@ export async function reconcileStatusPages() {
           .update(statusPageComponents)
           .set({ status, updatedAt: new Date() })
           .where(eq(statusPageComponents.id, component.id));
+      // A manual resolve suppresses automatic incidents until the component
+      // has actually recovered, so the next failing tick does not recreate it.
+      const wasSuppressed =
+        lockedComponent?.autoIncidentSuppressed ??
+        component.autoIncidentSuppressed;
+      const suppressed = wasSuppressed && status !== "operational";
+      if (wasSuppressed && !suppressed)
+        await tx
+          .update(statusPageComponents)
+          .set({ autoIncidentSuppressed: false, updatedAt: new Date() })
+          .where(eq(statusPageComponents.id, component.id));
       const automatic = active.find(
         (entry) => entry.incident.sourceComponentId === component.id,
       )?.incident;
@@ -157,6 +187,7 @@ export async function reconcileStatusPages() {
         failing &&
         !automatic &&
         !manual &&
+        !suppressed &&
         component.autoCreateIncidents &&
         component.showcase &&
         page?.status === "published"
@@ -166,10 +197,12 @@ export async function reconcileStatusPages() {
           .values({
             statusPageId: component.statusPageId,
             sourceComponentId: component.id,
-            name: `${component.name} is experiencing an outage`,
+            name: formatSystemMessage(messages.autoOutageTitle, {
+              component: component.name,
+            }),
             status: "investigating",
             impact: "major",
-            body: "Monitoring detected an availability issue.",
+            body: messages.autoOutageBody,
             deliverNotifications: true,
           })
           .returning();
@@ -212,7 +245,7 @@ export async function reconcileStatusPages() {
           .values({
             incidentId: automatic.id,
             status: "resolved",
-            body: "Monitoring confirms that service has recovered.",
+            body: messages.recoveryBody,
             deliverNotifications: true,
             displayAt: new Date(),
           })

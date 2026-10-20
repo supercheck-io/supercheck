@@ -218,6 +218,13 @@
       "when": 1792396800000,
       "tag": "0030_status_page_reliability",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792483200000,
+      "tag": "0031_status_page_reliability_hardening",
+      "breakpoints": true
     }
   ]
 }

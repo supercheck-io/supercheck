@@ -30,7 +30,7 @@ The sign-in page always supports email/password authentication. OAuth buttons ar
 
 ## Lockout and Safety Rules
 
-`/api/auth/sign-in/check` is called around sign-in attempts and implements progressive lockout for both email and client IP.
+`/api/auth/sign-in/check` is called before a sign-in attempt and implements progressive lockout for the client IP and the email+IP pair. There is no email-only lock, so knowing an address cannot lock its owner out.
 
 Current thresholds from `app/src/lib/security/login-lockout.ts`:
 
@@ -41,11 +41,7 @@ Current thresholds from `app/src/lib/security/login-lockout.ts`:
 | `15` | `15m` |
 | `20` | `1h` |
 
-The check endpoint supports:
-
-- `pre-check`
-- `failed`
-- `success`
+The check endpoint supports only `pre-check`. Lockout responses use one generic message and HTTP 429. The IP is derived from `X-Forwarded-For` right-to-left; see `docs/security/auth-lockout-and-client-ip.md`.
 
 ## Automated Coverage
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -40,6 +41,8 @@ type Incident = {
   id: string;
   name: string;
   status: IncidentStatus;
+  scheduledFor?: Date | string | null;
+  scheduledUntil?: Date | string | null;
 };
 
 type IncidentUpdateDialogProps = {
@@ -50,23 +53,65 @@ type IncidentUpdateDialogProps = {
   onSuccess: () => void;
 };
 
-const updateFormSchema = z.object({
-  deliverNotifications: z.boolean(),
-  status: z.enum([
-    "investigating",
-    "identified",
-    "monitoring",
-    "resolved",
-    "scheduled",
-  ]),
-  body: z
-    .string()
-    .min(10, "Message must be at least 10 characters")
-    .max(5000, "Message is too long"),
-  restoreComponentStatus: z.boolean(),
-});
+export const incidentUpdateFormSchema = z
+  .object({
+    deliverNotifications: z.boolean(),
+    status: z.enum([
+      "investigating",
+      "identified",
+      "monitoring",
+      "resolved",
+      "scheduled",
+    ]),
+    body: z
+      .string()
+      .min(10, "Message must be at least 10 characters")
+      .max(5000, "Message is too long"),
+    restoreComponentStatus: z.boolean(),
+    scheduledFor: z.string(),
+    scheduledUntil: z.string(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status !== "scheduled") return;
+    if (!data.scheduledFor)
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledFor"],
+        message: "Start time is required",
+      });
+    if (!data.scheduledUntil)
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time is required",
+      });
+    if (
+      data.scheduledFor &&
+      data.scheduledUntil &&
+      new Date(data.scheduledFor) >= new Date(data.scheduledUntil)
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time must be after the start time",
+      });
+    if (data.scheduledUntil && new Date(data.scheduledUntil) <= new Date())
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time must be in the future",
+      });
+  });
 
-type UpdateFormData = z.infer<typeof updateFormSchema>;
+type UpdateFormData = z.infer<typeof incidentUpdateFormSchema>;
+
+function toLocalDatetimeInput(value?: Date | string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
 
 const statusOptions: { value: IncidentStatus; label: string; color: string }[] =
   [
@@ -99,12 +144,14 @@ export function IncidentUpdateDialog({
     setValue,
     formState: { errors },
   } = useForm<UpdateFormData>({
-    resolver: zodResolver(updateFormSchema),
+    resolver: zodResolver(incidentUpdateFormSchema),
     defaultValues: {
       status: "investigating",
       body: "",
       deliverNotifications: true,
       restoreComponentStatus: false,
+      scheduledFor: "",
+      scheduledUntil: "",
     },
   });
 
@@ -118,6 +165,8 @@ export function IncidentUpdateDialog({
         body: "",
         deliverNotifications: true,
         restoreComponentStatus: false,
+        scheduledFor: toLocalDatetimeInput(incident.scheduledFor),
+        scheduledUntil: toLocalDatetimeInput(incident.scheduledUntil),
       });
     }
   }, [open, incident, reset]);
@@ -134,6 +183,14 @@ export function IncidentUpdateDialog({
         body: data.body,
         deliverNotifications: data.deliverNotifications,
         restoreComponentStatus: data.restoreComponentStatus,
+        scheduledFor:
+          data.status === "scheduled" && data.scheduledFor
+            ? new Date(data.scheduledFor)
+            : undefined,
+        scheduledUntil:
+          data.status === "scheduled" && data.scheduledUntil
+            ? new Date(data.scheduledUntil)
+            : undefined,
       };
 
       const result = await updateIncidentStatus(updateData);
@@ -213,6 +270,51 @@ export function IncidentUpdateDialog({
               )}
             />
           </div>
+
+          {status === "scheduled" && (
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-medium">Maintenance window</h3>
+                <p className="text-xs text-muted-foreground">
+                  Scheduled updates need a start and end time.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="update-maintenance-start">
+                    Starts (your local time)
+                  </Label>
+                  <Input
+                    id="update-maintenance-start"
+                    type="datetime-local"
+                    {...register("scheduledFor")}
+                    disabled={isSubmitting}
+                  />
+                  {errors.scheduledFor && (
+                    <p className="text-xs text-red-500">
+                      {errors.scheduledFor.message}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="update-maintenance-end">
+                    Ends (your local time)
+                  </Label>
+                  <Input
+                    id="update-maintenance-end"
+                    type="datetime-local"
+                    {...register("scheduledUntil")}
+                    disabled={isSubmitting}
+                  />
+                  {errors.scheduledUntil && (
+                    <p className="text-xs text-red-500">
+                      {errors.scheduledUntil.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="body">Update Message *</Label>

@@ -15,24 +15,59 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { incidentScheduleFields } from "@/lib/incident-schedule";
 
-const updateIncidentStatusSchema = z.object({
-  incidentId: z.string().uuid(),
-  statusPageId: z.string().uuid(),
-  status: z.enum([
-    "investigating",
-    "identified",
-    "monitoring",
-    "resolved",
-    "scheduled",
-  ]),
-  body: z
-    .string()
-    .min(1, "Update message is required")
-    .max(10000, "Update message too long"),
-  deliverNotifications: z.boolean().default(true),
-  restoreComponentStatus: z.boolean().default(false), // If true and status is resolved, restore components to operational
-});
+export const updateIncidentStatusSchema = z
+  .object({
+    incidentId: z.string().uuid(),
+    statusPageId: z.string().uuid(),
+    status: z.enum([
+      "investigating",
+      "identified",
+      "monitoring",
+      "resolved",
+      "scheduled",
+    ]),
+    body: z
+      .string()
+      .min(1, "Update message is required")
+      .max(10000, "Update message too long"),
+    deliverNotifications: z.boolean().default(true),
+    restoreComponentStatus: z.boolean().default(false), // If true and status is resolved, restore components to operational
+    scheduledFor: z.coerce.date().optional(),
+    scheduledUntil: z.coerce.date().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status !== "scheduled") return;
+    if (!data.scheduledFor)
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledFor"],
+        message: "Start time is required for scheduled maintenance",
+      });
+    if (!data.scheduledUntil)
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time is required for scheduled maintenance",
+      });
+    if (
+      data.scheduledFor &&
+      data.scheduledUntil &&
+      data.scheduledFor >= data.scheduledUntil
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time must be after the start time",
+      });
+    if (data.scheduledUntil && data.scheduledUntil <= new Date())
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledUntil"],
+        message: "End time must be in the future",
+      });
+  });
 
 export type UpdateIncidentStatusData = z.infer<
   typeof updateIncidentStatusSchema
@@ -102,6 +137,21 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
     }
 
     const result = await db.transaction(async (tx) => {
+      // Lock the component before the incident, matching reconciliation order.
+      // A manual resolve of an automatically detected incident must not be
+      // undone by the next reconciliation tick while the monitor is still down.
+      if (
+        validatedData.status === "resolved" &&
+        existingIncident.sourceComponentId
+      ) {
+        await tx
+          .update(statusPageComponents)
+          .set({ autoIncidentSuppressed: true, updatedAt: new Date() })
+          .where(
+            eq(statusPageComponents.id, existingIncident.sourceComponentId),
+          );
+      }
+
       // Update the incident status
       const [incident] = await tx
         .update(incidents)
@@ -112,6 +162,11 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
           ...(validatedData.status === "monitoring"
             ? { monitoringAt: new Date() }
             : {}),
+          ...incidentScheduleFields(
+            validatedData.status,
+            validatedData.scheduledFor,
+            validatedData.scheduledUntil,
+          ),
         })
         .where(
           and(
