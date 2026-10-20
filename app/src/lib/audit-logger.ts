@@ -50,7 +50,8 @@ type AuditExecutor = Pick<typeof db, "insert">;
 
 export async function logAuditEvent(
   event: AuditEvent,
-  executor: AuditExecutor = db
+  executor: AuditExecutor = db,
+  options: { strict?: boolean } = {}
 ): Promise<void> {
   try {
     // Get request context if available (skip if outside request scope)
@@ -121,11 +122,12 @@ export async function logAuditEvent(
       );
     }
   } catch (error) {
-    // Never fail the request due to audit logging errors
+    // Existing callers remain best-effort; critical transactions can require persistence.
     auditLogger.error(
       { err: error, event },
       'Failed to log audit event'
     );
+    if (options.strict) throw error;
   }
 }
 
