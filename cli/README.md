@@ -183,7 +183,7 @@ Write operations that need confirmation never proceed without it in non-interact
 | `SUPERCHECK_URL` | API URL for self-hosted instances; overrides the stored login URL |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Proxy configuration |
 
-`SUPERCHECK_TOKEN`, `SUPERCHECK_TRIGGER_KEY` and `SUPERCHECK_URL` are read only from the real environment or a stored login, never from a project `.env` file, so a cloned repository cannot choose your credential or where it is sent. Export them in your shell or CI secret store.
+`SUPERCHECK_TOKEN`, `SUPERCHECK_TRIGGER_KEY`, `SUPERCHECK_URL`, proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, ...) and TLS settings (`NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, ...) are read only from the real environment or a stored login, never from a project `.env` file, so a cloned repository cannot choose your credential, where it is sent, or how the connection is protected. Export them in your shell or CI secret store. Commands that load `supercheck.config.ts` still execute it; do not run `deploy`, `pull` or `doctor` in a repository you do not trust.
 
 Run `supercheck whoami` to see the active API URL and project.
 

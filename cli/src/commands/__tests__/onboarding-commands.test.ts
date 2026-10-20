@@ -160,6 +160,9 @@ describe('classifyError', () => {
     expect(classifyError(new Error('boom'))).toBeUndefined()
     expect(classifyError(new CLIError('Not authenticated. Run `supercheck login`.', ExitCode.AuthError), false)?.code).toBe('AUTH_REQUIRED')
     expect(classifyError(new CLIError('Not authenticated.', ExitCode.AuthError), true)).toBeUndefined()
+    // a rejected or malformed pasted token is not "sign in"
+    expect(classifyError(new CLIError('Token verification failed. Please check your token and try again.', ExitCode.AuthError), false)).toBeUndefined()
+    expect(classifyError(new CLIError('Invalid token. `supercheck login` requires a CLI token', ExitCode.AuthError), false)).toBeUndefined()
   })
 })
 

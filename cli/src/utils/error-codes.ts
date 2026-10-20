@@ -40,7 +40,7 @@ export function classifyError(error: unknown, hasCredentials = true): ErrorClass
     if (status === 400 || status === 422) return { code: 'VALIDATION_FAILED', retryable: false, nextActions: [] }
     if (status === 0 || status >= 500) return { code: 'SERVICE_UNAVAILABLE', retryable: true, nextActions: [] }
   }
-  if (error instanceof CLIError && !(error instanceof ApiRequestError) && error.exitCode === ExitCode.AuthError && !hasCredentials) {
+  if (error instanceof CLIError && !(error instanceof ApiRequestError) && error.exitCode === ExitCode.AuthError && !hasCredentials && /^Not authenticated\b/.test(error.message)) {
     return { code: 'AUTH_REQUIRED', retryable: false, nextActions: [{ command: 'supercheck login --json', why: 'Authenticate in the browser' }] }
   }
   if (error instanceof CLIError && error.exitCode === ExitCode.ConfigError && /CONFIRMATION_REQUIRED/.test(error.message)) {

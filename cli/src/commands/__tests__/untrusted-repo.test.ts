@@ -49,6 +49,10 @@ function run(...args: string[]): Promise<{ status: number | null; stdout: string
  * `clean` runs have NO SUPERCHECK_URL / SUPERCHECK_TOKEN in the real environment, which is exactly when a hostile
  * repository .env would otherwise win. Without this the tests would pass vacuously (dotenv never overrides existing values).
  */
+/** Like runClean but keeps a real token: the .env is then loaded for a config-declared server, which is where proxy settings would apply. */
+function runClean_withToken(...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return runWith(true, { SUPERCHECK_URL: undefined }, ...args)
+}
 function runClean(...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
   return runWith(true, { SUPERCHECK_URL: undefined, SUPERCHECK_TOKEN: undefined }, ...args)
 }
@@ -97,6 +101,19 @@ describe('cloud commands on an untrusted checkout', () => {
     expect(result.stdout + result.stderr).not.toBe('')
     expect(seen.filter((r) => r.auth?.includes('e'.repeat(32)))).toEqual([])
     // Nothing reached the hostile server named in .env.
+    expect(seen).toEqual([])
+  }, 30000)
+
+  it('never lets a .env route requests through its proxy or weaken TLS', async () => {
+    // The project config names the legitimate loopback server (so the .env is genuinely loaded for this command),
+    // and the real environment supplies only the token. The hostile .env points both proxy variables at the listener
+    // that records `seen`; if they were applied, the request to the legitimate server would be forwarded through it.
+    writeFileSync(join(repo, 'supercheck.config.ts'), `export default { schemaVersion: '1.0', project: { organization: 'o', project: 'p' }, api: { baseUrl: 'http://127.0.0.1:${legitPort}' } }\n`)
+    writeFileSync(join(repo, '.env'), `HTTP_PROXY=http://127.0.0.1:${port}\nhttp_proxy=http://127.0.0.1:${port}\nHTTPS_PROXY=http://127.0.0.1:${port}\nNODE_TLS_REJECT_UNAUTHORIZED=0\n`)
+    const result = await runClean_withToken('test', 'list')
+    expect(result.stderr).not.toMatch(/ERR_MODULE_NOT_FOUND|Cannot find/)
+    // The command really ran and reached the legitimate server (it answers 401), rather than being short-circuited.
+    expect(result.stdout + result.stderr).toMatch(/401|TOKEN_INVALID|Invalid or expired/)
     expect(seen).toEqual([])
   }, 30000)
 })
