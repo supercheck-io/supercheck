@@ -19,7 +19,7 @@ export class MonitorControlHealthServer
 
   onModuleInit(): void {
     const port = Number.parseInt(
-      process.env.MONITOR_CONTROL_PORT ?? '8081',
+      process.env.MONITOR_CONTROL_PORT ?? process.env.PORT ?? '8000',
       10,
     );
     this.server = createServer((req, res) => {
