@@ -19,6 +19,9 @@ import {
 } from "@/lib/auth/device-auth-rate-limit";
 import { buildDeviceReturnPath } from "@/lib/auth/safe-next-path";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { DeviceApproval, type DeviceProjectOption } from "./device-approval";
 import { WorkspaceSetup } from "./workspace-setup";
 
@@ -33,15 +36,14 @@ export const metadata: Metadata = {
 
 function Shell({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
-          {description ? <CardDescription>{description}</CardDescription> : null}
-        </CardHeader>
-        {children ? <CardContent className="space-y-4">{children}</CardContent> : null}
-      </Card>
-    </main>
+    <Card className="w-full max-w-md shadow-sm">
+      <CardHeader className="items-center space-y-3 text-center">
+        <CheckIcon className="size-12" aria-hidden="true" />
+        <CardTitle className="text-2xl font-bold">{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
+      </CardHeader>
+      {children ? <CardContent className="space-y-4">{children}</CardContent> : null}
+    </Card>
   );
 }
 
@@ -53,7 +55,7 @@ function CodeEntryForm({ error }: { error?: string }) {
     >
       {/* Plain GET form: viewing a code never approves anything. */}
       <form method="get" action="/device" className="space-y-3">
-        <input
+        <Input
           name="code"
           autoComplete="off"
           autoCapitalize="characters"
@@ -61,12 +63,10 @@ function CodeEntryForm({ error }: { error?: string }) {
           maxLength={12}
           placeholder="XXXX-XXXX"
           aria-label="Device code"
-          className="w-full rounded-md border bg-background px-3 py-2 font-mono text-lg tracking-widest"
+          className="text-center font-mono text-lg tracking-widest"
         />
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        <button type="submit" className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
-          Continue
-        </button>
+        {error ? <p role="alert" className="text-center text-sm text-destructive">{error}</p> : null}
+        <Button type="submit" className="w-full">Continue</Button>
       </form>
     </Shell>
   );
