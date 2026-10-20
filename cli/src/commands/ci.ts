@@ -46,7 +46,7 @@ jobs:
           persist-credentials: false
 ${setupPm}      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: ${cache}
       - run: ${install}
 ${browsers}      - run: ${run} supercheck test run --offline --all --json
@@ -64,7 +64,7 @@ ${browsers}      - run: ${run} supercheck test run --offline --all --json
           persist-credentials: false
 ${setupPm}      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: ${cache}
       - run: ${install}
 ${browsers}      # The token is exposed only to the deploy steps, never to dependency install scripts.

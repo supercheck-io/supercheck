@@ -164,7 +164,7 @@ export async function verifyDeployedTests(
   })
   for (const target of targets) {
     // Only a positively identified browser test is ever run. Performance (any spelling) and unknown types are skipped.
-    if (target.testType !== 'browser') { out.push({ id: target.id, name: target.name, status: 'skipped', reason: target.testType === 'performance' ? 'Performance tests are not run implicitly; use `supercheck test execute` with explicit authorization.' : 'Test type could not be determined; not run implicitly.' }); continue }
+    if (target.testType !== 'browser') { out.push({ id: target.id, name: target.name, status: 'skipped', reason: target.testType === 'performance' ? 'Performance tests are not run implicitly; use `supercheck test execute` with explicit authorization.' : target.testType ? `Only browser tests are verified automatically; ${target.testType} tests are not run implicitly.` : 'Test type could not be determined; not run implicitly.' }); continue }
     if (out.filter((o) => o.status !== 'skipped').length >= VERIFY_LIMIT) { out.push({ id: target.id, name: target.name, status: 'skipped', reason: `Verification is limited to ${VERIFY_LIMIT} tests per deploy.` }); continue }
     let runId: string | undefined
     try {

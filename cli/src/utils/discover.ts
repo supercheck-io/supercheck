@@ -132,7 +132,7 @@ export function discoverRepository(rootInput: string): DiscoverResult {
   }
 
   const routes: DiscoverResult['routes'] = []
-  const routeFiles = relFiles.filter((f) => /(^|\/)(app|src\/app)\/(.*\/)?page\.(tsx|jsx|ts|js)$/.test(f) || /(^|\/)(pages|src\/pages)\/[^_].*\.(tsx|jsx|ts|js)$/.test(f) && !/\/api\//.test(f))
+  const routeFiles = relFiles.filter((f) => /(^|\/)(app|src\/app)\/(.*\/)?page\.(tsx|jsx|ts|js)$/.test(f) || (/(^|\/)(pages|src\/pages)\/[^_].*\.(tsx|jsx|ts|js)$/.test(f) && !/\/api\//.test(f)))
   for (const f of routeFiles.slice(0, 60)) {
     const path = '/' + f.replace(/^(.*\/)?(src\/)?(app|pages)\//, '').replace(/\/?page\.(tsx|jsx|ts|js)$/, '').replace(/\.(tsx|jsx|ts|js)$/, '').replace(/\/index$/, '').replace(/\([^)]*\)\//g, '')
     const hint = ROUTE_HINTS.find(([re]) => re.test(path))?.[1]
