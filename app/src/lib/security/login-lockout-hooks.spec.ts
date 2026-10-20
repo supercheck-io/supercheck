@@ -12,59 +12,135 @@ jest.mock("better-auth/api", () => ({
 }));
 jest.mock("@/lib/session-security", () => ({ getClientIP: jest.fn(() => "192.0.2.1") }));
 jest.mock("./login-lockout", () => ({
-  checkLockout: jest.fn(), clearLockout: jest.fn(), recordFailedAttempt: jest.fn(),
+  LOGIN_LOCKOUT_MESSAGE: "Too many sign-in attempts. Please try again later.",
+  blockingLockoutIdentifiers: jest.fn((email: string, ip: string) =>
+    ip && ip !== "unknown" ? [`ip:${ip}`, `pair:${email}|${ip}`] : []
+  ),
+  emailLockoutIdentifier: jest.fn((email: string) => `email:${email}`),
+  reserveLoginAttempt: jest.fn(),
+  releaseLoginAttempt: jest.fn(),
+  recordEmailFailure: jest.fn(),
+  clearLockout: jest.fn(),
 }));
 import { APIError } from "better-auth/api";
 import { getClientIP } from "@/lib/session-security";
 import { loginLockoutHooks } from "./login-lockout-hooks";
-import { checkLockout, clearLockout, recordFailedAttempt } from "./login-lockout";
+import {
+  clearLockout,
+  recordEmailFailure,
+  releaseLoginAttempt,
+  reserveLoginAttempt,
+} from "./login-lockout";
+
 const context = (returned?: unknown, newSession?: unknown) => ({
-  path: "/sign-in/email", body: { email: " User@Example.test " }, headers: new Headers(),
-  context: { returned, newSession },
+  path: "/sign-in/email",
+  body: { email: " User@Example.test " },
+  headers: new Headers(),
+  context: { returned: returned as unknown, newSession },
 });
 const before = loginLockoutHooks.before as unknown as (ctx: ReturnType<typeof context>) => Promise<void>;
 const after = loginLockoutHooks.after as unknown as typeof before;
+
+const reservation = (isLocked = false) => ({
+  isLocked,
+  attemptsRemaining: 4,
+  lockoutSeconds: isLocked ? 30 : undefined,
+  releases: isLocked ? [] : [
+    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0 },
+    { identifier: "pair:user@example.test|192.0.2.1", appliedLockoutSeconds: 0 },
+  ],
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
-  (checkLockout as jest.Mock).mockResolvedValue({ isLocked: false });
+  (reserveLoginAttempt as jest.Mock).mockResolvedValue(reservation());
 });
-it.each(["email", "ip"])("blocks direct credential verification when %s is locked", async (locked) => {
-  (checkLockout as jest.Mock).mockImplementation(async (id) => ({ isLocked: id === (locked === "email" ? "user@example.test" : "192.0.2.1") }));
-  await expect(before(context())).rejects.toThrow("temporarily locked");
-  expect(recordFailedAttempt).not.toHaveBeenCalled();
+
+it("reserves an attempt on IP and email+IP before the password check", async () => {
+  await before(context());
+  expect(reserveLoginAttempt).toHaveBeenCalledWith([
+    "ip:192.0.2.1",
+    "pair:user@example.test|192.0.2.1",
+  ]);
 });
-it("allows unlocked logins and records only verified credential failures", async () => {
-  await expect(before(context())).resolves.toBeUndefined();
-  await after(context(new APIError("UNAUTHORIZED", { code: "INVALID_EMAIL_OR_PASSWORD" })));
-  expect(recordFailedAttempt).toHaveBeenCalledWith("user@example.test");
-  expect(recordFailedAttempt).toHaveBeenCalledWith("192.0.2.1");
+
+it("rejects a locked identity with the shared generic message", async () => {
+  (reserveLoginAttempt as jest.Mock).mockResolvedValue(reservation(true));
+  await expect(before(context())).rejects.toThrow("Too many sign-in attempts");
+});
+
+it("never checks or blocks on an email-only identity", async () => {
+  await before(context());
+  expect((reserveLoginAttempt as jest.Mock).mock.calls[0][0]).not.toContain(
+    "email:user@example.test"
+  );
+});
+
+it("keeps the reservation only for a wrong password", async () => {
+  const ctx = context();
+  await before(ctx);
+  ctx.context.returned = new APIError("UNAUTHORIZED", { code: "INVALID_EMAIL_OR_PASSWORD" });
+  await after(ctx);
+  expect(recordEmailFailure).toHaveBeenCalledWith("user@example.test");
+  expect(releaseLoginAttempt).not.toHaveBeenCalled();
   expect(clearLockout).not.toHaveBeenCalled();
 });
-it.each(["CAPTCHA_FAILED", "EMAIL_NOT_VERIFIED", "INTERNAL_ERROR"])("does not count %s as a password failure", async (code) => {
-  await after(context(new APIError("BAD_REQUEST", { code })));
-  expect(recordFailedAttempt).not.toHaveBeenCalled();
-  expect(clearLockout).not.toHaveBeenCalled();
+
+it.each(["CAPTCHA_FAILED", "EMAIL_NOT_VERIFIED", "INTERNAL_ERROR"])(
+  "releases the reservation when the password was not verified (%s)",
+  async (code) => {
+    const ctx = context();
+    await before(ctx);
+    ctx.context.returned = new APIError("BAD_REQUEST", { code });
+    await after(ctx);
+
+    expect(recordEmailFailure).not.toHaveBeenCalled();
+    expect(releaseLoginAttempt).toHaveBeenCalledWith(reservation().releases);
+    expect(clearLockout).not.toHaveBeenCalled();
+  }
+);
+
+it("releases the reservation on a non-API failure", async () => {
+  const ctx = context();
+  await before(ctx);
+  ctx.context.returned = new Error("network down");
+  await after(ctx);
+  expect(releaseLoginAttempt).toHaveBeenCalled();
 });
-it("clears counters only after successful session creation", async () => {
-  await after(context({ user: {} }));
-  expect(clearLockout).not.toHaveBeenCalled();
-  await after(context({ user: {} }, { user: { id: "user" } }));
-  expect(clearLockout).toHaveBeenCalledWith("user@example.test");
-  expect(clearLockout).toHaveBeenCalledWith("192.0.2.1");
+
+it("clears account counters and releases only the IP attempt after a successful session", async () => {
+  const ctx = context({ user: {} }, { user: { id: "user" } });
+  await before(ctx);
+  await after(ctx);
+
+  expect(clearLockout).toHaveBeenCalledWith("email:user@example.test");
+  expect(clearLockout).toHaveBeenCalledWith("pair:user@example.test|192.0.2.1");
+  expect(clearLockout).not.toHaveBeenCalledWith("ip:192.0.2.1");
+  // A success must not wipe the shared IP ladder for everyone behind that IP.
+  expect(releaseLoginAttempt).toHaveBeenCalledWith([
+    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0 },
+  ]);
 });
+
+it("does not clear counters on a session-less success response", async () => {
+  const ctx = context({ user: {} });
+  await before(ctx);
+  await after(ctx);
+  expect(clearLockout).not.toHaveBeenCalled();
+  expect(releaseLoginAttempt).toHaveBeenCalled();
+});
+
 it("ignores other auth endpoints and invalid bodies", async () => {
   await before({ ...context(), path: "/sign-up/email" });
   await after({ ...context(), path: "/sign-out" });
   await before({ ...context(), body: {} } as ReturnType<typeof context>);
-  expect(checkLockout).not.toHaveBeenCalled();
-  expect(recordFailedAttempt).not.toHaveBeenCalled();
+  expect(reserveLoginAttempt).not.toHaveBeenCalled();
+  expect(recordEmailFailure).not.toHaveBeenCalled();
+  expect(releaseLoginAttempt).not.toHaveBeenCalled();
 });
-it("skips the IP dimension when the client IP is unknown", async () => {
-  (getClientIP as jest.Mock).mockReturnValueOnce("unknown").mockReturnValueOnce("unknown");
+
+it("skips reservations when the client IP is unknown", async () => {
+  (getClientIP as jest.Mock).mockReturnValueOnce("unknown");
   await before(context());
-  expect(checkLockout).toHaveBeenCalledTimes(1);
-  expect(checkLockout).toHaveBeenCalledWith("user@example.test");
-  await after(context(new APIError("UNAUTHORIZED", { code: "INVALID_EMAIL_OR_PASSWORD" })));
-  expect(recordFailedAttempt).toHaveBeenCalledTimes(1);
-  expect(recordFailedAttempt).not.toHaveBeenCalledWith("unknown");
+  expect(reserveLoginAttempt).not.toHaveBeenCalled();
 });

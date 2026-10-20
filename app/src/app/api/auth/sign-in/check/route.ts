@@ -1,7 +1,12 @@
 /** Read-only login preflight; credential outcomes are recorded by server auth hooks. */
 
 import { NextRequest, NextResponse } from "next/server";
-import { checkLockout } from "@/lib/security/login-lockout";
+import {
+  LOGIN_LOCKOUT_INITIAL_ALLOWANCE,
+  LOGIN_LOCKOUT_MESSAGE,
+  blockingLockoutIdentifiers,
+  checkLockout,
+} from "@/lib/security/login-lockout";
 import { getClientIP } from "@/lib/session-security";
 import { getRedisConnection } from "@/lib/queue";
 
@@ -73,48 +78,40 @@ export async function POST(request: NextRequest) {
     const allowed = await checkEndpointRateLimit(clientIP);
     if (!allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please try again later." },
+        { allowed: false, isLocked: true, message: LOGIN_LOCKOUT_MESSAGE },
         { status: 429 }
       );
     }
 
-    switch (action) {
-      case "pre-check": {
-        // Check both email and IP lockouts
-        const emailLockout = await checkLockout(normalizedEmail);
-        const ipLockout = await checkLockout(clientIP);
+    // Same blocking dimensions as the sign-in hook: client IP and email+IP.
+    // There is deliberately no email-only lock.
+    const identifiers = blockingLockoutIdentifiers(normalizedEmail, clientIP);
+    const statuses = await Promise.all(identifiers.map((identifier) => checkLockout(identifier)));
+    const locked = statuses.find((status) => status.isLocked);
 
-        // Use the stricter lockout if both exist
-        if (emailLockout.isLocked || ipLockout.isLocked) {
-          const lockout = emailLockout.isLocked ? emailLockout : ipLockout;
-          return NextResponse.json({
-            allowed: false,
-            isLocked: true,
-            message: lockout.message || "Account temporarily locked due to too many failed attempts.",
-            lockoutSeconds: lockout.lockoutSeconds,
-            lockoutUntil: lockout.lockoutUntil?.toISOString(),
-          });
-        }
-
-        return NextResponse.json({
-          allowed: true,
-          isLocked: false,
-          attemptsRemaining: Math.min(
-            emailLockout.attemptsRemaining,
-            ipLockout.attemptsRemaining
-          ),
-        });
-      }
-
-      default:
-        return NextResponse.json(
-          { error: "Invalid action. Use 'pre-check'." },
-          { status: 400 }
-        );
+    if (locked) {
+      return NextResponse.json({
+        allowed: false,
+        isLocked: true,
+        message: LOGIN_LOCKOUT_MESSAGE,
+        lockoutSeconds: locked.lockoutSeconds,
+        lockoutUntil: locked.lockoutUntil?.toISOString(),
+      }, { status: 429 });
     }
+
+    return NextResponse.json({
+      allowed: true,
+      isLocked: false,
+      attemptsRemaining: statuses.length > 0
+        ? statuses.reduce(
+            (remaining, status) => Math.min(remaining, status.attemptsRemaining),
+            LOGIN_LOCKOUT_INITIAL_ALLOWANCE
+          )
+        : LOGIN_LOCKOUT_INITIAL_ALLOWANCE,
+    });
   } catch (error) {
     console.error("Login check error:", error);
-    
+
     // SECURITY: Fail CLOSED for security-sensitive operations.
     // If the lockout system is unavailable, reject sign-in attempts
     // rather than allowing potential brute force attacks through.

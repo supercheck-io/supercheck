@@ -1,32 +1,92 @@
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { getClientIP } from "@/lib/session-security";
-import { checkLockout, clearLockout, recordFailedAttempt } from "./login-lockout";
+import {
+  LOGIN_LOCKOUT_MESSAGE,
+  type AttemptReservation,
+  blockingLockoutIdentifiers,
+  clearLockout,
+  emailLockoutIdentifier,
+  recordEmailFailure,
+  releaseLoginAttempt,
+  reserveLoginAttempt,
+} from "./login-lockout";
 
-// Without a proxy header getClientIP returns "unknown"; one shared bucket would lock everyone out.
-const ipKeys = (ip: string) => (ip && ip !== "unknown" ? [ip] : []);
+/**
+ * Reservation made in before() and settled in after(). Keyed by the shared auth
+ * context object so both hooks in the same dispatch see the same reservation.
+ */
+const pendingReservations = new WeakMap<object, AttemptReservation>();
 
-// Only verified credential outcomes may mutate lockout state.
+const signInEmail = (body: unknown): string | null => {
+  if (!body || typeof body !== "object" || !("email" in body)) return null;
+  const email = body.email;
+  return typeof email === "string" ? email.trim().toLowerCase() : null;
+};
+
+// Only credential outcomes may convert a reservation into a recorded failure.
 export const loginLockoutHooks = {
   before: createAuthMiddleware(async (ctx) => {
-    if (ctx.path !== "/sign-in/email" || typeof ctx.body?.email !== "string") return;
-    const email = ctx.body.email.trim().toLowerCase();
+    if (ctx.path !== "/sign-in/email") return;
+    const email = signInEmail(ctx.body);
+    if (!email) return;
+
     const ip = getClientIP(ctx.headers ?? new Headers());
-    const locks = await Promise.all([email, ...ipKeys(ip)].map((key) => checkLockout(key)));
-    if (locks.some((lock) => lock.isLocked)) {
+    const identifiers = blockingLockoutIdentifiers(email, ip);
+    if (identifiers.length === 0) return;
+
+    // Reserve before the password check so a parallel burst cannot all pass
+    // the check before any failure is counted.
+    const reservation = await reserveLoginAttempt(identifiers);
+    pendingReservations.set(ctx.context, reservation);
+
+    if (reservation.isLocked) {
       throw new APIError("TOO_MANY_REQUESTS", {
-        message: "Account temporarily locked. Please try again later.",
+        message: LOGIN_LOCKOUT_MESSAGE,
       });
     }
   }),
   after: createAuthMiddleware(async (ctx) => {
-    if (ctx.path !== "/sign-in/email" || typeof ctx.body?.email !== "string") return;
-    const email = ctx.body.email.trim().toLowerCase();
-    const ip = getClientIP(ctx.headers ?? new Headers());
+    if (ctx.path !== "/sign-in/email") return;
+    const email = signInEmail(ctx.body);
+    if (!email) return;
+
+    const reservation = pendingReservations.get(ctx.context);
+    pendingReservations.delete(ctx.context);
+
     const result = ctx.context.returned;
-    if (isAPIError(result) && result.body?.code === "INVALID_EMAIL_OR_PASSWORD") {
-      await Promise.all([email, ...ipKeys(ip)].map((key) => recordFailedAttempt(key)));
-    } else if (ctx.context.newSession) {
-      await Promise.all([email, ...ipKeys(ip)].map((key) => clearLockout(key)));
+    const invalidPassword =
+      isAPIError(result) && result.body?.code === "INVALID_EMAIL_OR_PASSWORD";
+
+    if (invalidPassword) {
+      // Reservation stays consumed. The per-email counter is telemetry only.
+      await recordEmailFailure(email);
+      return;
+    }
+
+    if (ctx.context.newSession) {
+      const releases = reservation?.releases ?? [];
+      // Reset the dimensions that identify this account, but only release the
+      // shared IP attempt: wiping the IP counter would let anyone with an
+      // account reset the ladder for every other user behind the same address.
+      const accountIdentifiers = releases
+        .map(({ identifier }) => identifier)
+        .filter((identifier) => !identifier.startsWith("ip:"));
+
+      await Promise.all(
+        [emailLockoutIdentifier(email), ...accountIdentifiers].map((identifier) =>
+          clearLockout(identifier)
+        )
+      );
+      await releaseLoginAttempt(
+        releases.filter(({ identifier }) => identifier.startsWith("ip:"))
+      );
+      return;
+    }
+
+    // Captcha, unverified email, transport or other API errors say nothing
+    // about the password: give the reserved attempt back.
+    if (reservation) {
+      await releaseLoginAttempt(reservation.releases);
     }
   }),
 };

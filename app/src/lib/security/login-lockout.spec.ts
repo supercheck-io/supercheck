@@ -1,13 +1,16 @@
 /**
  * Login Lockout Service Tests
- * 
+ *
  * Uses an in-memory Redis-compatible mock so lockout behavior is deterministic
- * and does not depend on a local Redis daemon.
+ * and does not depend on a local Redis daemon. The mock executes the service's
+ * Lua scripts synchronously, which is the atomicity contract Redis provides.
  */
 
-const mockStore = new Map<string, { value: string; expiresAt?: number }>();
+type Entry = { value: string; expiresAt?: number };
 
-function getEntry(key: string) {
+const mockStore = new Map<string, Entry>();
+
+function getEntry(key: string): Entry | null {
   const entry = mockStore.get(key);
   if (!entry) return null;
   if (entry.expiresAt && entry.expiresAt <= Date.now()) {
@@ -17,31 +20,83 @@ function getEntry(key: string) {
   return entry;
 }
 
+function ttlOf(key: string): number {
+  const entry = getEntry(key);
+  if (!entry) return -2;
+  if (!entry.expiresAt) return -1;
+  return Math.max(1, Math.ceil((entry.expiresAt - Date.now()) / 1000));
+}
+
+function incr(key: string): number {
+  const next = Number.parseInt(getEntry(key)?.value ?? "0", 10) + 1;
+  mockStore.set(key, { value: String(next), expiresAt: getEntry(key)?.expiresAt });
+  return next;
+}
+
+function runScript(script: string, keys: string[], args: (string | number)[]): number[] | number {
+  if (script.includes("INCR")) {
+    const attemptsTtl = Number(args[0]);
+    const thresholds: Array<[number, number]> = [];
+    for (let index = 1; index < args.length; index += 2) {
+      thresholds.push([Number(args[index]), Number(args[index + 1])]);
+    }
+
+    const keyCount = keys.length / 2;
+    for (let index = 0; index < keyCount; index += 1) {
+      const lockTtl = ttlOf(keys[index * 2 + 1]);
+      if (lockTtl > 0) return [1, lockTtl];
+    }
+
+    const result: number[] = [0, 0];
+    for (let index = 0; index < keyCount; index += 1) {
+      const attemptsKey = keys[index * 2];
+      const lockKey = keys[index * 2 + 1];
+      const attempts = incr(attemptsKey);
+      mockStore.set(attemptsKey, {
+        value: String(attempts),
+        expiresAt: Date.now() + attemptsTtl * 1000,
+      });
+
+      let applied = 0;
+      for (const [threshold, seconds] of thresholds) {
+        if (attempts >= threshold) applied = seconds;
+      }
+
+      if (applied > 0) {
+        mockStore.set(lockKey, { value: "1", expiresAt: Date.now() + applied * 1000 });
+        result[1] = Math.max(result[1], applied);
+      }
+
+      result.push(attempts, applied);
+    }
+    return result;
+  }
+
+  const keyCount = keys.length / 2;
+  for (let index = 0; index < keyCount; index += 1) {
+    const attemptsKey = keys[index * 2];
+    const lockKey = keys[index * 2 + 1];
+    const attempts = Number.parseInt(getEntry(attemptsKey)?.value ?? "0", 10);
+    if (attempts > 0) {
+      mockStore.set(attemptsKey, {
+        value: String(attempts - 1),
+        expiresAt: getEntry(attemptsKey)?.expiresAt,
+      });
+    }
+
+    const applied = Number(args[index]);
+    if (applied > 0) {
+      const lockTtl = ttlOf(lockKey);
+      if (lockTtl > 0 && lockTtl <= applied) mockStore.delete(lockKey);
+    }
+  }
+  return 1;
+}
+
 const mockRedis = {
   status: "ready",
   get: jest.fn(async (key: string) => getEntry(key)?.value ?? null),
-  incr: jest.fn(async (key: string) => {
-    const current = Number.parseInt(getEntry(key)?.value ?? "0", 10);
-    const next = current + 1;
-    mockStore.set(key, { value: String(next), expiresAt: getEntry(key)?.expiresAt });
-    return next;
-  }),
-  expire: jest.fn(async (key: string, seconds: number) => {
-    const entry = getEntry(key);
-    if (!entry) return 0;
-    mockStore.set(key, { ...entry, expiresAt: Date.now() + seconds * 1000 });
-    return 1;
-  }),
-  setex: jest.fn(async (key: string, seconds: number, value: string) => {
-    mockStore.set(key, { value, expiresAt: Date.now() + seconds * 1000 });
-    return "OK";
-  }),
-  ttl: jest.fn(async (key: string) => {
-    const entry = getEntry(key);
-    if (!entry) return -2;
-    if (!entry.expiresAt) return -1;
-    return Math.max(1, Math.ceil((entry.expiresAt - Date.now()) / 1000));
-  }),
+  ttl: jest.fn(async (key: string) => ttlOf(key)),
   del: jest.fn(async (...keys: string[]) => {
     let deleted = 0;
     for (const key of keys) {
@@ -49,76 +104,227 @@ const mockRedis = {
     }
     return deleted;
   }),
+  multi: jest.fn(() => {
+    const operations: Array<() => void> = [];
+    const chain = {
+      incr: (key: string) => {
+        operations.push(() => { incr(key); });
+        return chain;
+      },
+      expire: (key: string, seconds: number) => {
+        operations.push(() => {
+          const entry = getEntry(key);
+          if (entry) entry.expiresAt = Date.now() + seconds * 1000;
+        });
+        return chain;
+      },
+      exec: async () => {
+        operations.forEach((operation) => operation());
+        return [];
+      },
+    };
+    return chain;
+  }),
+  eval: jest.fn(async (script: string, numKeys: number, ...args: (string | number)[]) =>
+    runScript(script, args.slice(0, numKeys) as string[], args.slice(numKeys))),
 };
 
 jest.mock("@/lib/queue", () => ({
   getRedisConnection: jest.fn(async () => mockRedis),
 }));
 
+import { getRedisConnection } from "@/lib/queue";
 import {
+  LOGIN_LOCKOUT_INITIAL_ALLOWANCE,
+  LOGIN_LOCKOUT_MESSAGE,
+  blockingLockoutIdentifiers,
   checkLockout,
-  recordFailedAttempt,
   clearLockout,
+  emailLockoutIdentifier,
+  emailIpLockoutIdentifier,
   getAttemptCount,
+  ipLockoutIdentifier,
+  recordEmailFailure,
+  releaseLoginAttempt,
+  reserveLoginAttempt,
 } from "@/lib/security/login-lockout";
 
-describe("Login Lockout", () => {
-  const testEmail = `test-${Date.now()}@example.com`;
+const IP = "203.0.113.7";
+const EMAIL = "user@example.test";
 
-  beforeEach(async () => {
+function identifiers(email = EMAIL, ip = IP): string[] {
+  return blockingLockoutIdentifiers(email, ip);
+}
+
+async function reserveFailures(count: number, email = EMAIL, ip = IP): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    const reservation = await reserveLoginAttempt(identifiers(email, ip));
+    expect(reservation.isLocked).toBe(false);
+    // Simulate the lockout window elapsing between failed attempts.
+    for (const key of Array.from(mockStore.keys())) {
+      if (key.includes(":locked:")) mockStore.delete(key);
+    }
+  }
+}
+
+describe("Login Lockout", () => {
+  beforeEach(() => {
     mockStore.clear();
     jest.clearAllMocks();
-    // Clear any existing lockout for test email
-    await clearLockout(testEmail);
+    (getRedisConnection as jest.Mock).mockResolvedValue(mockRedis);
+  });
+
+  describe("identifier scoping", () => {
+    it("blocks on IP and email+IP only, never on email alone", () => {
+      expect(identifiers()).toEqual([
+        ipLockoutIdentifier(IP),
+        emailIpLockoutIdentifier(EMAIL, IP),
+      ]);
+      expect(identifiers()).not.toContain(emailLockoutIdentifier(EMAIL));
+    });
+
+    it("skips blocking dimensions when the client IP is unknown", () => {
+      expect(blockingLockoutIdentifiers(EMAIL, "unknown")).toEqual([]);
+      expect(blockingLockoutIdentifiers(EMAIL, "")).toEqual([]);
+    });
   });
 
   describe("checkLockout", () => {
-    it("should return not locked for new identifier", async () => {
-      const result = await checkLockout(`new-${Date.now()}@test.com`);
+    it("is read-only and does not consume an attempt", async () => {
+      const result = await checkLockout(identifiers()[0]);
       expect(result.isLocked).toBe(false);
-      expect(result.attemptsRemaining).toBeGreaterThan(0);
+      expect(result.attemptsRemaining).toBe(LOGIN_LOCKOUT_INITIAL_ALLOWANCE);
+      expect(await getAttemptCount(identifiers()[0])).toBe(0);
     });
   });
 
-  describe("recordFailedAttempt", () => {
-    it("should increment attempt count", async () => {
-      const uniqueEmail = `attempt-${Date.now()}@test.com`;
-      await recordFailedAttempt(uniqueEmail);
-      const count = await getAttemptCount(uniqueEmail);
-      expect(count).toBe(1);
+  describe("reserveLoginAttempt", () => {
+    it("counts the attempt before the credential check", async () => {
+      const reservation = await reserveLoginAttempt(identifiers());
+      expect(reservation.isLocked).toBe(false);
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(1);
+      expect(await getAttemptCount(emailIpLockoutIdentifier(EMAIL, IP))).toBe(1);
     });
 
-    it("should return decreasing attempts remaining", async () => {
-      const uniqueEmail = `remaining-${Date.now()}@test.com`;
-      
-      const result1 = await recordFailedAttempt(uniqueEmail);
-      const result2 = await recordFailedAttempt(uniqueEmail);
-      
-      expect(result2.attemptsRemaining).toBeLessThanOrEqual(result1.attemptsRemaining);
+    it("decreases attemptsRemaining down the ladder", async () => {
+      const remaining: number[] = [];
+      for (let index = 0; index < 4; index += 1) {
+        remaining.push((await reserveLoginAttempt(identifiers())).attemptsRemaining);
+      }
+      expect(remaining).toEqual([4, 3, 2, 1]);
+    });
+
+    it.each([
+      [5, 30],
+      [10, 300],
+      [15, 900],
+      [20, 3600],
+    ])("locks after %i failures for %i seconds", async (failures, seconds) => {
+      await reserveFailures(failures - 1);
+      const reservation = await reserveLoginAttempt(identifiers());
+      expect(reservation.isLocked).toBe(false);
+      expect(reservation.releases.some((release) => release.appliedLockoutSeconds === seconds)).toBe(true);
+
+      const blocked = await reserveLoginAttempt(identifiers());
+      expect(blocked.isLocked).toBe(true);
+      expect(blocked.lockoutSeconds).toBe(seconds);
+      expect(blocked.message).toBe(LOGIN_LOCKOUT_MESSAGE);
+    });
+
+    it("does not increment counters or renew locks for a rejected request", async () => {
+      await reserveFailures(4);
+      const locking = await reserveLoginAttempt(identifiers());
+      expect(locking.isLocked).toBe(false);
+
+      const blocked = await reserveLoginAttempt(identifiers());
+      expect(blocked.isLocked).toBe(true);
+
+      const ttlBefore = ttlOf(`supercheck:login:lockout:locked:${ipLockoutIdentifier(IP)}`);
+      const second = await reserveLoginAttempt(identifiers());
+      const ttlAfter = ttlOf(`supercheck:login:lockout:locked:${ipLockoutIdentifier(IP)}`);
+
+      expect(second.isLocked).toBe(true);
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(5);
+      expect(await getAttemptCount(emailIpLockoutIdentifier(EMAIL, IP))).toBe(5);
+      expect(ttlAfter).toBeLessThanOrEqual(ttlBefore);
+    });
+
+    it("fails open when Redis is unavailable", async () => {
+      (getRedisConnection as jest.Mock).mockResolvedValue(null);
+      const reservation = await reserveLoginAttempt(identifiers());
+      expect(reservation.isLocked).toBe(false);
+      expect(reservation.releases).toEqual([]);
+      expect(reservation.attemptsRemaining).toBe(LOGIN_LOCKOUT_INITIAL_ALLOWANCE);
+    });
+  });
+
+  describe("concurrent bursts", () => {
+    it("cannot exceed the remaining allowance", async () => {
+      // Three failures recorded, so two attempts remain before the 5th locks.
+      await reserveFailures(3);
+
+      const burst = await Promise.all(
+        Array.from({ length: 6 }, () => reserveLoginAttempt(identifiers()))
+      );
+
+      expect(burst.filter((reservation) => !reservation.isLocked)).toHaveLength(2);
+      expect(burst.filter((reservation) => reservation.isLocked)).toHaveLength(4);
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(5);
+      expect(await getAttemptCount(emailIpLockoutIdentifier(EMAIL, IP))).toBe(5);
+    });
+
+    it("serializes the whole reservation in one atomic operation", async () => {
+      await reserveLoginAttempt(identifiers());
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("releaseLoginAttempt", () => {
+    it("gives the attempt back when the password was never verified", async () => {
+      const reservation = await reserveLoginAttempt(identifiers());
+      await releaseLoginAttempt(reservation.releases);
+
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(0);
+      expect(await getAttemptCount(emailIpLockoutIdentifier(EMAIL, IP))).toBe(0);
+    });
+
+    it("removes a lock created by the released reservation", async () => {
+      await reserveFailures(4);
+      const reservation = await reserveLoginAttempt(identifiers());
+      expect(reservation.isLocked).toBe(false);
+
+      const blocked = await reserveLoginAttempt(identifiers());
+      expect(blocked.isLocked).toBe(true);
+
+      await releaseLoginAttempt(reservation.releases);
+
+      const afterRelease = await reserveLoginAttempt(identifiers());
+      expect(afterRelease.isLocked).toBe(false);
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(5);
+    });  });
+
+  describe("recordEmailFailure", () => {
+    it("counts telemetry without ever locking the email", async () => {
+      for (let index = 0; index < 25; index += 1) {
+        await recordEmailFailure(EMAIL);
+      }
+
+      expect(await getAttemptCount(emailLockoutIdentifier(EMAIL))).toBe(25);
+      expect((await checkLockout(emailLockoutIdentifier(EMAIL))).isLocked).toBe(false);
     });
   });
 
   describe("clearLockout", () => {
-    it("should reset attempt count", async () => {
-      const uniqueEmail = `clear-${Date.now()}@test.com`;
-      
-      // Create some attempts
-      await recordFailedAttempt(uniqueEmail);
-      await recordFailedAttempt(uniqueEmail);
-      
-      // Clear
-      await clearLockout(uniqueEmail);
-      
-      // Verify cleared
-      const count = await getAttemptCount(uniqueEmail);
-      expect(count).toBe(0);
-    });
-  });
+    it("resets counters and any active lock", async () => {
+      await reserveFailures(5);
+      const locking = await reserveLoginAttempt(identifiers());
+      expect(locking.releases.some((release) => release.appliedLockoutSeconds > 0)).toBe(true);
+      expect((await reserveLoginAttempt(identifiers())).isLocked).toBe(true);
 
-  describe("getAttemptCount", () => {
-    it("should return 0 for new identifier", async () => {
-      const count = await getAttemptCount(`unknown-${Date.now()}@test.com`);
-      expect(count).toBe(0);
+      await Promise.all(identifiers().map((identifier) => clearLockout(identifier)));
+
+      expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(0);
+      expect((await reserveLoginAttempt(identifiers())).isLocked).toBe(false);
     });
   });
 });
