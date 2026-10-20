@@ -109,6 +109,11 @@ export const monitorAggregates = pgTable(
       table.location
     ),
 
+    // Combined rows need a separate constraint because their location is NULL.
+    combinedPeriodIdx: uniqueIndex("monitor_aggregates_combined_unique_idx")
+      .on(table.monitorId, table.periodType, table.periodStart)
+      .where(sql`${table.location} IS NULL`),
+
     // Time-based queries for a specific monitor
     monitorTimeIdx: index("monitor_aggregates_monitor_time_idx").on(
       table.monitorId,

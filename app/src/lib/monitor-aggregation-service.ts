@@ -131,7 +131,7 @@ function truncateToDay(date: Date): Date {
  */
 export function calculatePercentile(
   sortedArr: number[],
-  percentile: number
+  percentile: number,
 ): number | null {
   if (sortedArr.length === 0) return null;
   if (sortedArr.length === 1) return sortedArr[0];
@@ -234,7 +234,7 @@ export class MonitorAggregationService {
       // Calculate lookback period (process any missed hours)
       const lookbackStart = new Date(currentHour);
       lookbackStart.setUTCHours(
-        lookbackStart.getUTCHours() - AGGREGATION_CONFIG.HOURLY_LOOKBACK_HOURS
+        lookbackStart.getUTCHours() - AGGREGATION_CONFIG.HOURLY_LOOKBACK_HOURS,
       );
 
       // Get all active monitors in batches
@@ -260,7 +260,7 @@ export class MonitorAggregationService {
             const { created, updated } = await this.aggregateMonitorHourly(
               monitor.id,
               lookbackStart,
-              currentHour
+              currentHour,
             );
             result.aggregatesCreated += created;
             result.aggregatesUpdated += updated;
@@ -269,7 +269,7 @@ export class MonitorAggregationService {
             const errorMsg =
               error instanceof Error ? error.message : String(error);
             result.errors.push(
-              `Monitor ${monitor.id.substring(0, 8)}: ${errorMsg}`
+              `Monitor ${monitor.id.substring(0, 8)}: ${errorMsg}`,
             );
           }
         }
@@ -284,18 +284,18 @@ export class MonitorAggregationService {
 
       if (result.errors.length > 0) {
         console.warn(
-          `[AGGREGATION] Hourly completed with ${result.errors.length} errors`
+          `[AGGREGATION] Hourly completed with ${result.errors.length} errors`,
         );
       } else {
         console.log(
           `[AGGREGATION] Hourly completed: ${result.monitorsProcessed} monitors, ` +
-            `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`
+            `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`,
         );
       }
     } catch (error) {
       result.success = false;
       result.errors.push(
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
       result.duration = Date.now() - startTime;
       console.error("[AGGREGATION] Hourly aggregation failed:", error);
@@ -327,7 +327,7 @@ export class MonitorAggregationService {
       // Calculate lookback period
       const lookbackStart = new Date(currentDay);
       lookbackStart.setUTCDate(
-        lookbackStart.getUTCDate() - AGGREGATION_CONFIG.DAILY_LOOKBACK_DAYS
+        lookbackStart.getUTCDate() - AGGREGATION_CONFIG.DAILY_LOOKBACK_DAYS,
       );
 
       // Get all active monitors in batches
@@ -353,7 +353,7 @@ export class MonitorAggregationService {
             const { created, updated } = await this.aggregateMonitorDaily(
               monitor.id,
               lookbackStart,
-              currentDay
+              currentDay,
             );
             result.aggregatesCreated += created;
             result.aggregatesUpdated += updated;
@@ -362,7 +362,7 @@ export class MonitorAggregationService {
             const errorMsg =
               error instanceof Error ? error.message : String(error);
             result.errors.push(
-              `Monitor ${monitor.id.substring(0, 8)}: ${errorMsg}`
+              `Monitor ${monitor.id.substring(0, 8)}: ${errorMsg}`,
             );
           }
         }
@@ -377,18 +377,18 @@ export class MonitorAggregationService {
 
       if (result.errors.length > 0) {
         console.warn(
-          `[AGGREGATION] Daily completed with ${result.errors.length} errors`
+          `[AGGREGATION] Daily completed with ${result.errors.length} errors`,
         );
       } else {
         console.log(
           `[AGGREGATION] Daily completed: ${result.monitorsProcessed} monitors, ` +
-            `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`
+            `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`,
         );
       }
     } catch (error) {
       result.success = false;
       result.errors.push(
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
       result.duration = Date.now() - startTime;
       console.error("[AGGREGATION] Daily aggregation failed:", error);
@@ -403,7 +403,7 @@ export class MonitorAggregationService {
   private async aggregateMonitorHourly(
     monitorId: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<{ created: number; updated: number }> {
     let created = 0;
     let updated = 0;
@@ -418,7 +418,7 @@ export class MonitorAggregationService {
       const locations = await this.getLocationsForPeriod(
         monitorId,
         currentHour,
-        nextHour
+        nextHour,
       );
 
       // Aggregate for each location
@@ -428,7 +428,7 @@ export class MonitorAggregationService {
           "hourly",
           currentHour,
           nextHour,
-          location
+          location,
         );
         if (result === "created") created++;
         else if (result === "updated") updated++;
@@ -441,7 +441,7 @@ export class MonitorAggregationService {
           "hourly",
           currentHour,
           nextHour,
-          null // null = combined
+          null, // null = combined
         );
         if (result === "created") created++;
         else if (result === "updated") updated++;
@@ -459,7 +459,7 @@ export class MonitorAggregationService {
   private async aggregateMonitorDaily(
     monitorId: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<{ created: number; updated: number }> {
     let created = 0;
     let updated = 0;
@@ -474,7 +474,7 @@ export class MonitorAggregationService {
       const locations = await this.getLocationsForPeriod(
         monitorId,
         currentDay,
-        nextDay
+        nextDay,
       );
 
       // Aggregate for each location
@@ -484,7 +484,7 @@ export class MonitorAggregationService {
           "daily",
           currentDay,
           nextDay,
-          location
+          location,
         );
         if (result === "created") created++;
         else if (result === "updated") updated++;
@@ -497,7 +497,7 @@ export class MonitorAggregationService {
           "daily",
           currentDay,
           nextDay,
-          null // null = combined
+          null, // null = combined
         );
         if (result === "created") created++;
         else if (result === "updated") updated++;
@@ -515,7 +515,7 @@ export class MonitorAggregationService {
   private async getLocationsForPeriod(
     monitorId: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<MonitoringLocation[]> {
     const result = await db
       .selectDistinct({ location: monitorResults.location })
@@ -524,8 +524,8 @@ export class MonitorAggregationService {
         and(
           eq(monitorResults.monitorId, monitorId),
           gte(monitorResults.checkedAt, startTime),
-          lt(monitorResults.checkedAt, endTime)
-        )
+          lt(monitorResults.checkedAt, endTime),
+        ),
       );
 
     return result
@@ -542,7 +542,7 @@ export class MonitorAggregationService {
     periodType: AggregationPeriod,
     periodStart: Date,
     periodEnd: Date,
-    location: MonitoringLocation | null
+    location: MonitoringLocation | null,
   ): Promise<"created" | "updated" | "skipped"> {
     // Build query conditions
     const conditions = [
@@ -604,37 +604,24 @@ export class MonitorAggregationService {
       updatedAt: new Date(),
     };
 
-    // Check if aggregate already exists
-    const existingConditions = [
-      eq(monitorAggregates.monitorId, monitorId),
-      eq(monitorAggregates.periodType, periodType),
-      eq(monitorAggregates.periodStart, periodStart),
+    const target = [
+      monitorAggregates.monitorId,
+      monitorAggregates.periodType,
+      monitorAggregates.periodStart,
     ];
-
-    if (location) {
-      existingConditions.push(eq(monitorAggregates.location, location));
-    } else {
-      existingConditions.push(sql`${monitorAggregates.location} IS NULL`);
-    }
-
-    const existing = await db
-      .select({ id: monitorAggregates.id })
-      .from(monitorAggregates)
-      .where(and(...existingConditions))
-      .limit(1);
-
-    if (existing.length > 0) {
-      // Update existing aggregate
-      await db
-        .update(monitorAggregates)
-        .set(aggregateData)
-        .where(eq(monitorAggregates.id, existing[0].id));
-      return "updated";
-    } else {
-      // Insert new aggregate
-      await db.insert(monitorAggregates).values(aggregateData);
-      return "created";
-    }
+    // PostgreSQL's ordinary unique index treats NULL locations as distinct.
+    const [written] = await db
+      .insert(monitorAggregates)
+      .values(aggregateData)
+      .onConflictDoUpdate({
+        target: location ? [...target, monitorAggregates.location] : target,
+        ...(location
+          ? {}
+          : { targetWhere: sql`${monitorAggregates.location} IS NULL` }),
+        set: aggregateData,
+      })
+      .returning({ inserted: sql<boolean>`xmax = 0` });
+    return written.inserted ? "created" : "updated";
   }
 
   /**
@@ -646,7 +633,7 @@ export class MonitorAggregationService {
     periodType: AggregationPeriod,
     startTime: Date,
     endTime: Date,
-    location?: MonitoringLocation | null
+    location?: MonitoringLocation | null,
   ): Promise<{
     uptimePercentage: number;
     avgResponseMs: number | null;
@@ -660,17 +647,29 @@ export class MonitorAggregationService {
       lt(monitorAggregates.periodStart, endTime),
     ];
 
-    if (location === null) {
-      conditions.push(sql`${monitorAggregates.location} IS NULL`);
-    } else if (location) {
+    if (location) {
       conditions.push(eq(monitorAggregates.location, location));
     }
 
-    const aggregates = await db
+    const rows = await db
       .select()
       .from(monitorAggregates)
       .where(and(...conditions))
       .orderBy(desc(monitorAggregates.periodStart));
+
+    // Prefer a combined row per period; older periods may only have location rollups.
+    const combinedPeriods = new Set(
+      rows
+        .filter((row) => row.location === null)
+        .map((row) => row.periodStart.getTime()),
+    );
+    const aggregates = location
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.location === null ||
+            !combinedPeriods.has(row.periodStart.getTime()),
+        );
 
     if (aggregates.length === 0) {
       return {
@@ -700,7 +699,7 @@ export class MonitorAggregationService {
         // Therefore validSampleCount = totalResponseMs / avgResponseMs.
         if (agg.avgResponseMs && agg.avgResponseMs > 0) {
           validResponseCount += Math.round(
-            agg.totalResponseMs / agg.avgResponseMs
+            agg.totalResponseMs / agg.avgResponseMs,
           );
         } else {
           // Fallback: if avgResponseMs is 0/null but totalResponseMs > 0,
@@ -727,7 +726,7 @@ export class MonitorAggregationService {
       allP95Values.length > 0
         ? calculatePercentile(
             allP95Values.sort((a, b) => a - b),
-            50
+            50,
           )
         : null;
 
@@ -744,7 +743,7 @@ export class MonitorAggregationService {
    */
   async cleanupOldAggregates(
     hourlyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_HOURLY_RETENTION_DAYS,
-    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS
+    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS,
   ): Promise<{ hourlyDeleted: number; dailyDeleted: number }> {
     const now = new Date();
 
@@ -761,8 +760,8 @@ export class MonitorAggregationService {
       .where(
         and(
           eq(monitorAggregates.periodType, "hourly"),
-          lt(monitorAggregates.periodStart, hourlyCutoff)
-        )
+          lt(monitorAggregates.periodStart, hourlyCutoff),
+        ),
       )
       .returning({ id: monitorAggregates.id });
 
@@ -772,8 +771,8 @@ export class MonitorAggregationService {
       .where(
         and(
           eq(monitorAggregates.periodType, "daily"),
-          lt(monitorAggregates.periodStart, dailyCutoff)
-        )
+          lt(monitorAggregates.periodStart, dailyCutoff),
+        ),
       )
       .returning({ id: monitorAggregates.id });
 
@@ -782,7 +781,7 @@ export class MonitorAggregationService {
 
     if (hourlyDeleted > 0 || dailyDeleted > 0) {
       console.log(
-        `[AGGREGATION] Cleanup: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`
+        `[AGGREGATION] Cleanup: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`,
       );
     }
 
@@ -796,7 +795,7 @@ export class MonitorAggregationService {
   async cleanupOldAggregatesForOrg(
     organizationId: string,
     hourlyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_HOURLY_RETENTION_DAYS,
-    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS
+    dailyRetentionDays: number = AGGREGATION_CONFIG.DEFAULT_DAILY_RETENTION_DAYS,
   ): Promise<number> {
     const now = new Date();
 
@@ -824,8 +823,8 @@ export class MonitorAggregationService {
         and(
           inArray(monitorAggregates.monitorId, monitorIds),
           eq(monitorAggregates.periodType, "hourly"),
-          lt(monitorAggregates.periodStart, hourlyCutoff)
-        )
+          lt(monitorAggregates.periodStart, hourlyCutoff),
+        ),
       )
       .returning({ id: monitorAggregates.id });
 
@@ -836,8 +835,8 @@ export class MonitorAggregationService {
         and(
           inArray(monitorAggregates.monitorId, monitorIds),
           eq(monitorAggregates.periodType, "daily"),
-          lt(monitorAggregates.periodStart, dailyCutoff)
-        )
+          lt(monitorAggregates.periodStart, dailyCutoff),
+        ),
       )
       .returning({ id: monitorAggregates.id });
 
@@ -847,7 +846,7 @@ export class MonitorAggregationService {
 
     if (totalDeleted > 0) {
       console.log(
-        `[AGGREGATION] Cleanup for org ${organizationId.substring(0, 8)}: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`
+        `[AGGREGATION] Cleanup for org ${organizationId.substring(0, 8)}: deleted ${hourlyDeleted} hourly, ${dailyDeleted} daily aggregates`,
       );
     }
 
