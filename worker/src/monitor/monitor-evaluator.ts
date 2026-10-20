@@ -197,7 +197,12 @@ export class MonitorEvaluator {
     reason: string;
     metadata: Record<string, unknown>;
     preparedAlertState?: AggregatedAlertState;
-  }): Promise<{ alertSent: boolean; alertType?: string }> {
+  }): Promise<{
+    alertSent: boolean;
+    alertType?: string;
+    /** An alert was due and attempted but no channel accepted it (not the same as suppressed). */
+    deliveryFailed?: boolean;
+  }> {
     const { monitorId, previousStatus, currentStatus, reason, metadata } =
       options;
 
@@ -374,8 +379,9 @@ export class MonitorEvaluator {
         alertMetadata,
       );
 
-      if (notification?.suppressed || notification?.delivered === false)
-        return { alertSent: false };
+      if (notification?.suppressed) return { alertSent: false };
+      if (notification?.delivered === false)
+        return { alertSent: false, deliveryFailed: true };
 
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         const updatedAggregatedAlertState =
@@ -429,7 +435,7 @@ export class MonitorEvaluator {
         `Failed to send ${alertType} alert for monitor ${monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
-      return { alertSent: false };
+      return { alertSent: false, deliveryFailed: true };
     }
   }
 

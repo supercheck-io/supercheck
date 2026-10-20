@@ -189,4 +189,76 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
     expect(processor.snapshot().retentionDeleted).toBeGreaterThanOrEqual(1);
     expect((await cycle('p9')).status).toBe('closed');
   });
+
+  describe('review hardening', () => {
+    it('keeps retention caught up when more than one batch is eligible', async () => {
+      await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold, status, closed_at, closed_by, result_status, notified_at)
+        SELECT 'old-' || g, ${monitorId}::uuid, now() at time zone 'utc' - interval '40 days', now() at time zone 'utc' - interval '40 days', '["eu"]'::jsonb, 'all', 100, 'closed', now() at time zone 'utc' - interval '39 days', 'deadline', 'down', now() at time zone 'utc'
+        FROM generate_series(1, 1200) g`;
+      // Later than every earlier tick in this file: sweeps are rate-limited to every 10 minutes.
+      await processor.tick(new Date(deadline.getTime() + 86_400_000));
+      const [left] =
+        await client`SELECT count(*)::int AS n FROM monitor_cycles WHERE id LIKE 'old-%'`;
+      expect(left.n).toBe(0);
+      expect(processor.snapshot().retentionDeleted).toBeGreaterThanOrEqual(
+        1200,
+      );
+    });
+
+    it('backs a repeatedly failing cycle off so healthy cycles still close', async () => {
+      await open('poison');
+      await open('healthy');
+      const original = MonitorCycleService.prototype.closeCycle;
+      const spy = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockImplementation(function (
+          this: MonitorCycleService,
+          id: string,
+          at?: Date,
+        ) {
+          return id === 'poison'
+            ? Promise.reject(new Error('deterministic failure'))
+            : original.call(this, id, at);
+        });
+      const at = new Date(deadline.getTime() + 1000);
+      await processor.tick(at);
+      const firstCalls = spy.mock.calls.filter(
+        ([id]) => id === 'poison',
+      ).length;
+      await processor.tick(at);
+      // Second tick lands inside the backoff window: the poison cycle is not retried.
+      expect(spy.mock.calls.filter(([id]) => id === 'poison').length).toBe(
+        firstCalls,
+      );
+      expect((await cycle('healthy')).status).toBe('closed');
+      expect((await cycle('poison')).status).toBe('open');
+      spy.mockRestore();
+    });
+
+    it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {
+      await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)
+        SELECT 'bulk-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamp, ${deadline.toISOString()}::timestamp, '["eu"]'::jsonb, 'any', 100
+        FROM generate_series(1, 60) g`;
+      expect(await processor.tick(new Date(deadline.getTime() + 1000))).toBe(
+        true,
+      );
+      expect(await processor.tick(new Date(deadline.getTime() + 2000))).toBe(
+        false,
+      );
+      const [open] =
+        await client`SELECT count(*)::int AS n FROM monitor_cycles WHERE status = 'open'`;
+      expect(open.n).toBe(0);
+    });
+
+    it('waits one minute per failed attempt before repairing a notification', async () => {
+      await open('backoff');
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      await client`UPDATE monitor_cycles SET notified_at = NULL, notify_attempts = 2, closed_at = ${deadline.toISOString()}::timestamp WHERE id = 'backoff'`;
+      sendNotification.mockClear();
+      await processor.tick(new Date(deadline.getTime() + 150_000)); // inside 3 minutes
+      expect((await cycle('backoff')).notifiedAt).toBeNull();
+      await processor.tick(new Date(deadline.getTime() + 200_000)); // past 3 minutes
+      expect((await cycle('backoff')).notifiedAt).not.toBeNull();
+    });
+  });
 });

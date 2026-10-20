@@ -43,6 +43,11 @@ function isPolarEnabled(): boolean {
  * The spending limit check (shouldBlockExecution) runs BEFORE execution
  * starts and provides a "best effort" check based on current recorded usage.
  */
+/** Reasons that mean billing could not be checked (not that billing blocks the organization). */
+export const BILLING_VERIFICATION_FAILED = 'Unable to verify';
+export const BILLING_NOT_CONFIGURED =
+  'Cloud billing enforcement is not configured';
+
 @Injectable()
 export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   private lastMigrationWarningAt = Number.NEGATIVE_INFINITY;
@@ -688,7 +693,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     if (!process.env.POLAR_ACCESS_TOKEN) {
       return {
         blocked: true,
-        reason: 'Cloud billing enforcement is not configured',
+        reason: BILLING_NOT_CONFIGURED,
       };
     }
 
@@ -715,7 +720,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
           where: eq(schema.planLimits.plan, org.subscriptionPlan!),
         });
         if (!limits)
-          return { blocked: true, reason: 'Unable to verify monitor quota' };
+          return {
+            blocked: true,
+            reason: `${BILLING_VERIFICATION_FAILED} monitor quota`,
+          };
         const eligible = await this.db
           .select({ id: schema.monitors.id })
           .from(schema.monitors)
@@ -742,7 +750,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       );
       return {
         blocked: true,
-        reason: 'Unable to verify the organization spending limit',
+        reason: `${BILLING_VERIFICATION_FAILED} the organization spending limit`,
       };
     }
   }

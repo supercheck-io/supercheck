@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { createServer, Server } from 'node:http';
 import { MonitorCycleProcessor } from './monitor-cycle.processor';
+import { controlPlaneConfigProblem } from './billing-hold.service';
 
 /** Liveness, readiness and Prometheus metrics for the control plane (no framework HTTP stack). */
 @Injectable()
@@ -27,8 +28,11 @@ export class MonitorControlHealthServer
       if (req.url === '/health/live') {
         res.writeHead(200).end('ok');
       } else if (req.url === '/health/ready') {
-        const ready = this.isReady();
-        res.writeHead(ready ? 200 : 503).end(ready ? 'ready' : 'not ready');
+        const problem = controlPlaneConfigProblem();
+        const ready = !problem && this.isReady();
+        res
+          .writeHead(ready ? 200 : 503)
+          .end(ready ? 'ready' : `not ready${problem ? `: ${problem}` : ''}`);
       } else if (req.url === '/metrics') {
         res
           .writeHead(200, { 'content-type': 'text/plain; version=0.0.4' })

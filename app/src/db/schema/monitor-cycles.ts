@@ -53,6 +53,7 @@ export const monitorCycles = pgTable(
     missingLocations: jsonb("missing_locations").$type<string[]>(),
     evaluation: jsonb("evaluation").$type<MonitorCycleEvaluation>(),
     notifiedAt: timestamp("notified_at"),
+    notifyAttempts: integer("notify_attempts").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({

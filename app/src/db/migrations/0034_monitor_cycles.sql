@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS "monitor_cycles" (
   -- Closure decision and alert state, committed with the closure so notification can be repaired.
   "evaluation" jsonb,
   "notified_at" timestamp,
+  -- Failed delivery attempts; repair backs off and gives up after a bounded number.
+  "notify_attempts" integer NOT NULL DEFAULT 0,
   "created_at" timestamp NOT NULL DEFAULT now(),
   CONSTRAINT "monitor_cycles_status_check" CHECK ("status" IN ('open', 'closed', 'aborted')),
   CONSTRAINT "monitor_cycles_mode_check" CHECK ("mode" IN ('control_plane')),

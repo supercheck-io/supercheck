@@ -9,8 +9,14 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
 import type { MonitorAlertService } from '../monitor/services/monitor-alert.service';
-import { MonitorCycleService } from './monitor-cycle.service';
-import type { BillingHoldService } from './billing-hold.service';
+import {
+  MAX_NOTIFY_ATTEMPTS,
+  MonitorCycleService,
+} from './monitor-cycle.service';
+import {
+  BillingVerificationError,
+  type BillingHoldService,
+} from './billing-hold.service';
 import { createTestDatabase, seedMonitor } from './pg-test-database';
 
 jest.setTimeout(120_000);
@@ -310,5 +316,151 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     expect((await cycleRow('c10')).notifiedAt).toBeNull();
     expect(await service.notifyCycle('c10')).toBe(true);
     expect(sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  describe('review hardening', () => {
+    it('keeps the cycle without a receipt when delivery fails, backs off and gives up after bounded attempts', async () => {
+      await openCycle('r1', { strategy: 'all' });
+      await service.closeCycle('r1', afterDeadline);
+      sendNotification.mockResolvedValue({ delivered: false, successful: 0 });
+      expect(await service.notifyCycle('r1')).toBe(false);
+      expect(await cycleRow('r1')).toMatchObject({
+        notifiedAt: null,
+        notifyAttempts: 1,
+      });
+      for (let attempt = 2; attempt < MAX_NOTIFY_ATTEMPTS; attempt++) {
+        expect(await service.notifyCycle('r1')).toBe(false);
+      }
+      expect((await cycleRow('r1')).notifiedAt).toBeNull();
+      // The final attempt gives up and writes the receipt so the backlog clears.
+      expect(await service.notifyCycle('r1')).toBe(true);
+      expect(await cycleRow('r1')).toMatchObject({
+        notifyAttempts: MAX_NOTIFY_ATTEMPTS,
+      });
+      expect((await cycleRow('r1')).notifiedAt).not.toBeNull();
+      sendNotification.mockResolvedValue({ successful: 1 });
+    });
+
+    it('treats a provider that throws like a failed delivery', async () => {
+      await openCycle('r2', { strategy: 'all' });
+      await service.closeCycle('r2', afterDeadline);
+      sendNotification.mockRejectedValueOnce(new Error('smtp down'));
+      expect(await service.notifyCycle('r2')).toBe(false);
+      expect((await cycleRow('r2')).notifiedAt).toBeNull();
+      expect(await service.notifyCycle('r2')).toBe(true);
+      expect((await cycleRow('r2')).notifiedAt).not.toBeNull();
+    });
+
+    it('does not count a deliberately suppressed alert as a failure', async () => {
+      await openCycle('r3', { strategy: 'all' });
+      await service.closeCycle('r3', afterDeadline);
+      sendNotification.mockResolvedValueOnce({ suppressed: true });
+      expect(await service.notifyCycle('r3')).toBe(true);
+      expect(await cycleRow('r3')).toMatchObject({ notifyAttempts: 0 });
+    });
+
+    it('never evaluates a cycle an older-image worker already aggregated through the legacy path', async () => {
+      await openCycle('r4', { strategy: 'all' });
+      await db.insert(schema.monitorResults).values({
+        monitorId,
+        location: 'eu',
+        checkedAt: t0,
+        status: 'up',
+        isUp: true,
+        executionGroupId: 'r4',
+        details: {
+          aggregationEvaluation: { previousStatus: 'up', currentStatus: 'up' },
+        },
+      });
+      const before = await monitorRow();
+      expect(await service.closeCycle('r4', afterDeadline)).toBe('superseded');
+      expect((await monitorRow()).status).toBe(before.status);
+      expect((await cycleRow('r4')).notifiedAt).not.toBeNull();
+      expect(sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('leaves the cycle open and untouched when billing cannot be verified', async () => {
+      await openCycle('r5');
+      isHeld.mockRejectedValueOnce(
+        new BillingVerificationError('Unable to verify monitor quota'),
+      );
+      await expect(
+        service.closeCycle('r5', afterDeadline),
+      ).rejects.toBeInstanceOf(BillingVerificationError);
+      expect((await cycleRow('r5')).status).toBe('open');
+      expect(await results('r5')).toHaveLength(0);
+      expect((await monitorRow()).status).toBe('up');
+      expect(await service.closeCycle('r5', afterDeadline)).toBe('closed');
+    });
+
+    it('orders cycles by scheduled time, so a slow older region cannot mask a newer outage', async () => {
+      await openCycle('slow', {
+        scheduledFor: t0,
+        deadlineAt: deadline,
+        strategy: 'all',
+      });
+      const t1 = new Date(t0.getTime() + 60_000);
+      await openCycle('next', {
+        scheduledFor: t1,
+        deadlineAt: new Date(t1.getTime() + 300_000),
+        strategy: 'all',
+      });
+      // The older cycle's region finishes AFTER the newer cycle was scheduled.
+      await report('slow', 'eu', true, new Date(t1.getTime() + 20_000));
+      await report('slow', 'us', true, new Date(t1.getTime() + 20_000));
+      await report('slow', 'ap', true, new Date(t1.getTime() + 20_000));
+      expect(
+        await service.closeCycle('next', new Date(t1.getTime() + 400_000)),
+      ).toBe('closed');
+      expect((await monitorRow()).status).toBe('down');
+      expect(
+        await service.closeCycle('slow', new Date(t1.getTime() + 410_000)),
+      ).toBe('superseded');
+      expect((await monitorRow()).status).toBe('down');
+    });
+
+    it('does not deadlock with a monitor delete that cascades to its cycles', async () => {
+      for (let round = 0; round < 6; round++) {
+        const { monitorId: id } = await seedMonitor(db, client);
+        monitorId = id;
+        await openCycle(`d${round}`);
+        const settled = await Promise.allSettled([
+          service.closeCycle(`d${round}`, afterDeadline),
+          db.delete(schema.monitors).where(eq(schema.monitors.id, id)),
+        ]);
+        for (const outcome of settled) {
+          if (outcome.status === 'rejected') {
+            expect(String(outcome.reason)).not.toMatch(/deadlock/i);
+          }
+        }
+      }
+    });
+
+    it('aborts a cycle with no expected regions instead of closing it down', async () => {
+      await openCycle('r6', { locations: [] });
+      expect(await service.closeCycle('r6', afterDeadline)).toBe('aborted');
+      expect(await results('r6')).toHaveLength(0);
+    });
+
+    it('handles a single-region monitor through the same path and notifies', async () => {
+      await openCycle('r7', { locations: ['eu'], strategy: 'any' });
+      expect(await service.closeCycle('r7', afterDeadline)).toBe('closed');
+      expect(await cycleRow('r7')).toMatchObject({
+        resultStatus: 'down',
+        missingLocations: ['eu'],
+      });
+      expect(await service.notifyCycle('r7')).toBe(true);
+      expect(sendNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('describes regions that have not reported yet as awaiting, not failed, on an early closure', async () => {
+      await openCycle('r8', { strategy: 'all' });
+      await report('r8', 'eu', false);
+      await service.closeCycle('r8', new Date(t0.getTime() + 3000));
+      expect((await cycleRow('r8')).evaluation?.reason).toMatch(
+        /awaiting results from us, ap/,
+      );
+      expect(await results('r8')).toHaveLength(1);
+    });
   });
 });

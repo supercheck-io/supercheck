@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
@@ -9,6 +9,9 @@ import type { MonitorExecutionResult } from '../monitor/types/monitor-result.typ
 import { BillingHoldService } from './billing-hold.service';
 import { decideMonitorCycle } from './cycle-policy';
 import { nextSequenceCounters } from './sequence-counters';
+
+/** Bounded redelivery: repair backs off by one minute per failed attempt. */
+export const MAX_NOTIFY_ATTEMPTS = 5;
 
 export type CloseOutcome =
   | 'noop'
@@ -36,28 +39,47 @@ export class MonitorCycleService {
     this.evaluator = new MonitorEvaluator(dbService, alertService);
   }
 
-  /** Idempotent: a second caller sees a non-open cycle and does nothing. */
+  /**
+   * Idempotent: a second caller sees a non-open cycle and does nothing.
+   *
+   * Lock order is monitor -> cycle, the same order a cascading monitor/organization delete takes,
+   * so the two can never deadlock. Both locks are NO KEY UPDATE: they still exclude every other
+   * closer and the legacy aggregation path (which takes FOR UPDATE on the monitor), but they do not
+   * block the foreign-key checks of regional result inserts, arrival hints or the next cycle.
+   */
   async closeCycle(
     cycleId: string,
     now: Date = new Date(),
   ): Promise<CloseOutcome> {
+    const [peek] = await this.dbService.db
+      .select({
+        status: schema.monitorCycles.status,
+        monitorId: schema.monitorCycles.monitorId,
+      })
+      .from(schema.monitorCycles)
+      .where(eq(schema.monitorCycles.id, cycleId))
+      .limit(1);
+    if (!peek || peek.status !== 'open') return 'noop';
+
     return this.dbService.db.transaction(async (tx) => {
+      const [monitor] = await tx
+        .select()
+        .from(schema.monitors)
+        .where(eq(schema.monitors.id, peek.monitorId))
+        .limit(1)
+        .for('no key update');
+      // A deleted monitor cascades its cycles away.
+      if (!monitor) return 'noop';
       const [cycle] = await tx
         .select()
         .from(schema.monitorCycles)
         .where(eq(schema.monitorCycles.id, cycleId))
         .limit(1)
-        .for('update');
+        .for('no key update');
       if (!cycle || cycle.status !== 'open') return 'noop';
 
-      // Lock order is always cycle -> monitor; no path waits on a second cycle, so no deadlock.
-      const [monitor] = await tx
-        .select()
-        .from(schema.monitors)
-        .where(eq(schema.monitors.id, cycle.monitorId))
-        .limit(1)
-        .for('update');
-      if (!monitor) {
+      const expected = [...new Set(cycle.expectedLocations)];
+      if (expected.length === 0) {
         await this.finish(tx, cycleId, 'aborted', now);
         return 'aborted';
       }
@@ -72,11 +94,29 @@ export class MonitorCycleService {
           ),
         )
         .orderBy(desc(schema.monitorResults.checkedAt));
+
+      // An older-image worker may have aggregated this group through the legacy Redis path
+      // (rollout or rollback). It already advanced the counters and alerted: never do it twice.
+      const legacyEvaluated =
+        rows.some(
+          (row) =>
+            (row.details as { aggregationEvaluation?: unknown } | null)
+              ?.aggregationEvaluation,
+        ) ||
+        (
+          monitor.config as {
+            aggregatedAlertState?: { executionGroupId?: string };
+          } | null
+        )?.aggregatedAlertState?.executionGroupId === cycle.id;
+      if (legacyEvaluated) {
+        await this.finish(tx, cycleId, 'closed', now, { notifiedAt: now });
+        return 'superseded';
+      }
+
       const latest = new Map<string, ResultRow>();
       for (const row of rows) {
         if (!latest.has(row.location)) latest.set(row.location, row);
       }
-      const expected = [...new Set(cycle.expectedLocations)];
       const statuses: Record<string, boolean> = {};
       for (const location of expected) {
         const row = latest.get(location);
@@ -99,7 +139,13 @@ export class MonitorCycleService {
         await this.finish(tx, cycleId, 'aborted', now);
         return 'aborted';
       }
-      const hold = await this.billing.isHeld(monitor.organizationId, monitor);
+      // Checked on the same transaction (no second connection). A failed verification throws,
+      // rolling back and leaving the cycle open for the next tick.
+      const hold = await this.billing.isHeld(
+        monitor.organizationId,
+        monitor,
+        tx as never,
+      );
       if (hold.blocked) {
         this.logger.warn(
           `Cycle ${cycleId} not evaluated for monitor ${monitor.id}: ${hold.reason}`,
@@ -117,8 +163,8 @@ export class MonitorCycleService {
       const checkedAt = new Date(observedAt);
 
       // At the deadline, missing regions become explicit failed rows so uptime and status pages show
-      // the outage. A decisive early arrival has not failed anyone: those regions just haven't reported,
-      // and a late result stays a diagnostic row.
+      // the outage. A decisive early arrival has not failed anyone: those regions just haven't
+      // reported, and a late result stays a diagnostic row.
       const synthetic =
         decision.closedBy === 'deadline' ? decision.missing : [];
       for (const location of synthetic) {
@@ -156,8 +202,22 @@ export class MonitorCycleService {
         });
       }
 
-      // A newer cycle already advanced this monitor: keep the history, leave the state alone.
-      if (monitor.lastCheckAt && monitor.lastCheckAt > checkedAt) {
+      // A newer cycle was already applied to this monitor: keep this one's history, leave the state
+      // alone. Ordered by the cycles' own scheduled time, not by result timestamps, so slow regions,
+      // clock skew and app-written status updates cannot mis-order it.
+      const [newer] = await tx
+        .select({ id: schema.monitorCycles.id })
+        .from(schema.monitorCycles)
+        .where(
+          and(
+            eq(schema.monitorCycles.monitorId, cycle.monitorId),
+            gt(schema.monitorCycles.scheduledFor, cycle.scheduledFor),
+            eq(schema.monitorCycles.status, 'closed'),
+            isNotNull(schema.monitorCycles.evaluation),
+          ),
+        )
+        .limit(1);
+      if (newer) {
         await this.finish(tx, cycleId, 'closed', now, {
           closedBy: decision.closedBy,
           resultStatus: decision.status,
@@ -169,6 +229,9 @@ export class MonitorCycleService {
       }
 
       const previousStatus = monitor.status;
+      const observedRows = decision.observed.map(
+        (location) => latest.get(location)!,
+      );
       const evaluation: MonitorCycleEvaluation = {
         previousStatus,
         currentStatus: decision.status,
@@ -177,9 +240,7 @@ export class MonitorCycleService {
           expected,
           decision.observed.filter((location) => statuses[location]).length,
         ),
-        avgResponseTimeMs: this.averageResponse(
-          decision.observed.map((location) => latest.get(location)!),
-        ),
+        avgResponseTimeMs: this.averageResponse(observedRows),
       };
       if (
         this.evaluator.isMultiLocationEvaluation(
@@ -231,8 +292,11 @@ export class MonitorCycleService {
   }
 
   /**
-   * At-least-once: the receipt is written after delivery, so a crash in between re-sends. The
-   * evaluator keeps recovery-once semantics (zero successful deliveries stays eligible).
+   * At-least-once: the receipt is written only after delivery succeeded (or nothing was due, or the
+   * alert was deliberately suppressed). A failed delivery leaves the cycle without a receipt so the
+   * repair pass retries it with backoff; after MAX_NOTIFY_ATTEMPTS it gives up and says so loudly.
+   * A crash between delivery and receipt re-sends once. The evaluator keeps recovery-once
+   * semantics (zero successful deliveries stays eligible).
    */
   async notifyCycle(cycleId: string): Promise<boolean> {
     const [cycle] = await this.dbService.db
@@ -264,7 +328,8 @@ export class MonitorCycleService {
       )
       .orderBy(desc(schema.monitorResults.checkedAt));
     const evaluation = cycle.evaluation;
-    await this.evaluator.evaluateAndSendAlert({
+    const pendingEarly = cycle.closedBy === 'arrival';
+    const outcome = await this.evaluator.evaluateAndSendAlert({
       monitorId: monitor.id,
       monitor,
       previousStatus: evaluation.previousStatus,
@@ -280,12 +345,16 @@ export class MonitorCycleService {
             const row = rows.find(
               (candidate) => candidate.location === location,
             );
-            return row
-              ? {
-                  location,
-                  isUp: row.isUp,
-                  responseTime: row.responseTimeMs,
-                }
+            if (row)
+              return {
+                location,
+                isUp: row.isUp,
+                responseTime: row.responseTimeMs,
+              };
+            // Early closure: the region has not reported yet. At the deadline it was written as a
+            // failed row above, so a missing row here only happens for early closures.
+            return pendingEarly
+              ? { location, isUp: false, pending: true }
               : { location, isUp: false, noResult: true };
           },
         ),
@@ -297,6 +366,26 @@ export class MonitorCycleService {
         this.toExecutionResult(row),
         monitor,
       );
+    }
+    if (outcome.deliveryFailed) {
+      const attempts = cycle.notifyAttempts + 1;
+      await this.dbService.db
+        .update(schema.monitorCycles)
+        .set({
+          notifyAttempts: attempts,
+          // Giving up still writes the receipt so the backlog alert clears; the log is the record.
+          ...(attempts >= MAX_NOTIFY_ATTEMPTS
+            ? { notifiedAt: new Date() }
+            : {}),
+        })
+        .where(eq(schema.monitorCycles.id, cycleId));
+      if (attempts >= MAX_NOTIFY_ATTEMPTS) {
+        this.logger.error(
+          `Giving up delivering the alert for cycle ${cycleId} after ${attempts} failed attempts`,
+        );
+        return true;
+      }
+      return false;
     }
     await this.dbService.db
       .update(schema.monitorCycles)
@@ -346,20 +435,22 @@ export class MonitorCycleService {
     upCount: number,
   ): string {
     const total = expected.length;
+    // At the deadline a silent region failed; on an early closure it simply hasn't reported yet.
     const missing = decision.missing.length
-      ? ` (no results from ${decision.missing.join(', ')})`
+      ? decision.closedBy === 'deadline'
+        ? ` (no results from ${decision.missing.join(', ')})`
+        : ` (awaiting results from ${decision.missing.join(', ')})`
       : '';
     return decision.status === 'down'
       ? `Monitor is down in ${total - upCount}/${total} locations${missing}`
       : `Monitor has recovered (${upCount}/${total} locations up)`;
   }
 
+  /** Like the legacy path: every observed result counts, a missing response time as 0. */
   private averageResponse(rows: ResultRow[]): number {
-    const times = rows
-      .map((row) => row.responseTimeMs)
-      .filter((value): value is number => typeof value === 'number');
-    return times.length
-      ? times.reduce((sum, value) => sum + value, 0) / times.length
+    return rows.length
+      ? rows.reduce((sum, row) => sum + (row.responseTimeMs || 0), 0) /
+          rows.length
       : 0;
   }
 

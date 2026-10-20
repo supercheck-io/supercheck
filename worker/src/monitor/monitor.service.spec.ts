@@ -1172,7 +1172,11 @@ describe('MonitorService', () => {
             metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
           });
         };
-        expect(await evaluate(2, 0)).toEqual({ alertSent: false });
+        // A fully failed delivery is reported as such (the control plane retries on it).
+        expect(await evaluate(2, 0)).toEqual({
+          alertSent: false,
+          deliveryFailed: true,
+        });
         expect(mockDbService.db.update).not.toHaveBeenCalled();
         expect(await evaluate(3, 0)).toEqual({
           alertSent: true,

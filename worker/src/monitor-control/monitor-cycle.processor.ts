@@ -10,9 +10,13 @@ import * as schema from '../db/schema';
 import { MonitorCycleService } from './monitor-cycle.service';
 
 const BATCH = 50;
-const REPAIR_AFTER_MS = 60_000;
+/** One minute of repair grace per failed delivery attempt (also covers an in-flight first delivery). */
+const REPAIR_GRACE_SECONDS = 60;
 const RETENTION_SWEEP_MS = 10 * 60_000;
+const RETENTION_BATCH = 500;
+const RETENTION_MAX_BATCHES = 20;
 const DEFAULT_RETENTION_DAYS = 14;
+const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 
 /** Drizzle wraps driver errors; the cause (connection, TLS, SQLSTATE) is what operators need. */
 function describeError(error: unknown): string {
@@ -43,14 +47,22 @@ export type ProcessorSnapshot = {
  * processed one at a time, which keeps the database connection budget at a handful of connections.
  * An arrival hint is claimed BEFORE results are read, so a re-armed hint written meanwhile is
  * never lost; a lost hint only delays closure to the deadline.
+ *
+ * Run a single replica: closure is idempotent under row locks, but two replicas could both repair
+ * the same undelivered notification (at-least-once delivery).
  */
 @Injectable()
 export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MonitorCycleProcessor.name);
   private timer: NodeJS.Timeout | null = null;
-  private running: Promise<void> = Promise.resolve();
+  private running: Promise<unknown> = Promise.resolve();
   private stopping = false;
   private lastRetentionAt = 0;
+  /** Cycles whose closure keeps throwing: skipped with backoff so they cannot starve a batch. */
+  private readonly failing = new Map<
+    string,
+    { failures: number; nextAt: number }
+  >();
   private readonly state: ProcessorSnapshot = {
     started: false,
     intervalMs: this.pollInterval(),
@@ -94,22 +106,27 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   private schedule(delay: number): void {
     if (this.stopping) return;
     this.timer = setTimeout(() => {
-      this.running = this.tick().finally(() =>
-        this.schedule(this.state.intervalMs),
+      this.running = this.tick().then((more) =>
+        this.schedule(more ? 0 : this.state.intervalMs),
       );
     }, delay);
   }
 
-  /** One bounded pass. Exposed for tests; never throws. */
-  async tick(now: Date = new Date()): Promise<void> {
+  /**
+   * One bounded pass. Exposed for tests; never throws. Returns true when a full batch suggests
+   * more work is waiting, so the next pass starts immediately instead of after the poll interval.
+   */
+  async tick(now: Date = new Date()): Promise<boolean> {
     this.state.lastTickAt = now.getTime();
+    let more = false;
     try {
-      await this.processArrivals(now);
-      await this.processDeadlines(now);
+      const arrivals = await this.processArrivals(now);
+      const deadlines = await this.processDeadlines(now);
       await this.repairNotifications(now);
       await this.sweepRetention(now);
       await this.refreshLag(now);
-      this.state.lastSuccessAt = Date.now();
+      more = arrivals >= BATCH || deadlines >= BATCH;
+      this.beat();
       this.state.consecutiveFailures = 0;
     } catch (error) {
       this.state.consecutiveFailures += 1;
@@ -117,9 +134,15 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         `Cycle processing tick failed: ${describeError(error)}`,
       );
     }
+    return more;
   }
 
-  private async processArrivals(now: Date): Promise<void> {
+  /** Progress heartbeat: a long tick (slow webhooks) must not look like a stalled loop. */
+  private beat(): void {
+    this.state.lastSuccessAt = Date.now();
+  }
+
+  private async processArrivals(now: Date): Promise<number> {
     const claimed = await this.dbService.db.execute<{ cycle_id: string }>(sql`
       UPDATE monitor_cycle_arrivals SET processed_at = ${now.toISOString()}::timestamp
       WHERE id IN (
@@ -127,10 +150,15 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         ORDER BY created_at LIMIT ${BATCH} FOR UPDATE SKIP LOCKED
       ) RETURNING cycle_id`);
     const ids = [...new Set(Array.from(claimed, (row) => row.cycle_id))];
-    for (const id of ids) await this.close(id, now);
+    for (const id of ids) {
+      if (this.stopping) break;
+      await this.close(id, now);
+    }
+    return claimed.length;
   }
 
-  private async processDeadlines(now: Date): Promise<void> {
+  private async processDeadlines(now: Date): Promise<number> {
+    // Fetch extra rows so cycles in backoff never crowd out healthy ones.
     const due = await this.dbService.db
       .select({ id: schema.monitorCycles.id })
       .from(schema.monitorCycles)
@@ -141,8 +169,15 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         ),
       )
       .orderBy(asc(schema.monitorCycles.deadlineAt))
-      .limit(BATCH);
-    for (const { id } of due) await this.close(id, now);
+      .limit(BATCH + this.failing.size);
+    let processed = 0;
+    for (const { id } of due) {
+      if (this.stopping || processed >= BATCH) break;
+      if ((this.failing.get(id)?.nextAt ?? 0) > Date.now()) continue;
+      processed += 1;
+      await this.close(id, now);
+    }
+    return processed;
   }
 
   private async repairNotifications(now: Date): Promise<void> {
@@ -153,27 +188,36 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         and(
           eq(schema.monitorCycles.status, 'closed'),
           isNull(schema.monitorCycles.notifiedAt),
-          lte(
-            schema.monitorCycles.closedAt,
-            new Date(now.getTime() - REPAIR_AFTER_MS),
-          ),
+          sql`${schema.monitorCycles.closedAt} + (${schema.monitorCycles.notifyAttempts} + 1) * ${REPAIR_GRACE_SECONDS} * interval '1 second' <= ${now.toISOString()}::timestamp`,
         ),
       )
       .orderBy(asc(schema.monitorCycles.closedAt))
       .limit(BATCH);
-    for (const { id } of pending) await this.notify(id);
+    for (const { id } of pending) {
+      if (this.stopping) break;
+      await this.notify(id);
+    }
   }
 
   private async close(id: string, now: Date): Promise<void> {
     try {
       const outcome = await this.cycles.closeCycle(id, now);
+      this.failing.delete(id);
       this.state.closed[outcome] = (this.state.closed[outcome] ?? 0) + 1;
       if (outcome === 'closed') await this.notify(id);
     } catch (error) {
       this.state.cycleFailures += 1;
+      const failures = (this.failing.get(id)?.failures ?? 0) + 1;
+      this.failing.set(id, {
+        failures,
+        nextAt:
+          Date.now() + Math.min(POISON_MAX_BACKOFF_MS, 2000 * 2 ** failures),
+      });
       this.logger.error(
-        `Closing cycle ${id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Closing cycle ${id} failed (attempt ${failures}): ${describeError(error)}`,
       );
+    } finally {
+      this.beat();
     }
   }
 
@@ -184,8 +228,10 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       // Left without a receipt on purpose: the repair pass retries (at-least-once).
       this.state.notifyFailures += 1;
       this.logger.error(
-        `Notifying cycle ${id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Notifying cycle ${id} failed: ${describeError(error)}`,
       );
+    } finally {
+      this.beat();
     }
   }
 
@@ -201,31 +247,39 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         (Number.isFinite(days) && days > 0 ? days : DEFAULT_RETENTION_DAYS) *
           86_400_000,
     );
-    const deleted = await this.dbService.db.execute(sql`
-      DELETE FROM monitor_cycles WHERE id IN (
-        SELECT id FROM monitor_cycles
-        WHERE closed_at IS NOT NULL AND closed_at < ${cutoff.toISOString()}::timestamp
-        ORDER BY closed_at LIMIT 500
-      )`);
-    this.state.retentionDeleted += deleted.count ?? 0;
+    // Catch up in bounded batches: one cycle exists per scheduled check, so a single small delete
+    // per sweep would never keep pace on a busy installation.
+    for (
+      let batch = 0;
+      batch < RETENTION_MAX_BATCHES && !this.stopping;
+      batch++
+    ) {
+      const deleted = await this.dbService.db.execute(sql`
+        DELETE FROM monitor_cycles WHERE id IN (
+          SELECT id FROM monitor_cycles
+          WHERE closed_at IS NOT NULL AND closed_at < ${cutoff.toISOString()}::timestamp
+          ORDER BY closed_at LIMIT ${RETENTION_BATCH}
+        )`);
+      this.state.retentionDeleted += deleted.count ?? 0;
+      if ((deleted.count ?? 0) < RETENTION_BATCH) break;
+    }
   }
 
   private async refreshLag(now: Date): Promise<void> {
+    // Computed in SQL: the driver returns timestamp-without-time-zone values that Node would
+    // otherwise parse in its local zone.
+    const at = now.toISOString();
     const [lag] = await this.dbService.db.execute<{
-      arrival: Date | null;
-      overdue: Date | null;
+      arrival: string | null;
+      overdue: string | null;
       unnotified: string;
     }>(sql`
       SELECT
-        (SELECT min(created_at) FROM monitor_cycle_arrivals WHERE processed_at IS NULL) AS arrival,
-        (SELECT min(deadline_at) FROM monitor_cycles WHERE status = 'open' AND deadline_at <= ${now.toISOString()}::timestamp) AS overdue,
+        (SELECT EXTRACT(EPOCH FROM (${at}::timestamp - min(created_at))) FROM monitor_cycle_arrivals WHERE processed_at IS NULL) AS arrival,
+        (SELECT EXTRACT(EPOCH FROM (${at}::timestamp - min(deadline_at))) FROM monitor_cycles WHERE status = 'open' AND deadline_at <= ${at}::timestamp) AS overdue,
         (SELECT count(*) FROM monitor_cycles WHERE status = 'closed' AND notified_at IS NULL) AS unnotified`);
-    const seconds = (value: Date | null) =>
-      value
-        ? Math.max(0, (now.getTime() - new Date(value).getTime()) / 1000)
-        : 0;
-    this.state.arrivalLagSeconds = seconds(lag.arrival);
-    this.state.overdueSeconds = seconds(lag.overdue);
+    this.state.arrivalLagSeconds = Math.max(0, Number(lag.arrival ?? 0));
+    this.state.overdueSeconds = Math.max(0, Number(lag.overdue ?? 0));
     this.state.unnotifiedClosed = Number(lag.unnotified);
   }
 }
