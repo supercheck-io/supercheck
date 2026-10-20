@@ -183,6 +183,8 @@ Write operations that need confirmation never proceed without it in non-interact
 | `SUPERCHECK_URL` | API URL for self-hosted instances; overrides the stored login URL |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Proxy configuration |
 
+`SUPERCHECK_TOKEN`, `SUPERCHECK_TRIGGER_KEY` and `SUPERCHECK_URL` are read only from the real environment or a stored login, never from a project `.env` file, so a cloned repository cannot choose your credential or where it is sent. Export them in your shell or CI secret store.
+
 Run `supercheck whoami` to see the active API URL and project.
 
 ## Use with AI agents

@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+import { loadProjectEnv } from '../config/project-env.js'
 import { agentCommand } from '../commands/agent.js'
 import { discoverCommand } from '../commands/discover.js'
 import { onboardCommand } from '../commands/onboard.js'
@@ -100,8 +102,7 @@ const program = new Command()
 
     const diagnostic = ['whoami', 'health', 'locations', 'capabilities'].includes(actionCommand.name()) && (actionCommand.parent?.name() ?? '') === program.name()
     if (diagnostic) {
-      const { config: loadEnv } = await import('dotenv')
-      loadEnv({ quiet: true })
+      loadProjectEnv(resolve(process.cwd(), '.env'))
     }
     if (diagnostic && (getStoredBaseUrl() || actionOpts.url)) return
 

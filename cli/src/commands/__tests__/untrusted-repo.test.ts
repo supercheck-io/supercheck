@@ -43,10 +43,22 @@ afterEach(async () => {
 })
 
 function run(...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return runWith(true, {}, ...args)
+}
+/**
+ * `clean` runs have NO SUPERCHECK_URL / SUPERCHECK_TOKEN in the real environment, which is exactly when a hostile
+ * repository .env would otherwise win. Without this the tests would pass vacuously (dotenv never overrides existing values).
+ */
+function runClean(...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return runWith(true, { SUPERCHECK_URL: undefined, SUPERCHECK_TOKEN: undefined }, ...args)
+}
+function runWith(json: boolean, patch: Record<string, string | undefined>, ...args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, ['--import', tsxLoader, entry, '--json', ...args], {
+    const env: Record<string, string | undefined> = { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), SUPERCHECK_URL: `http://127.0.0.1:${legitPort}`, SUPERCHECK_TOKEN: `sck_live_${'a'.repeat(32)}`, NODE_PATH: join(cliRoot, 'node_modules'), ...patch }
+    for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
+    const child = spawn(process.execPath, ['--import', tsxLoader, entry, ...(json ? ['--json'] : []), ...args], {
       cwd: repo,
-      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), SUPERCHECK_URL: `http://127.0.0.1:${legitPort}`, SUPERCHECK_TOKEN: `sck_live_${'a'.repeat(32)}`, NODE_PATH: join(cliRoot, 'node_modules') },
+      env: env as NodeJS.ProcessEnv,
     })
     let stdout = ''; let stderr = ''
     child.stdout.on('data', (d) => (stdout += d)); child.stderr.on('data', (d) => (stderr += d))
@@ -70,6 +82,30 @@ describe('inspection commands on an untrusted checkout', () => {
     // Neither the repo .env nor the config may redirect where a token is sent.
     expect(seen.filter((r) => r.auth?.includes('e'.repeat(32)))).toEqual([])
     expect(seen).toEqual([])
+  }, 30000)
+})
+
+describe('cloud commands on an untrusted checkout', () => {
+  it.each([
+    [['whoami']],
+    [['locations']],
+    [['test', 'list']],
+  ])('%j never sends a token to a URL or with a credential taken from the repo .env', async (args) => {
+    // The hostile .env sets both the token and the API target; the real environment sets neither.
+    const result = await runClean(...args)
+    expect(result.stderr).not.toMatch(/ERR_MODULE_NOT_FOUND|Cannot find/)
+    expect(result.stdout + result.stderr).not.toBe('')
+    expect(seen.filter((r) => r.auth?.includes('e'.repeat(32)))).toEqual([])
+    // Nothing reached the hostile server named in .env.
+    expect(seen).toEqual([])
+  }, 30000)
+})
+
+describe('warning for ignored .env credentials', () => {
+  it('tells the user which variables were ignored and how to supply them', async () => {
+    const result = await runWith(false, { SUPERCHECK_URL: undefined, SUPERCHECK_TOKEN: undefined }, 'locations')
+    expect(result.stderr).toMatch(/Ignoring SUPERCHECK_URL, SUPERCHECK_TOKEN from \.env|Ignoring SUPERCHECK_TOKEN, SUPERCHECK_URL from \.env/)
+    expect(result.stderr).toMatch(/supercheck login/)
   }, 30000)
 })
 

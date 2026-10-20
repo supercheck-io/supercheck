@@ -9,7 +9,7 @@ import { installAgentSkill } from '../agent.js'
 import { classifyError } from '../../utils/error-codes.js'
 import { planLink, readConfigIdentity } from '../../utils/link-config.js'
 import { failedVerifications } from '../deploy.js'
-import { ApiRequestError } from '../../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../../utils/errors.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'sc-onboard-')) })
@@ -158,6 +158,8 @@ describe('classifyError', () => {
     expect(classifyError(api(503))).toMatchObject({ code: 'SERVICE_UNAVAILABLE', retryable: true })
     expect(classifyError(api(400))?.code).toBe('VALIDATION_FAILED')
     expect(classifyError(new Error('boom'))).toBeUndefined()
+    expect(classifyError(new CLIError('Not authenticated. Run `supercheck login`.', ExitCode.AuthError), false)?.code).toBe('AUTH_REQUIRED')
+    expect(classifyError(new CLIError('Not authenticated.', ExitCode.AuthError), true)).toBeUndefined()
   })
 })
 

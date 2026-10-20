@@ -92,6 +92,10 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
   `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the corresponding fields in `supercheck.config.ts` for config resolution. However, the CLI token itself is project-scoped and determines your actual API access permissions.
 </Callout>
 
+<Callout type="warn">
+  `SUPERCHECK_TOKEN`, `SUPERCHECK_URL` and `SUPERCHECK_TRIGGER_KEY` are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential or the server it is sent to would let a hostile repository redirect your token. Export these in your shell, use your CI secret store, or run `supercheck login`. The CLI prints a warning when a `.env` tries to set them. Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
+</Callout>
+
 <Callout type="info">
   For CI/CD, use `SUPERCHECK_TRIGGER_KEY` with `supercheck job trigger`. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or run other API-backed commands such as `deploy`, `diff`, or `whoami`.
 </Callout>
