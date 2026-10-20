@@ -117,6 +117,18 @@ describe("DeviceApproval plan step", () => {
     open.mockRestore();
   });
 
+  it("falls back to the link when the blank tab is closed or refuses navigation after the switch", async () => {
+    const tab = { closed: false, close: jest.fn() } as unknown as Window;
+    Object.defineProperty(tab, "location", { get: () => { throw new Error("closed"); } });
+    const open = jest.spyOn(window, "open").mockReturnValue(tab);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
+    expect(await screen.findByRole("link", { name: /open billing/i })).toHaveAttribute("href", "/subscribe");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    open.mockRestore();
+  });
+
   it("tells non-owners to ask an owner and offers no purchase button", () => {
     view(withPlan({ active: false, canPurchase: false }, { active: false, canPurchase: false }));
     expect(screen.queryByRole("button", { name: "Choose a plan" })).not.toBeInTheDocument();

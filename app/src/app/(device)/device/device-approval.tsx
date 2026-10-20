@@ -70,11 +70,17 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         body: JSON.stringify({ projectId: selected.id }),
       });
       if (!response.ok) throw new Error("switch failed");
-      if (tab) {
-        try { tab.opener = null; } catch { /* cross-origin restrictions: ignore */ }
-        tab.location.href = "/subscribe";
+      let opened = false;
+      if (tab && !tab.closed) {
+        try {
+          tab.opener = null;
+          tab.location.href = "/subscribe";
+          opened = true;
+        } catch {
+          // Tab closed or navigation refused after a successful switch: offer the fallback link instead.
+        }
       }
-      setBillingState(tab ? "opened" : "blocked");
+      setBillingState(opened ? "opened" : "blocked");
     } catch {
       tab?.close();
       setBillingState("failed");
