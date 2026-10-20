@@ -1,3 +1,4 @@
+import { isIsolationPoolBlocked } from './isolation-canary';
 /**
  * Secure Script Execution Service
  *
@@ -782,6 +783,49 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       .join(ContainerExecutorService.CONTAINER_WORKER_DIR);
   }
 
+  private async checkIsolationCanaryAdmission(): Promise<void> {
+    if (
+      this.configService.get<string>('ISOLATION_CANARY_GATE_ENABLED') !== 'true'
+    )
+      return;
+    const pool = this.executionNodeSelector?.region;
+    if (!pool) return;
+    let health: string | undefined;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2000);
+    try {
+      const { Observable } = this.k8sModule!;
+      const config = await this.coreApi!.readNamespacedConfigMap(
+        {
+          namespace: this.executionNamespace,
+          name: 'isolation-pool-health',
+        },
+        {
+          middleware: [
+            {
+              pre: (request) => {
+                request.setSignal(controller.signal);
+                return new Observable(Promise.resolve(request));
+              },
+              post: (response) => new Observable(Promise.resolve(response)),
+            },
+          ],
+        },
+      );
+      health = config.data?.[pool];
+    } catch {
+      // Missing ConfigMap, timeout or unavailable API must not stop a healthy pool.
+      return;
+    } finally {
+      clearTimeout(deadline);
+    }
+    if (isIsolationPoolBlocked(health)) {
+      throw new Error(
+        `Execution admission blocked: isolation canary failed for pool ${pool}`,
+      );
+    }
+  }
+
   private async executeInKubernetes(
     command: string[],
     options: ContainerExecutionOptions,
@@ -853,6 +897,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     try {
       await this.ensureKubernetesClients();
+      await this.checkIsolationCanaryAdmission();
 
       const job = this.buildExecutionJob({
         jobName,

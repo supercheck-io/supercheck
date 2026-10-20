@@ -2,6 +2,8 @@
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { POST } from "./route";
+import { getRedisConnection } from "@/lib/queue";
+import { requireUserAuthContext } from "@/lib/auth-context";
 import { PUT as updateMember, DELETE as removeMember } from "../[memberId]/route";
 import { GET as listMembers } from "../route";
 import { DELETE as cancelInvite, POST as resendInvite } from "./[invitationId]/route";
@@ -154,4 +156,110 @@ it.each([
   expect(mockInsert).not.toHaveBeenCalled();
   expect(db.transaction).not.toHaveBeenCalled();
   expect(getUserOrgRole).not.toHaveBeenCalled();
+});
+
+describe("accepted invitation quota", () => {
+  const entries = new Map<string, number>();
+  const redis = {
+    eval: jest.fn(
+      async (
+        _script: string,
+        _keys: number,
+        _key: string,
+        now: number,
+        window: number,
+        max: number,
+        token: string,
+      ) => {
+        for (const [id, score] of entries)
+          if (score <= now - window) entries.delete(id);
+        if (entries.size >= max)
+          return Math.max(1, Math.min(...entries.values()) + window - now);
+        entries.set(token, now);
+        return 0;
+      },
+    ),
+    zrem: jest.fn(async (_key: string, token: string) =>
+      Number(entries.delete(token)),
+    ),
+  };
+  function validCandidate() {
+    mockSelect
+      .mockReset()
+      .mockReturnValueOnce(rows([]))
+      .mockReturnValueOnce(rows([]))
+      .mockReturnValueOnce(rows([{ id: "host-project", name: "Project" }]));
+  }
+  beforeEach(() => {
+    entries.clear();
+    (getUserOrgRole as jest.Mock).mockReset().mockResolvedValue("org_owner");
+    (getRedisConnection as jest.Mock).mockResolvedValue(redis);
+    (requireUserAuthContext as jest.Mock).mockReset().mockResolvedValue({
+      userId: "inviter",
+      organizationId: "host",
+    });
+    (checkTeamMemberLimit as jest.Mock)
+      .mockReset()
+      .mockResolvedValue({ allowed: true });
+    validCandidate();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it.each(["invalid", "duplicate", "foreign-project", "unauthorized"])(
+    "does not reserve quota for %s requests",
+    async (reason) => {
+      if (reason === "duplicate")
+        mockSelect
+          .mockReset()
+          .mockReturnValueOnce(rows([]))
+          .mockReturnValueOnce(rows([{ id: "pending" }]));
+      if (reason === "foreign-project")
+        mockSelect
+          .mockReset()
+          .mockReturnValueOnce(rows([]))
+          .mockReturnValueOnce(rows([]))
+          .mockReturnValueOnce(rows([]));
+      if (reason === "unauthorized")
+        (getUserOrgRole as jest.Mock).mockResolvedValue("project_editor");
+      const response = await POST(
+        reason === "invalid" ? request("org_owner") : request(),
+      );
+      expect(response.status).toBe(reason === "unauthorized" ? 403 : 400);
+      expect(redis.eval).not.toHaveBeenCalled();
+      expect(entries.size).toBe(0);
+    },
+  );
+
+  it("counts distinct accepted invitations at the same millisecond and rejects the eleventh", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    for (let i = 0; i < 10; i++) {
+      validCandidate();
+      expect((await POST(request())).status).toBe(200);
+    }
+    validCandidate();
+    const response = await POST(request());
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("3600");
+    expect(entries.size).toBe(10);
+    expect(redis.zrem).not.toHaveBeenCalled();
+  });
+
+  it("releases reserved quota when the subscription seat limit rejects an invitation", async () => {
+    (checkTeamMemberLimit as jest.Mock).mockResolvedValue({
+      allowed: false,
+      error: "Seat limit",
+    });
+    expect((await POST(request())).status).toBe(403);
+    expect(redis.zrem).toHaveBeenCalledTimes(1);
+    expect(entries.size).toBe(0);
+  });
+
+  it("releases reserved quota on insert failure", async () => {
+    values.mockReturnValue({
+      returning: jest.fn().mockRejectedValue(new Error("DB unavailable")),
+    });
+    expect((await POST(request())).status).toBe(500);
+    expect(redis.zrem).toHaveBeenCalledTimes(1);
+    expect(entries.size).toBe(0);
+  });
 });
