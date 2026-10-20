@@ -37,7 +37,7 @@ npm run build
 npm pack --dry-run
 ```
 
-Inspect the tarball for the executable, type exports, README, architecture image, Apache-2.0 `LICENSE`, and `NOTICE`. Exercise a packed installation, including offline skills guidance and account-free local execution. Before releasing agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify that an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. See [agent workflow review notes](./AGENT_FIRST_REVIEW.md); mock API tests do not replace this real-server check.
+Inspect the tarball for the executable, type exports, README, architecture image, Apache-2.0 `LICENSE`, and `NOTICE`. Exercise a packed installation, including offline skills guidance and account-free local execution. Before releasing agent workflow changes, deploy a test, dependent job, and synthetic monitor against an isolated real API, then verify that an identical second deploy sends zero writes. Preserve `supercheck.state.json` between deploys. Mock API tests do not replace this real-server check.
 
 ## Publish from GitHub
 
