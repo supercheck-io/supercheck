@@ -11,6 +11,8 @@ export interface DeviceProjectOption {
   name: string;
   organizationName: string;
   isDefault: boolean;
+  /** Billing state of the project's organization. `active: null` means unknown. */
+  plan?: { active: boolean | null; canPurchase: boolean };
 }
 
 interface Props {
@@ -44,9 +46,37 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [typedCode, setTypedCode] = useState("");
+  const [billingState, setBillingState] = useState<"idle" | "opening" | "opened" | "blocked" | "failed">("idle");
   // The code arrives pre-filled in the URL, so a hurried click could approve a stranger's request.
   // Require the person to retype what their terminal shows.
   const codeMatches = typedCode.toUpperCase().replace(/[^A-Z0-9]/g, "") === userCode.replace("-", "");
+
+  const selected = projects.find((p) => p.id === projectId) ?? projects[0];
+  const needsPlan = selected.plan?.active === false;
+
+  // Opens the existing checkout in a new tab so this request (and its 15-minute code) stays intact. Checkout charges
+  // the session's *active* organization, so make the selected project's organization active first; otherwise a person
+  // with several organizations could pay for the wrong one.
+  async function openBilling() {
+    setBillingState("opening");
+    try {
+      const response = await fetch("/api/projects/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: selected.id }),
+      });
+      if (!response.ok) throw new Error("switch failed");
+      // Not the "noopener" feature: with it window.open always returns null, which would look like a blocked popup.
+      // The page is same-origin; dropping `opener` gives the same isolation while keeping the blocked check meaningful.
+      const tab = window.open("/subscribe", "_blank");
+      if (tab) {
+        try { tab.opener = null; } catch { /* cross-origin restrictions: ignore */ }
+      }
+      setBillingState(tab ? "opened" : "blocked");
+    } catch {
+      setBillingState("failed");
+    }
+  }
 
   async function decide(kind: "approve" | "deny") {
     setPhase("submitting");
@@ -142,6 +172,40 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
           disabled={busy}
         />
       </div>
+
+      {needsPlan ? (
+        <div role="note" className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <p className="font-medium">{selected.organizationName} has no active plan</p>
+          <p className="text-muted-foreground">
+            You can connect the CLI now and run tests locally. Deploying and running tests in the cloud needs a plan.
+            Approving does not depend on it.
+          </p>
+          {selected.plan?.canPurchase ? (
+            <div className="space-y-1">
+              <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
+                {billingState === "opening" ? "Opening…" : "Choose a plan"}
+              </Button>
+              {billingState === "opened" ? (
+                <p className="text-xs text-muted-foreground">
+                  Billing opened in a new tab for {selected.organizationName}. Finish there; this page stays ready. Afterwards run
+                  {" "}<code>supercheck plan</code> to confirm.
+                </p>
+              ) : null}
+              {billingState === "blocked" ? (
+                <p className="text-xs text-muted-foreground">
+                  Your browser blocked the new tab.{" "}
+                  <a className="underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a>.
+                </p>
+              ) : null}
+              {billingState === "failed" ? (
+                <p role="alert" className="text-xs text-destructive">Could not open billing. Try again, or open it from the dashboard.</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan. Ask an owner of {selected.organizationName}.</p>
+          )}
+        </div>
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         Approving creates a CLI key for this project that expires in 90 days. It can do what your role
