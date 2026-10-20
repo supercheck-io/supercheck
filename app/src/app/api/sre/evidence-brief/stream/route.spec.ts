@@ -2,6 +2,16 @@
 
 import { NextRequest } from "next/server";
 
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {},
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
+
+
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
@@ -43,11 +53,26 @@ function request(origin = "https://app.supercheck.example") {
 
 describe("SRE evidence brief stream API", () => {
   beforeEach(() => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+    jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
     mockRateLimit.mockResolvedValue({ allowed: true });
   });
+
+  it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
+    "rejects direct model requests when %s denies access", async (guard) => {
+      jest.mocked(subscriptionService[guard]).mockRejectedValue(
+        new SubscriptionAccessDeniedError("Subscription required", "subscription_required"),
+      );
+      const response = await POST(new NextRequest("http://localhost/api/sre/evidence-brief/stream", {
+        method: "POST", body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000001" }),
+      }));
+      expect(response.status).toBe(402);
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
+    },
+  );
 
   it("rejects an explicit cross-origin request before auth or generation", async () => {
     const response = await POST(request("https://attacker.example"));
