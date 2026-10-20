@@ -6,16 +6,17 @@ const mockAllow = jest.fn();
 const mockLookup = jest.fn();
 const mockProjects = jest.fn();
 const mockMemberships = jest.fn();
+const mockOrgs = jest.fn();
 let enabled = true;
 
 jest.mock("next/navigation", () => ({ redirect: (u: string) => mockRedirect(u), useRouter: () => ({ refresh: jest.fn() }) }));
 jest.mock("next/headers", () => ({ headers: async () => new Headers() }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: (...a: unknown[]) => mockGetSession(...a) } } }));
 jest.mock("@/utils/db", () => ({
-  db: { select: () => ({ from: () => ({ where: () => mockMemberships() }) }) },
+  db: { select: (cols: Record<string, unknown>) => ({ from: () => ({ where: () => ("name" in cols ? mockOrgs() : mockMemberships()) }) }) },
 }));
-jest.mock("@/db/schema", () => ({ member: { organizationId: "o", userId: "u" } }));
-jest.mock("drizzle-orm", () => ({ eq: jest.fn() }));
+jest.mock("@/db/schema", () => ({ member: { organizationId: "o", userId: "u" }, organization: { id: "id", name: "name" } }));
+jest.mock("drizzle-orm", () => ({ eq: jest.fn(), inArray: jest.fn() }));
 jest.mock("@/lib/session", () => ({ getUserProjects: (...a: unknown[]) => mockProjects(...a) }));
 jest.mock("@/lib/rbac/client-permissions", () => ({ canManageAPIKeys: (r: string) => r !== "project_viewer" }));
 jest.mock("@/lib/auth/device-auth-rate-limit", () => ({
@@ -34,7 +35,7 @@ import DevicePage from "./page";
 const render_ = async (code?: string | string[]) => render(await DevicePage({ searchParams: Promise.resolve({ code }) }));
 const session = { user: { id: "u1", email: "me@example.com" } };
 const grant = { clientName: "supercheck-cli", cliVersion: "0.4.0", hostname: "laptop", requestIp: "203.0.113.9", expiresAt: new Date() };
-const project = (role: string, isDefault = false) => ({ id: "p", name: "P", organizationName: "Org", isDefault, role });
+const project = (role: string, isDefault = false) => ({ id: "p", name: "P", organizationId: "o1", isDefault, role });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -43,6 +44,7 @@ beforeEach(() => {
   mockAllow.mockResolvedValue(true);
   mockLookup.mockResolvedValue(grant);
   mockMemberships.mockResolvedValue([{ organizationId: "o1" }]);
+  mockOrgs.mockResolvedValue([{ id: "o1", name: "Acme Inc" }]);
   mockProjects.mockResolvedValue([project("project_admin", true)]);
 });
 
@@ -108,5 +110,6 @@ describe("/device page", () => {
     expect(screen.queryByText("P")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Acme Inc")).toBeInTheDocument();
   });
 });
