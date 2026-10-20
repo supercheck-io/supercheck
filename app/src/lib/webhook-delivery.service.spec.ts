@@ -29,6 +29,7 @@ it("accepts a 2xx response echoing the token in the verification header", async 
   expect(fetchPublicEndpoint).toHaveBeenCalledWith(
     endpoint,
     expect.objectContaining({ method: "POST", body: JSON.stringify(event) }),
+    4096,
   );
 });
 

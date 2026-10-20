@@ -177,3 +177,19 @@ describe("pinned public fetch", () => {
     ).rejects.toThrow("read failed");
   });
 });
+
+it("aborts a public response once the caller's byte limit is exceeded", async () => {
+  (mockLookup as jest.Mock).mockResolvedValueOnce([{ address: "203.0.114.10", family: 4 }]);
+  const request = Object.assign(new EventEmitter(), {
+    end: jest.fn(), write: jest.fn(),
+    destroy: jest.fn(function (error: Error) { request.emit("error", error); }),
+  });
+  (mockRequest as unknown as jest.Mock).mockImplementation((_url: URL, _options: unknown, onResponse: Function) => {
+    const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: {} });
+    onResponse(response);
+    queueMicrotask(() => { response.emit("data", Buffer.alloc(4097)); });
+    return request;
+  });
+  await expect(fetchPublicEndpoint("https://hooks.example.com", {}, 4096)).rejects.toThrow("exceeded 4096 bytes");
+  expect(request.destroy).toHaveBeenCalledTimes(1);
+});

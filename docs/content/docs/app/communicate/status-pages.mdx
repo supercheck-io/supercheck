@@ -223,7 +223,7 @@ validation and 10-second timeout as incident deliveries:
 ```
 
 Respond with any `2xx` status and echo the token in either the `x-supercheck-verification` response
-header or a JSON body field named `challenge`:
+header or a JSON body field named `challenge`. Keep the response within 4 KiB:
 
 ```json
 { "challenge": "<token from the request body>" }
@@ -231,8 +231,8 @@ header or a JSON body field named `challenge`:
 
 A `2xx` response without the matching token, a non-`2xx` response, or a timeout leaves the
 subscription pending. Pending subscriptions are listed as **Pending** under **Subscribers**; use the
-resend button there to issue a fresh 24-hour challenge. Only the SHA-256 hash of the challenge is
-stored. Existing webhook subscriptions created before ownership verification was introduced are
+resend button there to retry when the endpoint is ready. Activation also requires space within the
+page’s subscriber limit. Existing webhook subscriptions created before ownership verification was introduced are
 grandfathered as verified during the migration, so an upgrade does not stop live deliveries.
 
 Incident requests include an `X-Webhook-Signature` HMAC-SHA256 header over the raw JSON body. Events include
@@ -524,7 +524,7 @@ Configure page identity, custom domains, subscriptions, and branding. Settings a
 - **Reset** — Restores default colors and removes the logo and favicon immediately; it does not wait for **Save changes**
 
 </Tab>
-<Tab value="Notifications">
+<Tab value="Subscriptions">
 
 - **Page Subscriptions** — Allow visitors to subscribe to page updates
 - **Email, Webhook, and Slack Notifications** — Enable each supported subscriber channel independently
@@ -535,7 +535,7 @@ Configure page identity, custom domains, subscriptions, and branding. Settings a
 <Tab value="Custom Domains">
 
 Use a custom hostname such as `status.example.net`. Configure both DNS records shown in Settings, verify the page, then confirm HTTPS before sharing the URL.
-Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading summarizes the DNS rules. DNS ownership is checked daily. A verified custom domain is never detached or unverified automatically, including when the resolver returns `ENOTFOUND`, `ENODATA`, `EAI_AGAIN`, or a timeout, or when the records temporarily point elsewhere. The page keeps the hostname and the daily check keeps reporting; fix the DNS records to restore service. Only an operator changing the domain in settings removes it.
+Custom domains support CNAME subdomains only; apex domains are not supported. Expand **DNS records** under the **Custom domain** card to see the CNAME and TXT proof values. Before a hostname is entered, the panel shows example records; after it is saved, it shows the exact records and the verification status. The info icon next to the card heading summarizes the DNS rules. DNS ownership is checked daily. Failed checks are logged without removing the verified hostname. If DNS stops resolving or points elsewhere, fix the records to restore service. To remove the hostname, change it in Settings.
 
 #### Set Up a Custom Domain
 

@@ -137,6 +137,21 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
     }
 
     const result = await db.transaction(async (tx) => {
+      // Lock the component before the incident, matching reconciliation order.
+      // A manual resolve of an automatically detected incident must not be
+      // undone by the next reconciliation tick while the monitor is still down.
+      if (
+        validatedData.status === "resolved" &&
+        existingIncident.sourceComponentId
+      ) {
+        await tx
+          .update(statusPageComponents)
+          .set({ autoIncidentSuppressed: true, updatedAt: new Date() })
+          .where(
+            eq(statusPageComponents.id, existingIncident.sourceComponentId),
+          );
+      }
+
       // Update the incident status
       const [incident] = await tx
         .update(incidents)
@@ -160,20 +175,6 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
           ),
         )
         .returning();
-
-      // A manual resolve of an automatically detected incident must not be
-      // undone by the next reconciliation tick while the monitor is still down.
-      if (
-        validatedData.status === "resolved" &&
-        existingIncident.sourceComponentId
-      ) {
-        await tx
-          .update(statusPageComponents)
-          .set({ autoIncidentSuppressed: true, updatedAt: new Date() })
-          .where(
-            eq(statusPageComponents.id, existingIncident.sourceComponentId),
-          );
-      }
 
       // Create incident update
       const [update] = await tx

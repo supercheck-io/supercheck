@@ -248,7 +248,7 @@ export async function sendWebhookVerificationChallenge(
       },
       body: JSON.stringify(event),
       signal: AbortSignal.timeout(WEBHOOK_CONFIG.TIMEOUT_MS),
-    });
+    }, 4096);
 
     if (response.status < 200 || response.status >= 300) {
       return {

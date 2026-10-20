@@ -46,7 +46,8 @@ export async function initializeStatusPageScheduler() {
           if (!page.domain) continue;
           // Observability only: a DNS miss never unverifies or detaches a
           // published custom domain. The operator fixes the records.
-          await checkStatusPageDomain(page.domain, page.id);
+          const result = await checkStatusPageDomain(page.domain, page.id);
+          if (result !== "valid") console.warn("Status page custom domain DNS check failed", { statusPageId: page.id, result });
           await db
             .update(statusPages)
             .set({ customDomainLastCheckedAt: new Date() })

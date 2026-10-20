@@ -21,6 +21,7 @@ async function fetchPinnedEndpoint(
   input: string | URL,
   init: RequestInit = {},
   allowSelfHostedPrivateNetworks = false,
+  maxResponseBytes = MAX_RESPONSE_BYTES,
 ): Promise<Response> {
   const url = new URL(input);
 
@@ -73,8 +74,8 @@ async function fetchPinnedEndpoint(
 
         response.on("data", (chunk: Buffer) => {
           totalBytes += chunk.length;
-          if (totalBytes > MAX_RESPONSE_BYTES) {
-            request.destroy(new Error("Connector response exceeded 10 MiB"));
+          if (totalBytes > maxResponseBytes) {
+            request.destroy(new Error(`Connector response exceeded ${maxResponseBytes} bytes`));
             return;
           }
           chunks.push(chunk);
@@ -143,6 +144,7 @@ export function fetchConnectorEndpoint(
 export async function fetchPublicEndpoint(
   input: string | URL,
   init: RequestInit = {},
+  maxResponseBytes = MAX_RESPONSE_BYTES,
 ): Promise<Response> {
-  return fetchPinnedEndpoint(input, init, false);
+  return fetchPinnedEndpoint(input, init, false, maxResponseBytes);
 }
