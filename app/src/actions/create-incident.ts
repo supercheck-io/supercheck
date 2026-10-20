@@ -38,7 +38,9 @@ const createIncidentSchema = z.object({
     .default("investigating"),
   impact: z.enum(["none", "minor", "major", "critical"]).default("minor"),
   body: z.string().max(10000, "Body is too long").optional(),
-  affectedComponentIds: z.array(z.string().uuid()).default([]),
+  affectedComponentIds: z
+    .array(z.string().uuid())
+    .min(1, "Select at least one affected component"),
   componentStatus: z
     .enum([
       "operational",

@@ -555,15 +555,20 @@ export function SettingsTab({
     },
   ];
 
-  const normalizedCustomDomainValue = normalizeHostname(customDomainValue || "");
+  const normalizedCustomDomainValue = normalizeHostname(
+    customDomainValue || "",
+  );
   const savedCustomDomain = normalizeHostname(statusPage.customDomain || "");
-  const customDomainChanged =
-    normalizedCustomDomainValue !== savedCustomDomain;
+  const customDomainChanged = normalizedCustomDomainValue !== savedCustomDomain;
   const isSavedDomainInField =
-    Boolean(customDomainValue) && normalizedCustomDomainValue === savedCustomDomain;
-  const domainVerified = isSavedDomainInField && !!statusPage.customDomainVerified;
+    Boolean(customDomainValue) &&
+    normalizedCustomDomainValue === savedCustomDomain;
+  const domainVerified =
+    isSavedDomainInField && !!statusPage.customDomainVerified;
   const domainPending =
-    isSavedDomainInField && !!statusPage.customDomain && !statusPage.customDomainVerified;
+    isSavedDomainInField &&
+    !!statusPage.customDomain &&
+    !statusPage.customDomainVerified;
   const dnsHostname = customDomainValue || CUSTOM_DOMAIN_EXAMPLE_HOSTNAME;
 
   return (
@@ -743,8 +748,8 @@ export function SettingsTab({
               </InfoHintText>
               {isSelfHosted && (
                 <InfoHintText>
-                  Routing is automatic after verification. Origin TLS still needs
-                  a certificate for the custom hostname.
+                  Routing is automatic after verification. Origin TLS still
+                  needs a certificate for the custom hostname.
                 </InfoHintText>
               )}
             </InfoHint>
@@ -757,6 +762,8 @@ export function SettingsTab({
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
+              id="customDomain"
+              aria-label="Custom domain hostname"
               placeholder={CUSTOM_DOMAIN_EXAMPLE_HOSTNAME}
               {...register("customDomain")}
               disabled={!canUpdate}
@@ -775,7 +782,9 @@ export function SettingsTab({
                   Boolean(customDomainConfigMessage)
                 }
                 title={
-                  customDomainChanged ? "Save changes to enable verification" : ""
+                  customDomainChanged
+                    ? "Save changes to enable verification"
+                    : ""
                 }
                 className="shrink-0"
               >
@@ -829,106 +838,91 @@ export function SettingsTab({
           )}
 
           {domainPending && (
-            <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
-              Pending verification. Add the records below, then select Verify DNS.
+            <p
+              role="status"
+              className="text-sm text-amber-700 dark:text-amber-400"
+            >
+              Pending verification. Add the records below, then select Verify
+              DNS.
             </p>
           )}
 
           {!customDomainConfigMessage && (
-          <Collapsible open={dnsOpen} onOpenChange={setDnsOpen}>
-            <CollapsibleTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="-ml-2 h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
-              >
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 transition-transform duration-200",
-                    dnsOpen && "rotate-180",
-                  )}
-                />
-                DNS records
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 px-1.5 text-[10px] font-medium"
+            <Collapsible open={dnsOpen} onOpenChange={setDnsOpen}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
                 >
-                  2
-                </Badge>
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="mt-1 space-y-4 rounded-lg border bg-muted/30 p-4">
-                {customDomainConfigMessage ? (
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform duration-200",
+                      dnsOpen && "rotate-180",
+                    )}
+                  />
+                  DNS records
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 h-5 px-1.5 text-[10px] font-medium"
+                  >
+                    2
+                  </Badge>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-1 space-y-4 rounded-lg border bg-muted/30 p-4">
                   <p className="text-sm text-muted-foreground">
-                    Custom domains stay unavailable until your deployment
-                    resolves a public hostname for status-page routing. Set{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                      STATUS_PAGE_DOMAIN
-                    </code>{" "}
-                    to a real DNS hostname first. In the Docker Compose secure
-                    and external examples, the target is derived automatically,
-                    usually as{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                      cname.STATUS_PAGE_DOMAIN
-                    </code>
-                    .
+                    {customDomainValue
+                      ? "Create these records at your DNS provider."
+                      : "Example records. Enter and save a hostname above to see your exact values."}
                   </p>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      {customDomainValue
-                        ? "Create these records at your DNS provider."
-                        : "Example records. Enter and save a hostname above to see your exact values."}
-                    </p>
 
-                    <div className="space-y-2">
-                      <DnsRecord
-                        type="CNAME"
-                        purpose="Routes traffic"
-                        fields={[
-                          { label: "Host", value: dnsHostname },
-                          {
-                            label: "Target",
-                            value: effectiveStatusPageCnameTarget,
-                          },
-                        ]}
-                      />
-                      <DnsRecord
-                        type="TXT"
-                        purpose="Proves ownership"
-                        fields={[
-                          { label: "Name", value: domainOwnership.name },
-                          { label: "Value", value: domainOwnership.value },
-                        ]}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <DnsRecord
+                      type="CNAME"
+                      purpose="Routes traffic"
+                      fields={[
+                        { label: "Host", value: dnsHostname },
+                        {
+                          label: "Target",
+                          value: effectiveStatusPageCnameTarget,
+                        },
+                      ]}
+                    />
+                    <DnsRecord
+                      type="TXT"
+                      purpose="Proves ownership"
+                      fields={[
+                        { label: "Name", value: domainOwnership.name },
+                        { label: "Value", value: domainOwnership.value },
+                      ]}
+                    />
+                  </div>
 
-                    <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                      <li>
-                        Add both records and keep them on DNS only (no proxy)
-                        while verifying.
-                      </li>
-                      <li>
-                        Wait for propagation. The CNAME target must already
-                        resolve publicly.
-                      </li>
-                      <li>
-                        Select Verify DNS, then publish the page before opening
-                        the URL.
-                      </li>
-                    </ol>
+                  <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                    <li>
+                      Add both records and keep them on DNS only (no proxy)
+                      while verifying.
+                    </li>
+                    <li>
+                      Wait for propagation. The CNAME target must already
+                      resolve publicly.
+                    </li>
+                    <li>
+                      Select Verify DNS, then publish the page before opening
+                      the URL.
+                    </li>
+                  </ol>
 
-                    <p className="text-xs text-muted-foreground">
-                      Keep the TXT record for future ownership checks.{" "}
-                      {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
-                    </p>
-                  </>
-                )}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+                  <p className="text-xs text-muted-foreground">
+                    Keep the TXT record for future ownership checks.{" "}
+                    {STATUS_PAGE_CUSTOM_DOMAIN_RECORD_TYPE_GUIDANCE}
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </CardContent>
       </Card>

@@ -633,7 +633,13 @@ export function ComponentFormDialog({
                           valueAsNumber: true,
                         })}
                         disabled={isSubmitting}
+                        aria-invalid={Boolean(errors.failureThreshold)}
                       />
+                      {errors.failureThreshold && (
+                        <p className="text-xs text-red-500">
+                          Enter a whole number from 1 to 100.
+                        </p>
+                      )}
                     </div>
                   </div>
 

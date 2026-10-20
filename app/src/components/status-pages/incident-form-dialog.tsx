@@ -449,7 +449,9 @@ export function IncidentFormDialog({
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <Label>Affected Components *</Label>
+                <Label id="affected-components-label">
+                  Affected Components *
+                </Label>
                 <span className="text-xs text-muted-foreground">
                   {affectedComponentIds.length} selected
                 </span>
@@ -458,7 +460,16 @@ export function IncidentFormDialog({
                 control={control}
                 name="affectedComponentIds"
                 render={({ field }) => (
-                  <div className="max-h-44 overflow-y-auto rounded-lg border">
+                  <div
+                    role="group"
+                    aria-labelledby="affected-components-label"
+                    aria-describedby={
+                      errors.affectedComponentIds
+                        ? "affected-components-error"
+                        : undefined
+                    }
+                    className="max-h-44 overflow-y-auto rounded-lg border"
+                  >
                     {components.length === 0 ? (
                       <p className="px-3 py-6 text-center text-xs text-muted-foreground">
                         No components available. Add a component first.
@@ -498,7 +509,11 @@ export function IncidentFormDialog({
                 )}
               />
               {errors.affectedComponentIds && (
-                <p className="text-xs text-red-500">
+                <p
+                  id="affected-components-error"
+                  role="alert"
+                  className="text-xs text-red-500"
+                >
                   {errors.affectedComponentIds.message}
                 </p>
               )}
@@ -634,7 +649,16 @@ export function IncidentFormDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmitting || components.length === 0}
+                title={
+                  components.length === 0
+                    ? "Add a component before creating an incident"
+                    : undefined
+                }
+              >
                 {isSubmitting && (
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 )}

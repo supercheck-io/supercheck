@@ -456,13 +456,13 @@ export function StatusPageDetail({
                       const allMonitors = components.flatMap((c) =>
                         c.monitors.map((monitor) => toOverviewMonitor(monitor, c.name))
                       );
-  
+
                       // Filter out duplicate monitors by ID
                       const uniqueMonitors = allMonitors.filter(
                         (monitor, index, self) =>
                           index === self.findIndex((m) => m.id === monitor.id)
                       );
-  
+
                       return uniqueMonitors;
                     })()}
                     isLoading={false}
