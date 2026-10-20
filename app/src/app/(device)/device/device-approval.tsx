@@ -60,6 +60,9 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   // with several organizations could pay for the wrong one.
   async function openBilling() {
     setBillingState("opening");
+    // Open synchronously inside the click handler (browsers block window.open after an await),
+    // then navigate once the organization switch has succeeded. Not "noopener": that always returns null.
+    const tab = window.open("about:blank", "_blank");
     try {
       const response = await fetch("/api/projects/switch", {
         method: "POST",
@@ -67,14 +70,19 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         body: JSON.stringify({ projectId: selected.id }),
       });
       if (!response.ok) throw new Error("switch failed");
-      // Not the "noopener" feature: with it window.open always returns null, which would look like a blocked popup.
-      // The page is same-origin; dropping `opener` gives the same isolation while keeping the blocked check meaningful.
-      const tab = window.open("/subscribe", "_blank");
-      if (tab) {
-        try { tab.opener = null; } catch { /* cross-origin restrictions: ignore */ }
+      let opened = false;
+      if (tab && !tab.closed) {
+        try {
+          tab.opener = null;
+          tab.location.href = "/subscribe";
+          opened = true;
+        } catch {
+          // Tab closed or navigation refused after a successful switch: offer the fallback link instead.
+        }
       }
-      setBillingState(tab ? "opened" : "blocked");
+      setBillingState(opened ? "opened" : "blocked");
     } catch {
+      tab?.close();
       setBillingState("failed");
     }
   }

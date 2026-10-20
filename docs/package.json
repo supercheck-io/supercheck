@@ -4,7 +4,7 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=24 <25"
   },
   "scripts": {
     "build": "npm run check:openapi && npm run check:diagrams && next build",
