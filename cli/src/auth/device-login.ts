@@ -119,7 +119,7 @@ export async function loginStep(apiUrl: string, deps: LoginDeps): Promise<LoginO
         deps.store.clear()
         throw new DeviceLoginError(
           'DEVICE_CODE_CONSUMED',
-          'This login was already completed, but the credential was not received (for example a dropped connection). Run `supercheck login --reauth` to start over; you can revoke the unused key under CLI tokens in the dashboard.',
+          'This login code is unknown or was already used. If you approved it but this machine never received the credential (for example a dropped connection), run `supercheck login --reauth` and revoke the unused key under CLI tokens in the dashboard.',
         )
       case 'token_limit':
         // Grant stays approved: the user can free a slot and simply re-run login.

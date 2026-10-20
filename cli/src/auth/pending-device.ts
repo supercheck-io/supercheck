@@ -1,5 +1,7 @@
 import Conf from 'conf'
-import { closeSync, openSync, rmSync, statSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { CLIError, ExitCode } from '../utils/errors.js'
 import { dirname, join } from 'node:path'
 
 /** A not-yet-approved device grant. `deviceCode` is bearer-equivalent: keep it out of output and the repo. */
@@ -22,7 +24,9 @@ export interface PendingStore {
   withLock<T>(fn: () => Promise<T>): Promise<T>
 }
 
-const LOCK_STALE_MS = 30_000
+// Must exceed the longest hold (code request + poll + verification, each with its own timeout).
+const LOCK_STALE_MS = 180_000
+const LOCK_WAIT_ATTEMPTS = 200
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
@@ -38,11 +42,13 @@ export function createPendingStore(options: { cwd?: string } = {}): PendingStore
   })
   const lockPath = join(dirname(conf.path), 'device-login.lock')
 
-  async function acquire(): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt++) {
+  /** Returns an ownership token; release only removes the lock if it is still ours. */
+  async function acquire(): Promise<string> {
+    const owner = randomBytes(8).toString('hex')
+    for (let attempt = 0; attempt < LOCK_WAIT_ATTEMPTS; attempt++) {
       try {
-        closeSync(openSync(lockPath, 'wx', 0o600))
-        return
+        writeFileSync(lockPath, owner, { flag: 'wx', mode: 0o600 })
+        return owner
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         try {
@@ -51,7 +57,13 @@ export function createPendingStore(options: { cwd?: string } = {}): PendingStore
         await sleep(50)
       }
     }
-    throw new Error('Another `supercheck login` is in progress. Try again in a moment.')
+    throw new CLIError('Another `supercheck login` is in progress. Wait a moment and try again.', ExitCode.GeneralError)
+  }
+
+  function release(owner: string): void {
+    try {
+      if (readFileSync(lockPath, 'utf8') === owner) rmSync(lockPath, { force: true })
+    } catch { /* already gone */ }
   }
 
   return {
@@ -62,8 +74,8 @@ export function createPendingStore(options: { cwd?: string } = {}): PendingStore
     save(pending) { conf.set('pending', pending) },
     clear() { conf.delete('pending') },
     async withLock(fn) {
-      await acquire()
-      try { return await fn() } finally { rmSync(lockPath, { force: true }) }
+      const owner = await acquire()
+      try { return await fn() } finally { release(owner) }
     },
   }
 }

@@ -52,7 +52,7 @@ async function postForm(
   fetchImpl: FetchLike,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const base = assertSafeApiUrl(apiUrl)
-  const url = new URL(path, base.origin)
+  const url = new URL(`${base.origin}${base.pathname.replace(/\/+$/, '')}${path}`)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
@@ -83,6 +83,12 @@ async function postForm(
 
 const clamp = (value: unknown, min: number, max: number, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.floor(value))) : fallback
+
+/** Base URL keeping any sub-path (self-hosted behind a prefix); query/hash/credentials are dropped. */
+export function apiBase(raw: string): string {
+  const url = assertSafeApiUrl(raw)
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+}
 
 function sameOriginUrl(raw: unknown, api: URL): string | undefined {
   if (typeof raw !== 'string') return undefined
@@ -161,6 +167,6 @@ export async function pollDeviceToken(apiUrl: string, deviceCode: string, fetchI
     case 'device_auth_disabled': return { kind: 'disabled' }
     default:
       if (status === 429) return { kind: 'slow_down', interval: interval ?? 30 }
-      throw new ApiRequestError(`Device login failed (${status}${typeof body.error === 'string' ? `: ${body.error.slice(0, 40)}` : ''})`, status)
+      throw new ApiRequestError(`Device login failed (${status}${typeof body.error === 'string' ? `: ${body.error.replace(/[^A-Za-z0-9_ .-]/g, '').slice(0, 40)}` : ''})`, status)
   }
 }

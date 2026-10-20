@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { getApiClient } from '../api/client.js'
 import { getStoredBaseUrl, getToken, setCredentials } from '../auth/store.js'
-import { assertSafeApiUrl, pollDeviceToken, requestDeviceCode } from '../auth/device-flow.js'
+import { apiBase, pollDeviceToken, requestDeviceCode } from '../auth/device-flow.js'
 import { DeviceLoginError, loginStep, loginWait, type LoginDeps, type LoginOutcome } from '../auth/device-login.js'
 import { createPendingStore } from '../auth/pending-device.js'
 import { getOutputFormat } from '../output/formatter.js'
@@ -109,11 +109,18 @@ function reportAuthenticated(outcome: Extract<LoginOutcome, { state: 'authentica
 
 export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?: LoginDeps): Promise<void> {
   const json = getOutputFormat() === 'json'
-  const apiUrl = assertSafeApiUrl(options.url ?? getStoredBaseUrl() ?? DEFAULT_API_URL).origin
+  const requestedUrl = options.url ?? getStoredBaseUrl() ?? DEFAULT_API_URL
+  const apiUrl = apiBase(requestedUrl)
+  const envToken = Boolean(process.env.SUPERCHECK_TOKEN?.trim())
 
-  // Existing, working credentials win unless the user explicitly re-authenticates.
+  // Existing, working credentials win unless the user explicitly re-authenticates. The stored
+  // key is only ever sent to the host it was issued for, never to an arbitrary --url.
   const existing = getToken()
-  if (existing && !options.reauth) {
+  const knownBase = getStoredBaseUrl() ?? DEFAULT_API_URL
+  const sameHost = (() => {
+    try { return new URL(knownBase).origin === new URL(apiUrl).origin } catch { return false }
+  })()
+  if (existing && !options.reauth && sameHost) {
     try {
       const { data } = await getApiClient({ baseUrl: apiUrl, token: existing }).get<{
         organization?: { id: string; name: string | null; slug: string | null }
@@ -133,8 +140,12 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
       // Stored credential is no longer valid: fall through to a fresh browser login.
     }
   }
-  if (options.reauth && process.env.SUPERCHECK_TOKEN) {
-    logger.warn('SUPERCHECK_TOKEN is set and takes precedence over a stored login. Unset it to use the new credential.')
+  if (envToken) {
+    // A new browser login would be stored but never used: SUPERCHECK_TOKEN always wins.
+    throw new CLIError(
+      'AUTH_REQUIRED: SUPERCHECK_TOKEN is set and takes precedence over any stored login, and it was rejected or reauthentication was requested. Unset it (or replace it with a valid CLI token), then run `supercheck login` again.',
+      ExitCode.AuthError,
+    )
   }
 
   const deps = depsOverride ?? defaultDeps()
@@ -151,6 +162,8 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
     else {
       printInstructions(outcome)
       logger.info('Run `supercheck login` again after approving to finish (or use --wait).')
+      // Not signed in yet: scripts such as `supercheck login && supercheck deploy` must not continue.
+      throw new CLIError('AUTHORIZATION_PENDING: Approve the login in your browser, then run `supercheck login` again.', ExitCode.AuthError)
     }
     return
   }

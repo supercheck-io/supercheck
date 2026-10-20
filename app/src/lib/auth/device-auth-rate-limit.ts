@@ -14,7 +14,14 @@ export const DEVICE_AUTH_LIMITS = {
   codeIssuePerIp: (ip: string): DeviceAuthLimit => ({
     scope: "code-ip",
     subject: ip,
-    max: 10,
+    // Without a trustworthy client IP everyone shares one bucket; keep it generous
+    // and rely on the global cap so one caller cannot lock the instance out.
+    max: ip === "unknown" ? 120 : 10,
+  }),
+  codeIssueGlobal: (): DeviceAuthLimit => ({
+    scope: "code-global",
+    subject: "all",
+    max: 600,
   }),
   tokenPollPerDevice: (deviceCodeHash: string): DeviceAuthLimit => ({
     scope: "token-device",
@@ -24,7 +31,7 @@ export const DEVICE_AUTH_LIMITS = {
   tokenPollPerIp: (ip: string): DeviceAuthLimit => ({
     scope: "token-ip",
     subject: ip,
-    max: 600,
+    max: ip === "unknown" ? 6000 : 600,
   }),
   verifyPerUser: (userId: string): DeviceAuthLimit => ({
     scope: "verify-user",
@@ -34,7 +41,7 @@ export const DEVICE_AUTH_LIMITS = {
   verifyPerIp: (ip: string): DeviceAuthLimit => ({
     scope: "verify-ip",
     subject: ip,
-    max: 60,
+    max: ip === "unknown" ? 600 : 60,
   }),
 } as const;
 
@@ -50,7 +57,7 @@ export async function allowDeviceAuthRequest(
     const redis = await getRedisConnection();
     const keys = limits.map(
       (l) =>
-        `supercheck:device-auth:${l.scope}:${createHash("sha256")
+        `supercheck:{device-auth}:${l.scope}:${createHash("sha256")
           .update(l.subject)
           .digest("hex")
           .slice(0, 32)}`,

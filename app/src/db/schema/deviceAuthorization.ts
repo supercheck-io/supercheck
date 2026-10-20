@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -77,6 +78,10 @@ export const deviceAuthorizations = pgTable(
     ),
     expiresAtIdx: index("device_authorizations_expires_at_idx").on(
       table.expiresAt,
+    ),
+    statusCheck: check(
+      "device_authorizations_status_check",
+      sql`${table.status} IN ('pending', 'approved', 'denied', 'consumed')`,
     ),
   }),
 );

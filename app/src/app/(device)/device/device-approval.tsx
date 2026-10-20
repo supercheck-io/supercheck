@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
@@ -42,6 +43,10 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   );
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [typedCode, setTypedCode] = useState("");
+  // The code arrives pre-filled in the URL, so a hurried click could approve a stranger's request.
+  // Require the person to retype what their terminal shows.
+  const codeMatches = typedCode.toUpperCase().replace(/[^A-Z0-9]/g, "") === userCode.replace("-", "");
 
   async function decide(kind: "approve" | "deny") {
     setPhase("submitting");
@@ -121,6 +126,23 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         </RadioGroup>
       </fieldset>
 
+      <div className="space-y-1">
+        <Label htmlFor="confirm-code" className="text-sm font-medium">
+          Type the code shown in your terminal to confirm
+        </Label>
+        <Input
+          id="confirm-code"
+          value={typedCode}
+          onChange={(e) => setTypedCode(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={12}
+          placeholder="XXXX-XXXX"
+          className="font-mono tracking-widest"
+          disabled={busy}
+        />
+      </div>
+
       <p className="text-xs text-muted-foreground">
         Approving creates a CLI key for this project that expires in 90 days. It can do what your role
         allows in this project and can be revoked any time under CLI tokens.
@@ -129,7 +151,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
       <div className="flex gap-2">
-        <Button className="flex-1" disabled={busy} onClick={() => decide("approve")}>
+        <Button className="flex-1" disabled={busy || !codeMatches} onClick={() => decide("approve")}>
           {busy ? "Working…" : "Approve"}
         </Button>
         <Button variant="outline" className="flex-1" disabled={busy} onClick={() => decide("deny")}>

@@ -39,6 +39,8 @@ const store = new Conf<AuthData>({
   },
   // Static obfuscation key — see SECURITY NOTE above.
   encryptionKey: 'supercheck-cli-v1',
+  // The file holds a bearer credential: owner read/write only (rewritten atomically on every save).
+  configFileMode: 0o600,
 })
 
 /**

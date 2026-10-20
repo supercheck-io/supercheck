@@ -28,7 +28,10 @@ export async function POST(request: NextRequest) {
   if (disabled) return disabled;
 
   const ip = getClientIP(request.headers);
-  if (!(await allowDeviceAuthRequest([DEVICE_AUTH_LIMITS.codeIssuePerIp(ip)]))) {
+  if (!(await allowDeviceAuthRequest([
+      DEVICE_AUTH_LIMITS.codeIssuePerIp(ip),
+      DEVICE_AUTH_LIMITS.codeIssueGlobal(),
+    ]))) {
     return deviceJson({ error: "rate_limited" }, 429, { "Retry-After": "60" });
   }
 

@@ -22,6 +22,7 @@ jest.mock("@/lib/auth/device-auth-rate-limit", () => ({
   allowDeviceAuthRequest: (...a: unknown[]) => mockAllow(...a),
   DEVICE_AUTH_LIMITS: {
     codeIssuePerIp: () => ({}),
+    codeIssueGlobal: () => ({}),
     tokenPollPerDevice: () => ({}),
     tokenPollPerIp: () => ({}),
     verifyPerUser: () => ({}),
@@ -112,6 +113,23 @@ describe("POST /code", () => {
     const res = await codeRoute.POST(post("/c", { client_id: "supercheck-cli" }));
     expect(res.status).toBe(429);
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("request body limits", () => {
+  it("rejects oversized bodies before parsing", async () => {
+    const big = "a".repeat(5000);
+    const res = await tokenRoute.POST(
+      post("/t", { device_code: big, client_id: "supercheck-cli", grant_type: GRANT_TYPE }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  it("applies the per-IP limit to /token before reading the body", async () => {
+    mockAllow.mockResolvedValueOnce(false);
+    const res = await tokenRoute.POST(post("/t", { grant_type: GRANT_TYPE }));
+    expect(res.status).toBe(429);
   });
 });
 

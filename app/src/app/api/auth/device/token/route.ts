@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
   const disabled = guardDeviceAuthEnabled();
   if (disabled) return disabled;
 
+  const ip = getClientIP(request.headers);
+  if (!(await allowDeviceAuthRequest([DEVICE_AUTH_LIMITS.tokenPollPerIp(ip)]))) {
+    return deviceJson({ error: "slow_down", interval: 30 }, 429, { "Retry-After": "30" });
+  }
+
   const body = await readDeviceBody(request);
   if (!body || !body.device_code || !body.client_id) {
     return deviceJson({ error: "invalid_request" }, 400);
@@ -36,10 +41,8 @@ export async function POST(request: NextRequest) {
     return deviceJson({ error: "unsupported_grant_type" }, 400);
   }
 
-  const ip = getClientIP(request.headers);
   const allowed = await allowDeviceAuthRequest([
     DEVICE_AUTH_LIMITS.tokenPollPerDevice(hashDeviceCode(body.device_code)),
-    DEVICE_AUTH_LIMITS.tokenPollPerIp(ip),
   ]);
   if (!allowed) {
     return deviceJson({ error: "slow_down", interval: 30 }, 429, {
@@ -67,7 +70,13 @@ export async function POST(request: NextRequest) {
       organizationId: result.context.organization.id,
       action: "cli_token_created",
       resource: "api_key",
-      metadata: { via: "device_authorization", projectId: result.context.project.id },
+      resourceId: result.apiKeyId,
+      metadata: {
+        via: "device_authorization",
+        tokenName: result.keyName,
+        projectId: result.context.project.id,
+        expiresInSeconds: result.expiresIn,
+      },
       success: true,
     });
     logger.info(

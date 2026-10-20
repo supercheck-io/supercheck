@@ -89,7 +89,8 @@ const METADATA_LIMITS = {
   hostname: 64,
 } as const;
 
-const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g;
+const CONTROL_CHARS =
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\u061c\ufeff]/g;
 
 export function sanitizeClientMetadata(
   raw: unknown,
@@ -242,6 +243,16 @@ export async function approveDeviceGrant(input: {
   now?: Date;
 }): Promise<DecisionResult> {
   const now = input.now ?? new Date();
+  // Resolved before the transaction: it issues several queries on the shared pool,
+  // and doing that while holding a pooled connection + row lock can exhaust the pool.
+  const permissionContext = await resolveProjectPermissionContext(
+    input.userId,
+    input.projectId,
+  );
+  const allowed =
+    !!permissionContext &&
+    checkPermissionWithContext("apiKey", "create", permissionContext);
+
   return db.transaction(async (tx): Promise<DecisionResult> => {
     const grant = await lockGrantByUserCode(tx, input.userCode);
     if (!grant) return { ok: false, reason: "invalid_code" };
@@ -251,14 +262,7 @@ export async function approveDeviceGrant(input: {
       return { ok: false, reason: "too_many_attempts" };
     }
 
-    const permissionContext = await resolveProjectPermissionContext(
-      input.userId,
-      input.projectId,
-    );
-    if (
-      !permissionContext ||
-      !checkPermissionWithContext("apiKey", "create", permissionContext)
-    ) {
+    if (!allowed) {
       const attempts = grant.verificationAttempts + 1;
       await tx
         .update(deviceAuthorizations)
@@ -300,17 +304,15 @@ export async function denyDeviceGrant(input: {
   return db.transaction(async (tx): Promise<DecisionResult> => {
     const grant = await lockGrantByUserCode(tx, input.userCode);
     if (!grant) return { ok: false, reason: "invalid_code" };
-    if (grant.status !== "pending") return { ok: false, reason: "not_pending" };
+    // An approval can still be revoked until the CLI exchanges it.
+    if (grant.status !== "pending" && grant.status !== "approved") {
+      return { ok: false, reason: "not_pending" };
+    }
     if (grant.expiresAt <= now) return { ok: false, reason: "expired" };
     await tx
       .update(deviceAuthorizations)
       .set({ status: "denied", updatedAt: now })
-      .where(
-        and(
-          eq(deviceAuthorizations.id, grant.id),
-          eq(deviceAuthorizations.status, "pending"),
-        ),
-      );
+      .where(eq(deviceAuthorizations.id, grant.id));
     return { ok: true };
   });
 }
@@ -342,6 +344,8 @@ export type DeviceTokenResult =
   | {
       ok: true;
       accessToken: string;
+      apiKeyId: string;
+      keyName: string;
       expiresIn: number;
       context: {
         user: { id: string; name: string | null; email: string };
@@ -365,13 +369,29 @@ export async function exchangeDeviceCode(input: {
     return { ok: false, error: "invalid_client" };
   }
 
+  // Permission lookups use the shared pool, so they run before the transaction
+  // (never while holding a pooled connection + row lock). The transaction below
+  // re-checks that the grant is still approved for the same user and project.
+  const deviceCodeHash = hashDeviceCode(input.deviceCode);
+  const [peek] = await db
+    .select({
+      status: deviceAuthorizations.status,
+      userId: deviceAuthorizations.approvedUserId,
+      projectId: deviceAuthorizations.approvedProjectId,
+    })
+    .from(deviceAuthorizations)
+    .where(eq(deviceAuthorizations.deviceCodeHash, deviceCodeHash))
+    .limit(1);
+  const peekedPermission =
+    peek?.status === "approved" && peek.userId && peek.projectId
+      ? await resolveProjectPermissionContext(peek.userId, peek.projectId)
+      : undefined;
+
   return db.transaction(async (tx): Promise<DeviceTokenResult> => {
     const [grant] = await tx
       .select()
       .from(deviceAuthorizations)
-      .where(
-        eq(deviceAuthorizations.deviceCodeHash, hashDeviceCode(input.deviceCode)),
-      )
+      .where(eq(deviceAuthorizations.deviceCodeHash, deviceCodeHash))
       .for("update")
       .limit(1);
 
@@ -412,10 +432,19 @@ export async function exchangeDeviceCode(input: {
     if (!grant.approvedUserId || !grant.approvedProjectId) {
       return { ok: false, error: "invalid_grant" };
     }
-    const permissionContext = await resolveProjectPermissionContext(
-      grant.approvedUserId,
-      grant.approvedProjectId,
-    );
+    if (
+      peek?.status !== "approved" ||
+      peek.userId !== grant.approvedUserId ||
+      peek.projectId !== grant.approvedProjectId
+    ) {
+      // Approved between our peek and the lock: ask the client to poll again.
+      return {
+        ok: false,
+        error: "authorization_pending",
+        interval: grant.pollIntervalSeconds,
+      };
+    }
+    const permissionContext = peekedPermission;
     if (
       !permissionContext ||
       !checkPermissionWithContext("apiKey", "create", permissionContext)
@@ -497,6 +526,8 @@ export async function exchangeDeviceCode(input: {
     return {
       ok: true,
       accessToken: issued.key.plaintext,
+      apiKeyId: issued.key.id,
+      keyName: issued.key.name,
       expiresIn: issued.key.expiresAt
         ? Math.max(0, Math.floor((issued.key.expiresAt.getTime() - now.getTime()) / 1000))
         : DEVICE_KEY_TTL_SECONDS,

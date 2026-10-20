@@ -286,6 +286,34 @@ describe("device authorization lifecycle", () => {
   });
 });
 
+describe("connection pool safety", () => {
+  it("does not self-deadlock concurrent exchanges on a 2-connection pool", async () => {
+    const tiny = postgres(process.env.TEST_DATABASE_URL!.replace(/\/[^/]*$/, `/${dbName}`), {
+      max: 2,
+      onnotice: () => {},
+    });
+    const original = mockDatabase;
+    mockDatabase = drizzle(tiny, { schema });
+    try {
+      const a = await newGrant();
+      const b = await newGrant();
+      await approveDeviceGrant({ userCode: a.userCode, userId: ownerId, projectId });
+      await approveDeviceGrant({ userCode: b.userCode, userId: ownerId, projectId });
+      const results = await Promise.race([
+        Promise.all([
+          exchangeDeviceCode({ deviceCode: a.deviceCode, clientId: DEVICE_CLIENT_ID }),
+          exchangeDeviceCode({ deviceCode: b.deviceCode, clientId: DEVICE_CLIENT_ID }),
+        ]),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("pool deadlock")), 10_000)),
+      ]);
+      expect(results.every((r) => r.ok)).toBe(true);
+    } finally {
+      mockDatabase = original;
+      await tiny.end({ timeout: 5 });
+    }
+  }, 20_000);
+});
+
 describe("user code normalisation", () => {
   it("accepts case/hyphen/space variants and rejects ambiguous characters", () => {
     expect(normalizeUserCode("bcdf-ghjk")).toBe("BCDFGHJK");

@@ -10,6 +10,7 @@ import { ChatwootWidget, resetChatwootSession } from "./chatwoot-widget";
 const HIDDEN_ROUTES = [
     "/notification-", // notification-monitor, notification-run
     "/status/",       // public status pages
+    "/device",        // CLI consent page: no third-party scripts, code is in the URL
     "/sign-in",       // auth pages
     "/sign-up",
     "/forgot-password",
