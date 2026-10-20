@@ -6,6 +6,7 @@ import { auth } from "@/utils/auth";
 import { db } from "@/utils/db";
 import { member, organization } from "@/db/schema";
 import { getUserProjects } from "@/lib/session";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { canManageAPIKeys } from "@/lib/rbac/client-permissions";
 import {
   isDeviceAuthEnabled,
@@ -122,7 +123,7 @@ export default async function DevicePage({
   }
 
   const memberships = await db
-    .select({ organizationId: member.organizationId })
+    .select({ organizationId: member.organizationId, role: member.role })
     .from(member)
     .where(eq(member.userId, userId));
   const projectGroups = await Promise.all(
@@ -136,6 +137,19 @@ export default async function DevicePage({
         .where(inArray(organization.id, orgIds))
     : [];
   const orgNames = new Map(orgRows.map((o) => [o.id, o.name]));
+  const ownedOrgs = new Set(memberships.filter((m) => m.role === "org_owner").map((m) => m.organizationId));
+  // Plan state per organization. Self-hosted installs always report an active plan, so the plan step only
+  // appears where billing applies. A failed lookup is "unknown" and shows nothing (the server enforces plans anyway).
+  const planByOrg = new Map<string, boolean | null>();
+  await Promise.all(
+    orgIds.map(async (id) => {
+      try {
+        planByOrg.set(id, (await subscriptionService.getSubscriptionAccessStatus(id)).isActive);
+      } catch {
+        planByOrg.set(id, null);
+      }
+    }),
+  );
   const options: DeviceProjectOption[] = projectGroups
     .flat()
     .filter((p) => p.role && canManageAPIKeys(p.role))
@@ -144,6 +158,7 @@ export default async function DevicePage({
       name: p.name,
       organizationName: p.organizationName ?? orgNames.get(p.organizationId) ?? "Organization",
       isDefault: p.isDefault,
+      plan: { active: planByOrg.get(p.organizationId) ?? null, canPurchase: ownedOrgs.has(p.organizationId) },
     }));
 
   if (options.length === 0) {

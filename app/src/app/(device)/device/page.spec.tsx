@@ -7,6 +7,7 @@ const mockLookup = jest.fn();
 const mockProjects = jest.fn();
 const mockMemberships = jest.fn();
 const mockOrgs = jest.fn();
+const mockAccess = jest.fn();
 let enabled = true;
 
 jest.mock("next/navigation", () => ({ redirect: (u: string) => mockRedirect(u), useRouter: () => ({ refresh: jest.fn() }) }));
@@ -18,6 +19,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/db/schema", () => ({ member: { organizationId: "o", userId: "u" }, organization: { id: "id", name: "name" } }));
 jest.mock("drizzle-orm", () => ({ eq: jest.fn(), inArray: jest.fn() }));
 jest.mock("@/lib/session", () => ({ getUserProjects: (...a: unknown[]) => mockProjects(...a) }));
+jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { getSubscriptionAccessStatus: (...a: unknown[]) => mockAccess(...a) } }));
 jest.mock("@/lib/rbac/client-permissions", () => ({ canManageAPIKeys: (r: string) => r !== "project_viewer" }));
 jest.mock("@/lib/auth/device-auth-rate-limit", () => ({
   allowDeviceAuthRequest: (...a: unknown[]) => mockAllow(...a),
@@ -43,7 +45,8 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue(session);
   mockAllow.mockResolvedValue(true);
   mockLookup.mockResolvedValue(grant);
-  mockMemberships.mockResolvedValue([{ organizationId: "o1" }]);
+  mockMemberships.mockResolvedValue([{ organizationId: "o1", role: "org_owner" }]);
+  mockAccess.mockResolvedValue({ isActive: true });
   mockOrgs.mockResolvedValue([{ id: "o1", name: "Acme Inc" }]);
   mockProjects.mockResolvedValue([project("project_admin", true)]);
 });
@@ -111,5 +114,30 @@ describe("/device page", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
     expect(screen.getByText("Acme Inc")).toBeInTheDocument();
+  });
+
+  it("shows the plan notice for an organization without an active plan, and lets only owners purchase", async () => {
+    mockAccess.mockResolvedValue({ isActive: false });
+    await render_("BCDF-GHJK");
+    expect(screen.getByRole("note")).toHaveTextContent(/Acme Inc has no active plan/i);
+    expect(screen.getByRole("button", { name: "Choose a plan" })).toBeInTheDocument();
+  });
+
+  it("does not offer purchase to a member who is not the organization owner", async () => {
+    mockAccess.mockResolvedValue({ isActive: false });
+    mockMemberships.mockResolvedValue([{ organizationId: "o1", role: "org_admin" }]);
+    await render_("BCDF-GHJK");
+    expect(screen.getByRole("note")).toHaveTextContent(/only an organization owner/i);
+    expect(screen.queryByRole("button", { name: "Choose a plan" })).not.toBeInTheDocument();
+  });
+
+  it("shows no notice when the plan is active or the lookup fails", async () => {
+    await render_("BCDF-GHJK");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    mockAccess.mockRejectedValue(new Error("polar down"));
+    document.body.innerHTML = "";
+    await render_("BCDF-GHJK");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
   });
 });
