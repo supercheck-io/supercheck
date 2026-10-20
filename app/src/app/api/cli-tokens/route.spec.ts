@@ -5,6 +5,7 @@ const mockIssue = jest.fn();
 const mockRequireAuth = jest.fn();
 const mockCheckPermission = jest.fn();
 const mockAudit = jest.fn();
+const mockImpersonated = jest.fn();
 
 jest.mock("@/lib/auth/cli-key-service", () => ({
   MAX_CLI_TOKENS_PER_PROJECT: 20,
@@ -16,6 +17,7 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: (...a: unknown[]) => mockCheckPermission(...a),
+  isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/utils/db", () => ({ db: {} }));
@@ -41,6 +43,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRequireAuth.mockResolvedValue(context);
   mockCheckPermission.mockReturnValue(true);
+  mockImpersonated.mockResolvedValue(false);
 });
 
 describe("POST /api/cli-tokens", () => {
@@ -78,6 +81,13 @@ describe("POST /api/cli-tokens", () => {
     expect((await POST(req({ name: "a" }))).status).toBe(403);
     mockRequireAuth.mockRejectedValue(new Error("auth"));
     expect((await POST(req({ name: "a" }))).status).toBe(401);
+    expect(mockIssue).not.toHaveBeenCalled();
+  });
+
+  it("refuses to create a token while impersonating a user", async () => {
+    mockImpersonated.mockResolvedValue(true);
+    const res = await POST(req({ name: "a" }));
+    expect(res.status).toBe(403);
     expect(mockIssue).not.toHaveBeenCalled();
   });
 

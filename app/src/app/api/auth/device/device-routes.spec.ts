@@ -7,6 +7,7 @@ const mockExchange = jest.fn();
 const mockCreate = jest.fn();
 const mockAllow = jest.fn();
 const mockRequireAuth = jest.fn();
+const mockImpersonated = jest.fn();
 
 jest.mock("@/lib/auth/device-authorization", () => {
   const actual = jest.requireActual("@/lib/auth/device-authorization");
@@ -31,6 +32,7 @@ jest.mock("@/lib/auth/device-auth-rate-limit", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
   requireAuth: (...a: unknown[]) => mockRequireAuth(...a),
+  isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/session-security", () => ({ getClientIP: () => "203.0.113.9" }));
@@ -64,6 +66,7 @@ beforeEach(() => {
   process.env.APP_URL = ORIGIN;
   mockAllow.mockResolvedValue(true);
   mockRequireAuth.mockResolvedValue({ userId: "user-1" });
+  mockImpersonated.mockResolvedValue(false);
 });
 
 describe("feature flag", () => {
@@ -140,6 +143,14 @@ describe("POST /approve", () => {
     const res = await approveRoute.POST(post("/a", body, { origin: "https://evil.example" }));
     expect(res.status).toBe(403);
     expect(mockRequireAuth).not.toHaveBeenCalled();
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
+  it("refuses to mint a key while a super admin is impersonating", async () => {
+    mockImpersonated.mockResolvedValue(true);
+    const res = await approveRoute.POST(post("/a", body));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("impersonation_not_allowed");
     expect(mockApprove).not.toHaveBeenCalled();
   });
 
