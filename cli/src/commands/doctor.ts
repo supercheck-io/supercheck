@@ -2,7 +2,11 @@ import { Command } from 'commander'
 import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
 import { getOutputFormat } from '../output/formatter.js'
-import { tryLoadConfig } from '../config/loader.js'
+import { discoverRepository } from '../utils/discover.js'
+import { readConfigIdentity } from '../utils/link-config.js'
+import { detectConfigRequirements } from '../utils/config-text.js'
+import { readSmallFile } from '../utils/safe-read.js'
+import { resolve } from 'node:path'
 import { getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import pc from '../utils/colors.js'
@@ -18,13 +22,17 @@ export const doctorCommand = new Command('doctor')
     logger.header('Supercheck Doctor')
     logger.newline()
 
-    // Load config first to determine project requirements (Playwright vs k6 vs monitors only)
-    const configResult = await tryLoadConfig()
-    const hasPlaywrightConfig = configResult?.config.tests?.playwright !== undefined
-    const hasK6Config = configResult?.config.tests?.k6 !== undefined
-    const requirePlaywright = hasPlaywrightConfig
-    const requireK6 = hasK6Config
-    const browser = configResult?.config.tests?.playwright?.browser ?? 'chromium'
+    // Determine project requirements (Playwright vs k6 vs monitors only) by READING the config as text. The config
+    // is code, and a repository you are diagnosing may be untrusted, so `doctor` never executes it or loads its .env.
+    const facts = discoverRepository(cwd)
+    const configFile = facts.existingTests.supercheck.config
+    const configText = configFile ? readSmallFile(resolve(cwd, configFile)) : null
+    const configResult = configText === null ? null : { text: configText, identity: readConfigIdentity(configText) }
+    const required = configText === null ? null : detectConfigRequirements(configText)
+    const requirePlaywright = required?.playwright ?? false
+    const requireK6 = required?.k6 ?? false
+    const browser = required?.browser ?? 'chromium'
+    if (required?.dynamic) logger.info(`  Note: some values in supercheck.config.ts are computed, so doctor reads only the literal ones (browser: ${browser}).`)
 
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
@@ -41,7 +49,7 @@ export const doctorCommand = new Command('doctor')
       const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
       logger.info(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)})`)
     } else {
-      logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login --token <token>`)
+      logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login`)
     }
 
     logger.newline()
@@ -49,13 +57,15 @@ export const doctorCommand = new Command('doctor')
     // 3. Configuration summary
     logger.info(pc.bold('Configuration:'))
     if (configResult) {
-      logger.info(`  ${pc.green('✓')} supercheck.config.ts found`)
-      const org = configResult.config.project?.organization
-      const proj = configResult.config.project?.project
-      if (org && proj) {
+      logger.info(`  ${pc.green('✓')} supercheck.config.ts found (read as text, not executed)`)
+      // Values come from repository text: show them only if they are plain identifiers (no terminal escapes).
+      const plain = (v: string | null) => (v !== null && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null)
+      const org = plain(configResult.identity.organization)
+      const proj = plain(configResult.identity.project)
+      if (org && proj && org !== 'my-org' && proj !== 'my-project') {
         logger.info(`  ${pc.green('✓')} Project: ${pc.dim(`${org}/${proj}`)}`)
       } else {
-        logger.info(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts`)
+        logger.info(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts (run: supercheck link)`)
       }
     } else {
       logger.info(`  ${pc.yellow('○')} No supercheck.config.ts — run: supercheck init`)
@@ -67,6 +77,8 @@ export const doctorCommand = new Command('doctor')
     let missingRequired = deps.filter((d) => !d.installed && d.required)
     if (options.fix && missingRequired.length > 0) {
       logger.header('Attempting to fix missing dependencies...')
+      // Unlike the rest of doctor, installing runs the project's own `npx playwright` from this directory.
+      logger.warn('--fix runs `npx playwright install` in this directory, which uses the repository\'s own node_modules. Only use --fix in a repository you trust.')
       logger.newline()
 
       for (const dep of missingRequired) {
