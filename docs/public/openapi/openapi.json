@@ -299,7 +299,10 @@
             "description": "Rate limited"
           },
           "503": {
-            "description": "Feature disabled or temporarily unavailable"
+            "description": "SRE is disabled, or subscription verification or the service is temporarily unavailable."
+          },
+          "402": {
+            "description": "An active organization subscription and valid billing customer are required on Supercheck Cloud."
           }
         }
       }
@@ -597,6 +600,12 @@
           },
           "429": {
             "description": "Rate limited"
+          },
+          "402": {
+            "description": "An active organization subscription and valid billing customer are required on Supercheck Cloud."
+          },
+          "503": {
+            "description": "SRE is disabled, or subscription verification or the service is temporarily unavailable."
           }
         }
       }
@@ -633,6 +642,12 @@
           },
           "429": {
             "description": "Rate limited"
+          },
+          "402": {
+            "description": "An active organization subscription and valid billing customer are required on Supercheck Cloud."
+          },
+          "503": {
+            "description": "SRE is disabled, or subscription verification or the service is temporarily unavailable."
           }
         }
       }

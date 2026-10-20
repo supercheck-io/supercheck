@@ -2,6 +2,18 @@
 
 import { NextRequest } from "next/server";
 
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {
+    constructor(message: string, readonly reason: string) { super(message); }
+  },
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
+
+
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
@@ -63,6 +75,8 @@ async function responseText(response: Response) {
 
 describe("SRE chat API", () => {
   beforeEach(() => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+    jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue({
       userId: "018f0000-0000-7000-8000-000000000001",
@@ -81,6 +95,21 @@ describe("SRE chat API", () => {
       .mockResolvedValueOnce({ id: "018f0000-0000-7000-8000-000000000006", role: "assistant" });
     mockRunSreAgent.mockResolvedValue({ text: "Read-only guidance", modelId: "test-model", finishReason: "stop" });
   });
+
+  it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
+    "rejects direct model requests when %s denies access", async (guard) => {
+      jest.mocked(subscriptionService[guard]).mockRejectedValue(
+        new SubscriptionAccessDeniedError("Subscription required", "subscription_required"),
+      );
+      const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
+        method: "POST", body: JSON.stringify({ message: "check" }),
+      }));
+      expect(response.status).toBe(402);
+      expect(mockRunSreAgent).not.toHaveBeenCalled();
+      expect(mockCreateSreConversation).not.toHaveBeenCalled();
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
+    },
+  );
 
   it("streams conversation and assistant messages for authorized users", async () => {
     const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
