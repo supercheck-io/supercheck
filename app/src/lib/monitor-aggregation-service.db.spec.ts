@@ -154,7 +154,10 @@ it("keeps the latest duplicate, archives superseded rows and cascades their dele
     "utf8",
   );
   await client.begin(async (transaction) => {
+    // Mirror scripts/db-migrate.js: each migration statement runs inside a savepoint.
+    await transaction`SAVEPOINT migration_statement`;
     await transaction.unsafe(migration);
+    await transaction`RELEASE SAVEPOINT migration_statement`;
     // The migration serializes writers without blocking dashboard reads until commit.
     await client.begin(async (reader) => {
       await reader`SET LOCAL statement_timeout = '1s'`;
