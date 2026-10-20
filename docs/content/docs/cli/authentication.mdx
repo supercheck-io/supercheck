@@ -87,6 +87,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | `HTTP_PROXY` | No | Proxy URL for HTTP requests |
 | `HTTPS_PROXY` | No | Proxy URL for HTTPS requests |
 | `NO_PROXY` | No | Hosts to bypass proxy (comma-separated) |
+| `SUPERCHECK_REQUEST_TIMEOUT_MS` | No | Timeout for browser-login requests in milliseconds (5000 to 120000, default 30000) |
 
 <Callout type="info">
   `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the corresponding fields in `supercheck.config.ts` for config resolution. However, the CLI token itself is project-scoped and determines your actual API access permissions.

@@ -5,7 +5,8 @@ import { CLI_VERSION } from '../version.js'
 
 export const DEVICE_CLIENT_ID = 'supercheck-cli'
 const GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
-const REQUEST_TIMEOUT_MS = 15_000
+// A cold or slow self-hosted server can take a while to answer its first request; override for unusual networks.
+const REQUEST_TIMEOUT_MS = Math.min(120_000, Math.max(5_000, Number(process.env.SUPERCHECK_REQUEST_TIMEOUT_MS) || 30_000))
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 export interface DeviceCodeResponse {

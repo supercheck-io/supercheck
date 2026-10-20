@@ -125,7 +125,7 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 | `--reauth` | No | Start a new browser login even if you are already signed in |
 | `--no-browser` | No | Print the login URL and code without opening a browser |
 | `--wait` | No | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
-| `--timeout <seconds>` | No | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable |
+| `--timeout <seconds>` | No | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
 The token is verified against the API before being stored locally.
 

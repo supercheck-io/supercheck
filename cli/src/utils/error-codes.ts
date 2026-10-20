@@ -20,6 +20,11 @@ const SUBSCRIPTION_REASONS = new Set(['subscription_required', 'polar_customer_m
  * nothing is inferred from a bare 402/403, so a permission failure is never reported as a billing one.
  */
 export function classifyError(error: unknown, hasCredentials = true): ErrorClassification | undefined {
+  // A CLIError that wraps an API answer (`details.status`) is classified exactly like the API error itself.
+  if (error instanceof CLIError && !(error instanceof ApiRequestError)) {
+    const status = (error.details as { status?: unknown } | undefined)?.status
+    if (typeof status === 'number') return classifyError(new ApiRequestError(error.message, status), hasCredentials)
+  }
   if (error instanceof ApiRequestError) {
     const status = error.statusCode ?? 0
     const code = bodyCode(error.responseBody)

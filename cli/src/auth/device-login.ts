@@ -1,4 +1,4 @@
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { DEVICE_CLIENT_ID, type DeviceCodeResponse, type DeviceTokenContext, type TokenPollResult } from './device-flow.js'
 import type { PendingDevice, PendingStore } from './pending-device.js'
 
@@ -149,7 +149,20 @@ export async function loginWait(
       deps.store.clear()
       throw new DeviceLoginError('DEVICE_CODE_EXPIRED', 'The login code expired before it was approved. Run `supercheck login` for a new one.')
     }
-    const outcome = await loginStep(apiUrl, deps)
+    let outcome: LoginOutcome
+    try {
+      outcome = await loginStep(apiUrl, deps)
+    } catch (error) {
+      // Once the person has the code, a dropped connection or a slow response must not end the wait: loginStep saved
+      // the next poll time before polling, so retrying is safe. Anything with an HTTP status (denied, expired, ...) is final.
+      const transient = announced && error instanceof ApiRequestError && error.statusCode === undefined
+      if (!transient) throw error
+      if (hooks.deadline !== undefined && deps.now() >= hooks.deadline) {
+        throw new CLIError('Timed out waiting for browser approval. Run `supercheck login` again to resume.', ExitCode.Timeout)
+      }
+      await hooks.sleep(5000)
+      continue
+    }
     if (outcome.state === 'authenticated') return outcome
     if (!announced) {
       announced = true

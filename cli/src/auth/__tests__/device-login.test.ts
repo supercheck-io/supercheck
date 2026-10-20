@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { loginStep, loginWait, DeviceLoginError, type LoginDeps } from '../device-login.js'
+import { ApiRequestError } from '../../utils/errors.js'
 import type { PendingDevice, PendingStore } from '../pending-device.js'
 import type { TokenPollResult } from '../device-flow.js'
 
@@ -157,6 +158,35 @@ describe('loginWait', () => {
       loginWait(API, deps, { sleep: async (ms) => { clock += ms }, deadline: T0 + 20_000 }),
     ).rejects.toMatchObject({ exitCode: 5 })
     expect(store.value).not.toBeNull()
+  })
+
+  it('survives a transient network error after the code was shown, then finishes', async () => {
+    let polls = 0
+    pollToken.mockImplementation(async () => {
+      polls++
+      if (polls === 1) throw new ApiRequestError('Could not reach https://app.example.com: This operation was aborted')
+      return { kind: 'success', accessToken: 'sck_live_' + 'c'.repeat(32), expiresIn: 100, context: {} }
+    })
+    const out = await loginWait(API, deps, { sleep: async (ms) => { clock += ms } })
+    expect(out.state).toBe('authenticated')
+    expect(polls).toBe(2)
+  })
+
+  it('does not hide a failure of the very first request (nothing has been shown yet)', async () => {
+    requestCode.mockRejectedValueOnce(new ApiRequestError('Could not reach https://app.example.com'))
+    await expect(loginWait(API, deps, { sleep: async (ms) => { clock += ms } })).rejects.toThrow(/Could not reach/)
+  })
+
+  it('never retries a final answer from the server', async () => {
+    pollToken.mockRejectedValue(new ApiRequestError('Device login failed (500)', 500))
+    await expect(loginWait(API, deps, { sleep: async (ms) => { clock += ms } })).rejects.toMatchObject({ statusCode: 500 })
+  })
+
+  it('still honours the caller deadline while retrying network errors', async () => {
+    let first = true
+    pollToken.mockImplementation(async () => { throw new ApiRequestError('offline') })
+    requestCode.mockImplementation(async () => { if (!first) throw new Error('no second grant'); first = false; return { deviceCode: 'dev'.repeat(10), userCode: 'BCDF-GHJK', verificationUri: `${API}/device`, expiresIn: 900, interval: 5 } })
+    await expect(loginWait(API, deps, { sleep: async (ms) => { clock += ms }, deadline: T0 + 30_000 })).rejects.toMatchObject({ exitCode: 5 })
   })
 
   it('reports expiry when the code lapses', async () => {

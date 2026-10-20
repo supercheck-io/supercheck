@@ -177,6 +177,8 @@ export const whoamiCommand = new Command('whoami')
       throw new CLIError(
         'Failed to verify authentication. Your token may be expired or invalid.',
         ExitCode.AuthError,
+        // Lets the JSON error handler classify this like any other 401/403 (code, retryable, nextActions).
+        { status: (error as ApiRequestError).statusCode },
       )
     }
   })

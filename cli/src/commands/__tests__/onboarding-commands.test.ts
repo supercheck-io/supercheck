@@ -147,6 +147,12 @@ describe('agent skill install', () => {
 
 describe('classifyError', () => {
   const api = (status: number, body?: unknown) => new ApiRequestError('x', status, body)
+  it('classifies a CLIError that wraps an API status like the API error itself (whoami with a revoked token)', () => {
+    const wrapped = (status: number) => new CLIError('Failed to verify authentication. Your token may be expired or invalid.', ExitCode.AuthError, { status })
+    expect(classifyError(wrapped(401))).toMatchObject({ code: 'TOKEN_INVALID', nextActions: [{ command: expect.stringMatching(/login --reauth|SUPERCHECK_TOKEN/) }] })
+    expect(classifyError(wrapped(403))?.code).toBe('PERMISSION_DENIED')
+    expect(classifyError(new CLIError('x', ExitCode.AuthError, { status: 'nope' }), true)).toBeUndefined()
+  })
   it('maps statuses without inferring billing from permission failures', () => {
     expect(classifyError(api(401))?.code).toBe('TOKEN_INVALID')
     expect(classifyError(api(401), false)?.code).toBe('AUTH_REQUIRED')
