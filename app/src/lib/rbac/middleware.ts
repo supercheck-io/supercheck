@@ -475,6 +475,36 @@ export async function requireAuth(): Promise<{
 }
 
 /**
+ * True when the current browser session is a super-admin impersonating another user. Credential-minting
+ * actions must refuse in that state: the resulting key would belong to the impersonated user and outlive the
+ * impersonation. Fails closed (reports true) when the state cannot be determined.
+ */
+export async function isImpersonatedSession(): Promise<boolean> {
+  try {
+    const authSession = await getCachedAuthSession();
+    if (!authSession) return false;
+    // The auth session may already carry the flag; honour it without waiting for the lookup.
+    if ((authSession.session as { impersonatedBy?: string | null }).impersonatedBy) return true;
+    const [dbSession] = await db
+      .select({ impersonatedBy: session.impersonatedBy })
+      .from(session)
+      .where(eq(session.token, authSession.session.token))
+      .limit(1);
+    return Boolean(dbSession?.impersonatedBy);
+  } catch (error) {
+    // Fail closed, but leave a trace: callers show a generic refusal, so this is the only clue to a DB problem.
+    // Log only the error's name and code: drizzle's message embeds the failed query's parameters, and here that
+    // parameter is the caller's live session token.
+    console.error(
+      "Could not determine impersonation state; refusing credential minting:",
+      (error as { name?: string })?.name ?? "Error",
+      (error as { code?: string })?.code ?? "",
+    );
+    return true;
+  }
+}
+
+/**
  * Require super admin privileges
  */
 export async function requireSuperAdmin(): Promise<{

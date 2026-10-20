@@ -19,7 +19,11 @@ export const loginCommand = new Command('login')
   .description('Authenticate with Supercheck')
   .option('--token <token>', 'Provide a CLI token directly (for CI/CD)')
   .option('--url <url>', 'Supercheck API URL (for self-hosted instances)')
-  .action(async (options: { token?: string; url?: string }) => {
+  .option('--reauth', 'Start a new browser login even if you are already signed in')
+  .option('--no-browser', 'Print the login URL and code without opening a browser')
+  .option('--wait', 'Wait for browser approval instead of returning immediately (default in interactive terminals)')
+  .option('--timeout <seconds>', 'With --wait: give up after this many seconds', '900')
+  .action(async (options: { token?: string; url?: string; reauth?: boolean; browser?: boolean; wait?: boolean; timeout?: string }) => {
     if (options.token) {
       const token = options.token.trim()
       if (!validateTokenFormat(token)) {
@@ -66,18 +70,9 @@ export const loginCommand = new Command('login')
       return
     }
 
-    // Interactive login — not yet implemented
-    logger.newline()
-    logger.info('To authenticate, create a CLI token in the Dashboard:')
-    logger.info('  Dashboard → Organization Admin → CLI Tokens → Create Token')
-    logger.newline()
-    if (options.url) {
-      logger.info(`Then run: supercheck login --token <your-token> --url ${options.url}`)
-    } else {
-      logger.info('Then run: supercheck login --token <your-token>')
-    }
-    logger.newline()
-    throw new CLIError('AUTH_REQUIRED: Set SUPERCHECK_TOKEN from your secret store or use login --token. Browser login is not available.', ExitCode.AuthError)
+    // Browser (device) login. Loaded lazily so token-only flows never touch the device client.
+    const { runDeviceLogin } = await import('./login-device.js')
+    await runDeviceLogin(options)
   })
 
 export const logoutCommand = new Command('logout')
