@@ -3,10 +3,10 @@ import { createJob } from "./create-job";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { requirePermissions } from "@/lib/rbac/middleware";
 
-const mockInsert = jest.fn(() => ({ values: jest.fn(async () => {}) }));
+const mockInsert = jest.fn((_table: unknown) => ({ values: jest.fn(async () => {}) }));
 const testId = "018f0000-0000-7000-8000-000000000001";
 jest.mock("@/utils/db", () => ({ db: {
-  insert: (...args: unknown[]) => mockInsert(...args),
+  insert: (table: unknown) => mockInsert(table),
   select: () => ({ from: () => ({ where: async () => [{ id: testId, type: "browser" }] }) }),
 } }));
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: async () => ({

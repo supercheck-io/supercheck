@@ -4,9 +4,10 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { saveTest } from "./save-test";
 import { PUT } from "@/app/api/tests/[id]/route";
 import { encodeStoredTestScript } from "@/lib/test-script";
-import { subscriptionService } from "@/lib/services/subscription-service";
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
 jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {},
   subscriptionService: {
     blockUntilSubscribed: jest.fn(async () => {}),
     requireValidPolarCustomer: jest.fn(async () => {}),
@@ -76,7 +77,7 @@ beforeEach(() => {
 it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
   "rejects direct save action before writing when %s denies access",
   async (guard) => {
-    jest.mocked(subscriptionService[guard]).mockRejectedValue(new Error("Subscription required"));
+    jest.mocked(subscriptionService[guard]).mockRejectedValue(new SubscriptionAccessDeniedError("Subscription required", "subscription_required"));
     const result = await saveTest({ id: "test-id", title: "Renamed" });
     expect(result).toEqual({ id: "", success: false, error: "Subscription required" });
     expect(mockSet).not.toHaveBeenCalled();
