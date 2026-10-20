@@ -71,6 +71,33 @@ describe("DeviceApproval plan step", () => {
     open.mockRestore();
   });
 
+  it("never shows a billing message for a different project than the one it was opened for", async () => {
+    const tab = { opener: "parent" } as unknown as Window;
+    const open = jest.spyOn(window, "open").mockReturnValue(tab);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
+    fireEvent.click(screen.getByLabelText(/Alpha/));
+    fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
+    expect(await screen.findByText(/billing opened in a new tab/i)).toBeInTheDocument();
+    // choosing the other project must clear the message: billing was opened for the first organization only
+    fireEvent.click(screen.getByLabelText(/Default Project/));
+    expect(screen.queryByText(/billing opened in a new tab/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose a plan" })).toBeEnabled();
+    open.mockRestore();
+  });
+
+  it("locks the project choice while billing is being opened", async () => {
+    let release: (v: unknown) => void = () => {};
+    fetchMock.mockReturnValue(new Promise((r) => { release = r; }));
+    jest.spyOn(window, "open").mockReturnValue({} as Window);
+    view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
+    expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
+    expect(screen.getByLabelText(/Alpha/)).toBeDisabled();
+    release({ ok: true, json: async () => ({}) });
+    await waitFor(() => expect(screen.getByLabelText(/Alpha/)).toBeEnabled());
+  });
+
   it("offers a link when the browser blocks the new tab, and reports a failed switch", async () => {
     const open = jest.spyOn(window, "open").mockReturnValue(null);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
