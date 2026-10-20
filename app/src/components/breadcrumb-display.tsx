@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { Home } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function BreadcrumbDisplay() {
   const { breadcrumbs } = useBreadcrumbs();
@@ -25,28 +26,46 @@ export function BreadcrumbDisplay() {
   }
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
-        {breadcrumbs.map((item, index) => (
-          <React.Fragment key={`${item.label}-${index}`}>
-            <BreadcrumbItem className="block">
-              {item.isCurrentPage ? (
-                <BreadcrumbPage>
-                  {item.label === "Home" ? <Home className="h-4 w-4" /> : item.label}
-                </BreadcrumbPage>
-              ) : (
-                <BreadcrumbLink asChild>
-                  <Link href={item.href || "#"}>
-                    {item.label === "Home" ? <Home className="h-4 w-4" /> : item.label}
-                  </Link>
-                </BreadcrumbLink>
-              )}
-            </BreadcrumbItem>
-            {index < breadcrumbs.length - 1 && (
-              <BreadcrumbSeparator className="block" />
-            )}
-          </React.Fragment>
-        ))}
+    <Breadcrumb className="min-w-0">
+      <BreadcrumbList className="min-w-0 flex-nowrap overflow-hidden">
+        {breadcrumbs.map((item, index) => {
+          const isLast = index === breadcrumbs.length - 1;
+          const isHome = item.label === "Home";
+          const label = isHome ? (
+            <Home className="h-4 w-4 shrink-0" />
+          ) : (
+            item.label
+          );
+
+          return (
+            <React.Fragment key={`${item.label}-${index}`}>
+              <BreadcrumbItem
+                className={cn(
+                  isHome ? "shrink-0" : "min-w-0",
+                  isLast && "flex-1",
+                )}
+              >
+                {item.isCurrentPage ? (
+                  <BreadcrumbPage
+                    className={cn(isHome ? "flex" : "min-w-0 truncate")}
+                    title={isHome ? undefined : item.label}
+                  >
+                    {label}
+                  </BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink
+                    asChild
+                    className={cn(isHome ? "flex" : "min-w-0 truncate")}
+                    title={isHome ? undefined : item.label}
+                  >
+                    <Link href={item.href || "#"}>{label}</Link>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+              {!isLast && <BreadcrumbSeparator className="shrink-0" />}
+            </React.Fragment>
+          );
+        })}
       </BreadcrumbList>
     </Breadcrumb>
   );
