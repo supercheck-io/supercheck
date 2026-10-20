@@ -239,6 +239,13 @@
       "when": 1792570000000,
       "tag": "0033_monitor_aggregate_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792660000000,
+      "tag": "0034_monitor_cycles",
+      "breakpoints": true
     }
   ]
 }
