@@ -88,6 +88,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
           error: error instanceof SubscriptionAccessDeniedError
             ? error.message
             : "Subscription validation failed. Please try again later.",
+          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
         },
         { status: error instanceof SubscriptionAccessDeniedError ? 402 : 500 }
       );

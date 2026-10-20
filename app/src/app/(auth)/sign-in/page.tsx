@@ -1,5 +1,6 @@
 "use client";
 
+import { sanitizeNextPath } from "@/lib/auth/safe-next-path";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signIn } from "@/utils/auth-client";
@@ -42,6 +43,8 @@ function SignInPageContent() {
 
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
+  // Allowlisted continuation (e.g. CLI device approval); never an arbitrary redirect.
+  const nextPath = useMemo(() => sanitizeNextPath(searchParams.get("next")), [searchParams]);
 
   const getInviteSignInGuidance = useCallback((message?: string) => {
     const normalized = String(message ?? "").toLowerCase();
@@ -181,7 +184,7 @@ function SignInPageContent() {
           // Fallback: redirect to invite page for manual acceptance
           router.push(`/invite/${inviteToken}`);
         } else {
-          router.push("/");
+          router.push(nextPath ?? "/");
         }
       }
     } catch (err) {
@@ -195,6 +198,7 @@ function SignInPageContent() {
   return (
     <LoginForm
       className="w-full max-w-sm px-4"
+      nextPath={nextPath}
       onSubmit={handleSubmit}
       isLoading={isLoading}
       error={error}

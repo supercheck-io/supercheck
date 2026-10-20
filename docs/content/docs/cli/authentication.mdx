@@ -21,6 +21,10 @@ Supercheck uses prefixed tokens to identify the type and scope of access:
 
 CLI tokens are the primary authentication method. They are **project-scoped** and inherit the creating user's RBAC permissions.
 
+### Signing in from the CLI
+
+`supercheck login` can create a project-scoped key for you through your browser, so you do not need to copy a token from the dashboard. You approve a short code and choose the project; the key expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project can hold up to 20 active (enabled and unexpired) CLI tokens; every browser login creates a new one, so revoke tokens you no longer use. See [`supercheck login`](/docs/cli/commands) for agent-friendly usage.
+
 ### Creating a Token
 
 **Via Dashboard:**
@@ -83,9 +87,18 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | `HTTP_PROXY` | No | Proxy URL for HTTP requests |
 | `HTTPS_PROXY` | No | Proxy URL for HTTPS requests |
 | `NO_PROXY` | No | Hosts to bypass proxy (comma-separated) |
+| `SUPERCHECK_REQUEST_TIMEOUT_MS` | No | Timeout for browser-login requests in milliseconds (5000 to 120000, default 30000) |
 
 <Callout type="info">
   `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the corresponding fields in `supercheck.config.ts` for config resolution. However, the CLI token itself is project-scoped and determines your actual API access permissions.
+</Callout>
+
+<Callout type="warn">
+  `SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential, the server it is sent to, or a proxy or TLS setting would let a hostile repository intercept your token. Export these in your shell, use your CI secret store, or run `supercheck login`. In human-readable mode the CLI prints a warning when a `.env` tries to set them (JSON output stays unchanged). Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
+
+  This protects the CLI's own settings. Commands that load `supercheck.config.ts` still execute that file, which is code: do not run `deploy`, `pull` or `diff` in a repository you do not trust. `onboard`, `discover`, `link`, `plan`, `ci`, `agent` and `doctor` never run it (`doctor --fix` does run `npx playwright install` from the repository, so use it only where you trust the repository).
+
+  **Upgrading:** if your config uses `process.env.SUPERCHECK_URL` and you kept that variable in `.env`, export it in your shell or CI instead, otherwise the CLI uses the default URL.
 </Callout>
 
 <Callout type="info">

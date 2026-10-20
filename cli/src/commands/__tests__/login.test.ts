@@ -6,13 +6,19 @@ const setToken = jest.fn()
 const setBaseUrl = jest.fn()
 const output = jest.fn()
 let storedUrl: string | null = null
+let storedToken: string | null = null
+let defaultLoggedIn = true
+const clearAuth = jest.fn()
+const warn = jest.fn()
+const info = jest.fn()
 jest.unstable_mockModule('../../auth/store.js', () => ({
-  getToken: () => 'sck_live_fixture', getStoredBaseUrl: () => storedUrl,
-  validateTokenFormat: () => true, setToken, setBaseUrl, clearAuth: jest.fn(),
+  // A usable environment token wins; otherwise the default fixture login exists until clearAuth removes it.
+  getToken: () => (process.env.SUPERCHECK_TOKEN?.startsWith('sck_live_') ? process.env.SUPERCHECK_TOKEN : defaultLoggedIn ? 'sck_live_fixture' : null), getStoredBaseUrl: () => storedUrl,
+  validateTokenFormat: () => true, setToken, setBaseUrl, clearAuth, getStoredToken: () => storedToken,
 }))
 jest.unstable_mockModule('../../api/client.js', () => ({ getApiClient: getClient }))
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({ getResolvedConfigBaseUrl: () => 'https://config.example.com' }))
-jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { output, info: jest.fn(), success: jest.fn(), warn: jest.fn(), newline: jest.fn(), header: jest.fn() } }))
+jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { output, info, success: jest.fn(), warn, newline: jest.fn(), header: jest.fn() } }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({ safeTokenPreview: () => 'sck_live_...' }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({ getOutputFormat: () => 'json' }))
@@ -24,6 +30,10 @@ describe('CLI authentication', () => {
     jest.resetAllMocks()
     getClient.mockReturnValue({ get })
     storedUrl = 'https://demo.supercheck.io'
+    storedToken = null
+    defaultLoggedIn = true
+    clearAuth.mockImplementation(() => { storedToken = null; defaultLoggedIn = false })
+    delete process.env.SUPERCHECK_TOKEN
     loginCommand.setOptionValue('url', undefined)
   })
 
@@ -80,8 +90,40 @@ describe('CLI authentication', () => {
     await loginCommand.parseAsync(['node', 'login', '--token', 'sck_live_fixture'])
     expect(JSON.parse(String(output.mock.calls[0][0]))).toEqual({ authenticated: true, apiUrl: storedUrl })
     await logoutCommand.parseAsync(['node', 'logout'])
-    expect(JSON.parse(String(output.mock.calls[1][0]))).toEqual({ authenticated: false })
+    // `authenticated:false` is the stable part of the contract; the other fields are additive.
+    expect(JSON.parse(String(output.mock.calls[1][0]))).toMatchObject({ authenticated: false })
     expect(output.mock.calls.join(' ')).not.toContain('sck_live_fixture')
   })
 
+
+  describe('logout', () => {
+    it('reports that the server key stays valid when a stored login was removed', async () => {
+      storedToken = 'sck_live_stored'
+      await logoutCommand.parseAsync(['node', 'logout'])
+      expect(clearAuth).toHaveBeenCalled()
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ authenticated: false, removedStoredCredentials: true, keyRevoked: false })
+      expect(info.mock.calls.flat().join(' ')).toMatch(/revoke it under/)
+    })
+    it('does not claim to have removed anything when nothing was stored', async () => {
+      await logoutCommand.parseAsync(['node', 'logout'])
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ removedStoredCredentials: false })
+      expect(info.mock.calls.flat().join(' ')).not.toMatch(/revoke it under/)
+    })
+    it('does not claim to be authenticated because of an unusable SUPERCHECK_TOKEN value', async () => {
+      process.env.SUPERCHECK_TOKEN = 'sck_trigger_not_a_cli_token'
+      storedToken = 'sck_live_stored'
+      await logoutCommand.parseAsync(['node', 'logout'])
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ authenticated: false })
+      expect(warn.mock.calls.flat().join(' ')).not.toMatch(/still set/)
+      delete process.env.SUPERCHECK_TOKEN
+    })
+    it('warns when SUPERCHECK_TOKEN keeps the session alive', async () => {
+      process.env.SUPERCHECK_TOKEN = 'sck_live_env'
+      storedToken = 'sck_live_stored'
+      await logoutCommand.parseAsync(['node', 'logout'])
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ authenticated: true })
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/SUPERCHECK_TOKEN is still set/)
+      delete process.env.SUPERCHECK_TOKEN
+    })
+  })
 })

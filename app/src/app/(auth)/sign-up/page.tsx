@@ -1,5 +1,6 @@
 "use client";
 
+import { sanitizeNextPath } from "@/lib/auth/safe-next-path";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signUp, sendVerificationEmail } from "@/utils/auth-client";
@@ -52,6 +53,7 @@ function SignUpPageContent() {
 
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
+  const nextPath = useMemo(() => sanitizeNextPath(searchParams.get("next")), [searchParams]);
 
   useEffect(() => {
     // Apply hosting rules once config query resolves.
@@ -141,7 +143,9 @@ function SignUpPageContent() {
       password,
       callbackURL: inviteToken
         ? `/sign-in?verified=true&invite=${encodeURIComponent(inviteToken)}`
-        : "/sign-in?verified=true",
+        : nextPath
+          ? `/sign-in?verified=true&next=${encodeURIComponent(nextPath)}`
+          : "/sign-in?verified=true",
       fetchOptions: {
         headers: signUpHeaders,
       },
@@ -295,8 +299,8 @@ function SignUpPageContent() {
       return;
     }
 
-    // Default: redirect to dashboard
-    router.push("/");
+    // Default: redirect to dashboard (or an allowlisted continuation such as /device)
+    router.push(nextPath ?? "/");
     setIsLoading(false);
   };
 

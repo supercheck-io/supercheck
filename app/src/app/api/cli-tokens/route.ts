@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { db } from "@/utils/db";
 import { apikey, user } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import {
-  hashApiKey,
-  generateCliToken,
-  getApiKeyPrefix,
-} from "@/lib/security/api-key-hash";
+  issueCliApiKeyAtomically,
+  MAX_CLI_TOKENS_PER_PROJECT,
+} from "@/lib/auth/cli-key-service";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "cli-tokens" });
@@ -115,6 +113,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // A token minted while impersonating would belong to the impersonated user and outlive the impersonation.
+    if (!context.isCliAuth && (await isImpersonatedSession())) {
+      return NextResponse.json(
+        { error: "CLI tokens cannot be created while impersonating a user" },
+        { status: 403 }
+      );
+    }
+
     let requestBody;
     try {
       requestBody = await request.json();
@@ -141,92 +147,30 @@ export async function POST(request: NextRequest) {
 
     const { name, expiresIn } = validation.data;
 
-    // Enforce max 20 CLI tokens per project
-    const existingTokens = await db
-      .select({ id: apikey.id })
-      .from(apikey)
-      .where(
-        and(
-          eq(apikey.projectId, context.project.id),
-          isNull(apikey.jobId)
-        )
-      );
+    const issued = await issueCliApiKeyAtomically({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      projectId: context.project.id,
+      name,
+      expiresInSeconds: expiresIn,
+    });
 
-    if (existingTokens.length >= 20) {
-      return NextResponse.json(
-        { error: "Maximum of 20 CLI tokens per project reached" },
-        { status: 400 }
-      );
+    if (!issued.ok) {
+      return issued.reason === "limit_reached"
+        ? NextResponse.json(
+            { error: `Maximum of ${MAX_CLI_TOKENS_PER_PROJECT} CLI tokens per project reached` },
+            { status: 400 }
+          )
+        : NextResponse.json(
+            { error: "A CLI token with this name already exists" },
+            { status: 409 }
+          );
     }
 
-    // Check for duplicate names within the project
-    const existingNamed = await db
-      .select({ id: apikey.id })
-      .from(apikey)
-      .where(
-        and(
-          eq(apikey.projectId, context.project.id),
-          isNull(apikey.jobId),
-          eq(apikey.name, name)
-        )
-      )
-      .limit(1);
-
-    if (existingNamed.length > 0) {
-      return NextResponse.json(
-        { error: "A CLI token with this name already exists" },
-        { status: 409 }
-      );
-    }
-
-    // Generate the token
-    const tokenValue = generateCliToken(false); // sck_live_*
-    const tokenStart = getApiKeyPrefix(tokenValue);
-    const tokenHash = hashApiKey(tokenValue);
-
-    const now = new Date();
-    let expiresAt: Date | null = null;
-    if (expiresIn && expiresIn > 0) {
-      expiresAt = new Date(now.getTime() + expiresIn * 1000);
-    }
-
-    let newToken;
-    try {
-      const tokenId = crypto.randomUUID();
-      [newToken] = await db
-        .insert(apikey)
-        .values({
-          id: tokenId,
-          configId: "default",
-          name,
-          start: tokenStart,
-          prefix: "cli",
-          key: tokenHash,
-          referenceId: context.userId,
-          projectId: context.project.id,
-          jobId: null, // CLI tokens are not job-scoped
-          enabled: true,
-          expiresAt,
-          createdAt: now,
-          updatedAt: now,
-          permissions: ["cli:full"],
-          metadata: {
-            tokenType: "cli_live",
-            organizationId: context.organizationId,
-          },
-        })
-        .returning();
-    } catch (insertError: unknown) {
-      // Handle race condition: concurrent request may have inserted a duplicate name
-      const dbErr = insertError as { code?: string; constraint?: string; message?: string };
-      if (dbErr?.code === "23505" || dbErr?.constraint?.includes("unique") || dbErr?.message?.includes("duplicate key")) {
-        return NextResponse.json(
-          { error: "A CLI token with this name already exists" },
-          { status: 409 }
-        );
-      }
-      throw insertError;
-    }
+    const { key: newToken } = issued;
+    const tokenValue = newToken.plaintext;
+    const expiresAt = newToken.expiresAt;
+    const now = newToken.createdAt;
 
     await logAuditEvent({
       userId: context.userId,

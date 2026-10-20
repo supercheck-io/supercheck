@@ -67,6 +67,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # Set SRE_AUTOMATION_ENABLED=true to opt in to alert-triggered AI work.
   SRE_ENABLED: ${SRE_ENABLED:-true}
   SRE_AUTOMATION_ENABLED: ${SRE_AUTOMATION_ENABLED:-false}
+  # Browser login for the CLI (device authorization). Off by default; when off the CLI
+  # tells users to create a token in the dashboard instead.
+  DEVICE_AUTH_ENABLED: ${DEVICE_AUTH_ENABLED:-false}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
   # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)
