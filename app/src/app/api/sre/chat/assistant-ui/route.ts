@@ -31,7 +31,7 @@ import {
 } from "@/sre/lib/session-store";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
-import { requireSreSameOriginRequest } from "../../_auth";
+import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
 
 type SreAssistantUiMessageMetadata = {
   conversationId?: string;
@@ -241,6 +241,9 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     );
   }
+
+  const subscriptionError = await requireSreSubscription(context.organizationId);
+  if (subscriptionError) return subscriptionError;
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
