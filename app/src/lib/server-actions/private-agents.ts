@@ -9,7 +9,7 @@ import { privateAgentCredentials, privateAgents } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { buildPrivateAgentRegistrationMetadata } from "@/lib/private-agents/registration-token";
 import { requireProjectContext, type ProjectAuthContext } from "@/lib/project-context";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 
@@ -138,6 +138,10 @@ export async function registerPrivateAgent(input: z.infer<typeof privateAgentInp
     const context = await requireConnectorConfigurationPermission();
     if (!context.allowed) {
       return { success: false, error: "Insufficient permissions to register Private Agents" };
+    }
+    // The registration token outlives the session and is attributed to the impersonated user.
+    if (await isImpersonatedSession()) {
+      return { success: false, error: "Private Agents cannot be registered while impersonating a user" };
     }
 
     const token = generateRegistrationToken();

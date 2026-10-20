@@ -254,7 +254,13 @@ export async function POST(
       console.warn(
         `[Job Trigger] Subscription validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
-      return NextResponse.json({ error: errorMessage }, { status: 402 });
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
+        },
+        { status: 402 },
+      );
     }
 
     // Validate Polar customer exists (blocks deleted customers)
@@ -267,7 +273,13 @@ export async function POST(
       console.warn(
         `[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
-      return NextResponse.json({ error: errorMessage }, { status: 402 });
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
+        },
+        { status: 402 },
+      );
     }
 
     // BILLING: Check spending limit hard-stop before allowing execution

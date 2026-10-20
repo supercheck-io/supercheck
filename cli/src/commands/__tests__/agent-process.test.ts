@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 const entry = process.env.SUPERCHECK_TEST_CLI_ENTRY ?? fileURLToPath(new URL('../../bin/supercheck.ts', import.meta.url))
 let cwd: string
 let testToken: string
+// Extra environment for a single test (e.g. a sandboxed HOME so the developer's real stored login is never used).
+let extraEnv: Record<string, string> = {}
 const id = '019a1234-1234-7123-8123-123456789abc'
 type Fixture = { requests: { method: string; path: string; body?: Record<string, unknown>; usingDotenvToken?: boolean }[]; resources: Record<string, Record<string, unknown>[]>; mode?: string }
 const read = (): Fixture => JSON.parse(readFileSync(resolve(cwd, 'fixture.json'), 'utf8'))
@@ -21,10 +23,11 @@ function run(...args: string[]) {
 function runWithOutput(json: boolean, ...args: string[]) {
   return spawnSync(process.execPath, ['--import', 'tsx', '--import', resolve(cwd, 'fetch.mjs'), entry, ...(json ? ['--json'] : []), ...args], {
     cwd: fileURLToPath(new URL('../../../', import.meta.url)), encoding: 'utf8', timeout: 15000,
-    env: { ...process.env, SUPERCHECK_TOKEN: testToken, SUPERCHECK_TRIGGER_KEY: 'sck_trigger_fake_for_tests', SUPERCHECK_URL: 'https://mock.invalid', CLI_TEST_CWD: cwd },
+    env: { ...process.env, SUPERCHECK_TOKEN: testToken, SUPERCHECK_TRIGGER_KEY: 'sck_trigger_fake_for_tests', SUPERCHECK_URL: 'https://mock.invalid', CLI_TEST_CWD: cwd, ...extraEnv },
   })
 }
 beforeEach(() => {
+  extraEnv = {}
   cwd = mkdtempSync(resolve(tmpdir(), 'supercheck-process-'))
   testToken = 'sck_live_fake_token_for_tests'
   fixture(); config(); writeFileSync(resolve(cwd, 'package.json'), '{"type":"module"}')
@@ -298,13 +301,21 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(read().requests).toEqual([])
   })
 
-  it('loads diagnostic credentials from dotenv without executing broken project config', () => {
+  it('ignores credentials in a repository .env and still never executes broken project config for diagnostics', () => {
     fixture('dotenv-token')
+    const sandbox = resolve(cwd, 'sandbox-home')
+    mkdirSync(sandbox)
+    extraEnv = { HOME: sandbox, XDG_CONFIG_HOME: resolve(sandbox, '.config'), APPDATA: sandbox }
     writeFileSync(resolve(cwd, '.env'), 'SUPERCHECK_TOKEN=sck_live_from_dotenv_for_tests\n')
     writeFileSync(resolve(cwd, 'supercheck.config.mjs'), "throw new Error('must not execute config')")
-    for (const args of [['whoami'], ['locations'], ['capabilities', '--online']]) expect(run(...args).status).toBe(0)
-    expect(read().requests.length).toBeGreaterThan(0)
-    expect(read().requests.every((request) => request.usingDotenvToken)).toBe(true)
+    // whoami has no credential to use (the .env one is ignored), so it refuses before any request is made.
+    const refused = run('whoami')
+    expect(refused.status).toBe(2)
+    expect(JSON.parse(refused.stderr).code).toBe('AUTH_REQUIRED')
+    expect(read().requests).toEqual([])
+    // Diagnostics that need no credential still work, and nothing ever carries the .env token.
+    for (const args of [['locations']]) run(...args)
+    expect(read().requests.every((request) => !request.usingDotenvToken)).toBe(true)
     fixture()
     expect(run('whoami').status).toBe(0)
     expect(read().requests.every((request) => !request.usingDotenvToken)).toBe(true)
