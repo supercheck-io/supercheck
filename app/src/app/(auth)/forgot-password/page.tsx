@@ -136,7 +136,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm px-4" data-testid="forgot-password-form">
-      <form onSubmit={handleSubmit} data-testid="forgot-password-form-element">
+      <form method="post" onSubmit={handleSubmit} data-testid="forgot-password-form-element">
         <FieldGroup>
           {/* Header */}
           <div className="flex flex-col items-center gap-3 text-center">

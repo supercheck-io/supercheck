@@ -39,6 +39,8 @@ const store = new Conf<AuthData>({
   },
   // Static obfuscation key — see SECURITY NOTE above.
   encryptionKey: 'supercheck-cli-v1',
+  // The file holds a bearer credential: owner read/write only (rewritten atomically on every save).
+  configFileMode: 0o600,
 })
 
 /**
@@ -70,6 +72,11 @@ export function getToken(): string | null {
   const stored = store.get('token')
   if (!stored) return null
   return validateTokenFormat(stored) ? stored : null
+}
+
+/** The credential saved by `login`, ignoring the environment (used by `logout` to report accurately). */
+export function getStoredToken(): string | null {
+  return store.get('token') ?? null
 }
 
 export function getTriggerKey(): string | null {
@@ -104,6 +111,21 @@ export function setToken(token: string): void {
     )
   }
   store.set('token', token)
+}
+
+/**
+ * Persist a token and its API target in one atomic write, dropping any stale
+ * organization/project selection from a previous login.
+ */
+export function setCredentials(token: string, baseUrl: string): void {
+  if (!validateTokenFormat(token)) {
+    throw new AuthenticationError(
+      `Invalid token format. Token must start with one of: ${VALID_CLI_PREFIXES.join(', ')}`,
+    )
+  }
+  store.set({ token, baseUrl })
+  store.delete('organization')
+  store.delete('project')
 }
 
 /**

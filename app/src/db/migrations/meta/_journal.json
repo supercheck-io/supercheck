@@ -225,6 +225,20 @@
       "when": 1792483200000,
       "tag": "0031_status_page_reliability_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792569600000,
+      "tag": "0032_device_authorizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792570000000,
+      "tag": "0033_monitor_aggregate_uniqueness",
+      "breakpoints": true
     }
   ]
 }

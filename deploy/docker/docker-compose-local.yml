@@ -57,12 +57,18 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
+  # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.
+  TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+  TRUST_CF_CONNECTING_IP: ${TRUST_CF_CONNECTING_IP:-false}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # AI SRE is on by default with a configured AI provider.
   # Set SRE_AUTOMATION_ENABLED=true to opt in to alert-triggered AI work.
   SRE_ENABLED: ${SRE_ENABLED:-true}
   SRE_AUTOMATION_ENABLED: ${SRE_AUTOMATION_ENABLED:-false}
+  # Browser login for the CLI (device authorization). Off by default; when off the CLI
+  # tells users to create a token in the dashboard instead.
+  DEVICE_AUTH_ENABLED: ${DEVICE_AUTH_ENABLED:-false}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
   # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)

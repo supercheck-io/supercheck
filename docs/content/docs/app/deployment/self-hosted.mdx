@@ -76,6 +76,14 @@ Follow the prompts for local evaluation or HTTPS. Open the printed URL, create y
 
 In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
 
+### CLI Browser Login
+
+`supercheck login` can sign users in through the browser instead of asking them to paste a token. It is off by default. To enable it, set `DEVICE_AUTH_ENABLED=true` in `.env` and recreate the app. The server must be reachable over HTTPS (or localhost); the app applies database migration 0032 when it starts. Users approve a short code on `/device` and choose the project; the CLI receives a project-scoped key that expires after 90 days and can be revoked under **CLI Tokens**. Token login (`supercheck login --token`) and `SUPERCHECK_TOKEN` always keep working.
+
+### Client IP Behind a CDN or Extra Proxy
+
+Rate limits and the AI routes identify callers by client IP. By default Supercheck trusts one proxy that appends the client address, which matches the bundled Traefik setup. If another trusted hop sits in front (for example Cloudflare, then a load balancer, then Traefik), set `TRUSTED_PROXY_HOPS` in `.env` to the number of extra hops and recreate the app. Set `TRUST_CF_CONNECTING_IP=true` only when the origin is reachable exclusively through Cloudflare. A wrong value makes all users share one rate-limit bucket or lets clients spoof their address.
+
 ### Artifact Retention
 
 Artifacts are cleaned automatically. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.

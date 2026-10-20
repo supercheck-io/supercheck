@@ -189,7 +189,7 @@ export async function GET(
 
     // Fallback: Query raw data for new monitors without aggregates
     // This ensures new monitors still show stats before the first aggregation run
-    logger.debug({ monitorId: id }, "No aggregates found, falling back to raw query");
+    logger.debug({ monitorId: id }, "Some aggregate windows missing, falling back to raw query");
 
     // Build base conditions for raw queries
     const baseConditions24h = locationFilter
@@ -297,14 +297,26 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        period24h: {
+        period24h: hasAggregates24h ? {
+          totalChecks: aggregates24h.totalChecks,
+          upChecks: Math.round((aggregates24h.uptimePercentage / 100) * aggregates24h.totalChecks),
+          uptimePercentage: aggregates24h.uptimePercentage,
+          avgResponseTimeMs: aggregates24h.avgResponseMs,
+          p95ResponseTimeMs: aggregates24h.p95ResponseMs ?? (aggregates24h.totalChecks >= 5 ? p95Response24h : null),
+        } : {
           totalChecks: total24h,
           upChecks: up24h,
           uptimePercentage: uptime24h,
           avgResponseTimeMs: avgResponse24h ? Math.round(avgResponse24h) : null,
           p95ResponseTimeMs: p95Response24h ? Math.round(p95Response24h) : null,
         },
-        period30d: {
+        period30d: hasAggregates30d ? {
+          totalChecks: aggregates30d.totalChecks,
+          upChecks: Math.round((aggregates30d.uptimePercentage / 100) * aggregates30d.totalChecks),
+          uptimePercentage: aggregates30d.uptimePercentage,
+          avgResponseTimeMs: aggregates30d.avgResponseMs,
+          p95ResponseTimeMs: aggregates30d.p95ResponseMs ?? (aggregates30d.totalChecks >= 5 ? p95Response30d : null),
+        } : {
           totalChecks: total30d,
           upChecks: up30d,
           uptimePercentage: uptime30d,
@@ -316,7 +328,7 @@ export async function GET(
         monitorId: id,
         location: locationFilter || "all",
         calculatedAt: now.toISOString(),
-        source: "raw", // Indicates data came from raw query (fallback)
+        source: hasAggregates24h || hasAggregates30d ? "aggregates+raw" : "raw",
       },
     });
   } catch (error) {

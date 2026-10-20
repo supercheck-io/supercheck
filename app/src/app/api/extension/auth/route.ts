@@ -11,7 +11,7 @@ import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
 import { and, eq, like, or } from "drizzle-orm";
 import { requireAuthContext } from "@/lib/auth-context";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 
 const logger = createLogger({ module: "extension-auth" });
 
@@ -169,6 +169,13 @@ export async function POST(request: NextRequest) {
     if (!checkPermissionWithContext("apiKey", "create", authContext)) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+    // A recorder key minted while impersonating would belong to the impersonated user and never expire.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json(
+        { success: false, error: "Recorder keys cannot be created while impersonating a user" },
         { status: 403 }
       );
     }
