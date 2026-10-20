@@ -4,6 +4,7 @@
  */
 
 import crypto from "crypto";
+import { isIP } from "net";
 
 function getRandomBytes(size: number): Uint8Array {
   if (crypto?.randomBytes) {
@@ -362,28 +363,85 @@ export async function cleanupRateLimitEntries(): Promise<void> {
   // This function is kept for API compatibility but is now a no-op
 }
 
+const DEFAULT_TRUSTED_PROXY_HOPS = 0;
+const UNKNOWN_CLIENT_IP = "unknown";
+
 /**
- * Get client IP address from request headers
+ * Number of right-hand X-Forwarded-For entries appended by our own edge.
+ *
+ * The leftmost entry is whatever the client sent, so it is never trusted. We
+ * walk right-to-left, discard the entries our trusted proxies appended, and
+ * accept the first syntactically valid address after that.
+ *
+ * See docs/security/auth-lockout-and-client-ip.md for per-deployment values.
+ */
+function getTrustedProxyHops(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS;
+  if (!raw) return DEFAULT_TRUSTED_PROXY_HOPS;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= 0
+    ? parsed
+    : DEFAULT_TRUSTED_PROXY_HOPS;
+}
+
+/**
+ * Strip the decorations a proxy may add around an address: brackets, an IPv4
+ * port, or an IPv6 port in bracket notation.
+ */
+function stripAddressDecoration(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("[")) {
+    const closingBracket = trimmed.indexOf("]");
+    if (closingBracket > 0) {
+      return trimmed.slice(1, closingBracket);
+    }
+  }
+
+  const lastColon = trimmed.lastIndexOf(":");
+  if (lastColon > 0 && trimmed.indexOf(":") === lastColon) {
+    return trimmed.slice(0, lastColon);
+  }
+
+  return trimmed;
+}
+
+/**
+ * Get the client IP address from request headers.
+ *
+ * X-Forwarded-For is right-to-left trustworthy: entries appended by our own
+ * proxies are on the right, everything a client could forge is on the left.
+ * `TRUST_CF_CONNECTING_IP=true` prefers CF-Connecting-IP, which Cloudflare
+ * overwrites, but only when the origin is reachable exclusively through
+ * Cloudflare (otherwise the header is client-controlled).
+ *
+ * Returns "unknown" when no trustworthy address is present.
  */
 export function getClientIP(headers: Headers): string {
-  // Check common proxy headers
+  if (process.env.TRUST_CF_CONNECTING_IP === "true") {
+    const cloudflareIP = headers.get("cf-connecting-ip");
+    if (cloudflareIP) {
+      const candidate = stripAddressDecoration(cloudflareIP);
+      if (isIP(candidate)) return candidate;
+    }
+  }
+
   const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
+  if (!forwarded) return UNKNOWN_CLIENT_IP;
+
+  const entries = forwarded
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  const hops = getTrustedProxyHops();
+  for (let index = entries.length - 1 - hops; index >= 0; index -= 1) {
+    const candidate = stripAddressDecoration(entries[index]);
+    if (isIP(candidate)) return candidate;
   }
 
-  const realIP = headers.get("x-real-ip");
-  if (realIP) {
-    return realIP.trim();
-  }
-
-  const remoteAddr = headers.get("x-remote-addr");
-  if (remoteAddr) {
-    return remoteAddr.trim();
-  }
-
-  // Fallback
-  return "unknown";
+  return UNKNOWN_CLIENT_IP;
 }
 
 /**
