@@ -3960,8 +3960,8 @@ paths:
                   - verification_uri
                   - expires_in
                   - interval
-        "401":
-          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+        "400":
+          description: Malformed request body.
           content:
             application/json:
               schema:
@@ -3970,26 +3970,26 @@ paths:
                   error:
                     type: string
                     enum:
-                      - authorization_pending
-                      - slow_down
-                      - access_denied
-                      - expired_token
-                      - invalid_grant
-                      - invalid_client
                       - invalid_request
-                      - unsupported_grant_type
-                      - token_limit_reached
-                      - device_auth_disabled
-                      - rate_limited
-                  interval:
-                    type: integer
-                    description: Minimum seconds before the next poll, when applicable.
+                required:
+                  - error
+        "401":
+          description: Unknown client id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - invalid_client
                 required:
                   - error
         "429":
           description: Too many requests.
-        "503":
-          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+        "500":
+          description: Server error.
           content:
             application/json:
               schema:
@@ -3998,20 +3998,20 @@ paths:
                   error:
                     type: string
                     enum:
-                      - authorization_pending
-                      - slow_down
-                      - access_denied
-                      - expired_token
-                      - invalid_grant
-                      - invalid_client
-                      - invalid_request
-                      - unsupported_grant_type
-                      - token_limit_reached
+                      - server_error
+                required:
+                  - error
+        "503":
+          description: Browser login is disabled on this server.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
                       - device_auth_disabled
-                      - rate_limited
-                  interval:
-                    type: integer
-                    description: Minimum seconds before the next poll, when applicable.
                 required:
                   - error
       security: []
@@ -4149,7 +4149,7 @@ paths:
                 required:
                   - error
         "429":
-          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+          description: Polling too fast or rate limited.
           content:
             application/json:
               schema:
@@ -4158,24 +4158,26 @@ paths:
                   error:
                     type: string
                     enum:
-                      - authorization_pending
                       - slow_down
-                      - access_denied
-                      - expired_token
-                      - invalid_grant
-                      - invalid_client
-                      - invalid_request
-                      - unsupported_grant_type
-                      - token_limit_reached
-                      - device_auth_disabled
-                      - rate_limited
                   interval:
                     type: integer
-                    description: Minimum seconds before the next poll, when applicable.
+                required:
+                  - error
+        "500":
+          description: Server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - server_error
                 required:
                   - error
         "503":
-          description: OAuth 2.0 device-authorization error (RFC 8628 §3.5)
+          description: Browser login is disabled on this server.
           content:
             application/json:
               schema:
@@ -4184,20 +4186,7 @@ paths:
                   error:
                     type: string
                     enum:
-                      - authorization_pending
-                      - slow_down
-                      - access_denied
-                      - expired_token
-                      - invalid_grant
-                      - invalid_client
-                      - invalid_request
-                      - unsupported_grant_type
-                      - token_limit_reached
                       - device_auth_disabled
-                      - rate_limited
-                  interval:
-                    type: integer
-                    description: Minimum seconds before the next poll, when applicable.
                 required:
                   - error
       security: []
@@ -4233,8 +4222,8 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Cross-origin request, or the user may not create CLI keys in that
-            project.
+          description: Cross-origin request, or the signed-in user may not create CLI keys
+            in that project.
         "404":
           description: Unknown code.
         "409":
@@ -4243,6 +4232,8 @@ paths:
           description: Code expired.
         "429":
           description: Too many requests.
+        "500":
+          description: Server error.
         "503":
           description: Browser login is disabled.
       security:
@@ -4274,8 +4265,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Cross-origin request, or the user may not create CLI keys in that
-            project.
+          description: Cross-origin request.
         "404":
           description: Unknown code.
         "409":
@@ -4284,6 +4274,8 @@ paths:
           description: Code expired.
         "429":
           description: Too many requests.
+        "500":
+          description: Server error.
         "503":
           description: Browser login is disabled.
       security:

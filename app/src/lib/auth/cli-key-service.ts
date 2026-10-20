@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
 import {
@@ -64,7 +64,16 @@ export async function issueCliApiKey(
   const [{ count }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(apikey)
-    .where(and(eq(apikey.projectId, input.projectId), isNull(apikey.jobId)));
+    .where(
+      and(
+        eq(apikey.projectId, input.projectId),
+        isNull(apikey.jobId),
+        // Only usable keys count toward the cap: expired or disabled ones must not lock a project out
+        // (every browser login mints a new key, so old ones accumulate).
+        or(isNull(apikey.enabled), eq(apikey.enabled, true)),
+        or(isNull(apikey.expiresAt), gt(apikey.expiresAt, new Date())),
+      ),
+    );
   if (count >= MAX_CLI_TOKENS_PER_PROJECT) {
     return { ok: false, reason: "limit_reached" };
   }

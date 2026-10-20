@@ -137,6 +137,18 @@ describe("shared CLI key issuance", () => {
     expect(await keyCount()).toBe(MAX_CLI_TOKENS_PER_PROJECT);
   });
 
+  it("does not count expired or disabled keys toward the cap", async () => {
+    for (let i = 0; i < MAX_CLI_TOKENS_PER_PROJECT; i++) {
+      expect((await issueCliApiKeyAtomically(input(`k-${i}`))).ok).toBe(true);
+    }
+    expect(await issueCliApiKeyAtomically(input("one-too-many"))).toMatchObject({ ok: false, reason: "limit_reached" });
+    await mockDatabase.update(schema.apikey).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.apikey.name, "k-0"));
+    await mockDatabase.update(schema.apikey).set({ enabled: false }).where(eq(schema.apikey.name, "k-1"));
+    expect((await issueCliApiKeyAtomically(input("fits-1"))).ok).toBe(true);
+    expect((await issueCliApiKeyAtomically(input("fits-2"))).ok).toBe(true);
+    expect(await issueCliApiKeyAtomically(input("full-again"))).toMatchObject({ ok: false, reason: "limit_reached" });
+  });
+
   it("serialises duplicate names", async () => {
     const results = await Promise.all(
       Array.from({ length: 4 }, () => issueCliApiKeyAtomically(input("same-name"))),
