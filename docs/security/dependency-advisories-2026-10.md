@@ -114,9 +114,9 @@ for a patched `braces`.
 ## Verification commands
 
 ```bash
-cd app && npm audit --json | jq '.vulnerabilities["sprintf-js"], .vulnerabilities.braces'
-cd worker && npm ls sprintf-js braces --all
-cd cli && npm ls sprintf-js braces --all
-cd recorder && grep -n '"braces"' playwright/packages/playwright/bundles/*/package-lock.json
+(cd app && npm audit --json | jq '.vulnerabilities["sprintf-js"], .vulnerabilities.braces')
+(cd worker && npm ls sprintf-js braces --all)
+(cd cli && npm ls sprintf-js braces --all)
+(cd recorder && grep -n '"braces"' playwright/packages/playwright/bundles/*/package-lock.json)
 npm view braces version && npm view sprintf-js version
 ```
