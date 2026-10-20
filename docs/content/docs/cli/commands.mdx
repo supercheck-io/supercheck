@@ -131,6 +131,7 @@ When the server has browser login enabled, `supercheck login` starts a device-au
 - Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
 - Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
 - `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
+- If the organization you pick has no active plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Run `supercheck plan` afterwards to confirm.
 - If the server does not enable browser login, the command explains how to use `--token`.
 
 ### `supercheck link`
