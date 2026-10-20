@@ -103,10 +103,39 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI prints setup guidance and exits with authentication error `2`; browser login is not available. |
+| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser (see below) when the server supports it. |
 | `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
 
 The token is verified against the API before being stored locally.
+
+#### Browser login
+
+When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself.
+
+- Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
+- Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. Add `--wait` to block instead.
+- `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
+- If the server does not enable browser login, the command explains how to use `--token`.
+
+### `supercheck onboard`
+
+Read-only status for the current directory: the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
+
+### `supercheck discover`
+
+Prints bounded, read-only facts about the repository: package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env`, or follow symlinks.
+
+### `supercheck plan`
+
+Shows whether the organization has an active subscription. An unknown result is never treated as free or paid; the server enforces limits on every request.
+
+### `supercheck ci init --github`
+
+Writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. Refuses to overwrite an existing file without `--force`.
+
+### `supercheck agent install`
+
+Installs the Supercheck skill for a coding agent: `--target claude|cursor|codex|opencode|generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
 
 ### `supercheck whoami`
 

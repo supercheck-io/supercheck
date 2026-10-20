@@ -21,6 +21,10 @@ Supercheck uses prefixed tokens to identify the type and scope of access:
 
 CLI tokens are the primary authentication method. They are **project-scoped** and inherit the creating user's RBAC permissions.
 
+### Signing in from the CLI
+
+`supercheck login` can create a project-scoped key for you through your browser, so you do not need to copy a token from the dashboard. You approve a short code and choose the project; the key expires after 90 days and appears under **CLI Tokens**, where you can revoke it. Each project can hold up to 20 CLI tokens. See [`supercheck login`](/docs/cli/commands) for agent-friendly usage.
+
 ### Creating a Token
 
 **Via Dashboard:**

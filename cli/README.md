@@ -45,10 +45,10 @@ npx supercheck --version
 
 ## Quick start
 
-Create a project-scoped CLI token in **Organization Admin → CLI Tokens**, then:
+Sign in through your browser (or create a project-scoped CLI token in **Organization Admin → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
 
 ```bash
-supercheck login --token <cli-token>
+supercheck login     # opens your browser; approve the code shown in the terminal
 supercheck init      # scaffold supercheck.config.ts and example tests
 supercheck pull      # copy existing cloud resources into local files
 supercheck diff      # preview changes
@@ -187,7 +187,7 @@ Run `supercheck whoami` to see the active API URL and project.
 
 ## Use with AI agents
 
-The CLI ships offline, versioned workflow guidance. `supercheck skills` prints an index and `supercheck skills <topic>` focused instructions. `supercheck skills install` writes a small pointer to `.agents/skills/supercheck/SKILL.md` and never overwrites an existing file without `--force`. `supercheck capabilities --json` reports what the installed CLI supports; `--online` also verifies the current API context, but does not prove every server feature or permission.
+The CLI ships offline, versioned workflow guidance. `supercheck skills` prints an index and `supercheck skills <topic>` focused instructions. `supercheck agent install --target claude|cursor|codex|opencode|generic` (or `supercheck skills install`) writes the skill and never overwrites an existing file without `--force`. `supercheck onboard --json` reports the current onboarding state and the single next command, `supercheck discover --json` prints repository facts, `supercheck plan` shows the subscription state, `supercheck ci init --github` writes a workflow, and `supercheck deploy --verify` runs each created or updated browser/API test once in the cloud. `supercheck capabilities --json` reports what the installed CLI supports; `--online` also verifies the current API context, but does not prove every server feature or permission.
 
 ## Compatibility
 
