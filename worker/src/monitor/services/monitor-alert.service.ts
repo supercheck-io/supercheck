@@ -53,7 +53,7 @@ export class MonitorAlertService {
 
     if (!monitor) {
       this.logger.error(`[NOTIFY] Monitor not found: ${monitorId}`);
-      return;
+      return { delivered: false };
     }
 
     // Get project information
@@ -69,7 +69,7 @@ export class MonitorAlertService {
     // Check if alerts are enabled
     if (!monitor.alertConfig?.enabled) {
       this.logger.log(`[NOTIFY] Alerts not enabled for monitor ${monitorId}`);
-      return;
+      return { delivered: false };
     }
 
     const maintenance = await db
@@ -99,7 +99,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
-      return { suppressed: true };
+      return { delivered: false, suppressed: true };
     }
 
     // Get notification providers
@@ -144,7 +144,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
-      return;
+      return { delivered: false };
     }
 
     // Determine notification details
@@ -163,7 +163,7 @@ export class MonitorAlertService {
           this.logger.log(
             `[NOTIFY] Recovery notifications disabled for monitor ${monitorId}`,
           );
-          return;
+          return { delivered: false };
         }
         break;
       case 'failure':
@@ -175,7 +175,7 @@ export class MonitorAlertService {
           this.logger.log(
             `[NOTIFY] Failure notifications disabled for monitor ${monitorId}`,
           );
-          return;
+          return { delivered: false };
         }
         break;
       default: {
@@ -275,6 +275,7 @@ export class MonitorAlertService {
         createdRows,
       );
     }
+    return { delivered: successCount > 0 };
   }
 
   async sendSslExpirationNotification(

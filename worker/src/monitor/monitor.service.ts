@@ -971,7 +971,11 @@ export class MonitorService {
                 expectedAlerts >= alertsSentForFailure &&
                 failuresAfterThreshold % subsequentInterval === 0;
             }
-          } else if (currentStatus === 'up' && previousStatus === 'down') {
+          } else if (
+            currentStatus === 'up' &&
+            (previousStatus === 'down' ||
+              latestResult?.details?.recoverySequence === true)
+          ) {
             // Recovery alert logic:
             // Only send recovery alert when consecutive successes reach the recovery threshold
             // This ensures the monitor is truly stable before alerting recovery
@@ -1013,7 +1017,9 @@ export class MonitorService {
 
             // Maintenance suppression skips only counters and logging; the
             // independent SSL expiration check below must still run.
-            const suppressed = notification?.suppressed === true;
+            const suppressed =
+              notification?.suppressed === true ||
+              notification?.delivered === false;
 
             // Update alert counter for the appropriate alert type
             if (!suppressed && shouldSendFailureAlert && latestResult) {
@@ -1045,7 +1051,11 @@ export class MonitorService {
             this.logger.debug(
               `[ALERT_DEBUG] Skipping failure alert for monitor ${resultData.monitorId} - already sent 3 alerts for this failure sequence`,
             );
-          } else if (currentStatus === 'up' && previousStatus === 'down') {
+          } else if (
+            currentStatus === 'up' &&
+            (previousStatus === 'down' ||
+              latestResult?.details?.recoverySequence === true)
+          ) {
             const recoveryThreshold = alertConfig?.recoveryThreshold || 1;
             if (consecutiveSuccessCount < recoveryThreshold) {
               this.logger.debug(
@@ -2775,7 +2785,8 @@ export class MonitorService {
         alertMetadata,
       );
 
-      if (notification?.suppressed) return { alertSent: false };
+      if (notification?.suppressed || notification?.delivered === false)
+        return { alertSent: false };
 
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         const updatedAggregatedAlertState =

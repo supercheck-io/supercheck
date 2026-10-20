@@ -1132,6 +1132,53 @@ describe('MonitorService', () => {
       },
     );
 
+    it.each([false, true])(
+      'retries fully failed recovery delivery but stops after a successful delivery (multi-location=%s)',
+      async (multiLocation) => {
+        mockAlertService.sendNotification
+          .mockResolvedValueOnce({ delivered: false })
+          .mockResolvedValueOnce({ delivered: true });
+        const evaluate = async (success: number, delivered: number) => {
+          mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+            id: 'recovered-result',
+            consecutiveSuccessCount: success,
+            alertsSentForRecovery: delivered,
+            details: { recoverySequence: true },
+          });
+          return service['evaluateAndSendAlert']({
+            monitorId: mockMonitor.id,
+            monitor: {
+              ...mockMonitor,
+              config: {
+                aggregatedAlertState: {
+                  consecutiveSuccessCount: success - 1,
+                  alertsSentForRecovery: delivered,
+                  recoverySequence: true,
+                },
+              },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: true,
+                recoveryThreshold: 2,
+              },
+            } as unknown as typeof schema.monitors.$inferSelect,
+            previousStatus: 'up',
+            currentStatus: 'up',
+            reason: 'Recovered',
+            metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+          });
+        };
+        expect(await evaluate(2, 0)).toEqual({ alertSent: false });
+        expect(mockDbService.db.update).not.toHaveBeenCalled();
+        expect(await evaluate(3, 0)).toEqual({
+          alertSent: true,
+          alertType: 'recovery',
+        });
+        expect(await evaluate(8, 1)).toEqual({ alertSent: false });
+        expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(2);
+      },
+    );
+
     it('does not send recovery alerts for a monitor that has always been healthy', async () => {
       for (const multiLocation of [false, true]) {
         mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
