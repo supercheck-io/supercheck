@@ -1,7 +1,10 @@
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { checkStatusPageDomain } from "./status-page-domain-check";
+import {
+  checkStatusPageDomain,
+  nextDomainVerificationState,
+} from "./status-page-domain-check";
 import { Queue, Worker } from "bullmq";
 import { getRedisConnection } from "./queue";
 import { reconcileStatusPages } from "./status-page-reconciliation";
@@ -24,7 +27,12 @@ export async function initializeStatusPageScheduler() {
         await reconcileStatusPages();
         await enqueuePendingDeliveries(queue!);
         const due = await db
-          .select({ id: statusPages.id, domain: statusPages.customDomain })
+          .select({
+            id: statusPages.id,
+            domain: statusPages.customDomain,
+            verified: statusPages.customDomainVerified,
+            failureCount: statusPages.customDomainFailureCount,
+          })
           .from(statusPages)
           .where(
             and(
@@ -42,11 +50,19 @@ export async function initializeStatusPageScheduler() {
         for (const page of due) {
           if (!page.domain) continue;
           const result = await checkStatusPageDomain(page.domain, page.id);
+          const next = nextDomainVerificationState(result, {
+            verified: page.verified === true,
+            failureCount: page.failureCount ?? 0,
+          });
           await db
             .update(statusPages)
             .set({
               customDomainLastCheckedAt: new Date(),
-              ...(result === "invalid" ? { customDomainVerified: false } : {}),
+              customDomainFailureCount: next.failureCount,
+              customDomainVerified: next.verified,
+              ...(next.verified !== (page.verified === true)
+                ? { updatedAt: new Date() }
+                : {}),
             })
             .where(
               and(

@@ -162,6 +162,7 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       settings.customDomain !== statusPage.customDomain
     ) {
       updatePayload.customDomainVerified = false;
+      updatePayload.customDomainFailureCount = 0;
 
       if (settings.customDomain) {
         const customDomainConfigError =

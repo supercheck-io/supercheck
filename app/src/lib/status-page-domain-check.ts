@@ -7,11 +7,33 @@ import {
 import { getStatusPageDomainOwnershipRecord } from "./status-page-domain-guidance";
 import { getStatusPageDomainVerificationTargets } from "./status-page-domain";
 
+export const DOMAIN_UNVERIFY_FAILURE_LIMIT = 3;
+
+export type DomainCheckResult = "valid" | "invalid" | "unavailable";
+
+export function nextDomainVerificationState(
+  result: DomainCheckResult,
+  state: { verified: boolean; failureCount: number },
+): { verified: boolean; failureCount: number } {
+  if (result === "valid") return { verified: true, failureCount: 0 };
+  if (result === "unavailable")
+    return { verified: state.verified, failureCount: 0 };
+  const failureCount = Math.min(
+    state.failureCount + 1,
+    DOMAIN_UNVERIFY_FAILURE_LIMIT,
+  );
+  return {
+    verified:
+      failureCount >= DOMAIN_UNVERIFY_FAILURE_LIMIT ? false : state.verified,
+    failureCount,
+  };
+}
+
 /** DNS failures are transient unless authoritative records are missing or mismatched. */
 export async function checkStatusPageDomain(
   domain: string,
   pageId: string,
-): Promise<"valid" | "invalid" | "unavailable"> {
+): Promise<DomainCheckResult> {
   const normalize = (value: string) => value.toLowerCase().replace(/\.$/, "");
   try {
     const targets = getStatusPageDomainVerificationTargets().map(normalize);
@@ -32,10 +54,10 @@ export async function checkStatusPageDomain(
     )
       ? "valid"
       : "unavailable";
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === "ENOTFOUND" || code === "ENODATA"
-      ? "invalid"
-      : "unavailable";
+  } catch {
+    // ENOTFOUND, ENODATA, EAI_AGAIN, and timeouts all mean the resolver could
+    // not give an answer. Only a successful lookup with mismatched records is
+    // definitive evidence that the domain no longer belongs to this page.
+    return "unavailable";
   }
 }

@@ -22,6 +22,32 @@ it("hides the trigger when subscriptions and feeds are disabled", () => {
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
+it("explains that a webhook stays pending until it proves ownership", async () => {
+  jest.mocked(subscribeToStatusPage).mockResolvedValue({
+    success: true,
+    message: "pending",
+    requiresVerification: true,
+    webhookSecret: "secret",
+  });
+  render(
+    <SubscribeDialog
+      {...props}
+      allowEmailSubscribers={false}
+      allowWebhookSubscribers
+    />,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  fireEvent.change(screen.getAllByRole("textbox")[0], {
+    target: { value: "https://hooks.example.com/supercheck" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: /subscribe via webhook/i }),
+  );
+  await waitFor(() =>
+    expect(screen.getByText(/verification challenge/i)).toBeInTheDocument(),
+  );
+});
+
 it("starts on a feed when page subscriptions are disabled", () => {
   render(<SubscribeDialog {...props} allowPageSubscribers={false} allowRssFeed />);
   fireEvent.click(screen.getByRole("button"));

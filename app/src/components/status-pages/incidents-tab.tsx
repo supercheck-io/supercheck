@@ -79,6 +79,8 @@ type Incident = {
   body: string | null;
   createdAt: Date | null;
   resolvedAt: Date | null;
+  scheduledFor: Date | null;
+  scheduledUntil: Date | null;
   affectedComponentsCount: number;
   affectedComponents: Array<{ id: string; name: string }>;
   latestUpdate: {

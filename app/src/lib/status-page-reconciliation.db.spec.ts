@@ -23,11 +23,20 @@ jest.mock("./incident-notifications/send-webhook-notifications", () => ({
 jest.mock("./incident-notifications/send-slack-notifications", () => ({
   sendSlackNotifications: jest.fn(async () => ({ success: true })),
 }));
+jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
+jest.mock("@/lib/rbac/middleware", () => ({
+  requirePermissions: jest.fn(async () => undefined),
+}));
+jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { reconcileStatusPages } from "./status-page-reconciliation";
+import { updateIncidentStatus } from "@/actions/update-incident-status";
+import { requireProjectContext } from "@/lib/project-context";
 import { getPublicComponents } from "@/actions/get-public-components";
 import { checkUptimePercentage } from "@/lib/status-page-uptime";
 import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import {
+  deleteExpiredDeliveries,
   enqueuePendingDeliveries,
   processDelivery,
 } from "./incident-notifications/delivery-worker";
@@ -84,10 +93,24 @@ beforeEach(async () => {
     .insert(schema.organization)
     .values({ name: "Test", createdAt: new Date() })
     .returning();
+  const [project] = await mockDatabase
+    .insert(schema.projects)
+    .values({ organizationId: organization.id, name: "Project" })
+    .returning();
+  const [testUser] = await mockDatabase
+    .insert(schema.user)
+    .values({ name: "Test User", email: `${randomUUID()}@example.com` })
+    .returning();
+  jest.mocked(requireProjectContext).mockResolvedValue({
+    userId: testUser.id,
+    organizationId: organization.id,
+    project: { id: project.id, name: "Project" },
+  } as never);
   const [page] = await mockDatabase
     .insert(schema.statusPages)
     .values({
       organizationId: organization.id,
+      projectId: project.id,
       name: "Status",
       subdomain: randomUUID().replaceAll("-", ""),
       status: "published",
@@ -357,4 +380,103 @@ it("persists delivery history and never queues a resolution ahead of an earlier 
       await mockDatabase.query.statusPageNotificationDeliveries.findMany()
     ).every((delivery) => delivery.subscriberId === subscriber.id),
   ).toBe(true);
+});
+
+it("queues every pending delivery in one tick instead of stopping at 100", async () => {
+  const [incident] = await mockDatabase
+    .insert(schema.incidents)
+    .values({ statusPageId: pageId, name: "Fanout" })
+    .returning();
+  const [update] = await mockDatabase
+    .insert(schema.incidentUpdates)
+    .values({ incidentId: incident.id, body: "Fanout", status: "investigating", deliverNotifications: true })
+    .returning();
+  await mockDatabase.insert(schema.statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id, isCreation: true });
+  await mockDatabase.insert(schema.statusPageSubscribers).values(
+    Array.from({ length: 120 }, (_, index) => ({
+      statusPageId: pageId,
+      mode: "email" as const,
+      email: `subscriber-${index}@example.com`,
+      verifiedAt: new Date(),
+    })),
+  );
+  const queue = { add: jest.fn(), getJob: jest.fn(async () => null) };
+  await enqueuePendingDeliveries(queue as unknown as Queue);
+  expect(await mockDatabase.query.statusPageNotificationDeliveries.findMany()).toHaveLength(120);
+  expect(queue.add).toHaveBeenCalledTimes(120);
+});
+
+it("deletes only terminal deliveries older than the retention window", async () => {
+  const [incident] = await mockDatabase.insert(schema.incidents).values({ statusPageId: pageId, name: "Retention" }).returning();
+  const [update] = await mockDatabase.insert(schema.incidentUpdates).values({ incidentId: incident.id, body: "Retention", status: "investigating" }).returning();
+  const [event] = await mockDatabase.insert(schema.statusPageNotificationEvents).values({ incidentId: incident.id, updateId: update.id }).returning();
+  const [oldSubscriber, recentSubscriber] = await mockDatabase
+    .insert(schema.statusPageSubscribers)
+    .values([
+      { statusPageId: pageId, mode: "email", email: "old@example.com", verifiedAt: new Date() },
+      { statusPageId: pageId, mode: "email", email: "recent@example.com", verifiedAt: new Date() },
+    ])
+    .returning();
+  await mockDatabase.insert(schema.statusPageNotificationDeliveries).values([
+    { eventId: event.id, subscriberId: oldSubscriber.id, mode: "email", status: "delivered", updatedAt: new Date(Date.now() - 31 * 86400000) },
+    { eventId: event.id, subscriberId: recentSubscriber.id, mode: "email", status: "delivered", updatedAt: new Date(Date.now() - 29 * 86400000) },
+  ]);
+  await deleteExpiredDeliveries(30);
+  const remaining = await mockDatabase.query.statusPageNotificationDeliveries.findMany();
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0].subscriberId).toBe(recentSubscriber.id);
+});
+
+it("does not recreate a manually resolved automatic incident until the component recovers", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const [automatic] = await mockDatabase.query.incidents.findMany();
+  expect(automatic.status).toBe("investigating");
+
+  // Manual resolve sets the suppression flag (covered by the action test below).
+  await mockDatabase.update(schema.incidents).set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() }).where(eq(schema.incidents.id, automatic.id));
+  await mockDatabase.update(schema.statusPageComponents).set({ autoIncidentSuppressed: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(1);
+
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.autoIncidentSuppressed).toBe(false);
+
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  expect(await mockDatabase.query.incidents.findMany()).toHaveLength(2);
+});
+
+it("writes automatic incident text in the configured page language", async () => {
+  await mockDatabase.update(schema.statusPages).set({ language: "es" }).where(eq(schema.statusPages.id, pageId));
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+
+  const incident = await mockDatabase.query.incidents.findFirst();
+  const update = await mockDatabase.query.incidentUpdates.findFirst();
+  expect(incident?.name).toBe("API está experimentando una interrupción");
+  expect(update?.body).toBe("La monitorización detectó un problema de disponibilidad.");
+});
+
+it("sets suppression when an automatic incident is resolved manually", async () => {
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const automatic = await mockDatabase.query.incidents.findFirst();
+
+  const result = await updateIncidentStatus({
+    incidentId: automatic!.id,
+    statusPageId: pageId,
+    status: "resolved",
+    body: "Resolved manually while the monitor is still down.",
+    deliverNotifications: true,
+    restoreComponentStatus: false,
+  });
+
+  expect(result.success).toBe(true);
+  expect((await mockDatabase.query.statusPageComponents.findFirst())?.autoIncidentSuppressed).toBe(true);
 });

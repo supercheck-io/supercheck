@@ -23,6 +23,10 @@ jest.mock("@/lib/webhook-utils", () => ({
   generateWebhookSecret: jest.fn(() => "test-webhook-secret"),
 }));
 
+jest.mock("@/lib/incident-notifications/webhook-verification", () => ({
+  sendWebhookChallenge: jest.fn(async () => ({ verified: true })),
+}));
+
 import { db } from "@/utils/db";
 import { subscribeToStatusPage } from "./subscribe-to-status-page";
 
@@ -75,7 +79,7 @@ describe("subscribeToStatusPage", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.message).toContain("Webhook subscription successful");
+    expect(result.message).toContain("Webhook subscription verified");
     expect(mockDb.insert).toHaveBeenCalled();
   });
 

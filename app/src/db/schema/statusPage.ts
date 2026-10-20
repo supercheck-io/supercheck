@@ -98,6 +98,11 @@ export const statusPages = pgTable(
     customDomain: varchar("custom_domain", { length: 255 }),
     customDomainVerified: boolean("custom_domain_verified").default(false),
     customDomainLastCheckedAt: timestamp("custom_domain_last_checked_at"),
+    // Consecutive definitive DNS mismatches; transient resolution failures do
+    // not increment it and verified domains are revoked at three.
+    customDomainFailureCount: integer("custom_domain_failure_count")
+      .default(0)
+      .notNull(),
     theme: jsonb("theme").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -138,6 +143,8 @@ export const statusPageComponents = pgTable("status_page_components", {
     .notNull(),
   failureThreshold: integer("failure_threshold").default(1).notNull(),
   autoCreateIncidents: boolean("auto_create_incidents").default(false).notNull(),
+  // A manual resolve keeps automatic incidents off until the component recovers.
+  autoIncidentSuppressed: boolean("auto_incident_suppressed").default(false).notNull(),
   lastReconciledAt: timestamp("last_reconciled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -332,6 +339,12 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   unsubscribeToken: varchar("unsubscribe_token", { length: 255 }),
   // Webhook security and delivery tracking
   webhookSecret: varchar("webhook_secret", { length: 255 }),
+  // Ownership challenge for webhook subscribers. The raw token is only sent to
+  // the endpoint; the row keeps its SHA-256 hash and expiry.
+  webhookVerificationTokenHash: varchar("webhook_verification_token_hash", {
+    length: 64,
+  }),
+  webhookVerificationExpiresAt: timestamp("webhook_verification_expires_at"),
   webhookFailures: integer("webhook_failures").default(0),
   webhookLastAttemptAt: timestamp("webhook_last_attempt_at"),
   webhookLastError: text("webhook_last_error"),
@@ -606,4 +619,4 @@ export const statusPageNotificationDeliveries = pgTable("status_page_notificatio
   leasedUntil: timestamp("leased_until"),
   lastError: text("last_error"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({ recipientUnique: uniqueIndex("status_page_notification_delivery_recipient_idx").on(table.eventId, table.subscriberId), subscriberIdx: index("status_page_notification_deliveries_subscriber_idx").on(table.subscriberId), pendingIdx: index("status_page_notification_deliveries_pending_idx").on(table.updatedAt).where(sql`${table.status} = 'pending'`) }));
+}, (table) => ({ recipientUnique: uniqueIndex("status_page_notification_delivery_recipient_idx").on(table.eventId, table.subscriberId), subscriberIdx: index("status_page_notification_deliveries_subscriber_idx").on(table.subscriberId), pendingIdx: index("status_page_notification_deliveries_pending_idx").on(table.updatedAt).where(sql`${table.status} = 'pending'`), retentionIdx: index("status_page_notification_deliveries_retention_idx").on(table.updatedAt).where(sql`${table.status} in ('delivered', 'failed', 'skipped')`) }));
