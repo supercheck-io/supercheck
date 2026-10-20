@@ -177,6 +177,14 @@ describe("DeviceApproval", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
 
+  it("explains impersonation refusals in plain words", async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: "impersonation_not_allowed" }) });
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
+    fireEvent.click(approve);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/stop impersonating/i);
+  });
+
   it("handles network failure", async () => {
     fetchMock.mockRejectedValue(new Error("offline"));
     const { approve, input } = setup();

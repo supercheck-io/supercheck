@@ -483,13 +483,17 @@ export async function isImpersonatedSession(): Promise<boolean> {
   try {
     const authSession = await getCachedAuthSession();
     if (!authSession) return false;
+    // The auth session may already carry the flag; honour it without waiting for the lookup.
+    if ((authSession.session as { impersonatedBy?: string | null }).impersonatedBy) return true;
     const [dbSession] = await db
       .select({ impersonatedBy: session.impersonatedBy })
       .from(session)
       .where(eq(session.token, authSession.session.token))
       .limit(1);
     return Boolean(dbSession?.impersonatedBy);
-  } catch {
+  } catch (error) {
+    // Fail closed, but leave a trace: callers show a generic refusal, so this is the only clue to a DB problem.
+    console.error("Could not determine impersonation state; refusing credential minting:", error);
     return true;
   }
 }
