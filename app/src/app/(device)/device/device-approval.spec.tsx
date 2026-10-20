@@ -53,18 +53,19 @@ describe("DeviceApproval plan step", () => {
   });
 
   it("switches to the selected project's organization before opening checkout in a new tab", async () => {
-    const tab = { opener: "parent" } as unknown as Window;
+    const tab = { opener: "parent", location: { href: "about:blank" }, close: jest.fn() } as unknown as Window;
     const open = jest.spyOn(window, "open").mockReturnValue(tab);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     view(withPlan({ active: false, canPurchase: true }, { active: true, canPurchase: true }));
     fireEvent.click(screen.getByLabelText(/Alpha/));
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith("/subscribe", "_blank"));
+    await waitFor(() => expect(tab.location.href).toBe("/subscribe"));
+    // opened synchronously in the click (popup-blocker safe); navigated only after the switch succeeded
+    expect(open).toHaveBeenCalledWith("about:blank", "_blank");
     expect(tab.opener).toBeNull();
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/projects/switch");
     expect(JSON.parse(init.body)).toEqual({ projectId: "p-1" });
-    expect(fetchMock.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0]);
     expect(await screen.findByText(/billing opened in a new tab/i)).toBeInTheDocument();
     // the consent page is untouched: no approval was sent
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/device/approve"))).toBe(false);
@@ -72,7 +73,7 @@ describe("DeviceApproval plan step", () => {
   });
 
   it("never shows a billing message for a different project than the one it was opened for", async () => {
-    const tab = { opener: "parent" } as unknown as Window;
+    const tab = { opener: "parent", location: { href: "about:blank" }, close: jest.fn() } as unknown as Window;
     const open = jest.spyOn(window, "open").mockReturnValue(tab);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
@@ -89,7 +90,7 @@ describe("DeviceApproval plan step", () => {
   it("locks the project choice while billing is being opened", async () => {
     let release: (v: unknown) => void = () => {};
     fetchMock.mockReturnValue(new Promise((r) => { release = r; }));
-    jest.spyOn(window, "open").mockReturnValue({} as Window);
+    jest.spyOn(window, "open").mockReturnValue({ location: { href: "" } } as unknown as Window);
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
@@ -105,10 +106,14 @@ describe("DeviceApproval plan step", () => {
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(await screen.findByRole("link", { name: /open billing/i })).toHaveAttribute("href", "/subscribe");
     unmount();
+    const tab = { location: { href: "about:blank" }, close: jest.fn() } as unknown as Window;
+    open.mockReturnValue(tab);
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not open billing/i);
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.href).toBe("about:blank");
     open.mockRestore();
   });
 

@@ -86,7 +86,11 @@ export function deviceBaseUrl(request: NextRequest): string {
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.BETTER_AUTH_URL;
   try {
-    if (configured) return new URL(configured).origin;
+    if (configured) {
+      // Keep a self-hosted path prefix (e.g. https://host/supercheck) but never query/hash.
+      const url = new URL(configured);
+      return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+    }
   } catch {
     // fall through
   }
