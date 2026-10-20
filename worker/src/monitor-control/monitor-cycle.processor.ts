@@ -14,6 +14,14 @@ const REPAIR_AFTER_MS = 60_000;
 const RETENTION_SWEEP_MS = 10 * 60_000;
 const DEFAULT_RETENTION_DAYS = 14;
 
+/** Drizzle wraps driver errors; the cause (connection, TLS, SQLSTATE) is what operators need. */
+function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause =
+    error.cause instanceof Error ? ` (cause: ${error.cause.message})` : '';
+  return `${error.message.split('\n')[0]}${cause}`;
+}
+
 export type ProcessorSnapshot = {
   started: boolean;
   intervalMs: number;
@@ -106,7 +114,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.state.consecutiveFailures += 1;
       this.logger.error(
-        `Cycle processing tick failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Cycle processing tick failed: ${describeError(error)}`,
       );
     }
   }
