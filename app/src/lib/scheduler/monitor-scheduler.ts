@@ -20,6 +20,7 @@ import {
 } from '@/lib/monitor-location-routing';
 
 import { recordSchedulingFailure } from '@/lib/monitor-scheduling-failure';
+import { monitorCyclePolicy } from '@/lib/monitor-cycles';
 
 const logger = queueLogger;
 
@@ -58,7 +59,11 @@ export async function processScheduledMonitor(
   const retryLimit = data.retryLimit || 3;
 
   try {
-    await enqueueMonitorExecutionJobs(executionJobData, retryLimit);
+    await enqueueMonitorExecutionJobs(executionJobData, retryLimit, {
+      // Retries of one scheduled cycle share the scheduler job id, hence one durable cycle.
+      key: job.id,
+      finalAttempt: job.attemptsMade + 1 >= (job.opts?.attempts ?? 1),
+    });
   } catch (error) {
     // Record every enqueue failure so the monitor cannot remain falsely up.
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -74,7 +79,8 @@ export async function processScheduledMonitor(
  */
 async function enqueueMonitorExecutionJobs(
   jobData: MonitorJobData,
-  retryLimit: number
+  retryLimit: number,
+  cycle: { key?: string; finalAttempt: boolean }
 ): Promise<void> {
   const monitorConfig = jobData.config;
   const locationConfig = monitorConfig?.locationConfig as LocationConfig | null ?? null;
@@ -125,6 +131,12 @@ async function enqueueMonitorExecutionJobs(
       // No BullMQ priority: prioritized jobs live in the `:prioritized` sorted set,
       // which KEDA's redis list triggers cannot see. Scheduled checks queue FIFO in
       // `:wait`; immediate runs use lifo to go ahead of them (see queue.ts).
+    },
+    {
+      key: cycle.key,
+      configuredLocations: expectedLocations,
+      policy: monitorCyclePolicy(locationConfig),
+      abortOnFailure: cycle.finalAttempt,
     }
   );
 }

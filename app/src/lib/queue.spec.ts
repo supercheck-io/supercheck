@@ -19,6 +19,8 @@ describe("queue location refresh", () => {
   const persist = jest.fn();
   const flowAddBulk = jest.fn();
   const flowClose = jest.fn();
+  const persistMonitorCycle = jest.fn().mockResolvedValue({ created: true });
+  const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
   const set = jest.fn().mockResolvedValue("OK");
   const pipeline = jest.fn(() => {
     const results: Array<[null, string | number]> = [];
@@ -117,6 +119,11 @@ describe("queue location refresh", () => {
     jest.doMock("./queue-event-hub", () => ({ invalidateQueueEventHub }));
     jest.doMock("./bull-board/state", () => ({ invalidateBullBoard }));
     jest.doMock("./monitor-location-routing", () => ({}));
+    jest.doMock("./monitor-cycles", () => ({
+      ...jest.requireActual("./monitor-cycles"),
+      persistMonitorCycle,
+      abortMonitorCycle,
+    }));
     jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames }));
     queueModule = await import("./queue");
   });
@@ -267,6 +274,75 @@ describe("queue location refresh", () => {
       enabledCodes, { attempts: 3 })).rejects.toThrow("incomplete cycle enqueue");
     expect(flowClose).toHaveBeenCalledTimes(1);
     expect(set).toHaveBeenCalledWith(expect.stringMatching(/^monitor:aggr:aborted:/), "1", "EX", 604800);
+  });
+
+  describe("missing-cycle closure", () => {
+    const task = { monitorId: "monitor-1", type: "website" as const, target: "https://example.com" };
+    const cycle = (overrides: Record<string, unknown> = {}) => ({
+      key: "repeat:abc:1000",
+      configuredLocations: ["eu-central", "us-east", "ap-south"],
+      policy: { strategy: "majority" as const, threshold: 50 },
+      abortOnFailure: true,
+      ...overrides,
+    });
+    afterEach(() => { delete process.env.MISSING_CYCLE_CLOSURE_ENABLED; });
+
+    it("leaves publication untouched while the flag is off", async () => {
+      enabledCodes = ["eu-central", "us-east"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, { attempts: 3 }, cycle());
+      expect(persistMonitorCycle).not.toHaveBeenCalled();
+      expect(flowAddBulk.mock.calls[0][0][0].opts.jobId).toMatch(/^monitor-1-[0-9a-f-]{36}-eu-central$/);
+    });
+
+    it("persists the configured-region snapshot before publishing, under a stable bullmq-safe id", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central", "us-east"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      const order: string[] = [];
+      persistMonitorCycle.mockImplementation(async () => { order.push("persist"); return { created: true }; });
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => { order.push("publish"); return flows.map(() => ({ job: { getState: async () => "waiting" } })); });
+      const first = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, { attempts: 3 }, cycle());
+      const retry = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, { attempts: 3 }, cycle());
+      expect(order.slice(0, 2)).toEqual(["persist", "publish"]);
+      expect(retry).toBe(first);
+      expect(first).not.toContain(":");
+      // Skipped (offline) regions stay in the snapshot so they count as missing at the deadline.
+      expect(persistMonitorCycle).toHaveBeenCalledWith(expect.objectContaining({
+        id: first,
+        monitorId: "monitor-1",
+        configuredLocations: ["eu-central", "us-east", "ap-south"],
+      }));
+      for (const flow of flowAddBulk.mock.calls[0][0]) expect(flow.data.executionGroupId).toBe(first);
+    });
+
+    it("uses distinct cycles for different scheduled runs", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      const a = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle({ key: "repeat:abc:1000" }));
+      const b = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle({ key: "repeat:abc:2000" }));
+      expect(a).not.toBe(b);
+    });
+
+    it("keeps the cycle open for a scheduler retry and never sets the sticky abort marker", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      flowAddBulk.mockResolvedValue([{ job: { getState: async () => "unknown" } }]);
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle({ abortOnFailure: false }))).rejects.toThrow("incomplete cycle enqueue");
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it("aborts the cycle when no retry remains so it can never close as downtime", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      flowAddBulk.mockResolvedValue([{ job: { getState: async () => "unknown" } }]);
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).rejects.toThrow("incomplete cycle enqueue");
+      expect(abortMonitorCycle).toHaveBeenCalledTimes(1);
+      expect(set).not.toHaveBeenCalled();
+    });
   });
 
   it("applies a remote notification without publishing it again", async () => {

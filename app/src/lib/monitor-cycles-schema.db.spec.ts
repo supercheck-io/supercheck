@@ -13,6 +13,7 @@ jest.mock("@/utils/db", () => ({
     return mockDatabase;
   },
 }));
+import { abortMonitorCycle, monitorCycleId, persistMonitorCycle } from "./monitor-cycles";
 const execFileAsync = promisify(execFile);
 const name = `monitor_cycles_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -132,4 +133,44 @@ it("indexes only pending relay work with partial indexes", async () => {
   const [{ count }] = await client`SELECT count(*)::int AS count FROM pg_indexes
     WHERE tablename = 'monitor_results' AND indexdef ILIKE '%cycle%'`;
   expect(count).toBe(0);
+});
+
+it("persists a cycle idempotently so a scheduler retry reuses it", async () => {
+  const id = monitorCycleId(monitorId, "repeat:abc:1000");
+  const input = {
+    id,
+    monitorId,
+    configuredLocations: ["eu", "us", "eu"],
+    policy: { strategy: "majority" as const, threshold: 50 },
+    deadlineMs: 60_000,
+  };
+  const first = await persistMonitorCycle(input);
+  const retry = await persistMonitorCycle({ ...input, configuredLocations: ["other"] });
+  expect(first).toEqual({ created: true });
+  expect(retry).toEqual({ created: false });
+  const [row] = await mockDatabase
+    .select()
+    .from(schema.monitorCycles)
+    .where(eq(schema.monitorCycles.id, id));
+  expect(row.expectedLocations).toEqual(["eu", "us"]);
+  expect(row.status).toBe("open");
+  expect(row.deadlineAt.getTime()).toBeGreaterThan(row.scheduledFor.getTime());
+});
+
+it("aborts only open cycles", async () => {
+  const id = monitorCycleId(monitorId, "k");
+  await persistMonitorCycle({
+    id,
+    monitorId,
+    configuredLocations: ["eu"],
+    policy: { strategy: "all", threshold: 100 },
+  });
+  await abortMonitorCycle(id);
+  const [aborted] = await client`SELECT status, closed_at FROM monitor_cycles WHERE id = ${id}`;
+  expect(aborted.status).toBe("aborted");
+  expect(aborted.closed_at).not.toBeNull();
+  await client`UPDATE monitor_cycles SET status = 'closed', closed_by = 'arrival', result_status = 'up' WHERE id = ${id}`;
+  await abortMonitorCycle(id);
+  const [still] = await client`SELECT status FROM monitor_cycles WHERE id = ${id}`;
+  expect(still.status).toBe("closed");
 });
