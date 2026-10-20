@@ -1,4 +1,5 @@
 const mockSetCalls: Array<Record<string, unknown>> = [];
+const mockWhereCalls: unknown[] = [];
 let mockLeased: Array<Record<string, unknown>> = [];
 
 jest.mock("@/utils/db", () => {
@@ -10,7 +11,12 @@ jest.mock("@/utils/db", () => {
         returning: () => Promise<unknown[]>;
       };
       where.returning = async () => mockLeased;
-      return { where: jest.fn(() => where) };
+      return {
+        where: jest.fn((condition: unknown) => {
+          mockWhereCalls.push(condition);
+          return where;
+        }),
+      };
     }),
   }));
   return {
@@ -35,6 +41,8 @@ jest.mock("./send-slack-notifications", () => ({
   sendSlackNotifications: jest.fn(),
 }));
 
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { processDelivery } from "./delivery-worker";
 import { sendIncidentNotifications } from "./send-incident-notifications";
@@ -62,6 +70,7 @@ const settled = () => mockSetCalls.slice(1);
 beforeEach(() => {
   jest.clearAllMocks();
   mockSetCalls.length = 0;
+  mockWhereCalls.length = 0;
   mockLeased = [lease()];
   queries.statusPageNotificationEvents.findFirst.mockResolvedValue({
     id: "event",
@@ -207,5 +216,32 @@ describe("processDelivery", () => {
         enqueuedAt: null,
       }),
     ]);
+  });
+});
+
+describe("processDelivery settle guard", () => {
+  const render = (condition: unknown) =>
+    new PgDialect().sqlToQuery(condition as SQL);
+
+  it.each([
+    ["success", () => undefined],
+    [
+      "failure",
+      () =>
+        (sendIncidentNotifications as jest.Mock).mockRejectedValue(
+          new Error("down"),
+        ),
+    ],
+  ])("scopes the %s write to the lease this worker took", async (name, arrange) => {
+    mockLeased = [lease({ attempts: 2 })];
+    arrange();
+
+    await processDelivery("delivery").catch(() => undefined);
+
+    // mockWhereCalls[0] is the lease; the settle write follows it.
+    const { sql: text, params } = render(mockWhereCalls[1]);
+    expect(text).toContain('"status"');
+    expect(text).toContain('"attempts"');
+    expect(params).toEqual(expect.arrayContaining(["delivery", "pending", 2]));
   });
 });
