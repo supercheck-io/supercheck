@@ -791,15 +791,33 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const pool = this.executionNodeSelector?.region;
     if (!pool) return;
     let health: string | undefined;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2000);
     try {
-      const config = await this.coreApi!.readNamespacedConfigMap({
-        namespace: this.executionNamespace,
-        name: 'isolation-pool-health',
-      });
+      const { Observable } = this.k8sModule!;
+      const config = await this.coreApi!.readNamespacedConfigMap(
+        {
+          namespace: this.executionNamespace,
+          name: 'isolation-pool-health',
+        },
+        {
+          middleware: [
+            {
+              pre: (request) => {
+                request.setSignal(controller.signal);
+                return new Observable(Promise.resolve(request));
+              },
+              post: (response) => new Observable(Promise.resolve(response)),
+            },
+          ],
+        },
+      );
       health = config.data?.[pool];
     } catch {
-      // Missing ConfigMap or unavailable API must not stop a healthy pool.
+      // Missing ConfigMap, timeout or unavailable API must not stop a healthy pool.
       return;
+    } finally {
+      clearTimeout(deadline);
     }
     if (isIsolationPoolBlocked(health)) {
       throw new Error(

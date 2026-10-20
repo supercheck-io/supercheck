@@ -64,6 +64,13 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('isolation canary admission', () => {
+    beforeEach(() => {
+      (service as any).k8sModule = {
+        Observable: class {
+          constructor(readonly promise: Promise<unknown>) {}
+        },
+      };
+    });
     it('reads only the selected pool and refuses a fresh explicit failure', async () => {
       mockConfigGet.mockImplementation((key: string) =>
         key === 'ISOLATION_CANARY_GATE_ENABLED' ? 'true' : undefined,
@@ -81,10 +88,13 @@ describe('ContainerExecutorService', () => {
       await expect(
         (service as any).checkIsolationCanaryAdmission(),
       ).rejects.toThrow('isolation canary failed for pool eu-central');
-      expect(read).toHaveBeenCalledWith({
-        namespace: 'supercheck-execution',
-        name: 'isolation-pool-health',
-      });
+      expect(read).toHaveBeenCalledWith(
+        {
+          namespace: 'supercheck-execution',
+          name: 'isolation-pool-health',
+        },
+        expect.objectContaining({ middleware: expect.any(Array) }),
+      );
       read.mockResolvedValue({ data: {} });
       await expect(
         (service as any).checkIsolationCanaryAdmission(),
@@ -93,6 +103,38 @@ describe('ContainerExecutorService', () => {
       await expect(
         (service as any).checkIsolationCanaryAdmission(),
       ).resolves.toBeUndefined();
+    });
+
+    it('aborts a stalled health read after two seconds and admits execution', async () => {
+      jest.useFakeTimers();
+      try {
+        mockConfigGet.mockImplementation((key: string) =>
+          key === 'ISOLATION_CANARY_GATE_ENABLED' ? 'true' : undefined,
+        );
+        (service as any).executionNodeSelector = { region: 'eu-central' };
+        let signal: AbortSignal | undefined;
+        (service as any).coreApi = {
+          readNamespacedConfigMap: jest.fn((_params, options) => {
+            options.middleware[0].pre({
+              setSignal: (value: AbortSignal) => {
+                signal = value;
+              },
+            });
+            return new Promise((_resolve, reject) =>
+              signal!.addEventListener('abort', () =>
+                reject(new Error('aborted')),
+              ),
+            );
+          }),
+        };
+        const admission = (service as any).checkIsolationCanaryAdmission();
+        expect(signal?.aborted).toBe(false);
+        await jest.advanceTimersByTimeAsync(2000);
+        await expect(admission).resolves.toBeUndefined();
+        expect(signal?.aborted).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('does not query health when the rollout flag is disabled', async () => {
