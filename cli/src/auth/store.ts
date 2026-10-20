@@ -74,6 +74,11 @@ export function getToken(): string | null {
   return validateTokenFormat(stored) ? stored : null
 }
 
+/** The credential saved by `login`, ignoring the environment (used by `logout` to report accurately). */
+export function getStoredToken(): string | null {
+  return store.get('token') ?? null
+}
+
 export function getTriggerKey(): string | null {
   const envKey = process.env.SUPERCHECK_TRIGGER_KEY
   if (envKey) {

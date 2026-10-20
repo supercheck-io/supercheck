@@ -28,7 +28,7 @@ export interface LinkPlan {
 }
 
 /** Blank out comments (keeping offsets and strings intact) so patterns never match commented-out code. */
-function maskComments(text: string): string {
+export function maskComments(text: string): string {
   const out = text.split('')
   let quote: string | null = null
   for (let i = 0; i < text.length; i++) {

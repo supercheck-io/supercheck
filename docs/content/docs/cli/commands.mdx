@@ -96,6 +96,7 @@ JSON errors on stderr carry a stable `code` agents can branch on, with `retryabl
 | `RATE_LIMITED` / `SERVICE_UNAVAILABLE` | Retryable |
 | `VALIDATION_FAILED` | The request was rejected as invalid |
 | `CONFIRMATION_REQUIRED` | A write needs `--force` |
+| `PAYMENT_REQUIRED` | The server answered 402 without a recognised reason; run `supercheck plan` |
 | `AUTHORIZATION_PENDING` | `login` without `--json` or a terminal started a browser login that is not approved yet (exit `2`); approve it, then run `login` again |
 | `DEVICE_CODE_DENIED`, `DEVICE_CODE_EXPIRED`, `DEVICE_CODE_CONSUMED`, `DEVICE_LOGIN_UNVERIFIED`, `TOKEN_LIMIT_REACHED` | Browser-login outcomes |
 | `CONTEXT_MISMATCH` | The config's API URL, organization or project does not match the logged-in context; see `supercheck link` |
@@ -121,6 +122,10 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 |------|----------|-------------|
 | `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser (see below) when the server supports it. |
 | `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
+| `--reauth` | No | Start a new browser login even if you are already signed in |
+| `--no-browser` | No | Print the login URL and code without opening a browser |
+| `--wait` | No | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
+| `--timeout <seconds>` | No | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable |
 
 The token is verified against the API before being stored locally.
 
@@ -1049,9 +1054,9 @@ The doctor command checks:
 - **Playwright browsers** — chromium binary for local test execution
 - **k6** — binary for performance/load tests (optional)
 - **Authentication** — whether a valid token is stored
-- **Configuration** — whether `supercheck.config.ts` exists and is valid
+- **Configuration** — whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted)
 
-With `--fix`, doctor installs missing Playwright browsers automatically. For `@playwright/test` and `k6`, it prints the install command to run manually.
+With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.
 
 `diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
 
