@@ -52,8 +52,8 @@ const reservation = (isLocked = false) => ({
   attemptsRemaining: 4,
   lockoutSeconds: isLocked ? 30 : undefined,
   releases: isLocked ? [] : [
-    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0 },
-    { identifier: "pair:user@example.test|192.0.2.1", appliedLockoutSeconds: 0 },
+    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0, reservationToken: "reservation-token" },
+    { identifier: "pair:user@example.test|192.0.2.1", appliedLockoutSeconds: 0, reservationToken: "reservation-token" },
   ],
 });
 
@@ -144,7 +144,7 @@ it("clears account counters and releases only the IP attempt after a successful 
   expect(clearLockout).not.toHaveBeenCalledWith("ip:192.0.2.1");
   // A success must not wipe the shared IP ladder for everyone behind that IP.
   expect(releaseLoginAttempt).toHaveBeenCalledWith([
-    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0 },
+    { identifier: "ip:192.0.2.1", appliedLockoutSeconds: 0, reservationToken: "reservation-token" },
   ]);
 });
 

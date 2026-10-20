@@ -21,6 +21,7 @@
  * other API errors) and cleared on success.
  */
 
+import { randomUUID } from "node:crypto";
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 import { isCloudHosted } from "@/lib/feature-flags";
@@ -108,7 +109,8 @@ type RedisConnection = Awaited<ReturnType<typeof getRedisConnection>>;
 const RESERVE_ATTEMPT_SCRIPT = `
 local attemptsTtl = tonumber(ARGV[1])
 local thresholds = {}
-for index = 2, #ARGV, 2 do
+local reservationToken = ARGV[2]
+for index = 3, #ARGV, 2 do
   thresholds[#thresholds + 1] = { tonumber(ARGV[index]), tonumber(ARGV[index + 1]) }
 end
 
@@ -135,7 +137,7 @@ for index = 1, keyCount do
   end
 
   if applied > 0 then
-    redis.call("SETEX", lockKey, applied, "1")
+    redis.call("SETEX", lockKey, applied, reservationToken)
     if applied > result[2] then
       result[2] = applied
     end
@@ -150,7 +152,7 @@ return result
 
 /**
  * Undo one reservation per key. The counter is decremented, and a lock created
- * by this reservation is removed as long as no longer lock replaced it.
+ * by this reservation is removed only if its unique token still matches.
  */
 const RELEASE_ATTEMPT_SCRIPT = `
 for index = 1, #KEYS / 2 do
@@ -162,10 +164,10 @@ for index = 1, #KEYS / 2 do
     redis.call("DECR", attemptsKey)
   end
 
-  local applied = tonumber(ARGV[index]) or 0
+  local applied = tonumber(ARGV[index * 2 - 1]) or 0
   if applied > 0 then
-    local lockTtl = redis.call("TTL", lockKey)
-    if lockTtl > 0 and lockTtl <= applied then
+    local token = ARGV[index * 2]
+    if redis.call("GET", lockKey) == token then
       redis.call("DEL", lockKey)
     end
   end
@@ -185,6 +187,7 @@ export interface LockoutStatus {
 export interface AttemptRelease {
   identifier: string;
   appliedLockoutSeconds: number;
+  reservationToken: string;
 }
 
 export interface AttemptReservation extends LockoutStatus {
@@ -369,11 +372,13 @@ export async function reserveLoginAttempt(identifiers: string[]): Promise<Attemp
       threshold.lockoutSeconds,
     ]);
 
+    const reservationToken = randomUUID();
     const rawResult = await redis.eval(
       RESERVE_ATTEMPT_SCRIPT,
       keys.length,
       ...keys,
       ATTEMPTS_TTL_SECONDS,
+      reservationToken,
       ...thresholdArgs
     );
 
@@ -406,7 +411,7 @@ export async function reserveLoginAttempt(identifiers: string[]): Promise<Attemp
       const attempts = numbers[2 + index * 2] ?? 0;
       const appliedLockoutSeconds = numbers[3 + index * 2] ?? 0;
       attemptsRemaining = Math.min(attemptsRemaining, calculateAttemptsRemaining(attempts));
-      releases.push({ identifier, appliedLockoutSeconds });
+      releases.push({ identifier, appliedLockoutSeconds, reservationToken });
     });
 
     logger.debug(
@@ -441,7 +446,7 @@ export async function releaseLoginAttempt(releases: AttemptRelease[]): Promise<v
       ATTEMPTS_KEY(identifier),
       LOCKOUT_KEY(identifier),
     ]);
-    const applied = releases.map(({ appliedLockoutSeconds }) => appliedLockoutSeconds);
+    const applied = releases.flatMap(({ appliedLockoutSeconds, reservationToken }) => [appliedLockoutSeconds, reservationToken]);
 
     await redis.eval(RELEASE_ATTEMPT_SCRIPT, keys.length, ...keys, ...applied);
 

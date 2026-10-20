@@ -37,7 +37,7 @@ function runScript(script: string, keys: string[], args: (string | number)[]): n
   if (script.includes("INCR")) {
     const attemptsTtl = Number(args[0]);
     const thresholds: Array<[number, number]> = [];
-    for (let index = 1; index < args.length; index += 2) {
+    for (let index = 2; index < args.length; index += 2) {
       thresholds.push([Number(args[index]), Number(args[index + 1])]);
     }
 
@@ -63,7 +63,7 @@ function runScript(script: string, keys: string[], args: (string | number)[]): n
       }
 
       if (applied > 0) {
-        mockStore.set(lockKey, { value: "1", expiresAt: Date.now() + applied * 1000 });
+        mockStore.set(lockKey, { value: String(args[1]), expiresAt: Date.now() + applied * 1000 });
         result[1] = Math.max(result[1], applied);
       }
 
@@ -84,10 +84,9 @@ function runScript(script: string, keys: string[], args: (string | number)[]): n
       });
     }
 
-    const applied = Number(args[index]);
+    const applied = Number(args[index * 2]);
     if (applied > 0) {
-      const lockTtl = ttlOf(lockKey);
-      if (lockTtl > 0 && lockTtl <= applied) mockStore.delete(lockKey);
+      if (getEntry(lockKey)?.value === args[index * 2 + 1]) mockStore.delete(lockKey);
     }
   }
   return 1;
@@ -330,6 +329,18 @@ describe("Login Lockout", () => {
 
       expect(await getAttemptCount(ipLockoutIdentifier(IP))).toBe(0);
       expect(await getAttemptCount(emailIpLockoutIdentifier(EMAIL, IP))).toBe(0);
+    });
+
+    it("does not remove a newer lock when an older threshold reservation settles late", async () => {
+      await reserveFailures(4);
+      const older = await reserveLoginAttempt(identifiers());
+      for (const key of Array.from(mockStore.keys())) {
+        if (key.includes(":locked:")) mockStore.delete(key);
+      }
+      const newer = await reserveLoginAttempt(identifiers());
+      expect(newer.isLocked).toBe(false);
+      await releaseLoginAttempt(older.releases);
+      expect((await reserveLoginAttempt(identifiers())).isLocked).toBe(true);
     });
 
     it("removes a lock created by the released reservation", async () => {

@@ -17,7 +17,8 @@ Progressive lockout, identical ladder on every blocking dimension:
 | 20 | 1 hour |
 
 Attempt counters expire after 24 hours without a new attempt. Successful
-sign-in clears the counters and any lock for the identities involved.
+sign-in clears the email and email+IP counters and locks, and returns only its own
+reserved attempt to the shared IP counter.
 
 ## Blocking dimensions
 
@@ -69,8 +70,9 @@ Settlement in `after()`:
 | Captcha failure, unverified email, transport/other API error | Release the reservation (decrement; remove a lock the reservation created) |
 | Already locked (rejected in `before()`) | No counters touched |
 
-A release only removes a lock whose remaining TTL is no longer than the one the
-released reservation created, so a later, longer lock is never shortened.
+Each reservation has a unique token stored in any lock it creates. A release
+removes a lock only when that token still matches, so a delayed result cannot
+clear a newer lock after the original lock expires.
 Success resets the account-scoped pair counter but only gives back the attempt
 charged to the shared IP, so a successful sign-in cannot reset the IP ladder for
 other users behind the same NAT.
@@ -85,8 +87,7 @@ account is locked".
 
 ## Client IP derivation
 
-`getClientIP()` reads `X-Forwarded-For` from **right to left**. The leftmost
-entry is whatever the client sent and is never trusted. It skips
+`getClientIP()` reads `X-Forwarded-For` from **right to left**. Clients may prepend untrusted entries. It skips
 `TRUSTED_PROXY_HOPS` right-hand entries (those appended by our own edge) and
 inspects **only** the entry at that position. If that entry is present but not a
 valid address (`net.isIP`), it returns `unknown`; it never walks further left
@@ -145,8 +146,7 @@ one.
 Deployment follow-up (ingress, tracked outside this repository): confirm the
 staging and production ingress strips incoming `X-Forwarded-For` /
 `CF-Connecting-IP` from untrusted peers, appends exactly one entry per trusted
-hop, and blocks direct access to the app service. The values above assume the
-Cloudflare → ingress-nginx pattern; the cloud topology has not been verified
+hop, and blocks direct access to the app service. The topology examples above are illustrative; the cloud topology has not been verified
 from this repository, so `TRUSTED_PROXY_HOPS` must be confirmed against the
 actual hop count before relying on lockout keys.
 
