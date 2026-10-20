@@ -73,8 +73,8 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
 
   if (phase === "approved") {
     return (
-      <div role="status" className="space-y-2">
-        <p className="font-medium">You&apos;re connected.</p>
+      <div role="status" className="space-y-2 text-center">
+        <p className="text-lg font-semibold">You&apos;re connected.</p>
         <p className="text-sm text-muted-foreground">
           Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
         </p>
@@ -83,8 +83,8 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   }
   if (phase === "denied") {
     return (
-      <div role="status" className="space-y-2">
-        <p className="font-medium">Request denied.</p>
+      <div role="status" className="space-y-2 text-center">
+        <p className="text-lg font-semibold">Request denied.</p>
         <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
       </div>
     );
