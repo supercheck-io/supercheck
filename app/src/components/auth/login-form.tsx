@@ -44,6 +44,8 @@ interface LoginFormProps {
   inviteToken: string | null;
   isFromNotification?: boolean;
   emailVerified?: boolean;
+  /** Sanitized local continuation path (already allowlisted by the page). */
+  nextPath?: string | null;
   /** Callback when CAPTCHA token changes (null when expired/failed) */
   onCaptchaToken?: (token: string | null) => void;
   /** Ref to the TurnstileCaptcha so the page can request a fresh single-use token per attempt */
@@ -59,6 +61,7 @@ export function LoginForm({
   inviteToken,
   isFromNotification = false,
   emailVerified = false,
+  nextPath = null,
   onCaptchaToken,
   captchaRef: externalCaptchaRef,
 }: LoginFormProps) {
@@ -149,7 +152,7 @@ export function LoginForm({
                   <span className="text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link
-                      href="/sign-up"
+                      href={nextPath ? `/sign-up?next=${encodeURIComponent(nextPath)}` : "/sign-up"}
                       className="underline underline-offset-2"
                     >
                       Sign up
@@ -203,7 +206,7 @@ export function LoginForm({
             {shouldShowSocialAuth && (
               <>
                 <SocialAuthButtons
-                  callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
+                  callbackUrl={inviteToken ? `/invite/${inviteToken}` : (nextPath ?? "/")}
                   disabled={isLoading}
                 />
 

@@ -58,3 +58,6 @@ export * from "./locations";
 
 // AI SRE service topology, incidents, evidence, connectors, and chat
 export * from "./sre";
+
+// Device authorization grants for CLI login
+export * from "./deviceAuthorization";
