@@ -81,6 +81,8 @@ export const logoutCommand = new Command('logout')
     clearAuth()
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: false }))
     logger.success('Logged out successfully. Stored credentials removed.')
+    // The key itself stays valid until it expires or is revoked: be explicit so nobody assumes otherwise.
+    logger.info('The key was removed from this machine only. To invalidate it, revoke it under Organization Admin → CLI Tokens.')
   })
 
 export const whoamiCommand = new Command('whoami')

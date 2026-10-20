@@ -95,7 +95,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 <Callout type="warn">
   `SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential, the server it is sent to, or a proxy or TLS setting would let a hostile repository intercept your token. Export these in your shell, use your CI secret store, or run `supercheck login`. In human-readable mode the CLI prints a warning when a `.env` tries to set them (JSON output stays unchanged). Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
 
-  This protects the CLI's own settings. Commands that load `supercheck.config.ts` still execute that file, which is code: do not run `deploy`, `pull` or `doctor` in a repository you do not trust. `onboard`, `discover`, `link`, `plan`, `ci` and `agent` never run it.
+  This protects the CLI's own settings. Commands that load `supercheck.config.ts` still execute that file, which is code: do not run `deploy`, `pull` or `diff` in a repository you do not trust. `onboard`, `discover`, `link`, `plan`, `ci`, `agent` and `doctor` never run it.
 
   **Upgrading:** if your config uses `process.env.SUPERCHECK_URL` and you kept that variable in `.env`, export it in your shell or CI instead, otherwise the CLI uses the default URL.
 </Callout>

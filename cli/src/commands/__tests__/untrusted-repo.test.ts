@@ -77,6 +77,7 @@ describe('inspection commands on an untrusted checkout', () => {
     [['plan']],
     [['agent', 'install']],
     [['ci', 'init', '--github']],
+    [['doctor']],
   ])('%j never executes repository config or reads its .env', async (args) => {
     const result = await run(...args)
     // Guard against a vacuous pass: the command must actually have started and produced output.

@@ -2,7 +2,10 @@ import { Command } from 'commander'
 import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
 import { getOutputFormat } from '../output/formatter.js'
-import { tryLoadConfig } from '../config/loader.js'
+import { discoverRepository } from '../utils/discover.js'
+import { readConfigIdentity } from '../utils/link-config.js'
+import { readSmallFile } from '../utils/safe-read.js'
+import { resolve } from 'node:path'
 import { getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import pc from '../utils/colors.js'
@@ -18,13 +21,18 @@ export const doctorCommand = new Command('doctor')
     logger.header('Supercheck Doctor')
     logger.newline()
 
-    // Load config first to determine project requirements (Playwright vs k6 vs monitors only)
-    const configResult = await tryLoadConfig()
-    const hasPlaywrightConfig = configResult?.config.tests?.playwright !== undefined
-    const hasK6Config = configResult?.config.tests?.k6 !== undefined
+    // Determine project requirements (Playwright vs k6 vs monitors only) by READING the config as text. The config
+    // is code, and a repository you are diagnosing may be untrusted, so `doctor` never executes it or loads its .env.
+    const facts = discoverRepository(cwd)
+    const configFile = facts.existingTests.supercheck.config
+    const configText = configFile ? readSmallFile(resolve(cwd, configFile)) : null
+    const configResult = configText === null ? null : { text: configText, identity: readConfigIdentity(configText) }
+    const hasPlaywrightConfig = configText !== null && /\bplaywright\s*:\s*\{/.test(configText)
+    const hasK6Config = configText !== null && /\bk6\s*:\s*\{/.test(configText)
     const requirePlaywright = hasPlaywrightConfig
     const requireK6 = hasK6Config
-    const browser = configResult?.config.tests?.playwright?.browser ?? 'chromium'
+    const browserMatch = configText === null ? null : /\bbrowser\s*:\s*(["'`])(chromium|firefox|webkit)\1/.exec(configText)
+    const browser = (browserMatch?.[2] ?? 'chromium') as 'chromium' | 'firefox' | 'webkit'
 
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
@@ -41,7 +49,7 @@ export const doctorCommand = new Command('doctor')
       const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
       logger.info(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)})`)
     } else {
-      logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login --token <token>`)
+      logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login`)
     }
 
     logger.newline()
@@ -50,12 +58,12 @@ export const doctorCommand = new Command('doctor')
     logger.info(pc.bold('Configuration:'))
     if (configResult) {
       logger.info(`  ${pc.green('✓')} supercheck.config.ts found`)
-      const org = configResult.config.project?.organization
-      const proj = configResult.config.project?.project
-      if (org && proj) {
+      const org = configResult.identity.organization
+      const proj = configResult.identity.project
+      if (org && proj && org !== 'my-org' && proj !== 'my-project') {
         logger.info(`  ${pc.green('✓')} Project: ${pc.dim(`${org}/${proj}`)}`)
       } else {
-        logger.info(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts`)
+        logger.info(`  ${pc.yellow('○')} Project org/project not configured in supercheck.config.ts (run: supercheck link)`)
       }
     } else {
       logger.info(`  ${pc.yellow('○')} No supercheck.config.ts — run: supercheck init`)
