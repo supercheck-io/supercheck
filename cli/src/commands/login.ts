@@ -80,8 +80,9 @@ export const logoutCommand = new Command('logout')
   .description('Remove stored authentication credentials')
   .action(() => {
     const hadStored = getStoredToken() !== null
-    const envToken = Boolean(process.env.SUPERCHECK_TOKEN?.trim())
     clearAuth()
+    // Only a *usable* environment credential counts (a malformed or trigger-key value is rejected by getToken).
+    const envToken = getToken() !== null
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: envToken, removedStoredCredentials: hadStored, ...(hadStored ? { keyRevoked: false } : {}), ...(envToken ? { note: 'SUPERCHECK_TOKEN is still set in the environment' } : {}) }))
     logger.success(hadStored ? 'Logged out successfully. Stored credentials removed.' : 'No stored credentials were found.')
     // The key itself stays valid until it expires or is revoked: be explicit so nobody assumes otherwise.

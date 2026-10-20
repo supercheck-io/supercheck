@@ -188,7 +188,7 @@ export const deployCommand = new Command('deploy')
   .option('--dry-run', 'Show what would change without applying')
   .option('--force', 'Skip confirmation prompt')
   .option('--no-delete', 'Do not delete remote resources missing from config')
-  .option('--verify', 'After a successful deploy, execute the created or updated browser/API tests once in the cloud and wait for the result')
+  .option('--verify', 'After a successful deploy, execute the created or updated browser tests once in the cloud and wait for the result')
   .option('--verify-timeout <seconds>', 'With --verify: maximum wait per test', '300')
   .action(async (options: { config?: string; dryRun?: boolean; force?: boolean; delete?: boolean; verify?: boolean; verifyTimeout?: string }) => {
     // Validate before any write so a typo cannot leave a half-reported deploy.

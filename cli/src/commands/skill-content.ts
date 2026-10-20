@@ -13,7 +13,7 @@ Run \`supercheck onboard --json\` at any point: it is read-only and tells you th
 4. Run exactly that test: \`supercheck test run --offline --file <path> --json\`. A zero-test result is not a pass. Never weaken assertions, add skips, or raise load to make it pass.
 5. Authenticate: \`supercheck login --json\`. It prints a URL and a code and returns immediately. Show them to the user, ask them to approve in the browser, then run the same command again to finish. Never print or store a token in the repository.
 6. If \`onboard\` reports needs_link, run \`supercheck link\`: it only edits the organization, project and default API URL lines of supercheck.config.ts and refuses to retarget a config that points at a different project unless the user approves --force. Then check \`supercheck whoami --json\` and \`supercheck plan --json\`. Cloud deploy needs an active plan; you cannot buy one: ask the user to open the billing page.
-7. Preview: \`supercheck deploy --dry-run --json\`. Apply only what the user already authorized: \`supercheck deploy --force --json --verify\` (--verify runs each created or updated browser/API test once and waits). Never add --delete.
+7. Preview: \`supercheck deploy --dry-run --json\`. Apply only what the user already authorized: \`supercheck deploy --force --json --verify\` (--verify runs each created or updated browser test once and waits). Never add --delete.
 8. If a run times out, keep the runId and use \`supercheck run wait <runId>\`; do not trigger again.
 9. Offer CI: \`supercheck ci init --github\` (see \`supercheck skills ci\`).`,
   authoring: `# Authoring tests

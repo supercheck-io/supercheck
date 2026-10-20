@@ -981,10 +981,10 @@ supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
 supercheck deploy --delete       # Delete remote resources absent from config
 supercheck deploy --force        # Skip confirmation
-supercheck deploy --force --verify   # Then run each created/updated test once in the cloud
+supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
 ```
 
-`--verify` executes every browser and API test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
+`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
 
 `--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
 

@@ -32,7 +32,7 @@ export const doctorCommand = new Command('doctor')
     const requirePlaywright = required?.playwright ?? false
     const requireK6 = required?.k6 ?? false
     const browser = required?.browser ?? 'chromium'
-    if (required?.dynamic) logger.info('  Note: some values in supercheck.config.ts are computed, so doctor reads only the literal ones; the browser defaults to chromium.')
+    if (required?.dynamic) logger.info(`  Note: some values in supercheck.config.ts are computed, so doctor reads only the literal ones (browser: ${browser}).`)
 
     // 1. Check dependencies
     logger.info(pc.bold('Dependencies:'))
