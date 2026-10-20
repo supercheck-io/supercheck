@@ -278,6 +278,8 @@ Nine key metrics are displayed prominently below the header:
 **P95 Response Time** represents the response time that 95% of your checks complete within. This metric helps identify tail latency issues that averages might hide.
 </Callout>
 
+All-locations history uses one combined rollup for each hour or day. For older periods that only have per-location rollups, those location rows are summed instead. Combined and location rows for the same period are never counted together. Each statistics window falls back to retained raw checks only when that window has no rollups; deleted raw history cannot be reconstructed.
+
 ### Availability Overview
 
 A visual bar chart showing the status of the last 100 individual checks:

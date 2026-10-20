@@ -2167,8 +2167,11 @@ paths:
     get:
       operationId: getMonitorStats
       summary: Get monitor statistics
-      description: Returns performance statistics including uptime percentage, average
-        response time, and p95 latency.
+      description: Returns 24-hour and 30-day performance statistics. All-locations
+        reads prefer a combined rollup per period and fall back to legacy
+        location rollups for periods without one. Each statistics window uses
+        retained raw checks only when no rollups exist. meta.source identifies
+        aggregates, aggregates+raw_p95, aggregates+raw, or raw.
       tags:
         - Monitors
       responses:
@@ -4969,21 +4972,61 @@ components:
     MonitorStats:
       type: object
       properties:
-        uptimePercent:
-          type: number
-          format: float
-        avgResponseTime:
-          type: number
-          format: float
-        p95ResponseTime:
-          type: number
-          format: float
-        totalChecks:
-          type: integer
-        successfulChecks:
-          type: integer
-        failedChecks:
-          type: integer
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            period24h:
+              type: object
+              properties:
+                totalChecks:
+                  type: integer
+                upChecks:
+                  type: integer
+                uptimePercentage:
+                  type: number
+                  nullable: true
+                avgResponseTimeMs:
+                  type: integer
+                  nullable: true
+                p95ResponseTimeMs:
+                  type: integer
+                  nullable: true
+            period30d:
+              type: object
+              properties:
+                totalChecks:
+                  type: integer
+                upChecks:
+                  type: integer
+                uptimePercentage:
+                  type: number
+                  nullable: true
+                avgResponseTimeMs:
+                  type: integer
+                  nullable: true
+                p95ResponseTimeMs:
+                  type: integer
+                  nullable: true
+        meta:
+          type: object
+          properties:
+            monitorId:
+              type: string
+              format: uuid
+            location:
+              type: string
+            calculatedAt:
+              type: string
+              format: date-time
+            source:
+              type: string
+              enum:
+                - aggregates
+                - aggregates+raw_p95
+                - aggregates+raw
+                - raw
     Variable:
       type: object
       properties:
