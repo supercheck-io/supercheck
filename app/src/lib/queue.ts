@@ -1836,7 +1836,7 @@ export async function enqueueMonitorLocationJobs(
       return {
         name: "executeMonitorJob",
         queueName: queue.name,
-        data: { ...task, executionLocation: location, executionGroupId, expectedLocations: locations },
+        data: { ...task, executionLocation: location, executionGroupId, expectedLocations: locations, ...(closureCycle ? { monitorCycle: true } : {}) },
         opts: { ...opts, jobId: `${executionGroupId}-${location}` },
       };
     }));

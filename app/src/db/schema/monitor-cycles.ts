@@ -7,7 +7,6 @@ import {
   timestamp,
   uuid,
   jsonb,
-  boolean,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -31,7 +30,6 @@ export const monitorCycles = pgTable(
     strategy: text("strategy").$type<"all" | "any" | "majority">().notNull(),
     threshold: integer("threshold").notNull(),
     status: text("status").$type<MonitorCycleStatus>().notNull().default("open"),
-    deadlineEnqueuedAt: timestamp("deadline_enqueued_at"),
     closedAt: timestamp("closed_at"),
     closedBy: text("closed_by").$type<"arrival" | "deadline">(),
     resultStatus: text("result_status").$type<"up" | "down">(),
@@ -42,16 +40,16 @@ export const monitorCycles = pgTable(
   },
   (table) => ({
     monitorIdx: index("monitor_cycles_monitor_idx").on(table.monitorId, table.scheduledFor.desc()),
-    deadlinePendingIdx: index("monitor_cycles_deadline_pending_idx")
+    openDeadlineIdx: index("monitor_cycles_open_deadline_idx")
       .on(table.deadlineAt)
-      .where(sql`${table.status} = 'open' AND ${table.deadlineEnqueuedAt} IS NULL`),
+      .where(sql`${table.status} = 'open'`),
     notifyPendingIdx: index("monitor_cycles_notify_pending_idx")
       .on(table.closedAt)
       .where(sql`${table.status} = 'closed' AND ${table.notifiedAt} IS NULL`),
   }),
 );
 
-/** A regional result's arrival intent; published to Redis by the relay if the worker could not. */
+/** Wake-up hint written after a regional result is saved; evaluation reads monitor_results. */
 export const monitorCycleArrivals = pgTable(
   "monitor_cycle_arrivals",
   {
@@ -60,15 +58,14 @@ export const monitorCycleArrivals = pgTable(
       .notNull()
       .references(() => monitorCycles.id, { onDelete: "cascade" }),
     location: text("location").notNull(),
-    isUp: boolean("is_up").notNull(),
-    publishedAt: timestamp("published_at"),
+    processedAt: timestamp("processed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
     cycleLocationIdx: uniqueIndex("monitor_cycle_arrivals_cycle_location_idx").on(table.cycleId, table.location),
     pendingIdx: index("monitor_cycle_arrivals_pending_idx")
       .on(table.createdAt)
-      .where(sql`${table.publishedAt} IS NULL`),
+      .where(sql`${table.processedAt} IS NULL`),
   }),
 );
 

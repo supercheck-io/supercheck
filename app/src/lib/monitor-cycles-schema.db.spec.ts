@@ -108,11 +108,11 @@ it("keeps one arrival per region and cascades with the monitor", async () => {
   await mockDatabase.insert(schema.monitorCycles).values(cycle("c-4"));
   await mockDatabase
     .insert(schema.monitorCycleArrivals)
-    .values({ cycleId: "c-4", location: "eu", isUp: true });
+    .values({ cycleId: "c-4", location: "eu", });
   await expect(
     mockDatabase
       .insert(schema.monitorCycleArrivals)
-      .values({ cycleId: "c-4", location: "eu", isUp: false }),
+      .values({ cycleId: "c-4", location: "eu", }),
   ).rejects.toThrow();
   await mockDatabase
     .delete(schema.monitors)
@@ -126,9 +126,9 @@ it("indexes only pending relay work with partial indexes", async () => {
     WHERE tablename IN ('monitor_cycles', 'monitor_cycle_arrivals')`;
   const def = (name: string) =>
     rows.find((row) => row.indexname === name)?.indexdef as string;
-  expect(def("monitor_cycles_deadline_pending_idx")).toContain("WHERE");
+  expect(def("monitor_cycles_open_deadline_idx")).toContain("status = 'open'");
   expect(def("monitor_cycles_notify_pending_idx")).toContain("notified_at IS NULL");
-  expect(def("monitor_cycle_arrivals_pending_idx")).toContain("published_at IS NULL");
+  expect(def("monitor_cycle_arrivals_pending_idx")).toContain("processed_at IS NULL");
   // Hot results table is untouched: the cycle id reuses the existing execution_group_id index.
   const [{ count }] = await client`SELECT count(*)::int AS count FROM pg_indexes
     WHERE tablename = 'monitor_results' AND indexdef ILIKE '%cycle%'`;

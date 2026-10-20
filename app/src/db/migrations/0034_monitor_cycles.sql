@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS "monitor_cycles" (
   "strategy" text NOT NULL,
   "threshold" integer NOT NULL,
   "status" text NOT NULL DEFAULT 'open',
-  "deadline_enqueued_at" timestamp,
   "closed_at" timestamp,
   "closed_by" text,
   "result_status" text,
@@ -28,22 +27,22 @@ CREATE TABLE IF NOT EXISTS "monitor_cycles" (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "monitor_cycles_monitor_idx" ON "monitor_cycles" ("monitor_id", "scheduled_for" DESC);
 --> statement-breakpoint
--- Bounded relay scans: only cycles whose deadline job was never enqueued.
-CREATE INDEX IF NOT EXISTS "monitor_cycles_deadline_pending_idx" ON "monitor_cycles" ("deadline_at") WHERE "status" = 'open' AND "deadline_enqueued_at" IS NULL;
+-- The control plane polls only open cycles that passed their deadline.
+CREATE INDEX IF NOT EXISTS "monitor_cycles_open_deadline_idx" ON "monitor_cycles" ("deadline_at") WHERE "status" = 'open';
 --> statement-breakpoint
--- Closed cycles whose notification receipt is still outstanding.
+-- Closed cycles whose notification receipt is still outstanding (crash repair).
 CREATE INDEX IF NOT EXISTS "monitor_cycles_notify_pending_idx" ON "monitor_cycles" ("closed_at") WHERE "status" = 'closed' AND "notified_at" IS NULL;
 --> statement-breakpoint
--- Arrival intents written in the same transaction as a regional result.
+-- Wake-up hints written after a regional result is saved. The control plane evaluates from
+-- monitor_results, so a lost hint only delays closure to the deadline.
 CREATE TABLE IF NOT EXISTS "monitor_cycle_arrivals" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "cycle_id" text NOT NULL REFERENCES "monitor_cycles"("id") ON DELETE CASCADE,
   "location" text NOT NULL,
-  "is_up" boolean NOT NULL,
-  "published_at" timestamp,
+  "processed_at" timestamp,
   "created_at" timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "monitor_cycle_arrivals_cycle_location_idx" ON "monitor_cycle_arrivals" ("cycle_id", "location");
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "monitor_cycle_arrivals_pending_idx" ON "monitor_cycle_arrivals" ("created_at") WHERE "published_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "monitor_cycle_arrivals_pending_idx" ON "monitor_cycle_arrivals" ("created_at") WHERE "processed_at" IS NULL;

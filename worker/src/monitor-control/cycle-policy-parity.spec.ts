@@ -10,7 +10,11 @@ function combos(expected: string[]): Record<string, boolean>[] {
   for (const location of expected) {
     const next: Record<string, boolean>[] = [];
     for (const partial of out) {
-      next.push(partial, { ...partial, [location]: true }, { ...partial, [location]: false });
+      next.push(
+        partial,
+        { ...partial, [location]: true },
+        { ...partial, [location]: false },
+      );
     }
     out.splice(0, out.length, ...next);
   }
@@ -38,7 +42,11 @@ describe('cycle policy parity with LocationService.calculateAggregatedStatus', (
             const anyObserved = Object.keys(results).length > 0;
             // Deliberate divergence: a cycle where no region reported is always down,
             // even for a 0% majority threshold. 'partial' counts as down.
-            const want = !anyObserved ? 'down' : legacy === 'up' ? 'up' : 'down';
+            const want = !anyObserved
+              ? 'down'
+              : legacy === 'up'
+                ? 'up'
+                : 'down';
             expect({ results, status: decision?.status }).toEqual({
               results,
               status: want,
@@ -62,11 +70,17 @@ describe('cycle policy parity with LocationService.calculateAggregatedStatus', (
   it('never closes early to the opposite of what the deadline would decide', () => {
     for (const strategy of ['all', 'any', 'majority'] as const) {
       for (const threshold of [0, 50, 100]) {
-        const snapshot = { expectedLocations: locations.slice(0, 3), strategy, threshold };
+        const snapshot = {
+          expectedLocations: locations.slice(0, 3),
+          strategy,
+          threshold,
+        };
         for (const results of combos(snapshot.expectedLocations)) {
           const early = decideMonitorCycle(snapshot, results, false);
           if (!early) continue;
-          expect(early.status).toBe(decideMonitorCycle(snapshot, results, true)?.status);
+          expect(early.status).toBe(
+            decideMonitorCycle(snapshot, results, true)?.status,
+          );
         }
       }
     }

@@ -683,6 +683,7 @@ export class MonitorService {
       executionGroupId?: string;
       expectedLocations?: MonitoringLocation[];
       persisted?: boolean;
+      monitorCycle?: boolean;
     },
   ): Promise<void> {
     const executionGroupId = options.executionGroupId;
@@ -709,6 +710,13 @@ export class MonitorService {
       await this.saveMonitorResults([persistedResult], { persisted: true });
       return;
     }
+
+    // Control-plane cycle: the result row is saved; hand evaluation to the control plane.
+    if (
+      options.monitorCycle &&
+      (await this.recordCycleArrival(executionGroupId, result.location))
+    )
+      return;
 
     const monitor = await this.getMonitorById(result.monitorId);
     if (!monitor) {
@@ -834,6 +842,44 @@ export class MonitorService {
     this.logger.log(
       `Successfully aggregated and saved results for monitor ${result.monitorId}`,
     );
+  }
+
+  /**
+   * Records a wake-up hint for the control plane. Returns false when no cycle row exists
+   * (legacy evaluation continues). The cycle row, not worker env, decides the mode; a result
+   * for a closed or aborted cycle stays diagnostic and never re-evaluates it.
+   */
+  private async recordCycleArrival(
+    cycleId: string,
+    location: string,
+  ): Promise<boolean> {
+    const [cycle] = await this.dbService.db
+      .select({ status: schema.monitorCycles.status })
+      .from(schema.monitorCycles)
+      .where(eq(schema.monitorCycles.id, cycleId))
+      .limit(1);
+    if (!cycle) return false;
+    if (cycle.status !== 'open') return true;
+    try {
+      await this.dbService.db
+        .insert(schema.monitorCycleArrivals)
+        .values({ cycleId, location })
+        .onConflictDoUpdate({
+          target: [
+            schema.monitorCycleArrivals.cycleId,
+            schema.monitorCycleArrivals.location,
+          ],
+          // A retried region may report a different outcome; re-arm the hint.
+          set: { processedAt: null },
+        });
+    } catch (error) {
+      // The result is already saved; retry the hint without re-executing the check.
+      this.logger.warn(
+        `Unable to record cycle arrival ${cycleId}/${location}: ${getErrorMessage(error)}`,
+      );
+      throw new MonitorAggregationBusyError();
+    }
+    return true;
   }
 
   private async withAggregationLease(
