@@ -9,7 +9,7 @@ import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { requireSreSameOriginRequest } from "../../_auth";
+import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
 
 const requestSchema = z.object({
   incidentId: z.string().uuid(),
@@ -109,6 +109,9 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     );
   }
+
+  const subscriptionError = await requireSreSubscription(context.organizationId);
+  if (subscriptionError) return subscriptionError;
 
   const rateLimit = await checkSreEvidenceBriefRateLimit(
     userId,

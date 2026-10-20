@@ -2,6 +2,18 @@
 
 import { NextRequest } from "next/server";
 
+import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error {
+    constructor(message: string, readonly reason: string) { super(message); }
+  },
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn(async () => {}),
+    requireValidPolarCustomer: jest.fn(async () => {}),
+  },
+}));
+
+
 jest.mock("ai", () => ({
   convertToModelMessages: jest.fn(async (messages) =>
     messages.map((message: { role: string }) => ({
@@ -129,6 +141,8 @@ describe("Copilot assistant-ui chat API", () => {
   let onFinishPromise: Promise<void> | undefined;
 
   beforeEach(() => {
+    jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
+    jest.mocked(subscriptionService.requireValidPolarCustomer).mockReset().mockResolvedValue();
     jest.clearAllMocks();
     assistantResponseText = "Read-only guidance";
     streamOnError = undefined;
@@ -187,6 +201,21 @@ describe("Copilot assistant-ui chat API", () => {
       }),
     } as never);
   });
+
+  it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
+    "rejects direct model requests when %s denies access", async (guard) => {
+      jest.mocked(subscriptionService[guard]).mockRejectedValue(
+        new SubscriptionAccessDeniedError("Subscription required", "subscription_required"),
+      );
+      const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST", body: JSON.stringify({ messages: [{ role: "user", parts: [{ type: "text", text: "check" }] }] }),
+      }));
+      expect(response.status).toBe(402);
+      expect(jest.requireMock("ai").streamText).not.toHaveBeenCalled();
+      expect(jest.requireMock("@/sre/lib/session-store").createSreConversation).not.toHaveBeenCalled();
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "subscription_required" }));
+    },
+  );
 
   it("creates a persisted conversation and returns an AI SDK UI stream response", async () => {
     const response = await POST(
