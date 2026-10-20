@@ -1,6 +1,7 @@
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { getClientIP } from "@/lib/session-security";
 import {
+  CLIENT_IP_UNAVAILABLE_MESSAGE,
   LOGIN_LOCKOUT_MESSAGE,
   type AttemptReservation,
   blockingLockoutIdentifiers,
@@ -9,6 +10,8 @@ import {
   recordEmailFailure,
   releaseLoginAttempt,
   reserveLoginAttempt,
+  shouldRejectUnknownClientIp,
+  warnUnknownClientIp,
 } from "./login-lockout";
 
 /**
@@ -32,7 +35,15 @@ export const loginLockoutHooks = {
 
     const ip = getClientIP(ctx.headers ?? new Headers());
     const identifiers = blockingLockoutIdentifiers(email, ip);
-    if (identifiers.length === 0) return;
+    if (identifiers.length === 0) {
+      if (shouldRejectUnknownClientIp()) {
+        throw new APIError("SERVICE_UNAVAILABLE", {
+          message: CLIENT_IP_UNAVAILABLE_MESSAGE,
+        });
+      }
+      warnUnknownClientIp();
+      return;
+    }
 
     // Reserve before the password check so a parallel burst cannot all pass
     // the check before any failure is counted.

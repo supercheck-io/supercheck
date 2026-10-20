@@ -23,6 +23,7 @@
 
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
+import { isCloudHosted } from "@/lib/feature-flags";
 
 const logger = createLogger({ module: "login-lockout" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -55,6 +56,43 @@ const UNKNOWN_CLIENT_IP = "unknown";
  */
 export const LOGIN_LOCKOUT_MESSAGE =
   "Too many sign-in attempts. Please try again later.";
+
+export const CLIENT_IP_UNAVAILABLE_MESSAGE =
+  "Sign-in is temporarily unavailable. Please try again later.";
+
+let lastUnknownClientIpWarningAt = 0;
+
+/**
+ * Whether a deployment treats a missing client IP as a configuration error.
+ *
+ * Cloud production always requires the edge to forward X-Forwarded-For (or a
+ * trusted CF-Connecting-IP). Self-hosted installs may run without a proxy, so
+ * they keep working but log a warning; set REQUIRE_CLIENT_IP_FOR_SIGNIN=true to
+ * enforce the same fail-closed behavior there.
+ */
+export function shouldRejectUnknownClientIp(): boolean {
+  const explicit = process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN;
+  if (explicit !== undefined) {
+    return explicit === "true" || explicit === "1";
+  }
+
+  return process.env.NODE_ENV === "production" && isCloudHosted();
+}
+
+/**
+ * Warn (at most once a minute) that IP-based lockout is inert because the
+ * request has no trustworthy client address.
+ */
+export function warnUnknownClientIp(): void {
+  const now = Date.now();
+  if (now - lastUnknownClientIpWarningAt < 60_000) return;
+  lastUnknownClientIpWarningAt = now;
+
+  logger.warn(
+    {},
+    "Client IP unavailable on sign-in; IP lockout is disabled. Configure X-Forwarded-For at the edge or set REQUIRE_CLIENT_IP_FOR_SIGNIN=true.",
+  );
+}
 
 /** Attempts allowed before the first lockout step. */
 export const LOGIN_LOCKOUT_INITIAL_ALLOWANCE: number =

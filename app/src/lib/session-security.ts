@@ -436,12 +436,14 @@ export function getClientIP(headers: Headers): string {
     .filter((entry) => entry.length > 0);
 
   const hops = getTrustedProxyHops();
-  for (let index = entries.length - 1 - hops; index >= 0; index -= 1) {
-    const candidate = stripAddressDecoration(entries[index]);
-    if (isIP(candidate)) return candidate;
-  }
+  const index = entries.length - 1 - hops;
+  if (index < 0) return UNKNOWN_CLIENT_IP;
 
-  return UNKNOWN_CLIENT_IP;
+  // Only the one entry the trusted edge appended may be trusted. Walking
+  // further left would reach client-controlled entries when the expected
+  // entry is malformed, which would let a caller rotate lockout keys.
+  const candidate = stripAddressDecoration(entries[index]);
+  return isIP(candidate) ? candidate : UNKNOWN_CLIENT_IP;
 }
 
 /**

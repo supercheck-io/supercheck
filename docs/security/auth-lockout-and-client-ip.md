@@ -88,15 +88,25 @@ account is locked".
 `getClientIP()` reads `X-Forwarded-For` from **right to left**. The leftmost
 entry is whatever the client sent and is never trusted. It skips
 `TRUSTED_PROXY_HOPS` right-hand entries (those appended by our own edge) and
-returns the first syntactically valid address (`net.isIP`). It never falls back
-to `X-Real-IP` or `X-Remote-Addr`, which are client-spoofable unless an edge
-overwrites them. If nothing valid remains, it returns `unknown`; the IP and
-email+IP lockout dimensions are then skipped rather than sharing one bucket.
+inspects **only** the entry at that position. If that entry is present but not a
+valid address (`net.isIP`), it returns `unknown`; it never walks further left
+into client-controlled entries. It never falls back to `X-Real-IP` or
+`X-Remote-Addr`, which are client-spoofable unless an edge overwrites them.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `TRUSTED_PROXY_HOPS` | `0` | Number of right-hand `X-Forwarded-For` entries appended by trusted infrastructure beyond the nearest proxy |
 | `TRUST_CF_CONNECTING_IP` | `false` | Trust `CF-Connecting-IP`; only when the origin is reachable exclusively through Cloudflare |
+| `REQUIRE_CLIENT_IP_FOR_SIGNIN` | `true` in cloud production, `false` otherwise | Reject sign-in with a generic 503 when no trustworthy client IP is available |
+
+When the IP is `unknown`, the IP and email+IP dimensions are skipped rather than
+sharing one bucket. Cloud production treats that as an ingress misconfiguration
+and rejects sign-in, so a broken edge is visible immediately instead of silently
+disabling brute-force protection. Self-hosted production may run without a
+proxy; it logs a warning (at most once a minute) and relies on the remaining rate
+limits. Set `REQUIRE_CLIENT_IP_FOR_SIGNIN=true` to opt into fail-closed behavior
+there, or `false` to allow direct cloud deployments that terminate headers
+themselves.
 
 ### Deployment values
 
@@ -148,6 +158,10 @@ actual hop count before relying on lockout keys.
 - If the edge is misconfigured (client-supplied `X-Forwarded-For` survives), an
   attacker can rotate lockout keys per request. That does not grant extra
   guesses against a single address, but it weakens IP-based throttling.
+- A self-hosted deployment that neither forwards `X-Forwarded-For` nor enables
+  `REQUIRE_CLIENT_IP_FOR_SIGNIN` keeps sign-in working but IP lockout is inert;
+  the preflight rate limit falls back to a per-email key. Use a proxy or enable
+  the requirement for production installs exposed to the internet.
 - A request that reserves an attempt and never reaches `after()` (aborted
   connection, process crash, or a handler throwing a non-API error) leaves one
   counted failure; it expires after 24 hours or on the next successful sign-in.

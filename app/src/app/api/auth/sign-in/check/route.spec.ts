@@ -1,15 +1,26 @@
 /** @jest-environment node */
 jest.mock("@/lib/security/login-lockout", () => ({
+  CLIENT_IP_UNAVAILABLE_MESSAGE:
+    "Sign-in is temporarily unavailable. Please try again later.",
   LOGIN_LOCKOUT_INITIAL_ALLOWANCE: 5,
   LOGIN_LOCKOUT_MESSAGE: "Too many sign-in attempts. Please try again later.",
   blockingLockoutIdentifiers: (email: string, ip: string) =>
     ip && ip !== "unknown" ? [`ip:${ip}`, `pair:${email}|${ip}`] : [],
   checkLockout: jest.fn(),
+  shouldRejectUnknownClientIp: jest.fn(() => false),
+  warnUnknownClientIp: jest.fn(),
 }));
-jest.mock("@/lib/session-security", () => ({ getClientIP: () => "192.0.2.1" }));
+jest.mock("@/lib/session-security", () => ({
+  getClientIP: jest.fn(() => "192.0.2.1"),
+}));
 jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn() }));
 import { NextRequest } from "next/server";
-import { checkLockout } from "@/lib/security/login-lockout";
+import {
+  checkLockout,
+  shouldRejectUnknownClientIp,
+  warnUnknownClientIp,
+} from "@/lib/security/login-lockout";
+import { getClientIP } from "@/lib/session-security";
 import { getRedisConnection } from "@/lib/queue";
 import { POST } from "./route";
 
@@ -38,6 +49,32 @@ it.each(["failed", "success"])("rejects public lockout mutation %s", async (acti
     method: "POST", body: JSON.stringify({ action, email: "user@example.test" }),
   }));
   expect(response.status).toBe(400);
+  expect(checkLockout).not.toHaveBeenCalled();
+});
+
+it("fails closed when a deployment requires a client IP but none is available", async () => {
+  (getClientIP as jest.Mock).mockReturnValueOnce("unknown");
+  (shouldRejectUnknownClientIp as jest.Mock).mockReturnValueOnce(true);
+
+  const response = await preCheck();
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    allowed: false,
+    isLocked: true,
+    message: "Sign-in is temporarily unavailable. Please try again later.",
+  });
+  expect(checkLockout).not.toHaveBeenCalled();
+});
+
+it("still pre-checks without a client IP when the deployment allows it", async () => {
+  (getClientIP as jest.Mock).mockReturnValueOnce("unknown");
+  (shouldRejectUnknownClientIp as jest.Mock).mockReturnValueOnce(false);
+
+  const response = await preCheck();
+
+  expect(response.status).toBe(200);
+  expect(warnUnknownClientIp).toHaveBeenCalled();
   expect(checkLockout).not.toHaveBeenCalled();
 });
 

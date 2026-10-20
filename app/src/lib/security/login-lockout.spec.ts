@@ -147,7 +147,51 @@ import {
   recordEmailFailure,
   releaseLoginAttempt,
   reserveLoginAttempt,
+  shouldRejectUnknownClientIp,
 } from "@/lib/security/login-lockout";
+
+describe("shouldRejectUnknownClientIp", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("stays permissive outside production by default", () => {
+    delete process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN;
+    Object.assign(process.env, { NODE_ENV: "test" });
+    expect(shouldRejectUnknownClientIp()).toBe(false);
+  });
+
+  it.each(["true", "1"])(
+    "enforces when explicitly enabled (%s)",
+    (value) => {
+      process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN = value;
+      expect(shouldRejectUnknownClientIp()).toBe(true);
+    }
+  );
+
+  it("enforces by default in cloud production", () => {
+    delete process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN;
+    delete process.env.SELF_HOSTED;
+    Object.assign(process.env, { NODE_ENV: "production" });
+    expect(shouldRejectUnknownClientIp()).toBe(true);
+  });
+
+  it("stays permissive by default in self-hosted production", () => {
+    delete process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN;
+    process.env.SELF_HOSTED = "true";
+    Object.assign(process.env, { NODE_ENV: "production" });
+    expect(shouldRejectUnknownClientIp()).toBe(false);
+  });
+
+  it("lets an explicit false override cloud production", () => {
+    process.env.REQUIRE_CLIENT_IP_FOR_SIGNIN = "false";
+    delete process.env.SELF_HOSTED;
+    Object.assign(process.env, { NODE_ENV: "production" });
+    expect(shouldRejectUnknownClientIp()).toBe(false);
+  });
+});
 
 const IP = "203.0.113.7";
 const EMAIL = "user@example.test";

@@ -93,6 +93,15 @@ describe("getClientIP", () => {
     );
   });
 
+  it("does not walk left into client-controlled entries when the trusted entry is invalid", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    expect(
+      getClientIP(
+        headers({ "x-forwarded-for": "6.6.6.6, not-an-ip, 198.51.100.7" })
+      )
+    ).toBe("unknown");
+  });
+
   it("ignores CF-Connecting-IP unless explicitly trusted", () => {
     process.env.TRUSTED_PROXY_HOPS = "0";
     const requestHeaders = headers({
