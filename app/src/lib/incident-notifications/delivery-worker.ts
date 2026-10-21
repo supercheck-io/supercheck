@@ -243,6 +243,23 @@ export async function deleteExpiredDeliveries(
     );
 }
 
+/**
+ * A settle write only applies while this worker still holds the lease it
+ * took: re-leasing increments attempts, so a slow send that outlives its lease
+ * cannot overwrite the state written by the worker that took over.
+ */
+function heldLease(delivery: { id: string; attempts: number }) {
+  return and(
+    eq(deliveries.id, delivery.id),
+    // On the final attempt the lease-expiry sweep may already have marked the
+    // row failed while this send was still running; the real outcome wins.
+    delivery.attempts >= 4
+      ? inArray(deliveries.status, ["pending", "failed"])
+      : eq(deliveries.status, "pending"),
+    eq(deliveries.attempts, delivery.attempts),
+  );
+}
+
 export async function processDelivery(deliveryId: string) {
   const [delivery] = await db
     .update(deliveries)
@@ -291,7 +308,7 @@ export async function processDelivery(deliveryId: string) {
           enqueuedAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(deliveries.id, delivery.id));
+        .where(heldLease(delivery));
       return;
     }
 
@@ -328,7 +345,7 @@ export async function processDelivery(deliveryId: string) {
         enqueuedAt: null,
         updatedAt: new Date(),
       })
-      .where(eq(deliveries.id, delivery.id));
+      .where(heldLease(delivery));
   } catch (error) {
     await db
       .update(deliveries)
@@ -342,7 +359,7 @@ export async function processDelivery(deliveryId: string) {
             : "Delivery failed",
         updatedAt: new Date(),
       })
-      .where(eq(deliveries.id, delivery.id));
+      .where(heldLease(delivery));
     throw error;
   }
 }
