@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
 import {
   authSchema,
+  oauthSchema,
   invitation,
   member,
   organization as organizationTable,
@@ -36,6 +37,13 @@ import {
   isCloudHosted,
   isCaptchaEnabled,
 } from "@/lib/feature-flags";
+import {
+  getMcpResourceUrl,
+  isMcpDynamicRegistrationEnabled,
+  isMcpServerEnabled,
+} from "@/lib/mcp/config";
+import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
+import { resolveConsentProject } from "@/lib/mcp/connect-project";
 
 /**
  * Get Polar plugin configuration if enabled
@@ -224,6 +232,22 @@ function getCaptchaPlugin() {
     secretKey,
     // Protect authentication endpoints from bot attacks
     endpoints: ["/sign-up/email", "/sign-in/email", "/forget-password"],
+  });
+}
+
+/**
+ * OAuth 2.1 authorization server for the remote MCP server. Off unless
+ * MCP_SERVER_ENABLED=true; see lib/mcp/auth-plugins.ts for the configuration.
+ */
+function getMcpPlugins() {
+  if (!isMcpServerEnabled()) {
+    return [];
+  }
+
+  return createMcpAuthPlugins({
+    resource: getMcpResourceUrl(),
+    dynamicRegistration: isMcpDynamicRegistrationEnabled(),
+    resolveProjectReference: resolveConsentProject,
   });
 }
 
@@ -435,6 +459,7 @@ export const auth = betterAuth({
     provider: "pg", // PostgreSQL
     schema: {
       ...authSchema,
+      ...oauthSchema,
       organization: organizationTable,
       member,
       invitation,
@@ -500,6 +525,8 @@ export const auth = betterAuth({
       const captchaPlugin = getCaptchaPlugin();
       return captchaPlugin ? [captchaPlugin] : [];
     })(),
+    // Conditionally add the MCP OAuth server (MCP_SERVER_ENABLED=true)
+    ...getMcpPlugins(),
     nextCookies(),
   ],
   advanced: {

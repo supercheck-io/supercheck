@@ -20,6 +20,7 @@ const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
   '/settings',       // User settings
   '/sign-out',       // Sign out
   '/org-admin',      // Org admin (has its own subscription tab logic)
+  '/connected-apps', // Disconnecting an app must always be possible
 ];
 
 export interface SubscriptionStatus {

@@ -1,6 +1,7 @@
 "use client";
 
-import { sanitizeNextPath } from "@/lib/auth/safe-next-path";
+import { buildOAuthResumePath, isOAuthResumePath, sanitizeNextPath } from "@/lib/auth/safe-next-path";
+import { hardNavigate } from "@/lib/auth/hard-navigate";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signIn } from "@/utils/auth-client";
@@ -44,7 +45,12 @@ function SignInPageContent() {
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
   // Allowlisted continuation (e.g. CLI device approval); never an arbitrary redirect.
-  const nextPath = useMemo(() => sanitizeNextPath(searchParams.get("next")), [searchParams]);
+  const nextPath = useMemo(
+    // An MCP client's authorization request resumes after sign-in; otherwise only
+    // the allowlisted `next` continuations apply.
+    () => buildOAuthResumePath(searchParams) ?? sanitizeNextPath(searchParams.get("next")),
+    [searchParams],
+  );
 
   const getInviteSignInGuidance = useCallback((message?: string) => {
     const normalized = String(message ?? "").toLowerCase();
@@ -183,6 +189,9 @@ function SignInPageContent() {
           }
           // Fallback: redirect to invite page for manual acceptance
           router.push(`/invite/${inviteToken}`);
+        } else if (isOAuthResumePath(nextPath)) {
+          // The authorize endpoint answers with a redirect, so leave the SPA router.
+          hardNavigate(nextPath as string);
         } else {
           router.push(nextPath ?? "/");
         }

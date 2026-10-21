@@ -25,3 +25,39 @@ export function buildDeviceReturnPath(code: string | null | undefined): string {
     ? `/device?code=${code}`
     : "/device";
 }
+
+/** The only OAuth endpoint a sign-in may resume into. */
+export const OAUTH_AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
+
+const MAX_OAUTH_RESUME_QUERY = 4096;
+
+/**
+ * An MCP client that sends an unauthenticated user to authorize is redirected
+ * to /sign-in carrying the original authorization request plus the signed
+ * continuation parameters (`exp`, `sig`). After any sign-in method, replaying
+ * that query against the authorize endpoint resumes the flow at consent.
+ *
+ * The target path is a constant, so this cannot become an open redirect; the
+ * authorize endpoint validates the signature and the client's registered
+ * redirect URI itself.
+ */
+export function buildOAuthResumePath(
+  searchParams: Pick<URLSearchParams, "get" | "has" | "toString"> | null | undefined,
+): string | null {
+  if (!searchParams) return null;
+  if (
+    searchParams.get("response_type") !== "code" ||
+    !searchParams.get("client_id") ||
+    !searchParams.has("sig") ||
+    !searchParams.has("exp")
+  ) {
+    return null;
+  }
+  const query = searchParams.toString();
+  if (query.length === 0 || query.length > MAX_OAUTH_RESUME_QUERY) return null;
+  return `${OAUTH_AUTHORIZE_PATH}?${query}`;
+}
+
+export function isOAuthResumePath(path: string | null | undefined): boolean {
+  return typeof path === "string" && path.startsWith(`${OAUTH_AUTHORIZE_PATH}?`);
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { sanitizeNextPath } from "@/lib/auth/safe-next-path";
+import { buildOAuthResumePath, sanitizeNextPath } from "@/lib/auth/safe-next-path";
+import { hardNavigate } from "@/lib/auth/hard-navigate";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signUp, sendVerificationEmail } from "@/utils/auth-client";
@@ -54,6 +55,10 @@ function SignUpPageContent() {
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => parseInviteToken(searchParams.get("invite")), [searchParams]);
   const nextPath = useMemo(() => sanitizeNextPath(searchParams.get("next")), [searchParams]);
+  // An MCP client's authorization request, carried over from sign-in. It is signed and short-lived, so
+  // it is only resumed when the new account is signed in straight away; the email-verification round
+  // trip outlives it, and the app then reconnects from the client.
+  const oauthResumePath = useMemo(() => buildOAuthResumePath(searchParams), [searchParams]);
 
   useEffect(() => {
     // Apply hosting rules once config query resolves.
@@ -296,6 +301,12 @@ function SignUpPageContent() {
       // Fallback to invite page if auto-accept fails
       router.push(`/invite/${inviteToken}`);
       setIsLoading(false);
+      return;
+    }
+
+    if (oauthResumePath) {
+      // The authorize endpoint answers with a redirect, so leave the SPA router.
+      hardNavigate(oauthResumePath);
       return;
     }
 
