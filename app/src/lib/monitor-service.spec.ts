@@ -61,6 +61,12 @@ describe("updateMonitorHandler schedule synchronization", () => {
       }),
     );
   });
+  it("does not reschedule an equivalent config with reordered keys", async () => {
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({ ...existing, config: { method: "GET", timeout: 30 } });
+    mockUpdate({ config: { timeout: 30, method: "GET" } });
+    await updateMonitorHandler(existing.id, { config: { timeout: 30, method: "GET" } });
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
   it("does not reschedule a metadata-only update", async () => {
     mockUpdate({ name: "Renamed" });
     await updateMonitorHandler(existing.id, { name: "Renamed" });

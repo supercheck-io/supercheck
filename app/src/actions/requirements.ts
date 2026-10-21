@@ -149,7 +149,7 @@ export async function getRequirements(options?: {
 
   if (options?.status) {
     conditions.push(
-      sql`coalesce(${requirementCoverageSnapshots.status}, 'missing') = ${options?.status}`
+      sql`(${requirementCoverageSnapshots.status} = ${options.status} OR (${requirementCoverageSnapshots.status} IS NULL AND ${options.status} = 'missing'))`
     );
   }
 

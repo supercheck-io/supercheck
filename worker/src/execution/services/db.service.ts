@@ -489,8 +489,8 @@ export class DbService implements OnModuleInit {
           createdAt: schema.runs.createdAt,
         })
         .from(schema.runs)
-        .where(eq(schema.runs.jobId, jobId))
-        .orderBy(desc(schema.runs.id)) // UUIDv7 is time-ordered (PostgreSQL 18+)
+        .where(and(eq(schema.runs.jobId, jobId), inArray(schema.runs.status, ['passed', 'failed', 'error', 'blocked', 'skipped'])))
+        .orderBy(desc(schema.runs.createdAt), desc(schema.runs.id))
         .limit(limit);
 
       return runs;

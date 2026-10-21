@@ -144,3 +144,17 @@ describe("monitor update location validation", () => {
     expect(response.status).not.toBe(400);
   });
 });
+
+it("PATCH applies CLI fields and refreshes the scheduler payload", async () => {
+  jest.clearAllMocks();
+  const original = { ...existing("http_request", { method: "GET", timeout: 30 }), frequencyMinutes: 5, enabled: true, status: "up", scheduledJobId: "old" };
+  findFirst.mockResolvedValue(original);
+  const changes = { target: "https://updated.example", type: "http_request", frequencyMinutes: 10, enabled: true, config: { method: "HEAD" } };
+  const saved = { ...original, ...changes, config: { ...original.config, ...changes.config } };
+  update.mockReturnValue({ set: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), returning: jest.fn().mockResolvedValue([saved]) });
+  const response = await call(PATCH, "PATCH", changes);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject(saved);
+  const { scheduleMonitor } = await import("@/lib/monitor-scheduler");
+  expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ frequencyMinutes: 10, jobData: expect.objectContaining({ target: changes.target, config: saved.config }) }));
+});

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       conditions.push(
-        sql`coalesce(${requirementCoverageSnapshots.status}, 'missing') = ${status}`
+        sql`(${requirementCoverageSnapshots.status} = ${status} OR (${requirementCoverageSnapshots.status} IS NULL AND ${status} = 'missing'))`
       );
     }
 

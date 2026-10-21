@@ -1,3 +1,4 @@
+import { updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -763,24 +764,29 @@ export async function PATCH(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const updatePayload: Partial<{
-      config: typeof currentMonitor.config;
-      alertConfig: typeof currentMonitor.alertConfig;
-      status: typeof currentMonitor.status;
-      updatedAt: Date;
-    }> = {
-      updatedAt: new Date(),
-    };
-
-    // Handle partial update for 'config'
-    if (rawData.config) {
-      const newConfig = deepMerge(currentMonitor.config ?? {}, rawData.config);
-      updatePayload.config = newConfig;
+    const updatePayload: Parameters<typeof updateMonitorHandler>[1] = {};
+    for (const key of ["name", "description", "type", "target", "frequencyMinutes", "enabled"] as const) {
+      if (rawData[key] !== undefined) Object.assign(updatePayload, { [key]: rawData[key] });
     }
+    if (rawData.enabled !== undefined && typeof rawData.enabled !== "boolean") {
+      return NextResponse.json({ error: "enabled must be boolean" }, { status: 400 });
+    }
+    if (rawData.frequencyMinutes !== undefined &&
+      (typeof rawData.frequencyMinutes !== "number" || !Number.isFinite(rawData.frequencyMinutes) ||
+       rawData.frequencyMinutes < 1 || rawData.frequencyMinutes > 1440)) {
+      return NextResponse.json({ error: "frequencyMinutes must be between 1 and 1440" }, { status: 400 });
+    }
+    if (rawData.status !== undefined) {
+      if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
+        return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
+      }
+      updatePayload.enabled = rawData.status !== "paused";
+    }
+    if (rawData.config) updatePayload.config = deepMerge(currentMonitor.config ?? {}, rawData.config);
 
     const configurationValidation = validateMonitorConfiguration({
-      type: currentMonitor.type,
-      target: currentMonitor.target,
+      type: updatePayload.type ?? currentMonitor.type,
+      target: updatePayload.target ?? currentMonitor.target,
       config: updatePayload.config ?? currentMonitor.config,
     });
     if (!configurationValidation.success) {
@@ -801,14 +807,14 @@ export async function PATCH(
       }
     }
 
-    if (rawData.config) {
+    if (rawData.config || rawData.type) {
       const effectiveConfig = (updatePayload.config ?? currentMonitor.config) as
         | { locationConfig?: LocationConfig | null }
         | null
         | undefined;
       const unsupported = await findUnsupportedMonitorLocations(
         effectiveConfig?.locationConfig,
-        currentMonitor.type,
+        updatePayload.type ?? currentMonitor.type,
       );
       if (unsupported.length > 0) {
         return NextResponse.json(
@@ -827,117 +833,7 @@ export async function PATCH(
       updatePayload.alertConfig = newAlertConfig;
     }
 
-    if (rawData.status) {
-      updatePayload.status = rawData.status;
-    }
-
-    const [updatedMonitor] = await db
-      .update(monitors)
-      .set(updatePayload)
-      .where(
-        and(
-          eq(monitors.id, id),
-          eq(monitors.projectId, authCtx.project.id),
-          eq(monitors.organizationId, authCtx.organizationId),
-        ),
-      )
-      .returning();
-
-    if (!updatedMonitor) {
-      return NextResponse.json(
-        { error: "Failed to update monitor" },
-        { status: 404 },
-      );
-    }
-
-    // Handle pause/resume logic when status changes
-    if (rawData.status && rawData.status !== currentMonitor.status) {
-      logger.debug(
-        {
-          monitorId: id,
-          oldStatus: currentMonitor.status,
-          newStatus: rawData.status,
-        },
-        "Monitor status changed (PATCH)",
-      );
-
-      if (rawData.status === "paused") {
-        // Pause monitor - remove from scheduler and clear scheduledJobId
-        logger.debug(
-          { monitorId: id },
-          "Pausing monitor (PATCH) - removing from scheduler",
-        );
-
-        // Try both the stored scheduledJobId and the monitor ID
-        let deleteSuccess = false;
-        if (currentMonitor.scheduledJobId) {
-          deleteSuccess = await deleteScheduledMonitor(
-            currentMonitor.scheduledJobId,
-          );
-        }
-
-        if (!deleteSuccess) {
-          deleteSuccess = await deleteScheduledMonitor(id);
-        }
-
-        // Clear the scheduled job ID from database
-        await db
-          .update(monitors)
-          .set({ scheduledJobId: null })
-          .where(
-            and(
-              eq(monitors.id, id),
-              eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId),
-            ),
-          );
-      } else if (
-        currentMonitor.status === "paused" &&
-        (rawData.status === "up" || rawData.status === "down")
-      ) {
-        // Resume monitor - add to scheduler if it has valid frequency
-        if (
-          updatedMonitor.frequencyMinutes &&
-          updatedMonitor.frequencyMinutes > 0
-        ) {
-          logger.debug(
-            {
-              monitorId: id,
-              frequencyMinutes: updatedMonitor.frequencyMinutes,
-            },
-            "Resuming monitor (PATCH) - adding to scheduler",
-          );
-
-          const jobData: MonitorJobData = {
-            monitorId: updatedMonitor.id,
-            projectId: authCtx.project.id,
-            type: updatedMonitor.type as MonitorJobData["type"],
-            target: updatedMonitor.target,
-            config: updatedMonitor.config as Record<string, unknown>,
-            frequencyMinutes: updatedMonitor.frequencyMinutes,
-          };
-
-          const schedulerId = await scheduleMonitor({
-            monitorId: id,
-            frequencyMinutes: updatedMonitor.frequencyMinutes,
-            jobData,
-            retryLimit: 3,
-          });
-
-          // Update monitor with new scheduler ID
-          await db
-            .update(monitors)
-            .set({ scheduledJobId: schedulerId })
-            .where(
-              and(
-                eq(monitors.id, id),
-                eq(monitors.projectId, authCtx.project.id),
-                eq(monitors.organizationId, authCtx.organizationId),
-              ),
-            );
-        }
-      }
-    }
+    const updatedMonitor = await updateMonitorHandler(id, updatePayload);
 
     // Log the audit event for monitor partial update
     await logAuditEvent({

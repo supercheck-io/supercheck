@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import {
   monitors as monitorTable,
@@ -190,7 +191,7 @@ export async function updateMonitorHandler(
     (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
     (data.type !== undefined && data.type !== existingMonitor.type) ||
     (data.target !== undefined && data.target !== existingMonitor.target) ||
-    data.config !== undefined;
+    (data.config !== undefined && !isDeepStrictEqual(data.config, existingMonitor.config));
 
   if (shouldReschedule) {
     // Remove existing schedule if any
