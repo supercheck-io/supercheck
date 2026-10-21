@@ -2,6 +2,10 @@
 
 > Open source test automation, monitoring, and AI SRE. Start with the installation runbook for agent-assisted self-hosting.
 
+## Agent quickstart (Supercheck Cloud)
+
+- [Agent quickstart](https://supercheck.io/docs/cli/agent-quickstart): Copy-paste prompt and CLI steps (`onboard`, `discover`, `login`, `deploy --verify`, `ci init`) to take a repository to a verified cloud run.
+
 ## Installation
 
 - [Agent installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md): Required inputs, ordered commands, and verification for a single Linux server.
