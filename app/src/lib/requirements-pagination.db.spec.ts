@@ -43,13 +43,13 @@ beforeAll(async () => {
   mockDatabase = drizzle(client);
   // Only the listing projection is needed; no application data or migrations are changed.
   await client.unsafe(`
-    CREATE TABLE requirements (id text PRIMARY KEY, project_id text, title text,
+    CREATE TABLE requirements (id text PRIMARY KEY, project_id text, organization_id text, title text,
       description text, priority text, source_document_id text, source_section text,
       external_id text, external_url text, external_provider text, created_by text,
       created_at timestamptz, updated_at timestamptz);
     CREATE TABLE requirement_coverage_snapshots (requirement_id text PRIMARY KEY,
       status text, linked_test_count integer, passed_test_count integer, failed_test_count integer);
-    CREATE TABLE requirement_documents (id text PRIMARY KEY, name text);
+    CREATE TABLE requirement_documents (id text PRIMARY KEY, name text, project_id text, organization_id text);
     CREATE TABLE tags (id text PRIMARY KEY, project_id text, name text, color text);
     CREATE TABLE requirement_tags (requirement_id text, tag_id text);
     INSERT INTO requirements (id, project_id, title, created_at) VALUES
