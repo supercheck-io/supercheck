@@ -383,3 +383,6 @@ Monitor viewers can read check settings and results, but request credentials, re
 The legacy `config.retryStrategy` field is unsupported for monitors. It is accepted for compatibility but ignored; omit it from new configurations. It does not control execution retries. This deprecation does not change monitor execution or job retry behavior, and existing saved configurations require no migration.
 
 Updating a monitor's target, type, or configuration refreshes its scheduled checks. Paused monitors remain paused when their configuration changes.
+## Deleting stored artifacts
+
+Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.

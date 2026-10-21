@@ -75,6 +75,35 @@ export class S3CleanupService {
     });
   }
 
+  getRunArtifactInputs(run: {
+    id: string;
+    reportS3Url?: string | null;
+    logsS3Url?: string | null;
+    metadata?: { testId?: string } | null;
+  }): ReportDeletionInput[] {
+    const inputs: ReportDeletionInput[] = [];
+    for (const s3Url of new Set([run.reportS3Url, run.logsS3Url].filter((url): url is string => !!url))) {
+      const url = new URL(s3Url);
+      const parts = url.pathname.split("/").filter(Boolean);
+      const types = ["job", "k6_job", "test", "k6_test"] as const;
+      const entityType = types.find(type => {
+        const bucket = this.getBucketForEntityType(type);
+        return (parts[0] === bucket && parts[1] === run.id)
+          || (url.hostname.startsWith(`${bucket}.`) && parts[0] === run.id);
+      });
+      if (!entityType) {
+        const bucket = this.getBucketForEntityType("test");
+        const testId = run.metadata?.testId;
+        // Saved browser tests share a latest-report directory owned by the test.
+        if (testId && ((parts[0] === bucket && parts[1] === testId)
+          || (url.hostname.startsWith(`${bucket}.`) && parts[0] === testId))) continue;
+        throw new Error("Artifact URL does not match its execution directory");
+      }
+      inputs.push({ entityId: run.id, reportPath: run.id, s3Url, entityType });
+    }
+    return inputs;
+  }
+
   /**
    * Get the appropriate bucket name based on entity type
    */

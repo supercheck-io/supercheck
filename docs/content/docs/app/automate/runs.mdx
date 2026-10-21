@@ -63,3 +63,7 @@ Click **AI Analyze** on any job run to generate an AI-powered analysis report.
 <Callout type="info">
 For self-hosted deployments, an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) to enable AI Analyze.
 </Callout>
+
+## Delete a Run
+
+Queued or running executions cannot be deleted. Stop the execution before retrying. Deletion waits for artifact storage cleanup; if storage is unavailable, the run stays available so you can retry. A partial cleanup may already have removed some artifacts.

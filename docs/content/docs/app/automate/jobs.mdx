@@ -272,3 +272,7 @@ If a job exceeds the maximum execution time:
 - **K6 Performance Jobs:** Maximum runtime of **60 minutes** per job execution
 - **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
 </Callout>
+
+## Deleting stored artifacts
+
+Jobs with queued or running executions cannot be deleted until those executions stop. Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.
