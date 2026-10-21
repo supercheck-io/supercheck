@@ -1909,12 +1909,16 @@ describe('MonitorService', () => {
       let onConflict: jest.Mock;
       let insertValues: jest.Mock;
 
-      function cycleRow(rows: Array<{ status: string }>) {
+      function cycleRow(rows: Array<{ status: string; monitorId?: string }>) {
         mockDbService.db.select.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           orderBy: jest.fn().mockResolvedValue([]),
-          limit: jest.fn().mockResolvedValue(rows),
+          limit: jest
+            .fn()
+            .mockResolvedValue(
+              rows.map((row) => ({ monitorId: mockMonitor.id, ...row })),
+            ),
         });
       }
 
@@ -1968,6 +1972,22 @@ describe('MonitorService', () => {
         await service.saveDistributedMonitorResult(result('eu-central'), group);
         expect(insertValues).not.toHaveBeenCalled();
         expect(mockRedisService.getClient().get).toHaveBeenCalled();
+      });
+
+      it('ignores a cycle owned by another monitor and stays on legacy evaluation', async () => {
+        // The owner check runs before the status check, so any foreign status falls through.
+        for (const status of ['open', 'closed', 'aborted']) {
+          persist.mockClear();
+          mockRedisService.getClient().get.mockClear();
+          cycleRow([{ status, monitorId: 'other-monitor' }]);
+          await service.saveDistributedMonitorResult(
+            result('eu-central'),
+            group,
+          );
+          expect(persist).toHaveBeenCalledTimes(1);
+          expect(insertValues).not.toHaveBeenCalled();
+          expect(mockRedisService.getClient().get).toHaveBeenCalled();
+        }
       });
 
       it('never looks up a cycle unless the job carries the cycle hint', async () => {

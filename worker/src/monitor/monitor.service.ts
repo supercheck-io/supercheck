@@ -612,7 +612,11 @@ export class MonitorService {
     // Control-plane cycle: the result row is saved; hand evaluation to the control plane.
     if (
       options.monitorCycle &&
-      (await this.recordCycleArrival(executionGroupId, result.location))
+      (await this.recordCycleArrival(
+        executionGroupId,
+        result.monitorId,
+        result.location,
+      ))
     )
       return;
 
@@ -744,20 +748,31 @@ export class MonitorService {
 
   /**
    * Records a wake-up hint for the control plane. Returns false when no cycle row exists
-   * (legacy evaluation continues). The cycle row, not worker env, decides the mode; a result
-   * for a closed or aborted cycle stays diagnostic and never re-evaluates it.
+   * for this monitor (legacy evaluation continues). The cycle row, not worker env, decides
+   * the mode; a result for a closed or aborted cycle stays diagnostic and never re-evaluates
+   * it. A cycle owned by another monitor is treated as absent so a result cannot re-arm it.
    */
   private async recordCycleArrival(
     cycleId: string,
+    monitorId: string,
     location: string,
   ): Promise<boolean> {
     try {
       const [cycle] = await this.dbService.db
-        .select({ status: schema.monitorCycles.status })
+        .select({
+          status: schema.monitorCycles.status,
+          monitorId: schema.monitorCycles.monitorId,
+        })
         .from(schema.monitorCycles)
         .where(eq(schema.monitorCycles.id, cycleId))
         .limit(1);
       if (!cycle) return false;
+      if (cycle.monitorId !== monitorId) {
+        this.logger.warn(
+          `Ignoring cycle ${cycleId}: it belongs to monitor ${cycle.monitorId}, not ${monitorId}`,
+        );
+        return false;
+      }
       if (cycle.status !== 'open') return true;
       await this.dbService.db
         .insert(schema.monitorCycleArrivals)
