@@ -6,7 +6,7 @@ import { auth } from "@/utils/auth";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { MCP_READ_SCOPE, isMcpServerEnabled } from "@/lib/mcp/config";
 import { mcpAuthApi } from "@/lib/mcp/auth-api";
-import { listConnectableProjects } from "@/lib/mcp/project-selection";
+import { listConnectableProjects } from "@/lib/mcp/connect-project";
 import { verifiedHostForClientId } from "@/lib/mcp/connections";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckIcon } from "@/components/logo/supercheck-logo";

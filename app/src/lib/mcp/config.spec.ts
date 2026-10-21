@@ -6,21 +6,32 @@ import {
 } from "./config";
 
 describe("MCP server flags", () => {
-  it("is off unless explicitly enabled", () => {
-    expect(isMcpServerEnabled({})).toBe(false);
-    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: "" })).toBe(false);
-    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: "1" })).toBe(false);
-    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: "false" })).toBe(false);
-    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: "true" })).toBe(true);
-    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: " TRUE " })).toBe(true);
+  it.each(["true", "TRUE", " True ", "1", "yes", "on"])("enables the server for %p", (value) => {
+    expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: value })).toBe(true);
   });
 
-  it("accepts dynamic client registration unless an operator turns it off", () => {
+  it.each([undefined, "", "  ", "false", "0", "no", "off", "enabled", "tru"])(
+    "keeps the server off for %p",
+    (value) => {
+      expect(isMcpServerEnabled({ MCP_SERVER_ENABLED: value })).toBe(false);
+    },
+  );
+
+  it("accepts dynamic client registration when unset, and when explicitly on", () => {
     expect(isMcpDynamicRegistrationEnabled({})).toBe(true);
-    expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: "true" })).toBe(true);
-    expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: "false" })).toBe(false);
-    expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: " False " })).toBe(false);
+    expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: "" })).toBe(true);
+    for (const value of ["true", "TRUE", "1", "yes", "on"]) {
+      expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: value })).toBe(true);
+    }
   });
+
+  // Every way an operator might say "off" must turn it off; an unrecognisable value fails closed too.
+  it.each(["false", " False ", "0", "no", "NO", "off", "Off", "disabled", "flase"])(
+    "turns dynamic client registration off for %p",
+    (value) => {
+      expect(isMcpDynamicRegistrationEnabled({ MCP_DYNAMIC_CLIENT_REGISTRATION: value })).toBe(false);
+    },
+  );
 
   it("only ever offers the read scope and refresh", () => {
     expect([...MCP_SCOPES]).toEqual(["mcp:read", "offline_access"]);

@@ -55,6 +55,11 @@ describe("generic authentication organization safeguards", () => {
     expect(mockPost).toHaveBeenCalledWith(request);
   });
 
+  // The guard only applies while the MCP server is on; with it off the plugins are not registered.
+  const originalFlag = process.env.MCP_SERVER_ENABLED;
+  beforeAll(() => { process.env.MCP_SERVER_ENABLED = "true"; });
+  afterAll(() => { if (originalFlag === undefined) delete process.env.MCP_SERVER_ENABLED; else process.env.MCP_SERVER_ENABLED = originalFlag; });
+
   // The OAuth provider and JWT plugins add dozens of routes. Only what MCP clients need is reachable over
   // HTTP; enumerating the installed plugins means a new route in a future release is denied by default.
   type Endpoint = { path?: string; options?: { method?: string | string[] } };
@@ -92,5 +97,37 @@ describe("generic authentication organization safeguards", () => {
   it("does not allow a method the endpoint was not allowlisted for", async () => {
     expect((await GET(new Request("https://app.supercheck.io/api/auth/oauth2/token"))).status).toBe(403);
     expect((await POST(new Request("https://app.supercheck.io/api/auth/oauth2/register", { method: "POST" }))).status).toBe(200);
+  });
+
+  it("denies sub-routes of the session-JWT endpoint, not just its exact path", async () => {
+    for (const path of ["/token", "/token/refresh", "/token/anything-new"]) {
+      expect((await GET(new Request(`https://app.supercheck.io/api/auth${path}`))).status).toBe(403);
+    }
+  });
+
+  it("leaves the OAuth paths to Better Auth, which answers 404, while the MCP server is off", async () => {
+    process.env.MCP_SERVER_ENABLED = "false";
+    try {
+      mockPost.mockClear();
+      expect((await POST(new Request("https://app.supercheck.io/api/auth/oauth2/create-client", { method: "POST" }))).status).toBe(200);
+      expect(mockPost).toHaveBeenCalledTimes(1);
+    } finally {
+      process.env.MCP_SERVER_ENABLED = "true";
+    }
+  });
+
+  it("advertises only reachable endpoints in Better Auth's own metadata document", async () => {
+    mockGet.mockResolvedValue(
+      Response.json({
+        issuer: "https://app.supercheck.io/api/auth",
+        token_endpoint: "https://app.supercheck.io/api/auth/oauth2/token",
+        introspection_endpoint: "https://app.supercheck.io/api/auth/oauth2/introspect",
+        introspection_endpoint_auth_methods_supported: ["private_key_jwt"],
+      }),
+    );
+    const body = await (await GET(new Request("https://app.supercheck.io/api/auth/.well-known/oauth-authorization-server"))).json();
+    expect(body.token_endpoint).toBeDefined();
+    expect(body).not.toHaveProperty("introspection_endpoint");
+    expect(body).not.toHaveProperty("introspection_endpoint_auth_methods_supported");
   });
 });

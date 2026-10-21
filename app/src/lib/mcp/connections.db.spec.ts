@@ -1,5 +1,7 @@
 /** @jest-environment node */
 // A server outside UTC is where a timestamp-without-time-zone value read as local time goes wrong.
+// Restored afterwards so it cannot leak into other specs that share this Jest worker.
+const originalTimeZone = process.env.TZ;
 process.env.TZ = "America/Los_Angeles";
 
 import { randomUUID } from "node:crypto";
@@ -84,6 +86,8 @@ beforeAll(async () => {
 }, 100000);
 
 afterAll(async () => {
+  if (originalTimeZone === undefined) delete process.env.TZ;
+  else process.env.TZ = originalTimeZone;
   if (client) await client.end({ timeout: 5 });
   if (maintenance) {
     await maintenance.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);

@@ -1,6 +1,7 @@
 "use client";
 
 import { buildOAuthResumePath, isOAuthResumePath, sanitizeNextPath } from "@/lib/auth/safe-next-path";
+import { hardNavigate } from "@/lib/auth/hard-navigate";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 import { signIn } from "@/utils/auth-client";
@@ -190,7 +191,7 @@ function SignInPageContent() {
           router.push(`/invite/${inviteToken}`);
         } else if (isOAuthResumePath(nextPath)) {
           // The authorize endpoint answers with a redirect, so leave the SPA router.
-          window.location.assign(nextPath as string);
+          hardNavigate(nextPath as string);
         } else {
           router.push(nextPath ?? "/");
         }

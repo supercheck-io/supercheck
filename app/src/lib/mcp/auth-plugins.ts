@@ -3,7 +3,8 @@ import type { BetterAuthPlugin } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { mcp } from "@better-auth/mcp";
 import { cimd } from "@better-auth/cimd";
-import { fetchClientMetadataResource } from "@better-auth/cimd/node";
+import { fetchClientMetadataResource as fetchMetadataOverNode } from "@better-auth/cimd/node";
+import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import {
   MCP_ACCESS_TOKEN_TTL_SECONDS,
   MCP_PROJECT_CLAIM,
@@ -59,8 +60,12 @@ export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin
         {
           matcher: (ctx) => ctx.path === "/oauth2/authorize",
           handler: createAuthMiddleware(async (ctx) => {
-            const requested = (ctx.query as { resource?: unknown } | undefined)?.resource;
-            const values = Array.isArray(requested) ? requested : [requested];
+            // The authorize endpoint accepts GET (query) and POST (form body).
+            const named = (source: unknown) => {
+              const value = (source as { resource?: unknown } | undefined)?.resource;
+              return value === undefined ? [] : Array.isArray(value) ? value : [value];
+            };
+            const values = [...named(ctx.query), ...named(ctx.body)];
             if (values.length !== 1 || values[0] !== resource) {
               throw new APIError("BAD_REQUEST", {
                 error: "invalid_target",
@@ -74,7 +79,7 @@ export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin
   };
 }
 
-type ResolveProject = (input: { sessionId: string; userId: string }) => Promise<string | undefined>;
+type ResolveProject = (input: { userId: string }) => Promise<string | undefined>;
 
 /**
  * Refuses to record consent unless a project was chosen.
@@ -98,7 +103,7 @@ export function mcpConsentRequiresProject(resolve: ResolveProject): BetterAuthPl
             const session = await getSessionFromCtx(ctx);
             // No session is rejected by the consent endpoint itself.
             if (!session) return;
-            const project = await resolve({ sessionId: session.session.id, userId: session.user.id });
+            const project = await resolve({ userId: session.user.id });
             if (!project) {
               throw new APIError("BAD_REQUEST", {
                 error: "invalid_request",
@@ -118,10 +123,16 @@ export interface McpAuthPluginOptions {
   /** Accept unauthenticated Dynamic Client Registration (CIMD is always on). */
   dynamicRegistration: boolean;
   /**
-   * The project the signed-in user chose on the connect screen, or undefined
-   * when none was chosen. Consent is recorded against this value.
+   * The project being connected by the approval in progress, or undefined when
+   * there is none. Consent is recorded against this value.
    */
   resolveProjectReference: ResolveProject;
+  /**
+   * How Client ID Metadata Documents are fetched. Defaults to Better Auth's Node
+   * transport, which refuses private addresses, redirects and oversized bodies.
+   * Replaceable so tests can serve documents without network access.
+   */
+  fetchClientMetadataResource?: ClientMetadataResourceFetch;
 }
 
 /**
@@ -164,15 +175,15 @@ export function createMcpAuthPlugins(options: McpAuthPluginOptions) {
         // redirect happens between sign-in and consent.
         page: "/oauth/consent",
         shouldRedirect: () => false,
-        consentReferenceId: ({ user, session }) =>
-          options.resolveProjectReference({ sessionId: session.id, userId: user.id }),
+        consentReferenceId: ({ user }) =>
+          options.resolveProjectReference({ userId: user.id }),
       },
       customAccessTokenClaims: ({ referenceId }) => ({
         [MCP_PROJECT_CLAIM]: referenceId ?? null,
       }),
     }),
     cimd({
-      fetchClientMetadataResource,
+      fetchClientMetadataResource: options.fetchClientMetadataResource ?? fetchMetadataOverNode,
       metadataProfile: "mcp-2026-07-28",
     }),
   ];

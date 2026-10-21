@@ -42,7 +42,7 @@ import {
   isMcpServerEnabled,
 } from "@/lib/mcp/config";
 import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
-import { readProjectSelection } from "@/lib/mcp/project-selection";
+import { resolveConsentProject } from "@/lib/mcp/connect-project";
 
 /**
  * Get Polar plugin configuration if enabled
@@ -246,7 +246,7 @@ function getMcpPlugins() {
   return createMcpAuthPlugins({
     resource: getMcpResourceUrl(),
     dynamicRegistration: isMcpDynamicRegistrationEnabled(),
-    resolveProjectReference: readProjectSelection,
+    resolveProjectReference: resolveConsentProject,
   });
 }
 

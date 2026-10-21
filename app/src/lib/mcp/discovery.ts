@@ -1,6 +1,7 @@
 import { oauthProviderAuthServerMetadata } from "@better-auth/oauth-provider";
 import { auth } from "@/utils/auth";
 import { isMcpServerEnabled } from "./config";
+import { withReachableEndpointsOnly } from "./http-policy";
 
 /**
  * OAuth discovery documents (RFC 8414, RFC 9728).
@@ -45,8 +46,8 @@ function guarded(build: () => Handler): Handler {
   };
 }
 
-export const authorizationServerMetadata = guarded(() =>
-  oauthProviderAuthServerMetadata(auth as never),
+export const authorizationServerMetadata = guarded(() => async (request) =>
+  withReachableEndpointsOnly(await oauthProviderAuthServerMetadata(auth as never)(request)),
 );
 
 /** RFC 9728 protected-resource metadata, served by the MCP plugin via the auth handler. */

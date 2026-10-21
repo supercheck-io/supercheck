@@ -16,28 +16,42 @@ export const MCP_SCOPES = [MCP_READ_SCOPE, "offline_access"] as const;
 /** JWT claim carrying the project a consent was granted for. */
 export const MCP_PROJECT_CLAIM = "https://supercheck.io/project";
 
-/** Seconds the project chosen on the connect screen stays usable. */
-export const MCP_PROJECT_SELECTION_TTL_SECONDS = 10 * 60;
 
 /** Short-lived access tokens; refresh tokens carry the longer session. */
 export const MCP_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const MCP_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+const TRUE_VALUES = new Set(["true", "1", "yes", "on"]);
+
+/**
+ * Reads an on/off setting. An unset or blank value is `defaultValue`; any
+ * recognised "on" spelling is true; everything else (false, 0, no, off, or a
+ * typo) is false. An operator who typed something unrecognisable most likely
+ * meant "off", so these settings fail closed.
+ */
+function readFlag(value: string | undefined, defaultValue: boolean): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return defaultValue;
+  return TRUE_VALUES.has(normalized);
+}
+
+/** The whole MCP server, including the OAuth server: off unless explicitly enabled. */
 export function isMcpServerEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.MCP_SERVER_ENABLED?.trim().toLowerCase() === "true";
+  return readFlag(env.MCP_SERVER_ENABLED, false);
 }
 
 /**
  * Whether unauthenticated Dynamic Client Registration is accepted. Most MCP
  * clients still register this way; the 2026-07-28 spec prefers Client ID
- * Metadata Documents, which are always accepted. Operators can turn DCR off.
+ * Metadata Documents, which are always accepted. On by default; operators can
+ * turn it off.
  */
 export function isMcpDynamicRegistrationEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.MCP_DYNAMIC_CLIENT_REGISTRATION?.trim().toLowerCase() !== "false";
+  return readFlag(env.MCP_DYNAMIC_CLIENT_REGISTRATION, true);
 }
 
 function appBaseUrl(env: Record<string, string | undefined>): string {

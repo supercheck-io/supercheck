@@ -4,8 +4,8 @@ import { NextRequest } from "next/server";
 const mockGetSession = jest.fn();
 const mockConsent = jest.fn();
 const mockImpersonated = jest.fn();
-const mockSave = jest.fn();
-const mockClear = jest.fn();
+const mockAssert = jest.fn();
+const mockRunWith = jest.fn();
 const mockList = jest.fn();
 const mockRevoke = jest.fn();
 const mockAudit = jest.fn();
@@ -18,12 +18,12 @@ jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknow
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/lib/logger/pino-config", () => ({ createLogger: () => ({ warn: jest.fn(), error: jest.fn(), info: jest.fn() }) }));
 jest.mock("@/lib/mcp/config", () => ({ isMcpServerEnabled: () => mockEnabled }));
-jest.mock("@/lib/mcp/project-selection", () => {
+jest.mock("@/lib/mcp/connect-project", () => {
   class McpProjectAccessError extends Error {}
   return {
     McpProjectAccessError,
-    saveProjectSelection: (...a: unknown[]) => mockSave(...a),
-    clearProjectSelection: (...a: unknown[]) => mockClear(...a),
+    assertCanConnectProject: (...a: unknown[]) => mockAssert(...a),
+    runWithConsentProject: (...a: unknown[]) => mockRunWith(...a),
     listConnectableProjects: (...a: unknown[]) => mockList(...a),
   };
 });
@@ -39,7 +39,7 @@ jest.mock("@/lib/mcp/connections", () => {
 import { POST as consentPost } from "./consent/route";
 import { GET as listGet } from "./connections/route";
 import { DELETE as connectionDelete } from "./connections/[id]/route";
-import { McpProjectAccessError } from "@/lib/mcp/project-selection";
+import { McpProjectAccessError } from "@/lib/mcp/connect-project";
 import { McpConnectionNotFoundError } from "@/lib/mcp/connections";
 
 const ORIGIN = "https://app.example.com";
@@ -65,8 +65,8 @@ beforeEach(() => {
   mockEnabled = true;
   mockGetSession.mockResolvedValue(session);
   mockImpersonated.mockResolvedValue(false);
-  mockSave.mockResolvedValue(undefined);
-  mockClear.mockResolvedValue(undefined);
+  mockAssert.mockResolvedValue(undefined);
+  mockRunWith.mockImplementation(async (_selection: unknown, fn: () => Promise<unknown>) => fn());
   mockConsent.mockResolvedValue({ url: "http://127.0.0.1:8765/callback?code=abc&state=xyz" });
   mockRevoke.mockResolvedValue(undefined);
 });
@@ -76,23 +76,24 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ url: "http://127.0.0.1:8765/callback?code=abc&state=xyz" });
-    expect(mockSave).toHaveBeenCalledWith({ sessionId: "session-1", userId: "user-1", projectId: PROJECT });
+    expect(mockAssert).toHaveBeenCalledWith("user-1", PROJECT);
+    // The choice reaches Better Auth through this approval's own context, not shared storage.
+    expect(mockRunWith).toHaveBeenCalledWith({ userId: "user-1", projectId: PROJECT }, expect.any(Function));
     expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ body: { accept: true, oauth_query: approve.oauth_query } }));
     // The choice must be recorded before consent is granted.
-    expect(mockSave.mock.invocationCallOrder[0]).toBeLessThan(mockConsent.mock.invocationCallOrder[0]);
+    expect(mockAssert.mock.invocationCallOrder[0]).toBeLessThan(mockConsent.mock.invocationCallOrder[0]);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_approved", userId: "user-1", success: true }));
-    expect(mockClear).toHaveBeenCalledWith({ sessionId: "session-1", userId: "user-1", projectId: PROJECT });
   });
 
   it("denies without selecting a project", async () => {
     mockConsent.mockResolvedValue({ url: "http://127.0.0.1:8765/callback?error=access_denied" });
     const response = await consentPost(consentRequest({ accept: false, oauth_query: approve.oauth_query }));
     expect(response.status).toBe(200);
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockAssert).not.toHaveBeenCalled();
     expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ body: { accept: false, oauth_query: approve.oauth_query } }));
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_denied" }));
-    // A denial stored nothing, so it must not delete a choice another tab is about to use.
-    expect(mockClear).not.toHaveBeenCalled();
+    // A denial needs no project and runs outside any approval context.
+    expect(mockRunWith).not.toHaveBeenCalled();
   });
 
   it("does not exist when the MCP server is disabled", async () => {
@@ -103,7 +104,7 @@ describe("POST /api/oauth/mcp/consent", () => {
 
   it("refuses cross-origin requests", async () => {
     expect((await consentPost(consentRequest(approve, { origin: "https://evil.example" }))).status).toBe(403);
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockAssert).not.toHaveBeenCalled();
     expect(mockConsent).not.toHaveBeenCalled();
   });
 
@@ -118,7 +119,7 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "impersonation_not_allowed" });
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockAssert).not.toHaveBeenCalled();
     expect(mockConsent).not.toHaveBeenCalled();
   });
 
@@ -142,7 +143,7 @@ describe("POST /api/oauth/mcp/consent", () => {
   });
 
   it("refuses a project the user cannot connect and issues nothing", async () => {
-    mockSave.mockRejectedValue(new McpProjectAccessError());
+    mockAssert.mockRejectedValue(new McpProjectAccessError());
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(403);
     expect(mockConsent).not.toHaveBeenCalled();
@@ -153,12 +154,11 @@ describe("POST /api/oauth/mcp/consent", () => {
     expect((await consentPost(consentRequest(approve))).status).toBe(502);
   });
 
-  it("reports an expired or replayed request without leaking details, and still clears the choice", async () => {
+  it("reports an expired or replayed request without leaking details", async () => {
     mockConsent.mockRejectedValue(new Error("invalid_signature: secret internals"));
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(400);
     expect(JSON.stringify(await response.json())).not.toContain("secret internals");
-    expect(mockClear).toHaveBeenCalledWith({ sessionId: "session-1", userId: "user-1", projectId: PROJECT });
   });
 
   it("rejects a valid JSON body over the size cap", async () => {
@@ -166,18 +166,18 @@ describe("POST /api/oauth/mcp/consent", () => {
     const padded = { ...approve, padding: "x".repeat(20 * 1024) };
     const response = await consentPost(consentRequest(padded));
     expect(response.status).toBe(400);
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockAssert).not.toHaveBeenCalled();
     expect(mockConsent).not.toHaveBeenCalled();
   });
 
   it("refuses an unusable redirect_uri before recording any consent", async () => {
     for (const redirect of ["javascript:alert(1)", "data:text/html,x", "", "not a url"]) {
-      mockSave.mockClear();
+      mockAssert.mockClear();
       mockConsent.mockClear();
       const query = new URLSearchParams({ client_id: "c", sig: "s", exp: "1", redirect_uri: redirect }).toString();
       const response = await consentPost(consentRequest({ ...approve, oauth_query: query }));
       expect(response.status).toBe(400);
-      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockAssert).not.toHaveBeenCalled();
       expect(mockConsent).not.toHaveBeenCalled();
     }
   });

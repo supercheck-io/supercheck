@@ -109,7 +109,7 @@ export function ConnectedApps() {
               <p className="text-sm text-muted-foreground">
                 Can read <span className="font-medium text-foreground">{connection.projectName ?? "a removed project"}</span>
                 {" · "}Connected {formatDate(connection.connectedAt)}
-                {" · "}Last active {formatDate(connection.lastActiveAt)}
+                {" · "}Last refreshed {formatDate(connection.lastActiveAt)}
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setPending(connection)}>

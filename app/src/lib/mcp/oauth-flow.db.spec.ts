@@ -40,7 +40,7 @@ describe("MCP OAuth against PostgreSQL", () => {
 
     const { stdout } = await execFileAsync(
       process.execPath,
-      [path.join(APP_ROOT, "node_modules/tsx/dist/cli.mjs"), "scripts/check-mcp-oauth-db.ts"],
+      [require.resolve("tsx/cli"), "scripts/check-mcp-oauth-db.ts"],
       { cwd: APP_ROOT, env, timeout: 90_000 },
     );
     expect(stdout).toContain("MCP OAuth database check passed");

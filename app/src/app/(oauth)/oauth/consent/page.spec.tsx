@@ -20,7 +20,7 @@ jest.mock("@/utils/auth", () => ({
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a) }));
 jest.mock("@/lib/mcp/config", () => ({ MCP_READ_SCOPE: "mcp:read", isMcpServerEnabled: () => mockEnabled }));
 jest.mock("@/lib/mcp/auth-api", () => ({ mcpAuthApi: () => ({ getOAuthClientPublic: (...a: unknown[]) => mockClient(...a) }) }));
-jest.mock("@/lib/mcp/project-selection", () => ({ listConnectableProjects: (...a: unknown[]) => mockProjects(...a) }));
+jest.mock("@/lib/mcp/connect-project", () => ({ listConnectableProjects: (...a: unknown[]) => mockProjects(...a) }));
 jest.mock("./mcp-consent", () => ({
   McpConsent: (props: unknown) => <pre data-testid="consent">{JSON.stringify(props)}</pre>,
 }));

@@ -13,7 +13,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { auth } from "../src/utils/auth";
-import { clearProjectSelection, saveProjectSelection } from "../src/lib/mcp/project-selection";
+import { runWithConsentProject } from "../src/lib/mcp/connect-project";
+import { decodeJwt } from "jose";
+import { MCP_PROJECT_CLAIM } from "../src/lib/mcp/config";
 import { listMcpConnections, revokeMcpConnection } from "../src/lib/mcp/connections";
 
 const BASE = process.env.BETTER_AUTH_URL as string;
@@ -52,8 +54,7 @@ async function main(): Promise<void> {
   const cookie = signIn.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
   const session = await auth.api.getSession({ headers: new Headers({ cookie }) });
   const userId = session?.user.id as string;
-  const sessionId = session?.session.id as string;
-
+  
   const orgId = randomUUID();
   const projectA = randomUUID();
   const projectB = randomUUID();
@@ -82,12 +83,11 @@ async function main(): Promise<void> {
     const consentUrl = new URL(authorize.headers.get("location") ?? "", BASE);
     if (consentUrl.pathname !== "/oauth/consent") throw new Error(`expected the consent screen, got ${consentUrl.pathname}`);
 
-    await saveProjectSelection({ sessionId, userId, projectId });
-    const consent = await send("/api/auth/oauth2/consent", {
-      method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
-    });
-    // The consent route clears the choice after every decision; do the same.
-    await clearProjectSelection({ sessionId, userId, projectId });
+    const consent = await runWithConsentProject({ userId, projectId }, () =>
+      send("/api/auth/oauth2/consent", {
+        method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
+      }),
+    );
     const code = new URL(((await consent.json()) as { url: string }).url).searchParams.get("code") as string;
     const token = await send("/api/auth/oauth2/token", {
       method: "POST", headers: form,
@@ -125,6 +125,40 @@ async function main(): Promise<void> {
     SELECT count(*)::int AS count FROM oauth_refresh_token WHERE user_id = ${userId} AND reference_id = ${projectB} AND revoked IS NULL
   `;
   check("project B's refresh tokens were not touched", count >= 1, `${count}`);
+
+  // --- two approvals in flight in one browser session each get their own project
+  async function authorizeOnly(): Promise<{ oauthQuery: string; verifier: string }> {
+    const verifier = base64url(randomBytes(32));
+    const challenge = base64url(createHash("sha256").update(verifier).digest());
+    const query = new URLSearchParams({
+      response_type: "code", client_id: client.client_id, redirect_uri: REDIRECT, scope: "mcp:read offline_access",
+      state: "s", code_challenge: challenge, code_challenge_method: "S256", resource: RESOURCE,
+    });
+    const authorize = await send(`/api/auth/oauth2/authorize?${query}`, { cookie });
+    return { oauthQuery: new URL(authorize.headers.get("location") ?? "", BASE).search.slice(1), verifier };
+  }
+  // Both connect screens are open before either decision is made.
+  await sql`DELETE FROM oauth_consent WHERE user_id = ${userId}`;
+  const [tabA, tabB] = [await authorizeOnly(), await authorizeOnly()];
+  const approve = (tab: { oauthQuery: string }, projectId: string) =>
+    runWithConsentProject({ userId, projectId }, () =>
+      send("/api/auth/oauth2/consent", { method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: tab.oauthQuery }) }),
+    );
+  const [consentA, consentB] = await Promise.all([approve(tabA, projectA), approve(tabB, projectB)]);
+  const codeOf = async (response: Response) => new URL(((await response.json()) as { url: string }).url).searchParams.get("code") as string;
+  const exchange = async (code: string, verifier: string) => {
+    const response = await send("/api/auth/oauth2/token", {
+      method: "POST", headers: form,
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: client.client_id, code_verifier: verifier, resource: RESOURCE }),
+    });
+    return decodeJwt(((await response.json()) as { access_token: string }).access_token) as Record<string, unknown>;
+  };
+  const claimsA = await exchange(await codeOf(consentA), tabA.verifier);
+  const claimsB = await exchange(await codeOf(consentB), tabB.verifier);
+  check("concurrent approvals each connect the project that was approved", claimsA[MCP_PROJECT_CLAIM] === projectA && claimsB[MCP_PROJECT_CLAIM] === projectB, `${String(claimsA[MCP_PROJECT_CLAIM]).slice(0, 8)}/${String(claimsB[MCP_PROJECT_CLAIM]).slice(0, 8)}`);
+  const stored = await sql<{ reference_id: string }[]>`SELECT reference_id FROM oauth_consent WHERE user_id = ${userId} ORDER BY reference_id`;
+  check("one consent is recorded per approved project", stored.length === 2 && new Set(stored.map((r) => r.reference_id)).size === 2, `${stored.length}`);
+  await sql`DELETE FROM oauth_consent WHERE user_id = ${userId}`;
 
   // --- consent can only be recorded with a project
   const verifier = base64url(randomBytes(32));

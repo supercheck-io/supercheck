@@ -11,9 +11,9 @@ import { createLogger } from "@/lib/logger/pino-config";
 import { guardMcpEnabled, mcpJson, readJsonBody } from "@/lib/mcp/http";
 import {
   McpProjectAccessError,
-  clearProjectSelection,
-  saveProjectSelection,
-} from "@/lib/mcp/project-selection";
+  assertCanConnectProject,
+  runWithConsentProject,
+} from "@/lib/mcp/connect-project";
 
 const logger = createLogger({ module: "mcp-consent" });
 
@@ -62,12 +62,11 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = session.user.id;
-  const sessionId = session.session.id;
 
   if (accept) {
     if (!projectId) return mcpJson({ error: "project_required" }, 400);
     try {
-      await saveProjectSelection({ sessionId, userId, projectId });
+      await assertCanConnectProject(userId, projectId);
     } catch (error) {
       if (error instanceof McpProjectAccessError) return mcpJson({ error: "forbidden" }, 403);
       throw error;
@@ -75,10 +74,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await mcpAuthApi().oauth2Consent({
-      headers: requestHeaders,
-      body: { accept, oauth_query: oauthQuery },
-    });
+    const consent = () =>
+      mcpAuthApi().oauth2Consent({
+        headers: requestHeaders,
+        body: { accept, oauth_query: oauthQuery },
+      });
+    // The chosen project reaches Better Auth through this call's own context, not shared
+    // storage, so two approvals in flight (two tabs, one session) cannot read each other's.
+    const result = accept && projectId ? await runWithConsentProject({ userId, projectId }, consent) : await consent();
     const url = result?.url ?? result?.redirect_uri;
     if (!isSafeRedirectTarget(url)) return mcpJson({ error: "consent_failed" }, 502);
 
@@ -94,12 +97,5 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.name : "unknown" }, "MCP consent failed");
     return mcpJson({ error: "consent_failed" }, 400);
-  } finally {
-    // The choice is single-use: a later connection picks again. Only an approval stored one,
-    // and only that exact value is removed, so a denial (or a second tab) cannot delete the
-    // choice another approval is about to read.
-    if (accept && projectId) {
-      await clearProjectSelection({ sessionId, userId, projectId }).catch(() => undefined);
-    }
   }
 }

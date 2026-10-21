@@ -17,6 +17,7 @@ import { createLocalJWKSet, decodeJwt, jwtVerify } from "jose";
 import { createMcpAuthPlugins } from "../src/lib/mcp/auth-plugins";
 import { MCP_PROJECT_CLAIM } from "../src/lib/mcp/config";
 import { oauthSchema } from "../src/db/schema/oauth";
+import { isOAuthEndpointDenied, pruneUnreachableEndpoints } from "../src/lib/mcp/http-policy";
 
 const BASE = "http://localhost:3000";
 const RESOURCE = `${BASE}/api/mcp`;
@@ -24,6 +25,21 @@ const REDIRECT = "http://127.0.0.1:8765/callback";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 let chosenProject: string | undefined;
+
+// Client ID Metadata Documents are served from memory: the real transport refuses loopback and
+// private addresses by design, so it cannot be pointed at a local fixture.
+const CIMD_URL = "https://agent.example.com/client.json";
+const CIMD_REDIRECT = "https://agent.example.com/callback";
+const documents = new Map<string, unknown>();
+const fetchedDocuments: string[] = [];
+const serveDocument: typeof fetch = async (input) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  fetchedDocuments.push(url);
+  const body = documents.get(url);
+  return body === undefined
+    ? new Response("not found", { status: 404 })
+    : new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+};
 
 const auth = betterAuth({
   baseURL: BASE,
@@ -38,8 +54,18 @@ const auth = betterAuth({
     resource: RESOURCE,
     dynamicRegistration: true,
     resolveProjectReference: async () => chosenProject,
+    fetchClientMetadataResource: serveDocument,
   }),
 });
+
+// The provider paces retries of a failed metadata fetch to one per second per client ID.
+const afterFetchPacing = () => new Promise((resolve) => setTimeout(resolve, 1100));
+
+// A refusal must be an explicit error (an error page or an error redirect), never the consent screen.
+const isRefusal = (response: Response) => {
+  const location = response.headers.get("location") ?? "";
+  return response.status >= 400 || (!location.includes("/oauth/consent") && /error/i.test(location));
+};
 
 const failures: string[] = [];
 function check(name: string, ok: boolean, detail = ""): void {
@@ -86,6 +112,14 @@ async function main(): Promise<void> {
   check("supports Client ID Metadata Documents", metadata.client_id_metadata_document_supported === true);
   const grants = metadata.grant_types_supported as string[] | undefined;
   check("offers no user-less client_credentials grant", !!grants && !grants.includes("client_credentials"), JSON.stringify(grants));
+  // Every endpoint a client is told about must be one the HTTP policy lets through.
+  const advertised = pruneUnreachableEndpoints(metadata);
+  const unreachable = Object.entries(advertised)
+    .filter(([key, value]) => (key.endsWith("_endpoint") || key === "jwks_uri") && typeof value === "string")
+    .filter(([, value]) => ["GET", "POST"].every((method) => isOAuthEndpointDenied(method, new URL(value as string).pathname)))
+    .map(([key]) => key);
+  check("every advertised endpoint is reachable once unreachable ones are pruned", unreachable.length === 0, unreachable.join(","));
+  check("the provider's raw metadata does advertise an endpoint the policy refuses (so pruning is needed)", "introspection_endpoint" in metadata && !("introspection_endpoint" in advertised));
   const resourceMetadata = await send("/.well-known/oauth-protected-resource/api/mcp");
   const resourceBody = (await resourceMetadata.json()) as { resource?: string };
   check("publishes protected-resource metadata for the MCP URL", resourceMetadata.status === 200 && resourceBody.resource === RESOURCE, `${resourceMetadata.status}`);
@@ -125,8 +159,68 @@ async function main(): Promise<void> {
   const otherResource = await send(`/api/auth/oauth2/authorize?${wrongResource}`, { cookie });
   check("a different resource is refused", otherResource.status === 400, `${otherResource.status}`);
 
+  // The endpoint also accepts a form-encoded POST; it must work, and be held to the same rule.
+  const postForm = (params: URLSearchParams) =>
+    send("/api/auth/oauth2/authorize", { method: "POST", cookie, headers: form, body: params.toString() });
+  const postOk = await postForm(new URLSearchParams(query));
+  check("a form-encoded POST authorize reaches consent", (postOk.headers.get("location") ?? "").includes("/oauth/consent"), `${postOk.status}`);
+  check("a POST authorize without the resource is refused", (await postForm(withoutResource)).status === 400);
+  check("a POST authorize for a different resource is refused", (await postForm(wrongResource)).status === 400);
+
   const noPkce = await send(`/api/auth/oauth2/authorize?${new URLSearchParams({ response_type: "code", client_id: client.client_id as string, redirect_uri: REDIRECT, scope: "mcp:read", state: "s", resource: RESOURCE })}`, { cookie });
   check("PKCE is required", (noPkce.headers.get("location") ?? "").includes("error=invalid_request"));
+
+  // --- Client ID Metadata Documents: the client identifies itself by URL
+  const cimdDocument = {
+    client_id: CIMD_URL,
+    client_name: "Agent Co",
+    client_uri: "https://agent.example.com",
+    redirect_uris: [CIMD_REDIRECT],
+    token_endpoint_auth_method: "none",
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    scope: "mcp:read offline_access",
+  };
+  const cimdVerifier = base64url(randomBytes(32));
+  const cimdQuery = new URLSearchParams({
+    response_type: "code", client_id: CIMD_URL, redirect_uri: CIMD_REDIRECT, scope: "mcp:read offline_access",
+    state: "c", code_challenge: base64url(createHash("sha256").update(cimdVerifier).digest()), code_challenge_method: "S256", resource: RESOURCE,
+  });
+
+  documents.set(CIMD_URL, { ...cimdDocument, client_id: "https://evil.example/other.json" });
+  const mismatched = await send(`/api/auth/oauth2/authorize?${cimdQuery}`, { cookie });
+  check("a metadata document naming a different client_id is refused", isRefusal(mismatched), `${mismatched.status}`);
+
+  await afterFetchPacing();
+  documents.set(CIMD_URL, { ...cimdDocument, redirect_uris: ["https://elsewhere.example/cb"] });
+  const wrongRedirect = await send(`/api/auth/oauth2/authorize?${cimdQuery}`, { cookie });
+  check("a redirect URI absent from the document is refused", isRefusal(wrongRedirect), `${wrongRedirect.status}`);
+
+  await afterFetchPacing();
+  documents.set(CIMD_URL, { ...cimdDocument, token_endpoint_auth_method: "client_secret_basic" });
+  const confidential = await send(`/api/auth/oauth2/authorize?${cimdQuery}`, { cookie });
+  check("a metadata document asking for a shared secret is refused", isRefusal(confidential), `${confidential.status}`);
+
+  await afterFetchPacing();
+  documents.set(CIMD_URL, cimdDocument);
+  const discovered = await send(`/api/auth/oauth2/authorize?${cimdQuery}`, { cookie });
+  const cimdConsent = new URL(discovered.headers.get("location") ?? "", BASE);
+  check("a valid metadata document is fetched and leads to consent", cimdConsent.pathname === "/oauth/consent" && fetchedDocuments.includes(CIMD_URL), cimdConsent.pathname);
+
+  chosenProject = PROJECT;
+  const cimdApproval = await send("/api/auth/oauth2/consent", {
+    method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: cimdConsent.search.slice(1) }),
+  });
+  chosenProject = undefined;
+  const cimdCode = new URL(((await cimdApproval.json()) as { url?: string }).url ?? "http://x/?").searchParams.get("code");
+  check("approving a metadata-document client returns a code to its own redirect", !!cimdCode);
+  const cimdToken = await send("/api/auth/oauth2/token", {
+    method: "POST", headers: form,
+    body: new URLSearchParams({ grant_type: "authorization_code", code: cimdCode ?? "", redirect_uri: CIMD_REDIRECT, client_id: CIMD_URL, code_verifier: cimdVerifier, resource: RESOURCE }),
+  });
+  const cimdTokens = (await cimdToken.json()) as { access_token?: string };
+  const cimdClaims = cimdTokens.access_token ? (decodeJwt(cimdTokens.access_token) as Record<string, unknown>) : {};
+  check("the token for a metadata-document client names the chosen project and the client URL", cimdClaims[MCP_PROJECT_CLAIM] === PROJECT && (cimdClaims.azp === CIMD_URL || cimdClaims.client_id === CIMD_URL), `${cimdToken.status}`);
 
   // --- consent for the chosen project
   chosenProject = PROJECT;

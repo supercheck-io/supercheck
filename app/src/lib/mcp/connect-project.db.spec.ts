@@ -18,10 +18,10 @@ jest.mock("@/utils/auth", () => ({ auth: { api: {} } }));
 
 import {
   McpProjectAccessError,
-  clearProjectSelection,
-  readProjectSelection,
-  saveProjectSelection,
-} from "./project-selection";
+  assertCanConnectProject,
+  resolveConsentProject,
+  runWithConsentProject,
+} from "./connect-project";
 
 const execFileAsync = promisify(execFile);
 const dbName = `mcp_selection_${randomUUID().replaceAll("-", "")}`;
@@ -34,7 +34,6 @@ let orgId: string;
 let projectA: string;
 let projectB: string;
 let foreignProject: string;
-const sessionId = randomUUID();
 
 beforeAll(async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL required");
@@ -79,58 +78,42 @@ afterAll(async () => {
   }
 });
 
-afterEach(async () => {
-  await client`DELETE FROM verification WHERE identifier LIKE 'mcp-project:%'`;
-});
+const resolveFor = (userId: string, projectId: string, who = userId) =>
+  runWithConsentProject({ userId, projectId }, () => resolveConsentProject({ userId: who }));
 
 describe("the connect screen's project choice", () => {
-  it("round-trips a project the user can view, even as a plain project viewer", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectA });
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBe(projectA);
+  it("accepts a project the user can view, even as a plain project viewer", async () => {
+    await expect(assertCanConnectProject(userId, projectA)).resolves.toBeUndefined();
+    await expect(resolveFor(userId, projectA)).resolves.toBe(projectA);
   });
 
-  it("refuses a project in another organization, and stores nothing", async () => {
-    await expect(saveProjectSelection({ sessionId, userId, projectId: foreignProject })).rejects.toBeInstanceOf(
-      McpProjectAccessError,
-    );
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBeUndefined();
+  it("refuses a project in another organization", async () => {
+    await expect(assertCanConnectProject(userId, foreignProject)).rejects.toBeInstanceOf(McpProjectAccessError);
+    await expect(resolveFor(userId, foreignProject)).resolves.toBeUndefined();
   });
 
-  it("is not readable by another user, even with the same session id", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectA });
-    await expect(readProjectSelection({ sessionId, userId: strangerId })).resolves.toBeUndefined();
-  });
-
-  it("keeps only the latest choice for a session", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectA });
-    await saveProjectSelection({ sessionId, userId, projectId: projectB });
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBe(projectB);
-    const rows = await client`SELECT 1 FROM verification WHERE identifier = ${`mcp-project:${sessionId}`}`;
-    expect(rows).toHaveLength(1);
-  });
-
-  it("is only cleared by the caller that saved that exact choice", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectB });
-    // Another tab finishing with a different project must not delete this one.
-    await clearProjectSelection({ sessionId, userId, projectId: projectA });
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBe(projectB);
-    await clearProjectSelection({ sessionId, userId, projectId: projectB });
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBeUndefined();
+  it("is not usable by another user", async () => {
+    await expect(resolveFor(userId, projectA, strangerId)).resolves.toBeUndefined();
   });
 
   it("stops granting a project once the user loses access to it", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectA });
     await client`UPDATE projects SET status = 'archived' WHERE id = ${projectA}`;
     try {
-      await expect(readProjectSelection({ sessionId, userId })).resolves.toBeUndefined();
+      await expect(resolveFor(userId, projectA)).resolves.toBeUndefined();
     } finally {
       await client`UPDATE projects SET status = 'active' WHERE id = ${projectA}`;
     }
   });
 
-  it("expires after its lifetime", async () => {
-    await saveProjectSelection({ sessionId, userId, projectId: projectA });
-    await client`UPDATE verification SET expires_at = now() - interval '1 minute' WHERE identifier = ${`mcp-project:${sessionId}`}`;
-    await expect(readProjectSelection({ sessionId, userId })).resolves.toBeUndefined();
+  it("keeps two approvals in flight apart", async () => {
+    const slow = async (delayMs: number) => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return resolveConsentProject({ userId });
+    };
+    const results = await Promise.all([
+      runWithConsentProject({ userId, projectId: projectA }, () => slow(30)),
+      runWithConsentProject({ userId, projectId: projectB }, () => slow(1)),
+    ]);
+    expect(results).toEqual([projectA, projectB]);
   });
 });

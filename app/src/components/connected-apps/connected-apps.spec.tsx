@@ -34,7 +34,7 @@ describe("ConnectedApps", () => {
     expect(screen.getByText(/unverified \(returns to 127\.0\.0\.1:9000\)/i)).toBeInTheDocument();
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("a removed project")).toBeInTheDocument();
-    expect(screen.getAllByText(/last active never/i)).toHaveLength(2);
+    expect(screen.getAllByText(/last refreshed never/i)).toHaveLength(2);
   });
 
   it("explains an empty list, a disabled server and a load failure", async () => {

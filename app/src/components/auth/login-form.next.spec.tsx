@@ -25,12 +25,13 @@ describe("LoginForm continuation", () => {
     render(<LoginForm {...base} nextPath="/device" inviteToken="tok" inviteData={null} />);
     expect(social).toHaveBeenLastCalledWith("/invite/tok");
   });
-  it("resumes an MCP authorization request after social sign-in, but keeps its long signed query off the sign-up link", () => {
-    const resume = `/api/auth/oauth2/authorize?${new URLSearchParams({ response_type: "code", client_id: "c", sig: "s", exp: "1" })}`;
+  it("resumes an MCP authorization request after social sign-in, and hands the same signed request to the sign-up page", () => {
+    const query = new URLSearchParams({ response_type: "code", client_id: "c", sig: "s", exp: "1" });
+    const resume = `/api/auth/oauth2/authorize?${query}`;
     render(<LoginForm {...base} nextPath={resume} />);
     expect(social).toHaveBeenLastCalledWith(resume);
-    // sanitizeNextPath on the sign-up page would drop it anyway; don't ship up to 4KB in the URL.
-    expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute("href", "/sign-up");
+    // As its own query, not a long ?next= value that the sign-up page's allowlist would drop.
+    expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute("href", `/sign-up?${query}`);
   });
   it("carries the continuation to the sign-up link", () => {
     render(<LoginForm {...base} nextPath="/device?code=BCDF-GHJK" />);
