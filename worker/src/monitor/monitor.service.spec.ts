@@ -111,6 +111,7 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
@@ -803,7 +804,10 @@ describe('MonitorService', () => {
       };
       mockDbService.db.query.monitors.findFirst.mockResolvedValue(monitor);
       const lastAlert = jest
-        .spyOn(service, 'getLastSslAlert' as never)
+        .spyOn(
+          (service as unknown as { evaluator: MonitorEvaluator }).evaluator,
+          'getLastSslAlert' as never,
+        )
         .mockResolvedValue(null as never);
       const result: MonitorExecutionResult = {
         monitorId: monitor.id,
@@ -1168,7 +1172,11 @@ describe('MonitorService', () => {
             metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
           });
         };
-        expect(await evaluate(2, 0)).toEqual({ alertSent: false });
+        // A fully failed delivery is reported as such (the control plane retries on it).
+        expect(await evaluate(2, 0)).toEqual({
+          alertSent: false,
+          deliveryFailed: true,
+        });
         expect(mockDbService.db.update).not.toHaveBeenCalled();
         expect(await evaluate(3, 0)).toEqual({
           alertSent: true,
@@ -1888,6 +1896,115 @@ describe('MonitorService', () => {
         { persisted: true, executionGroupId: 'group-slow' },
       );
       expect(mockRedisService.getClient().sadd).not.toHaveBeenCalled();
+    });
+
+    describe('control-plane cycles', () => {
+      const group = {
+        executionGroupId: 'cycle-1',
+        expectedLocations: ['eu-central', 'us-east'],
+        monitorCycle: true,
+      };
+      let persist: jest.SpyInstance;
+      let aggregate: jest.SpyInstance;
+      let onConflict: jest.Mock;
+      let insertValues: jest.Mock;
+
+      function cycleRow(rows: Array<{ status: string }>) {
+        mockDbService.db.select.mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockResolvedValue([]),
+          limit: jest.fn().mockResolvedValue(rows),
+        });
+      }
+
+      beforeEach(() => {
+        persist = jest
+          .spyOn(
+            service as unknown as {
+              saveMonitorResultToDb(r: MonitorExecutionResult): Promise<void>;
+            },
+            'saveMonitorResultToDb',
+          )
+          .mockResolvedValue(undefined);
+        aggregate = jest
+          .spyOn(service, 'saveMonitorResults')
+          .mockResolvedValue(undefined);
+        onConflict = jest.fn().mockResolvedValue(undefined);
+        insertValues = jest
+          .fn()
+          .mockReturnValue({ onConflictDoUpdate: onConflict });
+        mockDbService.db.insert.mockReturnValue({ values: insertValues });
+      });
+
+      it('saves the result, records a re-armable arrival hint and leaves evaluation to the control plane', async () => {
+        cycleRow([{ status: 'open' }]);
+        await service.saveDistributedMonitorResult(result('eu-central'), group);
+        expect(persist).toHaveBeenCalledTimes(1);
+        expect(insertValues).toHaveBeenCalledWith({
+          cycleId: 'cycle-1',
+          location: 'eu-central',
+        });
+        expect(onConflict).toHaveBeenCalledWith(
+          expect.objectContaining({ set: { processedAt: null } }),
+        );
+        expect(aggregate).not.toHaveBeenCalled();
+        expect(mockRedisService.getClient().get).not.toHaveBeenCalled();
+      });
+
+      it('keeps a late result diagnostic for a closed or aborted cycle', async () => {
+        for (const status of ['closed', 'aborted']) {
+          insertValues.mockClear();
+          cycleRow([{ status }]);
+          await service.saveDistributedMonitorResult(result('us-east'), group);
+          expect(persist).toHaveBeenCalled();
+          expect(insertValues).not.toHaveBeenCalled();
+          expect(aggregate).not.toHaveBeenCalled();
+        }
+      });
+
+      it('falls back to legacy evaluation when no cycle row exists', async () => {
+        cycleRow([]);
+        await service.saveDistributedMonitorResult(result('eu-central'), group);
+        expect(insertValues).not.toHaveBeenCalled();
+        expect(mockRedisService.getClient().get).toHaveBeenCalled();
+      });
+
+      it('never looks up a cycle unless the job carries the cycle hint', async () => {
+        // Even if an open cycle row existed, a job without the hint stays on legacy evaluation.
+        cycleRow([{ status: 'open' }]);
+        await service.saveDistributedMonitorResult(result('eu-central'), {
+          executionGroupId: 'legacy-1',
+          expectedLocations: ['eu-central'],
+        });
+        expect(insertValues).not.toHaveBeenCalled();
+        expect(mockRedisService.getClient().get).toHaveBeenCalled();
+      });
+
+      it('retries the hint without re-running the check when the cycle lookup fails', async () => {
+        mockDbService.db.select.mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest
+            .fn()
+            .mockRejectedValue(new Error('relation does not exist')),
+        });
+        await expect(
+          service.saveDistributedMonitorResult(result('eu-central'), group),
+        ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+        expect(aggregate).not.toHaveBeenCalled();
+        expect(insertValues).not.toHaveBeenCalled();
+      });
+
+      it('retries the hint without re-running the check when the insert fails', async () => {
+        cycleRow([{ status: 'open' }]);
+        onConflict.mockRejectedValue(new Error('connection reset'));
+        await expect(
+          service.saveDistributedMonitorResult(result('eu-central'), group),
+        ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+        expect(aggregate).not.toHaveBeenCalled();
+      });
     });
 
     it('does not advance alert thresholds for a replay of a completed group', async () => {

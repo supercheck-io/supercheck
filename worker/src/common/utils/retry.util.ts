@@ -152,15 +152,20 @@ export async function fetchWithRetry(
       const fetchOptions: RequestInit = {
         ...options,
         signal: controller.signal,
+        // Endpoints are validated when saved, not on every hop. Following a redirect would let a
+        // tenant-owned host steer this request (and its body) at an internal address.
+        redirect: 'error',
       };
 
       const response = await fetch(url, fetchOptions);
-      clearTimeout(timeoutId);
+      // The timer stays armed while an error body is read: a server that sends headers and then
+      // trickles the body must not hang the caller. It is cleared on every exit below.
 
       lastStatusCode = response.status;
 
       // Success - return immediately
       if (response.ok) {
+        clearTimeout(timeoutId);
         return {
           success: true,
           data: response,
@@ -172,6 +177,7 @@ export async function fetchWithRetry(
       // Check if this status code is retryable
       if (!isRetryableStatusCode(response.status)) {
         const responseText = await response.text().catch(() => '');
+        clearTimeout(timeoutId);
         lastError = `HTTP ${response.status}: ${response.statusText}. ${responseText}`;
 
         // Non-retryable error - return immediately
@@ -189,6 +195,7 @@ export async function fetchWithRetry(
 
       // Retryable status code
       const responseText = await response.text().catch(() => '');
+      clearTimeout(timeoutId);
       lastError = `HTTP ${response.status}: ${responseText}`;
     } catch (error) {
       clearTimeout(timeoutId);

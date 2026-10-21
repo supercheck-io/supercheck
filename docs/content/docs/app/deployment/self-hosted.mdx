@@ -84,6 +84,16 @@ In your installation's `deploy/docker` directory, update `.env` and run `sudo do
 
 Rate limits and the AI routes identify callers by client IP. By default Supercheck trusts one proxy that appends the client address, which matches the bundled Traefik setup. If another trusted hop sits in front (for example Cloudflare, then a load balancer, then Traefik), set `TRUSTED_PROXY_HOPS` in `.env` to the number of extra hops and recreate the app. Set `TRUST_CF_CONNECTING_IP=true` only when the origin is reachable exclusively through Cloudflare. A wrong value makes all users share one rate-limit bucket or lets clients spoof their address.
 
+### Missing-Region Detection (Optional)
+
+By default a multi-region monitor waits for every region before it is evaluated. To detect regions that stop responding, including the case where every regional worker is offline, run the optional control-plane service and enable cycle closure:
+
+1. Update the app and every worker to the same release. The app applies the required migration on start.
+2. Start the control plane with its Compose profile: `docker compose --profile monitor-control up -d`. It uses the worker image, has no Kubernetes credentials, and should run as a single instance.
+3. Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app.
+
+`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`) sets how long a run waits before silent regions count as failed; two check timeouts are added to it. To turn the feature off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, recreate the app, **keep the control plane running until open runs have closed** (up to the deadline plus two check timeouts), then stop it. Stopping it earlier leaves those runs without a result until it starts again. Alerts are delivered at least once.
+
 ### Artifact Retention
 
 Artifacts are cleaned automatically. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.

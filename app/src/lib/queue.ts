@@ -16,6 +16,16 @@ import {
 import { omitExecutionSecrets } from "./execution-payload";
 import { ExecutionQueueError } from "./execution-errors";
 import {
+  abortMonitorCycle,
+  MonitorCycleClosedError,
+  missingCycleClosureEnabled,
+  missingCycleDeadlineMs,
+  monitorCycleId,
+  monitorCyclePolicy,
+  persistMonitorCycle,
+  type MonitorCycleRequest,
+} from "./monitor-cycles";
+import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
 } from "./monitor-location-routing";
@@ -1774,6 +1784,11 @@ export async function addMonitorExecutionJobToQueue(
       backoff: { type: "exponential", delay: 5000 },
       removeOnComplete: { age: 3600 },
       removeOnFail: { age: 86400 },
+    }, {
+      // Manual runs have no scheduler retry: a failed publication aborts its cycle immediately.
+      configuredLocations: effectiveLocations,
+      policy: monitorCyclePolicy(locationConfig),
+      abortOnFailure: true,
     });
   } catch (error) {
     queueLogger.error(
@@ -1796,20 +1811,36 @@ export async function enqueueMonitorLocationJobs(
   task: MonitorJobData,
   locations: MonitoringLocation[],
   opts: JobsOptions,
+  cycle?: MonitorCycleRequest,
 ): Promise<string> {
   if (locations.length === 0) throw new Error(`Monitor ${task.monitorId}: no jobs enqueued`);
-  const executionGroupId = `${task.monitorId}-${crypto.randomUUID()}`;
+  // Flag off (default): byte-for-byte the previous behavior. Flag on: the cycle row is
+  // persisted first, its stable id is the group id, and it (not a Redis marker) owns abort state.
+  const closureCycle = cycle && missingCycleClosureEnabled() ? cycle : undefined;
+  const executionGroupId = closureCycle
+    ? monitorCycleId(task.monitorId, closureCycle.key ?? crypto.randomUUID())
+    : `${task.monitorId}-${crypto.randomUUID()}`;
   const redis = await getRedisConnection();
   const flow = new FlowProducer({ connection: redis });
   flow.on("error", (error) => queueLogger.error({ err: error }, "Monitor flow Redis error"));
   try {
+    if (closureCycle) {
+      // Persisted inside the guarded block so any later failure reaches the abort below.
+      await persistMonitorCycle({
+        id: executionGroupId,
+        monitorId: task.monitorId,
+        configuredLocations: closureCycle.configuredLocations,
+        policy: closureCycle.policy,
+        deadlineMs: missingCycleDeadlineMs(process.env, task.config as { timeoutSeconds?: number } | undefined),
+      });
+    }
     const nodes = await flow.addBulk(locations.map((location) => {
       const queue = queues[location];
       if (!queue) throw new Error(`No monitor queue for location "${location}"`);
       return {
         name: "executeMonitorJob",
         queueName: queue.name,
-        data: { ...task, executionLocation: location, executionGroupId, expectedLocations: locations },
+        data: { ...task, executionLocation: location, executionGroupId, expectedLocations: locations, ...(closureCycle ? { monitorCycle: true } : {}) },
         opts: { ...opts, jobId: `${executionGroupId}-${location}` },
       };
     }));
@@ -1819,8 +1850,17 @@ export async function enqueueMonitorLocationJobs(
     }
     return executionGroupId;
   } catch (error) {
-    await redis.set(`monitor:aggr:aborted:${executionGroupId}`, '1', 'EX', 7 * 24 * 60 * 60)
-      .catch((markerError) => queueLogger.warn({ err: markerError, executionGroupId }, "Unable to mark failed monitor publication aborted"));
+    if (closureCycle) {
+      // A scheduler retry reuses this id, so no sticky Redis marker; abort only when no retry remains.
+      // A cycle that already closed is left as it is (the closure owns its outcome).
+      if (closureCycle.abortOnFailure && !(error instanceof MonitorCycleClosedError)) {
+        await abortMonitorCycle(executionGroupId)
+          .catch((abortError) => queueLogger.warn({ err: abortError, executionGroupId }, "Unable to abort failed monitor cycle"));
+      }
+    } else {
+      await redis.set(`monitor:aggr:aborted:${executionGroupId}`, '1', 'EX', 7 * 24 * 60 * 60)
+        .catch((markerError) => queueLogger.warn({ err: markerError, executionGroupId }, "Unable to mark failed monitor publication aborted"));
+    }
     throw error;
   } finally {
     await flow.close().catch((error) => queueLogger.warn({ err: error }, "Monitor flow close failed"));

@@ -30,6 +30,7 @@ export * from './monitor';
 
 // Monitor aggregates for long-term metrics
 export * from './monitor-aggregates';
+export * from './monitor-cycles';
 
 // Notification and alert tables
 export * from './notification';

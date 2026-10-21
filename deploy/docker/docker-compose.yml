@@ -61,6 +61,9 @@ x-common-env: &common-env # Database Configuration
   # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.
   TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
   TRUST_CF_CONNECTING_IP: ${TRUST_CF_CONNECTING_IP:-false}
+  # Durable missing-region cycles (issue #452). Keep false until the monitor-control profile runs.
+  MISSING_CYCLE_CLOSURE_ENABLED: ${MISSING_CYCLE_CLOSURE_ENABLED:-false}
+  MISSING_CYCLE_DEADLINE_SECONDS: ${MISSING_CYCLE_DEADLINE_SECONDS:-300}
   NODE_ENV: ${NODE_ENV:-production}
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # AI SRE is on by default with a configured AI provider.
@@ -484,6 +487,76 @@ services:
       - ALL
     # Note: gVisor runtime provides kernel-level syscall interception
     # All child processes inherit the sandbox automatically
+
+  # Control plane for missing-region monitor cycles (issue #452). Optional and OFF by default.
+  # Enable with `docker compose --profile monitor-control up -d` and MISSING_CYCLE_CLOSURE_ENABLED=true.
+  # Same image as the worker, different entrypoint. It has no Kubernetes credentials, no report
+  # volumes and no execution privileges: it reads and writes PostgreSQL and sends alerts, with an allowlisted environment.
+  # Run exactly one replica; scale to zero only after pending cycles have drained (see the runbook).
+  monitor-control:
+    profiles: [monitor-control]
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7-canary.16}
+    pull_policy: always
+    init: true
+    user: "pwuser:pwuser"
+    command: ["node", "--max-http-header-size=16384", "dist/src/monitor-control/main.js"]
+    environment:
+      # Explicit allowlist, not *common-env: this process needs only the database, alert delivery and
+      # billing verification, so it must not receive auth, object-storage, AI or Redis credentials.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-supercheck}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
+      APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SELF_HOSTED: ${SELF_HOSTED:-true}
+      NODE_ENV: ${NODE_ENV:-production}
+      SRE_ENABLED: ${SRE_ENABLED:-true}
+      MISSING_CYCLE_CLOSURE_ENABLED: ${MISSING_CYCLE_CLOSURE_ENABLED:-false}
+      MISSING_CYCLE_DEADLINE_SECONDS: ${MISSING_CYCLE_DEADLINE_SECONDS:-300}
+      DB_POOL_MAX: ${MONITOR_CONTROL_DB_POOL_MAX:-4}
+      MONITOR_CONTROL_PORT: "8000"
+      # Triage enqueue needs Redis access this process does not need; keep it off (explicit env wins).
+      SRE_AUTOMATION_ENABLED: "false"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,uid=1000,gid=1000,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_healthy # Wait for app to complete migrations
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - supercheck-network
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   # PostgreSQL Database
   postgres:
