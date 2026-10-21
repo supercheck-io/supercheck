@@ -6,6 +6,9 @@
  * overwritten. Merchant-supplied metadata is passed through untouched.
  */
 const OPAQUE_KEYS = new Set(["metadata", "customer_metadata"]);
+// Deeper than any real payload; beyond this, subtrees are returned as-is so a
+// hostile body cannot overflow the stack.
+const MAX_DEPTH = 32;
 
 function toCamel(key: string): string {
   return key.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
@@ -17,14 +20,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-export function normalizePolarPayload<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizePolarPayload(item)) as T;
-  }
+function normalize(value: unknown, depth: number): unknown {
+  if (depth > MAX_DEPTH) return value;
+  if (Array.isArray(value))
+    return value.map((item) => normalize(item, depth + 1));
   if (!isPlainObject(value)) return value;
 
-  // Own-property writes only: a "__proto__" key from JSON.parse must stay data.
-  const result: Record<string, unknown> = Object.create(null);
+  // Ordinary object, own-property writes only: a "__proto__" key from JSON.parse
+  // stays data, while handlers keep working with normal Object.prototype methods.
+  const result: Record<string, unknown> = {};
   const set = (key: string, child: unknown) =>
     Object.defineProperty(result, key, {
       value: child,
@@ -33,11 +37,22 @@ export function normalizePolarPayload<T>(value: T): T {
       configurable: true,
     });
   for (const [key, child] of Object.entries(value)) {
-    set(key, OPAQUE_KEYS.has(key) ? child : normalizePolarPayload(child));
+    set(key, OPAQUE_KEYS.has(key) ? child : normalize(child, depth + 1));
   }
   for (const key of Object.keys(value)) {
     const camel = toCamel(key);
-    if (camel !== key && !Object.hasOwn(result, camel)) set(camel, result[key]);
+    // Never alias onto a name Object.prototype already provides (toString, ...).
+    if (
+      camel !== key &&
+      !(camel in Object.prototype) &&
+      !Object.hasOwn(result, camel)
+    ) {
+      set(camel, result[key]);
+    }
   }
-  return result as T;
+  return result;
+}
+
+export function normalizePolarPayload<T>(value: T): T {
+  return normalize(value, 0) as T;
 }

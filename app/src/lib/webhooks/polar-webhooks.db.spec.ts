@@ -29,6 +29,7 @@ import {
   handleSubscriptionRevoked,
   handleSubscriptionPastDue,
   handleSubscriptionUncanceled,
+  handleSubscriptionUpdated,
 } from "./polar-webhooks";
 import { normalizePolarPayload } from "./polar-payload";
 
@@ -306,5 +307,121 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     );
     expect((await org()).subscriptionStatus).toBe("active");
     expect((await org(otherOrgId)).subscriptionStatus).toBe("none");
+  });
+
+  it("applies exactly once when the same event is delivered concurrently", async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, () =>
+        deliver(
+          handleSubscriptionActive,
+          "subscription.active",
+          subscription(),
+          "2026-10-01T00:00:01Z",
+        ),
+      ),
+    );
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(0);
+    expect(await org()).toMatchObject({
+      subscriptionPlan: "pro",
+      subscriptionStatus: "active",
+    });
+    const claims =
+      await client`SELECT count(*)::int AS n FROM webhook_idempotency`;
+    expect(claims[0].n).toBe(1);
+  });
+
+  it.each([
+    ["garbage string", "not-a-date"],
+    ["empty string", ""],
+    ["number", 12345],
+    ["object", { a: 1 }],
+  ])(
+    "does not corrupt billing dates when the period end is a %s",
+    async (_name, bad) => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription({ current_period_end: bad as never }),
+        "2026-10-01T00:00:01Z",
+      ).catch(() => undefined);
+      const row = await org();
+      if (row.subscriptionStatus === "active") {
+        // Whatever the handler decided, a stored end date must be a real date.
+        expect(
+          row.subscriptionEndsAt === null ||
+            Number.isFinite(row.subscriptionEndsAt.getTime()),
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("rejects an invalid provider timestamp without changing state", async () => {
+    await expect(
+      deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "not-a-time",
+      ),
+    ).rejects.toThrow();
+    expect((await org()).subscriptionStatus).toBe("none");
+  });
+
+  it("fails cleanly, not with a database error, for an unlinked customer whose external id is not a user", async () => {
+    await client`UPDATE organization SET polar_customer_id = NULL WHERE id = ${orgId}`;
+    await expect(
+      deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      ),
+    ).rejects.toThrow(/no owner identity|owner/i);
+    expect(await org()).toMatchObject({
+      subscriptionStatus: "none",
+      polarCustomerId: null,
+    });
+  });
+
+  it("does not bind a customer to an org through a non-owner user id", async () => {
+    await client`UPDATE organization SET polar_customer_id = NULL WHERE id = ${orgId}`;
+    const stranger = randomUUID();
+    await expect(
+      deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription({
+          customer: { id: CUS, external_id: stranger, metadata: {} },
+        }),
+        "2026-10-01T00:00:01Z",
+      ),
+    ).rejects.toThrow();
+    expect((await org()).polarCustomerId).toBeNull();
+  });
+
+  it("fails a conflicting same-instant plan change retryably instead of applying or dropping it", async () => {
+    await deliver(
+      handleSubscriptionActive,
+      "subscription.active",
+      subscription(),
+      "2026-10-01T00:00:01Z",
+    );
+    const updated = (productId: string) =>
+      subscription({ product_id: productId, product: { id: productId } });
+    await deliver(
+      handleSubscriptionUpdated,
+      "subscription.updated",
+      updated("prod_pro"),
+      "2026-10-02T00:00:00Z",
+    );
+    await expect(
+      deliver(
+        handleSubscriptionUpdated,
+        "subscription.updated",
+        updated("prod_plus"),
+        "2026-10-02T00:00:00Z",
+      ),
+    ).rejects.toThrow(/Ambiguous Polar event order|reconcile/);
+    expect((await org()).subscriptionPlan).toBe("pro");
   });
 });

@@ -50,13 +50,43 @@ describe("normalizePolarPayload", () => {
     expect(normalizePolarPayload(null)).toBeNull();
   });
 
-  it("keeps a __proto__ key as plain data and does not pollute prototypes", () => {
+  it("keeps a __proto__ key as plain data without polluting or breaking normal objects", () => {
     const out = normalizePolarPayload(
-      JSON.parse('{"data":{"__proto__":{"polluted":true},"to_string":"x"}}'),
+      JSON.parse('{"data":{"__proto__":{"polluted":true},"id":"s"}}'),
     ) as { data: Record<string, unknown> };
-    expect(Object.getPrototypeOf(out.data)).toBeNull();
     expect(Object.hasOwn(out.data, "__proto__")).toBe(true);
-    expect(out.data.toString).toBe("x");
+    expect(Object.getPrototypeOf(out.data)).toBe(Object.prototype);
+    expect(out.data.hasOwnProperty("id")).toBe(true);
+    expect(`${out.data.id}`).toBe("s");
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect((out.data as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
+  it("never aliases onto Object.prototype members", () => {
+    const out = normalizePolarPayload(
+      JSON.parse(
+        '{"data":{"to_string":"x","value_of":"y","has_own_property":"z","id":"s"}}',
+      ),
+    ) as { data: Record<string, unknown> };
+    expect(typeof out.data.toString).toBe("function");
+    expect(typeof out.data.valueOf).toBe("function");
+    expect(out.data.to_string).toBe("x");
+    expect(`${out.data}`).toBe("[object Object]");
+  });
+
+  it("survives hostile nesting depth instead of overflowing the stack", () => {
+    let body = '"x"';
+    for (let i = 0; i < 50000; i++) body = `{"a_b":${body}}`;
+    expect(() =>
+      normalizePolarPayload(JSON.parse(`{"data":${body}}`)),
+    ).not.toThrow();
+  });
+
+  it("handles wide objects quickly", () => {
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 50000; i++) wide[`k_${i}_x`] = i;
+    const started = Date.now();
+    normalizePolarPayload({ data: wide });
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });

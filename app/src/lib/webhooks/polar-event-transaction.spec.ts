@@ -102,23 +102,32 @@ describe("Polar event transactions", () => {
   it.each([
     ["another subscription", { subscriptionId: "sub-2" }],
     ["a customer event", { subscriptionId: null }],
-    ["an active snapshot after revocation", { snapshot: { status: "active", plan: "plus" } }],
-    ["a different plan", { snapshot: { status: "none", plan: null }, orgStatus: "active" }],
+    [
+      "an active snapshot after revocation",
+      { snapshot: { status: "active", plan: "plus" } },
+    ],
+    [
+      "a different plan",
+      { snapshot: { status: "none", plan: null }, orgStatus: "active" },
+    ],
     ["an unknown status", { snapshot: { status: undefined, plan: "plus" } }],
     ["a missing snapshot", {}],
-  ])("fails closed on timestamp ties for %s", async (_, { orgStatus, ...overrides }: Record<string, unknown>) => {
-    setup({
-      polarWebhookTimestamp: at,
-      polarWebhookEventKey: "different-event",
-      subscriptionStatus: orgStatus ?? "none",
-      subscriptionPlan: orgStatus ? "plus" : null,
-    });
-    const apply = jest.fn();
-    await expect(
-      runOrderedPolarEvent({ ...input, ...overrides }, apply),
-    ).rejects.toThrow("Ambiguous");
-    expect(apply).not.toHaveBeenCalled();
-  });
+  ])(
+    "fails closed on timestamp ties for %s",
+    async (_, { orgStatus, ...overrides }: Record<string, unknown>) => {
+      setup({
+        polarWebhookTimestamp: at,
+        polarWebhookEventKey: "different-event",
+        subscriptionStatus: orgStatus ?? "none",
+        subscriptionPlan: orgStatus ? "plus" : null,
+      });
+      const apply = jest.fn();
+      await expect(
+        runOrderedPolarEvent({ ...input, ...overrides }, apply),
+      ).rejects.toThrow("Ambiguous");
+      expect(apply).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not advance the cursor when the handler fails", async () => {
     const { set } = setup();
