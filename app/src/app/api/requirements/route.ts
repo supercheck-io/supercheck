@@ -60,6 +60,12 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(requirements.priority, priority));
     }
 
+    if (status) {
+      conditions.push(
+        sql`coalesce(${requirementCoverageSnapshots.status}, 'missing') = ${status}`
+      );
+    }
+
     const whereCondition = and(...conditions);
 
     // PERFORMANCE: Run count and data queries in parallel
@@ -68,6 +74,10 @@ export async function GET(request: NextRequest) {
       db
         .select({ count: sql<number>`count(*)` })
         .from(requirements)
+        .leftJoin(
+          requirementCoverageSnapshots,
+          eq(requirements.id, requirementCoverageSnapshots.requirementId)
+        )
         .where(whereCondition),
       // Data query with coverage join
       db
@@ -106,16 +116,8 @@ export async function GET(request: NextRequest) {
 
     const total = Number(countResult[0]?.count ?? 0);
 
-    // Filter by status if specified (done in JS since it's a post-join filter)
-    let filteredResults = results;
-    if (status) {
-      filteredResults = results.filter(
-        (r) => (r.coverageStatus ?? "missing") === status
-      );
-    }
-
     // Fetch tags for all requirements
-    const requirementIds = filteredResults.map((r) => r.id);
+    const requirementIds = results.map((r) => r.id);
     const requirementTagsData =
       requirementIds.length > 0
         ? await db
@@ -153,7 +155,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Transform results with tags and default coverage values
-    const data = filteredResults.map((r) => ({
+    const data = results.map((r) => ({
       id: r.id,
       title: r.title,
       description: r.description,

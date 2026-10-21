@@ -125,6 +125,7 @@ export class JobNotificationService {
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
 
       for (const run of recentRuns) {
+        if (run.id === runId) continue;
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;

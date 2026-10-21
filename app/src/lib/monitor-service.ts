@@ -157,6 +157,7 @@ export async function updateMonitorHandler(
   if (data.frequencyMinutes !== undefined)
     updateData.frequencyMinutes = data.frequencyMinutes;
   if (data.config !== undefined) updateData.config = data.config;
+  if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.alertConfig !== undefined) updateData.alertConfig = data.alertConfig;
   // Do not include organizationId or createdByUserId in updates usually, unless specifically intended
 
@@ -186,7 +187,10 @@ export async function updateMonitorHandler(
   const shouldReschedule =
     (data.frequencyMinutes !== undefined &&
       data.frequencyMinutes !== existingMonitor.frequencyMinutes) ||
-    (data.enabled !== undefined && data.enabled !== existingMonitor.enabled);
+    (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
+    (data.type !== undefined && data.type !== existingMonitor.type) ||
+    (data.target !== undefined && data.target !== existingMonitor.target) ||
+    data.config !== undefined;
 
   if (shouldReschedule) {
     // Remove existing schedule if any

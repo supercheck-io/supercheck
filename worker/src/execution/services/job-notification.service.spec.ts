@@ -69,7 +69,12 @@ describe('JobNotificationService', () => {
       sreAlertTriageQueueService as never,
     );
 
-    return { service, dbService, notificationService, sreAlertTriageQueueService };
+    return {
+      service,
+      dbService,
+      notificationService,
+      sreAlertTriageQueueService,
+    };
   }
 
   it('enqueues created alert-history rows after job notifications', async () => {
@@ -118,22 +123,37 @@ describe('JobNotificationService', () => {
         { id: 'previous', status: status === 'passed' ? 'failed' : 'passed' },
       ]);
       await service.handleJobNotifications({
-        jobId: 'job-1', runId: 'run-1', finalStatus: status, durationSeconds: 1,
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: status,
+        durationSeconds: 1,
       });
-      expect(notificationService.sendNotificationToMultipleProviders).not.toHaveBeenCalled();
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
 
       dbService.getRecentRunsForJob.mockResolvedValue([
-        { id: 'run-1', status }, { id: 'previous', status },
+        { id: 'run-1', status },
+        { id: 'previous', status },
       ]);
       await service.handleJobNotifications({
-        jobId: 'job-1', runId: 'run-1', finalStatus: status, durationSeconds: 1,
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: status,
+        durationSeconds: 1,
       });
-      expect(notificationService.sendNotificationToMultipleProviders).toHaveBeenCalledWith(
-        expect.any(Array), expect.objectContaining({ metadata: expect.objectContaining(
-          status === 'passed' ? { consecutiveSuccesses: 2 } : { consecutiveFailures: 2 },
-        ) }),
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          metadata: expect.objectContaining(
+            status === 'passed'
+              ? { consecutiveSuccesses: 2 }
+              : { consecutiveFailures: 2 },
+          ),
+        }),
       );
     },
   );
-
 });
