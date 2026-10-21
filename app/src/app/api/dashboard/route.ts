@@ -17,6 +17,7 @@ import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { excludeSupersededSyntheticResults, excludeSyntheticResults } from "@/lib/monitor-result-filters";
 
 export async function GET() {
   try {
@@ -73,7 +74,8 @@ export async function GET() {
         .where(and(
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId)
+          eq(monitors.organizationId, context.organizationId),
+          excludeSupersededSyntheticResults
         )),
       
       // Monitor count by type
@@ -284,7 +286,8 @@ export async function GET() {
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
-          eq(monitors.type, 'synthetic_test')
+          eq(monitors.type, 'synthetic_test'),
+          excludeSyntheticResults
         )),
 
       // OPTIMIZED: Playground test executions - SQL aggregation instead of fetching all rows
@@ -326,7 +329,8 @@ export async function GET() {
         .where(and(
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId)
+          eq(monitors.organizationId, context.organizationId),
+          excludeSupersededSyntheticResults
         )),
 
       // Monitor availability trend (last 30 days) - only for monitors in this project
@@ -339,7 +343,8 @@ export async function GET() {
         .where(and(
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId)
+          eq(monitors.organizationId, context.organizationId),
+          excludeSupersededSyntheticResults
         ))
         .groupBy(sql`DATE(${monitorResults.checkedAt})`)
         .orderBy(sql`DATE(${monitorResults.checkedAt})`),

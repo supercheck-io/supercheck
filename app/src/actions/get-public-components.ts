@@ -11,6 +11,7 @@ import {
 import { eq, and, gte, lt, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
@@ -174,6 +175,7 @@ export async function getPublicComponents(statusPageId: string) {
               and(
                 inArray(statusPageComponentMonitors.componentId, componentIds),
                 gte(monitorResults.checkedAt, today),
+                excludeSupersededSyntheticResults,
               ),
             )
             .groupBy(
