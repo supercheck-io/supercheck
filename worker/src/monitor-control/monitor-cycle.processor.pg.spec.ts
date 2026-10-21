@@ -7,6 +7,7 @@ import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
 import type { MonitorAlertService } from '../monitor/services/monitor-alert.service';
 import { MonitorCycleProcessor } from './monitor-cycle.processor';
+import { BillingVerificationError } from './billing-hold.service';
 import { MonitorCycleService } from './monitor-cycle.service';
 import type { BillingHoldService } from './billing-hold.service';
 import { createTestDatabase, seedMonitor } from './pg-test-database';
@@ -233,6 +234,45 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       );
       expect((await cycle('healthy')).status).toBe('closed');
       expect((await cycle('poison')).status).toBe('open');
+      spy.mockRestore();
+    });
+
+    it.each([
+      [
+        'a billing outage below its limit stays open',
+        () => new BillingVerificationError('down'),
+        { failures: 0, billingFailures: 19 },
+        'open',
+      ],
+      [
+        'a billing outage at its limit is aborted',
+        () => new BillingVerificationError('down'),
+        { failures: 0, billingFailures: 71 },
+        'aborted',
+      ],
+      [
+        'another persistent failure at its limit is aborted',
+        () => new Error('poison'),
+        { failures: 19, billingFailures: 0 },
+        'aborted',
+      ],
+      [
+        'a transient error after a long outage does not trip the lower limit',
+        () => new Error('lock timeout'),
+        { failures: 2, billingFailures: 60 },
+        'open',
+      ],
+    ])('%s', async (_name, makeError, seed, status) => {
+      await open('limit');
+      const spy = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(makeError());
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'limit',
+        { ...seed, nextAt: 0 },
+      );
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect((await cycle('limit')).status).toBe(status);
       spy.mockRestore();
     });
 
