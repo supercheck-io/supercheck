@@ -49,16 +49,14 @@ describe.each(["action", "API"])(
         expect(queries).toHaveLength(2);
         for (const [query, params] of queries) {
           expect(query).toContain('left join "requirement_coverage_snapshots"');
-          expect(query).toMatch(
-            /where.*coalesce\("requirement_coverage_snapshots"\."status", 'missing'\) = \$/,
-          );
+          expect(query).toMatch(/where.*"status" = \$.* OR .*"status" IS NULL/);
           expect(params).toEqual(expect.arrayContaining(["project-1", status]));
         }
         const pageQuery = queries.find(
           ([query]) => !query.includes("count(*)"),
         )!;
         expect(pageQuery[0]).toMatch(
-          /where.*coalesce.*limit \$\d+ offset \$\d+/,
+          /where.*"status".*limit \$\d+ offset \$\d+/,
         );
         expect(pageQuery[1].slice(-2)).toEqual([1, 1]);
       },
