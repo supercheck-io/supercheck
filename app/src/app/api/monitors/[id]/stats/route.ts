@@ -9,6 +9,7 @@ import {
   calculatePercentile,
 } from "@/lib/monitor-aggregation-service";
 import { createLogger } from "@/lib/logger/index";
+import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 const logger = createLogger({ module: "monitor-stats-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -196,22 +197,26 @@ export async function GET(
       ? and(
           eq(monitorResults.monitorId, id),
           gte(monitorResults.checkedAt, last24Hours),
+          excludeSupersededSyntheticResults,
           eq(monitorResults.location, locationFilter as MonitoringLocation)
         )
       : and(
           eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last24Hours)
+          gte(monitorResults.checkedAt, last24Hours),
+          excludeSupersededSyntheticResults
         );
 
     const baseConditions30d = locationFilter
       ? and(
           eq(monitorResults.monitorId, id),
           gte(monitorResults.checkedAt, last30Days),
+          excludeSupersededSyntheticResults,
           eq(monitorResults.location, locationFilter as MonitoringLocation)
         )
       : and(
           eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last30Days)
+          gte(monitorResults.checkedAt, last30Days),
+          excludeSupersededSyntheticResults
         );
 
     // Run all 4 statistics queries in parallel for better performance

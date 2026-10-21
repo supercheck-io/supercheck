@@ -28,6 +28,7 @@ import {
 } from "@/db/schema";
 import { sql, and, eq, gte, lt, inArray, desc } from "drizzle-orm";
 import type { MonitoringLocation } from "@/db/schema/types";
+import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 // ============================================================================
 // CONFIGURATION
@@ -549,6 +550,7 @@ export class MonitorAggregationService {
       eq(monitorResults.monitorId, monitorId),
       gte(monitorResults.checkedAt, periodStart),
       lt(monitorResults.checkedAt, periodEnd),
+      excludeSupersededSyntheticResults,
     ];
 
     if (location) {
