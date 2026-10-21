@@ -12,7 +12,7 @@
  */
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
@@ -135,6 +135,35 @@ describe("database migrations and seeds", () => {
           RETURNING created_at > now() - interval '1 minute' AS recent
         `;
         expect(invitation.recent).toBe(true);
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+    120_000,
+  );
+
+  it(
+    "does not leak SET LOCAL timeouts out of migration 0035 (the migrator uses one transaction)",
+    async () => {
+      const sqlText = readFileSync(
+        path.join(MIGRATIONS_DIR, "0035_invitation_created_at.sql"),
+        "utf8",
+      );
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        const [before] = await db<{ lock: string; statement: string }[]>`
+          SELECT current_setting('lock_timeout') AS lock,
+                 current_setting('statement_timeout') AS statement
+        `;
+        const after = await db.begin(async (tx) => {
+          await tx.unsafe(sqlText);
+          const [row] = await tx<{ lock: string; statement: string }[]>`
+            SELECT current_setting('lock_timeout') AS lock,
+                   current_setting('statement_timeout') AS statement
+          `;
+          return row;
+        });
+        expect(after).toEqual(before);
       } finally {
         await db.end({ timeout: 5 });
       }
