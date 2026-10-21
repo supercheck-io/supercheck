@@ -75,11 +75,11 @@ export async function POST(request: NextRequest) {
       server: config.server,
     });
     const session = await polar.customerSessions.create({
-      customerId: org.polarCustomerId,
-      returnUrl: `${appUrl.origin}/org-admin?tab=subscription`,
+      customer_id: org.polarCustomerId,
+      return_url: `${appUrl.origin}/org-admin?tab=subscription`,
     });
 
-    return NextResponse.json({ url: session.customerPortalUrl });
+    return NextResponse.json({ url: session.customer_portal_url });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

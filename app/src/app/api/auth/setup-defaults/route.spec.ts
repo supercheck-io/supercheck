@@ -6,8 +6,8 @@ const mockPolarGetExternal = jest.fn();
 const mockPolarUpdateExternal = jest.fn();
 const mockPolarCreate = jest.fn();
 
-jest.mock("@polar-sh/sdk", () => ({
-  Polar: jest.fn().mockImplementation(() => ({
+jest.mock("@polar-sh/sdk/2026-10", () => ({
+  createPolar: jest.fn().mockImplementation(() => ({
     customers: {
       getExternal: mockPolarGetExternal,
       list: jest.fn(),
@@ -116,9 +116,7 @@ describe("POST /api/auth/setup-defaults", () => {
 
     expect(response.status).toBe(200);
     expect(mockPolarGetExternal).toHaveBeenCalledTimes(1);
-    expect(mockPolarGetExternal).toHaveBeenCalledWith({
-      externalId: "organization:org-owned",
-    });
+    expect(mockPolarGetExternal).toHaveBeenCalledWith("organization:org-owned");
     expect(updateSet).toHaveBeenCalledWith({ polarCustomerId: "customer-1" });
     expect(updateWhere).toHaveBeenCalledTimes(1);
     expect(mockDb.transaction).not.toHaveBeenCalled();
@@ -155,7 +153,7 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockPolarCreate).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        externalId: "organization:org-a",
+        external_id: "organization:org-a",
         metadata: expect.objectContaining({
           referenceId: "org-a",
           userId: "user-1",
@@ -197,7 +195,7 @@ describe("POST /api/auth/setup-defaults", () => {
     };
     mockDb.transaction.mockImplementation(async callback => callback(tx));
     expect((await POST(request())).status).toBe(200);
-    expect(mockPolarGetExternal).toHaveBeenCalledWith({ externalId: "organization:oldest-owned" });
+    expect(mockPolarGetExternal).toHaveBeenCalledWith("organization:oldest-owned");
     expect(mockPolarGetExternal).toHaveBeenCalledTimes(1);
     expect(mockDb.select).toHaveBeenCalledTimes(3);
     expect(tx.insert).not.toHaveBeenCalled();

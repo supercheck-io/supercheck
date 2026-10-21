@@ -280,7 +280,7 @@ describe("PolarUsageService retry idempotency", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(
       expect.objectContaining({
-        "Polar-Version": "2026-04",
+        "Polar-Version": "2026-10",
       }),
     );
 

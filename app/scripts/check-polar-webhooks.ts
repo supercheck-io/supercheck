@@ -13,7 +13,7 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { polar, webhooks } from "@polar-sh/better-auth";
 import { createHmac } from "node:crypto";
-import { createPolarClient } from "../src/lib/billing/polar-client";
+import { createPolarCoreClient } from "../src/lib/billing/polar-client";
 
 const SECRET = "polar_whs_check_secret";
 const received: string[] = [];
@@ -24,13 +24,13 @@ const auth = betterAuth({
   database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
   plugins: [
     polar({
-      client: createPolarClient({ accessToken: "polar_oat_check", server: "sandbox" }),
+      client: createPolarCoreClient({ accessToken: "polar_oat_check", server: "sandbox" }),
       createCustomerOnSignUp: false,
       use: [
         webhooks({
           secret: SECRET,
-          onCustomerCreated: async (payload: { data: { externalId?: string | null } }) => {
-            received.push(`customer.created:${payload.data.externalId}`);
+          onCustomerCreated: async (payload) => {
+            received.push(`customer.created:${payload.data.external_id}`);
           },
         }),
       ],

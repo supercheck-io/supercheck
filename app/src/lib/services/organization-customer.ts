@@ -36,7 +36,7 @@ export async function ensurePolarCustomerAndLink(
     const externalId = `organization:${organizationId}`;
     let customerId: string;
     try {
-      customerId = (await polarClient.customers.getExternal({ externalId })).id;
+      customerId = (await polarClient.customers.getExternal(externalId)).id;
     } catch (error) {
       if (
         !(
@@ -51,7 +51,7 @@ export async function ensurePolarCustomerAndLink(
       try {
         customerId = (
           await polarClient.customers.create({
-            externalId,
+            external_id: externalId,
             email: userEmail,
             name: userName || userEmail,
             metadata: {
@@ -65,8 +65,7 @@ export async function ensurePolarCustomerAndLink(
         // A concurrent setup may have created the same external ID first.
         // Resolve only this organization's identity; never fall back to email.
         try {
-          customerId = (await polarClient.customers.getExternal({ externalId }))
-            .id;
+          customerId = (await polarClient.customers.getExternal(externalId)).id;
         } catch {
           throw createError;
         }

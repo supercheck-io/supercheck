@@ -251,7 +251,7 @@ describe('UsageTrackerService ledger settlement', () => {
           expect.stringContaining('/v1/events/ingest'),
           expect.objectContaining({
             headers: expect.objectContaining({
-              'Polar-Version': '2026-04',
+              'Polar-Version': '2026-10',
             }),
           }),
         );
