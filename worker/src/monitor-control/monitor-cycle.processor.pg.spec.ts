@@ -7,6 +7,7 @@ import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
 import type { MonitorAlertService } from '../monitor/services/monitor-alert.service';
 import { MonitorCycleProcessor } from './monitor-cycle.processor';
+import { BillingVerificationError } from './billing-hold.service';
 import { MonitorCycleService } from './monitor-cycle.service';
 import type { BillingHoldService } from './billing-hold.service';
 import { createTestDatabase, seedMonitor } from './pg-test-database';
@@ -235,6 +236,30 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       expect((await cycle('poison')).status).toBe('open');
       spy.mockRestore();
     });
+
+    it.each([
+      [
+        'a billing-verification outage',
+        () => new BillingVerificationError('down'),
+        'open',
+      ],
+      ['any other persistent failure', () => new Error('poison'), 'aborted'],
+    ])(
+      'after 20 failures, %s is handled as expected',
+      async (_name, makeError, status) => {
+        await open('limit');
+        const spy = jest
+          .spyOn(MonitorCycleService.prototype, 'closeCycle')
+          .mockRejectedValue(makeError());
+        (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+          'limit',
+          { failures: 19, nextAt: 0 },
+        );
+        await processor.tick(new Date(deadline.getTime() + 1000));
+        expect((await cycle('limit')).status).toBe(status);
+        spy.mockRestore();
+      },
+    );
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {
       await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)

@@ -8,6 +8,7 @@ import {
 import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
+import { BillingVerificationError } from './billing-hold.service';
 import { MonitorCycleService } from './monitor-cycle.service';
 
 const BATCH = 50;
@@ -20,6 +21,12 @@ const DEFAULT_RETENTION_DAYS = 14;
 const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 /** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
 const POISON_GIVE_UP_AFTER = 20;
+/**
+ * A billing-verification outage is not a property of the cycle: every cycle fails until billing
+ * answers again. Keep them retryable for about a day (at the maximum backoff) before giving up,
+ * so a provider outage does not silently drop alerts.
+ */
+const BILLING_GIVE_UP_AFTER = 288;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -246,7 +253,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures}): ${describeError(error)}`,
       );
-      if (failures >= POISON_GIVE_UP_AFTER) {
+      const giveUpAfter =
+        error instanceof BillingVerificationError
+          ? BILLING_GIVE_UP_AFTER
+          : POISON_GIVE_UP_AFTER;
+      if (failures >= giveUpAfter) {
         this.failing.delete(id);
         await this.cycles.abortCycle(id).catch(() => undefined);
         this.logger.error(
