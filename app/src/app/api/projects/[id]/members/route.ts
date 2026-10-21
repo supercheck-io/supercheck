@@ -160,49 +160,22 @@ export async function POST(
       );
     }
 
-    const targetOrganizationMember = await db
-      .select({ id: member.id })
-      .from(member)
-      .where(and(
-        eq(member.userId, targetUserId),
-        eq(member.organizationId, organizationId)
-      ))
-      .limit(1);
-    if (targetOrganizationMember.length === 0) {
-      return NextResponse.json(
-        { error: 'User is not a member of this organization' },
-        { status: 400 }
-      );
-    }
-    
-    // Check if user is already a member
-    const existingMember = await db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .where(and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, targetUserId)
-      ))
-      .limit(1);
-    
-    if (existingMember.length > 0) {
-      return NextResponse.json(
-        { error: 'User is already a member of this project' },
-        { status: 400 }
-      );
-    }
-    
-    // Add user to project
-    const [newMember] = await db
-      .insert(projectMembers)
-      .values({
-        projectId,
-        userId: targetUserId,
-        role,
-        createdAt: new Date()
-      })
-      .returning();
-    
+    const newMember = await db.transaction(async (tx) => {
+      // Serialize assignments with leave; checking outside this transaction can resurrect stale access.
+      const [targetOrganizationMember] = await tx.select({ id: member.id }).from(member)
+        .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
+        .for("update");
+      if (!targetOrganizationMember) throw new Error('PROJECT_ORGANIZATION_MEMBER_REQUIRED');
+      const existingMember = await tx.select({ id: projectMembers.id }).from(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
+        .limit(1);
+      if (existingMember.length) throw new Error('PROJECT_MEMBER_ALREADY_EXISTS');
+      const [created] = await tx.insert(projectMembers).values({
+        projectId, userId: targetUserId, role, createdAt: new Date(),
+      }).returning();
+      return created;
+    });
+
     return NextResponse.json({
       success: true,
       member: {
@@ -220,6 +193,12 @@ export async function POST(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: 401 }
       );
+    }
+    if (error instanceof Error && error.message === 'PROJECT_ORGANIZATION_MEMBER_REQUIRED') {
+      return NextResponse.json({ error: 'User is not a member of this organization' }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === 'PROJECT_MEMBER_ALREADY_EXISTS') {
+      return NextResponse.json({ error: 'User is already a member of this project' }, { status: 400 });
     }
     console.error('Failed to add project member:', error);
     return NextResponse.json(

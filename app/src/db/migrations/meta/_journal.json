@@ -232,6 +232,13 @@
       "when": 1792569600000,
       "tag": "0032_device_authorizations",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792570000000,
+      "tag": "0033_monitor_aggregate_uniqueness",
+      "breakpoints": true
     }
   ]
 }

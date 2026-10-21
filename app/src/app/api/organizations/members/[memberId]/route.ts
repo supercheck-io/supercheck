@@ -171,8 +171,17 @@ export async function PUT(
     // SECURITY: Wrap all role update operations in a transaction
     // to prevent partial state (e.g., role updated but project assignments not changed)
     await db.transaction(async (tx) => {
-      // Update member role
-      await tx
+      // Serialize membership changes with leave so a departed user cannot regain assignments.
+      const [lockedMember] = await tx.select({ role: member.role }).from(member)
+        .where(and(eq(member.userId, resolvedParams.memberId), eq(member.organizationId, organizationId)))
+        .for("update");
+      if (!lockedMember) throw new Error('MEMBER_NOT_FOUND');
+      if (lockedMember.role === 'org_owner') throw new Error('MEMBER_OWNER_PROTECTED');
+      if (lockedMember.role === 'org_admin' && orgRole !== Role.ORG_OWNER) {
+        throw new Error('MEMBER_ADMIN_PROTECTED');
+      }
+      // Update member role only after locking and revalidating its current role.
+      const updatedMembers = await tx
         .update(member)
         .set({ 
           role: role
@@ -180,7 +189,8 @@ export async function PUT(
         .where(and(
           eq(member.userId, resolvedParams.memberId),
           eq(member.organizationId, organizationId)
-        ));
+        )).returning({ id: member.id });
+      if (!updatedMembers.length) throw new Error('MEMBER_NOT_FOUND');
 
       // Always reset organization-scoped project assignments for this member first.
       // This keeps role/project state deterministic across all transitions.
@@ -307,6 +317,11 @@ export async function PUT(
       }
     });
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'MEMBER_NOT_FOUND') return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+      if (error.message === 'MEMBER_OWNER_PROTECTED') return NextResponse.json({ error: 'Cannot change owner role' }, { status: 403 });
+      if (error.message === 'MEMBER_ADMIN_PROTECTED') return NextResponse.json({ error: 'Only organization owners can modify org admin members' }, { status: 403 });
+    }
     if (error instanceof Error && error.message === 'MEMBER_PROJECT_SCOPE_MISMATCH') {
       return NextResponse.json(
         { error: 'One or more selected projects are invalid for this organization' },
