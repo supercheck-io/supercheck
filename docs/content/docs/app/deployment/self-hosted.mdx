@@ -72,6 +72,8 @@ curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deplo
 
 Follow the prompts for local evaluation or HTTPS. Open the printed URL, create your account, and run a test.
 
+Sandboxed execution pods can connect to public destinations, but cannot reach private network addresses, including RFC1918, link-local, CGNAT, and tailnet ranges. Use a [Private Agent](/docs/app/deployment/private-agent) when checks need access to services inside another network.
+
 ## Optional Configuration
 
 In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
@@ -210,3 +212,7 @@ Checks depend on connected workers. When multiple execution targets are configur
 
 - [AI SRE Setup](/docs/app/admin/ai-sre-setup) — add services and read-only evidence sources.
 - [Private Agent](/docs/app/deployment/private-agent) — reach sources inside another network.
+
+## Queue durability
+
+Bundled Redis persists execution queues in the `redis-data` named volume using append-only persistence with an every-second fsync. Ordinary container restarts preserve queued work. Use `docker compose down` to stop the stack while preserving its data. Avoid `docker compose down -v` unless you intend to permanently delete **all** Compose volumes, including `postgres-data` (database), `rustfs-data` (artifacts), and `redis-data` (queue state). Abrupt host or storage failures can lose approximately one second of writes; this single-node deployment is not a Redis backup or high-availability solution. Interrupted executions may be retried, so scripts with external side effects should tolerate retries.

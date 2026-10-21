@@ -28,6 +28,8 @@ Run maintenance commands from your installation's `deploy/docker` directory. Exa
 
 The optional [AI SRE integration lab](./aisre-lab/README.md) is for connector development and testing; it is not needed for installation.
 
+Bundled Redis keeps BullMQ queue data in the `redis-data` named volume with append-only persistence (`appendfsync everysec`). Container restarts and recreation preserve this volume; `docker compose down -v` deletes it. An abrupt host or storage failure can lose approximately one second of acknowledged writes. This single-node setup does not provide replication or backups; use managed Redis when stronger recovery guarantees are required. Redis may replay an interrupted job, so test scripts with external side effects should tolerate retries.
+
 Execution workers use the worker readiness endpoint (`/health/ready`) for healthchecks. A worker is marked unhealthy when it cannot reach required dependencies such as PostgreSQL, Redis, or its queues. Private agents disable healthchecks by design because agent mode runs no HTTP server.
 
 ---

@@ -1,6 +1,7 @@
 """Rendered Compose routing regressions; run via validate.sh for placeholder env."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import unittest
@@ -9,6 +10,25 @@ DEPLOY = Path(__file__).resolve().parent
 
 
 class ComposeTests(unittest.TestCase):
+    def test_bundled_redis_preserves_queue_data(self):
+        for file in ('docker-compose.yml', 'docker-compose-local.yml'):
+            with self.subTest(file=file):
+                result = subprocess.run(
+                    ['docker', 'compose', '--env-file', '/dev/null', '-f', file,
+                     'config', '--format', 'json'],
+                    cwd=DEPLOY, text=True, capture_output=True, check=True, timeout=30)
+                redis = json.loads(result.stdout)['services']['redis']
+                command = ' '.join(redis['command'])
+                self.assertNotIn('rm -rf', command)
+                self.assertIn('--appendonly yes', command)
+                self.assertIn('--appendfsync everysec', command)
+                self.assertIn('--maxmemory-policy noeviction', command)
+                maximum = int(re.search(r'--maxmemory (\d+)mb', command).group(1)) * 1024 * 1024
+                limit = int(redis['deploy']['resources']['limits']['memory'])
+                self.assertGreaterEqual(limit, maximum * 1.5, 'Redis needs overhead and AOF rewrite memory beyond maxmemory')
+                self.assertTrue(any(volume['target'] == '/data' and volume['type'] == 'volume'
+                                    for volume in redis['volumes']))
+
     def test_worker_queue_roles_are_forwarded_without_changing_self_hosted_defaults(self):
         for file in ('docker-compose.yml', 'docker-compose-local.yml',
                      'docker-compose-external.yml', 'docker-compose-secure.yml',
