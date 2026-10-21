@@ -99,6 +99,24 @@ describe("SubscriptionGuard", () => {
     jest.clearAllMocks();
   });
 
+  it("lets a signed-in user reach Connected apps whatever the account state, so an app can always be disconnected", async () => {
+    pathname = "/connected-apps";
+    try {
+      const fetchMock = global.fetch as unknown as jest.Mock;
+      renderGuard({
+        children: null,
+        initialSubscriptionStatus: { isActive: false, plan: null },
+        initialIsSelfHosted: false,
+      });
+      expect(screen.getByText("Protected content")).toBeInTheDocument();
+      // Allowed routes skip the status check, so there is nothing to redirect on.
+      expect(fetchMock).not.toHaveBeenCalledWith("/api/subscription/status");
+      expect(pushMock).not.toHaveBeenCalled();
+    } finally {
+      pathname = "/dashboard";
+    }
+  });
+
   it("revalidates seeded cloud subscription state on mount", async () => {
     const fetchMock = global.fetch as unknown as jest.Mock;
     fetchMock.mockResolvedValue({
