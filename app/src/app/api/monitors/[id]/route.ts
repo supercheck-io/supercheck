@@ -780,7 +780,11 @@ export async function PATCH(
       if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
         return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
       }
+      if (rawData.enabled !== undefined && rawData.enabled !== (rawData.status !== "paused")) {
+        return NextResponse.json({ error: "status and enabled disagree" }, { status: 400 });
+      }
       updatePayload.enabled = rawData.status !== "paused";
+      updatePayload.status = rawData.status;
     }
     if (rawData.config) updatePayload.config = deepMerge(currentMonitor.config ?? {}, rawData.config);
 

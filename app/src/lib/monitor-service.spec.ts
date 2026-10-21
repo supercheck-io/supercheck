@@ -67,6 +67,19 @@ describe("updateMonitorHandler schedule synchronization", () => {
     await updateMonitorHandler(existing.id, { config: { timeout: 30, method: "GET" } });
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
+  it("preserves an explicit PATCH observed status", async () => {
+    mockUpdate({status:"down"});
+    await updateMonitorHandler(existing.id, {status:"down",enabled:true});
+    expect((db.update as jest.Mock).mock.results[0].value.set).toHaveBeenCalledWith(expect.objectContaining({status:"down"}));
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+  it("resumes with the explicitly requested status", async () => {
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({...existing,status:"paused",enabled:false});
+    mockUpdate({status:"up",enabled:true});
+    await updateMonitorHandler(existing.id, {status:"up",enabled:true});
+    expect((db.update as jest.Mock).mock.results[0].value.set).toHaveBeenCalledWith(expect.objectContaining({status:"up",enabled:true}));
+    expect(scheduleMonitor).toHaveBeenCalled();
+  });
   it("does not reschedule a metadata-only update", async () => {
     mockUpdate({ name: "Renamed" });
     await updateMonitorHandler(existing.id, { name: "Renamed" });

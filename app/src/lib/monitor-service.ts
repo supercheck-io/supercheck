@@ -25,6 +25,7 @@ interface MonitorApiData {
   target: string;
   frequencyMinutes: number;
   enabled?: boolean;
+  status?: DBMonitorStatus;
   config?: MonitorConfig | null;
   alertConfig?: AlertConfig | null; // Alert configuration for notifications
   organizationId: string; // Required for dual scoping
@@ -171,6 +172,8 @@ export async function updateMonitorHandler(
     updateData.status = "pending" as DBMonitorStatus;
   }
 
+  if (data.status !== undefined) updateData.status = data.status;
+
   const [updatedMonitor] = await db
     .update(monitorTable)
     .set(updateData) // Use the filtered updateData
@@ -186,6 +189,7 @@ export async function updateMonitorHandler(
 
   // Handle re-scheduling or unscheduling (like jobs do)
   const shouldReschedule =
+    (data.status !== undefined && (data.status === "paused") !== (existingMonitor.status === "paused")) ||
     (data.frequencyMinutes !== undefined &&
       data.frequencyMinutes !== existingMonitor.frequencyMinutes) ||
     (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
