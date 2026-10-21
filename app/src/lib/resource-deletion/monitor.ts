@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
-import { monitors, monitorResults } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { monitors, monitorResults, reports } from "@/db/schema";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import type { ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -50,7 +50,7 @@ export async function deleteMonitorWithContext(
     }
 
 
-    // Perform the deletion within a transaction
+    // Finish storage cleanup before opening a short, guarded deletion transaction.
     const transactionResult = await (async () => {
       const tx = db;
       // Verify monitor belongs to current project before deletion - get details for audit
@@ -90,19 +90,32 @@ export async function deleteMonitorWithContext(
         .from(monitorResults)
         .where(eq(monitorResults.monitorId, monitorId));
 
+      const executionIds = resultsWithReports.flatMap(result => result.testExecutionId ? [result.testExecutionId] : []);
+      const urls = resultsWithReports.flatMap(result => result.testReportS3Url ? [result.testReportS3Url] : []);
+      const reportOwnership = and(eq(reports.entityType, "monitor"), or(
+        executionIds.length ? inArray(reports.entityId, executionIds) : undefined,
+        urls.length ? inArray(reports.s3Url, urls) : undefined,
+      ));
+      const reportRows = executionIds.length || urls.length ? await tx.select({
+        id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url,
+      }).from(reports).where(reportOwnership) : [];
+
       // Filter results that have S3 reports
       const reportsToDelete = resultsWithReports.filter(
         (result) => result.testReportS3Url || result.testExecutionId
       );
 
-      if (reportsToDelete.length > 0) {
+      if (reportsToDelete.length > 0 || reportRows.length > 0) {
         const cleanup = await createS3CleanupService().deleteReports(
-          reportsToDelete.map(report => ({
+          [...reportsToDelete.map(report => ({
             reportPath: report.testExecutionId || undefined,
             s3Url: report.testReportS3Url || undefined,
             entityId: report.id,
-            entityType: "monitor",
-          }))
+            entityType: "monitor" as const,
+          })), ...reportRows.map(report => ({
+            reportPath: report.reportPath || undefined, s3Url: report.s3Url || undefined,
+            entityId: report.entityId, entityType: "monitor" as const,
+          }))]
         );
         if (!cleanup.success) throw new Error("Could not delete monitor storage; please retry");
       }
@@ -111,6 +124,13 @@ export async function deleteMonitorWithContext(
       const [freshMonitor] = await tx.select({id: monitors.id}).from(monitors).where(and(eq(monitors.id,monitorId),eq(monitors.projectId,project.id),eq(monitors.organizationId,organizationId))).for("update");
       const freshResults = await tx.select({ id: monitorResults.id, testExecutionId: monitorResults.testExecutionId, testReportS3Url: monitorResults.testReportS3Url }).from(monitorResults).where(eq(monitorResults.monitorId,monitorId)).for("update");
       if (!freshMonitor || !isDeepStrictEqual(freshResults.sort((a,b)=>a.id.localeCompare(b.id)), resultsWithReports.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Monitor results changed during cleanup; retry deletion");
+      const freshReports = executionIds.length || urls.length ? await tx.select({
+        id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url,
+      }).from(reports).where(reportOwnership).for("update") : [];
+      if (!isDeepStrictEqual(freshReports.sort((a,b)=>a.id.localeCompare(b.id)), reportRows.sort((a,b)=>a.id.localeCompare(b.id)))) {
+        throw new Error("Monitor reports changed during cleanup; retry deletion");
+      }
+      if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map(report => report.id)));
       // Delete monitor results from database
       const deletedResults = await tx
         .delete(monitorResults)

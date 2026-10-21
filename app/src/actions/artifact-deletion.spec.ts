@@ -49,6 +49,18 @@ describe("explicit artifact deletion", () => {
     mockDelete.mockReturnValue({ where: () => ({ returning: async () => [{ id: "deleted" }] }) });
   });
 
+  it.each([["run", deleteRun], ["job", deleteJob], ["monitor", deleteMonitor]] as const)("rejects empty %s IDs without storage or row deletion", async (_kind, remove) => {
+    expect((await remove("")).success).toBe(false);
+    expect(mockDeleteReports).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+  it.each([["run", deleteRun], ["job", deleteJob], ["monitor", deleteMonitor]] as const)("denies %s deletion without permissions before storage or row deletion", async (_kind, remove) => {
+    mockPermission.mockReturnValue(false);
+    expect((await remove("resource")).success).toBe(false);
+    expect(mockDeleteReports).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["run", deleteRun, [{ id: "run", status: "passed", startedAt: null }, [{ id: "report", reportPath: "run/report", entityType: "job" }]]],
     ["job", deleteJob, [{ id: "job", name: "Job" }, [{ id: "report", reportPath: "run/report", entityType: "job", entityId: "run" }], []]],
