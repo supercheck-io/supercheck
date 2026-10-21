@@ -142,13 +142,16 @@ CREATE TABLE IF NOT EXISTS "oauth_consent" (
   "requested_user_info_claims" text[],
   "scopes" text[] NOT NULL,
   "created_at" timestamp NOT NULL,
-  "updated_at" timestamp NOT NULL
+  "updated_at" timestamp NOT NULL,
+  -- A connection always names its project. Without this, a consent with no project would
+  -- cover every later authorization request that also has none (skipping the connect screen)
+  -- and could be neither listed nor disconnected.
+  CONSTRAINT "oauth_consent_project_required" CHECK ("reference_id" IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS "oauth_consent_client_id_idx" ON "oauth_consent" ("client_id");
 CREATE INDEX IF NOT EXISTS "oauth_consent_user_id_idx" ON "oauth_consent" ("user_id");
 -- One connection per (app, user, project): a double-clicked Approve cannot create a second row
--- that disconnecting the first would leave behind. NULL references are distinct, but consent
--- without a project is refused by the application.
+-- that disconnecting the first would leave behind.
 CREATE UNIQUE INDEX IF NOT EXISTS "oauth_consent_client_user_reference_uidx"
   ON "oauth_consent" ("client_id", "user_id", "reference_id");
 --> statement-breakpoint

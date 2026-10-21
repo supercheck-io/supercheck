@@ -95,7 +95,11 @@ export async function POST(request: NextRequest) {
     logger.warn({ error: error instanceof Error ? error.name : "unknown" }, "MCP consent failed");
     return mcpJson({ error: "consent_failed" }, 400);
   } finally {
-    // The choice is single-use for this request; a later request picks again.
-    await clearProjectSelection(sessionId).catch(() => undefined);
+    // The choice is single-use: a later connection picks again. Only an approval stored one,
+    // and only that exact value is removed, so a denial (or a second tab) cannot delete the
+    // choice another approval is about to read.
+    if (accept && projectId) {
+      await clearProjectSelection({ sessionId, userId, projectId }).catch(() => undefined);
+    }
   }
 }

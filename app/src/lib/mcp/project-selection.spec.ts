@@ -95,8 +95,8 @@ describe("readProjectSelection", () => {
 });
 
 describe("clearProjectSelection", () => {
-  it("deletes the session's choice", async () => {
-    await clearProjectSelection("s1");
+  it("issues a single conditional delete (compare-and-delete is proved against PostgreSQL)", async () => {
+    await clearProjectSelection({ sessionId: "s1", userId: "u1", projectId: PROJECT });
     expect(mockDelete).toHaveBeenCalledTimes(1);
   });
 });

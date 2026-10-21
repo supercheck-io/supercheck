@@ -87,7 +87,7 @@ async function main(): Promise<void> {
       method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
     });
     // The consent route clears the choice after every decision; do the same.
-    await clearProjectSelection(sessionId);
+    await clearProjectSelection({ sessionId, userId, projectId });
     const code = new URL(((await consent.json()) as { url: string }).url).searchParams.get("code") as string;
     const token = await send("/api/auth/oauth2/token", {
       method: "POST", headers: form,

@@ -81,7 +81,7 @@ describe("POST /api/oauth/mcp/consent", () => {
     // The choice must be recorded before consent is granted.
     expect(mockSave.mock.invocationCallOrder[0]).toBeLessThan(mockConsent.mock.invocationCallOrder[0]);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_approved", userId: "user-1", success: true }));
-    expect(mockClear).toHaveBeenCalledWith("session-1");
+    expect(mockClear).toHaveBeenCalledWith({ sessionId: "session-1", userId: "user-1", projectId: PROJECT });
   });
 
   it("denies without selecting a project", async () => {
@@ -91,6 +91,8 @@ describe("POST /api/oauth/mcp/consent", () => {
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ body: { accept: false, oauth_query: approve.oauth_query } }));
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_denied" }));
+    // A denial stored nothing, so it must not delete a choice another tab is about to use.
+    expect(mockClear).not.toHaveBeenCalled();
   });
 
   it("does not exist when the MCP server is disabled", async () => {
@@ -156,7 +158,7 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(400);
     expect(JSON.stringify(await response.json())).not.toContain("secret internals");
-    expect(mockClear).toHaveBeenCalledWith("session-1");
+    expect(mockClear).toHaveBeenCalledWith({ sessionId: "session-1", userId: "user-1", projectId: PROJECT });
   });
 
   it("rejects a valid JSON body over the size cap", async () => {

@@ -60,7 +60,12 @@ describe("MCP consent page", () => {
     const props = JSON.parse(screen.getByTestId("consent").textContent as string);
     expect(props.userEmail).toBe("me@example.com");
     expect(props.projects.map((p: { id: string }) => p.id)).toEqual(["p1", "p2"]);
-    expect(props.client).toEqual({ name: "Agent Co", verifiedHost: "agent.example.com", redirectHost: "agent.example.com" });
+    expect(props.client).toEqual({
+      name: "Agent Co",
+      verifiedHost: "agent.example.com",
+      clientIdUrl: "https://agent.example.com/client.json",
+      redirectHost: "agent.example.com",
+    });
     expect(mockProjects).toHaveBeenCalledWith("u1");
   });
 
@@ -133,6 +138,19 @@ describe("MCP consent page", () => {
     expect(props.client.verifiedHost).toBeNull();
     expect(props.client.name.length).toBeLessThanOrEqual(80);
     expect(props.client.name.endsWith("…")).toBe(true);
+  });
+
+  it("strips invisible control and bidirectional characters from the app name", async () => {
+    mockClient.mockResolvedValue({ client_name: "Sup\u202Eercheck\u200B Official\u0000" });
+    await renderPage({ ...signed, client_id: "randomDcrId123" });
+    const props = JSON.parse(screen.getByTestId("consent").textContent as string);
+    expect(props.client.name).toBe("Supercheck Official");
+  });
+
+  it("falls back to a generic name when nothing printable remains", async () => {
+    mockClient.mockResolvedValue({ client_name: "\u200B\u202E" });
+    await renderPage({ ...signed, client_id: "randomDcrId123" });
+    expect(JSON.parse(screen.getByTestId("consent").textContent as string).client.name).toBe("An application");
   });
 
   it("falls back to the scheme for a custom-scheme redirect", async () => {

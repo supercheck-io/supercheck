@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { verification } from "@/db/schema";
 import { getSelectableProjects } from "@/lib/session";
@@ -93,8 +93,22 @@ export async function readProjectSelection(input: {
   return projectId;
 }
 
-export async function clearProjectSelection(sessionId: string): Promise<void> {
+/**
+ * Removes the stored choice, but only if it is still the one the caller saved.
+ * Two connect screens open in one browser session share a row; a request that
+ * finishes must not delete the choice another is about to use.
+ */
+export async function clearProjectSelection(input: {
+  sessionId: string;
+  userId: string;
+  projectId: string;
+}): Promise<void> {
   await db
     .delete(verification)
-    .where(eq(verification.identifier, selectionIdentifier(sessionId)));
+    .where(
+      and(
+        eq(verification.identifier, selectionIdentifier(input.sessionId)),
+        eq(verification.value, JSON.stringify({ userId: input.userId, projectId: input.projectId })),
+      ),
+    );
 }

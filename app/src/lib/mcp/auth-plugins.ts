@@ -43,6 +43,37 @@ export function mcpRegistrationPolicy(): BetterAuthPlugin {
   };
 }
 
+/**
+ * Requires every authorization request to name the MCP server as its resource.
+ *
+ * A token is audience-bound to the resource it was requested for. Without one,
+ * Better Auth issues an opaque token with no audience, which no resource server
+ * here understands. Refusing it up front gives the client a clear error instead
+ * of a token that never works.
+ */
+export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin {
+  return {
+    id: "supercheck-mcp-authorize-requires-resource",
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.path === "/oauth2/authorize",
+          handler: createAuthMiddleware(async (ctx) => {
+            const requested = (ctx.query as { resource?: unknown } | undefined)?.resource;
+            const values = Array.isArray(requested) ? requested : [requested];
+            if (values.length !== 1 || values[0] !== resource) {
+              throw new APIError("BAD_REQUEST", {
+                error: "invalid_target",
+                error_description: `The resource parameter must be ${resource}`,
+              });
+            }
+          }),
+        },
+      ],
+    },
+  };
+}
+
 type ResolveProject = (input: { sessionId: string; userId: string }) => Promise<string | undefined>;
 
 /**
@@ -112,6 +143,7 @@ export function createMcpAuthPlugins(options: McpAuthPluginOptions) {
     // it would sign on every authenticated request.
     jwt({ disableSettingJwtHeader: true }),
     mcpRegistrationPolicy(),
+    mcpAuthorizeRequiresResource(options.resource),
     mcpConsentRequiresProject(options.resolveProjectReference),
     mcp({
       loginPage: "/sign-in",

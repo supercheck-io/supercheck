@@ -13,6 +13,7 @@
 
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -227,6 +228,7 @@ export const oauthConsent = pgTable(
       table.userId,
       table.referenceId,
     ),
+    projectRequired: check("oauth_consent_project_required", sql`${table.referenceId} IS NOT NULL`),
   }),
 );
 

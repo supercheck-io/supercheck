@@ -22,6 +22,8 @@ interface Props {
     name: string;
     /** Host that controls this client's metadata document; null when it registered itself. */
     verifiedHost: string | null;
+    /** The full metadata-document URL behind verifiedHost. */
+    clientIdUrl?: string | null;
     redirectHost: string | null;
   };
   /** Leaves the page for the client's redirect URI. Replaceable so tests need not navigate. */
@@ -77,6 +79,9 @@ export function McpConsent({ oauthQuery, userEmail, projects, client, navigate =
           {client.verifiedHost ? (
             <>
               Published by <span className="font-medium text-foreground">{client.verifiedHost}</span>
+              {client.clientIdUrl ? (
+                <span className="mt-1 block break-all font-mono text-xs">{client.clientIdUrl}</span>
+              ) : null}
             </>
           ) : (
             <span className="text-amber-600 dark:text-amber-500">

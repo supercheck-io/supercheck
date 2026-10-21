@@ -116,6 +116,15 @@ async function main(): Promise<void> {
   const consentUrl = new URL(resumed.headers.get("location") ?? "", BASE);
   check("replaying the sign-in redirect after sign-in reaches consent", consentUrl.pathname === "/oauth/consent", consentUrl.pathname);
 
+  const withoutResource = new URLSearchParams(query);
+  withoutResource.delete("resource");
+  const noResource = await send(`/api/auth/oauth2/authorize?${withoutResource}`, { cookie });
+  check("an authorization request must name the MCP resource", noResource.status === 400, `${noResource.status}`);
+  const wrongResource = new URLSearchParams(query);
+  wrongResource.set("resource", "https://other.example/api/mcp");
+  const otherResource = await send(`/api/auth/oauth2/authorize?${wrongResource}`, { cookie });
+  check("a different resource is refused", otherResource.status === 400, `${otherResource.status}`);
+
   const noPkce = await send(`/api/auth/oauth2/authorize?${new URLSearchParams({ response_type: "code", client_id: client.client_id as string, redirect_uri: REDIRECT, scope: "mcp:read", state: "s", resource: RESOURCE })}`, { cookie });
   check("PKCE is required", (noPkce.headers.get("location") ?? "").includes("error=invalid_request"));
 

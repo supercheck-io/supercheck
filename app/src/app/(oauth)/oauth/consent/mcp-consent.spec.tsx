@@ -40,8 +40,10 @@ describe("McpConsent", () => {
   });
 
   it("shows the publisher host for a metadata-document client", () => {
-    setup({ name: "Agent Co", verifiedHost: "agent.example.com", redirectHost: "agent.example.com" });
+    setup({ name: "Agent Co", verifiedHost: "agent.example.com", clientIdUrl: "https://agent.example.com/client.json", redirectHost: "agent.example.com" });
     expect(screen.getByText("agent.example.com", { selector: "span.font-medium" })).toBeInTheDocument();
+    // The whole identifier, not just a host a user might trust (raw.githubusercontent.com, gist, vercel.app).
+    expect(screen.getByText("https://agent.example.com/client.json")).toBeInTheDocument();
     expect(screen.queryByText(/unverified app/i)).not.toBeInTheDocument();
   });
 

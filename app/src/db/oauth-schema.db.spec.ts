@@ -163,6 +163,19 @@ describe("OAuth / MCP tables", () => {
     await expect(insert(randomUUID())).resolves.toBeDefined();
   });
 
+  it("refuses a consent that names no project", async () => {
+    const userId = randomUUID();
+    const clientId = `nullref-client-${userId}`;
+    await db`INSERT INTO "user" (id, name, email) VALUES (${userId}, 'Null', ${`null-${userId}@example.com`})`;
+    await db`INSERT INTO oauth_client (client_id, redirect_uris) VALUES (${clientId}, ARRAY['http://localhost:9999/cb'])`;
+    // Such a consent would cover every later request that also names no project, skipping the
+    // connect screen, and could not be listed or disconnected.
+    await expect(db`
+      INSERT INTO oauth_consent (client_id, user_id, reference_id, scopes, created_at, updated_at)
+      VALUES (${clientId}, ${userId}, NULL, ARRAY['mcp:read'], now(), now())
+    `).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("cascades OAuth rows when a user is deleted", async () => {
     const userId = randomUUID();
     await db`INSERT INTO "user" (id, name, email) VALUES (${userId}, 'OAuth User', ${`oauth-${userId}@example.com`})`;
