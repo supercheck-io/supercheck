@@ -107,15 +107,34 @@ describe("database migrations and seeds", () => {
       const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
       try {
         const [column] = await db<
-          { is_nullable: string; column_default: string | null }[]
+          { data_type: string; is_nullable: string; column_default: string | null }[]
         >`
-          SELECT is_nullable, column_default FROM information_schema.columns
+          SELECT data_type, is_nullable, column_default FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'invitation'
             AND column_name = 'created_at'
         `;
         expect(column).toBeDefined();
+        expect(column.data_type).toBe("timestamp without time zone");
         expect(column.is_nullable).toBe("NO");
         expect(column.column_default).toMatch(/now\(\)/i);
+
+        // The invite route inserts without created_at; the default must fill it.
+        const [{ id: userId }] = await db<{ id: string }[]>`
+          INSERT INTO "user" (id, name, email)
+          VALUES (${randomUUID()}, 'Invite Inviter', ${`inviter-${randomUUID()}@example.com`})
+          RETURNING id
+        `;
+        const [{ id: organizationId }] = await db<{ id: string }[]>`
+          INSERT INTO organization (id, name, slug, created_at)
+          VALUES (${randomUUID()}, 'Invite Org', ${`invite-${randomUUID()}`}, now()) RETURNING id
+        `;
+        const [invitation] = await db<{ recent: boolean }[]>`
+          INSERT INTO invitation (id, organization_id, email, role, expires_at, inviter_id)
+          VALUES (${randomUUID()}, ${organizationId}, 'invitee@example.com', 'project_viewer',
+                  now() + interval '1 day', ${userId})
+          RETURNING created_at > now() - interval '1 minute' AS recent
+        `;
+        expect(invitation.recent).toBe(true);
       } finally {
         await db.end({ timeout: 5 });
       }
