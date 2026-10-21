@@ -17,6 +17,16 @@ async function main(): Promise<void> {
     throw new Error("Better Auth no longer exposes explicitSchemaCheck; update this script.");
   }
   await context.explicitSchemaCheck();
+
+  // The check only proves the tables we declared can hold what the registered plugins write.
+  // A plugin dropped from the config would pass it silently, so require the ones the app relies on.
+  const registered = new Set((auth.options.plugins ?? []).map((plugin) => plugin.id));
+  const required = ["admin", "organization", "api-key"];
+  const missing = required.filter((id) => !registered.has(id));
+  if (missing.length) {
+    throw new Error(`Better Auth plugins missing from the app configuration: ${missing.join(", ")}`);
+  }
+
   console.log("Better Auth schema check passed");
 }
 

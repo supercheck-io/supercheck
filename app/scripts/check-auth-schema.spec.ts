@@ -13,7 +13,7 @@ describe("Better Auth schema contract", () => {
   it("the Drizzle schema can hold everything Better Auth writes", async () => {
     const { stdout } = await execFileAsync(
       process.execPath,
-      [path.join(APP_ROOT, "node_modules/tsx/dist/cli.mjs"), "scripts/check-auth-schema.ts"],
+      [require.resolve("tsx/cli"), "scripts/check-auth-schema.ts"],
       {
         cwd: APP_ROOT,
         env: {

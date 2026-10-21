@@ -142,28 +142,36 @@ describe("database migrations and seeds", () => {
     120_000,
   );
 
-  it(
-    "does not leak SET LOCAL timeouts out of migration 0035 (the migrator uses one transaction)",
-    async () => {
-      const sqlText = readFileSync(
-        path.join(MIGRATIONS_DIR, "0035_invitation_created_at.sql"),
-        "utf8",
-      );
+  // The migrator runs every migration in one transaction, so whatever timeouts 0035 applies must be
+  // put back, including values the connection had set itself (RESET would discard those).
+  it.each([
+    ["the server defaults", null],
+    ["timeouts the connection had set", { lock: "7s", statement: "90s" }],
+  ])(
+    "leaves the timeouts exactly as migration 0035 found them: %s",
+    async (_name, preset) => {
+      const sqlText = readFileSync(path.join(MIGRATIONS_DIR, "0035_invitation_created_at.sql"), "utf8");
       const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
       try {
-        const [before] = await db<{ lock: string; statement: string }[]>`
-          SELECT current_setting('lock_timeout') AS lock,
-                 current_setting('statement_timeout') AS statement
-        `;
-        const after = await db.begin(async (tx) => {
-          await tx.unsafe(sqlText);
+        const read = async (tx: postgres.TransactionSql) => {
           const [row] = await tx<{ lock: string; statement: string }[]>`
             SELECT current_setting('lock_timeout') AS lock,
                    current_setting('statement_timeout') AS statement
           `;
           return row;
+        };
+        const result = await db.begin(async (tx) => {
+          if (preset) {
+            await tx.unsafe(`SET lock_timeout = '${preset.lock}'`);
+            await tx.unsafe(`SET statement_timeout = '${preset.statement}'`);
+          }
+          const before = await read(tx);
+          await tx.unsafe(sqlText);
+          return { before, after: await read(tx) };
         });
-        expect(after).toEqual(before);
+        expect(result.after).toEqual(result.before);
+        // The values were really in force beforehand, so equality above is not vacuous.
+        if (preset) expect(result.before).toEqual({ lock: "7s", statement: "90s" });
       } finally {
         await db.end({ timeout: 5 });
       }

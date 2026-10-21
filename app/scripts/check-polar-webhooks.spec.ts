@@ -12,7 +12,7 @@ describe("Polar webhook endpoint on the installed Better Auth", () => {
   it("accepts a signed event, dispatches it, and rejects a forged one", async () => {
     const { stdout } = await execFileAsync(
       process.execPath,
-      [path.join(APP_ROOT, "node_modules/tsx/dist/cli.mjs"), "scripts/check-polar-webhooks.ts"],
+      [require.resolve("tsx/cli"), "scripts/check-polar-webhooks.ts"],
       { cwd: APP_ROOT, env: { ...process.env }, timeout: 60_000 },
     );
     expect(stdout).toContain("Polar webhook endpoint check passed");
