@@ -421,10 +421,25 @@ export class ExecutionService implements OnModuleDestroy {
     // Generate unique ID for this run to avoid conflicts in parallel executions
     const uniqueRunId = `${testId}-${crypto.randomUUID().substring(0, 8)}`;
     // For monitor executions, use uniqueRunId to preserve historical reports and separate bucket
-    // For regular test execution, use testId to maintain existing behavior (overwrite previous report)
-    const executionId = isMonitorExecution ? uniqueRunId : testId;
+    // Tracked standalone runs keep immutable reports; untracked callers retain their legacy test path.
+    const executionId = isMonitorExecution
+      ? uniqueRunId
+      : (task.runId ?? testId);
     const s3ReportKeyPrefix = `${executionId}/report`;
     const entityType = isMonitorExecution ? 'monitor' : 'test';
+    const storeReportMetadata = async (
+      metadata: Parameters<DbService['storeReportMetadata']>[0],
+    ) => {
+      await this.dbService.storeReportMetadata(metadata);
+      if (!isMonitorExecution && task.runId && task.runId !== testId) {
+        // Preserve the existing test-ID proxy as a latest-report alias.
+        await this.dbService.storeReportMetadata({
+          ...metadata,
+          entityId: testId,
+        });
+      }
+    };
+
     let finalResult: TestResult;
     let s3Url: string | null = null;
     // Container run time once the execution pod has actually started.
@@ -461,7 +476,7 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // 2. Store initial metadata about the run
-      await this.dbService.storeReportMetadata({
+      await storeReportMetadata({
         entityId: executionId,
         entityType,
         status: 'running',
@@ -560,7 +575,7 @@ export class ExecutionService implements OnModuleDestroy {
         // For synthetic monitors on success: s3Url remains null (no report saved)
 
         // Publish final status
-        await this.dbService.storeReportMetadata({
+        await storeReportMetadata({
           entityId: executionId,
           entityType,
           reportPath: s3ReportKeyPrefix,
@@ -622,7 +637,7 @@ export class ExecutionService implements OnModuleDestroy {
         }
 
         // Update status *after* logging and upload attempt
-        await this.dbService.storeReportMetadata({
+        await storeReportMetadata({
           entityId: executionId,
           entityType,
           reportPath: s3ReportKeyPrefix,
@@ -667,19 +682,17 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       // Ensure DB status is marked appropriately
-      await this.dbService
-        .storeReportMetadata({
-          entityId: executionId,
-          entityType,
-          reportPath: s3ReportKeyPrefix,
-          status: finalStatus,
-          s3Url: s3Url ?? undefined, // Use final s3Url
-        })
-        .catch((dbErr) =>
-          this.logger.error(
-            `[${testId}] Failed to update DB status on error: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
-          ),
-        );
+      await storeReportMetadata({
+        entityId: executionId,
+        entityType,
+        reportPath: s3ReportKeyPrefix,
+        status: finalStatus,
+        s3Url: s3Url ?? undefined, // Use final s3Url
+      }).catch((dbErr) =>
+        this.logger.error(
+          `[${testId}] Failed to update DB status on error: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+        ),
+      );
 
       finalResult = {
         success: false,

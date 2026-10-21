@@ -133,6 +133,8 @@ export function RunDetails({
     const statusLower = status.toLowerCase();
 
     switch (statusLower) {
+      case "queued":
+        return "queued";
       case "running":
         return "running";
       case "passed":
@@ -391,11 +393,13 @@ export function RunDetails({
                     Delete
                   </Button>
 
-                  <AIJobAnalyzeButton
-                    runId={run.id}
-                    jobName={run.jobName || "Unknown Job"}
-                    jobType={run.jobType || "playwright"}
-                  />
+                  {run.jobId && (
+                    <AIJobAnalyzeButton
+                      runId={run.id}
+                      jobName={run.jobName || "Unknown Job"}
+                      jobType={run.jobType || "playwright"}
+                    />
+                  )}
                 </>
               )}
 
@@ -585,7 +589,7 @@ export function RunDetails({
           <div className="w-full h-full">
             <ReportViewer
               reportUrl={reportUrl}
-              isRunning={currentStatus === "running"}
+              isRunning={currentStatus === "running" || currentStatus === "queued"}
               backToLabel="Back to Runs"
               backToUrl="/runs"
               containerClassName="w-full h-[calc(100vh-270px)] relative"

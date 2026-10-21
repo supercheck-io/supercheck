@@ -1297,7 +1297,11 @@ paths:
     get:
       operationId: listRuns
       summary: List runs
-      description: List job runs with optional filters for job ID and status.
+      description: List standalone test executions and job runs in the active project,
+        with optional job ID and status filters. Standalone executions have a
+        null jobId; jobName identifies their source test. New browser runs
+        retain their own report; older overwritten reports cannot be
+        reconstructed.
       tags:
         - Runs
       parameters:
@@ -1320,6 +1324,8 @@ paths:
               - failed
               - error
               - blocked
+              - pending
+              - skipped
           description: Filter by status
       responses:
         "200":
