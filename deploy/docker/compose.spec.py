@@ -26,6 +26,24 @@ class ComposeTests(unittest.TestCase):
                     worker = json.loads(result.stdout)['services']['worker']
                     self.assertEqual(worker['environment']['WORKER_QUEUES'], queues)
 
+    def test_monitor_control_receives_only_the_environment_it_reads(self):
+        forbidden = ('BETTER_AUTH_SECRET', 'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID',
+                     'REDIS_PASSWORD', 'REDIS_URL', 'OPENAI_API_KEY', 'GITHUB_CLIENT_SECRET')
+        for file in ('docker-compose.yml', 'docker-compose-external.yml'):
+            with self.subTest(file=file):
+                env = {key: value for key, value in os.environ.items()
+                       if key != 'COMPOSE_PROFILES'}
+                result = subprocess.run(
+                    ['docker', 'compose', '--env-file', '/dev/null', '-f', file,
+                     '--profile', 'monitor-control', 'config', '--format', 'json'],
+                    cwd=DEPLOY, env=env, text=True, capture_output=True, check=True, timeout=30)
+                service = json.loads(result.stdout)['services']['monitor-control']
+                for key in forbidden:
+                    self.assertNotIn(key, service['environment'])
+                self.assertEqual(service['environment']['SRE_AUTOMATION_ENABLED'], 'false')
+                self.assertTrue(service['read_only'])
+                self.assertEqual(service['cap_drop'], ['ALL'])
+
     def test_traefik_selects_shared_network_without_losing_private_agent_access(self):
         for file in ('docker-compose.yml', 'docker-compose-secure.yml'):
             for project in ('default', 'environment', 'cli'):

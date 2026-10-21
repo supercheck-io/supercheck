@@ -58,6 +58,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
+  # Days to keep finished status-page notification delivery rows (App-side; 1-3650).
+  STATUS_PAGE_DELIVERY_RETENTION_DAYS: ${STATUS_PAGE_DELIVERY_RETENTION_DAYS:-30}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
@@ -472,7 +474,7 @@ services:
       - ALL # Drop all capabilities by default
 
   # Control plane for missing-region monitor cycles (issue #452). Optional and OFF by default.
-  # Enable with `docker compose --profile monitor-control up -d` and MISSING_CYCLE_CLOSURE_ENABLED=true.
+  # Enable with `docker compose up -d monitor-control` (with `monitor-control` in `COMPOSE_PROFILES`) and MISSING_CYCLE_CLOSURE_ENABLED=true.
   # Same image as the worker, different entrypoint. It has no Kubernetes credentials, no report
   # volumes and no execution privileges: it reads and writes PostgreSQL and sends alerts, with an allowlisted environment.
   # Run exactly one replica; scale to zero only after pending cycles have drained (see the runbook).
@@ -504,8 +506,6 @@ services:
       SELF_HOSTED: ${SELF_HOSTED:-true}
       NODE_ENV: ${NODE_ENV:-production}
       SRE_ENABLED: ${SRE_ENABLED:-true}
-      MISSING_CYCLE_CLOSURE_ENABLED: ${MISSING_CYCLE_CLOSURE_ENABLED:-false}
-      MISSING_CYCLE_DEADLINE_SECONDS: ${MISSING_CYCLE_DEADLINE_SECONDS:-300}
       DB_POOL_MAX: ${MONITOR_CONTROL_DB_POOL_MAX:-4}
       MONITOR_CONTROL_PORT: "8000"
       # Triage enqueue needs Redis access this process does not need; keep it off (explicit env wins).
