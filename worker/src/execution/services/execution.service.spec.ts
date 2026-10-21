@@ -266,8 +266,8 @@ describe('single Playwright execution outcome', () => {
     [true, false, undefined],
     [false, true, undefined],
     [true, true, undefined],
-    [false, false, "failed-run"],
-    [false, true, "passed-run"],
+    [false, false, 'failed-run'],
+    [false, true, 'passed-run'],
   ])(
     'requires executor success even with a passing report (monitor=%s, runner=%s)',
     async (monitor, runnerSuccess, runId) => {
@@ -285,7 +285,9 @@ describe('single Playwright execution outcome', () => {
         activeExecutions: new Map(),
         maxConcurrentExecutions: 1,
         dbService: { storeReportMetadata },
-        cancellationService: { isCancelled: jest.fn().mockResolvedValue(false) },
+        cancellationService: {
+          isCancelled: jest.fn().mockResolvedValue(false),
+        },
         reportUploadService: {
           uploadReport: jest
             .fn()
@@ -310,8 +312,20 @@ describe('single Playwright execution outcome', () => {
         monitor,
       );
       if (runId) {
-        expect(storeReportMetadata).toHaveBeenCalledWith(expect.objectContaining({ entityId: runId, reportPath: `${runId}/report`, entityType: 'test' }));
-        expect(storeReportMetadata).toHaveBeenLastCalledWith(expect.objectContaining({ entityId: 'test-1', reportPath: `${runId}/report`, status: runnerSuccess ? 'passed' : 'failed' }));
+        expect(storeReportMetadata).toHaveBeenCalledWith(
+          expect.objectContaining({
+            entityId: runId,
+            reportPath: `${runId}/report`,
+            entityType: 'test',
+          }),
+        );
+        expect(storeReportMetadata).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            entityId: 'test-1',
+            reportPath: `${runId}/report`,
+            status: runnerSuccess ? 'passed' : 'failed',
+          }),
+        );
       }
       expect(result.success).toBe(runnerSuccess);
       expect(result.error).toBe(runnerSuccess ? null : 'OOMKilled');

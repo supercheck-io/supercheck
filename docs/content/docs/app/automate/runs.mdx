@@ -8,6 +8,14 @@ Every test or job execution creates a run with results, logs, and artifacts.
 
 ![Job Runs](/screenshots/job-runs.png)
 
+Runs includes executions launched from a job and standalone browser or performance
+executions. Each standalone run shows the source test name and type, and opens the
+same report and run details. Runs are limited to the active project. The job filter
+continues to show runs for the selected job; clear it to include standalone runs.
+The status filter continues to work across both kinds of runs.
+New standalone browser runs keep a report for each run. Older runs whose reports were
+overwritten before this change cannot show separate historical reports.
+
 ## Run Status
 
 | Status | Description |
@@ -24,7 +32,7 @@ Every test or job execution creates a run with results, logs, and artifacts.
 1. Go to **Automate → Runs**
 2. Select a run to view its details
 
-When a running execution is cancelled, Supercheck stops it and records the run as **Error** with cancellation details.
+When cancellation is requested for a running execution, the run is recorded as **Error** with cancellation details. The worker may still be finishing report uploads.
 
 ## Run Details
 

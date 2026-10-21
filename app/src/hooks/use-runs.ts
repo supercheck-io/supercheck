@@ -2,10 +2,10 @@ import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
 
 export interface Run {
   id: string;
-  jobId: string;
+  jobId: string | null;
   jobName?: string;
   jobType?: "playwright" | "k6";
-  status: "pending" | "running" | "passed" | "failed" | "error";
+  status: "pending" | "queued" | "running" | "passed" | "failed" | "error" | "blocked";
   trigger: "manual" | "schedule" | "remote";
   startedAt: string | null;
   completedAt: string | null;

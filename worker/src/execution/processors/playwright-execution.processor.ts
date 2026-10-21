@@ -19,7 +19,7 @@ import {
   TestResult,
 } from '../interfaces';
 import { eq } from 'drizzle-orm';
-import { jobs } from '../../db/schema';
+import { jobs, runs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
 import { getBillableMs } from '../../common/billable-ms';
 import { consumesWorkerQueue } from '../../common/worker-queues';
@@ -217,14 +217,24 @@ export class PlaywrightExecutionProcessor
         const errorDetails = isCancellation
           ? 'Cancellation requested by user'
           : result.error || undefined;
-        const persistResult = async (transaction?: ExecutionUsageTransaction) =>
-          this.dbService.updateRunStatus(
+        const persistResult = async (
+          transaction?: ExecutionUsageTransaction,
+        ) => {
+          if (result.reportUrl) {
+            await (transaction ?? this.dbService.db)
+              .update(runs)
+              .set({ reportS3Url: result.reportUrl })
+              .where(eq(runs.id, runId))
+              .execute();
+          }
+          await this.dbService.updateRunStatus(
             runId,
             status,
             durationSeconds.toString(),
             errorDetails,
             transaction,
           );
+        };
         if (job.data.organizationId) {
           await this.usageTrackerService.completeRunWithUsage(
             {

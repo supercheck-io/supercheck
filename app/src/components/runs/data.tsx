@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 export const runStatuses = [
+  { value: "queued", label: "Queued", icon: Timer, color: "text-muted-foreground" },
   {
     value: "running",
     label: "Running",

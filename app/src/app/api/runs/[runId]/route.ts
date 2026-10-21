@@ -1,8 +1,9 @@
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
+import { runHistoryFields, runReportType } from "@/lib/run-history";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
-import { eq, and, count, sql, inArray } from "drizzle-orm";
+import { runs, reports, jobs, jobTests, projects, tests } from "@/db/schema";
+import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
@@ -34,14 +35,13 @@ export async function GET(
       .select({
         id: runs.id,
         jobId: runs.jobId,
-        jobName: jobs.name,
+        ...runHistoryFields,
         status: runs.status,
         durationMs: runs.durationMs,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
         logs: runs.logs,
         errorDetails: runs.errorDetails,
-        reportUrl: reports.s3Url,
         trigger: runs.trigger,
         projectId: runs.projectId,
         organizationId: projects.organizationId,
@@ -49,11 +49,12 @@ export async function GET(
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
       .innerJoin(projects, eq(runs.projectId, projects.id))
+      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, runs.projectId)))
       .leftJoin(
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          inArray(reports.entityType, ["job", "k6_job"])
+          eq(reports.entityType, runReportType)
         )
       )
       .where(
@@ -72,7 +73,7 @@ export async function GET(
     const run = result[0];
 
     // Get test count for this job
-    let testCount = 0;
+    let testCount = run.jobId ? 0 : 1;
     if (run.jobId) {
       const testCountResult = await db
         .select({ count: count() })

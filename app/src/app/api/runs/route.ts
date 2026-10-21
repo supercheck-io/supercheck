@@ -1,7 +1,8 @@
+import { runHistoryFields, runReportType } from "@/lib/run-history";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
-import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { runs, jobs, reports, projects, tests, TestRunStatus } from "@/db/schema";
+import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
     // SECURITY: Always filter by org/project from session, never trust client params
     const filters = [
       eq(runs.projectId, context.project.id),
-      eq(jobs.organizationId, context.organizationId)
+      eq(projects.organizationId, context.organizationId)
     ];
     
     // Optional additional filters
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest) {
       db
         .select({ count: sql<number>`count(*)` })
         .from(runs)
+        .innerJoin(projects, eq(runs.projectId, projects.id))
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
         .where(whereCondition),
       // Data query with all details
@@ -84,25 +86,25 @@ export async function GET(request: NextRequest) {
         .select({
           id: runs.id,
           jobId: runs.jobId,
-          jobName: jobs.name,
-          jobType: jobs.jobType,
+          ...runHistoryFields,
           status: runs.status,
           durationMs: runs.durationMs,
           startedAt: runs.startedAt,
           completedAt: runs.completedAt,
           // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
           // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
-          reportUrl: reports.s3Url,
           trigger: runs.trigger,
           location: runs.location,
         })
         .from(runs)
+        .innerJoin(projects, eq(runs.projectId, projects.id))
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
+        .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, runs.projectId)))
         .leftJoin(
           reports,
           and(
             sql`${reports.entityId} = ${runs.id}::text`,
-            inArray(reports.entityType, ['job', 'k6_job'])
+            eq(reports.entityType, runReportType)
           )
         )
         .where(whereCondition)
