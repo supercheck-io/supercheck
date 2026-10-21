@@ -82,7 +82,7 @@
     "babel-bundle": "file:./playwright/packages/playwright/bundles/babel",
     "browserify-zlib": "^0.2.0",
     "buffer": "^6.0.3",
-    "codemirror": "^5.65.18",
+    "codemirror": "^6.0.2",
     "convert-source-map": "^2.0.0",
     "create-hash": "^1.2.0",
     "debug": "^4.3.4",
