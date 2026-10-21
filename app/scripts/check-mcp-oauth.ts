@@ -142,6 +142,10 @@ async function main(): Promise<void> {
   await refused("a bidirectional override in the name", { client_name: "Sup\u202Eercheck" });
   await refused("a 100 KB name", { client_name: "A".repeat(100_000) });
   await refused("500 redirect URIs", { redirect_uris: Array.from({ length: 500 }, (_, i) => `http://127.0.0.1:${9000 + i}/cb`) });
+  await refused("a NUL byte in software_statement", { software_statement: "a.b.c\u0000" });
+  await refused("a NUL byte in a nested, unrecognised field", { metadata: { deep: "x\u0000" } });
+  await refused("a 100 KB value in an unrecognised field", { anything: "x".repeat(100_000) });
+  await refused("an unbounded post_logout_redirect_uris", { post_logout_redirect_uris: Array.from({ length: 200 }, (_, i) => `https://a.example/${i}`) });
   await refused("a javascript: logo", { logo_uri: "javascript:alert(1)" });
   await refused("a data: client URI", { client_uri: "data:text/html,x" });
   check("a wider scope is refused", (await register({ token_endpoint_auth_method: "none", scope: "mcp:read openid email" })).status === 400);

@@ -49,6 +49,39 @@ describe("registrationProblem", () => {
     expect(registrationProblem(body)).not.toBeNull();
   });
 
+  it.each([
+    ["a NUL byte in software_statement", { ...valid, software_statement: "a.b.c\u0000" }],
+    ["an over-long software_statement", { ...valid, software_statement: "x".repeat(8193) }],
+    ["a non-string software_statement", { ...valid, software_statement: { jwt: true } }],
+    ["too many post_logout_redirect_uris", { ...valid, post_logout_redirect_uris: Array.from({ length: 11 }, (_, i) => `https://a.example/${i}`) }],
+    ["a NUL byte in post_logout_redirect_uris", { ...valid, post_logout_redirect_uris: ["https://a.example/\u0000"] }],
+    ["a post_logout_redirect_uris that is not an array", { ...valid, post_logout_redirect_uris: "https://a.example" }],
+  ])("refuses %s", (_name, body) => {
+    expect(registrationProblem(body)).not.toBeNull();
+  });
+
+  describe("fields it does not check individually", () => {
+    it.each([
+      ["a NUL byte in an unknown field", { ...valid, anything: "x\u0000" }],
+      ["a NUL byte in a nested object", { ...valid, metadata: { deep: { er: "x\u0000" } } }],
+      ["a NUL byte in an array of an unknown field", { ...valid, scope_list: ["ok", "bad\u0000"] }],
+      ["a bidirectional override in jwks", { ...valid, jwks: { keys: [{ kid: "a\u202Eb" }] } }],
+      ["a very long string in an unknown field", { ...valid, notes: "x".repeat(8193) }],
+      ["a very long array in an unknown field", { ...valid, many: Array.from({ length: 51 }, (_, i) => i) }],
+      ["too many fields in an object", { ...valid, metadata: Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`k${i}`, i])) }],
+      ["an object nested too deeply", { ...valid, a: { b: { c: { d: { e: 1 } } } } }],
+      ["a control character in a field name", { ...valid, "bad\u0000key": 1 }],
+      ["an over-long field name", { ...valid, ["k".repeat(129)]: 1 }],
+      ["a body over the total size limit", { ...valid, a: "x".repeat(8000), b: "x".repeat(8000), c: "x".repeat(8000), d: "x".repeat(8000), e: "x".repeat(8000) }],
+    ])("refuses %s", (_name, body) => {
+      expect(registrationProblem(body)).not.toBeNull();
+    });
+
+    it("still accepts ordinary extra metadata, numbers, booleans and nulls", () => {
+      expect(registrationProblem({ ...valid, application_type: "native", grant_types: ["authorization_code", "refresh_token"], require_pkce: true, metadata: { build: 7, tag: null } })).toBeNull();
+    });
+  });
+
   it("allows the limits exactly", () => {
     expect(registrationProblem({ ...valid, client_name: "A".repeat(REGISTRATION_LIMITS.nameLength) })).toBeNull();
     expect(

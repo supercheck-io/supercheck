@@ -13,6 +13,13 @@ export const REGISTRATION_LIMITS = {
   redirectUris: 10,
   shortField: 256,
   contacts: 10,
+  // Applied to every value in the body, including fields not checked individually, so a field the
+  // provider stores but this module does not know about cannot be used to store unbounded data.
+  anyString: 8192,
+  anyArray: 50,
+  anyKeys: 50,
+  anyDepth: 4,
+  bodyBytes: 32 * 1024,
 } as const;
 
 // C0/C1 control characters (including NUL) and the bidirectional overrides and isolates, which can
@@ -73,6 +80,22 @@ export function registrationProblem(body: unknown): string | null {
     if (problem) return problem;
   }
 
+  if (input.software_statement !== undefined) {
+    const problem = text("software_statement", input.software_statement, REGISTRATION_LIMITS.anyString);
+    if (problem) return problem;
+  }
+
+  if (input.post_logout_redirect_uris !== undefined) {
+    const list = input.post_logout_redirect_uris;
+    if (!Array.isArray(list) || list.length > redirectUris) {
+      return `post_logout_redirect_uris must be an array of at most ${redirectUris} entries`;
+    }
+    for (const uri of list) {
+      const problem = text("post_logout_redirect_uris entry", uri, urlLength);
+      if (problem) return problem;
+    }
+  }
+
   if (input.contacts !== undefined) {
     if (!Array.isArray(input.contacts) || input.contacts.length > contacts) {
       return `contacts must be an array of at most ${contacts} entries`;
@@ -83,7 +106,46 @@ export function registrationProblem(body: unknown): string | null {
     }
   }
 
-  return null;
+  return everyValueProblem(input);
+}
+
+/**
+ * Bounds every value in the request, whatever the field. Strings must be reasonably short and free
+ * of control and bidirectional characters (a NUL byte makes PostgreSQL reject the insert), arrays and
+ * objects must be small and shallow, and the whole body must stay under a fixed size.
+ */
+function everyValueProblem(body: Record<string, unknown>): string | null {
+  const { anyString, anyArray, anyKeys, anyDepth, bodyBytes } = REGISTRATION_LIMITS;
+
+  const walk = (value: unknown, path: string, depth: number): string | null => {
+    if (typeof value === "string") {
+      if (value.length > anyString) return `${path} must be at most ${anyString} characters`;
+      if (CONTROL_OR_BIDI.test(value)) return `${path} must not contain control or bidirectional formatting characters`;
+      return null;
+    }
+    if (value === null || typeof value !== "object") return null;
+    if (depth >= anyDepth) return `${path} is nested too deeply`;
+    if (Array.isArray(value)) {
+      if (value.length > anyArray) return `${path} may contain at most ${anyArray} entries`;
+      for (const [index, item] of value.entries()) {
+        const problem = walk(item, `${path}[${index}]`, depth + 1);
+        if (problem) return problem;
+      }
+      return null;
+    }
+    const entries = Object.entries(value);
+    if (entries.length > anyKeys) return `${path} may contain at most ${anyKeys} fields`;
+    for (const [key, item] of entries) {
+      if (key.length > 128 || CONTROL_OR_BIDI.test(key)) return `${path} has an invalid field name`;
+      const problem = walk(item, `${path}.${key}`, depth + 1);
+      if (problem) return problem;
+    }
+    return null;
+  };
+
+  const problem = walk(body, "request", 0);
+  if (problem) return problem;
+  return JSON.stringify(body).length > bodyBytes ? `the request must be smaller than ${bodyBytes} bytes` : null;
 }
 
 /**

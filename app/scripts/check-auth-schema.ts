@@ -11,6 +11,7 @@
  */
 async function main(): Promise<void> {
   const { auth } = await import("../src/utils/auth");
+  const { isMcpServerEnabled } = await import("../src/lib/mcp/config");
   const context = await auth.$context;
 
   if (!context.explicitSchemaCheck) {
@@ -22,6 +23,11 @@ async function main(): Promise<void> {
   // A plugin dropped from the config would pass it silently, so require the ones the app relies on.
   const registered = new Set((auth.options.plugins ?? []).map((plugin) => plugin.id));
   const required = ["admin", "organization", "api-key"];
+  if (isMcpServerEnabled()) {
+    // jwt signs the access tokens, oauth-provider is mcp() (it registers under the provider's id), and
+    // cimd accepts Client ID Metadata Documents. Without them the OAuth tables would go unchecked.
+    required.push("jwt", "oauth-provider", "cimd");
+  }
   const missing = required.filter((id) => !registered.has(id));
   if (missing.length) {
     throw new Error(`Better Auth plugins missing from the app configuration: ${missing.join(", ")}`);
