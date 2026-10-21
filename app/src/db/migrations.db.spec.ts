@@ -12,7 +12,7 @@
  */
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
@@ -94,6 +94,84 @@ describe("database migrations and seeds", () => {
         ]) {
           expect(names).toContain(required);
         }
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+    120_000,
+  );
+
+  it(
+    "adds the invitation.created_at column Better Auth 1.7 requires, defaulted so older writers keep working",
+    async () => {
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        const [column] = await db<
+          { data_type: string; is_nullable: string; column_default: string | null }[]
+        >`
+          SELECT data_type, is_nullable, column_default FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'invitation'
+            AND column_name = 'created_at'
+        `;
+        expect(column).toBeDefined();
+        expect(column.data_type).toBe("timestamp without time zone");
+        expect(column.is_nullable).toBe("NO");
+        expect(column.column_default).toMatch(/now\(\)/i);
+
+        // The invite route inserts without created_at; the default must fill it.
+        const [{ id: userId }] = await db<{ id: string }[]>`
+          INSERT INTO "user" (id, name, email)
+          VALUES (${randomUUID()}, 'Invite Inviter', ${`inviter-${randomUUID()}@example.com`})
+          RETURNING id
+        `;
+        const [{ id: organizationId }] = await db<{ id: string }[]>`
+          INSERT INTO organization (id, name, slug, created_at)
+          VALUES (${randomUUID()}, 'Invite Org', ${`invite-${randomUUID()}`}, now()) RETURNING id
+        `;
+        const [invitation] = await db<{ recent: boolean }[]>`
+          INSERT INTO invitation (id, organization_id, email, role, expires_at, inviter_id)
+          VALUES (${randomUUID()}, ${organizationId}, 'invitee@example.com', 'project_viewer',
+                  now() + interval '1 day', ${userId})
+          RETURNING created_at > now() - interval '1 minute' AS recent
+        `;
+        expect(invitation.recent).toBe(true);
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+    120_000,
+  );
+
+  // The migrator runs every migration in one transaction, so whatever timeouts 0035 applies must be
+  // put back, including values the connection had set itself (RESET would discard those).
+  it.each([
+    ["the server defaults", null],
+    ["timeouts the connection had set", { lock: "7s", statement: "90s" }],
+  ])(
+    "leaves the timeouts exactly as migration 0035 found them: %s",
+    async (_name, preset) => {
+      const sqlText = readFileSync(path.join(MIGRATIONS_DIR, "0035_invitation_created_at.sql"), "utf8");
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        const read = async (tx: postgres.TransactionSql) => {
+          const [row] = await tx<{ lock: string; statement: string }[]>`
+            SELECT current_setting('lock_timeout') AS lock,
+                   current_setting('statement_timeout') AS statement
+          `;
+          return row;
+        };
+        const result = await db.begin(async (tx) => {
+          if (preset) {
+            await tx.unsafe(`SET lock_timeout = '${preset.lock}'`);
+            await tx.unsafe(`SET statement_timeout = '${preset.statement}'`);
+          }
+          const before = await read(tx);
+          await tx.unsafe(sqlText);
+          return { before, after: await read(tx) };
+        });
+        expect(result.after).toEqual(result.before);
+        // The values were really in force beforehand, so equality above is not vacuous.
+        if (preset) expect(result.before).toEqual({ lock: "7s", statement: "90s" });
       } finally {
         await db.end({ timeout: 5 });
       }
