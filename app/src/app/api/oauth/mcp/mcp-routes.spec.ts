@@ -170,6 +170,12 @@ describe("POST /api/oauth/mcp/consent", () => {
     expect(mockConsent).not.toHaveBeenCalled();
   });
 
+  it("lets an unexpected failure while checking the project surface instead of reading it as 'forbidden'", async () => {
+    mockAssert.mockRejectedValue(new Error("database unavailable"));
+    await expect(consentPost(consentRequest(approve))).rejects.toThrow("database unavailable");
+    expect(mockConsent).not.toHaveBeenCalled();
+  });
+
   it("refuses an unusable redirect_uri before recording any consent", async () => {
     for (const redirect of ["javascript:alert(1)", "data:text/html,x", "", "not a url"]) {
       mockAssert.mockClear();
@@ -218,6 +224,12 @@ describe("DELETE /api/oauth/mcp/connections/:id", () => {
   it("reports a missing or foreign connection as not found", async () => {
     mockRevoke.mockRejectedValue(new McpConnectionNotFoundError());
     expect((await call(CONSENT_ID)).status).toBe(404);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("lets an unexpected failure surface as a server error rather than hiding it as 'not found'", async () => {
+    mockRevoke.mockRejectedValue(new Error("database unavailable"));
+    await expect(call(CONSENT_ID)).rejects.toThrow("database unavailable");
     expect(mockAudit).not.toHaveBeenCalled();
   });
 

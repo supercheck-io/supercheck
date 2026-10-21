@@ -56,6 +56,15 @@ describe("ConnectedApps", () => {
     expect(await screen.findByText(/no apps are connected/i)).toBeInTheDocument();
   });
 
+  it("shows the load error, and recovers on retry, when the request itself fails", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+    render(<ConnectedApps />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not load/i);
+    fetchMock.mockResolvedValueOnce(json(200, { connections: [connection] }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Agent Co")).toBeInTheDocument();
+  });
+
   it("asks before disconnecting, then removes exactly that connection and reloads", async () => {
     fetchMock
       .mockResolvedValueOnce(json(200, { connections: [connection] }))

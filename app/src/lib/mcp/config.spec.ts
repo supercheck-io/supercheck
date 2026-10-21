@@ -62,6 +62,8 @@ describe("getMcpResourceUrl", () => {
   it("allows plain HTTP only on loopback hosts", () => {
     expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://localhost:3000" })).toBe("http://localhost:3000/api/mcp");
     expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://127.0.0.1:3000" })).toBe("http://127.0.0.1:3000/api/mcp");
+    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://[::1]:3000" })).toBe("http://[::1]:3000/api/mcp");
     expect(() => getMcpResourceUrl({ BETTER_AUTH_URL: "http://app.example.com" })).toThrow("HTTPS");
+    expect(() => getMcpResourceUrl({ BETTER_AUTH_URL: "ftp://app.example.com" })).toThrow("HTTPS");
   });
 });

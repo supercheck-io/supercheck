@@ -130,4 +130,14 @@ describe("generic authentication organization safeguards", () => {
     expect(body).not.toHaveProperty("introspection_endpoint");
     expect(body).not.toHaveProperty("introspection_endpoint_auth_methods_supported");
   });
+
+  it("rejects a malformed percent-encoded path with 400 instead of throwing", async () => {
+    for (const handler of [GET, POST]) {
+      const response = await handler(new Request("https://app.supercheck.io/api/auth/sign-in/%E0%A4%A", { method: handler === GET ? "GET" : "POST" }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid request path" });
+    }
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
 });

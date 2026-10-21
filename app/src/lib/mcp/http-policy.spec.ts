@@ -60,7 +60,30 @@ describe("withReachableEndpointsOnly", () => {
   });
 });
 
-describe("isOAuthEndpointDenied", () => {
+describe("pruneUnreachableEndpoints, unusual values", () => {
+  it("leaves alone an *_endpoint value that is not a URL, and non-string values", () => {
+    const input = { token_endpoint: "not a url", odd_endpoint: 42, scopes_supported: ["a"] };
+    expect(pruneUnreachableEndpoints(input)).toEqual(input);
+  });
+});
+
+describe("withReachableEndpointsOnly, unusual bodies", () => {
+  it("passes a JSON response that is not an object through untouched", async () => {
+    const response = new Response("null", { headers: { "content-type": "application/json" } });
+    expect(await withReachableEndpointsOnly(response)).toBe(response);
+  });
+
+  it("passes unparseable JSON through untouched", async () => {
+    const response = new Response("{broken", { headers: { "content-type": "application/json" } });
+    expect(await withReachableEndpointsOnly(response)).toBe(response);
+  });
+});
+
+describe("isOAuthEndpointDenied, undecodable", () => {
+  it("denies a guarded path it cannot decode, since it cannot name an allowed endpoint", () => {
+    expect(isOAuthEndpointDenied("POST", "/api/auth/oauth2/%E0%A4%A")).toBe(true);
+  });
+
   it.each([
     ["GET", "/api/auth/token"],
     ["GET", "/api/auth/token/"],

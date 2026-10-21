@@ -5,6 +5,7 @@ jest.mock("@/lib/session", () => ({ getSelectableProjects: (...a: unknown[]) => 
 import {
   McpProjectAccessError,
   assertCanConnectProject,
+  listConnectableProjects,
   resolveConsentProject,
   runWithConsentProject,
 } from "./connect-project";
@@ -15,6 +16,13 @@ const B = "0197a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c";
 beforeEach(() => {
   jest.clearAllMocks();
   mockGetSelectable.mockResolvedValue([{ id: A }, { id: B }]);
+});
+
+describe("listConnectableProjects", () => {
+  it("is the projects the user can see", async () => {
+    await expect(listConnectableProjects("u1")).resolves.toEqual([{ id: A }, { id: B }]);
+    expect(mockGetSelectable).toHaveBeenCalledWith("u1");
+  });
 });
 
 describe("assertCanConnectProject", () => {
