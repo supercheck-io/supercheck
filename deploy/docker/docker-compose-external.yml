@@ -474,7 +474,7 @@ services:
       - ALL # Drop all capabilities by default
 
   # Control plane for missing-region monitor cycles (issue #452). Optional and OFF by default.
-  # Enable with `docker compose --profile monitor-control up -d` and MISSING_CYCLE_CLOSURE_ENABLED=true.
+  # Enable with `docker compose up -d monitor-control` (with `monitor-control` in `COMPOSE_PROFILES`) and MISSING_CYCLE_CLOSURE_ENABLED=true.
   # Same image as the worker, different entrypoint. It has no Kubernetes credentials, no report
   # volumes and no execution privileges: it reads and writes PostgreSQL and sends alerts, with an allowlisted environment.
   # Run exactly one replica; scale to zero only after pending cycles have drained (see the runbook).
