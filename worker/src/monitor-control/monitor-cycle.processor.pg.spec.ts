@@ -239,27 +239,42 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
 
     it.each([
       [
-        'a billing-verification outage',
+        'a billing outage below its limit stays open',
         () => new BillingVerificationError('down'),
+        { failures: 0, billingFailures: 19 },
         'open',
       ],
-      ['any other persistent failure', () => new Error('poison'), 'aborted'],
-    ])(
-      'after 20 failures, %s is handled as expected',
-      async (_name, makeError, status) => {
-        await open('limit');
-        const spy = jest
-          .spyOn(MonitorCycleService.prototype, 'closeCycle')
-          .mockRejectedValue(makeError());
-        (processor as unknown as { failing: Map<string, unknown> }).failing.set(
-          'limit',
-          { failures: 19, nextAt: 0 },
-        );
-        await processor.tick(new Date(deadline.getTime() + 1000));
-        expect((await cycle('limit')).status).toBe(status);
-        spy.mockRestore();
-      },
-    );
+      [
+        'a billing outage at its limit is aborted',
+        () => new BillingVerificationError('down'),
+        { failures: 0, billingFailures: 71 },
+        'aborted',
+      ],
+      [
+        'another persistent failure at its limit is aborted',
+        () => new Error('poison'),
+        { failures: 19, billingFailures: 0 },
+        'aborted',
+      ],
+      [
+        'a transient error after a long outage does not trip the lower limit',
+        () => new Error('lock timeout'),
+        { failures: 2, billingFailures: 60 },
+        'open',
+      ],
+    ])('%s', async (_name, makeError, seed, status) => {
+      await open('limit');
+      const spy = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(makeError());
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'limit',
+        { ...seed, nextAt: 0 },
+      );
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect((await cycle('limit')).status).toBe(status);
+      spy.mockRestore();
+    });
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {
       await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)

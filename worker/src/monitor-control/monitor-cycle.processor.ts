@@ -23,10 +23,11 @@ const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 const POISON_GIVE_UP_AFTER = 20;
 /**
  * A billing-verification outage is not a property of the cycle: every cycle fails until billing
- * answers again. Keep them retryable for about a day (at the maximum backoff) before giving up,
- * so a provider outage does not silently drop alerts.
+ * answers again. Keep them retryable for about six hours (at the maximum backoff) before giving up,
+ * so a provider outage does not silently drop alerts. The window is bounded because each
+ * overdue cycle is tracked in memory and re-queried every pass.
  */
-const BILLING_GIVE_UP_AFTER = 288;
+const BILLING_GIVE_UP_AFTER = 72;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -92,7 +93,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   /** Cycles whose closure keeps throwing: skipped with backoff so they cannot starve a batch. */
   private readonly failing = new Map<
     string,
-    { failures: number; nextAt: number }
+    { failures: number; billingFailures: number; nextAt: number }
   >();
   private readonly state: ProcessorSnapshot = {
     started: false,
@@ -244,24 +245,34 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       if (outcome === 'closed') this.toNotify.push(id);
     } catch (error) {
       this.state.cycleFailures += 1;
-      const failures = (this.failing.get(id)?.failures ?? 0) + 1;
+      // Billing outages and other failures are counted apart: a few transient errors (a lock
+      // timeout) after a long outage must not tip the cycle over the lower non-billing limit.
+      const previous = this.failing.get(id);
+      const billing = error instanceof BillingVerificationError;
+      const failures = (previous?.failures ?? 0) + (billing ? 0 : 1);
+      const billingFailures =
+        (previous?.billingFailures ?? 0) + (billing ? 1 : 0);
       this.failing.set(id, {
         failures,
+        billingFailures,
         nextAt:
-          Date.now() + Math.min(POISON_MAX_BACKOFF_MS, 2000 * 2 ** failures),
+          Date.now() +
+          Math.min(
+            POISON_MAX_BACKOFF_MS,
+            2000 * 2 ** Math.min(failures + billingFailures, 20),
+          ),
       });
       this.logger.error(
-        `Closing cycle ${id} failed (attempt ${failures}): ${describeError(error)}`,
+        `Closing cycle ${id} failed (attempt ${failures + billingFailures}): ${describeError(error)}`,
       );
-      const giveUpAfter =
-        error instanceof BillingVerificationError
-          ? BILLING_GIVE_UP_AFTER
-          : POISON_GIVE_UP_AFTER;
-      if (failures >= giveUpAfter) {
+      if (
+        failures >= POISON_GIVE_UP_AFTER ||
+        billingFailures >= BILLING_GIVE_UP_AFTER
+      ) {
         this.failing.delete(id);
         await this.cycles.abortCycle(id).catch(() => undefined);
         this.logger.error(
-          `Aborted cycle ${id} after ${failures} failed closures; investigate the cause above`,
+          `Aborted cycle ${id} after ${failures + billingFailures} failed closures; investigate the cause above`,
         );
       }
     } finally {
