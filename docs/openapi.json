@@ -3253,7 +3253,7 @@
       "get": {
         "operationId": "getMonitorStats",
         "summary": "Get monitor statistics",
-        "description": "Returns performance statistics including uptime percentage, average response time, and p95 latency.",
+        "description": "Returns 24-hour and 30-day performance statistics. All-locations reads prefer a combined rollup per period and fall back to legacy location rollups for periods without one. Each statistics window uses retained raw checks only when no rollups exist. meta.source identifies aggregates, aggregates+raw_p95, aggregates+raw, or raw.",
         "tags": [
           "Monitors"
         ],
@@ -6388,6 +6388,86 @@
           }
         ]
       }
+    },
+    "/api/organizations/leave": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Leave the current organization",
+        "operationId": "leaveOrganization",
+        "description": "Leave the active organization as a non-owner using an interactive browser session and a same-origin request. Removes the caller's membership and project assignments, clears this organization's selected context from all their sessions, and records member_left in the audit log. Owners must transfer ownership or delete the organization. Project-scoped CLI tokens receive 403. The supplied organization ID must match the active organization resolved from the session; stale confirmations receive 409.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization left; reload to select a remaining membership or complete personal setup.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "organizationId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Owner, CLI token, or cross-origin request"
+          },
+          "404": {
+            "description": "Membership no longer exists"
+          },
+          "500": {
+            "description": "Failed to leave organization"
+          },
+          "409": {
+            "description": "The active organization changed; reload before confirming."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "organizationId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "organizationId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The organization being confirmed; must match the active session organization."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7355,26 +7435,84 @@
       "MonitorStats": {
         "type": "object",
         "properties": {
-          "uptimePercent": {
-            "type": "number",
-            "format": "float"
+          "success": {
+            "type": "boolean"
           },
-          "avgResponseTime": {
-            "type": "number",
-            "format": "float"
+          "data": {
+            "type": "object",
+            "properties": {
+              "period24h": {
+                "type": "object",
+                "properties": {
+                  "totalChecks": {
+                    "type": "integer"
+                  },
+                  "upChecks": {
+                    "type": "integer"
+                  },
+                  "uptimePercentage": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "avgResponseTimeMs": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "p95ResponseTimeMs": {
+                    "type": "integer",
+                    "nullable": true
+                  }
+                }
+              },
+              "period30d": {
+                "type": "object",
+                "properties": {
+                  "totalChecks": {
+                    "type": "integer"
+                  },
+                  "upChecks": {
+                    "type": "integer"
+                  },
+                  "uptimePercentage": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "avgResponseTimeMs": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "p95ResponseTimeMs": {
+                    "type": "integer",
+                    "nullable": true
+                  }
+                }
+              }
+            }
           },
-          "p95ResponseTime": {
-            "type": "number",
-            "format": "float"
-          },
-          "totalChecks": {
-            "type": "integer"
-          },
-          "successfulChecks": {
-            "type": "integer"
-          },
-          "failedChecks": {
-            "type": "integer"
+          "meta": {
+            "type": "object",
+            "properties": {
+              "monitorId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "location": {
+                "type": "string"
+              },
+              "calculatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "aggregates",
+                  "aggregates+raw_p95",
+                  "aggregates+raw",
+                  "raw"
+                ]
+              }
+            }
           }
         }
       },

@@ -86,6 +86,7 @@ export function deviceBaseUrl(request: NextRequest): string {
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.BETTER_AUTH_URL;
   try {
+    // Supercheck is served from the origin root (no basePath), so only the origin is meaningful.
     if (configured) return new URL(configured).origin;
   } catch {
     // fall through

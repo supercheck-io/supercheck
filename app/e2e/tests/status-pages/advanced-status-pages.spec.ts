@@ -19,9 +19,37 @@ test.describe('Status page publishing and management @status-pages @high', () =>
     await expect(page.getByRole('button', { name: 'Unpublish', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Unpublish', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await expect.poll(async () => statusFor(request, created.id)).toBe('published');
+    await dialog.getByRole('button', { name: 'Unpublish page', exact: true }).click();
     await expect.poll(async () => statusFor(request, created.id)).toBe('draft');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeVisible();
+  });
+
+  test('archives a draft only after confirmation with persisted API state', async ({
+    projectAdminPage,
+    cleanup,
+  }) => {
+    const page = projectAdminPage;
+    const request = page.request;
+    const created = await createStatusPageThroughUi(page, request, cleanup);
+    await page.goto(`/status-pages/${created.id}`, { waitUntil: 'domcontentloaded' });
+
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await expect.poll(async () => statusFor(request, created.id)).toBe('draft');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect.poll(async () => statusFor(request, created.id)).toBe('draft');
+
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Archive page', exact: true }).click();
+    await expect.poll(async () => statusFor(request, created.id)).toBe('archived');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('button', { name: 'Archive', exact: true })).not.toBeVisible();
   });
 
   test('exposes each management tab for the selected status page', async ({
