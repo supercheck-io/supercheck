@@ -108,12 +108,12 @@ describe("Polar webhook helpers", () => {
     (db.update as jest.Mock).mockReturnValue({ set });
     await handleCustomerCreated({ data: {
       id: "customer-a", externalId: "organization:org-a",
-      metadata: { referenceId: "org-a", userId: "owner-a" },
+      metadata: { referenceId: "org-a", userId: "0198a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a01" },
     } });
     expect(db.query.member.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { op: "and", args: [
         { op: "eq", left: "member.organizationId", right: "org-a" },
-        { op: "eq", left: "member.userId", right: "owner-a" },
+        { op: "eq", left: "member.userId", right: "0198a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a01" },
         { op: "eq", left: "member.role", right: "org_owner" },
       ] },
     }));
@@ -125,7 +125,7 @@ describe("Polar webhook helpers", () => {
       { organizationId: "org-a" }, { organizationId: "org-b" },
     ]);
     await handleCustomerCreated({ type: "customer.created", data: {
-      id: "legacy-customer", externalId: "owner-a",
+      id: "legacy-customer", externalId: "0198a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a01",
     } });
     expect(db.update).not.toHaveBeenCalled();
     expect(db.query.organization.findFirst).not.toHaveBeenCalled();

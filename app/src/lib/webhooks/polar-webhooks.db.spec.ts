@@ -30,6 +30,12 @@ import {
   handleSubscriptionPastDue,
   handleSubscriptionUncanceled,
   handleSubscriptionUpdated,
+  handleOrderPaid,
+  handleOrderCreated,
+  handleCustomerCreated,
+  handleCustomerDeleted,
+  cleanupExpiredWebhooks,
+  handleSubscriptionCreated,
 } from "./polar-webhooks";
 import { normalizePolarPayload } from "./polar-payload";
 
@@ -423,5 +429,466 @@ describe("2026-10 webhook payloads through the real handlers", () => {
       ),
     ).rejects.toThrow(/Ambiguous Polar event order|reconcile/);
     expect((await org()).subscriptionPlan).toBe("pro");
+  });
+
+  describe("customer lifecycle", () => {
+    async function makeOwner(organizationId: string) {
+      const [u] = await mockDatabase
+        .insert(schema.user)
+        .values({ name: "Owner", email: `${randomUUID()}@example.com` })
+        .returning();
+      await mockDatabase.insert(schema.member).values({
+        userId: u.id,
+        organizationId,
+        role: "org_owner",
+        createdAt: new Date(),
+      });
+      return u.id;
+    }
+    const customer = (over: Record<string, unknown> = {}) => ({
+      id: "cus_new",
+      external_id: null,
+      email: "o@example.com",
+      metadata: {},
+      ...over,
+    });
+    beforeEach(async () => {
+      await client`UPDATE organization SET polar_customer_id = NULL WHERE id = ${orgId}`;
+    });
+
+    it("links a new customer to the organization named in its metadata when the user owns it", async () => {
+      const owner = await makeOwner(orgId);
+      await deliver(
+        handleCustomerCreated,
+        "customer.created",
+        customer({
+          metadata: { referenceId: orgId, userId: owner },
+          external_id: `organization:${orgId}`,
+        }),
+        "2026-10-01T00:00:00Z",
+      );
+      expect((await org()).polarCustomerId).toBe("cus_new");
+    });
+
+    it("links by the user's single owned organization when no reference is given", async () => {
+      const owner = await makeOwner(orgId);
+      await deliver(
+        handleCustomerCreated,
+        "customer.created",
+        customer({ metadata: { userId: owner } }),
+        "2026-10-01T00:00:00Z",
+      );
+      expect((await org()).polarCustomerId).toBe("cus_new");
+    });
+
+    it("does not link when the user is not an owner of the referenced organization", async () => {
+      const otherOwner = await makeOwner(otherOrgId);
+      await deliver(
+        handleCustomerCreated,
+        "customer.created",
+        customer({ metadata: { referenceId: orgId, userId: otherOwner } }),
+        "2026-10-01T00:00:00Z",
+      ).catch(() => undefined);
+      expect((await org()).polarCustomerId).toBeNull();
+    });
+
+    it("does not overwrite an existing customer binding", async () => {
+      const owner = await makeOwner(orgId);
+      await client`UPDATE organization SET polar_customer_id = 'cus_existing' WHERE id = ${orgId}`;
+      await deliver(
+        handleCustomerCreated,
+        "customer.created",
+        customer({ metadata: { referenceId: orgId, userId: owner } }),
+        "2026-10-01T00:00:00Z",
+      ).catch(() => undefined);
+      expect((await org()).polarCustomerId).toBe("cus_existing");
+    });
+
+    it("ignores a customer whose external id is an organization reference and has no user id, without a database error", async () => {
+      await expect(
+        deliver(
+          handleCustomerCreated,
+          "customer.created",
+          customer({
+            external_id: `organization:${orgId}`,
+            metadata: { referenceId: orgId },
+          }),
+          "2026-10-01T00:00:00Z",
+        ),
+      ).resolves.not.toThrow();
+      expect((await org()).polarCustomerId).toBeNull();
+    });
+
+    it("clears the plan when the customer is deleted and ignores unknown customers", async () => {
+      await client`UPDATE organization SET polar_customer_id = ${CUS} WHERE id = ${orgId}`;
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await deliver(
+        handleCustomerDeleted,
+        "customer.deleted",
+        { id: "cus_nobody" },
+        "2026-10-02T00:00:00Z",
+      );
+      expect((await org()).subscriptionStatus).toBe("active");
+      await deliver(
+        handleCustomerDeleted,
+        "customer.deleted",
+        { id: CUS },
+        "2026-10-03T00:00:00Z",
+      );
+      expect(await org()).toMatchObject({
+        subscriptionStatus: "none",
+        subscriptionPlan: null,
+      });
+    });
+  });
+
+  describe("orders", () => {
+    const order = (over: Record<string, unknown> = {}) => ({
+      id: "ord_1",
+      customer_id: CUS,
+      product_id: "prod_pro",
+      subscription_id: SUB,
+      metadata: { referenceId: orgId },
+      customer: { id: CUS, external_id: `organization:${orgId}`, metadata: {} },
+      ...over,
+    });
+
+    it("acknowledges order.created without changing the subscription", async () => {
+      await deliver(
+        handleOrderCreated,
+        "order.created",
+        order(),
+        "2026-10-01T00:00:00Z",
+      );
+      expect((await org()).subscriptionStatus).toBe("none");
+    });
+
+    it("waits for the lifecycle event instead of applying a payment for an unbound subscription", async () => {
+      await expect(
+        deliver(handleOrderPaid, "order.paid", order(), "2026-10-01T00:00:05Z"),
+      ).rejects.toThrow(/Waiting for subscription lifecycle/);
+      expect((await org()).subscriptionStatus).toBe("none");
+    });
+
+    it("rolls usage into a new billing period on a renewal payment and keeps the plan", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await client`UPDATE organization SET playwright_minutes_used = 42, ai_credits_used = 7 WHERE id = ${orgId}`;
+      await deliver(
+        handleOrderPaid,
+        "order.paid",
+        order({
+          current_period_start: "2026-11-01T00:00:00Z",
+          current_period_end: "2026-12-01T00:00:00Z",
+        }),
+        "2026-11-01T00:00:05Z",
+      );
+      const row = await org();
+      expect(row).toMatchObject({
+        subscriptionPlan: "pro",
+        subscriptionStatus: "active",
+      });
+      expect(Number(row.playwrightMinutesUsed)).toBe(0);
+      expect(row.aiCreditsUsed).toBe(0);
+    });
+
+    it("does not reset usage for a payment inside the same billing period", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await client`UPDATE organization SET playwright_minutes_used = 42 WHERE id = ${orgId}`;
+      await deliver(
+        handleOrderPaid,
+        "order.paid",
+        order(),
+        "2026-10-05T00:00:00Z",
+      );
+      expect(Number((await org()).playwrightMinutesUsed)).toBe(42);
+    });
+
+    it("rejects a payment for an unknown product", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await expect(
+        deliver(
+          handleOrderPaid,
+          "order.paid",
+          order({ product_id: "prod_unknown" }),
+          "2026-10-05T00:00:00Z",
+        ),
+      ).rejects.toThrow(/Unknown product/);
+    });
+  });
+
+  describe("subscription replacement and plan changes", () => {
+    it("binds a replacement subscription after revocation and refuses to resurrect the old one", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await deliver(
+        handleSubscriptionRevoked,
+        "subscription.revoked",
+        subscription({ status: "canceled", ended_at: "2026-10-10T00:00:00Z" }),
+        "2026-10-10T00:00:00Z",
+      );
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription({
+          id: "sub_2",
+          current_period_start: "2026-10-11T00:00:00Z",
+          current_period_end: "2026-11-11T00:00:00Z",
+        }),
+        "2026-10-11T00:00:01Z",
+      );
+      expect(await org()).toMatchObject({
+        subscriptionId: "sub_2",
+        subscriptionStatus: "active",
+      });
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-12T00:00:00Z",
+      ).catch(() => undefined);
+      expect((await org()).subscriptionId).toBe("sub_2");
+    });
+
+    it("does not let an old subscription replace the current one without a lifecycle activation", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await expect(
+        deliver(
+          handleSubscriptionUpdated,
+          "subscription.updated",
+          subscription({ id: "sub_other" }),
+          "2026-10-02T00:00:00Z",
+        ),
+      ).rejects.toThrow();
+      expect((await org()).subscriptionId).toBe(SUB);
+    });
+
+    it("applies an immediate upgrade", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription({ product_id: "prod_plus", product: { id: "prod_plus" } }),
+        "2026-10-01T00:00:01Z",
+      );
+      await deliver(
+        handleSubscriptionUpdated,
+        "subscription.updated",
+        subscription(),
+        "2026-10-02T00:00:00Z",
+      );
+      expect((await org()).subscriptionPlan).toBe("pro");
+    });
+
+    it("keeps the current plan until a scheduled downgrade takes effect", async () => {
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+      await deliver(
+        handleSubscriptionUpdated,
+        "subscription.updated",
+        subscription({
+          product_id: "prod_plus",
+          product: { id: "prod_plus" },
+          pending_update: {
+            product_id: "prod_plus",
+            applies_at: "2099-01-01T00:00:00Z",
+          },
+        }),
+        "2026-10-02T00:00:00Z",
+      );
+      expect((await org()).subscriptionPlan).toBe("pro");
+    });
+  });
+
+  describe("housekeeping", () => {
+    it("removes expired webhook claims and keeps unexpired ones", async () => {
+      await client`INSERT INTO webhook_idempotency (id, webhook_id, event_type, expires_at) VALUES (${randomUUID()}, 'old', 'x', now() - interval '1 day'), (${randomUUID()}, 'new', 'x', now() + interval '1 day')`;
+      expect(await cleanupExpiredWebhooks()).toBe(1);
+      const left =
+        await client`SELECT webhook_id FROM webhook_idempotency ORDER BY webhook_id`;
+      expect(left.map((r) => r.webhook_id)).toEqual(["new"]);
+    });
+  });
+
+  describe("invalid events never change an active organization", () => {
+    const handlers: Array<[string, Handler, string]> = [
+      ["subscription.active", handleSubscriptionActive, "subscription.active"],
+      [
+        "subscription.updated",
+        handleSubscriptionUpdated,
+        "subscription.updated",
+      ],
+      [
+        "subscription.canceled",
+        handleSubscriptionCanceled,
+        "subscription.canceled",
+      ],
+      [
+        "subscription.uncanceled",
+        handleSubscriptionUncanceled,
+        "subscription.uncanceled",
+      ],
+      [
+        "subscription.revoked",
+        handleSubscriptionRevoked,
+        "subscription.revoked",
+      ],
+      [
+        "subscription.past_due",
+        handleSubscriptionPastDue,
+        "subscription.past_due",
+      ],
+    ];
+    const snapshot = async () => {
+      const row = await org();
+      return { ...row };
+    };
+    let minute = 10;
+    const nextAt = () =>
+      `2026-10-01T00:${String(minute++).padStart(2, "0")}:00Z`;
+
+    beforeEach(async () => {
+      minute = 10;
+      await deliver(
+        handleSubscriptionActive,
+        "subscription.active",
+        subscription(),
+        "2026-10-01T00:00:01Z",
+      );
+    });
+
+    const bad: Array<[string, Record<string, unknown>]> = [
+      [
+        "no subscription id",
+        { id: undefined, subscription: undefined, subscription_id: undefined },
+      ],
+      [
+        "another customer",
+        {
+          customer_id: "cus_other_tenant",
+          customer: { id: "cus_other_tenant", external_id: "x", metadata: {} },
+        },
+      ],
+      [
+        "an unknown organization and customer",
+        {
+          customer_id: "cus_ghost",
+          metadata: { referenceId: randomUUID() },
+          customer: { id: "cus_ghost", external_id: "x", metadata: {} },
+        },
+      ],
+      [
+        "an unknown product",
+        { product_id: "prod_unknown", product: { id: "prod_unknown" } },
+      ],
+      ["no customer", { customer_id: undefined, customer: undefined }],
+    ];
+
+    // canceled/revoked locate the organization by the subscription id (a unique key),
+    // so a payload that merely repeats it with other fields is the same subscription.
+    // The meaningful hostile case for them is a different subscription that only
+    // points at this organization through metadata.
+    const foreign = { id: "sub_foreign" };
+    describe.each(handlers)("%s", (_label, handler, type) => {
+      const subscriptionKeyed =
+        type === "subscription.canceled" || type === "subscription.revoked";
+      it.each(bad)("with %s", async (_name, rawOver) => {
+        const over =
+          subscriptionKeyed && !("id" in rawOver)
+            ? { ...foreign, ...rawOver }
+            : rawOver;
+        const before = await snapshot();
+        await deliver(handler, type, subscription(over), nextAt()).catch(
+          () => undefined,
+        );
+        const after = await snapshot();
+        expect(after.subscriptionStatus).toBe(before.subscriptionStatus);
+        expect(after.subscriptionPlan).toBe(before.subscriptionPlan);
+        expect(after.subscriptionId).toBe(before.subscriptionId);
+        expect(after.polarCustomerId).toBe(before.polarCustomerId);
+        expect(after.subscriptionEndsAt).toEqual(before.subscriptionEndsAt);
+        expect((await org(otherOrgId)).subscriptionStatus).toBe("none");
+      });
+    });
+
+    it("acknowledges subscription.created without granting access", async () => {
+      await client`UPDATE organization SET subscription_status = 'none', subscription_plan = NULL, subscription_id = NULL WHERE id = ${orgId}`;
+      await deliver(
+        handleSubscriptionCreated,
+        "subscription.created",
+        subscription({ id: "sub_new", status: "incomplete" }),
+        nextAt(),
+      );
+      expect(await org()).toMatchObject({
+        subscriptionStatus: "none",
+        subscriptionPlan: null,
+      });
+    });
+
+    it("rejects the same bad events for payment handlers without touching usage", async () => {
+      await client`UPDATE organization SET playwright_minutes_used = 11 WHERE id = ${orgId}`;
+      for (const over of [
+        {
+          customer_id: "cus_other_tenant",
+          customer: { id: "cus_other_tenant", external_id: "x", metadata: {} },
+        },
+        { product_id: "prod_unknown" },
+        { subscription_id: "sub_foreign" },
+        { subscription_id: undefined },
+      ]) {
+        await deliver(
+          handleOrderPaid,
+          "order.paid",
+          {
+            id: "ord_x",
+            customer_id: CUS,
+            product_id: "prod_pro",
+            subscription_id: SUB,
+            metadata: { referenceId: orgId },
+            customer: {
+              id: CUS,
+              external_id: `organization:${orgId}`,
+              metadata: {},
+            },
+            current_period_start: "2027-01-01T00:00:00Z",
+            ...over,
+          },
+          nextAt(),
+        ).catch(() => undefined);
+      }
+      expect(Number((await org()).playwrightMinutesUsed)).toBe(11);
+      expect((await org()).subscriptionStatus).toBe("active");
+    });
   });
 });

@@ -1541,7 +1541,7 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
     typeof customerMetadata?.userId === "string"
       ? customerMetadata.userId
       : null;
-  const userId = metadataUserId || externalId;
+  const userId = asUserId(metadataUserId) ?? asUserId(externalId);
 
   if (!userId) {
     console.log(
