@@ -217,6 +217,7 @@ export const incidents = pgTable(
     autoTransitionDeliverNotificationsAtEnd: boolean(
       'auto_transition_deliver_notifications_at_end',
     ).default(true),
+    // Reserved: maintenance reminders are not implemented; nothing reads this column.
     reminderIntervals: varchar('reminder_intervals', { length: 100 }).default(
       '[3,6,12,24]',
     ),

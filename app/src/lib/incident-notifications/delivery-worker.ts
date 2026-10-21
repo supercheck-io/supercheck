@@ -265,18 +265,35 @@ export async function processDelivery(deliveryId: string) {
     .returning();
   if (!delivery) return;
   try {
-  const event = await db.query.statusPageNotificationEvents.findFirst({
-    where: eq(events.id, delivery.eventId),
-  });
-  if (!event) return;
-  const incident = await db.query.incidents.findFirst({
-    where: eq(incidents.id, event.incidentId),
-  });
-  const update = await db.query.incidentUpdates.findFirst({
-    where: eq(incidentUpdates.id, event.updateId),
-  });
-  if (!incident || !update) return;
-
+    const event = await db.query.statusPageNotificationEvents.findFirst({
+      where: eq(events.id, delivery.eventId),
+    });
+    const incident = event
+      ? await db.query.incidents.findFirst({
+          where: eq(incidents.id, event.incidentId),
+        })
+      : undefined;
+    const update = event
+      ? await db.query.incidentUpdates.findFirst({
+          where: eq(incidentUpdates.id, event.updateId),
+        })
+      : undefined;
+    if (!event || !incident || !update) {
+      // The source rows were removed after enqueue; retrying cannot succeed,
+      // so settle the delivery instead of leaving it pending until the
+      // lease-expiry sweep marks it failed as "interrupted".
+      await db
+        .update(deliveries)
+        .set({
+          status: "skipped",
+          lastError: "Notification source no longer exists.",
+          leasedUntil: null,
+          enqueuedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(deliveries.id, delivery.id));
+      return;
+    }
 
     const result =
       delivery.mode === "email"
