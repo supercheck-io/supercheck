@@ -18,7 +18,7 @@ Run maintenance commands from your installation's `deploy/docker` directory. Exa
 
 | File | Use Case |
 |------|----------|
-| `docker-compose.yml` | Bundled stack; optional `https` and `private-agent` profiles |
+| `docker-compose.yml` | Bundled stack; optional `https`, `private-agent` and `monitor-control` profiles |
 | `docker-compose-secure.yml` | Compatibility entry point for existing HTTPS installations |
 | `docker-compose-external.yml` | Connect to managed external PostgreSQL, Redis, and S3 services |
 | `docker-compose-worker.yml` | Remote regional worker |
@@ -73,6 +73,9 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `AI_MODEL` | AI model name | `gpt-6-luna` |
 | `OPENAI_API_KEY` | AI features (for default OpenAI provider) | - |
 | `DEEPSEEK_API_KEY` | API key required when `AI_PROVIDER=deepseek` | - |
+| `MISSING_CYCLE_CLOSURE_ENABLED` | App-side: close each multi-region monitor run at a deadline and count silent regions as failed. Run the `monitor-control` profile first; see the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted#missing-region-detection-optional) | `false` |
+| `MISSING_CYCLE_DEADLINE_SECONDS` | App-side: seconds a run waits before silent regions count as failed (two check timeouts are added) | `300` |
+| `COMPOSE_PROFILES` | Optional profiles started by `docker compose up`: `https`, `private-agent`, `monitor-control` | - |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |

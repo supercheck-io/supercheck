@@ -86,13 +86,15 @@ Rate limits and the AI routes identify callers by client IP. By default Superche
 
 ### Missing-Region Detection (Optional)
 
-By default a multi-region monitor waits for every region before it is evaluated. To detect regions that stop responding, including the case where every regional worker is offline, run the optional control-plane service and enable cycle closure:
+By default a multi-region monitor waits for every region before it is evaluated, so a region that stops responding blocks the result. Missing-region detection closes each run at a deadline and counts silent regions as failed. It also alerts when every regional worker is offline. It is off by default.
 
 1. Update the app and every worker to the same release. The app applies the required migration on start.
-2. Start the control plane with its Compose profile: `docker compose --profile monitor-control up -d`. It uses the worker image, has no Kubernetes credentials, and should run as a single instance.
-3. Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app.
+2. Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (comma-separated, for example `https,monitor-control` on an HTTPS install) and run `sudo docker compose up -d monitor-control`. Listing the profile there makes later `pull` and `up` commands update the control plane with the rest of the stack. It uses the worker image and has no Kubernetes credentials. Run exactly one instance.
+3. Confirm it reports healthy with `sudo docker compose ps monitor-control`, then set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app: `sudo docker compose up -d --force-recreate app`.
 
-`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`) sets how long a run waits before silent regions count as failed; two check timeouts are added to it. To turn the feature off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, recreate the app, **keep the control plane running until open runs have closed** (up to the deadline plus two check timeouts), then stop it. Stopping it earlier leaves those runs without a result until it starts again. Alerts are delivered at least once.
+`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`) sets how long a run waits before silent regions count as failed; two check timeouts are added to it. Regions that report after the deadline are recorded but do not change the closed result. Alerts are delivered at least once, so a webhook receiver should deduplicate.
+
+To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false` and recreate the app. **Keep the control plane running until open runs have closed** (up to the deadline plus two check timeouts), then run `sudo docker compose stop monitor-control` and remove `monitor-control` from `COMPOSE_PROFILES`. Stopping it earlier leaves those runs without a result until it starts again.
 
 ### Artifact Retention
 
@@ -196,7 +198,7 @@ sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
 
 ## Monitor Check Availability
 
-Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set. Missing results cannot satisfy **All**; under **Any**, one successful connected result produces **Up**; and **Majority** produces **Up** when the successful results meet the configured threshold. Otherwise, the cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
+Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set. Without [missing-region detection](#missing-region-detection-optional), missing results cannot satisfy **All**; under **Any**, one successful connected result produces **Up**; and **Majority** produces **Up** when the successful results meet the configured threshold. Otherwise, the cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
 
 ## Next Steps
 
