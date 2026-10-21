@@ -22,7 +22,10 @@ import {
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
-import { subscriptionService } from "@/lib/services/subscription-service";
+import {
+  subscriptionService,
+  SubscriptionAccessDeniedError,
+} from "@/lib/services/subscription-service";
 import { getProjectAvailableLocationCodes } from "@/lib/location-registry";
 import {
   findUnsupportedMonitorLocations,
@@ -629,6 +632,12 @@ export async function POST(req: NextRequest) {
             error instanceof Error ? error.message : "Authentication required",
         },
         { status: 401 },
+      );
+    }
+    if (error instanceof SubscriptionAccessDeniedError) {
+      return NextResponse.json(
+        { error: error.message, code: error.reason },
+        { status: 402 },
       );
     }
     logger.error({ err: error }, "Error creating monitor");

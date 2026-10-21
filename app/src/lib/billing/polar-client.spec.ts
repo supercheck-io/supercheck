@@ -1,24 +1,45 @@
 /** @jest-environment node */
-jest.mock("@polar-sh/sdk", () => ({ Polar: jest.fn() }));
+jest.mock("@polar-sh/sdk/2026-10", () => ({
+  createPolar: jest.fn(),
+  createPolarCore: jest.fn(),
+}));
 
-import { Polar } from "@polar-sh/sdk";
-import { createPolarClient, POLAR_API_VERSION } from "./polar-client";
+import { createPolar, createPolarCore } from "@polar-sh/sdk/2026-10";
+import {
+  createPolarClient,
+  createPolarCoreClient,
+  POLAR_API_VERSION,
+} from "./polar-client";
 
 describe("Polar SDK transport", () => {
-  const originalFetch = global.fetch;
-  afterEach(() => { global.fetch = originalFetch; jest.clearAllMocks(); });
+  afterEach(() => jest.clearAllMocks());
 
-  it.each(["sandbox", "production"] as const)("pins %s SDK requests and bounds their timeout", async (server) => {
-    const fetchMock = jest.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    global.fetch = fetchMock;
-    createPolarClient({ accessToken: "test-token", server });
-    const options = jest.mocked(Polar).mock.calls[0][0];
-    expect(options).toMatchObject({ server, timeoutMs: 15_000 });
-    await options?.httpClient?.request(new Request("https://example.test/v1/customers", {
-      headers: { Authorization: "Bearer test-token" },
-    }));
-    const request = fetchMock.mock.calls[0][0] as Request;
-    expect(request.headers.get("Polar-Version")).toBe(POLAR_API_VERSION);
-    expect(request.headers.get("Authorization")).toBe("Bearer test-token");
+  it("pins the SDK entry point to the raw-fetch API version", () => {
+    // The SDK subpath and the Polar-Version sent by raw fetch callers must not drift.
+    expect(POLAR_API_VERSION).toBe("2026-10");
   });
+
+  it.each(["sandbox", "production"] as const)(
+    "creates a %s client with a bounded timeout in seconds",
+    (server) => {
+      createPolarClient({ accessToken: "test-token", server });
+      expect(createPolar).toHaveBeenCalledWith({
+        accessToken: "test-token",
+        environment: server,
+        timeout: 15,
+      });
+    },
+  );
+
+  it.each(["sandbox", "production"] as const)(
+    "creates a %s core client for the auth plugin with the same options",
+    (server) => {
+      createPolarCoreClient({ accessToken: "test-token", server });
+      expect(createPolarCore).toHaveBeenCalledWith({
+        accessToken: "test-token",
+        environment: server,
+        timeout: 15,
+      });
+    },
+  );
 });

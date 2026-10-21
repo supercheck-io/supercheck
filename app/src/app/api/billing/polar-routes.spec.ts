@@ -9,8 +9,8 @@ jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "
 const mockCheckoutCreate = jest.fn();
 const mockCustomerSessionCreate = jest.fn();
 
-jest.mock("@polar-sh/sdk", () => ({
-  Polar: jest.fn().mockImplementation(() => ({
+jest.mock("@polar-sh/sdk/2026-10", () => ({
+  createPolar: jest.fn().mockImplementation(() => ({
     checkouts: { create: mockCheckoutCreate },
     customerSessions: { create: mockCustomerSessionCreate },
   })),
@@ -98,7 +98,7 @@ describe("Polar billing routes", () => {
     });
     mockCheckoutCreate.mockResolvedValue({ url: "https://sandbox.polar.sh/checkout/1" });
     mockCustomerSessionCreate.mockResolvedValue({
-      customerPortalUrl: "https://sandbox.polar.sh/portal/1",
+      customer_portal_url: "https://sandbox.polar.sh/portal/1",
     });
   });
 
@@ -114,12 +114,12 @@ describe("Polar billing routes", () => {
     expect(response.status).toBe(200);
     expect(mockCheckoutCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        customerId: "customer_1",
+        customer_id: "customer_1",
         products: ["product_pro"],
         metadata: { referenceId: "org_1" },
-        successUrl:
+        success_url:
           "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1",
-        returnUrl: "https://app.supercheck.io/subscribe",
+        return_url: "https://app.supercheck.io/subscribe",
       })
     );
   });
@@ -138,7 +138,7 @@ describe("Polar billing routes", () => {
     const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
     expect(response.status).toBe(200);
     expect(mockEnsureCustomer).toHaveBeenCalledWith("user_owner", "owner@example.com", "Owner", "org_1", { throwOnError: true });
-    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "customer_org_1" }));
+    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customer_id: "customer_org_1" }));
   });
 
   it("rejects stale organization checkout and portal actions before contacting Polar", async () => {
@@ -181,7 +181,7 @@ describe("Polar billing routes", () => {
   it("allows resubscription after cancellation has expired using the original customer", async () => {
     mockFindOrganization.mockResolvedValue({ polarCustomerId: "original-customer", subscriptionStatus: "canceled", subscriptionEndsAt: new Date(0) });
     expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus" }))).status).toBe(200);
-    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "original-customer" }));
+    expect(mockCheckoutCreate).toHaveBeenCalledWith(expect.objectContaining({ customer_id: "original-customer" }));
     expect(mockEnsureCustomer).not.toHaveBeenCalled();
   });
 
@@ -221,8 +221,8 @@ describe("Polar billing routes", () => {
 
     expect(response.status).toBe(200);
     expect(mockCustomerSessionCreate).toHaveBeenCalledWith({
-      customerId: "customer_1",
-      returnUrl: "https://app.supercheck.io/org-admin?tab=subscription",
+      customer_id: "customer_1",
+      return_url: "https://app.supercheck.io/org-admin?tab=subscription",
     });
   });
 });

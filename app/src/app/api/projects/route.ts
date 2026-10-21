@@ -9,7 +9,10 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { eq, sql } from "drizzle-orm";
-import { subscriptionService } from "@/lib/services/subscription-service";
+import {
+  subscriptionService,
+  SubscriptionAccessDeniedError,
+} from "@/lib/services/subscription-service";
 
 /**
  * GET /api/projects
@@ -242,6 +245,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: 401 }
+      );
+    }
+    if (error instanceof SubscriptionAccessDeniedError) {
+      return NextResponse.json(
+        { error: error.message, code: error.reason },
+        { status: 402 }
       );
     }
     console.error("Failed to create project:", error);

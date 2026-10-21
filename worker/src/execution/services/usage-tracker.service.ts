@@ -18,7 +18,7 @@ import {
 } from './execution-usage-receipts';
 
 // Polar API version pinned to match stable quarterly release
-const POLAR_API_VERSION = '2026-04';
+const POLAR_API_VERSION = '2026-10';
 
 // Check if Polar is enabled (cloud mode)
 function isSelfHosted(): boolean {
