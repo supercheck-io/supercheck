@@ -3,7 +3,7 @@ import { RunDetails } from "./run-details";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("@/hooks/use-locations", () => ({ useLocationMetadata: () => ({ locations: [] }) }));
-jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
+jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: ({ isRunning }: { isRunning: boolean }) => isRunning ? <span>Waiting for report</span> : null }));
 jest.mock("@/components/nav-user", () => ({ NavUser: () => null }));
 jest.mock("@/components/playground/performance-test-report", () => ({ PerformanceTestReport: () => null }));
 jest.mock("./run-status-listener", () => ({ RunStatusListener: () => null }));
@@ -19,6 +19,7 @@ it("shows queued standalone status and keeps job-only AI analysis unavailable", 
   render(<RunDetails run={{ id: "standalone", jobId: null, jobName: "Standalone test", status: "queued", startedAt: "2026-01-01T00:00:00Z" }} />);
   await screen.findByRole("button", { name: "Delete" });
   expect(screen.getByText("Queued")).toBeInTheDocument();
+  expect(screen.getByText("Waiting for report")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "AI Analyze" })).not.toBeInTheDocument();
 });
 it("preserves AI analysis for a job-backed run", async () => {
