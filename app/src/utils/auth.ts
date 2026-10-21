@@ -29,7 +29,8 @@ import {
   renderEmailVerificationEmail,
 } from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
-import { createPolarClient } from "@/lib/billing/polar-client";
+import { createPolarCoreClient } from "@/lib/billing/polar-client";
+import { normalizePolarPayload } from "@/lib/webhooks/polar-payload";
 import {
   isPolarEnabled,
   getPolarConfig,
@@ -58,7 +59,7 @@ function getPolarPlugin() {
 
     const config = getPolarConfig()!;
 
-    const polarClient = createPolarClient({
+    const polarClient = createPolarCoreClient({
       accessToken: config.accessToken,
       server: config.server,
     });
@@ -88,7 +89,7 @@ function getPolarPlugin() {
             const { handleCustomerCreated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleCustomerCreated(payload);
+            await handleCustomerCreated(normalizePolarPayload(payload));
           },
           // Subscription lifecycle handlers
 
@@ -97,7 +98,7 @@ function getPolarPlugin() {
             const { handleSubscriptionActive } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionActive(payload);
+            await handleSubscriptionActive(normalizePolarPayload(payload));
           },
 
           onSubscriptionCreated: async (payload: any) => {
@@ -105,7 +106,7 @@ function getPolarPlugin() {
             const { handleSubscriptionCreated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionCreated(payload);
+            await handleSubscriptionCreated(normalizePolarPayload(payload));
           },
 
           onSubscriptionUpdated: async (payload: any) => {
@@ -113,7 +114,7 @@ function getPolarPlugin() {
             const { handleSubscriptionUpdated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionUpdated(payload);
+            await handleSubscriptionUpdated(normalizePolarPayload(payload));
           },
 
           onSubscriptionCanceled: async (payload: any) => {
@@ -121,7 +122,7 @@ function getPolarPlugin() {
             const { handleSubscriptionCanceled } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionCanceled(payload);
+            await handleSubscriptionCanceled(normalizePolarPayload(payload));
           },
           // Handle subscription uncancellation - user reverses cancellation during grace period
 
@@ -130,7 +131,7 @@ function getPolarPlugin() {
             const { handleSubscriptionUncanceled } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionUncanceled(payload);
+            await handleSubscriptionUncanceled(normalizePolarPayload(payload));
           },
           // CRITICAL: Handle subscription revocation - immediate access termination
 
@@ -139,7 +140,7 @@ function getPolarPlugin() {
             const { handleSubscriptionRevoked } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleSubscriptionRevoked(payload);
+            await handleSubscriptionRevoked(normalizePolarPayload(payload));
           },
           // Order creation handler
           // Do NOT activate subscription on order.created.
@@ -150,7 +151,7 @@ function getPolarPlugin() {
             const { handleOrderCreated } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleOrderCreated(payload);
+            await handleOrderCreated(normalizePolarPayload(payload));
           },
           // Payment confirmation handler
 
@@ -159,7 +160,7 @@ function getPolarPlugin() {
             const { handleOrderPaid } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleOrderPaid(payload);
+            await handleOrderPaid(normalizePolarPayload(payload));
           },
           // Customer state change - useful for syncing customer data
           onCustomerStateChanged: async () => {
@@ -176,7 +177,7 @@ function getPolarPlugin() {
             const { handleCustomerDeleted } = await import(
               "@/lib/webhooks/polar-webhooks"
             );
-            await handleCustomerDeleted(payload);
+            await handleCustomerDeleted(normalizePolarPayload(payload));
           },
           // Catch-all for logging and handling any other events
 
@@ -187,7 +188,7 @@ function getPolarPlugin() {
               const { handleSubscriptionPastDue } = await import(
                 "@/lib/webhooks/polar-webhooks"
               );
-              await handleSubscriptionPastDue(payload);
+              await handleSubscriptionPastDue(normalizePolarPayload(payload));
             }
           },
         }),

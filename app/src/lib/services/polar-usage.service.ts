@@ -27,8 +27,11 @@ import {
 import { eq, and, sql, gt, lte, or, isNull, isNotNull, ne } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
-import type { Polar } from "@polar-sh/sdk";
-import { createPolarClient, POLAR_API_VERSION } from "@/lib/billing/polar-client";
+import {
+  createPolarClient,
+  POLAR_API_VERSION,
+  type PolarClient,
+} from "@/lib/billing/polar-client";
 
 const logger = createLogger({ module: "polar-usage" }) as {
   info: (data: unknown, message?: string) => void;
@@ -101,7 +104,7 @@ function usagePercentage(used: number, included: number): number {
 }
 
 class PolarUsageService {
-  private polarClient: InstanceType<typeof Polar> | null = null;
+  private polarClient: PolarClient | null = null;
 
   private async checkRecentUsageNotifications(scanUntil: Date) {
     const scanSince = new Date(scanUntil.getTime() - 24 * 60 * 60 * 1000);

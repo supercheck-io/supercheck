@@ -138,12 +138,12 @@ export async function POST(request: NextRequest) {
         : products.proProductId;
 
     const checkout = await polar.checkouts.create({
-      customerId: org.polarCustomerId,
+      customer_id: org.polarCustomerId,
       products: [productId],
-      successUrl: `${appUrl}/billing/success?checkout_id={CHECKOUT_ID}&organization_id=${encodeURIComponent(organizationId)}`,
-      returnUrl: `${appUrl}/subscribe`,
+      success_url: `${appUrl}/billing/success?checkout_id={CHECKOUT_ID}&organization_id=${encodeURIComponent(organizationId)}`,
+      return_url: `${appUrl}/subscribe`,
       metadata: { referenceId: organizationId },
-      allowDiscountCodes: true,
+      allow_discount_codes: true,
     });
 
     return NextResponse.json({ url: checkout.url });
