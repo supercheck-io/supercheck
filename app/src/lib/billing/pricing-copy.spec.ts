@@ -25,9 +25,7 @@ describe("PRICING_FAQS", () => {
 
   it("explains why browser checks and k6 tests are Europe-only", () => {
     const faq = PRICING_FAQS.find(
-      (item) =>
-        item.question ===
-        "Why do browser checks and k6 tests run only in Europe?",
+      (item) => item.question === "Why do browser checks and k6 tests run only in Europe?",
     );
     expect(faq?.answer).toContain("available in Europe only");
     expect(faq?.answer).toContain("each location counts separately");
@@ -37,11 +35,7 @@ describe("PRICING_FAQS", () => {
     const faq = PRICING_FAQS.find((item) =>
       item.question.startsWith("How are browser execution minutes measured"),
     );
-    expect(faq?.answer).toContain(
-      "if browser checks are enabled in more locations",
-    );
-    expect(faq?.answer).toContain(
-      "from any location do not consume Playwright minutes",
-    );
+    expect(faq?.answer).toContain("if browser checks are enabled in more locations");
+    expect(faq?.answer).toContain("from any location do not consume Playwright minutes");
   });
 });

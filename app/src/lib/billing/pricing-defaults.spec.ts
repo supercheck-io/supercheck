@@ -40,20 +40,15 @@ describe("pricing defaults and copy", () => {
     expect(
       PRICING_FAQS.find(
         (f) =>
-          f.question ===
-          "Does one subscription cover the projects in my organization?",
+          f.question === "Does one subscription cover the projects in my organization?",
       )?.answer,
     ).toContain("all projects within it share your monthly subscription");
     expect(
-      PRICING_FAQS.find((f) => f.question === "How are load tests measured?")
-        ?.answer,
+      PRICING_FAQS.find((f) => f.question === "How are load tests measured?")?.answer,
     ).toContain("This can exceed accumulated active VU-time");
   });
 });
 
-it.each([
-  [0.0125, "$0.0125/VU-min"],
-  [0.010001, "$0.010001/VU-min"],
-])("preserves custom rate %s", (price, expected) => {
+it.each([[0.0125, "$0.0125/VU-min"], [0.010001, "$0.010001/VU-min"]])("preserves custom rate %s", (price, expected) => {
   expect(formatOveragePrice(Number(price), "VU-min")).toBe(expected);
 });
