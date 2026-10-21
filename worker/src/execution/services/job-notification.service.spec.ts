@@ -69,7 +69,7 @@ describe('JobNotificationService', () => {
       sreAlertTriageQueueService as never,
     );
 
-    return { service, dbService, sreAlertTriageQueueService };
+    return { service, dbService, notificationService, sreAlertTriageQueueService };
   }
 
   it('enqueues created alert-history rows after job notifications', async () => {
@@ -106,4 +106,34 @@ describe('JobNotificationService', () => {
       { id: 'history-2', status: 'failed' },
     ]);
   });
+  it.each(['failed', 'passed', 'error'] as const)(
+    'counts the current %s run once at the threshold boundary',
+    async (status) => {
+      const { service, dbService, notificationService } = createService();
+      const job = await dbService.getJobById();
+      job.alertConfig.failureThreshold = 2;
+      job.alertConfig.recoveryThreshold = 2;
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        { id: 'run-1', status },
+        { id: 'previous', status: status === 'passed' ? 'failed' : 'passed' },
+      ]);
+      await service.handleJobNotifications({
+        jobId: 'job-1', runId: 'run-1', finalStatus: status, durationSeconds: 1,
+      });
+      expect(notificationService.sendNotificationToMultipleProviders).not.toHaveBeenCalled();
+
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        { id: 'run-1', status }, { id: 'previous', status },
+      ]);
+      await service.handleJobNotifications({
+        jobId: 'job-1', runId: 'run-1', finalStatus: status, durationSeconds: 1,
+      });
+      expect(notificationService.sendNotificationToMultipleProviders).toHaveBeenCalledWith(
+        expect.any(Array), expect.objectContaining({ metadata: expect.objectContaining(
+          status === 'passed' ? { consecutiveSuccesses: 2 } : { consecutiveFailures: 2 },
+        ) }),
+      );
+    },
+  );
+
 });
