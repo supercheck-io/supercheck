@@ -25,8 +25,11 @@ const row = (
   group: string | null,
   details: object | null,
 ) =>
-  client`INSERT INTO monitor_results (id, monitor_id, execution_group_id, location, details)
-         VALUES (${id}, ${monitorId}, ${group}, ${location}, ${details === null ? null : JSON.stringify(details)}::jsonb)`;
+  // Synthetic rows are failed and unmeasured; every other row is a measured success.
+  client`INSERT INTO monitor_results (id, monitor_id, execution_group_id, location, details, is_up, response_time_ms)
+         VALUES (${id}, ${monitorId}, ${group}, ${location}, ${details === null ? null : JSON.stringify(details)}::jsonb,
+                 ${(details as { synthetic?: boolean } | null)?.synthetic ? false : true},
+                 ${(details as { synthetic?: boolean } | null)?.synthetic ? null : 120})`;
 
 beforeAll(async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL required");
@@ -38,7 +41,7 @@ beforeAll(async () => {
   db = drizzle(client);
   await client.unsafe(`CREATE TABLE monitor_results (
     id text PRIMARY KEY, monitor_id text NOT NULL, execution_group_id text,
-    location text, details jsonb)`);
+    location text, details jsonb, is_up boolean, response_time_ms integer)`);
 });
 
 afterAll(async () => {
@@ -96,6 +99,15 @@ describe("excludeSupersededSyntheticResults", () => {
     await row("other-region", "us", "g1", {});
 
     expect(await counted(excludeSupersededSyntheticResults)).toBe(3);
+  });
+});
+
+describe("synthetic detection", () => {
+  it("never treats a measured row as synthetic, whatever its details say", async () => {
+    await client`INSERT INTO monitor_results (id, monitor_id, execution_group_id, location, details, is_up, response_time_ms)
+      VALUES ('m', ${monitorId}, 'g1', 'eu', '{"synthetic": true}'::jsonb, true, 50)`;
+
+    expect(await counted(excludeSyntheticResults)).toBe(1);
   });
 });
 

@@ -13,6 +13,7 @@ import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { eq, desc, and, gte } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
+import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 
 interface AnalyzeMonitorRequest {
@@ -185,7 +186,8 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(monitorResults.monitorId, monitorId),
-          gte(monitorResults.checkedAt, twentyFourHoursAgo)
+          gte(monitorResults.checkedAt, twentyFourHoursAgo),
+          excludeSupersededSyntheticResults
         )
       );
 
@@ -195,7 +197,8 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(monitorResults.monitorId, monitorId),
-          gte(monitorResults.checkedAt, sevenDaysAgo)
+          gte(monitorResults.checkedAt, sevenDaysAgo),
+          excludeSupersededSyntheticResults
         )
       );
 

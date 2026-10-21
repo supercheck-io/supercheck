@@ -10,7 +10,12 @@ import { monitorResults } from "@/db/schema";
  * The COALESCE keeps rows without details (all pre-existing data) included instead of
  * letting SQL's three-valued logic drop them.
  */
-const isSynthetic = sql`COALESCE(${monitorResults.details}->>'synthetic', '') = 'true'`;
+// Synthetic rows are always failed and unmeasured. Testing those cheap columns first keeps the
+// jsonb `details` untouched (no detoasting) for the overwhelming majority of rows.
+const isSynthetic = sql`(
+  ${monitorResults.isUp} IS NOT TRUE AND ${monitorResults.responseTimeMs} IS NULL
+  AND COALESCE(${monitorResults.details}->>'synthetic', '') = 'true'
+)`;
 
 export const excludeSupersededSyntheticResults = sql`NOT (
   ${isSynthetic} AND EXISTS (
