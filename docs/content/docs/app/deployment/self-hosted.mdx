@@ -210,3 +210,7 @@ Checks depend on connected workers. When multiple execution targets are configur
 
 - [AI SRE Setup](/docs/app/admin/ai-sre-setup) — add services and read-only evidence sources.
 - [Private Agent](/docs/app/deployment/private-agent) — reach sources inside another network.
+
+## Queue durability
+
+Bundled Redis persists execution queues in the `redis-data` named volume using append-only persistence with an every-second fsync. Ordinary container restarts preserve queued work. Do not remove the volume (`docker compose down -v`) unless you intend to discard queue state. Abrupt host or storage failures can lose approximately one second of writes; this single-node deployment is not a Redis backup or high-availability solution. Interrupted executions may be retried, so scripts with external side effects should tolerate retries.

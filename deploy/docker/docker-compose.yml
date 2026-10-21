@@ -598,7 +598,7 @@ services:
       - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
-    command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
+    command: sh -c "exec redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly yes --appendfsync everysec --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
     volumes:
       - redis-data:/data
     restart: unless-stopped
