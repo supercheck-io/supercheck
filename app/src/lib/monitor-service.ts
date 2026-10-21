@@ -261,35 +261,6 @@ export async function updateMonitorHandler(
   return updatedMonitor;
 }
 
-export async function deleteMonitorHandler(monitorId: string) {
-  // Remove scheduled job first (like jobs do)
-  const monitor = await db.query.monitors.findFirst({
-    where: eq(monitorTable.id, monitorId),
-  });
-
-  if (monitor?.scheduledJobId) {
-    try {
-      await deleteScheduledMonitor(monitor.scheduledJobId);
-    } catch (scheduleError) {
-      console.warn(
-        `Could not remove schedule for monitor ${monitorId} during deletion:`,
-        scheduleError
-      );
-      // Continue with deletion even if unscheduling fails
-    }
-  }
-
-  const [deletedMonitor] = await db
-    .delete(monitorTable)
-    .where(eq(monitorTable.id, monitorId))
-    .returning();
-
-  if (!deletedMonitor) {
-    throw { statusCode: 404, message: "Monitor not found for deletion" };
-  }
-  return deletedMonitor;
-}
-
 /**
  * Trigger immediate execution of a monitor for validation/testing.
  */

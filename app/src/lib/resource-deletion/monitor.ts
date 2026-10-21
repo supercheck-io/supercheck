@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -22,7 +23,7 @@ export async function deleteMonitorWithContext(
   if (!monitorId) {
     console.error("[DELETE_MONITOR] Error: Monitor ID is required");
     return {
-      success: false,
+      success: false as const,
       error: "Monitor ID is required",
     };
   }
@@ -43,14 +44,15 @@ export async function deleteMonitorWithContext(
         `[DELETE_MONITOR] User ${userId} attempted to delete monitor ${monitorId} without permission`
       );
       return {
-        success: false,
+        success: false as const,
         error: "Insufficient permissions to delete monitors",
       };
     }
 
 
     // Perform the deletion within a transaction
-    const transactionResult = await db.transaction(async (tx) => {
+    const transactionResult = await (async () => {
+      const tx = db;
       // Verify monitor belongs to current project before deletion - get details for audit
       const existingMonitor = await tx
         .select({
@@ -71,7 +73,7 @@ export async function deleteMonitorWithContext(
 
       if (existingMonitor.length === 0) {
         return {
-          success: false,
+          success: false as const,
           error: "Monitor not found or access denied",
         };
       }
@@ -105,6 +107,10 @@ export async function deleteMonitorWithContext(
         if (!cleanup.success) throw new Error("Could not delete monitor storage; please retry");
       }
 
+      return db.transaction(async (tx) => {
+      const [freshMonitor] = await tx.select({id: monitors.id}).from(monitors).where(and(eq(monitors.id,monitorId),eq(monitors.projectId,project.id),eq(monitors.organizationId,organizationId))).for("update");
+      const freshResults = await tx.select({ id: monitorResults.id, testExecutionId: monitorResults.testExecutionId, testReportS3Url: monitorResults.testReportS3Url }).from(monitorResults).where(eq(monitorResults.monitorId,monitorId)).for("update");
+      if (!freshMonitor || !isDeepStrictEqual(freshResults.sort((a,b)=>a.id.localeCompare(b.id)), resultsWithReports.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Monitor results changed during cleanup; retry deletion");
       // Delete monitor results from database
       const deletedResults = await tx
         .delete(monitorResults)
@@ -130,12 +136,13 @@ export async function deleteMonitorWithContext(
       }
 
       return {
-        success: true,
+        success: true as const,
         monitorData,
         reportsToDelete,
         deletedResults: deletedResults.length,
       };
-    });
+      });
+    })();
 
     // Handle cleanup tasks outside the transaction
     if (transactionResult.success && "monitorData" in transactionResult) {
@@ -174,7 +181,7 @@ export async function deleteMonitorWithContext(
           resultsDeleted: transactionResult.deletedResults,
           reportsDeleted: transactionResult.reportsToDelete?.length || 0,
         },
-        success: true,
+        success: true as const,
       }).catch((_auditError) => {
         console.error(
           "[DELETE_MONITOR] Error logging audit event (monitor still deleted):",
@@ -202,20 +209,20 @@ export async function deleteMonitorWithContext(
       );
 
       return {
-        success: true,
+        success: true as const,
         message: `Monitor "${
           transactionResult.monitorData?.name || "Unknown"
         }" has been deleted.`,
       };
     } else if (!transactionResult.success) {
       return {
-        success: false,
+        success: false as const,
         error: transactionResult.error,
       };
     }
 
     return {
-      success: false,
+      success: false as const,
       error: "Unexpected transaction result",
     };
   } catch (error) {
@@ -226,7 +233,7 @@ export async function deleteMonitorWithContext(
     });
 
     return {
-      success: false,
+      success: false as const,
       error: errorMessage,
       details: "Check server logs for more information",
     };

@@ -52,5 +52,5 @@ export function calculateJobStatus(runStatuses: TestRunStatus[]): JobStatus {
  * @returns True if run can be cancelled
  */
 export function canCancelRun(status: RunStatus): boolean {
-  return ["running", "queued"].includes(status);
+  return ["running", "queued", "pending"].includes(status);
 }

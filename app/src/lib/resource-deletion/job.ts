@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import { jobs, jobTests, runs, reports } from "@/db/schema";
 import { eq, and, inArray, or } from "drizzle-orm";
@@ -24,7 +25,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
   if (!jobId) {
     console.error("[DELETE_JOB] Error: Job ID is required");
     return {
-      success: false,
+      success: false as const,
       error: "Job ID is required",
     };
   }
@@ -47,7 +48,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
         `[DELETE_JOB] User ${userId} attempted to delete job ${jobId} without DELETE_JOBS permission`
       );
       return {
-        success: false,
+        success: false as const,
         error: "Insufficient permissions to delete jobs",
       };
     }
@@ -55,7 +56,8 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
 
     // Perform the deletion within a transaction
     console.log("[DELETE_JOB] Starting database transaction...");
-    const transactionResult = await db.transaction(async (tx) => {
+    const transactionResult = await (async () => {
+      const tx = db;
       console.log("[DELETE_JOB] Transaction started successfully");
 
       // Check if the job exists and belongs to current project
@@ -81,7 +83,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
           `[DELETE_JOB] Job with ID ${jobId} not found or access denied`
         );
         return {
-          success: false,
+          success: false as const,
           error: "Job not found or access denied",
         };
       }
@@ -133,7 +135,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
       );
 
       if (associatedRuns.some(run => ["queued", "running", "pending"].includes(run.status))) {
-        return { success: false, error: "Cannot delete a job with active runs; cancel them and retry" };
+        return { success: false as const, error: "Cannot delete a job with active runs; cancel them and retry" };
       }
 
       // Get all reports for these runs
@@ -183,35 +185,15 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
         if (!cleanup.success) throw new Error("Could not delete job storage; please retry");
       }
 
-      // Delete reports from database (for all runs and the job)
-      if (allReportsToDelete.length > 0) {
-        console.log("[DELETE_JOB] Deleting reports from database...");
-
-        // Delete run reports
-        if (associatedRuns.length > 0) {
-          const runIds = associatedRuns.map((run) => run.id);
-          const deletedRunReports = await tx
-            .delete(reports)
-            .where(or(inArray(reports.entityId, runIds), and(eq(reports.entityType, "test"), inArray(reports.reportPath, runIds.map(id => `${id}/report`)))))
-            .returning({ id: reports.id });
-          console.log(
-            `[DELETE_JOB] Deleted ${deletedRunReports.length} run reports`
-          );
-        }
-
-        // Delete job reports
-        const deletedJobReports = await tx
-          .delete(reports)
-          .where(
-            and(eq(reports.entityId, jobId), eq(reports.entityType, "job"))
-          )
-          .returning({ id: reports.id });
-        console.log(
-          `[DELETE_JOB] Deleted ${deletedJobReports.length} job reports`
-        );
-
-        console.log("[DELETE_JOB] All reports deleted from database");
-      }
+      return db.transaction(async (tx) => {
+      const [freshJob] = await tx.select({id: jobs.id}).from(jobs).where(and(eq(jobs.id, jobId),eq(jobs.projectId,project.id),eq(jobs.organizationId,organizationId))).for("update");
+      const freshRuns = await tx.select({ id: runs.id, status: runs.status, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata }).from(runs).where(eq(runs.jobId,jobId)).for("update");
+      if (!freshJob || !isDeepStrictEqual(freshRuns.sort((a,b)=>a.id.localeCompare(b.id)), associatedRuns.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Job runs changed during cleanup; retry deletion");
+      const ownedIds = associatedRuns.map(run => run.id);
+      const freshReports = await tx.select({ id: reports.id, reportPath: reports.reportPath, s3Url: reports.s3Url, entityType: reports.entityType, entityId: reports.entityId }).from(reports).where(or(and(eq(reports.entityId, jobId), eq(reports.entityType, "job")), ownedIds.length ? or(inArray(reports.entityId, ownedIds), and(eq(reports.entityType, "test"), inArray(reports.reportPath, ownedIds.map(id=>`${id}/report`)))) : undefined)).for("update");
+      if (!isDeepStrictEqual(freshReports.sort((a,b)=>a.id.localeCompare(b.id)), allReportsToDelete.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Job reports changed during cleanup; retry deletion");
+      // Delete only the pointers collected and rechecked, never newly inserted report rows.
+      if (allReportsToDelete.length) await tx.delete(reports).where(inArray(reports.id, allReportsToDelete.map(report => report.id)));
 
       // Delete test runs associated with this job
       console.log("[DELETE_JOB] Deleting associated runs...");
@@ -239,13 +221,14 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
 
       console.log("[DELETE_JOB] Transaction completed successfully");
       return {
-        success: true,
+        success: true as const,
         jobData,
         reportsToDelete: allReportsToDelete,
         deletedRuns: deletedRuns.length,
         deletedReports: allReportsToDelete.length,
       };
-    });
+      });
+    })();
 
     // Handle cleanup tasks outside the transaction
     if (transactionResult.success && "jobData" in transactionResult) {
@@ -288,7 +271,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
           runsDeleted: transactionResult.deletedRuns,
           reportsDeleted: transactionResult.deletedReports,
         },
-        success: true,
+        success: true as const,
       }).catch((_auditError) => {
         console.error(
           "[DELETE_JOB] Error logging audit event (job still deleted):",
@@ -315,18 +298,18 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
       );
 
       return {
-        success: true,
+        success: true as const,
         message: `Job deleted successfully (including ${transactionResult.deletedRuns} runs and ${transactionResult.deletedReports} reports)`,
       };
     } else if (!transactionResult.success) {
       return {
-        success: false,
+        success: false as const,
         error: transactionResult.error,
       };
     }
 
     return {
-      success: false,
+      success: false as const,
       error: "Unexpected transaction result",
     };
   } catch (error) {
@@ -337,7 +320,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
     });
 
     return {
-      success: false,
+      success: false as const,
       error: errorMessage,
       details: "Check server logs for more information",
     };

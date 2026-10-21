@@ -173,4 +173,17 @@ describe("S3 report cleanup", () => {
     expect(send.mock.calls[2][0].input.Delete.Objects).toHaveLength(1000);
     expect(send.mock.calls[3][0].input.Delete.Objects).toHaveLength(1);
   });
+
+it("applies the configured network timeout and supports endpoint path prefixes", async () => {
+  const service = new S3CleanupService({ ...config, endpoint: "http://storage:9000/storage/s3", operationTimeout: 1200 });
+  expect(jest.mocked(S3Client)).toHaveBeenLastCalledWith(expect.objectContaining({ requestHandler: { connectionTimeout: 1200, requestTimeout: 1200, socketTimeout: 1200, throwOnRequestTimeout: true } }));
+  expect(service.getRunArtifactInputs({ id: "run-1", reportS3Url: "http://storage:9000/storage/s3/tests/run-1/report/index.html" })).toEqual([
+    expect.objectContaining({ entityId: "run-1", entityType: "test", reportPath: "run-1" }),
+  ]);
+  objects.set("tests", ["run-1/report/index.html", "other/report/index.html"]);
+  const result = await service.deleteReports([{ entityType: "test", entityId: "run-1", s3Url: "http://storage:9000/storage/s3/tests/run-1/report/index.html" }]);
+  expect(result.success).toBe(true);
+  expect(objects.get("tests")).toEqual(["other/report/index.html"]);
+});
+
 });

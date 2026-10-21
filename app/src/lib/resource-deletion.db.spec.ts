@@ -58,3 +58,29 @@ it("retains an alias-only cleanup pointer after storage failure", async () => {
     await client`DELETE FROM runs WHERE id='orphan-run'`;
   }
 });
+
+it("does not hold the pooled database connection while storage deletion is pending", async () => {
+  await client`INSERT INTO runs (id,project_id,status) VALUES ('slow-run','project','passed')`;
+  await client`INSERT INTO reports VALUES ('slow-report','slow-run','test','slow-run/report',NULL)`;
+  mockDeleteReports.mockImplementationOnce(async () => {
+    // This client has max:1. A storage call inside a transaction would starve this query.
+    await Promise.race([client`SELECT 1`, new Promise((_, reject) => setTimeout(() => reject(new Error('storage cleanup holds database connection')), 1500).unref())]);
+    return { success: true };
+  });
+  const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
+  expect((await deleteRunWithContext('slow-run', context)).success).toBe(true);
+});
+
+it("retains a run if its report receipt changes while storage is being deleted", async () => {
+  await client`INSERT INTO runs (id,project_id,status) VALUES ('race-run','project','passed')`;
+  await client`INSERT INTO reports VALUES ('race-report','race-run','test','race-run/report',NULL)`;
+  mockDeleteReports.mockImplementationOnce(async () => {
+    await client`UPDATE runs SET report_s3_url='http://storage/tests/race-run/report/index.html' WHERE id='race-run'`;
+    return { success: true };
+  });
+  const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
+  const result = await deleteRunWithContext('race-run', context);
+  expect(result.success).toBe(false);
+  expect(result.error).toContain('changed during cleanup');
+  expect(await client`SELECT id FROM runs WHERE id='race-run'`).toHaveLength(1);
+});

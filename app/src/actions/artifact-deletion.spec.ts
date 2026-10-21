@@ -18,20 +18,16 @@ const mockDelete = jest.fn();
 const mockRunInputs = jest.fn();
 const mockSelections: unknown[][] = [];
 
-jest.mock("@/utils/db", () => ({
-  db: {
-    transaction: jest.fn(async (work) => work({
-      select: jest.fn(() => {
-        const rows = mockSelections.shift() ?? [];
-        return { from: () => ({ where: () => ({
-          limit: async () => rows,
-          then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
-        }) }) };
-      }),
-      delete: (...args: unknown[]) => mockDelete(...args),
-    })),
-  },
-}));
+jest.mock("@/utils/db", () => {
+  const select = jest.fn(() => {
+    const rows = mockSelections.shift() ?? [];
+    const chain = { from: () => chain, where: () => chain, limit: async () => rows, for: async () => rows, then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(rows).then(resolve) };
+    return chain;
+  });
+  const database = { select, delete: (...args: unknown[]) => mockDelete(...args), transaction: jest.fn() };
+  database.transaction.mockImplementation(async (work) => work(database));
+  return { db: database };
+});
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: async () => ({ userId: "user", organizationId: "org", project: { id: "project", name: "Project" } }),
 }));
@@ -93,7 +89,7 @@ describe("explicit artifact deletion", () => {
     mockDeleteReports.mockResolvedValueOnce({ success: false, deletedObjects: [], failedObjects: [{ key: "run", error: "offline" }] });
     expect((await deleteRun("run")).success).toBe(false);
     expect(mockDelete).not.toHaveBeenCalled();
-    mockSelections.push([run], []);
+    mockSelections.push([run], [], [run], []);
     mockDeleteReports.mockResolvedValueOnce({ success: true, deletedObjects: ["run/report/index.html"], failedObjects: [] });
     expect((await deleteRun("run")).success).toBe(true);
     expect(mockDeleteReports).toHaveBeenNthCalledWith(2, [input]);
