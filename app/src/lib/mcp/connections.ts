@@ -61,12 +61,14 @@ export async function listMcpConnections(userId: string): Promise<McpConnection[
       projectId: oauthConsent.referenceId,
       projectName: projects.name,
       connectedAt: oauthConsent.createdAt,
-      lastActiveAt: sql<Date | null>`(
+      // mapWith decodes the raw aggregate like a timestamp column; a bare sql<Date>
+      // arrives as a "timestamp without time zone" string that Date would read as local time.
+      lastActiveAt: sql`(
         SELECT max(${oauthRefreshToken.createdAt}) FROM ${oauthRefreshToken}
         WHERE ${oauthRefreshToken.userId} = ${oauthConsent.userId}
           AND ${oauthRefreshToken.clientId} = ${oauthConsent.clientId}
           AND ${oauthRefreshToken.referenceId} = ${oauthConsent.referenceId}
-      )`,
+      )`.mapWith(oauthRefreshToken.createdAt),
     })
     .from(oauthConsent)
     .innerJoin(oauthClient, eq(oauthClient.clientId, oauthConsent.clientId))
@@ -87,18 +89,23 @@ export async function listMcpConnections(userId: string): Promise<McpConnection[
     projectId: row.projectId as string,
     projectName: row.projectName,
     connectedAt: row.connectedAt,
-    lastActiveAt: row.lastActiveAt ? new Date(row.lastActiveAt) : null,
+    lastActiveAt: row.lastActiveAt ?? null,
   }));
 }
 
 /**
- * Ends one connection: the consent, its refresh tokens (revoked, so a rotated
- * token cannot be replayed) and its access-token rows, in one transaction.
+ * Ends one connection: the consent, its refresh tokens and its access-token rows,
+ * in one transaction.
  *
  * Better Auth's own delete-consent endpoint removes only the consent row and
- * leaves refresh tokens usable, so disconnecting must go through here. Access
- * tokens already issued are JWTs; the MCP server re-checks the consent on every
- * call, which ends them immediately.
+ * leaves refresh tokens usable, so disconnecting must go through here.
+ *
+ * Refresh tokens are deleted, not flagged revoked. Presenting a revoked token
+ * outside its reuse window makes Better Auth treat it as theft and delete every
+ * refresh token the client holds for this user, which would also disconnect the
+ * client's other projects. A deleted token is simply unknown. Access tokens
+ * already issued are JWTs; the MCP server re-checks the consent on every call,
+ * which ends them at once.
  */
 export async function revokeMcpConnection(input: {
   userId: string;
@@ -120,17 +127,7 @@ export async function revokeMcpConnection(input: {
     const reference = (column: AnyPgColumn) =>
       consent.referenceId === null ? isNull(column) : eq(column, consent.referenceId);
 
-    await tx
-      .update(oauthRefreshToken)
-      .set({ revoked: new Date() })
-      .where(
-        and(
-          eq(oauthRefreshToken.userId, input.userId),
-          eq(oauthRefreshToken.clientId, consent.clientId),
-          reference(oauthRefreshToken.referenceId),
-          isNull(oauthRefreshToken.revoked),
-        ),
-      );
+    // Access tokens reference their refresh token, so remove them first.
     await tx
       .delete(oauthAccessToken)
       .where(
@@ -138,6 +135,15 @@ export async function revokeMcpConnection(input: {
           eq(oauthAccessToken.userId, input.userId),
           eq(oauthAccessToken.clientId, consent.clientId),
           reference(oauthAccessToken.referenceId),
+        ),
+      );
+    await tx
+      .delete(oauthRefreshToken)
+      .where(
+        and(
+          eq(oauthRefreshToken.userId, input.userId),
+          eq(oauthRefreshToken.clientId, consent.clientId),
+          reference(oauthRefreshToken.referenceId),
         ),
       );
     await tx.delete(oauthConsent).where(eq(oauthConsent.id, consent.id));

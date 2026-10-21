@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
   if (!parsed?.success) return mcpJson({ error: "invalid_request" }, 400);
   const { accept, projectId, oauth_query: oauthQuery } = parsed.data;
 
+  // The code and the denial both go back to this URI. Refuse an unusable one now: once
+  // consent is recorded, an undeliverable code would leave a connection the client never got.
+  if (!isSafeRedirectTarget(new URLSearchParams(oauthQuery).get("redirect_uri"))) {
+    return mcpJson({ error: "invalid_request" }, 400);
+  }
+
   const userId = session.user.id;
   const sessionId = session.session.id;
 

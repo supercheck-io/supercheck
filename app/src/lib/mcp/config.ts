@@ -41,10 +41,12 @@ export function isMcpDynamicRegistrationEnabled(
 }
 
 function appBaseUrl(env: Record<string, string | undefined>): string {
-  const value = env.APP_URL || env.BETTER_AUTH_URL || env.NEXT_PUBLIC_APP_URL;
+  // BETTER_AUTH_URL first: it is Better Auth's base URL, which becomes the token issuer,
+  // and the resource must live on the same origin the issuer does.
+  const value = env.BETTER_AUTH_URL || env.APP_URL || env.NEXT_PUBLIC_APP_URL;
   if (!value) {
     throw new Error(
-      "MCP_SERVER_ENABLED requires APP_URL (or BETTER_AUTH_URL) to be set",
+      "MCP_SERVER_ENABLED requires BETTER_AUTH_URL (or APP_URL) to be set",
     );
   }
   return value;

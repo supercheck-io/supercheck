@@ -16,8 +16,8 @@ export default function ConnectedAppsPage() {
         <CardHeader>
           <CardTitle>Connected apps</CardTitle>
           <CardDescription>
-            AI agents and other apps you have allowed to read a project over MCP. Disconnecting ends access
-            immediately.
+            AI agents and other apps you have allowed to read a project over MCP. Disconnecting stops an app from
+            getting new access.
           </CardDescription>
         </CardHeader>
         <CardContent>

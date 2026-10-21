@@ -38,8 +38,14 @@ describe("getMcpResourceUrl", () => {
     );
   });
 
-  it("falls back through BETTER_AUTH_URL and NEXT_PUBLIC_APP_URL", () => {
-    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "https://auth.example.com" })).toBe("https://auth.example.com/api/mcp");
+  it("uses the token issuer's origin first, so the resource and issuer cannot disagree", () => {
+    expect(
+      getMcpResourceUrl({ BETTER_AUTH_URL: "https://auth.example.com", APP_URL: "https://other.example.com" }),
+    ).toBe("https://auth.example.com/api/mcp");
+  });
+
+  it("falls back to APP_URL and NEXT_PUBLIC_APP_URL", () => {
+    expect(getMcpResourceUrl({ APP_URL: "https://app.example.com" })).toBe("https://app.example.com/api/mcp");
     expect(getMcpResourceUrl({ NEXT_PUBLIC_APP_URL: "https://pub.example.com" })).toBe("https://pub.example.com/api/mcp");
   });
 
@@ -50,6 +56,6 @@ describe("getMcpResourceUrl", () => {
   });
 
   it("fails clearly when no app URL is configured", () => {
-    expect(() => getMcpResourceUrl({})).toThrow("APP_URL");
+    expect(() => getMcpResourceUrl({})).toThrow("BETTER_AUTH_URL");
   });
 });

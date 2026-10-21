@@ -2,7 +2,7 @@
 -- jwt, oauth-provider and mcp plugins). Additive only: the plugins that use these
 -- tables are registered only when MCP_SERVER_ENABLED=true, so existing behaviour
 -- is unchanged. Shapes match db/schema/oauth.ts.
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "jwks" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "public_key" text NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS "jwks" (
   "alg" text,
   "crv" text
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_client" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "client_id" text NOT NULL UNIQUE,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS "oauth_client" (
   "metadata" jsonb
 );
 CREATE INDEX IF NOT EXISTS "oauth_client_user_id_idx" ON "oauth_client" ("user_id");
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_resource" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "identifier" text NOT NULL UNIQUE,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS "oauth_resource" (
   "policy_version" integer DEFAULT 1,
   "metadata" jsonb
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_client_resource" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "client_id" text NOT NULL REFERENCES "oauth_client"("client_id") ON DELETE CASCADE,
@@ -82,7 +82,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "oauth_client_resource_client_resource_uidx"
   ON "oauth_client_resource" ("client_id", "resource_id");
 CREATE INDEX IF NOT EXISTS "oauth_client_resource_client_id_idx" ON "oauth_client_resource" ("client_id");
 CREATE INDEX IF NOT EXISTS "oauth_client_resource_resource_id_idx" ON "oauth_client_resource" ("resource_id");
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_refresh_token" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "token" text NOT NULL UNIQUE,
@@ -108,7 +108,7 @@ CREATE INDEX IF NOT EXISTS "oauth_refresh_token_session_id_idx" ON "oauth_refres
 CREATE INDEX IF NOT EXISTS "oauth_refresh_token_user_id_idx" ON "oauth_refresh_token" ("user_id");
 CREATE INDEX IF NOT EXISTS "oauth_refresh_token_authorization_code_id_idx"
   ON "oauth_refresh_token" ("authorization_code_id");
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_access_token" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "token" text NOT NULL UNIQUE,
@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS "oauth_access_token_user_id_idx" ON "oauth_access_tok
 CREATE INDEX IF NOT EXISTS "oauth_access_token_authorization_code_id_idx"
   ON "oauth_access_token" ("authorization_code_id");
 CREATE INDEX IF NOT EXISTS "oauth_access_token_refresh_id_idx" ON "oauth_access_token" ("refresh_id");
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_consent" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "client_id" text NOT NULL REFERENCES "oauth_client"("client_id") ON DELETE CASCADE,
@@ -146,7 +146,12 @@ CREATE TABLE IF NOT EXISTS "oauth_consent" (
 );
 CREATE INDEX IF NOT EXISTS "oauth_consent_client_id_idx" ON "oauth_consent" ("client_id");
 CREATE INDEX IF NOT EXISTS "oauth_consent_user_id_idx" ON "oauth_consent" ("user_id");
-
+-- One connection per (app, user, project): a double-clicked Approve cannot create a second row
+-- that disconnecting the first would leave behind. NULL references are distinct, but consent
+-- without a project is refused by the application.
+CREATE UNIQUE INDEX IF NOT EXISTS "oauth_consent_client_user_reference_uidx"
+  ON "oauth_consent" ("client_id", "user_id", "reference_id");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "oauth_client_assertion" (
   "id" text PRIMARY KEY,
   "expires_at" timestamp NOT NULL

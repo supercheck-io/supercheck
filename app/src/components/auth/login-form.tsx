@@ -28,6 +28,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { loginFormSchema, type LoginFormData } from "@/lib/validations/auth";
+import { isOAuthResumePath } from "@/lib/auth/safe-next-path";
 
 interface InviteData {
   organizationName: string;
@@ -152,7 +153,7 @@ export function LoginForm({
                   <span className="text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link
-                      href={nextPath ? `/sign-up?next=${encodeURIComponent(nextPath)}` : "/sign-up"}
+                      href={nextPath && !isOAuthResumePath(nextPath) ? `/sign-up?next=${encodeURIComponent(nextPath)}` : "/sign-up"}
                       className="underline underline-offset-2"
                     >
                       Sign up

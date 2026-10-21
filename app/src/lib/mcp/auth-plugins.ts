@@ -1,4 +1,4 @@
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import type { BetterAuthPlugin } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { mcp } from "@better-auth/mcp";
@@ -43,6 +43,44 @@ export function mcpRegistrationPolicy(): BetterAuthPlugin {
   };
 }
 
+type ResolveProject = (input: { sessionId: string; userId: string }) => Promise<string | undefined>;
+
+/**
+ * Refuses to record consent unless a project was chosen.
+ *
+ * Better Auth looks a consent up by (client, user, reference id). A consent with
+ * no reference id would later cover every authorization request that also has
+ * none, skipping the connect screen, and would yield a token that names no
+ * project and could not be listed or disconnected. Approval over HTTP is already
+ * refused; this guards the in-process path the connect screen uses, including a
+ * lookup that failed or a choice that was cleared by a concurrent request.
+ */
+export function mcpConsentRequiresProject(resolve: ResolveProject): BetterAuthPlugin {
+  return {
+    id: "supercheck-mcp-consent-requires-project",
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.path === "/oauth2/consent",
+          handler: createAuthMiddleware(async (ctx) => {
+            if ((ctx.body as { accept?: unknown } | undefined)?.accept !== true) return;
+            const session = await getSessionFromCtx(ctx);
+            // No session is rejected by the consent endpoint itself.
+            if (!session) return;
+            const project = await resolve({ sessionId: session.session.id, userId: session.user.id });
+            if (!project) {
+              throw new APIError("BAD_REQUEST", {
+                error: "invalid_request",
+                error_description: "Choose a project before approving",
+              });
+            }
+          }),
+        },
+      ],
+    },
+  };
+}
+
 export interface McpAuthPluginOptions {
   /** Canonical MCP resource URL; access tokens are audience-bound to it. */
   resource: string;
@@ -52,10 +90,7 @@ export interface McpAuthPluginOptions {
    * The project the signed-in user chose on the connect screen, or undefined
    * when none was chosen. Consent is recorded against this value.
    */
-  resolveProjectReference: (input: {
-    sessionId: string;
-    userId: string;
-  }) => Promise<string | undefined>;
+  resolveProjectReference: ResolveProject;
 }
 
 /**
@@ -72,8 +107,12 @@ export interface McpAuthPluginOptions {
  */
 export function createMcpAuthPlugins(options: McpAuthPluginOptions) {
   return [
-    jwt(),
+    // Signs access tokens. By default the plugin also adds a signed JWT of the
+    // user (id, email, name) to every get-session response; nothing uses it and
+    // it would sign on every authenticated request.
+    jwt({ disableSettingJwtHeader: true }),
     mcpRegistrationPolicy(),
+    mcpConsentRequiresProject(options.resolveProjectReference),
     mcp({
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",

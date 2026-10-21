@@ -54,7 +54,11 @@ function consentRequest(body: unknown, headers: Record<string, string> = { origi
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 }
-const approve = { accept: true, projectId: PROJECT, oauth_query: "client_id=c&sig=s&exp=1" };
+const approve = {
+  accept: true,
+  projectId: PROJECT,
+  oauth_query: "client_id=c&sig=s&exp=1&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback",
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -129,7 +133,7 @@ describe("POST /api/oauth/mcp/consent", () => {
   });
 
   it("requires a project to approve", async () => {
-    const response = await consentPost(consentRequest({ accept: true, oauth_query: "q=1" }));
+    const response = await consentPost(consentRequest({ accept: true, oauth_query: approve.oauth_query }));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "project_required" });
     expect(mockConsent).not.toHaveBeenCalled();
@@ -155,9 +159,25 @@ describe("POST /api/oauth/mcp/consent", () => {
     expect(mockClear).toHaveBeenCalledWith("session-1");
   });
 
-  it("rejects a body over the size cap", async () => {
-    const response = await consentPost(consentRequest("x".repeat(20 * 1024)));
+  it("rejects a valid JSON body over the size cap", async () => {
+    // Within every field's own limit, so only the body cap can reject it.
+    const padded = { ...approve, padding: "x".repeat(20 * 1024) };
+    const response = await consentPost(consentRequest(padded));
     expect(response.status).toBe(400);
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockConsent).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unusable redirect_uri before recording any consent", async () => {
+    for (const redirect of ["javascript:alert(1)", "data:text/html,x", "", "not a url"]) {
+      mockSave.mockClear();
+      mockConsent.mockClear();
+      const query = new URLSearchParams({ client_id: "c", sig: "s", exp: "1", redirect_uri: redirect }).toString();
+      const response = await consentPost(consentRequest({ ...approve, oauth_query: query }));
+      expect(response.status).toBe(400);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockConsent).not.toHaveBeenCalled();
+    }
   });
 });
 

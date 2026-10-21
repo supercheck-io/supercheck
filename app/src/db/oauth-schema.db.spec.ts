@@ -117,6 +117,52 @@ describe("OAuth / MCP tables", () => {
     }
   });
 
+  it("points every foreign key at the intended table and column, with the intended delete rule", async () => {
+    const rows = await db<{ table: string; column: string; target: string; rule: string }[]>`
+      SELECT c.conrelid::regclass::text AS "table", a.attname AS "column",
+             c.confrelid::regclass::text || '.' || af.attname AS target,
+             CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'n' THEN 'set null' ELSE c.confdeltype::text END AS rule
+      FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+      JOIN pg_attribute af ON af.attrelid = c.confrelid AND af.attnum = c.confkey[1]
+      WHERE c.contype = 'f' AND c.conrelid::regclass::text LIKE 'oauth\_%'
+    `;
+    const actual = rows.map((r) => `${r.table}.${r.column} -> ${r.target} (${r.rule})`).sort();
+    expect(actual).toEqual(
+      [
+        "oauth_client.user_id -> \"user\".id (cascade)",
+        "oauth_client_resource.client_id -> oauth_client.client_id (cascade)",
+        "oauth_client_resource.resource_id -> oauth_resource.identifier (cascade)",
+        "oauth_refresh_token.client_id -> oauth_client.client_id (cascade)",
+        "oauth_refresh_token.session_id -> session.id (set null)",
+        "oauth_refresh_token.user_id -> \"user\".id (cascade)",
+        "oauth_access_token.client_id -> oauth_client.client_id (cascade)",
+        "oauth_access_token.session_id -> session.id (set null)",
+        "oauth_access_token.user_id -> \"user\".id (cascade)",
+        "oauth_access_token.refresh_id -> oauth_refresh_token.id (cascade)",
+        "oauth_consent.client_id -> oauth_client.client_id (cascade)",
+        "oauth_consent.user_id -> \"user\".id (cascade)",
+      ].sort(),
+    );
+  });
+
+  it("allows one consent per app, user and project", async () => {
+    const userId = randomUUID();
+    const clientId = `dup-client-${userId}`;
+    const projectId = randomUUID();
+    await db`INSERT INTO "user" (id, name, email) VALUES (${userId}, 'Dup', ${`dup-${userId}@example.com`})`;
+    await db`INSERT INTO oauth_client (client_id, redirect_uris) VALUES (${clientId}, ARRAY['http://localhost:9999/cb'])`;
+    const insert = (reference: string) => db`
+      INSERT INTO oauth_consent (client_id, user_id, reference_id, scopes, created_at, updated_at)
+      VALUES (${clientId}, ${userId}, ${reference}, ARRAY['mcp:read'], now(), now())
+    `;
+    await insert(projectId);
+    // A double-clicked Approve must not leave a second row that disconnecting the first would orphan.
+    await expect(insert(projectId)).rejects.toMatchObject({ code: "23505" });
+    // A different project is a different connection.
+    await expect(insert(randomUUID())).resolves.toBeDefined();
+  });
+
   it("cascades OAuth rows when a user is deleted", async () => {
     const userId = randomUUID();
     await db`INSERT INTO "user" (id, name, email) VALUES (${userId}, 'OAuth User', ${`oauth-${userId}@example.com`})`;

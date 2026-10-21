@@ -222,6 +222,11 @@ export const oauthConsent = pgTable(
   (table) => ({
     clientIdx: index("oauth_consent_client_id_idx").on(table.clientId),
     userIdx: index("oauth_consent_user_id_idx").on(table.userId),
+    clientUserReferenceUnique: uniqueIndex("oauth_consent_client_user_reference_uidx").on(
+      table.clientId,
+      table.userId,
+      table.referenceId,
+    ),
   }),
 );
 

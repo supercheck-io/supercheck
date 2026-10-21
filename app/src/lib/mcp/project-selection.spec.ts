@@ -6,7 +6,7 @@ const mockGetSelectable = jest.fn();
 
 jest.mock("@/utils/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: (...a: unknown[]) => mockSelect(...a) }) }) }),
+    select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: (...a: unknown[]) => mockSelect(...a) }) }) }) }),
     delete: () => ({ where: (...a: unknown[]) => mockDelete(...a) }),
     transaction: async (fn: (tx: unknown) => Promise<void>) =>
       fn({
@@ -79,6 +79,12 @@ describe("readProjectSelection", () => {
   ])("returns nothing when %s", async (_name, rows) => {
     mockSelect.mockResolvedValue(rows);
     await expect(readProjectSelection({ sessionId: "s1", userId: "u1" })).resolves.toBeUndefined();
+  });
+
+  it("surfaces an unexpected failure instead of reading it as 'no project chosen'", async () => {
+    mockSelect.mockResolvedValue(row({ userId: "u1", projectId: PROJECT }));
+    mockGetSelectable.mockRejectedValue(new Error("connection timeout"));
+    await expect(readProjectSelection({ sessionId: "s1", userId: "u1" })).rejects.toThrow("connection timeout");
   });
 
   it("re-checks access, so a user who lost the project cannot be granted it", async () => {

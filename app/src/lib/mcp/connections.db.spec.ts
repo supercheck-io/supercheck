@@ -1,4 +1,7 @@
 /** @jest-environment node */
+// A server outside UTC is where a timestamp-without-time-zone value read as local time goes wrong.
+process.env.TZ = "America/Los_Angeles";
+
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -113,7 +116,10 @@ describe("MCP connections", () => {
       projectName: "Beta",
       verifiedHost: "agent.example.com",
     });
-    expect(byId.get(dcr)?.lastActiveAt).toBeInstanceOf(Date);
+    // The refresh token was created a moment ago; a timezone mix-up would be hours off.
+    const lastActive = byId.get(dcr)?.lastActiveAt;
+    expect(lastActive).toBeInstanceOf(Date);
+    expect(Math.abs(Date.now() - (lastActive as Date).getTime())).toBeLessThan(60_000);
 
     await revokeMcpConnection({ userId: aliceId, consentId: dcr });
     await revokeMcpConnection({ userId: aliceId, consentId: cimdId });
@@ -125,7 +131,7 @@ describe("MCP connections", () => {
     await revokeMcpConnection({ userId: aliceId, consentId: id });
   });
 
-  it("disconnects by revoking the refresh tokens, not just removing the consent", async () => {
+  it("disconnects by deleting the refresh tokens, and leaves the same client's other project connected", async () => {
     const id = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectA });
     // A second connection of the same client to another project must survive.
     const other = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectB });
@@ -135,11 +141,12 @@ describe("MCP connections", () => {
     const consents = await client<{ id: string }[]>`SELECT id FROM oauth_consent WHERE user_id = ${aliceId}`;
     expect(consents.map((c) => c.id)).toEqual([other]);
 
+    // Deleted, not flagged: Better Auth treats a replayed *revoked* token as theft and wipes every
+    // refresh token the client holds for the user, which would disconnect project B as well.
     const refresh = await client<{ reference_id: string; revoked: boolean }[]>`
       SELECT reference_id, revoked IS NOT NULL AS revoked FROM oauth_refresh_token WHERE user_id = ${aliceId}
     `;
-    expect(refresh.find((r) => r.reference_id === projectA)?.revoked).toBe(true);
-    expect(refresh.find((r) => r.reference_id === projectB)?.revoked).toBe(false);
+    expect(refresh).toEqual([{ reference_id: projectB, revoked: false }]);
 
     const access = await client<{ reference_id: string }[]>`
       SELECT reference_id FROM oauth_access_token WHERE user_id = ${aliceId}

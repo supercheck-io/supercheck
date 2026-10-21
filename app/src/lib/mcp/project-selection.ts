@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { verification } from "@/db/schema";
 import { getSelectableProjects } from "@/lib/session";
@@ -63,6 +63,7 @@ export async function readProjectSelection(input: {
     .select({ value: verification.value, expiresAt: verification.expiresAt })
     .from(verification)
     .where(eq(verification.identifier, selectionIdentifier(input.sessionId)))
+    .orderBy(desc(verification.createdAt))
     .limit(1);
   if (!row || row.expiresAt.getTime() <= Date.now()) return undefined;
 
@@ -83,8 +84,11 @@ export async function readProjectSelection(input: {
   const projectId = (parsed as { projectId: string }).projectId;
   try {
     await assertCanConnect(input.userId, projectId);
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Lost access means no choice. Anything else (a database error, a timeout)
+    // must surface rather than read as "no project chosen".
+    if (error instanceof McpProjectAccessError) return undefined;
+    throw error;
   }
   return projectId;
 }
