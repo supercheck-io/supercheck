@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { runs, reports } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import type { ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -69,7 +69,10 @@ async function deleteAssociatedReports(
         entityType: reports.entityType,
       })
       .from(reports)
-      .where(eq(reports.entityId, runId));
+      .where(and(
+        or(eq(reports.entityId, runId), and(eq(reports.entityType, "test"), eq(reports.reportPath, `${runId}/report`))),
+        inArray(reports.entityType, ["job", "test", "k6_job", "k6_test"]),
+      ));
 
     console.log(
       `[DELETE_RUN] Found ${existingReports.length} reports to delete`
@@ -99,7 +102,7 @@ async function deleteAssociatedReports(
     }
 
     const deletedReports = await tx.delete(reports).where(and(
-      eq(reports.entityId, runId),
+      or(eq(reports.entityId, runId), and(eq(reports.entityType, "test"), eq(reports.reportPath, `${runId}/report`))),
       inArray(reports.entityType, ["job", "test", "k6_job", "k6_test"])
     )).returning({ id: reports.id });
     const totalCount = deletedReports.length;

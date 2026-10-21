@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { jobs, jobTests, runs, reports } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import type { ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -150,7 +150,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
             entityId: reports.entityId,
           })
           .from(reports)
-          .where(inArray(reports.entityId, runIds));
+          .where(or(inArray(reports.entityId, runIds), and(eq(reports.entityType, "test"), inArray(reports.reportPath, runIds.map(id => `${id}/report`)))));
 
         console.log(
           `[DELETE_JOB] Found ${runReports.length} reports for all runs`
@@ -192,7 +192,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
           const runIds = associatedRuns.map((run) => run.id);
           const deletedRunReports = await tx
             .delete(reports)
-            .where(inArray(reports.entityId, runIds))
+            .where(or(inArray(reports.entityId, runIds), and(eq(reports.entityType, "test"), inArray(reports.reportPath, runIds.map(id => `${id}/report`)))))
             .returning({ id: reports.id });
           console.log(
             `[DELETE_JOB] Deleted ${deletedRunReports.length} run reports`
