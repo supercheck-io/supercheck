@@ -489,7 +489,7 @@ export class DbService implements OnModuleInit {
           createdAt: schema.runs.createdAt,
         })
         .from(schema.runs)
-        .where(and(eq(schema.runs.jobId, jobId), inArray(schema.runs.status, ['passed', 'failed', 'error', 'blocked', 'skipped'])))
+        .where(and(eq(schema.runs.jobId, jobId), inArray(schema.runs.status, ['passed', 'failed', 'error', 'blocked'])))
         .orderBy(desc(schema.runs.createdAt), desc(schema.runs.id))
         .limit(limit);
 
