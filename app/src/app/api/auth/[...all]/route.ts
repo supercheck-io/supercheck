@@ -1,6 +1,7 @@
 import { auth } from "@/utils/auth";
 import { toNextJsHandler } from "better-auth/next-js";
 import { NextResponse } from "next/server";
+import { isOAuthEndpointDenied } from "@/lib/mcp/http-policy";
 
 const handlers = toNextJsHandler(auth);
 
@@ -19,6 +20,10 @@ function organizationPolicyError(request: Request) {
   // audit trail). Keys are created only through the application's own routes.
   if (path === "/api/auth/api-key" || path.startsWith("/api/auth/api-key/")) {
     return NextResponse.json({ error: "API keys are managed through the application's token endpoints." }, { status: 403 });
+  }
+  // OAuth/JWT plugin endpoints: only what MCP clients need is reachable (see lib/mcp/http-policy.ts).
+  if (isOAuthEndpointDenied(request.method, path)) {
+    return NextResponse.json({ error: "This endpoint is not available." }, { status: 403 });
   }
   if (path === "/api/auth/organization" || path.startsWith("/api/auth/organization/")) {
     const endpoint = path.slice("/api/auth/organization/".length);

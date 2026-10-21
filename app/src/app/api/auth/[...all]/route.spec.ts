@@ -6,6 +6,7 @@ jest.mock("better-auth/next-js", () => ({ toNextJsHandler: () => ({ GET: (...arg
 import { GET, POST } from "./route";
 import { organization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
+import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
 
 describe("generic authentication organization safeguards", () => {
   beforeEach(() => {
@@ -52,5 +53,44 @@ describe("generic authentication organization safeguards", () => {
     expect((await POST(request)).status).toBe(200);
     expect(mockGet).toHaveBeenCalledWith(request);
     expect(mockPost).toHaveBeenCalledWith(request);
+  });
+
+  // The OAuth provider and JWT plugins add dozens of routes. Only what MCP clients need is reachable over
+  // HTTP; enumerating the installed plugins means a new route in a future release is denied by default.
+  type Endpoint = { path?: string; options?: { method?: string | string[] } };
+  const mcpRoutes = createMcpAuthPlugins({
+    resource: "https://app.example.com/api/mcp",
+    dynamicRegistration: true,
+    resolveProjectReference: async () => undefined,
+  }).flatMap((plugin) =>
+    Object.values(((plugin as { endpoints?: unknown }).endpoints ?? {}) as Record<string, Endpoint>)
+      .filter((endpoint) => endpoint.path)
+      .flatMap((endpoint) =>
+        [endpoint.options?.method ?? "GET"].flat().filter((m) => m !== "*").map((method) => [method, endpoint.path as string] as const),
+      ),
+  );
+  // Reachable over HTTP: the OAuth flow itself, plus discovery documents and the signing keys.
+  const reachable = new Set([
+    "GET /oauth2/authorize", "POST /oauth2/authorize", "POST /oauth2/token", "POST /oauth2/register",
+    "POST /oauth2/revoke", "GET /jwks", "GET /.well-known/oauth-authorization-server",
+    "GET /.well-known/openid-configuration", "GET /.well-known/oauth-protected-resource",
+  ]);
+  it("covers the installed OAuth and JWT plugins (guards against an empty enumeration)", () => {
+    expect(mcpRoutes.length).toBeGreaterThan(25);
+    expect(mcpRoutes).toEqual(expect.arrayContaining([["POST", "/oauth2/token"], ["POST", "/oauth2/consent"], ["GET", "/token"]]));
+  });
+  it.each(mcpRoutes.map(([method, path]) => [method, path]))("%s %s is exposed only if an MCP client needs it", async (method, path) => {
+    const url = path.replace(/:[a-z_]+/g, "x");
+    const handler = method === "GET" ? GET : POST;
+    const response = await handler(new Request(`https://app.supercheck.io/api/auth${url}`, { method }));
+    expect(response.status).toBe(reachable.has(`${method} ${path}`) ? 200 : 403);
+  });
+  it.each(["/oauth2/%64elete-consent", "/oauth2/delete-consent/", "/oauth2/anything-new", "/admin/oauth2/anything-new", "/oauth2"])("denies encoded, trailing-slash and unknown OAuth paths: %s", async (path) => {
+    expect((await POST(new Request(`https://app.supercheck.io/api/auth${path}`, { method: "POST" }))).status).toBe(403);
+    expect((await GET(new Request(`https://app.supercheck.io/api/auth${path}`))).status).toBe(403);
+  });
+  it("does not allow a method the endpoint was not allowlisted for", async () => {
+    expect((await GET(new Request("https://app.supercheck.io/api/auth/oauth2/token"))).status).toBe(403);
+    expect((await POST(new Request("https://app.supercheck.io/api/auth/oauth2/register", { method: "POST" }))).status).toBe(200);
   });
 });

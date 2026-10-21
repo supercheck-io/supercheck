@@ -253,6 +253,13 @@
       "when": 1792670000000,
       "tag": "0035_invitation_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792680000000,
+      "tag": "0036_oauth_mcp_server",
+      "breakpoints": true
     }
   ]
 }
