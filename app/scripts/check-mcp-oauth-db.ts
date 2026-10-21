@@ -1,3 +1,4 @@
+import { suspendAccount } from "../src/lib/security/suspend-account";
 /**
  * Real Better Auth + real PostgreSQL: connect one OAuth client to two projects,
  * disconnect one, and prove the other keeps working.
@@ -212,6 +213,20 @@ async function main(): Promise<void> {
   // --- normal sessions carry no signed user JWT
   const sessionResponse = await send("/api/auth/get-session", { cookie });
   check("get-session does not emit a signed user JWT", sessionResponse.headers.get("set-auth-jwt") === null);
+
+  // Refresh-token issuance must recheck a ban, including bans written outside our admin route.
+  const suspended = await connect(projectB);
+  await sql`UPDATE "user" SET banned=true, ban_expires=NULL WHERE id=${userId}`;
+  const blocked = await refresh(suspended.refresh);
+  check("suspended account cannot refresh OAuth credentials", blocked.status === 403, `${blocked.status}`);
+  await suspendAccount(userId, "Integration suspension", null);
+  const [{ access, refresh: refreshCount }] = await sql<{access:number;refresh:number}[]>`SELECT
+    (SELECT count(*)::int FROM oauth_access_token WHERE user_id=${userId}) AS access,
+    (SELECT count(*)::int FROM oauth_refresh_token WHERE user_id=${userId}) AS refresh`;
+  check("suspension removes stored access and refresh tokens", access === 0 && refreshCount === 0);
+  await sql`UPDATE "user" SET banned=false, ban_expires=NULL WHERE id=${userId}`;
+  const replay = await refresh(suspended.refresh);
+  check("old refresh credentials remain revoked after unban", replay.status === 400, `${replay.status}`);
 
   await sql.end({ timeout: 2 });
 }

@@ -1,7 +1,8 @@
+import { suspendAccount } from "@/lib/security/suspend-account";
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers, requireAdmin } from '@/lib/admin';
 import { db } from '@/utils/db';
-import { user, session } from '@/db/schema';
+import { user } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
@@ -78,22 +79,7 @@ export async function PATCH(request: NextRequest) {
         // Better Auth's admin plugin requires specific user IDs, but we use RBAC system
         const banExpires = duration ? new Date(Date.now() + duration) : null;
         
-        await db
-          .update(user)
-          .set({
-            banned: true,
-            banReason: reason,
-            banExpires: banExpires,
-            updatedAt: new Date()
-          })
-          .where(eq(user.id, userId));
-
-        // Invalidate all user sessions immediately (security fix)
-        // This prevents banned users from continuing to use the app with existing sessions
-        await db
-          .update(session)
-          .set({ expiresAt: new Date(0) })
-          .where(eq(session.userId, userId));
+        await suspendAccount(userId, reason, banExpires);
 
         // Audit log the ban action
         await logAdminEvent(
