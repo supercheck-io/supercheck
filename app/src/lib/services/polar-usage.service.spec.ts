@@ -66,8 +66,8 @@ jest.mock("@/lib/logger/index", () => ({
   })),
 }));
 
-jest.mock("@polar-sh/sdk", () => ({
-  Polar: jest.fn(() => ({})),
+jest.mock("@polar-sh/sdk/2026-10", () => ({
+  createPolar: jest.fn(() => ({})),
 }));
 jest.mock("./subscription-service", () => ({ subscriptionService: { getOrganizationPlanSafe: jest.fn() } }));
 

@@ -6,7 +6,10 @@ describe("normalizePolarPayload", () => {
       data: {
         customer_id: "cus_1",
         product: { id: "p1", is_recurring: true },
-        pending_update: { product_id: "p2", applies_at: "2026-11-01T00:00:00Z" },
+        pending_update: {
+          product_id: "p2",
+          applies_at: "2026-11-01T00:00:00Z",
+        },
         prices: [{ price_amount: 5 }],
       },
     });
@@ -45,5 +48,15 @@ describe("normalizePolarPayload", () => {
     expect(input.data).not.toHaveProperty("startsAt");
     expect((out.data as Record<string, unknown>).startsAt).toBe(date);
     expect(normalizePolarPayload(null)).toBeNull();
+  });
+
+  it("keeps a __proto__ key as plain data and does not pollute prototypes", () => {
+    const out = normalizePolarPayload(
+      JSON.parse('{"data":{"__proto__":{"polluted":true},"to_string":"x"}}'),
+    ) as { data: Record<string, unknown> };
+    expect(Object.getPrototypeOf(out.data)).toBeNull();
+    expect(Object.hasOwn(out.data, "__proto__")).toBe(true);
+    expect(out.data.toString).toBe("x");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });

@@ -23,13 +23,21 @@ export function normalizePolarPayload<T>(value: T): T {
   }
   if (!isPlainObject(value)) return value;
 
-  const result: Record<string, unknown> = {};
+  // Own-property writes only: a "__proto__" key from JSON.parse must stay data.
+  const result: Record<string, unknown> = Object.create(null);
+  const set = (key: string, child: unknown) =>
+    Object.defineProperty(result, key, {
+      value: child,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   for (const [key, child] of Object.entries(value)) {
-    result[key] = OPAQUE_KEYS.has(key) ? child : normalizePolarPayload(child);
+    set(key, OPAQUE_KEYS.has(key) ? child : normalizePolarPayload(child));
   }
   for (const key of Object.keys(value)) {
     const camel = toCamel(key);
-    if (camel !== key && !(camel in result)) result[camel] = result[key];
+    if (camel !== key && !Object.hasOwn(result, camel)) set(camel, result[key]);
   }
   return result as T;
 }

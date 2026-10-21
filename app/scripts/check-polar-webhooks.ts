@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   expect(valid.status === 200, `a correctly signed webhook must be accepted, got ${valid.status}`);
   expect(
     received.length === 1 && received[0] === "customer.created:org_check",
-    `the handler must receive camelCased SDK fields, saw ${JSON.stringify(received)}`,
+    `the handler must receive the snake_case SDK fields, saw ${JSON.stringify(received)}`,
   );
 
   const forged = await deliver(customerCreated(), "not-the-webhook-secret");
