@@ -55,6 +55,8 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   # Hide the public status page branding footer globally when set to true
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
+  # Days to keep finished status-page notification delivery rows (App-side; 1-3650).
+  STATUS_PAGE_DELIVERY_RETENTION_DAYS: ${STATUS_PAGE_DELIVERY_RETENTION_DAYS:-30}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
   # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.
