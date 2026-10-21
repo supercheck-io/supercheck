@@ -341,6 +341,37 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       sendNotification.mockResolvedValue({ successful: 1 });
     });
 
+    it('does not count an attempt the caller already abandoned', async () => {
+      await openCycle('r1a', { strategy: 'all' });
+      await service.closeCycle('r1a', afterDeadline);
+      sendNotification.mockResolvedValue({ delivered: false, successful: 0 });
+      expect(await service.notifyCycle('r1a', { abandoned: true })).toBe(false);
+      expect(await cycleRow('r1a')).toMatchObject({
+        notifiedAt: null,
+        notifyAttempts: 0,
+      });
+      sendNotification.mockResolvedValue({ successful: 1 });
+    });
+
+    it('fails a closure fast instead of waiting forever on a locked monitor row', async () => {
+      await openCycle('lk', { strategy: 'all' });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const holder = client.begin(async (tx) => {
+        await tx.unsafe('SELECT 1 FROM monitors WHERE id = $1 FOR UPDATE', [
+          monitorId,
+        ]);
+        await held;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const started = Date.now();
+      await expect(service.closeCycle('lk', afterDeadline)).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(10_000);
+      release();
+      await holder;
+      expect(await service.closeCycle('lk', afterDeadline)).toBe('closed');
+    }, 20_000);
+
     it('treats a provider that throws like a failed delivery', async () => {
       await openCycle('r2', { strategy: 'all' });
       await service.closeCycle('r2', afterDeadline);

@@ -62,6 +62,10 @@ export class MonitorCycleService {
     if (!peek || peek.status !== 'open') return 'noop';
 
     return this.dbService.db.transaction(async (tx) => {
+      // A transaction elsewhere holding the monitor row must not stall every tenant's closures
+      // indefinitely; the poison backoff retries a timed-out closure.
+      await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '30s'`);
       const [monitor] = await tx
         .select()
         .from(schema.monitors)
@@ -298,7 +302,10 @@ export class MonitorCycleService {
    * A crash between delivery and receipt re-sends once. The evaluator keeps recovery-once
    * semantics (zero successful deliveries stays eligible).
    */
-  async notifyCycle(cycleId: string): Promise<boolean> {
+  async notifyCycle(
+    cycleId: string,
+    control?: { abandoned: boolean },
+  ): Promise<boolean> {
     const [cycle] = await this.dbService.db
       .select()
       .from(schema.monitorCycles)
@@ -368,6 +375,9 @@ export class MonitorCycleService {
       );
     }
     if (outcome.deliveryFailed) {
+      // The caller gave up waiting and already counted this attempt; counting it again would
+      // exhaust the bounded retries early and silently drop the alert.
+      if (control?.abandoned) return false;
       const attempts = cycle.notifyAttempts + 1;
       await this.dbService.db
         .update(schema.monitorCycles)

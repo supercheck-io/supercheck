@@ -1,3 +1,4 @@
+import { runPool } from './run-pool';
 import {
   Injectable,
   Logger,
@@ -35,6 +36,9 @@ function notifyBudgetMs(): number {
     Math.max(500, Number.isFinite(raw) ? raw : DEFAULT_NOTIFY_BUDGET_MS),
   );
 }
+
+/** Notifications in flight at once: one slow tenant endpoint must not serialize everyone's alerts. */
+const NOTIFY_CONCURRENCY = 8;
 
 /** Drizzle wraps driver errors; the cause (connection, TLS, SQLSTATE) is what operators need. */
 function describeError(error: unknown): string {
@@ -220,10 +224,9 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       )
       .orderBy(asc(schema.monitorCycles.closedAt))
       .limit(BATCH);
-    for (const { id } of pending) {
-      if (this.stopping) break;
-      await this.notify(id);
-    }
+    await runPool(pending, NOTIFY_CONCURRENCY, async ({ id }) => {
+      if (!this.stopping) await this.notify(id);
+    });
   }
 
   private async close(id: string, now: Date): Promise<void> {
@@ -258,17 +261,17 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   private async flushNotifications(): Promise<void> {
     const ids = this.toNotify;
     this.toNotify = [];
-    for (const id of ids) {
-      if (this.stopping) break;
-      await this.notify(id);
-    }
+    await runPool(ids, NOTIFY_CONCURRENCY, async (id) => {
+      if (!this.stopping) await this.notify(id);
+    });
   }
 
   private async notify(id: string): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
+    const control = { abandoned: false };
     try {
       await Promise.race([
-        this.cycles.notifyCycle(id),
+        this.cycles.notifyCycle(id, control),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () =>
@@ -280,6 +283,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // No receipt: the repair pass retries with backoff, and each failure counts as an attempt
       // (bounded), so a hanging or throwing delivery cannot loop on every tick.
+      control.abandoned = true;
       this.state.notifyFailures += 1;
       this.logger.error(
         `Notifying cycle ${id} failed: ${describeError(error)}`,

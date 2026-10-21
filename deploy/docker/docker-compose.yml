@@ -491,7 +491,7 @@ services:
   # Control plane for missing-region monitor cycles (issue #452). Optional and OFF by default.
   # Enable with `docker compose --profile monitor-control up -d` and MISSING_CYCLE_CLOSURE_ENABLED=true.
   # Same image as the worker, different entrypoint. It has no Kubernetes credentials, no report
-  # volumes and no execution privileges: it only reads and writes PostgreSQL and sends alerts.
+  # volumes and no execution privileges: it reads and writes PostgreSQL and sends alerts, with an allowlisted environment.
   # Run exactly one replica; scale to zero only after pending cycles have drained (see the runbook).
   monitor-control:
     profiles: [monitor-control]
@@ -501,8 +501,28 @@ services:
     user: "pwuser:pwuser"
     command: ["node", "--max-http-header-size=16384", "dist/src/monitor-control/main.js"]
     environment:
-      <<: *common-env
-      # Small explicit connection budget: one closure transaction plus alert lookups.
+      # Explicit allowlist, not *common-env: this process needs only the database, alert delivery and
+      # billing verification, so it must not receive auth, object-storage, AI or Redis credentials.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-supercheck}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
+      APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SELF_HOSTED: ${SELF_HOSTED:-true}
+      NODE_ENV: ${NODE_ENV:-production}
+      SRE_ENABLED: ${SRE_ENABLED:-true}
+      MISSING_CYCLE_CLOSURE_ENABLED: ${MISSING_CYCLE_CLOSURE_ENABLED:-false}
+      MISSING_CYCLE_DEADLINE_SECONDS: ${MISSING_CYCLE_DEADLINE_SECONDS:-300}
       DB_POOL_MAX: ${MONITOR_CONTROL_DB_POOL_MAX:-4}
       MONITOR_CONTROL_PORT: "8000"
       # Triage enqueue needs Redis access this process does not need; keep it off (explicit env wins).

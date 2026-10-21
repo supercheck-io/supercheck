@@ -152,6 +152,9 @@ export async function fetchWithRetry(
       const fetchOptions: RequestInit = {
         ...options,
         signal: controller.signal,
+        // Endpoints are validated when saved, not on every hop. Following a redirect would let a
+        // tenant-owned host steer this request (and its body) at an internal address.
+        redirect: 'error',
       };
 
       const response = await fetch(url, fetchOptions);
