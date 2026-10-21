@@ -27,7 +27,7 @@ export const REGISTRATION_LIMITS = {
 const CONTROL_OR_BIDI = /[\p{Cc}‪-‮⁦-⁩]/u;
 
 // The URI fields that a client-controlled link could be built from.
-const LINK_FIELDS = ["client_uri", "logo_uri", "tos_uri", "policy_uri"] as const;
+const LINK_FIELDS = ["client_uri", "logo_uri", "tos_uri", "policy_uri", "jwks_uri", "backchannel_logout_uri"] as const;
 
 function isHttpsUrl(value: string): boolean {
   try {

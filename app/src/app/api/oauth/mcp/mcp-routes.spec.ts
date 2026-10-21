@@ -13,7 +13,14 @@ let mockEnabled = true;
 
 jest.mock("next/headers", () => ({ headers: async () => new Headers({ cookie: "session=1" }) }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: (...a: unknown[]) => mockGetSession(...a) } } }));
-jest.mock("@/lib/mcp/auth-api", () => ({ submitConsent: (...a: unknown[]) => mockConsent(...a) }));
+jest.mock("@/lib/mcp/auth-api", () => {
+  class ConsentRejectedError extends Error {
+    constructor(readonly status: number, readonly reason: string) {
+      super(`rejected ${status}`);
+    }
+  }
+  return { ConsentRejectedError, submitConsent: (...a: unknown[]) => mockConsent(...a) };
+});
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/lib/logger/pino-config", () => ({ createLogger: () => ({ warn: jest.fn(), error: jest.fn(), info: jest.fn() }) }));
@@ -40,6 +47,7 @@ import { POST as consentPost } from "./consent/route";
 import { GET as listGet } from "./connections/route";
 import { DELETE as connectionDelete } from "./connections/[id]/route";
 import { McpProjectAccessError } from "@/lib/mcp/connect-project";
+import { ConsentRejectedError } from "@/lib/mcp/auth-api";
 import { McpConnectionNotFoundError } from "@/lib/mcp/connections";
 
 const ORIGIN = "https://app.example.com";
@@ -159,6 +167,20 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(400);
     expect(JSON.stringify(await response.json())).not.toContain("secret internals");
+  });
+
+  it("tells the screen to sign in again when Better Auth rejects the session, rather than calling the request expired", async () => {
+    mockConsent.mockRejectedValue(new ConsentRejectedError(401, "unauthorized"));
+    const response = await consentPost(consentRequest(approve));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "authentication_required" });
+  });
+
+  it.each([400, 403, 500])("keeps the generic 'request expired' answer for a %s from Better Auth", async (status) => {
+    mockConsent.mockRejectedValue(new ConsentRejectedError(status, "x"));
+    const response = await consentPost(consentRequest(approve));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "consent_failed" });
   });
 
   it("rejects a valid JSON body over the size cap", async () => {

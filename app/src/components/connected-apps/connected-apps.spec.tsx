@@ -30,7 +30,7 @@ describe("ConnectedApps", () => {
     fetchMock.mockResolvedValue(json(200, { connections: [connection, unverified] }));
     render(<ConnectedApps />);
     expect(await screen.findByText("Agent Co")).toBeInTheDocument();
-    expect(screen.getByText("Published by agent.example.com")).toBeInTheDocument();
+    expect(screen.getByText("Metadata hosted at agent.example.com")).toBeInTheDocument();
     expect(screen.getByText(/unverified \(returns to 127\.0\.0\.1:9000\)/i)).toBeInTheDocument();
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("a project you can no longer access")).toBeInTheDocument();

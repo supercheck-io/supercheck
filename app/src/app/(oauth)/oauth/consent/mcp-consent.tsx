@@ -78,7 +78,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, client, navigate =
         <CardDescription>
           {client.verifiedHost ? (
             <>
-              Published by <span className="font-medium text-foreground">{client.verifiedHost}</span>
+              Metadata hosted at <span className="font-medium text-foreground">{client.verifiedHost}</span>
               {client.clientIdUrl ? (
                 <span className="mt-1 block break-all font-mono text-xs">{client.clientIdUrl}</span>
               ) : null}

@@ -13,6 +13,7 @@ export interface AppConfig {
     signupEnabled: boolean;
     allowedEmailDomains: string[];
   };
+  mcp?: { enabled: boolean };
   demoMode: boolean;
   showCommunityLinks: boolean;
   limits: {
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG: AppConfig = {
     signupEnabled: true,
     allowedEmailDomains: [],
   },
+  mcp: { enabled: false },
   demoMode: false,
   showCommunityLinks: false,
   limits: {
@@ -88,6 +90,7 @@ export function useAppConfig() {
     error: error as Error | null,
     isSelfHosted: effectiveConfig.hosting?.selfHosted ?? false,
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? true,
+    isMcpEnabled: effectiveConfig.mcp?.enabled ?? false,
     isDemoMode: effectiveConfig.demoMode ?? false,
     showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,

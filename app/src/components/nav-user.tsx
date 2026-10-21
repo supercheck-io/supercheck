@@ -13,7 +13,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
-import { Moon, Sun, User, Monitor } from "lucide-react";
+import { Moon, Sun, User, Monitor, Plug } from "lucide-react";
+import Link from "next/link";
+import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 import { resetChatwootSession } from "@/components/support/chatwoot-widget";
 import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
@@ -24,6 +26,7 @@ export function NavUser() {
   const user = session?.user;
   const hasData = user !== undefined && user !== null;
   const { theme, setTheme } = useTheme();
+  const { isMcpEnabled } = useAppConfig();
 
   const isMounted = useSyncExternalStore(
     () => () => {},
@@ -101,6 +104,17 @@ export function NavUser() {
           <span className="mr-2 flex items-center"><Sun className="h-4 w-4 mr-2" />Light</span>
           <span className="ml-auto">{theme === "light" && <span className="inline-block w-2 h-2 rounded-full bg-primary" />}</span>
         </DropdownMenuItem>
+
+        {isMcpEnabled && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/connected-apps" data-testid="connected-apps-link">
+                <Plug className="h-4 w-4 mr-2" />Connected apps
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
 
         <DropdownMenuSeparator />
         <LeaveOrganizationDialog />

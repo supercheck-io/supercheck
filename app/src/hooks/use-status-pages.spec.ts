@@ -108,6 +108,7 @@ function makeAppConfig(overrides: Partial<ReturnType<typeof useAppConfig>> = {})
     error: null,
     isSelfHosted: false,
     isCloudHosted: true,
+    isMcpEnabled: false,
     isDemoMode: false,
     showCommunityLinks: false,
     isGithubEnabled: false,

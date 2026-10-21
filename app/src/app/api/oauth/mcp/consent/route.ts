@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/utils/auth";
-import { submitConsent } from "@/lib/mcp/auth-api";
+import { ConsentRejectedError, submitConsent } from "@/lib/mcp/auth-api";
 import { isSafeRedirectTarget } from "@/lib/mcp/redirect";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
     return mcpJson({ url });
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.name : "unknown" }, "MCP consent failed");
+    // A rejected session is not an expired request: tell the screen to ask the user to sign in again.
+    if (error instanceof ConsentRejectedError && error.status === 401) {
+      return mcpJson({ error: "authentication_required" }, 401);
+    }
     return mcpJson({ error: "consent_failed" }, 400);
   }
 }

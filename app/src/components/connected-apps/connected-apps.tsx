@@ -103,7 +103,7 @@ export function ConnectedApps() {
               <p className="truncate font-medium">{connection.clientName ?? "Unnamed app"}</p>
               <p className="text-sm text-muted-foreground">
                 {connection.verifiedHost
-                  ? `Published by ${connection.verifiedHost}`
+                  ? `Metadata hosted at ${connection.verifiedHost}`
                   : `Unverified (returns to ${connection.redirectHosts.join(", ") || "unknown"})`}
               </p>
               <p className="text-sm text-muted-foreground">
