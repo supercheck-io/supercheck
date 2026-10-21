@@ -1952,7 +1952,9 @@
                 "passed",
                 "failed",
                 "error",
-                "blocked"
+                "blocked",
+                "pending",
+                "skipped"
               ]
             },
             "description": "Filter by status"

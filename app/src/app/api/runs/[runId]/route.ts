@@ -48,8 +48,8 @@ export async function GET(
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .innerJoin(projects, eq(runs.projectId, projects.id))
-      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, runs.projectId)))
+      .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
+      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
       .leftJoin(
         reports,
         and(
@@ -60,7 +60,7 @@ export async function GET(
       .where(
         and(
           eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id),
+          eq(projects.id, authCtx.project.id),
           eq(projects.organizationId, authCtx.organizationId)
         )
       )

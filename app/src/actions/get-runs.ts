@@ -64,7 +64,7 @@ export async function getRun(
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
       .leftJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
-      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, runs.projectId)))
+      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
       .leftJoin(
         reports,
         and(

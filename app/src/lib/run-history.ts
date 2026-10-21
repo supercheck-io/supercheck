@@ -3,7 +3,7 @@ import { jobs, reports, runs, tests } from "@/db/schema";
 import type { JobType } from "@/db/schema";
 
 export const runHistoryFields = {
-  jobName: sql<string>`coalesce(${jobs.name}, ${tests.title}, 'Deleted test')`,
+  jobName: sql<string>`case when ${runs.jobId} is not null then coalesce(${jobs.name}, 'Deleted job') else coalesce(${tests.title}, 'Deleted test') end`,
   jobType: sql<JobType>`coalesce(${jobs.jobType}, case when ${runs.metadata}->>'testType' = 'performance' then 'k6' else 'playwright' end)`,
   reportUrl: sql<string | null>`coalesce(${reports.s3Url}, ${runs.reportS3Url})`,
 };

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     // SECURITY: Always filter by org/project from session, never trust client params
     const filters = [
-      eq(runs.projectId, context.project.id),
+      eq(projects.id, context.project.id),
       eq(projects.organizationId, context.organizationId)
     ];
     
@@ -53,7 +53,9 @@ export async function GET(request: NextRequest) {
     if (jobId) filters.push(eq(runs.jobId, jobId));
     if (status) {
       // Validate status is a valid TestRunStatus
-      const validStatuses: TestRunStatus[] = [
+      const validStatuses: string[] = [
+        "pending",
+        "skipped",
         "queued",
         "running",
         "passed",
@@ -78,8 +80,8 @@ export async function GET(request: NextRequest) {
       db
         .select({ count: sql<number>`count(*)` })
         .from(runs)
-        .innerJoin(projects, eq(runs.projectId, projects.id))
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
+        .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
         .where(whereCondition),
       // Data query with all details
       db
@@ -97,9 +99,9 @@ export async function GET(request: NextRequest) {
           location: runs.location,
         })
         .from(runs)
-        .innerJoin(projects, eq(runs.projectId, projects.id))
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
-        .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, runs.projectId)))
+        .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
+        .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
         .leftJoin(
           reports,
           and(

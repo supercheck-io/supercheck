@@ -113,3 +113,37 @@ it("does not use another project's test title and retains run report fallback", 
     await client.unsafe("INSERT INTO reports VALUES ('load-run', 'k6_test', 'load-report')");
   }
 });
+
+it("includes legacy job runs with a null project id in scoped counts and details", async () => {
+  await client`INSERT INTO runs (id,job_id,project_id,status,started_at) VALUES ('legacy-job','job',NULL,'passed','2025-01-01')`;
+  try {
+    const response = await GET(new NextRequest('http://localhost/api/runs?jobId=job'));
+    const body = await response.json();
+    expect(body.pagination.total).toBe(2);
+    expect(body.data.map((row: { id: string })=>row.id)).toContain('legacy-job');
+    expect((await detail(new Request('http://localhost'), { params: Promise.resolve({runId:'legacy-job'}) })).status).toBe(200);
+    expect(await getRun('legacy-job')).toMatchObject({jobId:'job'});
+  } finally { await client`DELETE FROM runs WHERE id='legacy-job'`; }
+});
+
+it("does not assign a mutable latest test alias to an unproven historical run", async () => {
+  await client`INSERT INTO reports (entity_id,entity_type,s3_url) VALUES ('browser','test','latest-unrelated-report')`;
+  await client`INSERT INTO runs (id,project_id,status,metadata,started_at) VALUES ('old-browser','project','passed','{"testId":"browser"}','2025-01-01')`;
+  try {
+    const response = await detail(new Request('http://localhost'), {params:Promise.resolve({runId:'old-browser'})});
+    expect(await response.json()).toMatchObject({reportUrl:null});
+  } finally {
+    await client`DELETE FROM reports WHERE s3_url='latest-unrelated-report'`;
+    await client`DELETE FROM runs WHERE id='old-browser'`;
+  }
+});
+
+it("labels deleted jobs and exposes legacy skipped status filtering", async () => {
+  await client`INSERT INTO runs (id,job_id,project_id,status,started_at) VALUES ('deleted-job-run','deleted-job','project','skipped','2025-01-01')`;
+  try {
+    const response = await GET(new NextRequest('http://localhost/api/runs?status=skipped'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toEqual([expect.objectContaining({id:'deleted-job-run',jobName:'Deleted job',status:'skipped'})]);
+  } finally { await client`DELETE FROM runs WHERE id='deleted-job-run'`; }
+});

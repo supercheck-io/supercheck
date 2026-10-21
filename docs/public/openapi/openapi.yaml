@@ -1324,6 +1324,8 @@ paths:
               - failed
               - error
               - blocked
+              - pending
+              - skipped
           description: Filter by status
       responses:
         "200":
