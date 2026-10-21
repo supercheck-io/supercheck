@@ -25,6 +25,14 @@ describe("LoginForm continuation", () => {
     render(<LoginForm {...base} nextPath="/device" inviteToken="tok" inviteData={null} />);
     expect(social).toHaveBeenLastCalledWith("/invite/tok");
   });
+  it("resumes an MCP authorization request after social sign-in, and hands the same signed request to the sign-up page", () => {
+    const query = new URLSearchParams({ response_type: "code", client_id: "c", sig: "s", exp: "1" });
+    const resume = `/api/auth/oauth2/authorize?${query}`;
+    render(<LoginForm {...base} nextPath={resume} />);
+    expect(social).toHaveBeenLastCalledWith(resume);
+    // As its own query, not a long ?next= value that the sign-up page's allowlist would drop.
+    expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute("href", `/sign-up?${query}`);
+  });
   it("carries the continuation to the sign-up link", () => {
     render(<LoginForm {...base} nextPath="/device?code=BCDF-GHJK" />);
     const link = screen.getByRole("link", { name: /sign up/i });

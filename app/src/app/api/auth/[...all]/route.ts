@@ -1,6 +1,8 @@
 import { auth } from "@/utils/auth";
 import { toNextJsHandler } from "better-auth/next-js";
 import { NextResponse } from "next/server";
+import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/http-policy";
+import { isMcpServerEnabled } from "@/lib/mcp/config";
 
 const handlers = toNextJsHandler(auth);
 
@@ -20,6 +22,12 @@ function organizationPolicyError(request: Request) {
   if (path === "/api/auth/api-key" || path.startsWith("/api/auth/api-key/")) {
     return NextResponse.json({ error: "API keys are managed through the application's token endpoints." }, { status: 403 });
   }
+  // OAuth/JWT plugin endpoints: only what MCP clients need is reachable (see lib/mcp/http-policy.ts).
+  // With the MCP server off the plugins are not registered, so these paths simply do not exist
+  // (Better Auth answers 404); the policy only has something to protect when it is on.
+  if (isMcpServerEnabled() && isOAuthEndpointDenied(request.method, path)) {
+    return NextResponse.json({ error: "This endpoint is not available." }, { status: 403 });
+  }
   if (path === "/api/auth/organization" || path.startsWith("/api/auth/organization/")) {
     const endpoint = path.slice("/api/auth/organization/".length);
     if (request.method === "GET" && allowedOrganizationReads.has(endpoint)) return;
@@ -32,5 +40,12 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  return organizationPolicyError(request) ?? handlers.GET(request);
+  const denied = organizationPolicyError(request);
+  if (denied) return denied;
+  const response = await handlers.GET(request);
+  // Better Auth's own copy of the metadata lists endpoints this route refuses; advertise only reachable ones.
+  if (isMcpServerEnabled() && new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/.well-known/oauth-authorization-server") {
+    return withReachableEndpointsOnly(response);
+  }
+  return response;
 }

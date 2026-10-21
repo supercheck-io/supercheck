@@ -11,6 +11,9 @@ export * from "./types";
 export * from "./auth";
 export { apikey as apiKey } from "./auth";
 
+// OAuth 2.1 / MCP authorization server tables
+export * from "./oauth";
+
 // Organization and project tables
 export * from "./organization";
 

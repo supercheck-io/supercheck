@@ -75,6 +75,10 @@ x-common-env: &common-env # Database Configuration
   # Browser login for the CLI (device authorization). Off by default; when off the CLI
   # tells users to create a token in the dashboard instead.
   DEVICE_AUTH_ENABLED: ${DEVICE_AUTH_ENABLED:-false}
+  # Remote MCP server: OAuth 2.1 sign-in for MCP clients. Off by default; needs database
+  # migration 0036 and BETTER_AUTH_URL set to the public HTTPS URL.
+  MCP_SERVER_ENABLED: ${MCP_SERVER_ENABLED:-false}
+  MCP_DYNAMIC_CLIENT_REGISTRATION: ${MCP_DYNAMIC_CLIENT_REGISTRATION:-true}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
   # Comma-separated origins. Supports wildcard subdomains (e.g., https://*.visualstudio.com)

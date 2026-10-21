@@ -28,6 +28,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { loginFormSchema, type LoginFormData } from "@/lib/validations/auth";
+import { isOAuthResumePath } from "@/lib/auth/safe-next-path";
+
+/** The sign-up link keeps whichever continuation the visitor arrived with. */
+function signUpHref(nextPath: string | null): string {
+  if (!nextPath) return "/sign-up";
+  // An MCP authorization request travels as its own signed query, which the sign-up page re-reads.
+  if (isOAuthResumePath(nextPath)) return `/sign-up?${nextPath.slice(nextPath.indexOf("?") + 1)}`;
+  return `/sign-up?next=${encodeURIComponent(nextPath)}`;
+}
 
 interface InviteData {
   organizationName: string;
@@ -152,7 +161,7 @@ export function LoginForm({
                   <span className="text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link
-                      href={nextPath ? `/sign-up?next=${encodeURIComponent(nextPath)}` : "/sign-up"}
+                      href={signUpHref(nextPath)}
                       className="underline underline-offset-2"
                     >
                       Sign up
