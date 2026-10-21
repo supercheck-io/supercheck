@@ -72,7 +72,40 @@ export class S3CleanupService {
         secretAccessKey: this.config.secretAccessKey,
       },
       maxAttempts: this.config.maxRetries,
+      requestHandler: { connectionTimeout: this.config.operationTimeout, requestTimeout: this.config.operationTimeout, socketTimeout: this.config.operationTimeout, throwOnRequestTimeout: true },
     });
+  }
+
+  getRunArtifactInputs(run: {
+    id: string;
+    reportS3Url?: string | null;
+    logsS3Url?: string | null;
+    metadata?: { testId?: string } | null;
+  }): ReportDeletionInput[] {
+    const inputs: ReportDeletionInput[] = [];
+    for (const s3Url of new Set([run.reportS3Url, run.logsS3Url].filter((url): url is string => !!url))) {
+      const url = new URL(s3Url);
+      const endpointPath = new URL(this.config.endpoint).pathname.replace(/\/$/, "");
+      const objectPath = endpointPath && url.pathname.startsWith(`${endpointPath}/`)
+        ? url.pathname.slice(endpointPath.length) : url.pathname;
+      const parts = objectPath.split("/").filter(Boolean);
+      const types = ["job", "k6_job", "test", "k6_test"] as const;
+      const entityType = types.find(type => {
+        const bucket = this.getBucketForEntityType(type);
+        return (parts[0] === bucket && parts[1] === run.id)
+          || (url.hostname.startsWith(`${bucket}.`) && parts[0] === run.id);
+      });
+      if (!entityType) {
+        const bucket = this.getBucketForEntityType("test");
+        const testId = run.metadata?.testId;
+        // Saved browser tests share a latest-report directory owned by the test.
+        if (testId && ((parts[0] === bucket && parts[1] === testId)
+          || (url.hostname.startsWith(`${bucket}.`) && parts[0] === testId))) continue;
+        throw new Error("Artifact URL does not match its execution directory; pointers retained. Ask an administrator to verify the configured S3 endpoint, bucket and run prefix before repairing this URL.");
+      }
+      inputs.push({ entityId: run.id, reportPath: run.id, s3Url, entityType });
+    }
+    return inputs;
   }
 
   /**
@@ -107,7 +140,10 @@ export class S3CleanupService {
     if (!key && input.s3Url) {
       const url = new URL(input.s3Url);
       const bucket = this.getBucketForEntityType(input.entityType);
-      const parts = url.pathname.split("/").filter(Boolean);
+      const endpointPath = new URL(this.config.endpoint).pathname.replace(/\/$/, "");
+      const objectPath = endpointPath && url.pathname.startsWith(`${endpointPath}/`)
+        ? url.pathname.slice(endpointPath.length) : url.pathname;
+      const parts = objectPath.split("/").filter(Boolean);
       if (parts[0] === bucket) {
         key = parts.slice(1).join("/");
       } else if (url.hostname.startsWith(`${bucket}.`)) {

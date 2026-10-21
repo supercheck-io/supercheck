@@ -84,6 +84,8 @@ Set up notifications for job results:
 | **Job timeouts** | Notify if the job exceeds its maximum execution time |
 | **Notification Channels** | Select Slack, email, Discord, Telegram, or webhook |
 
+Failure and recovery thresholds count consecutive runs, including the current run exactly once. Failed and errored runs both count toward the failure threshold. A different outcome breaks the consecutive sequence.
+
 ## Parallel Execution
 
 Run multiple jobs or tests simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions across your organization.
@@ -270,3 +272,7 @@ If a job exceeds the maximum execution time:
 - **K6 Performance Jobs:** Maximum runtime of **60 minutes** per job execution
 - **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
 </Callout>
+
+## Deleting stored artifacts
+
+Jobs with queued or running executions cannot be deleted until those executions stop. Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.

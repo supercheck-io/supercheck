@@ -42,6 +42,8 @@ function mapDbStatusToDisplayStatus(
 
   // Only return one of the allowed status values
   switch (status) {
+    case "queued":
+      return "queued";
     case "running":
       return "running";
     case "passed":
@@ -142,7 +144,7 @@ export const createColumns = (
     {
       accessorKey: "jobName",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Job Name" />
+        <DataTableColumnHeader column={column} title="Test / Job" />
       ),
       cell: ({ row }) => {
         const jobName = row.getValue("jobName") as string | undefined;

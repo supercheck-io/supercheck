@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import {
   monitors as monitorTable,
@@ -24,6 +25,7 @@ interface MonitorApiData {
   target: string;
   frequencyMinutes: number;
   enabled?: boolean;
+  status?: DBMonitorStatus;
   config?: MonitorConfig | null;
   alertConfig?: AlertConfig | null; // Alert configuration for notifications
   organizationId: string; // Required for dual scoping
@@ -157,6 +159,7 @@ export async function updateMonitorHandler(
   if (data.frequencyMinutes !== undefined)
     updateData.frequencyMinutes = data.frequencyMinutes;
   if (data.config !== undefined) updateData.config = data.config;
+  if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.alertConfig !== undefined) updateData.alertConfig = data.alertConfig;
   // Do not include organizationId or createdByUserId in updates usually, unless specifically intended
 
@@ -168,6 +171,8 @@ export async function updateMonitorHandler(
   } else if (data.enabled === true && existingMonitor.status === "paused") {
     updateData.status = "pending" as DBMonitorStatus;
   }
+
+  if (data.status !== undefined) updateData.status = data.status;
 
   const [updatedMonitor] = await db
     .update(monitorTable)
@@ -184,9 +189,13 @@ export async function updateMonitorHandler(
 
   // Handle re-scheduling or unscheduling (like jobs do)
   const shouldReschedule =
+    (data.status !== undefined && (data.status === "paused") !== (existingMonitor.status === "paused")) ||
     (data.frequencyMinutes !== undefined &&
       data.frequencyMinutes !== existingMonitor.frequencyMinutes) ||
-    (data.enabled !== undefined && data.enabled !== existingMonitor.enabled);
+    (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
+    (data.type !== undefined && data.type !== existingMonitor.type) ||
+    (data.target !== undefined && data.target !== existingMonitor.target) ||
+    (data.config !== undefined && !isDeepStrictEqual(data.config, existingMonitor.config));
 
   if (shouldReschedule) {
     // Remove existing schedule if any
@@ -250,35 +259,6 @@ export async function updateMonitorHandler(
     }
   }
   return updatedMonitor;
-}
-
-export async function deleteMonitorHandler(monitorId: string) {
-  // Remove scheduled job first (like jobs do)
-  const monitor = await db.query.monitors.findFirst({
-    where: eq(monitorTable.id, monitorId),
-  });
-
-  if (monitor?.scheduledJobId) {
-    try {
-      await deleteScheduledMonitor(monitor.scheduledJobId);
-    } catch (scheduleError) {
-      console.warn(
-        `Could not remove schedule for monitor ${monitorId} during deletion:`,
-        scheduleError
-      );
-      // Continue with deletion even if unscheduling fails
-    }
-  }
-
-  const [deletedMonitor] = await db
-    .delete(monitorTable)
-    .where(eq(monitorTable.id, monitorId))
-    .returning();
-
-  if (!deletedMonitor) {
-    throw { statusCode: 404, message: "Monitor not found for deletion" };
-  }
-  return deletedMonitor;
 }
 
 /**

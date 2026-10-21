@@ -275,7 +275,7 @@ describe("Documents Server Actions", () => {
       expect(result.filename).toBe(mockDocument.name);
     });
 
-    it("should continue delete even if S3 delete fails", async () => {
+    it("should preserve the document for retry when S3 deletion fails", async () => {
       // Mock document exists
       const mockSelectChain = {
         from: jest.fn().mockReturnThis(),
@@ -297,8 +297,9 @@ describe("Documents Server Actions", () => {
 
       const result = await deleteDocument(testDocumentId);
 
-      // Should still succeed because DB delete worked
-      expect(result.success).toBe(true);
+      // A failed storage delete must retain its retryable database pointer.
+      expect(result.success).toBe(false);
+      expect(mockDb.delete).not.toHaveBeenCalled();
     });
   });
 

@@ -29,6 +29,10 @@ Project viewers can read requirements. Creating, editing, extracting, and deleti
 
 ## Read requirements through the API
 
-Authenticated integrations can list the active project's requirements with `GET /api/requirements`. The endpoint supports `page`, `pageSize`, `search`, `priority`, and `status`. Use the API's project and organization context to select the intended project.
+Authenticated integrations can list the active project's requirements with `GET /api/requirements`. The endpoint supports `page`, `pageSize`, `search`, `priority`, and `status`. Use the API's project and organization context to select the intended project. Coverage status filtering is applied before pagination; `total` counts matching requirements. Requirements without a coverage snapshot are included in `missing`.
 
 See [Tests](/docs/app/automate/tests) and [Jobs](/docs/app/automate/jobs) to create and run coverage.
+
+## Deleting stored artifacts
+
+Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.

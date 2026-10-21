@@ -1,3 +1,5 @@
+import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
+import { updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -763,24 +765,33 @@ export async function PATCH(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const updatePayload: Partial<{
-      config: typeof currentMonitor.config;
-      alertConfig: typeof currentMonitor.alertConfig;
-      status: typeof currentMonitor.status;
-      updatedAt: Date;
-    }> = {
-      updatedAt: new Date(),
-    };
-
-    // Handle partial update for 'config'
-    if (rawData.config) {
-      const newConfig = deepMerge(currentMonitor.config ?? {}, rawData.config);
-      updatePayload.config = newConfig;
+    const updatePayload: Parameters<typeof updateMonitorHandler>[1] = {};
+    for (const key of ["name", "description", "type", "target", "frequencyMinutes", "enabled"] as const) {
+      if (rawData[key] !== undefined) Object.assign(updatePayload, { [key]: rawData[key] });
     }
+    if (rawData.enabled !== undefined && typeof rawData.enabled !== "boolean") {
+      return NextResponse.json({ error: "enabled must be boolean" }, { status: 400 });
+    }
+    if (rawData.frequencyMinutes !== undefined &&
+      (typeof rawData.frequencyMinutes !== "number" || !Number.isFinite(rawData.frequencyMinutes) ||
+       rawData.frequencyMinutes < 1 || rawData.frequencyMinutes > 1440)) {
+      return NextResponse.json({ error: "frequencyMinutes must be between 1 and 1440" }, { status: 400 });
+    }
+    if (rawData.status !== undefined) {
+      if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
+        return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
+      }
+      if (rawData.enabled !== undefined && rawData.enabled !== (rawData.status !== "paused")) {
+        return NextResponse.json({ error: "status and enabled disagree" }, { status: 400 });
+      }
+      updatePayload.enabled = rawData.status !== "paused";
+      updatePayload.status = rawData.status;
+    }
+    if (rawData.config) updatePayload.config = deepMerge(currentMonitor.config ?? {}, rawData.config);
 
     const configurationValidation = validateMonitorConfiguration({
-      type: currentMonitor.type,
-      target: currentMonitor.target,
+      type: updatePayload.type ?? currentMonitor.type,
+      target: updatePayload.target ?? currentMonitor.target,
       config: updatePayload.config ?? currentMonitor.config,
     });
     if (!configurationValidation.success) {
@@ -801,14 +812,14 @@ export async function PATCH(
       }
     }
 
-    if (rawData.config) {
+    if (rawData.config || rawData.type) {
       const effectiveConfig = (updatePayload.config ?? currentMonitor.config) as
         | { locationConfig?: LocationConfig | null }
         | null
         | undefined;
       const unsupported = await findUnsupportedMonitorLocations(
         effectiveConfig?.locationConfig,
-        currentMonitor.type,
+        updatePayload.type ?? currentMonitor.type,
       );
       if (unsupported.length > 0) {
         return NextResponse.json(
@@ -827,117 +838,7 @@ export async function PATCH(
       updatePayload.alertConfig = newAlertConfig;
     }
 
-    if (rawData.status) {
-      updatePayload.status = rawData.status;
-    }
-
-    const [updatedMonitor] = await db
-      .update(monitors)
-      .set(updatePayload)
-      .where(
-        and(
-          eq(monitors.id, id),
-          eq(monitors.projectId, authCtx.project.id),
-          eq(monitors.organizationId, authCtx.organizationId),
-        ),
-      )
-      .returning();
-
-    if (!updatedMonitor) {
-      return NextResponse.json(
-        { error: "Failed to update monitor" },
-        { status: 404 },
-      );
-    }
-
-    // Handle pause/resume logic when status changes
-    if (rawData.status && rawData.status !== currentMonitor.status) {
-      logger.debug(
-        {
-          monitorId: id,
-          oldStatus: currentMonitor.status,
-          newStatus: rawData.status,
-        },
-        "Monitor status changed (PATCH)",
-      );
-
-      if (rawData.status === "paused") {
-        // Pause monitor - remove from scheduler and clear scheduledJobId
-        logger.debug(
-          { monitorId: id },
-          "Pausing monitor (PATCH) - removing from scheduler",
-        );
-
-        // Try both the stored scheduledJobId and the monitor ID
-        let deleteSuccess = false;
-        if (currentMonitor.scheduledJobId) {
-          deleteSuccess = await deleteScheduledMonitor(
-            currentMonitor.scheduledJobId,
-          );
-        }
-
-        if (!deleteSuccess) {
-          deleteSuccess = await deleteScheduledMonitor(id);
-        }
-
-        // Clear the scheduled job ID from database
-        await db
-          .update(monitors)
-          .set({ scheduledJobId: null })
-          .where(
-            and(
-              eq(monitors.id, id),
-              eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId),
-            ),
-          );
-      } else if (
-        currentMonitor.status === "paused" &&
-        (rawData.status === "up" || rawData.status === "down")
-      ) {
-        // Resume monitor - add to scheduler if it has valid frequency
-        if (
-          updatedMonitor.frequencyMinutes &&
-          updatedMonitor.frequencyMinutes > 0
-        ) {
-          logger.debug(
-            {
-              monitorId: id,
-              frequencyMinutes: updatedMonitor.frequencyMinutes,
-            },
-            "Resuming monitor (PATCH) - adding to scheduler",
-          );
-
-          const jobData: MonitorJobData = {
-            monitorId: updatedMonitor.id,
-            projectId: authCtx.project.id,
-            type: updatedMonitor.type as MonitorJobData["type"],
-            target: updatedMonitor.target,
-            config: updatedMonitor.config as Record<string, unknown>,
-            frequencyMinutes: updatedMonitor.frequencyMinutes,
-          };
-
-          const schedulerId = await scheduleMonitor({
-            monitorId: id,
-            frequencyMinutes: updatedMonitor.frequencyMinutes,
-            jobData,
-            retryLimit: 3,
-          });
-
-          // Update monitor with new scheduler ID
-          await db
-            .update(monitors)
-            .set({ scheduledJobId: schedulerId })
-            .where(
-              and(
-                eq(monitors.id, id),
-                eq(monitors.projectId, authCtx.project.id),
-                eq(monitors.organizationId, authCtx.organizationId),
-              ),
-            );
-        }
-      }
-    }
+    const updatedMonitor = await updateMonitorHandler(id, updatePayload);
 
     // Log the audit event for monitor partial update
     await logAuditEvent({
@@ -988,131 +889,23 @@ export async function PATCH(
  * Mirrors the logic from the deleteMonitor server action.
  */
 export async function DELETE(
-  _request: NextRequest,
+  _request: Request,
   routeContext: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
-    const { userId, project, organizationId } = context;
-
-    const canDelete = checkPermissionWithContext("monitor", "delete", context);
-    if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete monitors" },
-        { status: 403 },
-      );
+    if (!checkPermissionWithContext("monitor", "delete", context)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
-
-    // Transaction: verify ownership, collect S3 report URLs, delete DB records
-    const transactionResult = await db.transaction(async (tx) => {
-      const [existingMonitor] = await tx
-        .select({
-          id: monitors.id,
-          name: monitors.name,
-          type: monitors.type,
-          target: monitors.target,
-        })
-        .from(monitors)
-        .where(
-          and(
-            eq(monitors.id, id),
-            eq(monitors.projectId, project.id),
-            eq(monitors.organizationId, organizationId),
-          ),
-        )
-        .limit(1);
-
-      if (!existingMonitor) {
-        return { success: false as const, error: "Monitor not found" };
-      }
-
-      // Collect S3 report URLs for cleanup
-      const resultsWithReports = await tx
-        .select({ testReportS3Url: monitorResults.testReportS3Url })
-        .from(monitorResults)
-        .where(eq(monitorResults.monitorId, id));
-
-      const reportInputs: ReportDeletionInput[] = resultsWithReports
-        .filter((r) => !!r.testReportS3Url)
-        .map((r) => ({
-          s3Url: r.testReportS3Url || undefined,
-          entityId: id,
-          entityType: "monitor" as const,
-        }));
-
-      // Delete monitor results and the monitor itself
-      await tx.delete(monitorResults).where(eq(monitorResults.monitorId, id));
-      await tx.delete(monitors).where(eq(monitors.id, id));
-
-      return {
-        success: true as const,
-        monitor: existingMonitor,
-        reportInputs,
-      };
-    });
-
-    if (!transactionResult.success) {
-      return NextResponse.json(
-        { error: transactionResult.error },
-        { status: 404 },
-      );
-    }
-
-    // Post-transaction cleanup (non-blocking)
-
-    // Unschedule from Redis
-    try {
-      await deleteScheduledMonitor(id);
-    } catch (err) {
-      logger.warn({ err, monitorId: id }, "Failed to unschedule monitor");
-    }
-
-    // S3 cleanup (fire-and-forget)
-    if (transactionResult.reportInputs.length > 0) {
-      void (async () => {
-        try {
-          const s3 = createS3CleanupService();
-          await s3.deleteReports(transactionResult.reportInputs);
-        } catch (err) {
-          logger.warn({ err, monitorId: id }, "S3 cleanup failed for monitor");
-        }
-      })();
-    }
-
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "monitor_deleted",
-      resource: "monitor",
-      resourceId: id,
-      metadata: {
-        monitorName: transactionResult.monitor.name,
-        monitorType: transactionResult.monitor.type,
-        monitorTarget: transactionResult.monitor.target,
-        projectId: project.id,
-      },
-      success: true,
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Monitor deleted successfully",
-    });
+    const result = await deleteMonitorWithContext(id, context);
+    const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
+    return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Authentication required",
-        },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    logger.error({ err: error }, "Error deleting monitor");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    console.error("Error deleting monitor:", error);
+    return NextResponse.json({ success: false, error: "Failed to delete monitor" }, { status: 500 });
   }
 }

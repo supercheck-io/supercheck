@@ -82,7 +82,8 @@ describe("Artifact retention strategies", () => {
     deleteReports.mockImplementation(async () => { events.push("s3"); return s3Success; });
     deleteObjectsBatch.mockResolvedValue(s3Success);
     getFailedReportEntityIds.mockImplementation((inputs) => new Set(inputs.map((input: { entityId: string }) => input.entityId)));
-    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch, getFailedReportEntityIds, getBucketForEntityType: (type: string) => ({job: "playwright-job-artifacts", k6_job: "k6-job-artifacts", test: "playwright-test-artifacts", k6_test: "k6-test-artifacts"}[type]) } as unknown as ReturnType<typeof createS3CleanupService>);
+    jest.mocked(createS3CleanupService).mockReturnValue({ deleteReports, deleteObjectsBatch, getFailedReportEntityIds,
+      getRunArtifactInputs: (run: Parameters<ReturnType<typeof createS3CleanupService>["getRunArtifactInputs"]>[0]) => jest.requireActual<typeof import("./s3-cleanup")>("./s3-cleanup").createS3CleanupService().getRunArtifactInputs(run), getBucketForEntityType: (type: string) => ({job: "playwright-job-artifacts", k6_job: "k6-job-artifacts", test: "playwright-test-artifacts", k6_test: "k6-test-artifacts"}[type]) } as unknown as ReturnType<typeof createS3CleanupService>);
     jest.mocked(S3Client).mockImplementation(() => ({ send }) as unknown as S3Client);
   });
 

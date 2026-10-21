@@ -177,7 +177,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Run cannot be cancelled. Only running or pending runs can be cancelled.",
+            "Run cannot be cancelled. Only queued, running or pending runs can be cancelled.",
         },
         { status: 400 }
       );

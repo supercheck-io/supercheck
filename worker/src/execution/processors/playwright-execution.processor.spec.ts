@@ -344,6 +344,10 @@ describe('PlaywrightExecutionProcessor', () => {
         const result = await processor.process(job);
 
         expect(result.success).toBe(true);
+        expect(mockDbService.db.update().set).toHaveBeenCalledWith({
+          reportS3Url: mockSuccessResult.reportUrl,
+        });
+
         expect(mockExecutionService.runSingleTest).toHaveBeenCalledWith(
           mockTestTask,
         );
