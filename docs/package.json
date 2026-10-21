@@ -29,7 +29,7 @@
     "next-themes": "npm:@teispace/next-themes@^3.0.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "shiki": "^3.22.0",
+    "shiki": "^4.5.0",
     "tailwindcss-animate": "^1.0.7"
   },
   "overrides": {
