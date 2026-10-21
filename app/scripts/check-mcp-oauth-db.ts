@@ -14,6 +14,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { auth } from "../src/utils/auth";
 import { runWithConsentProject } from "../src/lib/mcp/connect-project";
+import { submitConsent } from "../src/lib/mcp/auth-api";
 import { decodeJwt } from "jose";
 import { MCP_PROJECT_CLAIM } from "../src/lib/mcp/config";
 import { listMcpConnections, revokeMcpConnection } from "../src/lib/mcp/connections";
@@ -83,12 +84,11 @@ async function main(): Promise<void> {
     const consentUrl = new URL(authorize.headers.get("location") ?? "", BASE);
     if (consentUrl.pathname !== "/oauth/consent") throw new Error(`expected the consent screen, got ${consentUrl.pathname}`);
 
-    const consent = await runWithConsentProject({ userId, projectId }, () =>
-      send("/api/auth/oauth2/consent", {
-        method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
-      }),
+    // Exactly what POST /api/oauth/mcp/consent does after its own checks.
+    const { url } = await runWithConsentProject({ userId, projectId }, () =>
+      submitConsent({ headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: consentUrl.search.slice(1) }),
     );
-    const code = new URL(((await consent.json()) as { url: string }).url).searchParams.get("code") as string;
+    const code = new URL(url).searchParams.get("code") as string;
     const token = await send("/api/auth/oauth2/token", {
       method: "POST", headers: form,
       body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: client.client_id, code_verifier: verifier, resource: RESOURCE }),
@@ -142,10 +142,10 @@ async function main(): Promise<void> {
   const [tabA, tabB] = [await authorizeOnly(), await authorizeOnly()];
   const approve = (tab: { oauthQuery: string }, projectId: string) =>
     runWithConsentProject({ userId, projectId }, () =>
-      send("/api/auth/oauth2/consent", { method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: tab.oauthQuery }) }),
+      submitConsent({ headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: tab.oauthQuery }),
     );
   const [consentA, consentB] = await Promise.all([approve(tabA, projectA), approve(tabB, projectB)]);
-  const codeOf = async (response: Response) => new URL(((await response.json()) as { url: string }).url).searchParams.get("code") as string;
+  const codeOf = async (result: { url: string }) => new URL(result.url).searchParams.get("code") as string;
   const exchange = async (code: string, verifier: string) => {
     const response = await send("/api/auth/oauth2/token", {
       method: "POST", headers: form,
@@ -168,10 +168,10 @@ async function main(): Promise<void> {
   });
   const authorize = await send(`/api/auth/oauth2/authorize?${query}`, { cookie });
   const consentUrl = new URL(authorize.headers.get("location") ?? "", BASE);
-  const noProject = await send("/api/auth/oauth2/consent", {
-    method: "POST", cookie, headers: json, body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
-  });
-  check("approving without choosing a project is refused", noProject.status === 400, `${noProject.status}`);
+  const noProject = await submitConsent({
+    headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: consentUrl.search.slice(1),
+  }).then(() => "approved", (error: { status?: number }) => `refused ${error.status}`);
+  check("approving without choosing a project is refused", noProject === "refused 400", noProject);
   const [{ orphan }] = await sql<{ orphan: number }[]>`
     SELECT count(*)::int AS orphan FROM oauth_consent WHERE user_id = ${userId} AND reference_id IS NULL
   `;

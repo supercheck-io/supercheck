@@ -13,7 +13,7 @@ let mockEnabled = true;
 
 jest.mock("next/headers", () => ({ headers: async () => new Headers({ cookie: "session=1" }) }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: (...a: unknown[]) => mockGetSession(...a) } } }));
-jest.mock("@/lib/mcp/auth-api", () => ({ mcpAuthApi: () => ({ oauth2Consent: (...a: unknown[]) => mockConsent(...a) }) }));
+jest.mock("@/lib/mcp/auth-api", () => ({ submitConsent: (...a: unknown[]) => mockConsent(...a) }));
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/lib/logger/pino-config", () => ({ createLogger: () => ({ warn: jest.fn(), error: jest.fn(), info: jest.fn() }) }));
@@ -79,7 +79,7 @@ describe("POST /api/oauth/mcp/consent", () => {
     expect(mockAssert).toHaveBeenCalledWith("user-1", PROJECT);
     // The choice reaches Better Auth through this approval's own context, not shared storage.
     expect(mockRunWith).toHaveBeenCalledWith({ userId: "user-1", projectId: PROJECT }, expect.any(Function));
-    expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ body: { accept: true, oauth_query: approve.oauth_query } }));
+    expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ accept: true, oauthQuery: approve.oauth_query }));
     // The choice must be recorded before consent is granted.
     expect(mockAssert.mock.invocationCallOrder[0]).toBeLessThan(mockConsent.mock.invocationCallOrder[0]);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_approved", userId: "user-1", success: true }));
@@ -90,7 +90,7 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest({ accept: false, oauth_query: approve.oauth_query }));
     expect(response.status).toBe(200);
     expect(mockAssert).not.toHaveBeenCalled();
-    expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ body: { accept: false, oauth_query: approve.oauth_query } }));
+    expect(mockConsent).toHaveBeenCalledWith(expect.objectContaining({ accept: false, oauthQuery: approve.oauth_query }));
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_denied" }));
     // A denial needs no project and runs outside any approval context.
     expect(mockRunWith).not.toHaveBeenCalled();

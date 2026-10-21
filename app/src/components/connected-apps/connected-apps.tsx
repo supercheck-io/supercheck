@@ -107,7 +107,7 @@ export function ConnectedApps() {
                   : `Unverified (returns to ${connection.redirectHosts.join(", ") || "unknown"})`}
               </p>
               <p className="text-sm text-muted-foreground">
-                Can read <span className="font-medium text-foreground">{connection.projectName ?? "a removed project"}</span>
+                Can read <span className="font-medium text-foreground">{connection.projectName ?? "a project you can no longer access"}</span>
                 {" · "}Connected {formatDate(connection.connectedAt)}
                 {" · "}Last refreshed {formatDate(connection.lastActiveAt)}
               </p>
@@ -124,7 +124,7 @@ export function ConnectedApps() {
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect {pending?.clientName ?? "this app"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It will stop getting access to {pending?.projectName ?? "the project"}. A short-lived token it already
+              It will stop getting access to {pending?.projectName ?? "that project"}. A short-lived token it already
               holds can keep working for up to 15 minutes. You can connect it again later.
             </AlertDialogDescription>
           </AlertDialogHeader>

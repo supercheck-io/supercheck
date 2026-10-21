@@ -3,6 +3,7 @@ import type { BetterAuthPlugin } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { mcp } from "@better-auth/mcp";
 import { cimd } from "@better-auth/cimd";
+import { registrationProblem } from "./client-metadata";
 import { fetchClientMetadataResource as fetchMetadataOverNode } from "@better-auth/cimd/node";
 import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import {
@@ -13,7 +14,8 @@ import {
 } from "./config";
 
 /**
- * Rejects registrations that are not public clients.
+ * Rejects registrations that are not public clients, or whose fields are unbounded
+ * or unsafe to store (see registrationProblem).
  *
  * Open dynamic registration would otherwise mint confidential clients with a
  * secret for anyone who asks. MCP clients are public (PKCE, no secret), so
@@ -36,6 +38,11 @@ export function mcpRegistrationPolicy(): BetterAuthPlugin {
                 error_description:
                   'Only public clients can register: set token_endpoint_auth_method to "none"',
               });
+            }
+            // Registration is open to anyone and everything in it is stored and shown to users.
+            const problem = registrationProblem(ctx.body);
+            if (problem) {
+              throw new APIError("BAD_REQUEST", { error: "invalid_client_metadata", error_description: problem });
             }
           }),
         },

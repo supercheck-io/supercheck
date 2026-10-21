@@ -131,6 +131,19 @@ async function main(): Promise<void> {
   check("a client that omits the auth method is refused", (await register({})).status === 400);
   check("a confidential client is refused", (await register({ token_endpoint_auth_method: "client_secret_post" })).status === 400);
   check("a client_credentials client is refused", (await register({ token_endpoint_auth_method: "none", grant_types: ["client_credentials"] })).status === 400);
+  // Registration is open to anyone and stored verbatim: it must be bounded and free of characters
+  // PostgreSQL cannot store (a NUL used to turn into an empty 500 and a logged database error).
+  const refused = async (label: string, body: Record<string, unknown>) => {
+    const response = await register({ token_endpoint_auth_method: "none", ...body });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    check(`registration refuses ${label} with a clear error`, response.status === 400 && payload?.error === "invalid_client_metadata", `${response.status}`);
+  };
+  await refused("a NUL byte in the name", { client_name: "Agent\u0000" });
+  await refused("a bidirectional override in the name", { client_name: "Sup\u202Eercheck" });
+  await refused("a 100 KB name", { client_name: "A".repeat(100_000) });
+  await refused("500 redirect URIs", { redirect_uris: Array.from({ length: 500 }, (_, i) => `http://127.0.0.1:${9000 + i}/cb`) });
+  await refused("a javascript: logo", { logo_uri: "javascript:alert(1)" });
+  await refused("a data: client URI", { client_uri: "data:text/html,x" });
   check("a wider scope is refused", (await register({ token_endpoint_auth_method: "none", scope: "mcp:read openid email" })).status === 400);
   check("a non-https, non-loopback redirect is refused", (await register({ token_endpoint_auth_method: "none", redirect_uris: ["http://evil.example/cb"] })).status === 400);
   check("a javascript: redirect is refused", (await register({ token_endpoint_auth_method: "none", redirect_uris: ["javascript:alert(1)"] })).status === 400);

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/utils/auth";
-import { mcpAuthApi } from "@/lib/mcp/auth-api";
+import { submitConsent } from "@/lib/mcp/auth-api";
 import { isSafeRedirectTarget } from "@/lib/mcp/redirect";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
@@ -74,15 +74,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const consent = () =>
-      mcpAuthApi().oauth2Consent({
-        headers: requestHeaders,
-        body: { accept, oauth_query: oauthQuery },
-      });
+    const consent = () => submitConsent({ headers: requestHeaders, accept, oauthQuery });
     // The chosen project reaches Better Auth through this call's own context, not shared
     // storage, so two approvals in flight (two tabs, one session) cannot read each other's.
     const result = accept && projectId ? await runWithConsentProject({ userId, projectId }, consent) : await consent();
-    const url = result?.url ?? result?.redirect_uri;
+    const url = result.url;
     if (!isSafeRedirectTarget(url)) return mcpJson({ error: "consent_failed" }, 502);
 
     await logAuditEvent({

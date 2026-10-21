@@ -33,7 +33,7 @@ describe("ConnectedApps", () => {
     expect(screen.getByText("Published by agent.example.com")).toBeInTheDocument();
     expect(screen.getByText(/unverified \(returns to 127\.0\.0\.1:9000\)/i)).toBeInTheDocument();
     expect(screen.getByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByText("a removed project")).toBeInTheDocument();
+    expect(screen.getByText("a project you can no longer access")).toBeInTheDocument();
     expect(screen.getAllByText(/last refreshed never/i)).toHaveLength(2);
   });
 

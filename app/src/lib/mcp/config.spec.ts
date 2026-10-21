@@ -39,34 +39,29 @@ describe("MCP server flags", () => {
 });
 
 describe("getMcpResourceUrl", () => {
-  it("is the /api/mcp URL of the app origin", () => {
-    expect(getMcpResourceUrl({ APP_URL: "https://app.supercheck.io" })).toBe("https://app.supercheck.io/api/mcp");
+  it("is the /api/mcp URL of the Better Auth origin", () => {
+    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "https://app.supercheck.io" })).toBe("https://app.supercheck.io/api/mcp");
   });
 
   it("ignores any path, query or fragment on the configured URL", () => {
-    expect(getMcpResourceUrl({ APP_URL: "https://app.supercheck.io/some/path?x=1#frag" })).toBe(
+    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "https://app.supercheck.io/some/path?x=1#frag" })).toBe(
       "https://app.supercheck.io/api/mcp",
     );
   });
 
-  it("uses the token issuer's origin first, so the resource and issuer cannot disagree", () => {
-    expect(
-      getMcpResourceUrl({ BETTER_AUTH_URL: "https://auth.example.com", APP_URL: "https://other.example.com" }),
-    ).toBe("https://auth.example.com/api/mcp");
-  });
-
-  it("falls back to APP_URL and NEXT_PUBLIC_APP_URL", () => {
-    expect(getMcpResourceUrl({ APP_URL: "https://app.example.com" })).toBe("https://app.example.com/api/mcp");
-    expect(getMcpResourceUrl({ NEXT_PUBLIC_APP_URL: "https://pub.example.com" })).toBe("https://pub.example.com/api/mcp");
+  // Better Auth's issuer comes from BETTER_AUTH_URL alone; guessing from APP_URL could split issuer and audience.
+  it.each([
+    ["only APP_URL", { APP_URL: "https://app.example.com" }],
+    ["only NEXT_PUBLIC_APP_URL", { NEXT_PUBLIC_APP_URL: "https://pub.example.com" }],
+    ["a blank BETTER_AUTH_URL", { BETTER_AUTH_URL: "  ", APP_URL: "https://app.example.com" }],
+    ["nothing", {}],
+  ])("refuses to guess the resource when it has %s", (_name, env) => {
+    expect(() => getMcpResourceUrl(env)).toThrow("BETTER_AUTH_URL");
   });
 
   it("allows plain HTTP only on loopback hosts", () => {
-    expect(getMcpResourceUrl({ APP_URL: "http://localhost:3000" })).toBe("http://localhost:3000/api/mcp");
-    expect(getMcpResourceUrl({ APP_URL: "http://127.0.0.1:3000" })).toBe("http://127.0.0.1:3000/api/mcp");
-    expect(() => getMcpResourceUrl({ APP_URL: "http://app.example.com" })).toThrow("HTTPS");
-  });
-
-  it("fails clearly when no app URL is configured", () => {
-    expect(() => getMcpResourceUrl({})).toThrow("BETTER_AUTH_URL");
+    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://localhost:3000" })).toBe("http://localhost:3000/api/mcp");
+    expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://127.0.0.1:3000" })).toBe("http://127.0.0.1:3000/api/mcp");
+    expect(() => getMcpResourceUrl({ BETTER_AUTH_URL: "http://app.example.com" })).toThrow("HTTPS");
   });
 });

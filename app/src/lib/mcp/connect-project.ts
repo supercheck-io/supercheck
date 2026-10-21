@@ -18,7 +18,12 @@ interface ConsentProject {
   projectId: string;
 }
 
-const storage = new AsyncLocalStorage<ConsentProject>();
+// One store per process, kept on globalThis. Next.js can bundle this module more than once (the
+// consent route and the auth module are separate bundles), and a store created per copy would
+// leave the code that sets the project and the code that reads it looking at different stores.
+const STORE_KEY = Symbol.for("supercheck.mcp.consent-project");
+const globalStore = globalThis as typeof globalThis & { [STORE_KEY]?: AsyncLocalStorage<ConsentProject> };
+const storage = (globalStore[STORE_KEY] ??= new AsyncLocalStorage<ConsentProject>());
 
 export class McpProjectAccessError extends Error {
   constructor() {

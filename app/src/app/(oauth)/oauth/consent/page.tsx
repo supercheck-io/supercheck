@@ -8,6 +8,7 @@ import { MCP_READ_SCOPE, isMcpServerEnabled } from "@/lib/mcp/config";
 import { mcpAuthApi } from "@/lib/mcp/auth-api";
 import { listConnectableProjects } from "@/lib/mcp/connect-project";
 import { verifiedHostForClientId } from "@/lib/mcp/connections";
+import { displayClientName } from "@/lib/mcp/client-metadata";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { McpConsent, type McpConsentProject } from "./mcp-consent";
@@ -41,16 +42,6 @@ function hostOf(value: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Client-supplied names are shown to the user, so drop invisible control and
- * formatting characters (zero-width and bidirectional overrides) that could make
- * one app's name read as another's.
- */
-function displayName(value: string, max: number): string {
-  const clean = value.replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
 export default async function McpConsentPage({
@@ -152,7 +143,7 @@ export default async function McpConsentPage({
       userEmail={session.user.email}
       projects={options}
       client={{
-        name: displayName(client.client_name ?? "", 80) || "An application",
+        name: displayClientName(client.client_name) || "An application",
         verifiedHost: verifiedHostForClientId(clientId),
         // A host such as raw.githubusercontent.com says little on its own; show the whole identifier.
         clientIdUrl: verifiedHostForClientId(clientId) ? clientId : null,

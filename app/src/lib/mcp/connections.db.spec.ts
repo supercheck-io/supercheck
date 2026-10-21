@@ -19,6 +19,9 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+// The real Better Auth instance binds the database at import time; nothing here needs it.
+jest.mock("@/utils/auth", () => ({ auth: { api: {} } }));
+
 import {
   McpConnectionNotFoundError,
   listMcpConnections,
@@ -81,6 +84,7 @@ beforeAll(async () => {
   projectB = randomUUID();
   await client`INSERT INTO "user" (id, name, email) VALUES (${aliceId}, 'Alice', ${`a-${aliceId}@example.com`}), (${bobId}, 'Bob', ${`b-${bobId}@example.com`})`;
   await client`INSERT INTO organization (id, name, slug, created_at) VALUES (${orgId}, 'Org', ${`org-${orgId}`}, now())`;
+  await client`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${randomUUID()}, ${orgId}, ${aliceId}, 'org_owner', now())`;
   await client`INSERT INTO projects (id, organization_id, name, slug, status) VALUES (${projectA}, ${orgId}, 'Alpha', ${`a-${projectA}`}, 'active'), (${projectB}, ${orgId}, 'Beta', ${`b-${projectB}`}, 'active')`;
   await client`INSERT INTO oauth_client (client_id, name, redirect_uris) VALUES (${dcrClient}, 'My Agent', ARRAY['http://127.0.0.1:9000/callback']), (${cimdClient}, 'Agent Co', ARRAY['https://agent.example.com/cb'])`;
 }, 100000);
@@ -127,6 +131,19 @@ describe("MCP connections", () => {
 
     await revokeMcpConnection({ userId: aliceId, consentId: dcr });
     await revokeMcpConnection({ userId: aliceId, consentId: cimdId });
+  });
+
+  it("hides the name of a project the user can no longer see, but still lists the connection so it can be disconnected", async () => {
+    const id = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectA });
+    await client`DELETE FROM member WHERE user_id = ${aliceId}`;
+    try {
+      const [connection] = await listMcpConnections(aliceId);
+      expect(connection.id).toBe(id);
+      expect(connection.projectId).toBe(projectA);
+      expect(connection.projectName).toBeNull();
+    } finally {
+      await client`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${randomUUID()}, ${orgId}, ${aliceId}, 'org_owner', now())`;
+    }
   });
 
   it("never lists another user's connections", async () => {

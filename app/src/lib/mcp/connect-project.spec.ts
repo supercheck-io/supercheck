@@ -69,3 +69,22 @@ describe("resolveConsentProject", () => {
     await expect(resolveConsentProject({ userId: "u1" })).resolves.toBeUndefined();
   });
 });
+
+describe("when the module is loaded more than once (as a Next.js build can)", () => {
+  it("shares the approval's project between the copy that sets it and the copy that reads it", async () => {
+    let setter: typeof import("./connect-project");
+    let reader: typeof import("./connect-project");
+    jest.isolateModules(() => {
+      setter = require("./connect-project");
+    });
+    jest.isolateModules(() => {
+      reader = require("./connect-project");
+    });
+    // Two genuinely separate module instances.
+    expect(setter!).not.toBe(reader!);
+    const seen = await setter!.runWithConsentProject({ userId: "u1", projectId: A }, () =>
+      reader!.resolveConsentProject({ userId: "u1" }),
+    );
+    expect(seen).toBe(A);
+  });
+});

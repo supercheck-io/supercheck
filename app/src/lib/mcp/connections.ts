@@ -1,5 +1,7 @@
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { displayClientName } from "./client-metadata";
+import { listConnectableProjects } from "./connect-project";
 import { db } from "@/utils/db";
 import {
   oauthAccessToken,
@@ -76,10 +78,16 @@ export async function listMcpConnections(userId: string): Promise<McpConnection[
     .where(and(eq(oauthConsent.userId, userId), isNotNull(oauthConsent.referenceId)))
     .orderBy(desc(oauthConsent.createdAt));
 
+  // A project's name is only shown while the user can still see that project. A connection to a
+  // project they have since lost access to is still listed, so they can disconnect it, but the
+  // name of a project they can no longer see is not theirs to read.
+  const visibleProjects = new Set((await listConnectableProjects(userId)).map((project) => project.id));
+
   return rows.map((row) => ({
     id: row.id,
     clientId: row.clientId,
-    clientName: row.clientName,
+    // Registered names were not always vetted (clients can predate the limits), so clean them here too.
+    clientName: row.clientName === null ? null : displayClientName(row.clientName) || null,
     verifiedHost: verifiedHostForClientId(row.clientId),
     redirectHosts: [
       ...new Set(
@@ -87,7 +95,7 @@ export async function listMcpConnections(userId: string): Promise<McpConnection[
       ),
     ],
     projectId: row.projectId as string,
-    projectName: row.projectName,
+    projectName: visibleProjects.has(row.projectId as string) ? row.projectName : null,
     connectedAt: row.connectedAt,
     lastActiveAt: row.lastActiveAt ?? null,
   }));
