@@ -16,7 +16,15 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["node", "jest"]
+    "types": [
+      "node",
+      "jest"
+    ]
   },
-  "include": ["src/**/*.ts", "*.ts", "config/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "*.ts",
+    "config/**/*.ts",
+    "test/**/*.ts"
+  ]
 }

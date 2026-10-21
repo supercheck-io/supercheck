@@ -84,6 +84,8 @@ Set up notifications for job results:
 | **Job timeouts** | Notify if the job exceeds its maximum execution time |
 | **Notification Channels** | Select Slack, email, Discord, Telegram, or webhook |
 
+Failure and recovery thresholds count consecutive runs, including the current run exactly once. Failed and errored runs both count toward the failure threshold. A different outcome breaks the consecutive sequence.
+
 ## Parallel Execution
 
 Run multiple jobs or tests simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions across your organization.

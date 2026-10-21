@@ -147,6 +147,12 @@ export async function getRequirements(options?: {
     conditions.push(eq(requirements.priority, options.priority));
   }
 
+  if (options?.status) {
+    conditions.push(
+      sql`(${requirementCoverageSnapshots.status} = ${options.status} OR (${requirementCoverageSnapshots.status} IS NULL AND ${options.status} = 'missing'))`
+    );
+  }
+
   // Query with coverage join and document join
   const query = db
     .select({
@@ -181,27 +187,22 @@ export async function getRequirements(options?: {
     .offset(offset)
     .limit(pageSize);
 
-  // Apply status filter after join if needed
   const results = await query;
-
-  // Filter by status if specified (done in JS since it's a post-join filter)
-  let filteredResults = results;
-  if (options?.status) {
-    filteredResults = results.filter(
-      (r) => (r.coverageStatus ?? "missing") === options.status
-    );
-  }
 
   // Get total count for pagination
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(requirements)
-    .where(and(...conditions));
+    .leftJoin(
+    requirementCoverageSnapshots,
+    eq(requirements.id, requirementCoverageSnapshots.requirementId)
+  )
+  .where(and(...conditions));
 
   const total = Number(countResult[0]?.count ?? 0);
 
   // Fetch tags for all requirements using the join table
-  const requirementIds = filteredResults.map((r) => r.id);
+  const requirementIds = results.map((r) => r.id);
   const requirementTagsData =
     requirementIds.length > 0
       ? await db
@@ -240,7 +241,7 @@ export async function getRequirements(options?: {
 
   // Transform results with default coverage values
   const requirementsWithCoverage: RequirementWithCoverage[] =
-    filteredResults.map((r) => ({
+    results.map((r) => ({
       id: r.id,
       title: r.title,
       description: r.description,

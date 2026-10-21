@@ -381,3 +381,5 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 Monitor viewers can read check settings and results, but request credentials, request headers, and request bodies are omitted from the configuration returned to them. Users with monitor update permission retain the full configuration needed to edit a monitor. Notification detail links check access to the monitor's own organization and project.
 
 The legacy `config.retryStrategy` field is unsupported for monitors. It is accepted for compatibility but ignored; omit it from new configurations. It does not control execution retries. This deprecation does not change monitor execution or job retry behavior, and existing saved configurations require no migration.
+
+Updating a monitor's target, type, or configuration refreshes its scheduled checks. Paused monitors remain paused when their configuration changes.
