@@ -1395,7 +1395,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         result.details.organizationsProcessed = Object.keys(orgStats).length;
         result.details.orgStats = orgStats;
 
-        // Playground run rows live for 30 days; their temporary artifacts expire separately after 24h.
+        // Standalone run rows and their immutable reports share 30-day retention.
         const before = result.recordsDeleted;
         const remaining = maxRecords - Number(result.details.recordsProcessed || 0);
         if (remaining > 0) {
@@ -1435,7 +1435,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     while (processed < maxRecords) {
       const limit = Math.min(batchSize, maxRecords - processed);
       const oldRuns = await db.select({
-        id: runs.id, createdAt: sql<string>`${runs.createdAt}::text`, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url,
+        id: runs.id, createdAt: sql<string>`${runs.createdAt}::text`, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata,
       }).from(runs)
         .where(and(condition, cursor ? or(
           gt(runs.createdAt, sql`${cursor.createdAt}::timestamp`),
@@ -1457,24 +1457,9 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         entityType: report.entityType as ReportDeletionInput["entityType"],
       }));
       const invalidRunIds = new Set<string>();
-      const reportedRunIds = new Set(associatedReports.map(report => report.entityId));
       for (const run of oldRuns) {
-        if (reportedRunIds.has(run.id)) continue;
         try {
-          const runInputs: ReportDeletionInput[] = [];
-          for (const s3Url of new Set([run.reportS3Url, run.logsS3Url].filter((url): url is string => !!url))) {
-            const url = new URL(s3Url);
-            const parts = url.pathname.split("/").filter(Boolean);
-            const entityTypes = ["job", "k6_job", "test", "k6_test"] as const;
-            const entityType = entityTypes.find(type => {
-              const bucket = this.s3Service.getBucketForEntityType(type);
-              return (parts[0] === bucket && parts[1] === run.id) ||
-                (url.hostname.startsWith(`${bucket}.`) && parts[0] === run.id);
-            });
-            if (!entityType) throw new Error("Artifact URL does not match a configured bucket and execution directory");
-            runInputs.push({ entityId: run.id, reportPath: run.id, s3Url, entityType });
-          }
-          inputs.push(...runInputs);
+          inputs.push(...this.s3Service.getRunArtifactInputs(run));
         } catch (error) {
           invalidRunIds.add(run.id);
           result.success = false;
@@ -1653,8 +1638,13 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
             ContinuationToken: continuationToken,
             MaxKeys: 1000,
           }));
-          const keys = (response.Contents || []).flatMap(obj =>
-            obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoffTime ? [obj.Key] : []
+          const prefixes = [...new Set((response.Contents || []).flatMap(obj => obj.Key ? [obj.Key.split("/")[0]] : []))];
+        // Test buckets also hold immutable run reports; only run retention may remove those.
+        const retainedRuns = prefixes.length ? await db.select({ id: runs.id }).from(runs)
+          .where(inArray(sql<string>`${runs.id}::text`, prefixes)) : [];
+        const retainedRunIds = new Set(retainedRuns.map(run => run.id));
+        const keys = (response.Contents || []).flatMap(obj =>
+            obj.Key && !retainedRunIds.has(obj.Key.split("/")[0]) && obj.LastModified && obj.LastModified.getTime() < cutoffTime ? [obj.Key] : []
           );
           if (keys.length > 0) {
             if (dryRun) {

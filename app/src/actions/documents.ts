@@ -255,7 +255,7 @@ export async function deleteDocument(documentId: string): Promise<{ success: boo
       }));
     } catch (s3Error) {
       console.error("Error deleting from S3:", s3Error);
-      // Continue to delete from DB even if S3 fails (orphan cleanup later)
+      return { success: false, error: "Could not delete document storage; please retry" };
     }
 
     // Delete from DB (requirements with sourceDocumentId will have it set to NULL due to onDelete: "set null")

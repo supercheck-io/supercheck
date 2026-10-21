@@ -1,10 +1,10 @@
+import { deleteRunWithContext } from "@/lib/resource-deletion/run";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { logAuditEvent } from "@/lib/audit-logger";
 
 // Get run handler - scoped to current project
 export async function GET(
@@ -102,131 +102,23 @@ export async function GET(
 
 // Delete run handler
 export async function DELETE(
-  request: Request,
-  routeContext: { params: Promise<{ runId: string }> }
+  _request: Request,
+  routeContext: { params: Promise<{ runId: string }> },
 ) {
-  const params = await routeContext.params;
-  let userId: string | undefined;
-  let runId: string | undefined;
-
   try {
-    const authCtx = await requireAuthContext();
-    userId = authCtx.userId;
-    runId = params.runId;
-    console.log(`Attempting to delete run with ID: ${runId}`);
-
-    if (!runId) {
-      console.error("Missing run ID");
-      return NextResponse.json(
-        { success: false, error: "Missing run ID" },
-        { status: 400 }
-      );
+    const { runId } = await routeContext.params;
+    const context = await requireAuthContext();
+    if (!checkPermissionWithContext("run", "delete", context)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
-
-    // Check delete permission via context
-    const canDelete = checkPermissionWithContext("job", "delete", authCtx);
-    if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete runs" },
-        { status: 403 }
-      );
-    }
-
-    // Find the run scoped to current project
-    const existingRunData = await db
-      .select({
-        id: runs.id,
-        jobId: runs.jobId,
-        projectId: runs.projectId,
-        organizationId: projects.organizationId,
-      })
-      .from(runs)
-      .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .innerJoin(projects, eq(runs.projectId, projects.id))
-      .where(
-        and(
-          eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id),
-          eq(projects.organizationId, authCtx.organizationId)
-        )
-      )
-      .limit(1);
-
-    if (!existingRunData.length) {
-      console.error(`Run with ID ${runId} not found`);
-      return NextResponse.json(
-        { success: false, error: "Run not found" },
-        { status: 404 }
-      );
-    }
-
-    const run = existingRunData[0];
-
-    console.log(`Deleting reports for run: ${runId}`);
-    // First delete any associated reports
-    await db.delete(reports).where(eq(reports.entityId, runId));
-
-    console.log(`Deleting run: ${runId}`);
-    // Then delete the run itself
-    await db.delete(runs).where(eq(runs.id, runId));
-
-    // Log audit event for run deletion
-    try {
-      await logAuditEvent({
-        userId,
-        organizationId: run.organizationId || undefined,
-        action: "run_delete",
-        resource: "run",
-        resourceId: runId,
-        metadata: {
-          jobId: run.jobId,
-          projectId: run.projectId,
-        },
-        success: true,
-      });
-    } catch (auditError) {
-      console.error("Failed to log audit event for run deletion:", auditError);
-      // Continue with success response as audit failure shouldn't break the operation
-    }
-
-    console.log(`Successfully deleted run: ${runId}`);
-    return NextResponse.json({ success: true });
+    const result = await deleteRunWithContext(runId, context);
+    const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
+    return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
     console.error("Error deleting run:", error);
-
-    // Log audit event for run deletion failure
-    if (userId && runId) {
-      try {
-        await logAuditEvent({
-          userId,
-          organizationId: undefined, // May not be available in error scenarios
-          action: "run_delete",
-          resource: "run",
-          resourceId: runId,
-          metadata: {
-            errorType: "internal_error",
-            errorMessage:
-              error instanceof Error ? error.message : "Unknown error",
-          },
-          success: false,
-        });
-      } catch (auditError) {
-        console.error(
-          "Failed to log audit event for run deletion failure:",
-          auditError
-        );
-      }
-    }
-
-    return NextResponse.json(
-      { success: false, error: "Failed to delete run" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Failed to delete run" }, { status: 500 });
   }
 }
