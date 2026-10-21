@@ -102,6 +102,28 @@ describe("database migrations and seeds", () => {
   );
 
   it(
+    "adds the invitation.created_at column Better Auth 1.7 requires, defaulted so older writers keep working",
+    async () => {
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        const [column] = await db<
+          { is_nullable: string; column_default: string | null }[]
+        >`
+          SELECT is_nullable, column_default FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'invitation'
+            AND column_name = 'created_at'
+        `;
+        expect(column).toBeDefined();
+        expect(column.is_nullable).toBe("NO");
+        expect(column.column_default).toMatch(/now\(\)/i);
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+    120_000,
+  );
+
+  it(
     "seeds the plans the application bills against",
     async () => {
       const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
