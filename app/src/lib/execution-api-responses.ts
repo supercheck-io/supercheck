@@ -1,4 +1,5 @@
 import { ExecutionWorkloadError } from "./execution/execution-policy";
+import { SubscriptionAccessDeniedError } from "./services/subscription-service";
 import { NextResponse } from "next/server";
 import type { ExecutionRateLimitResult } from "./execution-rate-limiter";
 import {
@@ -35,7 +36,11 @@ export function buildExecutionRateLimitResponse(
 export function buildExecutionQueueErrorResponse(
   error: unknown,
 ): NextResponse | null {
-  if (error instanceof ExecutionWorkloadError) return NextResponse.json({ error: error.message, code: "EXECUTION_ENTITLEMENT_DENIED" }, { status: error.status });
+  if (error instanceof ExecutionWorkloadError)
+    return NextResponse.json(
+      { error: error.message, code: "EXECUTION_ENTITLEMENT_DENIED" },
+      { status: error.status },
+    );
   if (!isExecutionQueueError(error)) return null;
 
   const capacityExceeded = error.code === "capacity_exceeded";
@@ -68,4 +73,31 @@ export function getSafeExecutionQueueErrorDetails(error: unknown): string {
   return isExecutionQueueError(error)
     ? getExecutionQueueRunError(error)
     : "Failed to queue execution";
+}
+
+/**
+ * Maps a failure from getExecutionPolicy to a response. Only an explicit
+ * denial is a 402 carrying its message; an operational failure (database,
+ * billing provider) is logged and reported generically as a 500.
+ */
+export function buildExecutionPolicyFailureResponse(
+  error: unknown,
+): NextResponse {
+  if (error instanceof SubscriptionAccessDeniedError) {
+    return NextResponse.json(
+      { error: error.message, code: error.reason },
+      { status: 402 },
+    );
+  }
+  if (error instanceof ExecutionWorkloadError) {
+    return NextResponse.json(
+      { error: error.message, code: "execution_entitlement_required" },
+      { status: error.status },
+    );
+  }
+  console.error("Execution policy lookup failed", error);
+  return NextResponse.json(
+    { error: "Execution validation unavailable" },
+    { status: 500 },
+  );
 }

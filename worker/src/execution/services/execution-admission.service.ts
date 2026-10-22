@@ -33,6 +33,14 @@ export function hasActiveExecutionPlan(
 export class ExecutionCapacityError extends Error {}
 /** Not retryable: the organization has no usable entitlement or allowance. */
 export class ExecutionEntitlementError extends Error {}
+/**
+ * Pod scheduling, image start, shutdown and report export happen outside the
+ * reserved run time. A limited run's pod deadline adds this headroom; the
+ * allowance is still charged for the reserved time only.
+ */
+export const LIMITED_RUN_OVERHEAD_MS = 90_000;
+/** Smallest run the executor accepts (see container resource validation). */
+export const MIN_RESERVED_RUN_MS = 5_000;
 /** Extra time a crashed worker's reservation holds capacity beyond its run timeout. */
 export const RESERVATION_LEASE_GRACE_MS = 10 * 60 * 1000;
 export interface ExecutionReservation {
@@ -151,7 +159,10 @@ export class ExecutionAdmissionService {
               entitlement.expiresAt.getTime() - Date.now(),
             ) / 1000,
           ) * 1000;
-        if (!Number.isSafeInteger(reservedMs) || reservedMs < 1000)
+        if (
+          !Number.isSafeInteger(reservedMs) ||
+          reservedMs < MIN_RESERVED_RUN_MS
+        )
           throw new ExecutionEntitlementError(
             'Execution allowance is exhausted',
           );

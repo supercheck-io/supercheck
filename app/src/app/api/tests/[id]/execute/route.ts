@@ -28,6 +28,7 @@ import {
   buildExecutionQueueErrorResponse,
   buildExecutionRateLimitResponse,
   getSafeExecutionQueueErrorDetails,
+  buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 declare const Buffer: {
@@ -75,9 +76,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     try {
       executionPolicy = await getExecutionPolicy(organizationId);
     } catch (error) {
-      const denied = error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError;
-      if (!denied) console.error("[Test Execute API] Execution validation failed:", error);
-      return NextResponse.json({ error: denied ? error.message : "Execution validation unavailable", ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : error instanceof ExecutionWorkloadError ? { code: "execution_entitlement_required" } : {}) }, { status: denied ? 402 : 500 });
+      return buildExecutionPolicyFailureResponse(error);
     }
     const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(organizationId) : { blocked: false };
     if (spendingBlock.blocked) return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });

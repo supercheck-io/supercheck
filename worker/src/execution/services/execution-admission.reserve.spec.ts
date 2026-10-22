@@ -222,6 +222,36 @@ describe('reserve', () => {
     ).resolves.toMatchObject({ reservedMs: 30_000 });
   });
 
+  it.each([1_000, 4_999])(
+    'reports a remaining allowance of %sms as exhausted instead of an unrunnable reservation',
+    async (remainingMs) => {
+      const { service, tx } = build({
+        org: trialOrg,
+        entitlement: trial({
+          playwrightBudgetMs: 100_000,
+          playwrightUsedMs: 100_000 - remainingMs,
+        }),
+      });
+      await expect(
+        service.reserve('org', 'run', 'playwright', 60_000),
+      ).rejects.toBeInstanceOf(ExecutionEntitlementError);
+      expect(tx.insert).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still admits a run of exactly the executor minimum', async () => {
+    const { service } = build({
+      org: trialOrg,
+      entitlement: trial({
+        playwrightBudgetMs: 100_000,
+        playwrightUsedMs: 95_000,
+      }),
+    });
+    await expect(
+      service.reserve('org', 'run', 'playwright', 60_000),
+    ).resolves.toMatchObject({ reservedMs: 5_000 });
+  });
+
   it('refuses when the allowance is exhausted', async () => {
     const { service, tx } = build({
       org: trialOrg,

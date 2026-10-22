@@ -1,5 +1,5 @@
 jest.mock("@/utils/db", () => ({ db: { update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) })) })) } }));
-jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined), ExecutionWorkloadError: class ExecutionWorkloadError extends Error { constructor(message: string, readonly status: 400 | 402 = 400) { super(message); } } }));
 /**
  * Capacity Manager Tests
  * 
@@ -27,7 +27,7 @@ jest.mock('./queue', () => ({
 
 import { CapacityManager, CapacityReservationUnavailableError, QueuedJobData, setCapacityLogger } from './capacity-manager';
 import { checkCapacityLimits } from './middleware/plan-enforcement';
-import { getExecutionPolicy } from './execution/execution-policy';
+import { getExecutionPolicy, ExecutionWorkloadError } from './execution/execution-policy';
 import { getQueues } from './queue';
 import { getRedisConnection } from './queue';
 
@@ -439,6 +439,64 @@ describe('CapacityManager', () => {
   // ==========================================================================
   // COUNTER RESET TESTS
   // ==========================================================================
+
+  describe('processQueuedJobs with an ended entitlement', () => {
+    const queuedKey = `capacity:queued:${testOrgId}`;
+    const expired = () => new ExecutionWorkloadError('Execution entitlement required or trial expired', 402);
+
+    beforeEach(() => {
+      mockRedisScan.mockResolvedValue(['0', [queuedKey]]);
+      mockCheckCapacityLimits.mockRejectedValue(expired());
+    });
+
+    it('removes queued jobs, clears their data and marks the runs failed', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      const where = jest.fn().mockResolvedValue(undefined);
+      const set = jest.fn(() => ({ where }));
+      db.update.mockReturnValue({ set });
+      mockRedisZrange.mockResolvedValue(['job-1', 'job-2']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisGet.mockImplementation(async (key: string) =>
+        key === 'capacity:job:job-1' ? JSON.stringify({ runId: 'run-1' }) : null);
+      const pipelineDel = jest.fn().mockReturnThis();
+      mockRedisPipeline.mockReturnValue({ del: pipelineDel, exec: jest.fn().mockResolvedValue([]) });
+
+      await capacityManager.processQueuedJobs();
+
+      expect(mockRedisZrem).toHaveBeenCalledWith(queuedKey, 'job-1');
+      expect(mockRedisZrem).toHaveBeenCalledWith(queuedKey, 'job-2');
+      expect(pipelineDel).toHaveBeenCalledWith('capacity:job:job-1');
+      expect(pipelineDel).toHaveBeenCalledWith('capacity:job:job-2');
+      expect(set).toHaveBeenCalledTimes(2);
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
+    it('skips a job another worker already removed', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockClear();
+      mockRedisZrange.mockResolvedValue(['job-1']);
+      mockRedisZrem.mockResolvedValue(0);
+      await capacityManager.processQueuedJobs();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps processing other organizations after failing one', async () => {
+      mockRedisScan.mockResolvedValue(['0', [queuedKey, 'capacity:queued:org-other']]);
+      mockCheckCapacityLimits
+        .mockRejectedValueOnce(expired())
+        .mockResolvedValueOnce(defaultCapacityLimits);
+      mockRedisZrange.mockResolvedValue([]);
+      await capacityManager.processQueuedJobs();
+      expect(mockCheckCapacityLimits).toHaveBeenCalledWith('org-other');
+    });
+
+    it('leaves queued jobs untouched on an operational failure so the next cycle retries', async () => {
+      mockCheckCapacityLimits.mockRejectedValue(new Error('database unavailable'));
+      await capacityManager.processQueuedJobs();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
+    });
+  });
 
   describe('Counter Reset', () => {
     describe('resetCounters', () => {

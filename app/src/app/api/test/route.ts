@@ -28,6 +28,7 @@ import {
   buildExecutionQueueErrorResponse,
   buildExecutionRateLimitResponse,
   getSafeExecutionQueueErrorDetails,
+  buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     try {
         executionPolicy = await getExecutionPolicy(organizationId);
       } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : "Subscription validation failed" }, { status: 402 });
+        return buildExecutionPolicyFailureResponse(error);
       }
       const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(organizationId) : { blocked: false };
 	    if (spendingBlock.blocked) {

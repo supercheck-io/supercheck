@@ -28,6 +28,7 @@ import {
   buildExecutionQueueErrorResponse,
   buildExecutionRateLimitResponse,
   getSafeExecutionQueueErrorDetails,
+  buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
@@ -132,15 +133,8 @@ export async function POST(request: NextRequest) {
     let executionPolicy: ExecutionPolicy;
     try {
       executionPolicy = await getExecutionPolicy(organizationId);
-    } catch (subscriptionError) {
-      const errorMessage =
-        subscriptionError instanceof Error
-          ? subscriptionError.message
-          : "Subscription validation failed";
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 402 }
-      );
+    } catch (policyError) {
+      return buildExecutionPolicyFailureResponse(policyError);
     }
 
     // BILLING: Check spending limit hard-stop before allowing execution

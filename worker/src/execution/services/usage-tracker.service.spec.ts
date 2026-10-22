@@ -549,6 +549,29 @@ describe('UsageTrackerService execution blocking', () => {
     ).resolves.toMatchObject({ blocked: true });
   });
 
+  it('does not run monitors under a trial entitlement, with or without billing configured', async () => {
+    const f = admissionFixture();
+    f.org.subscriptionStatus = 'none';
+    f.query.executionEntitlements.findFirst.mockResolvedValue({
+      expiresAt: new Date(Date.now() + 60000),
+    });
+    const blocked = {
+      blocked: true,
+      reason: 'Monitors require an active subscription',
+    };
+    await expect(
+      f.service.shouldBlockExecution('org-1', { monitorId: 'monitor-1' }),
+    ).resolves.toEqual(blocked);
+    delete process.env.POLAR_ACCESS_TOKEN;
+    await expect(
+      f.service.shouldBlockExecution('org-1', { monitorId: 'monitor-1' }),
+    ).resolves.toEqual(blocked);
+    // The same trial still authorizes on-demand runs.
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+  });
+
   it('keeps non-metered probes running at the cap but enforces their subscription', async () => {
     const f = admissionFixture();
     await expect(

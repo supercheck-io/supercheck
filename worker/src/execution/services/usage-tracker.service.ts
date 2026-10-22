@@ -46,6 +46,8 @@ function isPolarEnabled(): boolean {
  */
 /** Reasons that mean billing could not be checked (not that billing blocks the organization). */
 export const BILLING_VERIFICATION_FAILED = 'Unable to verify';
+/** Trial entitlements cover on-demand runs only; monitors need a subscription. */
+const TRIAL_MONITORS_NOT_INCLUDED = 'Monitors require an active subscription';
 export const BILLING_NOT_CONFIGURED =
   'Cloud billing enforcement is not configured';
 
@@ -732,7 +734,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
               ),
             });
           if (entitlement && entitlement.expiresAt.getTime() > Date.now())
-            return { blocked: false };
+            return options.monitorId
+              ? { blocked: true, reason: TRIAL_MONITORS_NOT_INCLUDED }
+              : { blocked: false };
         }
       } catch {
         // Only an explicit, verifiable grant can run without the standard plan configuration.
@@ -757,7 +761,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             })
           : undefined;
         if (entitlement && entitlement.expiresAt.getTime() > Date.now())
-          return { blocked: false };
+          return options.monitorId
+            ? { blocked: true, reason: TRIAL_MONITORS_NOT_INCLUDED }
+            : { blocked: false };
         return { blocked: true, reason: 'An active subscription is required' };
       }
       if (options.monitorId) {

@@ -32,6 +32,7 @@ import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import {
   buildExecutionQueueErrorResponse,
   getSafeExecutionQueueErrorDetails,
+  buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
@@ -249,8 +250,7 @@ export async function POST(
     try {
       executionPolicy = await getExecutionPolicy(job.organizationId);
     } catch (error) {
-      const denied = error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError;
-      return NextResponse.json({ error: denied ? error.message : "Execution validation unavailable", ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : error instanceof ExecutionWorkloadError ? { code: "execution_entitlement_required" } : {}) }, { status: denied ? 402 : 500 });
+      return buildExecutionPolicyFailureResponse(error);
     }
     const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(job.organizationId) : { blocked: false };
     if (spendingBlock.blocked) {

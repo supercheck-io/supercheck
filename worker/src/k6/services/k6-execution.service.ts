@@ -4,6 +4,7 @@ import { executionTargetDomains } from '../../db/schema';
 import {
   ExecutionAdmissionService,
   type ExecutionReservation,
+  LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
 import {
   parseTrialK6Workload,
@@ -37,12 +38,6 @@ import {
   filterFileVariablesToUsedKeys,
 } from '../../common/utils/script-analysis';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
-
-/**
- * Pod scheduling, image start, k6 shutdown and report export happen outside the
- * workload's own duration. The trial allowance is still charged for the duration only.
- */
-const TRIAL_K6_RUNTIME_OVERHEAD_MS = 90_000;
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -418,7 +413,7 @@ export class K6ExecutionService {
     });
 
     const executionTimeoutMs = reservation?.limited
-      ? reservation.reservedMs + TRIAL_K6_RUNTIME_OVERHEAD_MS
+      ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
       : task.jobId
         ? this.jobExecutionTimeoutMs
         : this.testExecutionTimeoutMs;
@@ -535,7 +530,7 @@ export class K6ExecutionService {
               ? fileAdditionalFiles
               : undefined,
             reservation?.limited
-              ? reservation.reservedMs + TRIAL_K6_RUNTIME_OVERHEAD_MS
+              ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
               : undefined,
             reservation?.expiresAt?.getTime(),
           );

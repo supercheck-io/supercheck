@@ -355,11 +355,22 @@ describe("Execution route regressions", () => {
   });
 
   it("rejects unsubscribed Playground execution before queue admission", async () => {
-    mockSubscriptionServiceSingleton.blockUntilSubscribed.mockRejectedValueOnce(new Error("Subscription required"));
+    const { SubscriptionAccessDeniedError } = jest.requireMock("@/lib/services/subscription-service");
+    jest.mocked(getExecutionPolicy).mockRejectedValueOnce(new SubscriptionAccessDeniedError("Subscription required", "subscription_required"));
     const response = await executePlaygroundTest(new NextRequest("http://localhost/api/test", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ script: "test('x', () => {})" }) }));
     expect(response.status).toBe(402);
     expect(mockAddTestToQueue).not.toHaveBeenCalled();
     expect(mockAddK6TestToQueue).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed policy lookup as a generic 500 without leaking the error", async () => {
+    const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    jest.mocked(getExecutionPolicy).mockRejectedValueOnce(new Error('relation "execution_entitlements" does not exist'));
+    const response = await executePlaygroundTest(new NextRequest("http://localhost/api/test", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ script: "test('x', () => {})" }) }));
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await response.json())).not.toContain("execution_entitlements");
+    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it("admits an active trial without the provider usage probe", async () => {

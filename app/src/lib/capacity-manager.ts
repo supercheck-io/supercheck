@@ -1,4 +1,4 @@
-import { getExecutionPolicy, assertExecutionWorkload } from "./execution/execution-policy";
+import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError } from "./execution/execution-policy";
 import Redis from "ioredis";
 import { checkCapacityLimits } from "./middleware/plan-enforcement";
 
@@ -530,7 +530,43 @@ export class CapacityManager {
         await this.promoteJob(organizationId, jobId);
       }
     } catch (error) {
+      if (error instanceof ExecutionWorkloadError) {
+        // The entitlement lapsed while runs were queued. They can never be
+        // admitted, so fail them instead of retrying every cycle indefinitely.
+        await this.failQueuedJobs(organizationId, error.message);
+        return;
+      }
       logger.error({ err: error, organizationId }, "Failed to process organization queue");
+    }
+  }
+
+  /**
+   * Remove every queued job of an organization and mark its run failed.
+   * Used when the organization is no longer entitled to execute.
+   */
+  private async failQueuedJobs(organizationId: string, reason: string): Promise<void> {
+    try {
+      const redis = await this.getRedis();
+      const jobIds = await redis.zrange(KEYS.queued(organizationId), 0, -1);
+      for (const jobId of jobIds) {
+        // Only the caller that removes the entry owns the cleanup.
+        if ((await redis.zrem(KEYS.queued(organizationId), jobId)) === 0) continue;
+        const raw = await redis.get(KEYS.jobData(jobId));
+        await this.cleanupJobData(jobId);
+        const runId = raw ? (JSON.parse(raw) as QueuedJobData).runId : jobId;
+        try {
+          const { db } = await import('@/utils/db');
+          const { runs } = await import('@/db/schema');
+          const { and, eq, inArray } = await import('drizzle-orm');
+          await db.update(runs).set({ status: 'failed', completedAt: new Date() })
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued'])));
+        } catch (dbError) {
+          logger.error({ err: dbError, runId }, "Failed to mark run as failed after entitlement ended");
+        }
+      }
+      logger.warn({ organizationId, failed: jobIds.length, reason }, "Failed queued runs: execution entitlement ended");
+    } catch (error) {
+      logger.error({ err: error, organizationId }, "Failed to clear queued runs after entitlement ended");
     }
   }
 

@@ -21,6 +21,7 @@ import { decodeStoredTestScript } from '../../common/utils/test-script';
 import {
   ExecutionAdmissionService,
   type ExecutionReservation,
+  LIMITED_RUN_OVERHEAD_MS,
 } from './execution-admission.service';
 import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
@@ -1292,12 +1293,12 @@ export class ExecutionService implements OnModuleDestroy {
         cwd: workerDir,
         shell: false,
         timeout: reservation?.limited
-          ? reservation.reservedMs
+          ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
           : isJob
             ? this.jobExecutionTimeoutMs
             : this.testExecutionTimeoutMs,
         hardDeadlineMs: reservation?.limited
-          ? reservation.reservedMs
+          ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
           : undefined,
         expiresAtMs: reservation?.expiresAt?.getTime(),
         scriptPath: null, // No host path to mount - using inline script
