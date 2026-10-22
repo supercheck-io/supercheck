@@ -191,9 +191,12 @@ export async function POST(
     } catch (signalError) {
       logger.error(
         { error: signalError, runId },
-        "Failed to set cancellation signal - continuing anyway"
+        "Failed to persist cancellation signal"
       );
-      // Continue even if signal fails - we'll still update DB status
+      return NextResponse.json(
+        { error: "Could not request cancellation; please retry" },
+        { status: 503 }
+      );
     }
 
     // STEP 2: Try to remove from queue (works for waiting/delayed jobs)
@@ -209,6 +212,7 @@ export async function POST(
 
     // Try to find and remove the job from BullMQ (only works for waiting/delayed jobs)
     // For active jobs, the worker will see the cancellation signal and stop
+    let removedFromCapacityQueue = false;
     let jobWasRemoved = false; // Track if we successfully removed the job
     try {
       // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all
@@ -293,6 +297,7 @@ export async function POST(
           const capacityManager = await getCapacityManager();
           const removedFromQueuedSet = await capacityManager.removeFromQueuedSet(organizationIdForRbac, runId);
           if (removedFromQueuedSet) {
+            removedFromCapacityQueue = true;
             logger.info(
               { runId, organizationId: organizationIdForRbac },
               "Removed job from capacity queue (was waiting for promotion to BullMQ)"
@@ -349,20 +354,28 @@ export async function POST(
     // Update run and job status in a transaction to ensure atomicity
     // Note: The worker will also update this when it detects the cancellation signal
     // The final status update from the worker will indicate actual cancellation completion
+    const queueRemoved = jobWasRemoved || removedFromCapacityQueue;
+    let cancellationComplete = false;
     const now = new Date();
     await db.transaction(async (tx) => {
-      // Update run status to "cancelled"
-      // Worker will see the cancellation signal and stop execution
+      // The worker commits terminal status after its final artifact writes.
       await tx
         .update(runs)
         .set({
-          status: "error", // We use "error" status since "cancelled" isn't a valid status in schema
-          completedAt: now,
           errorDetails: "Cancellation requested by user",
         })
         .where(and(eq(runs.id, runId), inArray(runs.status, ["queued", "running"])));
 
-      logger.info({ runId }, "Run status updated to cancelled");
+      if (queueRemoved && run.runStatus === "queued") {
+        const finalized = await tx.update(runs).set({ status: "error", completedAt: now }).where(and(
+          eq(runs.id, runId),
+          eq(runs.status, "queued"),
+          eq(runs.errorDetails, "Cancellation requested by user"),
+        )).returning({ id: runs.id });
+        cancellationComplete = finalized.length > 0;
+      }
+
+      logger.info({ runId, cancellationComplete }, "Run cancellation recorded");
 
       // If this run belongs to a job, update the job status
       if (run.runJobId) {
@@ -403,7 +416,7 @@ export async function POST(
         jobName: run.jobName || null,
         projectId: run.runProjectId || run.jobProjectId,
         jobType,
-        queueRemoved: !!queueToSearch,
+        queueRemoved,
         isPlaygroundRun,
       },
       success: true,
@@ -411,9 +424,9 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "Run cancelled successfully",
+      message: cancellationComplete ? "Run cancelled successfully" : "Cancellation requested; waiting for execution to stop",
       runId,
-      queueRemoved: !!queueToSearch,
+      queueRemoved,
       jobType,
     });
   } catch (error) {

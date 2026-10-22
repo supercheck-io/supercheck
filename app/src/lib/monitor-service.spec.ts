@@ -67,6 +67,18 @@ describe("updateMonitorHandler schedule synchronization", () => {
     await updateMonitorHandler(existing.id, { config: { timeout: 30, method: "GET" } });
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
+  it.each([
+    { alertChannels: ["new-channel"] },
+    { regions: ["eu-central"] },
+    { locationConfig: { enabled: true, locations: ["eu-central"], threshold: 1 } },
+    { sslLastCheckedAt: "2026-10-22T00:00:00.000Z" },
+    { testTitle: "Renamed test" },
+  ])("does not reschedule a nonexecution config update %j", async (config) => {
+    mockUpdate({ config });
+    await updateMonitorHandler(existing.id, { config });
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  });
   it("preserves an explicit PATCH observed status", async () => {
     mockUpdate({status:"down"});
     await updateMonitorHandler(existing.id, {status:"down",enabled:true});

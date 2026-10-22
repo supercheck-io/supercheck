@@ -146,6 +146,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       await job.moveToDelayed(Date.now() + 10_000, job.token);
       throw new DelayedError();
     }
+    if (!(await this.dbService.claimRunExecution(runId))) {
+      return { success: false, error: 'Cancellation requested by user' };
+    }
     const isJobRun = Boolean(taskData.jobId);
     const testId = taskData.tests?.[0]?.id || taskData.testId || null;
 

@@ -136,7 +136,7 @@ export class S3CleanupService {
    * Extract S3 key from various input formats
    */
   private extractS3Key(input: ReportDeletionInput): string {
-    let key = input.reportPath;
+    let key = input.entityType === "monitor" && input.s3Url ? undefined : input.reportPath;
     if (!key && input.s3Url) {
       const url = new URL(input.s3Url);
       const bucket = this.getBucketForEntityType(input.entityType);
