@@ -246,6 +246,25 @@ function findUnsafeStatements(sql) {
   const maskedSql = maskSqlLiteralsAndComments(sql);
   const findings = [];
 
+  const timeoutChanges = /\b(?:SET\s+LOCAL\s+(lock_timeout|statement_timeout)|RESET\s+(lock_timeout|statement_timeout|ALL))\b/giu;
+  const pendingTimeouts = new Map();
+  for (const match of maskedSql.matchAll(timeoutChanges)) {
+    if (match[1]) {
+      const setting = match[1].toLowerCase();
+      if (!pendingTimeouts.has(setting)) pendingTimeouts.set(setting, match.index);
+    } else if (match[2].toLowerCase() === "all") {
+      pendingTimeouts.clear();
+    } else {
+      pendingTimeouts.delete(match[2].toLowerCase());
+    }
+  }
+  for (const [setting, index] of pendingTimeouts) {
+    findings.push({
+      operation: `SET LOCAL ${setting} without RESET`,
+      line: sql.slice(0, index).split(/\r?\n/u).length,
+    });
+  }
+
   for (const { name, expression } of DESTRUCTIVE_PATTERNS) {
     expression.lastIndex = 0;
     for (const match of maskedSql.matchAll(expression)) {
@@ -329,12 +348,12 @@ function main(argv) {
     return 0;
   }
 
-  console.error("Destructive database migration operations are not allowed by default:");
+  console.error("Unsafe database migration operations are not allowed by default:");
   for (const violation of violations) {
     console.error(`- ${path.relative(process.cwd(), violation.file)}:${violation.line} ${violation.operation}`);
   }
   console.error(
-    "Use an expand/contract migration. For an intentional cleanup phase, add " +
+    "Restore timeout settings before the migration ends. Use an expand/contract migration for schema changes. For an intentional cleanup phase, add " +
       '"-- migration-safety: allow-destructive issue=#123" immediately before the statement.',
   );
   return 1;

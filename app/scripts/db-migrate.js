@@ -13,6 +13,7 @@ const path = require("path");
 const {
   acquireMigrationLock,
   releaseMigrationLock,
+  withMigrationTimeouts,
 } = require("./migration-lock.js");
 
 // Configuration
@@ -329,27 +330,29 @@ async function runMigrations(client) {
           .filter((s) => s.length > 0);
 
         // Execute each statement individually with error handling
-        for (const statement of statements) {
-          if (!statement) continue;
+        await withMigrationTimeouts(client, async () => {
+          for (const statement of statements) {
+            if (!statement) continue;
 
-          await client`SAVEPOINT migration_statement`;
-          try {
-            await client.unsafe(statement);
-            await client`RELEASE SAVEPOINT migration_statement`;
-          } catch (stmtErr) {
-            await client`ROLLBACK TO SAVEPOINT migration_statement`;
-            await client`RELEASE SAVEPOINT migration_statement`;
+            await client`SAVEPOINT migration_statement`;
+            try {
+              await client.unsafe(statement);
+              await client`RELEASE SAVEPOINT migration_statement`;
+            } catch (stmtErr) {
+              await client`ROLLBACK TO SAVEPOINT migration_statement`;
+              await client`RELEASE SAVEPOINT migration_statement`;
 
-            // Log but don't fail on certain expected errors
-            const errorMsg = stmtErr.message.toLowerCase();
-            if (isIgnorableMigrationStatementError(statement, errorMsg, stmtErr.code)) {
-              log(`Skipping statement (idempotent): ${stmtErr.message}`);
-            } else {
-              // Re-throw unexpected errors
-              throw stmtErr;
+              // Log but don't fail on certain expected errors
+              const errorMsg = stmtErr.message.toLowerCase();
+              if (isIgnorableMigrationStatementError(statement, errorMsg, stmtErr.code)) {
+                log(`Skipping statement (idempotent): ${stmtErr.message}`);
+              } else {
+                // Re-throw unexpected errors
+                throw stmtErr;
+              }
             }
           }
-        }
+        });
 
         // Record the migration
         await client`
