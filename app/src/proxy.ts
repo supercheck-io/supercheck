@@ -66,7 +66,12 @@ function handleCors(request: NextRequest): NextResponse | null {
       response.headers.set('Access-Control-Allow-Credentials', 'true');
     }
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept');
+    response.headers.set(
+      'Access-Control-Allow-Headers',
+      pathname === '/api/mcp'
+        ? 'Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id'
+        : 'Authorization, Content-Type, Accept'
+    );
     response.headers.set('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
     response.headers.set(
       'Vary',
@@ -84,6 +89,9 @@ function handleCors(request: NextRequest): NextResponse | null {
     response.headers.set('Access-Control-Allow-Credentials', 'true');
   }
   response.headers.set('Vary', 'Origin');
+  if (pathname === '/api/mcp') {
+    response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id');
+  }
   
   return response;
 }
