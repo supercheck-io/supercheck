@@ -16,6 +16,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
+import { withMigrationTimeouts } from "../../scripts/migration-lock";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,6 +143,36 @@ describe("database migrations and seeds", () => {
     120_000,
   );
 
+  it.each([null, { lock: "7s", statement: "90s" }])(
+    "isolates historical migration timeouts from the next file and seeds (%j)",
+    async (preset) => {
+      const db = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+      try {
+        await db.begin(async (tx) => {
+          if (preset) {
+            await tx`SELECT set_config('lock_timeout', ${preset.lock}, true),
+                            set_config('statement_timeout', ${preset.statement}, true)`;
+          }
+          const read = () => tx`SELECT current_setting('lock_timeout') AS lock,
+                                      current_setting('statement_timeout') AS statement`;
+          const before = await read();
+          await withMigrationTimeouts(tx, async () => {
+            await tx`SAVEPOINT migration_statement`;
+            await tx.unsafe("SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '60s'");
+            await tx`RELEASE SAVEPOINT migration_statement`;
+            expect(await read()).toEqual([{ lock: "5s", statement: "1min" }]);
+          });
+          expect(await read()).toEqual(before);
+          await withMigrationTimeouts(tx, () => tx.unsafe(
+            readFileSync(path.join(MIGRATIONS_DIR, "0035_invitation_created_at.sql"), "utf8"),
+          ));
+          expect(await read()).toEqual(before);
+        });
+      } finally {
+        await db.end({ timeout: 5 });
+      }
+    },
+  );
   // The migrator runs every migration in one transaction, so whatever timeouts 0035 applies must be
   // put back, including values the connection had set itself (RESET would discard those).
   it.each([
