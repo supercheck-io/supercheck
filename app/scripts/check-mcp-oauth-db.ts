@@ -85,12 +85,13 @@ async function main(): Promise<void> {
     });
     const store = createRequestStoreForAPI(request, request.nextUrl, { tags: [], expirationsByCacheKind: new Map() }, undefined, undefined, undefined);
     const experimental = { authInterrupts: false, useCacheTimeout: 60_000, durableUseCacheEntries: false };
+    const renderOpts = {
+      supportsDynamicResponse: true, cacheLifeProfiles: { default: { stale: 300, revalidate: 900, expire: 4294967294 } }, staticPageGenerationTimeout: 60,
+      cacheComponents: false, validationLevel: "warning" as const, experimental, onClose: () => {}, waitUntil: undefined, onAfterTaskError: undefined,
+    };
     const work = createWorkStore({
       page: "/api/oauth/mcp/consent/route", buildId: "check", deploymentId: "", previouslyRevalidatedTags: [],
-      renderOpts: {
-        supportsDynamicResponse: true, cacheLifeProfiles: { default: { stale: 300, revalidate: 900, expire: 4294967294 } }, staticPageGenerationTimeout: 60,
-        cacheComponents: false, validationLevel: "warning", experimental, onClose: () => {}, waitUntil: undefined, onAfterTaskError: undefined,
-      },
+      renderOpts,
     });
     const response = await workAsyncStorage.run(work, () => workUnitAsyncStorage.run(store, () => consentRoute(request)));
     if (!response.ok) throw new Error(`consent route rejected approval: ${response.status} ${await response.text()}`);
