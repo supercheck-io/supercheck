@@ -98,13 +98,13 @@ export function AICreateViewer({
 
   useEffect(() => {
     if (monaco) {
-      monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
-      monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-        target: monaco.languages.typescript.ScriptTarget.ESNext,
+      monaco.typescript.javascriptDefaults.setEagerModelSync(true);
+      monaco.typescript.javascriptDefaults.setCompilerOptions({
+        target: monaco.typescript.ScriptTarget.ESNext,
         allowNonTsExtensions: true,
         moduleResolution:
-          monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        module: monaco.languages.typescript.ModuleKind.CommonJS,
+          monaco.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.typescript.ModuleKind.CommonJS,
         lib: ["es2020", "dom"],
       });
     }

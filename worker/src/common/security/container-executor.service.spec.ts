@@ -846,7 +846,7 @@ describe('ContainerExecutorService', () => {
           inlineScriptContent: 'console.log("hello world")',
           inlineScriptFileName: 'test.ts',
           _workspace: '/tmp/supercheck/run-123',
-        } as any,
+        },
         ['node', 'test.ts'],
       );
 
@@ -863,7 +863,7 @@ describe('ContainerExecutorService', () => {
           ...defaultOptions,
           ensureDirectories: ['/tmp/reports', '/tmp/output'],
           _workspace: '/tmp/supercheck/run-456',
-        } as any,
+        },
         ['playwright', 'test', '/tmp/test.ts'],
       );
 
@@ -880,7 +880,7 @@ describe('ContainerExecutorService', () => {
         {
           ...defaultOptions,
           _workspace: '/tmp/supercheck/run-456',
-        } as any,
+        },
         [
           'k6',
           'run',
@@ -901,7 +901,7 @@ describe('ContainerExecutorService', () => {
         {
           ...defaultOptions,
           _workspace: '/tmp/supercheck/run-789',
-        } as any,
+        },
         ['node', 'test.ts'],
       );
 

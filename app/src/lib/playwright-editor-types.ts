@@ -1,7 +1,7 @@
-import type { languages } from "monaco-editor";
+import type { typescript } from "monaco-editor";
 
 export async function loadPlaywrightEditorTypes(
-  defaults: Pick<languages.typescript.LanguageServiceDefaults, "getExtraLibs" | "addExtraLib">
+  defaults: Pick<typescript.LanguageServiceDefaults, "getExtraLibs" | "addExtraLib">
 ) {
   if (defaults.getExtraLibs()["file:///node_modules/@playwright/test/index.d.ts"]) return;
   for (let attempt = 0; attempt < 3; attempt++) {

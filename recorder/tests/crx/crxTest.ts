@@ -125,7 +125,7 @@ export const test = base.extend<CrxFixtureOptions & {
             const page = await context.newPage();
             await page.goto(`chrome://extensions/?id=${extensionId}`);
             await page.locator('#devMode').click();
-            await page.locator('#allow-incognito').getByRole('button').click();
+            await page.locator('#allow-incognito').getByRole('switch').check();
             await page.close();
             worker = await incognitoWorker;
           }

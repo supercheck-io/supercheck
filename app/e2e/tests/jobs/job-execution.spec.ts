@@ -55,6 +55,11 @@ test.describe('Job execution @jobs @execution', () => {
         status: expect.stringMatching(/^(queued|running|passed|failed|error|blocked)$/),
       }),
     );
+
+    // Cleanup cannot delete a job while its worker still owns an active run.
+    await expect.poll(async () => (await latestRun(request, created.id))?.status, {
+      timeout: 45_000,
+    }).toMatch(/^(passed|failed|error|blocked)$/);
   });
 });
 

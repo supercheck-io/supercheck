@@ -243,16 +243,14 @@ export class MonitorService {
 
                 // Merge SSL certificate info into the website check details
                 if (sslResult.details?.sslCertificate) {
-                  details.sslCertificate = sslResult.details
-                    .sslCertificate as MonitorResultDetails['sslCertificate'];
+                  details.sslCertificate = sslResult.details.sslCertificate;
                 }
 
                 // Handle SSL check results more intelligently
                 if (!sslResult.isUp) {
                   if (sslResult.details?.warningMessage) {
                     // SSL warning (e.g., certificate expiring soon) - don't fail the website check
-                    details.sslWarning = sslResult.details
-                      .warningMessage as string;
+                    details.sslWarning = sslResult.details.warningMessage;
                   } else {
                     // SSL critical failure (e.g., expired certificate, invalid certificate)
                     // This should fail the overall website check as it affects security
@@ -270,7 +268,7 @@ export class MonitorService {
                     } else {
                       // Website was already down - just add SSL info
                       details.sslError =
-                        (sslResult.details?.errorMessage as string) ||
+                        sslResult.details?.errorMessage ||
                         'SSL certificate check failed';
                     }
                   }
@@ -291,21 +289,11 @@ export class MonitorService {
         }
         case 'ping_host':
           ({ status, details, responseTimeMs, isUp } =
-            await this.executePingHost(jobData.target, jobData.config)) as {
-            status: MonitorResultStatus;
-            details: MonitorResultDetails;
-            responseTimeMs?: number;
-            isUp: boolean;
-          };
+            await this.executePingHost(jobData.target, jobData.config));
           break;
         case 'port_check':
           ({ status, details, responseTimeMs, isUp } =
-            await this.executePortCheck(jobData.target, jobData.config)) as {
-            status: MonitorResultStatus;
-            details: MonitorResultDetails;
-            responseTimeMs?: number;
-            isUp: boolean;
-          };
+            await this.executePortCheck(jobData.target, jobData.config));
           break;
 
         case 'synthetic_test': {
@@ -483,8 +471,7 @@ export class MonitorService {
     let previousStatus = monitor.status;
     const checkedAt = results[0].checkedAt;
     let groupEvaluation:
-      | (GroupAlertEvaluation & { resultId: string })
-      | undefined;
+      (GroupAlertEvaluation & { resultId: string }) | undefined;
     if (options?.executionGroupId) {
       const prepared = await this.prepareGroupEvaluation(
         monitorId,
@@ -678,7 +665,7 @@ export class MonitorService {
     for (const row of groupRows) {
       const rowLocation = row.location;
       if (!latestByLocation.has(rowLocation)) {
-        latestByLocation.set(rowLocation, row as MonitorResultRow);
+        latestByLocation.set(rowLocation, row);
       }
     }
 
@@ -993,7 +980,7 @@ export class MonitorService {
                 .update(schema.monitorResults)
                 .set({
                   alertsSentForRecovery: alertsSentForRecovery + 1,
-                } as Partial<typeof schema.monitorResults.$inferInsert>)
+                })
                 .where(eq(schema.monitorResults.id, latestResult.id));
             }
 
@@ -2135,8 +2122,7 @@ export class MonitorService {
 
       // Check if we have SSL certificate info to determine smart frequency
       const sslCertificate = monitorConfig.sslCertificate as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const daysRemaining =
         sslCertificate?.daysRemaining != null
           ? Number(sslCertificate.daysRemaining)
@@ -2178,7 +2164,7 @@ export class MonitorService {
       }
 
       const updatedConfig = {
-        ...((monitor.config as Record<string, unknown>) || {}),
+        ...(monitor.config || {}),
         sslLastCheckedAt: new Date().toISOString(),
       } as typeof monitor.config;
 
@@ -2350,7 +2336,7 @@ export class MonitorService {
         orderBy: [desc(schema.monitorResults.checkedAt)],
         limit: limit,
       });
-      return (results || []) as MonitorResult[];
+      return results || [];
     } catch (error) {
       this.logger.error(
         `Failed to get recent monitor results: ${getErrorMessage(error)}`,

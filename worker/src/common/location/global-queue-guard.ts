@@ -62,7 +62,7 @@ export class GlobalQueueCapabilityGuard {
     if (!worker) return;
     try {
       const allowed = await workerLocationAllowsWorkload(
-        this.dbService as GuardDb as never,
+        this.dbService as GuardDb,
         this.location,
         this.workload,
       );

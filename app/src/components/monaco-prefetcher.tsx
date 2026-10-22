@@ -59,6 +59,7 @@ function scheduleIdleTask(
  */
 async function preloadMonacoLibrary(): Promise<void> {
     try {
+        await import("@/lib/monaco-config");
         // Import the loader (small ~2KB)
         const { loader } = await import("@monaco-editor/react");
 
@@ -104,7 +105,7 @@ async function preloadTypeDefinitions(): Promise<void> {
  * const cached = getCachedTypeDefs();
  * if (cached) {
  *   // Use cached content instead of fetching
- *   monaco.languages.typescript.javascriptDefaults.addExtraLib(cached, uri);
+ *   monaco.typescript.javascriptDefaults.addExtraLib(cached, uri);
  * } else {
  *   // Fall back to fetching
  *   const response = await fetch("/supercheck.d.ts");

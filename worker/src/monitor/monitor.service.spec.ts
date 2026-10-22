@@ -1412,7 +1412,7 @@ describe('MonitorService', () => {
           set: (values: Record<string, unknown>) => ({
             where: async () => {
               if (table === schema.monitors)
-                monitor = { ...monitor, ...values } as typeof monitor;
+                monitor = { ...monitor, ...values };
               else
                 rows[activeGroup].details = values.details as Record<
                   string,

@@ -80,19 +80,19 @@ export const MonacoEditorClient = memo(
         isInitialized.current = true;
 
         // Set eager model sync for immediate type loading
-        monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
+        monaco.typescript.javascriptDefaults.setEagerModelSync(true);
 
         // Both editor languages need Node module resolution for installed declarations.
         for (const defaults of [
-          monaco.languages.typescript.typescriptDefaults,
-          monaco.languages.typescript.javascriptDefaults,
+          monaco.typescript.typescriptDefaults,
+          monaco.typescript.javascriptDefaults,
         ]) {
           defaults.setCompilerOptions({
-            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            target: monaco.typescript.ScriptTarget.ESNext,
             allowNonTsExtensions: true,
             moduleResolution:
-              monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-            module: monaco.languages.typescript.ModuleKind.ESNext,
+              monaco.typescript.ModuleResolutionKind.NodeJs,
+            module: monaco.typescript.ModuleKind.ESNext,
             noEmit: true,
             esModuleInterop: true,
             allowJs: true,
@@ -173,14 +173,14 @@ export const MonacoEditorClient = memo(
                   );
 
                   // Add to JavaScript defaults for IntelliSense
-                  monaco.languages.typescript.javascriptDefaults.addExtraLib(
+                  monaco.typescript.javascriptDefaults.addExtraLib(
                     model.getValue(),
                     model.uri.toString()
                   );
                 } else {
                   // Update existing model
                   existingModel.setValue(typeContent);
-                  monaco.languages.typescript.javascriptDefaults.addExtraLib(
+                  monaco.typescript.javascriptDefaults.addExtraLib(
                     typeContent,
                     uri.toString()
                   );
@@ -192,7 +192,7 @@ export const MonacoEditorClient = memo(
                 );
               }
             }
-            await loadPlaywrightEditorTypes(monaco.languages.typescript.typescriptDefaults);
+            await loadPlaywrightEditorTypes(monaco.typescript.typescriptDefaults);
           } catch (error) {
             console.error("Error in loadTypeDefinitions:", error);
           }
@@ -523,7 +523,7 @@ export const MonacoEditorClient = memo(
                 scrollBeyondLastLine: false,
                 folding: true,
                 renderValidationDecorations: "off",
-                hover: { enabled: true },
+                hover: { enabled: "on" },
                 suggest: {
                   snippetsPreventQuickSuggestions: false,
                   showIcons: true,
@@ -623,7 +623,7 @@ export const MonacoEditorClient = memo(
                       scrollBeyondLastLine: false,
                       folding: true,
                       renderValidationDecorations: "off",
-                      hover: { enabled: true },
+                      hover: { enabled: "on" },
                       suggest: {
                         snippetsPreventQuickSuggestions: false,
                         showIcons: true,
