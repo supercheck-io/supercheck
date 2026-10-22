@@ -45,13 +45,15 @@ import {
   jobs,
   alertHistory,
   auditLogs,
+  executionEntitlements,
 } from "@/db/schema";
-import { sql, and, or, isNotNull, lt, eq, inArray, gt, asc, type SQL } from "drizzle-orm";
+import { sql, and, or, isNotNull, isNull, lt, lte, eq, inArray, gt, asc, type SQL } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { monitorAggregationService } from "./monitor-aggregation-service";
+import { endExpiredTrials } from "@/lib/execution/trial-lifecycle";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -70,6 +72,7 @@ import { monitorAggregationService } from "./monitor-aggregation-service";
  * - "webhook_idempotency": Webhook deduplication keys with TTL
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
+ * - "trial_lifecycle": Ends expired trials (pauses monitors, archives status pages)
  * 
  * DATA PROCESSING (Aggregation Operations):
  * - "monitor_aggregation_hourly": Computes hourly metrics from raw results
@@ -84,7 +87,8 @@ export type CleanupEntityType =
   | "playground_artifacts"
   | "webhook_idempotency"
   | "alert_history"
-  | "audit_logs";
+  | "audit_logs"
+  | "trial_lifecycle";
 
 /**
  * Cleanup strategy configuration
@@ -2299,6 +2303,57 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
   }
 }
 
+/**
+ * Trial Lifecycle Strategy
+ *
+ * Ends expired trials: pauses the organization's monitors and archives its
+ * published status pages. Nothing is deleted, and subscribing restores both.
+ */
+export class TrialLifecycleStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "trial_lifecycle";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+  }
+
+  validate(): void {}
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    const [pending] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(executionEntitlements)
+      .where(and(lte(executionEntitlements.expiresAt, new Date()), isNull(executionEntitlements.lifecycleEndedAt)));
+    return { totalRecords: Number(pending?.count ?? 0), oldRecords: Number(pending?.count ?? 0) };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun },
+    };
+    if (dryRun) {
+      const stats = await this.getStats();
+      result.details = { dryRun, expiredTrials: stats.oldRecords };
+      result.duration = Date.now() - startTime;
+      return result;
+    }
+    try {
+      result.details = { ...(await endExpiredTrials()) };
+    } catch (error) {
+      result.success = false;
+      result.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+}
+
 // ============================================================================
 // UNIFIED DATA LIFECYCLE SERVICE
 // ============================================================================
@@ -2350,6 +2405,9 @@ export class DataLifecycleService {
           break;
         case "audit_logs":
           strategy = new AuditLogsCleanupStrategy(config);
+          break;
+        case "trial_lifecycle":
+          strategy = new TrialLifecycleStrategy(config);
           break;
         default:
           console.warn(
@@ -2901,6 +2959,15 @@ export function createDataLifecycleService(): DataLifecycleService {
         process.env.AUDIT_LOGS_CLEANUP_SAFETY_LIMIT || "100000",
         10
       ),
+    },
+
+    // Trial lifecycle: end expired trials (pause monitors, archive status pages)
+    {
+      entityType: "trial_lifecycle",
+      enabled: parseBooleanEnv(process.env.TRIAL_LIFECYCLE_ENABLED, true),
+      cronSchedule: parseCronSchedule(process.env.TRIAL_LIFECYCLE_CRON, "*/15 * * * *"),
+      batchSize: 50,
+      maxRecordsPerRun: 50,
     },
   ];
 

@@ -1,3 +1,4 @@
+jest.mock("@/lib/execution/trial-lifecycle", () => ({ restoreTrialSuspensions: jest.fn().mockResolvedValue({ monitorsResumed: 0, statusPagesRestored: 0 }) }));
 jest.mock("@/lib/services/subscription-service", () => ({
   subscriptionService: {
     updateSubscription: jest.fn(),
@@ -341,6 +342,40 @@ describe("Polar webhook helpers", () => {
         );
       },
     );
+
+    it("restores what the trial end paused once the organization subscribes", async () => {
+      const { restoreTrialSuspensions } = jest.requireMock("@/lib/execution/trial-lifecycle");
+      restoreTrialSuspensions.mockClear();
+      mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123", subscriptionPlan: null, subscriptionStatus: "none", subscriptionId: null, polarCustomerId: "cus_123",
+        usagePeriodStart: null, usagePeriodEnd: null,
+      });
+      (subscriptionService.resetUsageCountersWithDates as jest.Mock).mockResolvedValue(true);
+      await handleSubscriptionActive({ id: "evt_active_restore", type: "subscription.active",
+        data: { id: "sub_new", status: "active", product_id: "prod_plus", customer_id: "cus_123",
+          current_period_start: "2026-06-01T00:00:00Z", current_period_end: "2026-07-01T00:00:00Z" },
+      });
+      expect(restoreTrialSuspensions).toHaveBeenCalledWith("org_123");
+    });
+
+    it("still completes the activation when restoring trial resources fails", async () => {
+      const { restoreTrialSuspensions } = jest.requireMock("@/lib/execution/trial-lifecycle");
+      restoreTrialSuspensions.mockRejectedValueOnce(new Error("database unavailable"));
+      const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      mockWebhookClaim();
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
+        id: "org_123", subscriptionPlan: null, subscriptionStatus: "none", subscriptionId: null, polarCustomerId: "cus_123",
+        usagePeriodStart: null, usagePeriodEnd: null,
+      });
+      (subscriptionService.resetUsageCountersWithDates as jest.Mock).mockResolvedValue(true);
+      await expect(handleSubscriptionActive({ id: "evt_active_restore_fail", type: "subscription.active",
+        data: { id: "sub_new", status: "active", product_id: "prod_plus", customer_id: "cus_123",
+          current_period_start: "2026-06-01T00:00:00Z", current_period_end: "2026-07-01T00:00:00Z" },
+      })).resolves.toBeUndefined();
+      expect(subscriptionService.updateSubscription).toHaveBeenCalled();
+      log.mockRestore();
+    });
 
     it("applies an active snapshot's changed product without resetting same-period usage", async () => {
       mockWebhookClaim();
