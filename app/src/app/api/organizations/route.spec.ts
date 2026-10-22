@@ -1,13 +1,13 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false) }));
-jest.mock("@/lib/session", () => ({ getUserOrganizations: jest.fn() }));
+jest.mock("@/lib/session", () => ({ getSelectableOrganizations: jest.fn() }));
 jest.mock("@/lib/services/organization-management", () => {
   class OrganizationManagementError extends Error { constructor(message: string, readonly status: number) { super(message); } }
   return { createOrganization: jest.fn(), switchOrganization: jest.fn(), OrganizationManagementError };
 });
 import { requireUserAuthContext } from "@/lib/auth-context";
-import { getUserOrganizations } from "@/lib/session";
+import { getSelectableOrganizations } from "@/lib/session";
 import { createOrganization, switchOrganization, OrganizationManagementError } from "@/lib/services/organization-management";
 import { GET, POST } from "./route";
 import { POST as SWITCH } from "./switch/route";
@@ -18,10 +18,15 @@ function request(body: unknown, origin = "https://app.supercheck.io") {
 
 describe("organization routes", () => {
   beforeEach(() => jest.clearAllMocks());
-  it("returns only the current organization for legacy multiple memberships", async () => {
+  it("keeps credential discovery within its bound organization", async () => {
+    (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user", organizationId: "org-a", isCliAuth: true });
+    (getSelectableOrganizations as jest.Mock).mockResolvedValue([{ id: "org-a" }, { id: "org-b" }]);
+    expect(await (await GET()).json()).toMatchObject({ data: [{ id: "org-a", isActive: true }] });
+  });
+  it("lists selectable organizations independently of their projects", async () => {
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user", organizationId: "org-b" });
-    (getUserOrganizations as jest.Mock).mockResolvedValue([{ id: "org-a" }, { id: "org-b" }]);
-    expect(await (await GET()).json()).toMatchObject({ activeOrganizationId: "org-b", data: [{ id: "org-b", isActive: true }] });
+    (getSelectableOrganizations as jest.Mock).mockResolvedValue([{ id: "org-a" }, { id: "org-b" }]);
+    expect(await (await GET()).json()).toMatchObject({ activeOrganizationId: "org-b", data: [{ id: "org-a", isActive: false }, { id: "org-b", isActive: true }] });
   });
   it("does not allow clients to choose the plan or billing customer when creating an organization", async () => {
     expect((await POST(request({ name: "New team", subscriptionPlan: "pro", polarCustomerId: "paid-customer" }))).status).toBe(400);
