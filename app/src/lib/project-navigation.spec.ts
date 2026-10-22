@@ -10,7 +10,7 @@ describe("project navigation cache isolation", () => {
   const listeners = new Map<string, (event: unknown) => void>();
   const close = jest.fn();
   const postMessage = jest.fn();
-  let channel: { onmessage: (() => void) | null };
+  let channel: { onmessage: ((event: { data: unknown }) => void) | null };
   beforeEach(() => {
     jest.clearAllMocks(); listeners.clear();
     Object.defineProperty(globalThis, "window", { configurable: true, value: {
@@ -35,18 +35,34 @@ describe("project navigation cache isolation", () => {
     expect(replace).toHaveBeenCalledWith(new URL("https://app.supercheck.io/"));
     expect((clearQueryCache as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(replace.mock.invocationCallOrder[0]);
   });
+  it("preserves an explicit onboarding destination on the same origin", () => {
+    reloadProjectContext(clearProjects, "/subscribe");
+    expect(replace).toHaveBeenCalledWith(new URL("https://app.supercheck.io/subscribe"));
+    reloadProjectContext(clearProjects, "//other.example/subscribe");
+    expect((replace.mock.calls.at(-1)?.[0] as URL).origin).toBe("https://app.supercheck.io");
+  });
   it("clears other tabs once for storage and broadcast signals and cleans up listeners", () => {
     const unsubscribe = listenForProjectChanges(clearProjects);
     listeners.get("storage")?.({ key: "unrelated", newValue: "x" });
     expect(replace).not.toHaveBeenCalled();
     listeners.get("storage")?.({ key: "supercheck-project-change", newValue: "x" });
-    channel.onmessage?.();
+    channel.onmessage?.({ data: "changed" });
     expect(clearQueryCache).toHaveBeenCalledTimes(1); expect(replace).toHaveBeenCalledTimes(1);
     unsubscribe(); expect(listeners.size).toBe(0); expect(close).toHaveBeenCalled();
   });
   it("broadcasts when local storage is unavailable", () => {
     (localStorage.setItem as jest.Mock).mockImplementation(() => { throw new Error("disabled"); });
     expect(() => announceProjectChange()).not.toThrow();
-    expect(postMessage).toHaveBeenCalledWith("changed");
+    expect(postMessage).toHaveBeenCalledWith({ source: expect.any(String) });
+  });
+  it("ignores this tab's broadcast so it cannot override the selected destination", () => {
+    const unsubscribe = listenForProjectChanges(clearProjects);
+    const listener = channel;
+    announceProjectChange();
+    listener.onmessage?.({ data: postMessage.mock.calls[0][0] });
+    expect(replace).not.toHaveBeenCalled();
+    listener.onmessage?.({ data: { source: "another-tab" } });
+    expect(replace).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 });
