@@ -25,10 +25,6 @@
  */
 
 import type { editor } from "monaco-editor";
-import { loader } from "@monaco-editor/react";
-
-// Keep the CDN runtime aligned with the editor APIs used by the app.
-loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs" } });
 
 // ============================================================================
 // THEME CONSTANTS
@@ -206,7 +202,7 @@ export const PLAYGROUND_EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOpti
     roundedSelection: true,
     folding: true,
     renderValidationDecorations: "off",
-    hover: { enabled: "on" },
+    hover: { enabled: true },
     suggest: {
       snippetsPreventQuickSuggestions: false,
       showIcons: true,

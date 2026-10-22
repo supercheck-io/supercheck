@@ -13,6 +13,13 @@ test.describe('Status page publishing and management @status-pages @high', () =>
     const created = await createStatusPageThroughUi(page, request, cleanup);
     await page.goto(`/status-pages/${created.id}`, { waitUntil: 'domcontentloaded' });
 
+    await page.getByRole('tab', { name: 'Components', exact: true }).click();
+    await page.getByRole('button', { name: 'Add Component', exact: true }).click();
+    const componentDialog = page.getByRole('dialog', { name: 'Add Component' });
+    await componentDialog.getByLabel('Name *').fill(`E2E public component ${Date.now()}`);
+    await componentDialog.getByRole('button', { name: 'Add Component', exact: true }).click();
+    await expect(componentDialog).toBeHidden();
+
     await page.getByRole('button', { name: 'Publish', exact: true }).click();
     await expect.poll(async () => statusFor(request, created.id)).toBe('published');
     await page.reload({ waitUntil: 'domcontentloaded' });

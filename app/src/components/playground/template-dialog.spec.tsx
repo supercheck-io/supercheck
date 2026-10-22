@@ -5,7 +5,6 @@ jest.mock("next-themes", () => ({
   useTheme: () => ({ resolvedTheme: "dark" }),
 }));
 jest.mock("@monaco-editor/react", () => ({
-  loader: { config: jest.fn() },
   Editor: ({ value, language }: { value: string; language: string }) => (
     <textarea aria-label={`${language} preview`} value={value} readOnly />
   ),

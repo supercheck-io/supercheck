@@ -7,7 +7,6 @@ import { AIDiffViewer } from "./ai-diff-viewer";
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 jest.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 jest.mock("@monaco-editor/react", () => ({
-  loader: { config: jest.fn() },
   useMonaco: () => null,
   Editor: ({ value, onChange }: { value: string; onChange?: (value: string) => void }) => (
     <textarea aria-label="Generated code" value={value} onChange={(event) => onChange?.(event.target.value)} />

@@ -117,13 +117,13 @@ export function AIDiffViewer({
   useEffect(() => {
     if (monaco) {
       // Set JavaScript defaults similar to main editor
-      monaco.typescript.javascriptDefaults.setEagerModelSync(true);
-      monaco.typescript.javascriptDefaults.setCompilerOptions({
-        target: monaco.typescript.ScriptTarget.ESNext,
+      monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
+      monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+        target: monaco.languages.typescript.ScriptTarget.ESNext,
         allowNonTsExtensions: true,
         moduleResolution:
-          monaco.typescript.ModuleResolutionKind.NodeJs,
-        module: monaco.typescript.ModuleKind.CommonJS,
+          monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.CommonJS,
         lib: ["es2020", "dom"],
       });
     }

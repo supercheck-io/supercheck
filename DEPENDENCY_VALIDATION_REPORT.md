@@ -10,41 +10,49 @@ No PRs were merged and no deployments were made. The change branch is based on `
 
 | Check | Baseline | Current branch | Result |
 | --- | --- | --- | --- |
-| App unit/coverage tests | 381 suites / 4,595 tests | 382 suites / 4,596 tests passed; 3 suites / 6 tests skipped | Pass |
-| Worker unit/coverage tests | 70 suites / 1,632 tests | 70 suites / 1,632 tests passed; 2 suites / 44 tests skipped | Pass |
-| CLI unit/coverage tests | 45 suites / 667 tests | 45 suites / 667 tests passed | Pass |
-| Recorder unit tests | — | 24 unit tests, including 5 new config tests | Pass |
-| App type/lint/build | Baseline recorded in evidence logs | Final rebuild and checks passed | Pass |
-| Worker type/lint/container build | Baseline recorded in evidence logs | Final type/lint passed; final image build compiled source successfully | Pass |
-| CLI type/lint/build | Baseline recorded in evidence logs | Final type/lint/build passed | Pass |
-| Recorder lint/build | Baseline recorded in evidence logs | Final lint and production/test-extension builds passed | Pass |
+| App type/lint/build/coverage | 381 suites / 4,595 tests | 381 suites / 4,595 passed; 3 suites / 6 tests skipped; lint and production Webpack build passed | Pass |
+| Worker unit/coverage/type/lint/container build | 70 suites / 1,632 tests | 70 suites / 1,632 tests passed; 2 suites / 44 tests skipped; final type/lint and image build passed | Pass |
+| CLI unit/coverage/type/lint/build | 45 suites / 667 tests | 45 suites / 667 tests passed; final type/lint/build passed | Pass |
+| Recorder npm install/unit/lint/build | — | npm 12 lock regenerated; frozen CI install, 24 unit tests, lint, and production/test-extension builds passed | Pass |
 | Docs checks/build | Baseline Webpack build passed; default Turbopack stalled | OpenAPI, diagrams, lint, tests, and final Webpack build passed | Pass |
-| E2E package | — | Type checks and test listing pass | Pass; browser acceptance below is partial |
+| E2E package | — | Type checks and test listing pass | Pass |
 | PostgreSQL integration | — | App 193 tests; worker DB test 1; monitor-cycle 43 tests | Pass on isolated local PostgreSQL |
 | SRE checks | — | 19 deterministic checks pass; 2 live checks skipped | Partial; live checks remain unverified |
 | Worker container smoke | — | Final image built with Go 1.27.2 and Playwright 1.64.1; one k6 iteration smoke passed | Pass for recorded smoke only |
 | Local app/worker health | — | Both health checks green | Pass |
-| Monaco browser check | — | Monaco 0.57 declarations resolve; `goto` / `getByRole` flow passes; TypeScript TS2345 check passes | Pass for these checks |
-| App browser suite after schema fix | — | 47 passed, 1 failed: status-page publish action leaves draft state unchanged | Blocked on the publish-state failure; separate production-configured rerun had 3 pass and the same 1 failure, so do not label it a flake |
-| Recorder browser suite | — | Checkbox selector was corrected to a switch; rerun still stalls on a redundant worker and was interrupted | Pending; baseline cached-Chromium experiment also showed the redundant worker, but full unchanged-baseline suite was not run |
+| Retained Monaco browser check | — | Monaco 0.52.2 worker loaded 136 libraries; `goto`, `getByRole`, and TS2345 checks passed | Pass |
+| App browser suite | — | 48/48 passed after test setup added a public showcase component through the UI | Pass; prior failure was a missing existing publish prerequisite in test setup |
+| Recorder browser suite | — | Final Linux build passed; browser run stalls on a redundant worker and was interrupted, matching the macOS run | Pending; unchanged-main baseline build is running; no final two-project browser result yet |
 | CLI API acceptance | — | `whoami`, test/monitor/job listing, locations, and token revoke (HTTP 200) passed | Pass |
-| Fullscreen flow | — | Worker loaded; Escape and button both closed fullscreen | Pass |
+| Retained fullscreen flow | — | Worker loaded; Escape and button both closed fullscreen | Pass |
 | Local Kubernetes execution | — | Playwright browser and k6 execution tests passed | Pass locally; no production gVisor acceptance |
 | Job execution | — | Browser flow triggered the selected job and persisted a run | Pass for this flow |
+| Current-head hosted CI | — | Final retained-scope head is awaiting the next push and hosted checks | Pending |
 
-The app browser rerun used an owner credential for the owner/project-admin fixture; it did not independently validate a separately authenticated `project_admin` RBAC identity. The schema export compatibility fix is covered below. The original baseline lockfile also builds in production mode. Its browser comparison did not reach the component form and is inconclusive; the publish failure is not attributed to either dependency updates or baseline behavior. The invalid runtime schema export already existed in baseline source. Hosted CI must be refreshed against the final pushed draft before merge readiness can be assessed.
+The app browser test now creates and persists a public showcase component through the UI before publishing, preserving its persistence and confirmation assertions. The production guard already required that prerequisite; this was a test setup fix, not a product behavior change. The app browser fixture used an owner credential for the owner/project-admin scenario and did not independently validate a separately authenticated `project_admin` RBAC identity. The follow-up for the publish prerequisite is complete. The earlier baseline app runtime check was inconclusive; the schema export mismatch predates this dependency branch, so no baseline runtime pass is claimed. The current retained-scope hosted checks have not yet run.
 ## Compatibility changes and exclusions
 
-- Monaco 0.57 API updates cover three editor components and a helper. The shared loader CDN and app package are pinned to 0.57; `@monaco-editor/loader` 1.7.0 is required for its direct exports. Shared config covers all six editors and prefetch, with config specs and mocks.
+- Final candidate retains Monaco 0.52.2 and `@monaco-editor/loader` 1.6.1. The earlier Monaco 0.57 namespace/hover changes, loader CDN change, shared config/mocks, and added config test were reverted. Retained-scope browser validation loaded 136 libraries and passed the `goto`, `getByRole`, and TS2345 checks.
 - Worker ESLint 10 / `typescript-eslint` 8.71 cleanup applied autofixes across 24 files and manually fixed three remaining errors. The CLI config declares `@eslint/js` ^10 and `typescript-eslint` 8.71 while preserving existing config imports. The one-line CLI lint fix was independently reviewed.
 - App server-action specs use the Node test environment for the AWS SDK browser-ESM change. Virtualizer tests set `clientHeight` and `clientWidth` for the upstream measurement behavior. Recorder changes add Chrome 130 storage type generics, a config-event `unknown` guard, and a test.
-- Grouped PRs #537 and #532 exclude `drizzle-zod` 0.8 because its Zod 4 output conflicts with Zod 3 callers. PR #537 retains Next config 16.3.8 with an `eslint-plugin-react-hooks` 7.0.1 override while keeping Next runtime 16.4.
+- Grouped PRs #537 and #532 exclude `drizzle-zod` 0.8 because its Zod 4 output conflicts with Zod 3 callers. PR #537 also excludes Monaco 0.57, retains Monaco 0.52.2 with loader 1.6.1, and retains Next config 16.3.8 with an `eslint-plugin-react-hooks` 7.0.1 override while keeping Next runtime 16.4.
 - Docs group #519 retains Fuma Core/UI 16.8.0 because 16.17.5 removes translation-context `.text`, still read by OpenAPI 10.6 as `.text.openapi`; it also retains `mdast` serializer 2.1.2 because 2.2 recursed. Other group members are included in the candidate subset.
-- The Zod schema runtime export was moved unchanged to `lib/validations/incident-status.ts`; the reviewer approved this compatibility fix. The app rebuild passed, followed by four regression tests.
+- The Zod schema runtime export was moved unchanged to `lib/validations/incident-status.ts`; the independent reviewer approved the latest retained-scope locks and publish test. The app rebuild passed, followed by four regression tests.
 
 ## Security status
 
-The finalized security audit at `/private/tmp/dependency-security-audits/SECURITY_REVIEW.md` reports no new HIGH or CRITICAL IDs and two new LOW Monaco vendored DOMPurify `IN_PLACE` advisories with no `IN_PLACE` caller found. Remaining HIGH findings are in development-only dependency nodes. This is not a zero-vulnerability claim. The latest recorder security review is pending.
+The final audit found no new vulnerability IDs compared with baseline. Severity counts are:
+
+| Package | Critical | High | Moderate | Low |
+| --- | ---: | ---: | ---: | ---: |
+| App | 0 | 8 | 22 | 0 |
+| Worker | 0 | 0 | 22 | 0 |
+| CLI | 0 | 27 | 5 | 0 |
+| Docs | 0 | 5 | 0 | 0 |
+| Recorder | 0 | 4 | 0 | 0 |
+| E2E | 0 | 0 | 0 | 0 |
+
+The two LOW Monaco DOMPurify advisories from the prior Monaco 0.57 scope are absent from the final lockfile. These counts are not a zero-vulnerability claim.
 
 ## Open PR decisions
 
@@ -56,7 +64,7 @@ The live inventory below contains all 37 PRs from `/private/tmp/supercheck-depen
 | #540 | build(deps): bump react-email from 4.3.2 to 6.11.3 in /app | Include in the candidate replacement subset, subject to final gates. This original PR head was not independently established as merge-ready. |
 | #539 | build(deps): bump @kubernetes/client-node from 1.4.0 to 2.0.0 in /app | Include in the candidate replacement subset, subject to final gates. This original PR head was not independently established as merge-ready. |
 | #538 | build(deps): bump @ai-sdk/anthropic from 3.0.118 to 4.0.82 in /app | Defer: Anthropic 4 model V4 is incompatible with AI SDK 6. |
-| #537 | build(deps): bump the app-minor-patch group in /app with 69 updates | Superseded by the replacement subset: exclude `drizzle-zod` 0.8 (Zod 4 output conflicts with Zod 3 callers); retain Next config 16.3.8 with `eslint-plugin-react-hooks` 7.0.1 override while retaining Next runtime 16.4. |
+| #537 | build(deps): bump the app-minor-patch group in /app with 69 updates | Superseded by the replacement subset: exclude `drizzle-zod` 0.8 (Zod 4 output conflicts with Zod 3 callers) and Monaco 0.57; retain Monaco 0.52.2 with loader 1.6.1, Next config 16.3.8 with `eslint-plugin-react-hooks` 7.0.1 override, and Next runtime 16.4. |
 | #536 | build(deps-dev): bump @nestjs/schematics from 11.1.0 to 12.0.7 in /worker | Include in the candidate replacement subset, subject to final gates. This original PR head was not independently established as merge-ready. |
 | #535 | build(deps-dev): bump eslint from 9.39.2 to 10.13.0 in /worker | Include in replacement subset after ESLint 10 cleanup; worker redundant assertion/formatting cleanup was applied. |
 | #534 | build(deps): bump uuid from 11.1.1 to 14.0.3 in /worker | Include in the candidate replacement subset, subject to final gates. This original PR head was not independently established as merge-ready. |
@@ -94,4 +102,4 @@ The live inventory below contains all 37 PRs from `/private/tmp/supercheck-depen
 
 Validation logs and runner artifacts are under `/private/tmp/supercheck-dependency-validation/`; the live PR snapshot is `/private/tmp/supercheck-dependencies-live.json`. No credentials, private environment contents, kubeconfig contents, or operational PR links are included here.
 
-Before merge readiness: resolve the app status-page publish-state failure and obtain a conclusive baseline runtime comparison; investigate the recorder redundant-worker stall, keeping the baseline cached-Chromium experiment distinct from a full baseline suite; refresh hosted CI for the draft after push; reviewer approval and the unchanged 37 original heads were refreshed locally. Two live SRE checks remain skipped, and production gVisor acceptance was not run. No merge or deployment is authorized by this report.
+Before merge readiness: finish the unchanged-main recorder baseline build and determine whether the redundant-worker stall is baseline behavior; complete the Linux recorder browser run without interruption; push the retained-scope head and refresh hosted checks. Two live SRE checks remain skipped, and production gVisor acceptance was not run. Keep the candidate draft; no merge recommendation is made.
