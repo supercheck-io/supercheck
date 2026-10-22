@@ -13,7 +13,8 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
 import { incidentScheduleFields } from "@/lib/incident-schedule";
-import { updateIncidentStatus, updateIncidentStatusSchema } from "./update-incident-status";
+import { updateIncidentStatus } from "./update-incident-status";
+import { updateIncidentStatusSchema } from "@/lib/validations/incident-status";
 
 const input = {
   incidentId: "00000000-0000-4000-8000-000000000001",

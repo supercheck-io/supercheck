@@ -29,6 +29,8 @@ test.describe('Job execution @jobs @execution', () => {
   }) => {
     const page = projectAdminPage;
     const request = projectAdminPage.request;
+    // The two polls below can use 75s combined, above the 60s default.
+    test.setTimeout(120_000);
     const created = await createJob(request);
     if (created.createdTestId) {
       cleanup.add(`test ${created.createdTestId}`, () =>
@@ -55,6 +57,11 @@ test.describe('Job execution @jobs @execution', () => {
         status: expect.stringMatching(/^(queued|running|passed|failed|error|blocked)$/),
       }),
     );
+
+    // Cleanup cannot delete a job while its worker still owns an active run.
+    await expect.poll(async () => (await latestRun(request, created.id))?.status, {
+      timeout: 45_000,
+    }).toMatch(/^(passed|failed|error|blocked)$/);
   });
 });
 

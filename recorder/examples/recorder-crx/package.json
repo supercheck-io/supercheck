@@ -23,7 +23,7 @@
     "lint": "npx eslint src --ext .ts,.tsx"
   },
   "dependencies": {
-    "idb-keyval": "^6.2.1",
+    "idb-keyval": "^6.3.0",
     "playwright-crx": "0.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -32,12 +32,12 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.281",
+    "@types/chrome": "^0.3.5",
     "@types/codemirror": "^5.60.15",
     "@types/node": "^18.19.68",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/wicg-file-system-access": "^2023.10.5",
+    "@types/wicg-file-system-access": "^2023.10.7",
     "typescript": "^5.9.3",
     "vite": "^6.4.4"
   }

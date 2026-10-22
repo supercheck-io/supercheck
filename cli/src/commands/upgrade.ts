@@ -119,7 +119,7 @@ export const upgradeCommand = new Command('upgrade')
       await confirmPrompt(`Upgrade Supercheck CLI using ${pm}?`, { default: false })
     }
 
-    let code = 0
+    let code: number
     try {
       code = await withSpinner(
         'Upgrading Supercheck CLI...',

@@ -22,7 +22,7 @@ describe('Private Agent endpoint transport', () => {
       mockLookup.mockResolvedValueOnce([
         { address, family: address.includes(':') ? 6 : 4 },
       ]);
-      global.fetch = jest.fn() as unknown as typeof fetch;
+      global.fetch = jest.fn();
 
       await expect(
         requestPrivateAgentEndpoint('https://internal.example.com', {}, (r) =>
@@ -38,7 +38,7 @@ describe('Private Agent endpoint transport', () => {
       { address: '10.0.0.5', family: 4 },
       { address: '127.0.0.1', family: 4 },
     ]);
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn();
 
     await expect(
       requestPrivateAgentEndpoint('http://prometheus.internal:9090', {}, (r) =>
@@ -55,9 +55,7 @@ describe('Private Agent endpoint transport', () => {
 
   it('allows private service addresses with a pinned dispatcher', async () => {
     mockLookup.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
-    global.fetch = jest
-      .fn()
-      .mockResolvedValue(new Response('ok')) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue(new Response('ok'));
 
     await expect(
       requestPrivateAgentEndpoint('http://prometheus.internal:9090', {}, (r) =>

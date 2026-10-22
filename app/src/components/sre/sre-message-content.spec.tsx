@@ -147,10 +147,10 @@ describe("SreMessageContent", () => {
 
   it("windows 10,000-line outputs instead of creating 10,000 DOM rows", async () => {
     const heightSpy = jest
-      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
       .mockReturnValue(384);
     const widthSpy = jest
-      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
       .mockReturnValue(800);
     const content = Array.from(
       { length: 10_000 },

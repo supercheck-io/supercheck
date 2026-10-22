@@ -23,10 +23,7 @@ it('orders terminal job history by timestamp, independently of UUIDv4 ordering',
       ('00000000-0000-4000-a000-000000000001', ${jobId}, 'passed', '2026-01-02'),
       ('00000000-0000-4000-a000-000000000002', ${jobId}, 'error', '2026-01-02'),
       ('eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee', ${jobId}, 'running', '2026-01-03')`;
-    const service = new DbService(
-      drizzle(client) as ConstructorParameters<typeof DbService>[0],
-      new ConfigService(),
-    );
+    const service = new DbService(drizzle(client), new ConfigService());
     const rows = await service.getRecentRunsForJob(jobId, 2);
     expect(rows.map((row) => row.id)).toEqual([
       '00000000-0000-4000-a000-000000000002',

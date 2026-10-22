@@ -42,7 +42,7 @@ export function decryptNotificationProviderConfig(
     return decryptJson<PlainNotificationProviderConfig>(config, { context });
   }
 
-  return (config as PlainNotificationProviderConfig) ?? {};
+  return config ?? {};
 }
 
 export function sanitizeConfigForClient(

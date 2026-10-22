@@ -4,7 +4,6 @@ import { and, eq, lte, gt, ne } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
-  AlertType,
   NotificationProviderConfig,
   NotificationProviderType,
 } from '../../db/schema';
@@ -47,9 +46,9 @@ export class MonitorAlertService {
     const db = this.dbService.db;
 
     // Get monitor details
-    const monitor = (await db.query.monitors.findFirst({
+    const monitor = await db.query.monitors.findFirst({
       where: eq(schema.monitors.id, monitorId),
-    })) as typeof schema.monitors.$inferSelect | undefined;
+    });
 
     if (!monitor) {
       this.logger.error(`[NOTIFY] Monitor not found: ${monitorId}`);
@@ -252,7 +251,7 @@ export class MonitorAlertService {
 
     if (deliveryResults.results.length > 0) {
       const historyRecords = deliveryResults.results.map((result) => ({
-        type: notificationType as AlertType,
+        type: notificationType,
         message: notificationPayload.message,
         target: monitor.name,
         targetType: 'monitor',
@@ -290,9 +289,9 @@ export class MonitorAlertService {
     const db = this.dbService.db;
 
     // Get monitor details
-    const monitor = (await db.query.monitors.findFirst({
+    const monitor = await db.query.monitors.findFirst({
       where: eq(schema.monitors.id, monitorId),
-    })) as typeof schema.monitors.$inferSelect | undefined;
+    });
 
     if (!monitor) {
       this.logger.error(`[SSL-NOTIFY] Monitor not found: ${monitorId}`);
@@ -431,8 +430,10 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
-      const historyRecords = deliveryResults.results.map((result) => ({
-        type: 'ssl_expiring' as AlertType,
+      const historyRecords = deliveryResults.results.map<
+        typeof schema.alertHistory.$inferInsert
+      >((result) => ({
+        type: 'ssl_expiring',
         message: notificationPayload.message,
         target: monitor.name,
         targetType: 'monitor',

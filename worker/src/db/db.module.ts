@@ -40,7 +40,6 @@ const drizzleProvider: Provider = {
           : process.env.NODE_ENV === 'production',
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     return drizzle(client, { schema });
   },
 };

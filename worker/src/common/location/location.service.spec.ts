@@ -21,12 +21,9 @@ describe('LocationService', () => {
   });
 
   it('falls back to configured locations when no results are available', () => {
-    expect(
-      service.calculateAggregatedStatus(
-        {} as Record<string, boolean>,
-        multiLocationConfig,
-      ),
-    ).toBe('down');
+    expect(service.calculateAggregatedStatus({}, multiLocationConfig)).toBe(
+      'down',
+    );
   });
   it('does not report all locations up when one configured location is missing', () => {
     expect(

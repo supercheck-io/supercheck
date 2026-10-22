@@ -1,7 +1,33 @@
 import { expect, test } from '@playwright/test';
-import { clearConfig } from '../../examples/recorder-crx/src/supercheck/config';
+import { addConfigChangeListener, clearConfig, type SupercheckConfig } from '../../examples/recorder-crx/src/supercheck/config';
 
 type FetchImpl = typeof fetch;
+
+test('notifies config changes and rejects missing or malformed stored values', () => {
+  const originalChrome = globalThis.chrome;
+  type ChangeListener = Parameters<typeof chrome.storage.sync.onChanged.addListener>[0];
+  let handler: ChangeListener | undefined;
+  let removed: ChangeListener | undefined;
+  const values: (SupercheckConfig | null)[] = [];
+  try {
+    globalThis.chrome = { storage: { sync: { onChanged: {
+      addListener: (listener: ChangeListener) => { handler = listener; },
+      removeListener: (listener: ChangeListener) => { removed = listener; },
+    } } } } as unknown as typeof chrome;
+    const unsubscribe = addConfigChangeListener(value => values.push(value));
+    const config = { instanceUrl: 'https://app.example.test', apiKey: 'ext-test' };
+    handler!({ unrelated: { newValue: config } });
+    expect(values).toEqual([]);
+    handler!({ supercheckConfig: { newValue: config } });
+    handler!({ supercheckConfig: {} });
+    handler!({ supercheckConfig: { newValue: { instanceUrl: 42 } } });
+    expect(values).toEqual([config, null, null]);
+    unsubscribe();
+    expect(removed).toBe(handler);
+  } finally {
+    globalThis.chrome = originalChrome;
+  }
+});
 
 async function withConfiguredStorage(
   fetchImpl: FetchImpl,

@@ -70,8 +70,10 @@ export default defineConfig({
 
       'fs/promises': path.resolve(__dirname, './src/shims/fs/promises'),
 
+      'node:buffer': path.resolve(__dirname, './node_modules/buffer'),
       'node:events': path.resolve(__dirname, './node_modules/events'),
       'node:module': path.resolve(__dirname, './src/shims/module'),
+      'node:path': path.resolve(__dirname, './node_modules/path'),
       'node:stream': path.resolve(__dirname, './node_modules/readable-stream'),
       'node:string_decoder': path.resolve(__dirname, './node_modules/string_decoder'),
     },
