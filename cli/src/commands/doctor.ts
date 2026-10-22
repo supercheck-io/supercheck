@@ -7,14 +7,17 @@ import { readConfigIdentity } from '../utils/link-config.js'
 import { detectConfigRequirements } from '../utils/config-text.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { resolve } from 'node:path'
-import { getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
+import { getStoredBaseUrl, getToken, isAuthenticated } from '../auth/store.js'
+import { getApiClient } from '../api/client.js'
+import { ApiRequestError } from '../utils/errors.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import pc from '../utils/colors.js'
 
 export const doctorCommand = new Command('doctor')
   .description('Check that all dependencies and configuration are set up correctly')
   .option('--fix', 'Attempt to automatically fix missing dependencies')
-  .action(async (options: { fix?: boolean }) => {
+  .option('--strict', 'Exit non-zero unless dependencies, config and verified credentials are all in place')
+  .action(async (options: { fix?: boolean; strict?: boolean }) => {
     const cwd = process.cwd()
     const format = getOutputFormat()
 
@@ -44,10 +47,29 @@ export const doctorCommand = new Command('doctor')
 
     // 2. Check authentication
     logger.info(pc.bold('Authentication:'))
-    const hasAuth = isAuthenticated()
-    if (hasAuth) {
-      const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
-      logger.info(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)})`)
+    const hasCredentials = isAuthenticated()
+    const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
+    // Having a token is not the same as the server accepting it: ask the server before reporting success.
+    let hasAuth = false
+    let credentialProblem: 'rejected' | 'unreachable' | null = null
+    if (hasCredentials) {
+      try {
+        await getApiClient({ token: getToken() ?? undefined, baseUrl }).request('GET', '/api/context', { retries: 0, timeout: 5_000 })
+        hasAuth = true
+        logger.info(`  ${pc.green('✓')} Authenticated and verified (${pc.dim(baseUrl)})`)
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.statusCode === 403) {
+          // The server knows this credential; the role just cannot read the context.
+          hasAuth = true
+          logger.info(`  ${pc.green('✓')} Authenticated (${pc.dim(baseUrl)}), but this credential lacks permission to read its context`)
+        } else if (err instanceof ApiRequestError && err.statusCode === 401) {
+          credentialProblem = 'rejected'
+          logger.info(`  ${pc.red('✗')} Credentials rejected by ${pc.dim(baseUrl)} — run: supercheck login --reauth`)
+        } else {
+          credentialProblem = 'unreachable'
+          logger.info(`  ${pc.yellow('○')} Credentials present but ${pc.dim(baseUrl)} could not be reached to verify them`)
+        }
+      }
     } else {
       logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login`)
     }
@@ -110,7 +132,7 @@ export const doctorCommand = new Command('doctor')
         issues.push(`${missingRequired.length} missing required dependency(s)`)
       }
       if (!hasAuth) {
-        issues.push('not authenticated')
+        issues.push(credentialProblem === 'rejected' ? 'credentials rejected' : credentialProblem === 'unreachable' ? 'credentials unverified' : 'not authenticated')
       }
       if (!configResult) {
         issues.push('no config file')
@@ -127,13 +149,21 @@ export const doctorCommand = new Command('doctor')
     if (format === 'json') logger.output(JSON.stringify({
       dependencies: deps,
       authenticated: hasAuth,
-      authenticationVerified: false,
+      authenticationVerified: hasAuth,
       localReady: missingRequired.length === 0,
-      cloudCredentialsPresent: hasAuth,
-      apiUrl: getStoredBaseUrl() ?? 'https://app.supercheck.io',
+      cloudCredentialsPresent: hasCredentials,
+      apiUrl: baseUrl,
       configFound: Boolean(configResult),
       ready: missingRequired.length === 0 && hasAuth && Boolean(configResult),
     }, null, 2))
+
+    if (options.strict && !(missingRequired.length === 0 && hasAuth && configResult)) {
+      const strictCode = missingRequired.length > 0 || !configResult ? ExitCode.ConfigError
+        : credentialProblem === 'rejected' || !hasCredentials ? ExitCode.AuthError
+        : credentialProblem === 'unreachable' ? ExitCode.ApiError
+        : ExitCode.ConfigError
+      throw new CLIError('Doctor found issues (--strict).', strictCode)
+    }
 
     // Exit with error code if required deps are missing
     if (missingRequired.length > 0) {

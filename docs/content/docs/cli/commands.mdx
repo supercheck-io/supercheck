@@ -357,7 +357,7 @@ supercheck job keys delete <job-id> <key-id>
 
 ### `supercheck run list`
 
-List job runs with optional filters.
+List job runs with optional filters. Runs of a test executed directly (`test execute`) are not listed; follow those with `run get <runId>` or `--wait`.
 
 ```bash
 supercheck run list
@@ -1045,6 +1045,7 @@ Check that all dependencies and configuration are set up correctly.
 
 ```bash
 supercheck doctor
+supercheck doctor --strict # Exit non-zero unless deps, config and server-verified credentials are in place
 supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
 ```
 
@@ -1055,6 +1056,8 @@ The doctor command checks:
 - **k6** — binary for performance/load tests (optional)
 - **Authentication** — whether a valid token is stored
 - **Configuration** — whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted)
+
+Doctor verifies stored credentials against the server (`/api/context`, 5 second timeout, no retries). Offline, `authenticated` and `ready` are `false` while `cloudCredentialsPresent` stays `true`. With `--strict` the exit code is 3 for missing dependencies or config, 2 for rejected or missing credentials and 4 when the server cannot be reached.
 
 With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.
 
