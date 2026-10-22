@@ -1,3 +1,4 @@
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 /**
  * Unified Authentication Context
  *
@@ -16,7 +17,7 @@
 import { headers } from "next/headers";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
-import { apikey, projects, member, projectMembers, organization } from "@/db/schema";
+import { apikey, projects, member, projectMembers, organization, user } from "@/db/schema";
 import { eq, and, isNull, or, gt } from "drizzle-orm";
 import { hashApiKey, isCliToken } from "@/lib/security/api-key-hash";
 import { Role } from "@/lib/rbac/permissions-client";
@@ -142,8 +143,11 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       enabled: apikey.enabled,
       expiresAt: apikey.expiresAt,
       permissions: apikey.permissions,
+      banned: user.banned,
+      banExpires: user.banExpires,
     })
     .from(apikey)
+    .innerJoin(user, eq(user.id, apikey.referenceId))
     .where(
       and(
         eq(apikey.enabled, true),
@@ -156,7 +160,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     .limit(1);
 
   const matchedKey = candidateKeys[0] ?? null;
-  if (!matchedKey) {
+  if (!isCredentialOwnerActive(matchedKey)) {
     logger.warn(
       { keyPrefix: token.substring(0, 12) },
       "Invalid CLI token attempted"

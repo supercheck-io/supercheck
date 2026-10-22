@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isInvalidUuidError } from "@/lib/uuid";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
@@ -72,6 +73,9 @@ export async function GET(
       createdAt: test.createdAt,
     });
   } catch (error) {
+    if (isInvalidUuidError(error)) {
+      return NextResponse.json({ error: "Test not found" }, { status: 404 });
+    }
     if (isAuthError(error)) {
       return NextResponse.json(
         {

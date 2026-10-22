@@ -5,7 +5,9 @@ import { join } from 'node:path'
 
 const checkAll = jest.fn<(...args: unknown[]) => []>(() => [])
 jest.unstable_mockModule('../../utils/deps.js', () => ({ checkAllDependencies: checkAll, formatDependencyReport: () => '', installPlaywrightBrowsers: jest.fn(async () => true) }))
-jest.unstable_mockModule('../../auth/store.js', () => ({ isAuthenticated: () => true, getStoredBaseUrl: () => 'https://demo.supercheck.io' }))
+jest.unstable_mockModule('../../auth/store.js', () => ({ isAuthenticated: () => true, getToken: () => 'tok', getStoredBaseUrl: () => 'https://demo.supercheck.io' }))
+const apiGet = jest.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ data: {} }))
+jest.unstable_mockModule('../../api/client.js', () => ({ getApiClient: () => ({ request: apiGet }) }))
 const info = jest.fn()
 const warn = jest.fn()
 jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info, output: jest.fn(), success: jest.fn(), error: jest.fn(), warn, newline: jest.fn(), header: jest.fn() } }))
@@ -72,5 +74,39 @@ describe('detectConfigRequirements', () => {
   })
   it('is not fooled by words that merely contain a runner name', () => {
     expect(detectConfigRequirements("name: 'my-playwright-suite', description: 'k6x'")).toMatchObject({ playwright: false, k6: false })
+  })
+})
+
+describe('doctor verifies credentials with the server', () => {
+  it('says verified only after /api/context succeeds', async () => {
+    config('monitors: []')
+    apiGet.mockResolvedValueOnce({ data: {} })
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(info.mock.calls.flat().join(' ')).toMatch(/Authenticated and verified/)
+  })
+  it('reports rejected credentials instead of claiming success', async () => {
+    config('monitors: []')
+    const { ApiRequestError } = await import('../../utils/errors.js')
+    apiGet.mockRejectedValueOnce(new ApiRequestError('no', 401))
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    const printed = info.mock.calls.flat().join(' ')
+    expect(printed).toMatch(/rejected/)
+    expect(printed).not.toMatch(/Authenticated and verified/)
+  })
+})
+
+describe('doctor --strict exit codes', () => {
+  it('uses ApiError when the server cannot be reached, AuthError when rejected', async () => {
+    config('monitors: []')
+    const { ApiRequestError } = await import('../../utils/errors.js')
+    apiGet.mockRejectedValueOnce(new ApiRequestError('down', 503))
+    await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 4 })
+    apiGet.mockRejectedValueOnce(new ApiRequestError('no', 401))
+    await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 2 })
+  })
+  it('does not retry or wait long when checking credentials', async () => {
+    config('monitors: []')
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(apiGet).toHaveBeenLastCalledWith('GET', '/api/context', { retries: 0, timeout: 5000 })
   })
 })

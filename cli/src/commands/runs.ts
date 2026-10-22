@@ -9,12 +9,21 @@ import type { PaginatedResponse } from '../api/client.js'
 import { withSpinner } from '../utils/spinner.js'
 import { getSse } from '../utils/sse.js'
 
+/**
+ * The API stores the report's storage location (an internal host such as http://rustfs:9000/...).
+ * Show the address that works from outside: the application's own report route.
+ */
+export function publicReportUrl(client: { getBaseUrl(): string }, run: Record<string, unknown>): Record<string, unknown> {
+  if (typeof run.reportUrl !== 'string' || !run.reportUrl || typeof run.id !== 'string') return run
+  return { ...run, reportUrl: `${client.getBaseUrl().replace(/\/$/, '')}/api/test-results/${encodeURIComponent(run.id)}/report/index.html` }
+}
+
 export const runCommand = new Command('run')
   .description('Manage runs')
 
 runCommand
   .command('list')
-  .description('List runs')
+  .description('List job runs (runs of a test executed directly are not listed; use `test execute --wait` or `run get <runId>`)')
   .option('--page <page>', 'Page number', '1')
   .option('--limit <limit>', 'Items per page', '50')
   .option('--job <jobId>', 'Filter by job ID')
@@ -37,7 +46,7 @@ runCommand
       ),
     )
 
-    output(data.data, {
+    output(data.data.map((run) => publicReportUrl(client, run)), {
       columns: [
         { key: 'id', header: 'ID' },
         { key: 'jobName', header: 'Job' },
@@ -59,7 +68,7 @@ runCommand
       'Fetching run details',
       () => client.get<Record<string, unknown>>(`/api/runs/${id}`),
     )
-    outputDetail(data)
+    outputDetail(publicReportUrl(client, data))
   })
 
 runCommand

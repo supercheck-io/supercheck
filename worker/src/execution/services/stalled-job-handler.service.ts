@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, or, eq, inArray } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
@@ -112,7 +112,14 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Find all runs that are still in "running" status
+      const recoverQueuedCancellations =
+        this.configService.get<string>('CANCELLED_QUEUED_RECOVERY_ENABLED') ===
+        'true';
+      const queuedCancellation = and(
+        eq(schema.runs.status, 'queued'),
+        eq(schema.runs.errorDetails, 'Cancellation requested by user'),
+      );
+      // Enable queued recovery only after every worker uses atomic execution admission.
       const activeRuns = await this.dbService.db
         .select({
           id: schema.runs.id,
@@ -123,7 +130,12 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           location: schema.runs.location,
         })
         .from(schema.runs)
-        .where(eq(schema.runs.status, 'running'))
+        .where(
+          or(
+            eq(schema.runs.status, 'running'),
+            recoverQueuedCancellations ? queuedCancellation : undefined,
+          ),
+        )
         .limit(1000); // Limit to prevent large queries
 
       if (activeRuns.length === 0) {
@@ -137,6 +149,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         id: string;
         jobId: string | null;
         ageMs: number;
+        status: string;
       }> = [];
 
       for (const run of activeRuns) {
@@ -174,7 +187,12 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
             );
             continue;
           }
-          stalledRuns.push({ id: run.id, jobId: run.jobId, ageMs });
+          stalledRuns.push({
+            id: run.id,
+            jobId: run.jobId,
+            ageMs,
+            status: run.status,
+          });
           this.logger.warn(
             `[${run.id}] Run has been in "running" status for ${Math.floor(ageMs / 1000)}s. ` +
               `Will mark as error to prevent stuck jobs.`,
@@ -203,7 +221,28 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           .where(
             and(
               inArray(schema.runs.id, runIds),
-              eq(schema.runs.status, 'running'),
+              or(
+                and(
+                  eq(schema.runs.status, 'running'),
+                  inArray(
+                    schema.runs.id,
+                    stalledRuns
+                      .filter((run) => run.status === 'running')
+                      .map((run) => run.id),
+                  ),
+                ),
+                recoverQueuedCancellations
+                  ? and(
+                      queuedCancellation,
+                      inArray(
+                        schema.runs.id,
+                        stalledRuns
+                          .filter((run) => run.status === 'queued')
+                          .map((run) => run.id),
+                      ),
+                    )
+                  : undefined,
+              ),
             ),
           );
 

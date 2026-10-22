@@ -26,6 +26,7 @@ const mockExecutionService = {
 
 const mockDbService = {
   getTerminalRun: jest.fn(),
+  claimRunExecution: jest.fn(),
   updateRunStatus: jest.fn(),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
@@ -196,6 +197,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockExecutionService.runSingleTest.mockResolvedValue(mockSuccessResult);
     mockExecutionService.runJob.mockResolvedValue(mockJobSuccessResult);
     mockDbService.getTerminalRun.mockResolvedValue(undefined);
+    mockDbService.claimRunExecution.mockResolvedValue(true);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.updateJobStatus.mockResolvedValue(undefined);
     mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
@@ -217,6 +219,24 @@ describe('PlaywrightExecutionProcessor', () => {
   // ==========================================================================
 
   describe('Single Test Execution', () => {
+    it('does not execute when durable cancellation wins admission', async () => {
+      mockDbService.claimRunExecution.mockResolvedValue(false);
+      expect(
+        (await processor.process(createMockJob(mockTestTask))).success,
+      ).toBe(false);
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(mockExecutionService.runJob).not.toHaveBeenCalled();
+      expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+    });
+
+    it('keeps executions without a persisted run outside run admission', async () => {
+      await processor.process(
+        createMockJob({ ...mockTestTask, runId: undefined }),
+      );
+      expect(mockDbService.claimRunExecution).not.toHaveBeenCalled();
+      expect(mockExecutionService.runSingleTest).toHaveBeenCalled();
+    });
+
     it('keeps successful execution and metering when completion progress fails', async () => {
       const job = createMockJob(mockTestTask);
       (job.updateProgress as jest.Mock).mockImplementation(

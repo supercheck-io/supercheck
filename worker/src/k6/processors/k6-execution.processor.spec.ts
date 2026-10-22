@@ -95,7 +95,11 @@ describe('k6 durable completion', () => {
           runK6Test: execute,
           hasActiveExecution: jest.fn().mockResolvedValue(false),
         } as unknown as Dependencies[0],
-        { db, getTerminalRun } as unknown as Dependencies[1],
+        {
+          db,
+          getTerminalRun,
+          claimRunExecution: jest.fn().mockResolvedValue(true),
+        } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
         {} as Dependencies[3],
         usage as unknown as Dependencies[4],
@@ -192,6 +196,7 @@ describe('k6 location capability backstop', () => {
       {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
+        claimRunExecution: jest.fn().mockResolvedValue(true),
       } as unknown as Dependencies[1],
       { get: () => 'us-east' } as unknown as Dependencies[2],
       {} as Dependencies[3],
@@ -274,6 +279,7 @@ describe('k6 container-start metering', () => {
       {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
+        claimRunExecution: jest.fn().mockResolvedValue(true),
         getRunStatusesForJob: jest.fn(),
         updateJobStatus: jest.fn(),
       } as unknown as Dependencies[1],
@@ -383,5 +389,40 @@ describe('k6 container-start metering', () => {
       expect.any(Function),
     );
     expect(usage.trackK6Execution).not.toHaveBeenCalled();
+  });
+});
+
+describe('k6 execution admission', () => {
+  it('does not execute or publish terminal state when another callback may still be draining', async () => {
+    type Dependencies = ConstructorParameters<typeof K6ExecutionProcessor>;
+    const runK6Test = jest.fn();
+    const updateRunStatus = jest.fn();
+    const claimRunExecution = jest.fn().mockResolvedValue(false);
+    const processor = new K6ExecutionProcessor(
+      {
+        runK6Test,
+        hasActiveExecution: async () => false,
+      } as unknown as Dependencies[0],
+      {
+        claimRunExecution,
+        getTerminalRun: async () => undefined,
+        updateRunStatus,
+      } as unknown as Dependencies[1],
+      { get: () => 'eu' } as unknown as Dependencies[2],
+      {} as Dependencies[3],
+      {} as Dependencies[4],
+      {} as Dependencies[5],
+      {} as Dependencies[6],
+    );
+    const result = await processor.process({
+      data: { runId: 'run-id', location: 'eu' },
+    } as never);
+    expect(result).toMatchObject({
+      success: false,
+      error: 'Cancellation requested by user',
+    });
+    expect(claimRunExecution).toHaveBeenCalledWith('run-id');
+    expect(runK6Test).not.toHaveBeenCalled();
+    expect(updateRunStatus).not.toHaveBeenCalled();
   });
 });
