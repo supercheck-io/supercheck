@@ -67,14 +67,14 @@ describe("S3 report cleanup", () => {
   });
 
   it("uses a monitor execution URL without matching other executions or buckets", async () => {
-    objects.set("monitors", ["test-ab12/report/index.html", "test-ab12/report/trace.zip", "test-ab123/report/index.html"]);
+    objects.set("monitors", ["test-ab12/report/index.html", "test-ab12/report/trace.zip", "test-ab123/report/index.html", "legacy-test/report/index.html"]);
     objects.set("tests", ["test-ab12/report/index.html"]);
     const result = await service.deleteReports([{
-      entityType: "monitor", entityId: "monitor-1",
+      entityType: "monitor", entityId: "monitor-1", reportPath: "legacy-test/report",
       s3Url: "http://storage:9000/monitors/test-ab12/report/index.html",
     }]);
     expect(result.deletedObjects).toHaveLength(2);
-    expect(objects.get("monitors")).toEqual(["test-ab123/report/index.html"]);
+    expect(objects.get("monitors")).toEqual(["test-ab123/report/index.html", "legacy-test/report/index.html"]);
     expect(objects.get("tests")).toEqual(["test-ab12/report/index.html"]);
   });
 
@@ -120,7 +120,7 @@ describe("S3 report cleanup", () => {
 
   it("rejects a URL for a different bucket", async () => {
     const result = await service.deleteReports([{
-      entityType: "monitor", entityId: "monitor-1", s3Url: "https://storage.example/tests/test-ab12/report/index.html",
+      entityType: "monitor", entityId: "monitor-1", reportPath: "legacy-test/report", s3Url: "https://storage.example/tests/test-ab12/report/index.html",
     }]);
     expect(result.success).toBe(false);
     expect(send).not.toHaveBeenCalled();

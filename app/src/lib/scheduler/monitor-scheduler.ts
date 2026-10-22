@@ -7,6 +7,9 @@
  */
 
 import { Job } from 'bullmq';
+import { eq } from 'drizzle-orm';
+import { db } from '@/utils/db';
+import { monitors } from '@/db/schema';
 import {
   getQueues,
   monitorQueueName,
@@ -61,11 +64,26 @@ export async function processScheduledMonitor(
 
   const data = job.data;
   // Handle nested jobData structure from some trigger paths
-  const executionJobData = data.jobData ?? data;
+  let executionJobData = data.jobData ?? data;
   const retryLimit = data.retryLimit || 3;
 
   const finalAttempt = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
   try {
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, monitorId),
+      columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true },
+    });
+    if (!monitor || monitor.enabled === false || monitor.status === 'paused') {
+      return { success: false };
+    }
+    executionJobData = {
+      ...executionJobData,
+      target: monitor.target,
+      type: monitor.type,
+      projectId: monitor.projectId ?? undefined,
+      frequencyMinutes: monitor.frequencyMinutes,
+      config: monitor.config ?? undefined,
+    };
     await enqueueMonitorExecutionJobs(executionJobData, retryLimit, {
       // Retries of one scheduled cycle share the scheduler job id, hence one durable cycle.
       key: job.id,

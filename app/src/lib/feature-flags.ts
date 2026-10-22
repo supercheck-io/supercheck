@@ -196,7 +196,7 @@ export const getPlanPricing = (plan: "plus" | "pro" | "unlimited") => {
  * Protected endpoints (cloud mode only):
  * - /sign-in/email
  * - /sign-up/email
- * - /forget-password
+ * - /request-password-reset
  */
 export const isCaptchaEnabled = (): boolean => {
   // CAPTCHA is explicitly disabled for self-hosted deployments

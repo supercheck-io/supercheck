@@ -193,6 +193,10 @@ async function main(): Promise<void> {
       : err instanceof CLIError ? err.exitCode
       : err && typeof err === 'object' && 'exitCode' in err && typeof err.exitCode === 'number'
         ? err.exitCode : ExitCode.GeneralError
+    // Help output is not an error: print nothing more (commander already showed the usage).
+    const commanderCode = err && typeof err === 'object' && 'code' in err && typeof err.code === 'string' ? err.code : ''
+    if (['commander.help', 'commander.helpDisplayed', 'commander.version'].includes(commanderCode)) process.exit(code)
+
     if ((program.opts().json || process.argv.includes('--json')) && code !== 0) {
       const classified = classifyError(err, isAuthenticated())
       console.error(JSON.stringify(redact({

@@ -395,11 +395,16 @@ export async function getUserProjects(
   }
 }
 
-/** Projects from the account organization and teams joined by invitation. */
-export async function getSelectableProjects(userId: string): Promise<ProjectWithRole[]> {
+/** Organizations from the account and teams joined by invitation, including empty teams. */
+export async function getSelectableOrganizations(userId: string): Promise<OrganizationWithRole[]> {
   const organizations = await getUserOrganizations(userId);
   const defaultOrganization = selectDefaultOrganization(organizations);
-  const selectable = organizations.filter(org => org.role !== Role.ORG_OWNER || org.id === defaultOrganization?.id);
+  return organizations.filter(org => org.role !== Role.ORG_OWNER || org.id === defaultOrganization?.id);
+}
+
+/** Projects from the account organization and teams joined by invitation. */
+export async function getSelectableProjects(userId: string): Promise<ProjectWithRole[]> {
+  const selectable = await getSelectableOrganizations(userId);
   if (!selectable.length) return [];
   const orgsById = new Map(selectable.map(org => [org.id, org]));
   // One joined read for every selectable team, rather than three reads per team.

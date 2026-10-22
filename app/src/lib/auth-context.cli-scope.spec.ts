@@ -38,3 +38,57 @@ it("retains legacy token compatibility when capability markers are absent", asyn
   token(null);
   expect(await requireUserAuthContext("project-a")).toMatchObject({ projectId: "project-a" });
 });
+
+it.each([null, new Date(Date.now() + 60_000)])(
+  "rejects a CLI key owned by a currently banned user (%s)",
+  async (banExpires) => {
+    jest.clearAllMocks();
+    token('["cli:full"]');
+    jest
+      .mocked(db.select)
+      .mockReset()
+      .mockReturnValueOnce(
+        rows([
+          {
+            id: "key",
+            userId: "user",
+            projectId: "project-a",
+            banned: true,
+            banExpires,
+          },
+        ]) as never,
+      );
+    await expect(requireUserAuthContext()).rejects.toThrow(
+      "Invalid or expired CLI token",
+    );
+    expect(db.update).not.toHaveBeenCalled();
+  },
+);
+it("accepts a CLI key after a temporary ban expires", async () => {
+  token('["cli:full"]');
+  const keyRows = rows([
+    {
+      id: "key",
+      userId: "user",
+      projectId: "project-a",
+      permissions: '["cli:full"]',
+      banned: true,
+      banExpires: new Date(0),
+    },
+  ]);
+  jest
+    .mocked(db.select)
+    .mockReset()
+    .mockReturnValueOnce(keyRows as never)
+    .mockReturnValueOnce(
+      rows([
+        {
+          projectId: "project-a",
+          projectName: "Project A",
+          projectOrgId: "org",
+          orgRole: "org_owner",
+        },
+      ]) as never,
+    );
+  expect(await requireUserAuthContext()).toMatchObject({ userId: "user" });
+});

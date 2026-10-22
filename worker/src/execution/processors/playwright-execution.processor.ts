@@ -77,9 +77,22 @@ export class PlaywrightExecutionProcessor
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
-    const terminal = data.runId
+    let terminal = data.runId
       ? await this.dbService.getTerminalRun(data.runId)
       : undefined;
+    if (!terminal && data.runId) {
+      if (await this.hasActiveExecutionOrFail(data.runId)) {
+        await job.moveToDelayed(Date.now() + 10_000, job.token);
+        throw new DelayedError();
+      }
+      if (!(await this.dbService.claimRunExecution(data.runId))) {
+        terminal = {
+          id: data.runId,
+          status: 'error',
+          errorDetails: 'Cancellation requested by user',
+        };
+      }
+    }
     if (terminal) {
       const outcome = {
         success: terminal.status === 'passed',
@@ -94,10 +107,6 @@ export class PlaywrightExecutionProcessor
             results: [],
             timestamp: new Date().toISOString(),
           };
-    }
-    if (data.runId && (await this.hasActiveExecutionOrFail(data.runId))) {
-      await job.moveToDelayed(Date.now() + 10_000, job.token);
-      throw new DelayedError();
     }
 
     // Determine if this is a test or a job

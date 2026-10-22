@@ -3,6 +3,14 @@
 const { findUnsafeStatements } = require("./check-migration-safety");
 
 describe("migration safety check", () => {
+  it.each(["lock_timeout", "statement_timeout"])("rejects a leaked %s", (setting) => {
+    expect(findUnsafeStatements(`SET LOCAL ${setting} = '5s'; SELECT 1;`)).toEqual([
+      { line: 1, operation: `SET LOCAL ${setting} without RESET` },
+    ]);
+    expect(findUnsafeStatements(`RESET ${setting}; SET LOCAL ${setting} = '5s';`)).toHaveLength(1);
+    expect(findUnsafeStatements(`SET LOCAL ${setting} = '5s'; RESET ${setting};`)).toEqual([]);
+    expect(findUnsafeStatements(`-- SET LOCAL ${setting} = '5s';\nSELECT 1;`)).toEqual([]);
+  });
   it.each([
     ['DROP TABLE "legacy";', "DROP TABLE"],
     ['ALTER TABLE "users" DROP COLUMN "legacy";', "DROP COLUMN"],

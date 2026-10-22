@@ -10,10 +10,16 @@
  *
  * Run by src/lib/mcp/oauth-flow.db.spec.ts.
  */
+import "next/dist/server/node-environment-baseline";
+import { NextRequest } from "next/server";
+import { createWorkStore } from "next/dist/server/async-storage/work-store";
+import { workAsyncStorage } from "next/dist/server/app-render/work-async-storage.external";
+import { createRequestStoreForAPI } from "next/dist/server/async-storage/request-store";
+import { workUnitAsyncStorage } from "next/dist/server/app-render/work-unit-async-storage.external";
+import { POST as consentRoute } from "../src/app/api/oauth/mcp/consent/route";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { auth } from "../src/utils/auth";
-import { runWithConsentProject } from "../src/lib/mcp/connect-project";
 import { submitConsent } from "../src/lib/mcp/auth-api";
 import { decodeJwt } from "jose";
 import { MCP_PROJECT_CLAIM } from "../src/lib/mcp/config";
@@ -72,6 +78,26 @@ async function main(): Promise<void> {
   });
   const client = (await registered.json()) as { client_id: string };
 
+  async function approveRoute(oauthQuery: string, projectId?: string): Promise<{ url: string }> {
+    const request = new NextRequest(`${BASE}/api/oauth/mcp/consent`, {
+      method: "POST", headers: { ...json, origin: BASE, cookie },
+      body: JSON.stringify({ accept: true, projectId, oauth_query: oauthQuery }),
+    });
+    const store = createRequestStoreForAPI(request, request.nextUrl, { tags: [], expirationsByCacheKind: new Map() }, undefined, undefined, undefined);
+    const experimental = { authInterrupts: false, useCacheTimeout: 60_000, durableUseCacheEntries: false };
+    const renderOpts = {
+      supportsDynamicResponse: true, cacheLifeProfiles: { default: { stale: 300, revalidate: 900, expire: 4294967294 } }, staticPageGenerationTimeout: 60,
+      cacheComponents: false, validationLevel: "warning" as const, experimental, onClose: () => {}, waitUntil: undefined, onAfterTaskError: undefined,
+    };
+    const work = createWorkStore({
+      page: "/api/oauth/mcp/consent/route", buildId: "check", deploymentId: "", previouslyRevalidatedTags: [],
+      renderOpts,
+    });
+    const response = await workAsyncStorage.run(work, () => workUnitAsyncStorage.run(store, () => consentRoute(request)));
+    if (!response.ok) throw new Error(`consent route rejected approval: ${response.status} ${await response.text()}`);
+    return response.json() as Promise<{ url: string }>;
+  }
+
   // Connect the client to one project: the connect screen's authorize -> choose -> consent -> token.
   async function connect(projectId: string): Promise<{ access: string; refresh: string }> {
     const verifier = base64url(randomBytes(32));
@@ -84,10 +110,7 @@ async function main(): Promise<void> {
     const consentUrl = new URL(authorize.headers.get("location") ?? "", BASE);
     if (consentUrl.pathname !== "/oauth/consent") throw new Error(`expected the consent screen, got ${consentUrl.pathname}`);
 
-    // Exactly what POST /api/oauth/mcp/consent does after its own checks.
-    const { url } = await runWithConsentProject({ userId, projectId }, () =>
-      submitConsent({ headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: consentUrl.search.slice(1) }),
-    );
+    const { url } = await approveRoute(consentUrl.search.slice(1), projectId);
     const code = new URL(url).searchParams.get("code") as string;
     const token = await send("/api/auth/oauth2/token", {
       method: "POST", headers: form,
@@ -119,6 +142,14 @@ async function main(): Promise<void> {
   const afterB = await refresh(b.refresh);
   check("the same client's other project still refreshes", afterB.status === 200, `${afterB.status}`);
 
+  const activeToken = (await afterB.json()) as { refresh_token: string };
+  await sql`UPDATE "user" SET banned = true, ban_expires = NULL WHERE id = ${userId}`;
+  const whileBanned = await refresh(activeToken.refresh_token);
+  check("an existing refresh credential refuses a suspended owner", whileBanned.status === 403, `${whileBanned.status}`);
+  await sql`UPDATE "user" SET banned = false, ban_expires = NULL WHERE id = ${userId}`;
+  const afterUnban = await refresh(activeToken.refresh_token);
+  check("a restored owner can refresh again", afterUnban.status === 200, `${afterUnban.status}`);
+
   const remaining = await listMcpConnections(userId);
   check("only the other project remains listed", remaining.length === 1 && remaining[0].projectId === projectB);
   const [{ count }] = await sql<{ count: number }[]>`
@@ -140,10 +171,7 @@ async function main(): Promise<void> {
   // Both connect screens are open before either decision is made.
   await sql`DELETE FROM oauth_consent WHERE user_id = ${userId}`;
   const [tabA, tabB] = [await authorizeOnly(), await authorizeOnly()];
-  const approve = (tab: { oauthQuery: string }, projectId: string) =>
-    runWithConsentProject({ userId, projectId }, () =>
-      submitConsent({ headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: tab.oauthQuery }),
-    );
+  const approve = (tab: { oauthQuery: string }, projectId: string) => approveRoute(tab.oauthQuery, projectId);
   const [consentA, consentB] = await Promise.all([approve(tabA, projectA), approve(tabB, projectB)]);
   const codeOf = async (result: { url: string }) => new URL(result.url).searchParams.get("code") as string;
   const exchange = async (code: string, verifier: string) => {
@@ -168,6 +196,10 @@ async function main(): Promise<void> {
   });
   const authorize = await send(`/api/auth/oauth2/authorize?${query}`, { cookie });
   const consentUrl = new URL(authorize.headers.get("location") ?? "", BASE);
+  const missingProject = await approveRoute(consentUrl.search.slice(1)).then(() => false, (error: Error) => error.message.startsWith("consent route rejected approval: 400"));
+  check("the consent route requires a project", missingProject);
+  const foreignProject = await approveRoute(consentUrl.search.slice(1), randomUUID()).then(() => false, (error: Error) => error.message.startsWith("consent route rejected approval: 403"));
+  check("the consent route refuses an inaccessible project", foreignProject);
   const noProject = await submitConsent({
     headers: new Headers({ cookie, origin: BASE }), accept: true, oauthQuery: consentUrl.search.slice(1),
   }).then(() => "approved", (error: { status?: number }) => `refused ${error.status}`);

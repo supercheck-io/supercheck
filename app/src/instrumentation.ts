@@ -12,6 +12,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     console.log('[Instrumentation] Starting - Loading background services...');
 
+    const { initializeMcpOAuthCleanup } = await import('@/lib/mcp/cleanup');
+    initializeMcpOAuthCleanup();
+
     // Validate Polar configuration early in cloud mode
     try {
       console.log('[Instrumentation] Validating Polar configuration...');

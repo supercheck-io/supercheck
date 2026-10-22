@@ -1,5 +1,9 @@
 /** @jest-environment node */
 jest.mock("@/utils/auth", () => ({ auth: {} }));
+const mockLimit = jest.fn();
+const mockIP = jest.fn();
+jest.mock("@/lib/api-key-rate-limiter", () => ({ apiKeyRateLimiter: { checkAndIncrement: (...args: unknown[]) => mockLimit(...args) } }));
+jest.mock("@/lib/session-security", () => ({ getClientIP: (...args: unknown[]) => mockIP(...args) }));
 const mockGet = jest.fn();
 const mockPost = jest.fn();
 jest.mock("better-auth/next-js", () => ({ toNextJsHandler: () => ({ GET: (...args: unknown[]) => mockGet(...args), POST: (...args: unknown[]) => mockPost(...args) }) }));
@@ -11,6 +15,8 @@ import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
 describe("generic authentication organization safeguards", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLimit.mockResolvedValue({ allowed: true });
+    mockIP.mockReturnValue("192.0.2.5");
     mockGet.mockResolvedValue(new Response("ok"));
     mockPost.mockResolvedValue(new Response("ok"));
   });
@@ -140,4 +146,17 @@ describe("generic authentication organization safeguards", () => {
     expect(mockGet).not.toHaveBeenCalled();
     expect(mockPost).not.toHaveBeenCalled();
   });
+});
+
+it("does not reach the provider after the shared OAuth rate limit is exhausted", async () => {
+  process.env.MCP_SERVER_ENABLED = "true";
+  mockPost.mockClear();
+  mockLimit.mockResolvedValueOnce({ allowed: false, retryAfter: 10 });
+  try {
+    const response = await POST(new Request("https://app.example.com/api/auth/oauth2/token", { method: "POST" }));
+    expect(response.status).toBe(429);
+    expect(mockPost).not.toHaveBeenCalled();
+  } finally {
+    delete process.env.MCP_SERVER_ENABLED;
+  }
 });

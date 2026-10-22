@@ -102,7 +102,7 @@ export async function deleteMonitorWithContext(
 
       // Filter results that have S3 reports
       const reportsToDelete = resultsWithReports.filter(
-        (result) => result.testReportS3Url || result.testExecutionId
+        (result) => result.testReportS3Url
       );
 
       if (reportsToDelete.length > 0 || reportRows.length > 0) {

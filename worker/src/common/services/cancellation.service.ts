@@ -14,7 +14,7 @@ export class CancellationService {
   private readonly logger = new Logger(CancellationService.name);
   private redisClient: Redis | null = null;
   private readonly CANCELLATION_KEY_PREFIX = 'supercheck:cancel:';
-  private readonly CANCELLATION_TTL = 3600; // 1 hour TTL for cancellation flags
+  private readonly CANCELLATION_TTL = 7200; // Keep the signal beyond the 80-minute recovery window.
 
   constructor(private readonly configService: ConfigService) {
     this.setupRedisConnection();
