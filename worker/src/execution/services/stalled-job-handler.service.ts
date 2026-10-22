@@ -247,18 +247,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
               if (!runsByJob.has(jobRun.jobId)) {
                 runsByJob.set(jobRun.jobId, []);
               }
-              runsByJob
-                .get(jobRun.jobId)!
-                .push(
-                  jobRun.status as
-                    | 'pending'
-                    | 'running'
-                    | 'passed'
-                    | 'failed'
-                    | 'error'
-                    | 'queued'
-                    | 'blocked',
-                );
+              runsByJob.get(jobRun.jobId)!.push(jobRun.status);
             }
           }
 

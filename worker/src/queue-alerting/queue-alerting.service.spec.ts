@@ -90,7 +90,7 @@ describe('QueueAlertingService', () => {
       return instance;
     });
     fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
-    global.fetch = fetchMock as unknown as typeof fetch;
+    global.fetch = fetchMock;
   });
 
   afterEach(() => {
@@ -200,9 +200,7 @@ describe('QueueAlertingService', () => {
       const service = createService();
       service['redisClient'] = redisClient as unknown as Redis;
 
-      const names = service['discoverQueueNames']() as unknown as Promise<
-        string[]
-      >;
+      const names = service['discoverQueueNames']();
 
       return expect(names).resolves.toEqual([
         'data-lifecycle-cleanup',

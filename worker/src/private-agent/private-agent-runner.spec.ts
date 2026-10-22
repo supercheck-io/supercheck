@@ -55,7 +55,7 @@ describe('private agent connector execution', () => {
           ],
         },
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob(baseJob);
 
@@ -90,7 +90,7 @@ describe('private agent connector execution', () => {
           },
         ],
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -129,7 +129,7 @@ describe('private agent connector execution', () => {
           entries: [{ data: { values: ['raw stack omitted from summary'] } }],
         },
       ],
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -166,7 +166,7 @@ describe('private agent connector execution', () => {
           },
         ],
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -211,7 +211,7 @@ describe('private agent connector execution', () => {
           ],
         },
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -252,7 +252,7 @@ describe('private agent connector execution', () => {
           ],
         },
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -291,7 +291,7 @@ describe('private agent connector execution', () => {
           },
         ],
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -334,7 +334,7 @@ describe('private agent connector execution', () => {
             </MetricAlarms>
           </DescribeAlarmsResult>
         </DescribeAlarmsResponse>`,
-    }) as unknown as typeof fetch;
+    });
 
     const result = await executePrivateAgentConnectorJob({
       ...baseJob,
@@ -439,7 +439,7 @@ describe('private agent connector execution', () => {
         ok: true,
         status: 200,
         json: async () => ({}),
-      }) as unknown as typeof fetch;
+      });
 
     await expect(
       processLeasedJob(config, { job: baseJob, leaseToken: 'lease-token' }),
@@ -482,7 +482,7 @@ describe('private agent connector execution', () => {
       } else {
         fetchMock.mockResolvedValueOnce({ ok: false, status: 409 });
       }
-      global.fetch = fetchMock as unknown as typeof fetch;
+      global.fetch = fetchMock;
       const processing = processLeasedJob(config, {
         job: baseJob,
         leaseToken: 'lease-token',
@@ -527,7 +527,7 @@ describe('private agent connector execution', () => {
           registeredAt: '2026-06-22T10:00:00.000Z',
         },
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const exchanged = await exchangeRegistrationToken(config);
 
@@ -560,7 +560,7 @@ describe('private agent connector execution', () => {
       ok: false,
       status: 401,
       json: async () => ({ error: 'Unauthorized' }),
-    }) as unknown as typeof fetch;
+    });
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
   });
@@ -591,7 +591,7 @@ describe('private agent connector execution', () => {
           registeredAt: '2026-06-22T10:00:00.000Z',
         },
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const exchanged = await exchangeRegistrationToken(config);
 
@@ -619,7 +619,7 @@ describe('private agent connector execution', () => {
       heartbeatIntervalMs: 30_000,
     };
 
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn();
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
     expect(global.fetch).not.toHaveBeenCalled();

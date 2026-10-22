@@ -543,15 +543,7 @@ export class DbService implements OnModuleInit {
         .from(runs)
         .where(eq(runs.jobId, jobId));
 
-      return result.map((r) => r.status).filter((s) => s !== null) as (
-        | 'pending'
-        | 'running'
-        | 'passed'
-        | 'failed'
-        | 'error'
-        | 'queued'
-        | 'blocked'
-      )[];
+      return result.map((r) => r.status).filter((s) => s !== null);
     } catch (error) {
       this.logger.error(`Failed to get run statuses for job ${jobId}:`, error);
       return [];

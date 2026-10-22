@@ -316,7 +316,7 @@ describe('UsageTrackerService execution blocking', () => {
       limit,
     };
     const db = { query: f.query, select: jest.fn().mockReturnValue(query) };
-    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 1 } as never);
+    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 1 });
     const service = new UsageTrackerService(db as never);
     expect(
       await service.shouldBlockExecution('org-1', {
@@ -328,7 +328,7 @@ describe('UsageTrackerService execution blocking', () => {
       expect.anything(),
       expect.anything(),
     );
-    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 2 } as never);
+    f.query.planLimits.findFirst.mockResolvedValue({ maxMonitors: 2 });
     limit.mockResolvedValue([{ id: 'oldest-monitor' }, { id: 'new-monitor' }]);
     expect(
       await service.shouldBlockExecution('org-1', {

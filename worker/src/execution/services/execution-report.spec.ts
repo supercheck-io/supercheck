@@ -346,7 +346,7 @@ describe('ExecutionService variable and secret transport', () => {
 
     function evaluateScript(body: string) {
       const previousEnv = process.env;
-      process.env = { ...previousEnv, ...baseUrlEnv() } as NodeJS.ProcessEnv;
+      process.env = { ...previousEnv, ...baseUrlEnv() };
       try {
         const context: Record<string, unknown> = {
           process,
@@ -418,7 +418,7 @@ describe('ExecutionService variable and secret transport', () => {
     it('redacts secrets from console output inside the script', () => {
       const lines: unknown[][] = [];
       const previousEnv = process.env;
-      process.env = { ...previousEnv, ...baseUrlEnv() } as NodeJS.ProcessEnv;
+      process.env = { ...previousEnv, ...baseUrlEnv() };
       try {
         const context: Record<string, unknown> = {
           process,

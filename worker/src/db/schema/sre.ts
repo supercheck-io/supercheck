@@ -31,35 +31,20 @@ type SreServiceStatus = 'active' | 'deprecated' | 'merged';
 type SreOwnerType = 'team' | 'user' | 'slack';
 type SreOwnerRole = 'primary' | 'on-call' | 'secondary' | 'reviewer';
 type SreResourceType =
-  | 'monitor'
-  | 'job'
-  | 'test'
-  | 'status_page_component'
-  | 'k6_run';
+  'monitor' | 'job' | 'test' | 'status_page_component' | 'k6_run';
 type SreResourceRelationship = 'monitors' | 'owned' | 'depends_on';
 type SreDependencySource =
-  | 'manual'
-  | 'native'
-  | 'connector_observed'
-  | 'ai_suggested';
+  'manual' | 'native' | 'connector_observed' | 'ai_suggested';
 type SreDependencyStatus = 'active' | 'stale' | 'rejected';
 type SreHealth = 'healthy' | 'degraded' | 'failing' | 'unknown';
 type SreDiscoverySuggestionType =
-  | 'create_service'
-  | 'merge_services'
-  | 'add_resource'
-  | 'add_dependency';
+  'create_service' | 'merge_services' | 'add_resource' | 'add_dependency';
 type SreSuggestionStatus = 'pending' | 'approved' | 'rejected';
 type SreDeploymentSource = 'github' | 'kubernetes' | 'ci';
 type SreSeverity = 'sev1' | 'sev2' | 'sev3' | 'sev4';
 type SreAlertStatus = 'firing' | 'resolved' | 'silenced' | 'deduplicated';
 type SreAlertSourceType =
-  | 'monitor'
-  | 'job'
-  | 'k6'
-  | 'run'
-  | 'webhook'
-  | 'connector';
+  'monitor' | 'job' | 'k6' | 'run' | 'webhook' | 'connector';
 type SreIncidentStatus =
   | 'triggered'
   | 'investigating'
@@ -108,11 +93,7 @@ type SreEvidenceType =
   | 'topology';
 type SreAgentType = 'triage' | 'investigation' | 'background' | 'sre_ai';
 type SreRunStatus =
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'aborted'
-  | 'timed_out';
+  'running' | 'completed' | 'failed' | 'aborted' | 'timed_out';
 type SreToolCallStatus = 'success' | 'error' | 'timeout' | 'aborted';
 type SreAiSuggestionType =
   | 'status_page_update'
@@ -124,11 +105,7 @@ type SreRecommendationStatus = 'pending' | 'applied' | 'skipped' | 'failed';
 type SreRunbookStatus = 'active' | 'deprecated';
 type SreRunbookStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped';
 type PrivateAgentStatus =
-  | 'pending'
-  | 'connected'
-  | 'disconnected'
-  | 'unhealthy'
-  | 'disabled';
+  'pending' | 'connected' | 'disconnected' | 'unhealthy' | 'disabled';
 type PrivateAgentMode = 'connector_proxy' | 'execution_worker' | 'hybrid';
 type PrivateAgentJobClass =
   | 'sre_connector_query'
@@ -145,33 +122,16 @@ type PrivateAgentJobStatus =
   | 'cancelled'
   | 'timed_out';
 type PrivateAgentArtifactType =
-  | 'json'
-  | 'log'
-  | 'screenshot'
-  | 'video'
-  | 'trace'
-  | 'report'
-  | 'har';
+  'json' | 'log' | 'screenshot' | 'video' | 'trace' | 'report' | 'har';
 type ExternalConnectorRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 type ExternalConnectorPermissionLevel = 'read';
 type ExternalConnectorSideEffectLevel = 'none';
 type ExternalConnectorStatus =
-  | 'configured'
-  | 'valid'
-  | 'unreachable'
-  | 'missing_credentials'
-  | 'disabled';
+  'configured' | 'valid' | 'unreachable' | 'missing_credentials' | 'disabled';
 type ExternalConnectorValidationStatus =
-  | 'valid'
-  | 'unreachable'
-  | 'invalid_credentials'
-  | 'policy_blocked';
+  'valid' | 'unreachable' | 'invalid_credentials' | 'policy_blocked';
 type ExternalConnectorCredentialType =
-  | 'api_key'
-  | 'oauth_token'
-  | 'bearer_token'
-  | 'basic_auth'
-  | 'service_account';
+  'api_key' | 'oauth_token' | 'bearer_token' | 'basic_auth' | 'service_account';
 type DiagnosticQueryType = 'sql' | 'promql' | 'logql' | 'traceql' | 'http_get';
 type DiagnosticQueryStatus = 'active' | 'disabled';
 type SreContextPlaybookStatus = 'active' | 'deprecated';
@@ -185,10 +145,7 @@ type SreChatConversationStatus = 'active' | 'archived';
 type SreChatMessageRole = 'user' | 'assistant' | 'system' | 'tool';
 type SreInvestigationReportStatus = 'active' | 'superseded';
 type SreInvestigationReportFeedbackAccuracy =
-  | 'accurate'
-  | 'partially_accurate'
-  | 'incorrect'
-  | 'needs_more_evidence';
+  'accurate' | 'partially_accurate' | 'incorrect' | 'needs_more_evidence';
 type SreEvidenceGraphFocusedViewStatus = 'active' | 'archived';
 type SreEvidenceGraphFocusedViewVisibility = 'project';
 type SreIntegrationKey =
@@ -201,12 +158,7 @@ type SreIntegrationKey =
   | 'teams'
   | 'generic_webhook';
 type SreIntegrationCorrelationStrategy =
-  | 'dedup_key'
-  | 'alias'
-  | 'entity_id'
-  | 'incident_url'
-  | 'thread'
-  | 'custom';
+  'dedup_key' | 'alias' | 'entity_id' | 'incident_url' | 'thread' | 'custom';
 
 type ExternalConnectorType =
   | 'github'

@@ -419,7 +419,7 @@ export class MonitorEvaluator {
             .update(schema.monitorResults)
             .set({
               alertsSentForRecovery: alertsSentForRecovery + 1,
-            } as Partial<typeof schema.monitorResults.$inferInsert>)
+            })
             .where(eq(schema.monitorResults.id, latestResult.id));
         }
       }
@@ -667,6 +667,6 @@ export class MonitorEvaluator {
   async getMonitorById(monitorId: string): Promise<Monitor | undefined> {
     return this.dbService.db.query.monitors.findFirst({
       where: eq(schema.monitors.id, monitorId),
-    }) as Promise<Monitor | undefined>;
+    });
   }
 }

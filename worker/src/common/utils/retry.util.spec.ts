@@ -263,9 +263,7 @@ describe('retry.util', () => {
   describe('fetchWithRetry', () => {
     it('returns immediately on a successful response', async () => {
       const response = makeResponse(200);
-      global.fetch = jest
-        .fn()
-        .mockResolvedValue(response) as unknown as typeof fetch;
+      global.fetch = jest.fn().mockResolvedValue(response);
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -285,9 +283,7 @@ describe('retry.util', () => {
     it('does not retry non-retryable HTTP errors', async () => {
       global.fetch = jest
         .fn()
-        .mockResolvedValue(
-          makeResponse(404, 'not found'),
-        ) as unknown as typeof fetch;
+        .mockResolvedValue(makeResponse(404, 'not found'));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -306,7 +302,7 @@ describe('retry.util', () => {
       global.fetch = jest
         .fn()
         .mockResolvedValueOnce(makeResponse(500, 'boom'))
-        .mockResolvedValueOnce(makeResponse(200)) as unknown as typeof fetch;
+        .mockResolvedValueOnce(makeResponse(200));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -323,7 +319,7 @@ describe('retry.util', () => {
       global.fetch = jest
         .fn()
         .mockResolvedValueOnce(makeResponse(429, 'slow down'))
-        .mockResolvedValueOnce(makeResponse(200)) as unknown as typeof fetch;
+        .mockResolvedValueOnce(makeResponse(200));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -338,9 +334,7 @@ describe('retry.util', () => {
     it('reports exhaustion after all retryable attempts fail', async () => {
       global.fetch = jest
         .fn()
-        .mockResolvedValue(
-          makeResponse(503, 'unavailable'),
-        ) as unknown as typeof fetch;
+        .mockResolvedValue(makeResponse(503, 'unavailable'));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -359,7 +353,7 @@ describe('retry.util', () => {
       global.fetch = jest
         .fn()
         .mockRejectedValueOnce(new Error('fetch failed'))
-        .mockResolvedValueOnce(makeResponse(200)) as unknown as typeof fetch;
+        .mockResolvedValueOnce(makeResponse(200));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -372,9 +366,7 @@ describe('retry.util', () => {
     });
 
     it('does not retry non-retryable network errors', async () => {
-      global.fetch = jest
-        .fn()
-        .mockRejectedValue(new Error('invalid URL')) as unknown as typeof fetch;
+      global.fetch = jest.fn().mockRejectedValue(new Error('invalid URL'));
 
       const result = await fetchWithRetry(
         'https://example.com',
@@ -388,9 +380,7 @@ describe('retry.util', () => {
     });
 
     it('passes an abort signal to fetch', async () => {
-      global.fetch = jest
-        .fn()
-        .mockResolvedValue(makeResponse(200)) as unknown as typeof fetch;
+      global.fetch = jest.fn().mockResolvedValue(makeResponse(200));
 
       await fetchWithRetry(
         'https://example.com',

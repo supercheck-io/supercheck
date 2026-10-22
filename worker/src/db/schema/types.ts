@@ -7,11 +7,7 @@
 // Test types
 export type TestPriority = 'low' | 'medium' | 'high';
 export type TestType =
-  | 'browser'
-  | 'api'
-  | 'database'
-  | 'custom'
-  | 'performance';
+  'browser' | 'api' | 'database' | 'custom' | 'performance';
 
 // Requirement types - using same priority as tests for consistency
 export type RequirementPriority = 'low' | 'medium' | 'high';
@@ -37,12 +33,7 @@ export type JobConfig = {
 
 // Test run types
 export type TestRunStatus =
-  | 'running'
-  | 'passed'
-  | 'failed'
-  | 'error'
-  | 'blocked'
-  | 'queued';
+  'running' | 'passed' | 'failed' | 'error' | 'blocked' | 'queued';
 export type ArtifactPaths = {
   logs?: string;
   video?: string;
@@ -56,19 +47,10 @@ export type ReportType = 'test' | 'job' | 'monitor' | 'k6_test' | 'k6_job';
 
 // Monitor types
 export type MonitorType =
-  | 'http_request'
-  | 'website'
-  | 'ping_host'
-  | 'port_check'
-  | 'synthetic_test';
+  'http_request' | 'website' | 'ping_host' | 'port_check' | 'synthetic_test';
 
 export type MonitorStatus =
-  | 'up'
-  | 'down'
-  | 'paused'
-  | 'pending'
-  | 'maintenance'
-  | 'error';
+  'up' | 'down' | 'paused' | 'pending' | 'maintenance' | 'error';
 
 export type MonitorResultStatus = 'up' | 'down' | 'error' | 'timeout';
 
@@ -211,12 +193,7 @@ export type AlertDeliveryMetadata = {
 
 // Notification types
 export type NotificationProviderType =
-  | 'email'
-  | 'slack'
-  | 'webhook'
-  | 'telegram'
-  | 'discord'
-  | 'teams';
+  'email' | 'slack' | 'webhook' | 'telegram' | 'discord' | 'teams';
 
 type SecretEnvelope = {
   encrypted: true;
@@ -280,11 +257,7 @@ export type ComponentStatus =
   | 'major_outage'
   | 'under_maintenance';
 export type IncidentStatus =
-  | 'investigating'
-  | 'identified'
-  | 'monitoring'
-  | 'resolved'
-  | 'scheduled';
+  'investigating' | 'identified' | 'monitoring' | 'resolved' | 'scheduled';
 export type IncidentImpact = 'none' | 'minor' | 'major' | 'critical';
 export type SubscriberMode = 'email' | 'webhook' | 'slack';
 

@@ -15,6 +15,10 @@ export interface SupercheckConfig {
   autoConnected?: boolean; // True if connected via seamless auth
 }
 
+function isConfig(value: unknown): value is SupercheckConfig {
+  return !!value && typeof value === 'object' && 'instanceUrl' in value && typeof value.instanceUrl === 'string';
+}
+
 const STORAGE_KEY = 'supercheckConfig';
 const DEFAULT_INSTANCE_URL = 'https://app.supercheck.io';
 
@@ -30,7 +34,7 @@ const DEFAULT_CONFIG: SupercheckConfig = {
  */
 export async function getConfig(): Promise<SupercheckConfig> {
   try {
-    const result = await chrome.storage.sync.get(STORAGE_KEY);
+    const result = await chrome.storage.sync.get<{ supercheckConfig?: Partial<SupercheckConfig> }>(STORAGE_KEY);
     return { ...DEFAULT_CONFIG, ...result[STORAGE_KEY] };
   } catch (error) {
     console.error('[Supercheck] Failed to get config:', error);
@@ -168,9 +172,10 @@ export function addConfigChangeListener(
   listener: (config: SupercheckConfig | null) => void
 ): () => void {
   const handler = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-    if (STORAGE_KEY in changes)
-      listener(changes[STORAGE_KEY].newValue || null);
-
+    if (STORAGE_KEY in changes) {
+      const value = changes[STORAGE_KEY].newValue;
+      listener(isConfig(value) ? value : null);
+    }
   };
 
   chrome.storage.sync.onChanged.addListener(handler);

@@ -1,3 +1,5 @@
+/** @jest-environment node */
+
 /**
  * Extract Requirements Server Action Tests
  *
