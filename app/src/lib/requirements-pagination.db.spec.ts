@@ -26,7 +26,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 import { NextRequest } from "next/server";
-import { getRequirements } from "@/actions/requirements";
+import { getRequirement, getRequirements } from "@/actions/requirements";
 import { GET } from "@/app/api/requirements/route";
 
 const databaseName = `requirements_pagination_${randomUUID().replaceAll("-", "")}`;
@@ -112,6 +112,26 @@ describe.each(["action", "API"])(
         ).toEqual([status]);
       },
     );
+    it.each([
+      ["local", "Local source"],
+      ["other-project", null],
+      ["other-org", null],
+    ])("scopes source document metadata for %s", async (documentId, expectedName) => {
+      await client.unsafe(`
+        INSERT INTO requirement_documents (id, name, project_id, organization_id) VALUES
+          ('local', 'Local source', 'project-1', 'org-1'),
+          ('other-project', 'Other project source', 'project-2', 'org-1'),
+          ('other-org', 'Other organization source', 'project-1', 'org-2')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+      await client`UPDATE requirements SET organization_id = 'org-1', source_document_id = ${documentId} WHERE id = 'covered'`;
+      const result = await list(1, "covered");
+      expect(result.requirements[0].sourceDocumentName).toBe(expectedName);
+      if (entry === "action") {
+        expect((await getRequirement("covered"))?.sourceDocumentName).toBe(expectedName);
+      }
+    });
+
     it("preserves unfiltered pagination", async () => {
       const result = await list(1);
       expect(result.total).toBe(4);
