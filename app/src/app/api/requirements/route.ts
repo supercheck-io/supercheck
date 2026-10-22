@@ -101,6 +101,8 @@ export async function GET(request: NextRequest) {
           sourceDocumentName: sql<string | null>`(
             SELECT name FROM requirement_documents 
             WHERE id = ${requirements.sourceDocumentId}
+            AND project_id = ${requirements.projectId}
+            AND organization_id = ${requirements.organizationId}
           )`.as("source_document_name"),
         })
         .from(requirements)

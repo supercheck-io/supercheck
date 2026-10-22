@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), query: { member: { findFirst: jest.fn() } } } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), query: { member: { findFirst: jest.fn() } }, transaction: jest.fn() } }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn().mockResolvedValue({ userId: "user-1" }),
@@ -20,6 +20,8 @@ import { setCancellationSignal } from "@/lib/cancellation-service";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { requireAuthContext } from "@/lib/auth-context";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
+import { getQueues } from "@/lib/queue";
+import { getCapacityManager } from "@/lib/capacity-manager";
 import { POST } from "./route";
 
 describe("cancel run authorization", () => {
@@ -69,4 +71,67 @@ it("denies a project-scoped CLI token for another project's run, even for a supe
   const response = await POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
   expect(response.status).toBe(403);
   expect(setCancellationSignal).not.toHaveBeenCalled();
+});
+
+describe("cancellation drain", () => {
+  const run = { runId: "run", jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" };
+  const set = jest.fn();
+  const returning = jest.fn();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (requireAuthContext as jest.Mock).mockResolvedValue({ userId: "user-1" });
+    (isSuperAdmin as jest.Mock).mockResolvedValue(true);
+    (canCancelRunInProject as jest.Mock).mockResolvedValue(true);
+    (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [run] }) }) }) });
+    run.runStatus = "running";
+    returning.mockResolvedValue([{ id: "run" }]);
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
+    (db.transaction as jest.Mock).mockImplementation(async callback => callback({ update: () => ({ set }) }));
+    (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot: jest.fn() });
+  });
+  async function cancel() {
+    return POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
+  }
+  it("keeps an active worker nonterminal until its final report writes drain", async () => {
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
+    const response = await cancel();
+    expect(response.status).toBe(200);
+    expect(setCancellationSignal).toHaveBeenCalledWith("run");
+    expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+    expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
+  });
+  it("rejects a cancellation when the worker signal cannot be persisted", async () => {
+    (setCancellationSignal as jest.Mock).mockRejectedValueOnce(new Error("Redis unavailable"));
+    const response = await cancel();
+    expect(response.status).toBe(503);
+    expect(set).not.toHaveBeenCalled();
+    expect(getQueues).not.toHaveBeenCalled();
+  });
+  it("keeps unknown queue ownership nonterminal", async () => {
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => null } }, k6Queues: {} });
+    expect((await cancel()).status).toBe(200);
+    expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+  });
+  it("keeps a running callback protected when its unlocked queue entry was removed", async () => {
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    const response = await cancel();
+    expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+    expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+  });
+  it("does not report completion when an execution claim wins the queued-state comparison", async () => {
+    run.runStatus = "queued";
+    returning.mockResolvedValue([]);
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    const response = await cancel();
+    expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+  });
+  it("completes cancellation when the queued job was removed", async () => {
+    run.runStatus = "queued";
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    const response = await cancel();
+    expect(response.status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
+    expect(await response.json()).toMatchObject({ queueRemoved: true });
+  });
 });

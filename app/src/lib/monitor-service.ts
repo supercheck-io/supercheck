@@ -137,6 +137,12 @@ export async function createMonitorHandler(data: MonitorApiData) {
   return scheduleCreatedMonitor(newMonitor, enabled);
 }
 
+function executionConfig(config: MonitorConfig | null | undefined) {
+  return Object.fromEntries(Object.entries(config ?? {}).filter(([key]) =>
+    !["locationConfig", "regions", "alertChannels", "sslLastCheckedAt", "testTitle", "retryStrategy"].includes(key)
+  ));
+}
+
 export async function updateMonitorHandler(
   monitorId: string,
   data: Partial<MonitorApiData>
@@ -195,7 +201,7 @@ export async function updateMonitorHandler(
     (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
     (data.type !== undefined && data.type !== existingMonitor.type) ||
     (data.target !== undefined && data.target !== existingMonitor.target) ||
-    (data.config !== undefined && !isDeepStrictEqual(data.config, existingMonitor.config));
+    (data.config !== undefined && !isDeepStrictEqual(executionConfig(data.config), executionConfig(existingMonitor.config)));
 
   if (shouldReschedule) {
     // Remove existing schedule if any

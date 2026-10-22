@@ -13,7 +13,17 @@ import {
   AlertType,
   AlertStatus,
 } from '../../db/schema'; // Specifically import reports table
-import { eq, and, sql, desc, inArray, type SQL } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  or,
+  ne,
+  isNull,
+  sql,
+  desc,
+  inArray,
+  type SQL,
+} from 'drizzle-orm';
 import { ReportMetadata } from '../interfaces'; // Import our interface
 import { NotificationProvider } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
@@ -511,6 +521,27 @@ export class DbService implements OnModuleInit {
       );
       return [];
     }
+  }
+
+  async claimRunExecution(runId: string): Promise<boolean> {
+    const [claimed] = await this.db
+      .update(runs)
+      .set({
+        status: 'running',
+        startedAt: sql`coalesce(${runs.startedAt}, now())`,
+      })
+      .where(
+        and(
+          eq(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+          or(
+            isNull(runs.errorDetails),
+            ne(runs.errorDetails, 'Cancellation requested by user'),
+          ),
+        ),
+      )
+      .returning({ id: runs.id });
+    return !!claimed;
   }
 
   /** A committed terminal result makes a redelivered queue task a replay. */
