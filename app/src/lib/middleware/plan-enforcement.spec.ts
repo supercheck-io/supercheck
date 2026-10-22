@@ -1,5 +1,7 @@
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
-jest.mock("@/lib/execution/execution-policy", () => ({ getExecutionPolicy: jest.fn() }));
+jest.mock("@/lib/execution/execution-policy", () => ({
+  getExecutionPolicy: jest.fn(),
+}));
 /**
  * Plan Enforcement Middleware Tests
  * Tests for subscription plan limit enforcement
@@ -33,6 +35,7 @@ import {
   checkStatusPageLimit,
   checkTeamMemberLimit,
   checkProjectLimit,
+  checkSubscriberLimit,
   checkFeatureAvailability,
 } from "./plan-enforcement";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -135,12 +138,29 @@ describe("Plan Enforcement Middleware", () => {
 
   describe("checkCapacityLimits", () => {
     it("uses the authoritative execution policy limits", async () => {
-      jest.mocked(getExecutionPolicy).mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(), k6MaxVus: 5, playwrightRemainingMs: 1000 });
-      await expect(checkCapacityLimits("org-1")).resolves.toEqual({ runningCapacity: 1, queuedCapacity: 10 });
+      jest
+        .mocked(getExecutionPolicy)
+        .mockResolvedValue({
+          tier: "trial",
+          priority: 1,
+          runningCapacity: 1,
+          queuedCapacity: 10,
+          expiresAt: new Date(),
+          k6MaxVus: 5,
+          playwrightRemainingMs: 1000,
+        });
+      await expect(checkCapacityLimits("org-1")).resolves.toEqual({
+        runningCapacity: 1,
+        queuedCapacity: 10,
+      });
     });
     it("propagates admission failure without default cloud capacity", async () => {
-      jest.mocked(getExecutionPolicy).mockRejectedValue(new Error("Execution entitlement required"));
-      await expect(checkCapacityLimits("org-1")).rejects.toThrow("Execution entitlement required");
+      jest
+        .mocked(getExecutionPolicy)
+        .mockRejectedValue(new Error("Execution entitlement required"));
+      await expect(checkCapacityLimits("org-1")).rejects.toThrow(
+        "Execution entitlement required",
+      );
     });
   });
 
@@ -214,7 +234,7 @@ describe("Plan Enforcement Middleware", () => {
         (db.query.organization.findFirst as jest.Mock).mockResolvedValue(null);
 
         await expect(
-          checkUsageLimit("org-1", "playwright", 100)
+          checkUsageLimit("org-1", "playwright", 100),
         ).rejects.toThrow("Organization not found");
       });
     });
@@ -324,6 +344,67 @@ describe("Plan Enforcement Middleware", () => {
     });
   });
 
+  describe("checkSubscriberLimit", () => {
+    it("is unlimited in self-hosted mode", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(false);
+      await expect(checkSubscriberLimit("org-1", 10_000)).resolves.toEqual({
+        allowed: true,
+      });
+    });
+
+    describe("in cloud mode", () => {
+      beforeEach(() => {
+        (isPolarEnabled as jest.Mock).mockReturnValue(true);
+      });
+
+      it("allows while under the per status page limit", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "plus", maxStatusPageSubscribers: 100 });
+        const result = await checkSubscriberLimit("org-1", 40);
+        expect(result).toMatchObject({
+          allowed: true,
+          limit: 100,
+          remaining: 60,
+          currentPlan: "plus",
+        });
+      });
+
+      it("rejects at the limit and suggests Pro from Plus", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "plus", maxStatusPageSubscribers: 100 });
+        const result = await checkSubscriberLimit("org-1", 100);
+        expect(result).toMatchObject({
+          allowed: false,
+          upgrade: "pro",
+          currentPlan: "plus",
+        });
+        expect(result.error).toContain("Subscriber limit reached");
+      });
+
+      it("does not suggest an upgrade from the top plan", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "pro", maxStatusPageSubscribers: 1000 });
+        const result = await checkSubscriberLimit("org-1", 1000);
+        expect(result.allowed).toBe(false);
+        expect(result).toMatchObject({ upgrade: undefined });
+      });
+
+      it("denies with a subscription prompt when the plan cannot be loaded", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockRejectedValue(new Error("Subscription required"));
+        await expect(checkSubscriberLimit("org-1", 1)).resolves.toMatchObject({
+          allowed: false,
+          requiresSubscription: true,
+          error: "Subscription required",
+        });
+      });
+    });
+  });
+
   describe("checkProjectLimit", () => {
     describe("in self-hosted mode", () => {
       beforeEach(() => {
@@ -378,7 +459,7 @@ describe("Plan Enforcement Middleware", () => {
       it("should allow custom domains", async () => {
         const customDomains = await checkFeatureAvailability(
           "org-1",
-          "customDomains"
+          "customDomains",
         );
 
         expect(customDomains.available).toBe(true);
