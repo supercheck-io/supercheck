@@ -13,7 +13,11 @@ jest.mock("@/lib/services/subscription-service", () => {
   class SubscriptionAccessDeniedError extends Error {}
   return { SubscriptionAccessDeniedError, subscriptionService: { blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(), getOrganizationPlan: jest.fn() } };
 });
-const trial = { organizationId: "org", expiresAt: new Date(Date.now() + 60_000), runningCapacity: 1, queuedCapacity: 10, k6MaxVus: 5, playwrightBudgetMs: 1800000, playwrightUsedMs: 0 };
+const trial = {
+  organizationId: "org", expiresAt: new Date(Date.now() + 60_000), runningCapacity: 1, queuedCapacity: 5, k6MaxVus: 5,
+  playwrightBudgetMs: 1800000, playwrightUsedMs: 0, maxMonitors: 5, minCheckIntervalMinutes: 5, maxStatusPages: 2,
+  maxStatusPageSubscribers: 50, maxTeamMembers: 3, maxProjects: 3, sreInvestigationUnits: 5, aiCredits: 100, lifecycleEndedAt: null,
+};
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(isCloudHosted).mockReturnValue(true);
@@ -25,12 +29,12 @@ beforeEach(() => {
 });
 it("keeps entitled organizations ahead of trials using current plan limits", async () => {
   await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "paid", priority: 0, runningCapacity: 3, queuedCapacity: 30 });
-  expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org");
+  expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org", { allowTrial: false });
 });
 it("allows a separately recorded unexpired trial after access denial", async () => {
   jest.mocked(subscriptionService.blockUntilSubscribed).mockRejectedValue(new SubscriptionAccessDeniedError("inactive", "subscription_required"));
   jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue(trial);
-  await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10 });
+  await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
 });
 it("refuses missing or expired cloud entitlements instead of defaulting to capacity", async () => {
   jest.mocked(isPolarEnabled).mockReturnValue(false);
@@ -69,7 +73,7 @@ describe("local execution capacity", () => {
 });
 
 describe("trial workload admission", () => {
-  const policy: ExecutionPolicy = { tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 2, playwrightRemainingMs: 1000 };
+  const policy: ExecutionPolicy = { tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 2, playwrightRemainingMs: 1000 };
   it("refuses arbitrary scripts, multiple workloads, and excessive VUs before domain checks", async () => {
     const canonical = createTrialK6Script({ url: "https://example.com/", vus: 3, durationSeconds: 1 });
     await expect(assertExecutionWorkload("org", policy, "k6", ["import http from 'k6/http';"])).rejects.toThrow("generated HTTP workload");

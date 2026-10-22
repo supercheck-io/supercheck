@@ -6,10 +6,20 @@ export const executionEntitlements = pgTable("execution_entitlements", {
   organizationId: uuid("organization_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   runningCapacity: integer("running_capacity").notNull().default(1),
-  queuedCapacity: integer("queued_capacity").notNull().default(10),
+  queuedCapacity: integer("queued_capacity").notNull().default(5),
   k6MaxVus: integer("k6_max_vus").notNull().default(5),
   playwrightBudgetMs: bigint("playwright_budget_ms", { mode: "number" }).notNull().default(1800000),
   playwrightUsedMs: bigint("playwright_used_ms", { mode: "number" }).notNull().default(0),
+  maxMonitors: integer("max_monitors").notNull().default(5),
+  minCheckIntervalMinutes: integer("min_check_interval_minutes").notNull().default(5),
+  maxStatusPages: integer("max_status_pages").notNull().default(2),
+  maxStatusPageSubscribers: integer("max_status_page_subscribers").notNull().default(50),
+  maxTeamMembers: integer("max_team_members").notNull().default(3),
+  maxProjects: integer("max_projects").notNull().default(3),
+  sreInvestigationUnits: integer("sre_investigation_units").notNull().default(5),
+  aiCredits: integer("ai_credits").notNull().default(100),
+  /** Set once the trial-end job has paused and archived the organization's resources. */
+  lifecycleEndedAt: timestamp("lifecycle_ended_at", { withTimezone: true }),
 }, table => [check("execution_entitlements_limits_check", sql`${table.runningCapacity} > 0 AND ${table.queuedCapacity} > 0 AND ${table.k6MaxVus} BETWEEN 1 AND 5 AND ${table.playwrightBudgetMs} > 0 AND ${table.playwrightUsedMs} >= 0`)]);
 
 export const executionReservations = pgTable("execution_reservations", {
@@ -38,3 +48,15 @@ export const executionTargetDomains = pgTable("execution_target_domains", {
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   verifiedUntil: timestamp("verified_until", { withTimezone: true }),
 }, table => [uniqueIndex("execution_target_domains_org_host_key").on(table.organizationId, table.hostname)]);
+
+export const trialSuspensions = pgTable("trial_suspensions", {
+  id: uuid("id").primaryKey().$defaultFn(() => sql`uuidv7()`),
+  organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  resourceType: text("resource_type").$type<"monitor" | "status_page">().notNull(),
+  resourceId: uuid("resource_id").notNull(),
+  previousStatus: text("previous_status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  uniqueIndex("trial_suspensions_resource_key").on(table.resourceType, table.resourceId),
+  index("trial_suspensions_org_idx").on(table.organizationId),
+]);

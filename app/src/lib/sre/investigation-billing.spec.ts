@@ -7,6 +7,11 @@ jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: jest.fn(),
 }));
 
+jest.mock("@/lib/execution/trial-limits", () => ({
+  TRIAL_DURATION_DAYS: 14,
+  getActiveTrial: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock("@/lib/services/subscription-service", () => ({
   subscriptionService: {
     hasActiveSubscription: jest.fn(),
@@ -33,6 +38,7 @@ jest.mock("@/utils/db", () => ({
 }));
 
 import { isPolarEnabled } from "@/lib/feature-flags";
+import { getActiveTrial } from "@/lib/execution/trial-limits";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { db } from "@/utils/db";
@@ -211,6 +217,60 @@ describe("SRE investigation billing", () => {
     await expect(assertCanStartSreInvestigation("org-1")).rejects.toMatchObject({
       code: "subscription_required",
     } satisfies Partial<SreInvestigationBillingError>);
+  });
+
+  describe("during a trial", () => {
+    const trial = { expiresAt: new Date(Date.now() + 86_400_000), sreInvestigationUnits: 5 };
+    const startedInvestigations = (count: number) => {
+      const where = jest.fn().mockResolvedValue([{ count }]);
+      mockDb.select.mockReturnValue({ from: jest.fn(() => ({ where })) });
+    };
+    beforeEach(() => {
+      mockSubscriptionService.hasActiveSubscription.mockResolvedValue(false);
+      jest.mocked(getActiveTrial).mockResolvedValue(trial as never);
+    });
+    afterEach(() => jest.mocked(getActiveTrial).mockResolvedValue(undefined));
+
+    it("admits an investigation within the allowance without billing", async () => {
+      startedInvestigations(4);
+      await expect(assertCanStartSreInvestigation("org-1")).resolves.toEqual({ billable: false });
+      expect(mockPolarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
+    });
+
+    it("stops at the allowance with a trial-specific code", async () => {
+      startedInvestigations(5);
+      await expect(assertCanStartSreInvestigation("org-1")).rejects.toMatchObject({ code: "trial_limit" });
+    });
+
+    it("never bills a trial investigation", async () => {
+      await expect(
+        consumeSreInvestigationCredit({
+          organizationId: "org-1", projectId: "p", userId: null, incidentId: "i", investigationRunId: "r", useLiveConnectors: false,
+        }),
+      ).resolves.toEqual({ billed: false });
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it("reports usage as investigations started with no overage", async () => {
+      mockDb.query.organization.findFirst.mockResolvedValue({ sreInvestigationUnitsUsed: "0" });
+      mockSubscriptionService.getOrganizationPlanSafe.mockResolvedValue({ sreInvestigationUnitsIncluded: "5" } as never);
+      startedInvestigations(3);
+      await expect(getSreInvestigationUsage("org-1")).resolves.toEqual({ used: 3, included: 5, overage: 0 });
+    });
+
+    it("rechecks the allowance under the organization lock when admitting a run", async () => {
+      const lockedOrg = { id: "org-1" };
+      const tx = {
+        select: jest.fn().mockImplementation((columns?: unknown) => columns
+          ? { from: jest.fn(() => ({ where: jest.fn().mockResolvedValue([{ count: 5 }]) })) }
+          : { from: jest.fn(() => ({ where: jest.fn(() => ({ for: jest.fn().mockResolvedValue([lockedOrg]) })) })) }),
+      };
+      mockDb.select.mockReturnValue({ from: jest.fn(() => ({ where: jest.fn().mockResolvedValue([{ count: 4 }]) })) });
+      mockDb.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(tx));
+      const createRun = jest.fn();
+      await expect(withSreInvestigationAdmission("org-1", createRun)).rejects.toMatchObject({ code: "trial_limit" });
+      expect(createRun).not.toHaveBeenCalled();
+    });
   });
 
   it("blocks when the organization hard spending limit is reached", async () => {

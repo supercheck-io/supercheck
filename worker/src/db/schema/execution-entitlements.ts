@@ -20,7 +20,7 @@ export const executionEntitlements = pgTable(
       .references(() => organization.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     runningCapacity: integer('running_capacity').notNull().default(1),
-    queuedCapacity: integer('queued_capacity').notNull().default(10),
+    queuedCapacity: integer('queued_capacity').notNull().default(5),
     k6MaxVus: integer('k6_max_vus').notNull().default(5),
     playwrightBudgetMs: bigint('playwright_budget_ms', { mode: 'number' })
       .notNull()
@@ -28,6 +28,21 @@ export const executionEntitlements = pgTable(
     playwrightUsedMs: bigint('playwright_used_ms', { mode: 'number' })
       .notNull()
       .default(0),
+    maxMonitors: integer('max_monitors').notNull().default(5),
+    minCheckIntervalMinutes: integer('min_check_interval_minutes')
+      .notNull()
+      .default(5),
+    maxStatusPages: integer('max_status_pages').notNull().default(2),
+    maxStatusPageSubscribers: integer('max_status_page_subscribers')
+      .notNull()
+      .default(50),
+    maxTeamMembers: integer('max_team_members').notNull().default(3),
+    maxProjects: integer('max_projects').notNull().default(3),
+    sreInvestigationUnits: integer('sre_investigation_units')
+      .notNull()
+      .default(5),
+    aiCredits: integer('ai_credits').notNull().default(100),
+    lifecycleEndedAt: timestamp('lifecycle_ended_at', { withTimezone: true }),
   },
   (table) => [
     check(

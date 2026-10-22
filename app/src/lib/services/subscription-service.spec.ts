@@ -20,6 +20,7 @@ jest.mock("@/utils/db", () => ({
     query: {
       organization: { findFirst: jest.fn() },
       planLimits: { findFirst: jest.fn() },
+      executionEntitlements: { findFirst: jest.fn() },
     },
     update: jest.fn(() => ({
       set: jest.fn(() => ({

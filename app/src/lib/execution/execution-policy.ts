@@ -31,8 +31,9 @@ export async function getExecutionPolicy(organizationId: string): Promise<Execut
   }
   if (isPolarEnabled()) {
     try {
-      await subscriptionService.blockUntilSubscribed(organizationId);
-      await subscriptionService.requireValidPolarCustomer(organizationId);
+      // Paid access only: a trial is resolved separately below.
+      await subscriptionService.blockUntilSubscribed(organizationId, { allowTrial: false });
+      await subscriptionService.requireValidPolarCustomer(organizationId, { allowTrial: false });
       const plan = await subscriptionService.getOrganizationPlan(organizationId);
       return { tier: "paid", priority: 0, runningCapacity: plan.runningCapacity, queuedCapacity: plan.queuedCapacity };
     } catch (error) {

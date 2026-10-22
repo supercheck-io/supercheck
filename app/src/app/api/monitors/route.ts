@@ -21,6 +21,7 @@ import {
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
+import { trialCheckIntervalViolation } from "@/lib/execution/trial-limits";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import {
   subscriptionService,
@@ -41,6 +42,18 @@ const logger = createLogger({ module: "monitors-api" }) as {
   warn: (data: unknown, msg?: string) => void;
   error: (data: unknown, msg?: string) => void;
 };
+
+async function trialFrequencyError(organizationId: string | null | undefined, frequencyMinutes: unknown) {
+  const violation = await trialCheckIntervalViolation(organizationId, frequencyMinutes);
+  if (!violation) return null;
+  return NextResponse.json(
+    {
+      error: "Check interval too short for a trial",
+      details: `During the trial, monitors run at most every ${violation.minimumMinutes} minutes. Subscribe for 1-minute checks.`,
+    },
+    { status: 400 },
+  );
+}
 
 export async function GET(request: Request) {
   try {
@@ -285,6 +298,9 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+
+    const trialIntervalError = await trialFrequencyError(organizationId, rawData.frequencyMinutes ?? 5);
+    if (trialIntervalError) return trialIntervalError;
 
     // Validate target - all monitor types require a target except heartbeat and synthetic_test
     if (rawData.type === "synthetic_test") {
@@ -718,6 +734,11 @@ export async function PUT(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    if (rawData.frequencyMinutes !== undefined) {
+      const trialIntervalError = await trialFrequencyError(monitorData[0].organizationId, rawData.frequencyMinutes);
+      if (trialIntervalError) return trialIntervalError;
     }
 
     const configurationValidation = validateMonitorConfiguration({
