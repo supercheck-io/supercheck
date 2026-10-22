@@ -84,11 +84,12 @@ async function main(): Promise<void> {
       body: JSON.stringify({ accept: true, projectId, oauth_query: oauthQuery }),
     });
     const store = createRequestStoreForAPI(request, request.nextUrl, { tags: [], expirationsByCacheKind: new Map() }, undefined, undefined, undefined);
+    const experimental = { authInterrupts: false, useCacheTimeout: 60_000, durableUseCacheEntries: false };
     const work = createWorkStore({
       page: "/api/oauth/mcp/consent/route", buildId: "check", deploymentId: "", previouslyRevalidatedTags: [],
       renderOpts: {
         supportsDynamicResponse: true, cacheLifeProfiles: { default: { stale: 300, revalidate: 900, expire: 4294967294 } }, staticPageGenerationTimeout: 60,
-        cacheComponents: false, validationLevel: "warning", experimental: { authInterrupts: false, useCacheTimeout: 60_000 }, onClose: () => {}, waitUntil: undefined, onAfterTaskError: undefined,
+        cacheComponents: false, validationLevel: "warning", experimental, onClose: () => {}, waitUntil: undefined, onAfterTaskError: undefined,
       },
     });
     const response = await workAsyncStorage.run(work, () => workUnitAsyncStorage.run(store, () => consentRoute(request)));
