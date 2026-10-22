@@ -112,6 +112,18 @@ describe("Requirements Server Actions", () => {
     mockCheckPermissionWithContext.mockReturnValue(true);
   });
 
+  it("rejects an unavailable or foreign source document before creating a requirement", async () => {
+    mockSelectResults([]);
+    mockWriteChains();
+    const result = await createRequirement({
+      title: "Scoped source",
+      sourceDocumentId: foreignRequirementId,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Source document not found in this project");
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
   // ==========================================================================
   // RBAC TESTS
   // ==========================================================================

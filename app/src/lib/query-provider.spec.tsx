@@ -8,6 +8,8 @@ import { useAlertHistory, useNotificationProviders } from "@/hooks/use-alerts";
 import { clearQueryCache, QueryProvider } from "./query-provider";
 
 let mockIsServer = false;
+let mockSession: { data: { user: { id: string } } | null; isPending: boolean } = { data: { user: { id: "user-a" } }, isPending: false };
+jest.mock("@/utils/auth-client", () => ({ useSession: () => mockSession }));
 jest.mock("@tanstack/react-query", () => ({
   ...jest.requireActual("@tanstack/react-query"),
   get isServer() { return mockIsServer; },
@@ -17,7 +19,7 @@ jest.mock("@/hooks/use-project-context", () => ({
 }));
 jest.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
-const CACHE_KEY = "supercheck-cache-v1";
+const CACHE_KEY = "supercheck-cache-v2:user-a";
 const fetchMock = jest.fn();
 let mountedClient: QueryClient;
 
@@ -48,6 +50,7 @@ function seedCache() {
 describe("QueryProvider hydration", () => {
   beforeEach(() => {
     mockIsServer = false;
+    mockSession = { data: { user: { id: "user-a" } }, isPending: false };
     clearQueryCache();
     localStorage.clear();
     fetchMock.mockReset();
@@ -127,6 +130,41 @@ describe("QueryProvider hydration", () => {
     });
     expect(mountedClient.getQueryCache().getAll()).toHaveLength(0);
     expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+
+  it("does not restore another account's cache after session expiry and login", async () => {
+    seedCache();
+    mockSession = { data: { user: { id: "user-b" } }, isPending: false };
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(
+      <QueryProvider>
+        <AlertsProbe />
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Loading alerts...")).toBeInTheDocument();
+    expect(
+      mountedClient.getQueryData(["alerts-history", "project-1"]),
+    ).toBeUndefined();
+  });
+
+  it("replaces in-memory data when an authenticated identity changes", async () => {
+    const view = render(
+      <QueryProvider>
+        <AlertsProbe />
+      </QueryProvider>,
+    );
+    await screen.findByText("Alerts: 1; channels: 1");
+    const oldClient = mountedClient;
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    mockSession = { data: { user: { id: "user-b" } }, isPending: false };
+    view.rerender(
+      <QueryProvider>
+        <AlertsProbe />
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(mountedClient).not.toBe(oldClient));
+    expect(screen.getByText("Loading alerts...")).toBeInTheDocument();
   });
 
   it("waits for restoration before prefetching layout data", () => {

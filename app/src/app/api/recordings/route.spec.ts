@@ -20,8 +20,8 @@ jest.mock("@/lib/services/subscription-service", () => ({
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
-  getUserRole: jest.fn(),
-  getUserAssignedProjects: jest.fn(),
+  resolveProjectPermissionContext: jest.fn(),
+  checkPermissionWithContext: jest.fn(),
 }));
 
 jest.mock("@/lib/rbac/permissions", () => ({
@@ -218,5 +218,64 @@ describe("Recordings API Route", () => {
     expect(response.status).toBe(404);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Project not found");
+  });
+
+  it("checks the resolved project permission context before saving a recording", async () => {
+    const rows = (result: unknown[]) => ({
+      from: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(result),
+    });
+    mockDb.select
+      .mockReturnValueOnce(
+        rows([{ id: "key", userId: "user-1", prefix: "ext" }]),
+      )
+      .mockReturnValueOnce(
+        rows([
+          { id: "11111111-1111-4111-8111-111111111111", organizationId: "org" },
+        ]),
+      );
+    const { resolveProjectPermissionContext, checkPermissionWithContext } =
+      jest.requireMock("@/lib/rbac/middleware");
+    const context = {
+      userId: "user-1",
+      organizationId: "org",
+      project: {
+        id: "11111111-1111-4111-8111-111111111111",
+        userRole: "project_viewer",
+      },
+    };
+    resolveProjectPermissionContext.mockResolvedValueOnce(context);
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    const response = await POST(
+      new NextRequest("http://localhost/api/recordings", {
+        method: "POST",
+        headers: {
+          "X-API-Key": "ext-test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: context.project.id,
+          name: "Recording",
+          script: "console.log('hello')",
+          metadata: {
+            recordedAt: "2026-10-21",
+            duration: 0,
+            stepsCount: 0,
+            baseUrl: "https://example.com",
+          },
+        }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(resolveProjectPermissionContext).toHaveBeenCalledWith(
+      "user-1",
+      context.project.id,
+    );
+    expect(checkPermissionWithContext).toHaveBeenCalledWith(
+      "test",
+      "create",
+      context,
+    );
   });
 });
