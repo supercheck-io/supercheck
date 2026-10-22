@@ -60,5 +60,24 @@
       "aiCredits": 0,
       "sreInvestigationUnits": 10
     }
+  },
+  "trial": {
+    "durationDays": 14,
+    "cardRequired": false,
+    "limits": {
+      "playwrightMinutes": 30,
+      "runningCapacity": 1,
+      "queuedCapacity": 5,
+      "k6MaxVus": 5,
+      "k6MaxDurationSeconds": 300,
+      "maxMonitors": 5,
+      "minCheckIntervalMinutes": 5,
+      "maxStatusPages": 2,
+      "maxStatusPageSubscribers": 50,
+      "maxTeamMembers": 3,
+      "maxProjects": 3,
+      "sreInvestigations": 5,
+      "aiCredits": 100
+    }
   }
 }

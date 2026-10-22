@@ -1,5 +1,9 @@
 /** @jest-environment node */
-import { endExpiredTrials, restoreTrialSuspensions } from "./trial-lifecycle";
+import {
+  endExpiredTrials,
+  restoreTrialSuspensions,
+  sendTrialReminders,
+} from "./trial-lifecycle";
 
 jest.mock("@/utils/db", () => ({ db: {} }));
 
@@ -8,6 +12,7 @@ function chain<T>(result: T) {
   const builder: Record<string, unknown> = {};
   for (const method of [
     "from",
+    "innerJoin",
     "where",
     "for",
     "limit",
@@ -308,5 +313,175 @@ describe("restoreTrialSuspensions", () => {
       statusPagesRestored: 0,
     });
     expect(tx.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendTrialReminders", () => {
+  const NOW_MS = NOW.getTime();
+  const DAY = 86_400_000;
+  const entry = (overrides: Record<string, unknown> = {}) => ({
+    organizationId: "org",
+    expiresAt: new Date(NOW_MS + 5 * DAY),
+    name: "Acme",
+    polarCustomerId: null,
+    subscriptionPlan: null,
+    subscriptionStatus: "none",
+    subscriptionEndsAt: null,
+    ...overrides,
+  });
+
+  /** One due list per reminder kind (midway, ending, ended), then owners per organization. */
+  function build(
+    due: { midway?: unknown[]; ending?: unknown[]; ended?: unknown[] },
+    owners: Array<{ email: string }> = [{ email: "owner@example.com" }],
+  ) {
+    const sets: Array<Record<string, unknown>> = [];
+    const lists = [due.midway ?? [], due.ending ?? [], due.ended ?? []];
+    let dueCall = 0;
+    const database = {
+      select: jest.fn((columns: Record<string, unknown>) =>
+        "email" in columns ? chain(owners) : chain(lists[dueCall++] ?? []),
+      ),
+      update: jest.fn(() => ({
+        set: jest.fn((values: Record<string, unknown>) => {
+          sets.push(values);
+          return chain(undefined);
+        }),
+      })),
+    };
+    return { database: database as never, sets };
+  }
+
+  it("emails the verified owners once and records it", async () => {
+    const { database, sets } = build({ midway: [entry()] });
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(
+      sendTrialReminders({ now: NOW, database, deliver }),
+    ).resolves.toEqual({ midway: 1, ending: 0, ended: 0 });
+    expect(deliver).toHaveBeenCalledWith({
+      kind: "midway",
+      organizationId: "org",
+      organizationName: "Acme",
+      daysRemaining: 5,
+      recipients: ["owner@example.com"],
+    });
+    expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
+  });
+
+  it("sends each kind from its own list and records the matching column", async () => {
+    const { database, sets } = build({
+      midway: [entry({ organizationId: "a" })],
+      ending: [
+        entry({ organizationId: "b", expiresAt: new Date(NOW_MS + 3_600_000) }),
+      ],
+      ended: [
+        entry({ organizationId: "c", expiresAt: new Date(NOW_MS - DAY) }),
+      ],
+    });
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(
+      sendTrialReminders({ now: NOW, database, deliver }),
+    ).resolves.toEqual({ midway: 1, ending: 1, ended: 1 });
+    expect(
+      deliver.mock.calls.map((call) => [call[0].kind, call[0].daysRemaining]),
+    ).toEqual([
+      ["midway", 5],
+      ["ending", 1],
+      ["ended", 0],
+    ]);
+    expect(sets).toEqual([
+      { midwayNotifiedAt: NOW },
+      { endingNotifiedAt: NOW },
+      { endedNotifiedAt: NOW },
+    ]);
+  });
+
+  it("keeps a reminder due when it could not be delivered, so the next run retries it", async () => {
+    const { database, sets } = build({ midway: [entry()] });
+    const deliver = jest.fn().mockResolvedValue(false);
+    await expect(
+      sendTrialReminders({ now: NOW, database, deliver }),
+    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+    expect(sets).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "an active subscription",
+      {
+        polarCustomerId: "cus",
+        subscriptionPlan: "plus",
+        subscriptionStatus: "active",
+      },
+    ],
+    [
+      "a canceled subscription still in its paid period",
+      {
+        polarCustomerId: "cus",
+        subscriptionPlan: "pro",
+        subscriptionStatus: "canceled",
+        subscriptionEndsAt: new Date(NOW_MS + DAY),
+      },
+    ],
+  ])(
+    "does not email an organization with %s, and stops considering it",
+    async (_label, paid) => {
+      const { database, sets } = build({ midway: [entry(paid)] });
+      const deliver = jest.fn();
+      await expect(
+        sendTrialReminders({ now: NOW, database, deliver }),
+      ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+      expect(deliver).not.toHaveBeenCalled();
+      expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
+    },
+  );
+
+  it("emails an organization whose canceled subscription already ended", async () => {
+    const { database } = build({
+      ended: [
+        entry({
+          polarCustomerId: "cus",
+          subscriptionPlan: "plus",
+          subscriptionStatus: "canceled",
+          subscriptionEndsAt: new Date(NOW_MS - DAY),
+          expiresAt: new Date(NOW_MS - DAY),
+        }),
+      ],
+    });
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(
+      sendTrialReminders({ now: NOW, database, deliver }),
+    ).resolves.toMatchObject({ ended: 1 });
+  });
+
+  it("does not retry forever when an organization has no verified owner", async () => {
+    const { database, sets } = build({ midway: [entry()] }, []);
+    const deliver = jest.fn();
+    await sendTrialReminders({ now: NOW, database, deliver });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
+  });
+
+  it("sends to each distinct owner address once", async () => {
+    const { database } = build({ midway: [entry()] }, [
+      { email: "a@example.com" },
+      { email: "a@example.com" },
+      { email: "b@example.com" },
+    ]);
+    const deliver = jest.fn().mockResolvedValue(true);
+    await sendTrialReminders({ now: NOW, database, deliver });
+    expect(deliver.mock.calls[0][0].recipients).toEqual([
+      "a@example.com",
+      "b@example.com",
+    ]);
+  });
+
+  it("sends nothing when no trial is due", async () => {
+    const { database } = build({});
+    const deliver = jest.fn();
+    await expect(
+      sendTrialReminders({ now: NOW, database, deliver }),
+    ).resolves.toEqual({ midway: 0, ending: 0, ended: 0 });
+    expect(deliver).not.toHaveBeenCalled();
   });
 });

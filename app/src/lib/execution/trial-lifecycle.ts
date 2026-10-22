@@ -1,11 +1,14 @@
-import { and, eq, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import {
   executionEntitlements,
+  member,
   monitors,
   organization,
   statusPages,
   trialSuspensions,
+  user,
 } from "@/db/schema";
+import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
@@ -19,10 +22,15 @@ export interface TrialEndResult {
 
 type Database = Pick<typeof db, "select" | "transaction">;
 
-function hasPaidAccess(
-  org: typeof organization.$inferSelect,
-  now: Date,
-): boolean {
+type PaidAccessFields = Pick<
+  typeof organization.$inferSelect,
+  | "polarCustomerId"
+  | "subscriptionPlan"
+  | "subscriptionStatus"
+  | "subscriptionEndsAt"
+>;
+
+function hasPaidAccess(org: PaidAccessFields, now: Date): boolean {
   if (
     !org.polarCustomerId ||
     !["plus", "pro"].includes(org.subscriptionPlan ?? "")
@@ -221,4 +229,151 @@ export async function restoreTrialSuspensions(
       statusPagesRestored: restored.length,
     };
   });
+}
+
+export interface TrialReminderDelivery {
+  kind: TrialNotificationKind;
+  organizationId: string;
+  organizationName: string;
+  daysRemaining: number;
+  recipients: string[];
+}
+
+/** Sends one reminder; resolves true only if it reached at least one recipient. */
+export type DeliverTrialReminder = (
+  delivery: TrialReminderDelivery,
+) => Promise<boolean>;
+
+export interface TrialReminderResult {
+  midway: number;
+  ending: number;
+  ended: number;
+}
+
+const DAY_MS = 86_400_000;
+const MIDWAY_DAYS = 7;
+const REMINDER_BATCH_SIZE = 50;
+
+const REMINDER_COLUMN = {
+  midway: executionEntitlements.midwayNotifiedAt,
+  ending: executionEntitlements.endingNotifiedAt,
+  ended: executionEntitlements.endedNotifiedAt,
+} as const;
+
+/** Trials that currently qualify for the reminder, never one already sent. */
+function reminderCondition(kind: TrialNotificationKind, now: Date) {
+  const ends = executionEntitlements.expiresAt;
+  if (kind === "midway") {
+    return and(
+      gt(ends, new Date(now.getTime() + DAY_MS)),
+      lte(ends, new Date(now.getTime() + MIDWAY_DAYS * DAY_MS)),
+      isNull(executionEntitlements.midwayNotifiedAt),
+    );
+  }
+  if (kind === "ending") {
+    return and(
+      gt(ends, now),
+      lte(ends, new Date(now.getTime() + DAY_MS)),
+      isNull(executionEntitlements.endingNotifiedAt),
+    );
+  }
+  return and(
+    lte(ends, now),
+    isNotNull(executionEntitlements.lifecycleEndedAt),
+    isNull(executionEntitlements.endedNotifiedAt),
+  );
+}
+
+/**
+ * Emails the organization owners at the middle of the trial, in its last day,
+ * and after it ends. Each reminder is sent at most once, only to verified
+ * owners, and never to an organization that has since subscribed. A reminder
+ * that could not be delivered is retried on the next run.
+ */
+export async function sendTrialReminders(options: {
+  deliver: DeliverTrialReminder;
+  now?: Date;
+  database?: Pick<typeof db, "select" | "update">;
+}): Promise<TrialReminderResult> {
+  const now = options.now ?? new Date();
+  const database = options.database ?? db;
+  const result: TrialReminderResult = { midway: 0, ending: 0, ended: 0 };
+
+  for (const kind of ["midway", "ending", "ended"] as const) {
+    const due = await database
+      .select({
+        organizationId: executionEntitlements.organizationId,
+        expiresAt: executionEntitlements.expiresAt,
+        name: organization.name,
+        polarCustomerId: organization.polarCustomerId,
+        subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
+        subscriptionEndsAt: organization.subscriptionEndsAt,
+      })
+      .from(executionEntitlements)
+      .innerJoin(
+        organization,
+        eq(organization.id, executionEntitlements.organizationId),
+      )
+      .where(reminderCondition(kind, now))
+      .limit(REMINDER_BATCH_SIZE);
+
+    const markSent = (organizationId: string) =>
+      database
+        .update(executionEntitlements)
+        .set({ [columnKey(kind)]: now })
+        .where(
+          and(
+            eq(executionEntitlements.organizationId, organizationId),
+            isNull(REMINDER_COLUMN[kind]),
+          ),
+        );
+
+    for (const entry of due) {
+      // A subscriber does not need trial reminders; record it so it is not reconsidered.
+      if (hasPaidAccess(entry, now)) {
+        await markSent(entry.organizationId);
+        continue;
+      }
+      const owners = await database
+        .select({ email: user.email })
+        .from(member)
+        .innerJoin(user, eq(user.id, member.userId))
+        .where(
+          and(
+            eq(member.organizationId, entry.organizationId),
+            eq(member.role, "org_owner"),
+            eq(user.emailVerified, true),
+          ),
+        );
+      const recipients = [...new Set(owners.map((owner) => owner.email))];
+      if (recipients.length === 0) {
+        await markSent(entry.organizationId);
+        continue;
+      }
+      const delivered = await options.deliver({
+        kind,
+        organizationId: entry.organizationId,
+        organizationName: entry.name,
+        daysRemaining: Math.max(
+          0,
+          Math.ceil((entry.expiresAt.getTime() - now.getTime()) / DAY_MS),
+        ),
+        recipients,
+      });
+      if (!delivered) continue;
+      await markSent(entry.organizationId);
+      result[kind] += 1;
+    }
+  }
+
+  return result;
+}
+
+function columnKey(kind: TrialNotificationKind) {
+  return kind === "midway"
+    ? "midwayNotifiedAt"
+    : kind === "ending"
+      ? "endingNotifiedAt"
+      : "endedNotifiedAt";
 }

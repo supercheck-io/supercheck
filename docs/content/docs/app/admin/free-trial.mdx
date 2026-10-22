@@ -1,0 +1,55 @@
+---
+title: Free Trial
+description: Try the whole product for 14 days with no card, and what happens when it ends
+icon: Clock
+---
+
+When Supercheck Cloud opens, every new organization starts with a **14-day free trial** of the whole product. No card is required, and nothing is billed during the trial. Self-hosted installations have no trial and no limits.
+
+## What you can use
+
+The trial includes monitors, status pages, Playwright tests, k6 load tests, AI features, and AI SRE. Limits keep it safe for everyone.
+
+| | During the trial |
+| --- | --- |
+| Monitors | 5, checked at most every 5 minutes |
+| Status pages | 2, each with up to 50 subscribers (custom domains are available on paid plans) |
+| Playwright | 30 browser minutes in total, 1 run at a time, 5 waiting in the queue |
+| k6 load tests | HTTP GET tests of up to 5 virtual users for 5 minutes, against domains you verify |
+| AI SRE | 5 full investigations |
+| AI credits | 100 |
+| Team and projects | 3 team members and 3 projects |
+
+Browser synthetic monitors use the same 30 browser minutes as Playwright tests. When the minutes are used up, those monitors are skipped instead of being reported as down.
+
+## Load testing in a trial
+
+To protect other people's sites, a trial can only run k6 load tests against domains your organization owns.
+
+1. Go to **Admin → Load test domains** and add the domain.
+2. Publish the TXT record shown for it in your DNS.
+3. Select **Verify**. Supercheck checks the record again each time a test starts.
+
+A trial generates the test script for you from a URL, a user count, and a duration. Custom k6 scripts are available on paid plans.
+
+## See how much is left
+
+A banner shows how many days are left. The **Subscription** tab in Admin shows your remaining AI SRE investigations and AI credits.
+
+## When the trial ends
+
+On the last day, subscribe to Plus or Pro to keep everything running. If you do not:
+
+- Your monitors are **paused** and your status pages are **archived**, so nothing runs without a plan.
+- **Nothing is deleted.** Your tests, jobs, monitors, status pages, and history are kept.
+- You can still sign in, see your data, and subscribe.
+
+When you subscribe, your paused monitors resume and your archived status pages are republished automatically. Anything you changed yourself in the meantime is left as you set it.
+
+## Frequently asked questions
+
+**Can I extend the trial?** Contact support. Trial limits can be adjusted for a single organization.
+
+**Does the trial renew?** No. Each organization has one trial.
+
+**Why are my monitors not running after the trial?** They are paused until you subscribe. Choose a plan under **Admin → Subscription**.

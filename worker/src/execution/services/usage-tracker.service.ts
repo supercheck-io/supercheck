@@ -46,8 +46,9 @@ function isPolarEnabled(): boolean {
  */
 /** Reasons that mean billing could not be checked (not that billing blocks the organization). */
 export const BILLING_VERIFICATION_FAILED = 'Unable to verify';
-/** Trial entitlements cover on-demand runs only; monitors need a subscription. */
-const TRIAL_MONITORS_NOT_INCLUDED = 'Monitors require an active subscription';
+/** Shown when a trial's monitor allowance does not cover this monitor. */
+const TRIAL_MONITOR_ALLOWANCE_EXCEEDED =
+  'Monitor exceeds the trial monitor allowance';
 export const BILLING_NOT_CONFIGURED =
   'Cloud billing enforcement is not configured';
 
@@ -712,6 +713,33 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * A trial may run only its first `allowance` monitors (oldest first, paused
+   * ones excluded), the same rule as the paid plan quota. Checked at execution,
+   * not only at creation, so existing monitors cannot exceed it.
+   */
+  private async checkTrialMonitorAllowance(
+    organizationId: string,
+    allowance: number,
+    monitorId?: string,
+  ): Promise<{ blocked: boolean; reason?: string }> {
+    if (!monitorId) return { blocked: false };
+    const eligible = await this.db
+      .select({ id: schema.monitors.id })
+      .from(schema.monitors)
+      .where(
+        and(
+          eq(schema.monitors.organizationId, organizationId),
+          sql`${schema.monitors.status} <> 'paused'`,
+        ),
+      )
+      .orderBy(asc(schema.monitors.createdAt), asc(schema.monitors.id))
+      .limit(allowance);
+    return eligible.some((monitor) => monitor.id === monitorId)
+      ? { blocked: false }
+      : { blocked: true, reason: TRIAL_MONITOR_ALLOWANCE_EXCEEDED };
+  }
+
+  /**
    * Check if execution should be blocked before starting
    * Call this before starting a new execution
    */
@@ -734,9 +762,11 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
               ),
             });
           if (entitlement && entitlement.expiresAt.getTime() > Date.now())
-            return options.monitorId
-              ? { blocked: true, reason: TRIAL_MONITORS_NOT_INCLUDED }
-              : { blocked: false };
+            return this.checkTrialMonitorAllowance(
+              organizationId,
+              entitlement.maxMonitors,
+              options.monitorId,
+            );
         }
       } catch {
         // Only an explicit, verifiable grant can run without the standard plan configuration.
@@ -761,9 +791,11 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             })
           : undefined;
         if (entitlement && entitlement.expiresAt.getTime() > Date.now())
-          return options.monitorId
-            ? { blocked: true, reason: TRIAL_MONITORS_NOT_INCLUDED }
-            : { blocked: false };
+          return this.checkTrialMonitorAllowance(
+            organizationId,
+            entitlement.maxMonitors,
+            options.monitorId,
+          );
         return { blocked: true, reason: 'An active subscription is required' };
       }
       if (options.monitorId) {

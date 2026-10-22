@@ -11,6 +11,7 @@
     "sync:openapi": "node scripts/sync-openapi.mjs",
     "check:openapi": "node scripts/sync-openapi.mjs --check",
     "test:openapi": "node --test scripts/sync-openapi.spec.mjs",
+    "test:trial-docs": "node --test scripts/trial-docs.spec.mjs",
     "check:diagrams": "node scripts/check-diagram-titles.mjs",
     "dev": "next dev",
     "start": "next start",

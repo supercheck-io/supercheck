@@ -52,6 +52,10 @@ jobs:
         working-directory: docs
         run: npm run test:openapi
 
+      - name: Check the free trial page matches the plan catalog
+        working-directory: docs
+        run: npm run test:trial-docs
+
       - name: Build static site
         working-directory: docs
         run: npm run build

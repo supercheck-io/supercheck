@@ -1,27 +1,36 @@
-import { and, eq, gt } from "drizzle-orm";
-import { executionEntitlements, type planLimits } from "@/db/schema";
+import { and, eq, gt, gte, or, sql } from "drizzle-orm";
+import {
+  executionEntitlements,
+  sreInvestigationRuns,
+  type planLimits,
+} from "@/db/schema";
+import catalog from "@/lib/billing/plan-catalog.json";
 import { db } from "@/utils/db";
 
-export const TRIAL_DURATION_DAYS = 14;
+export const TRIAL_DURATION_DAYS = catalog.trial.durationDays;
+
+const trial = catalog.trial.limits;
 
 /**
  * Limits granted to a trial organization. They give access to the whole product
- * while keeping cost and abuse bounded. The values are stored on the entitlement
- * row, so support can adjust a single organization without a deploy.
+ * while keeping cost and abuse bounded. The numbers live in the shared plan
+ * catalog, so the app, the worker defaults and the public pricing page agree.
+ * They are stored on the entitlement row, so support can adjust a single
+ * organization without a deploy.
  */
 export const TRIAL_LIMITS = {
-  runningCapacity: 1,
-  queuedCapacity: 5,
-  k6MaxVus: 5,
-  playwrightBudgetMs: 30 * 60 * 1000,
-  maxMonitors: 5,
-  minCheckIntervalMinutes: 5,
-  maxStatusPages: 2,
-  maxStatusPageSubscribers: 50,
-  maxTeamMembers: 3,
-  maxProjects: 3,
-  sreInvestigationUnits: 5,
-  aiCredits: 100,
+  runningCapacity: trial.runningCapacity,
+  queuedCapacity: trial.queuedCapacity,
+  k6MaxVus: trial.k6MaxVus,
+  playwrightBudgetMs: trial.playwrightMinutes * 60 * 1000,
+  maxMonitors: trial.maxMonitors,
+  minCheckIntervalMinutes: trial.minCheckIntervalMinutes,
+  maxStatusPages: trial.maxStatusPages,
+  maxStatusPageSubscribers: trial.maxStatusPageSubscribers,
+  maxTeamMembers: trial.maxTeamMembers,
+  maxProjects: trial.maxProjects,
+  sreInvestigationUnits: trial.sreInvestigations,
+  aiCredits: trial.aiCredits,
 } as const;
 
 type Entitlement = typeof executionEntitlements.$inferSelect;
@@ -142,10 +151,56 @@ export function isTrialEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /** The entitlement row for a new organization's free trial, starting at `now`. */
-export function buildTrialEntitlement(organizationId: string, now = new Date()): typeof executionEntitlements.$inferInsert {
+export function buildTrialEntitlement(
+  organizationId: string,
+  now = new Date(),
+): typeof executionEntitlements.$inferInsert {
   return {
     organizationId,
     expiresAt: new Date(now.getTime() + TRIAL_DURATION_DAYS * 86_400_000),
     ...TRIAL_LIMITS,
+  };
+}
+
+/** Investigations a trial organization has started during its trial. */
+export async function countTrialInvestigations(
+  organizationId: string,
+  trialEndsAt: Date,
+  database: Pick<typeof db, "select"> = db,
+): Promise<number> {
+  const trialStartedAt = new Date(
+    trialEndsAt.getTime() - TRIAL_DURATION_DAYS * 86_400_000,
+  );
+  const [row] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sreInvestigationRuns)
+    .where(
+      and(
+        eq(sreInvestigationRuns.organizationId, organizationId),
+        eq(sreInvestigationRuns.agentType, "investigation"),
+        or(
+          eq(sreInvestigationRuns.status, "running"),
+          eq(sreInvestigationRuns.status, "completed"),
+        ),
+        gte(sreInvestigationRuns.createdAt, trialStartedAt),
+      ),
+    );
+  return Number(row?.count ?? 0);
+}
+
+/** What a trial organization has used so far, for the usage display. */
+export async function getTrialUsage(
+  organizationId: string,
+  entitlement: Pick<Entitlement, "expiresAt" | "playwrightUsedMs">,
+  database: Pick<typeof db, "select"> = db,
+) {
+  return {
+    playwrightMinutesUsed:
+      Math.round((entitlement.playwrightUsedMs / 60_000) * 100) / 100,
+    sreInvestigationsUsed: await countTrialInvestigations(
+      organizationId,
+      entitlement.expiresAt,
+      database,
+    ),
   };
 }

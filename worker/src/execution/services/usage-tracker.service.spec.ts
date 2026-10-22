@@ -549,26 +549,85 @@ describe('UsageTrackerService execution blocking', () => {
     ).resolves.toMatchObject({ blocked: true });
   });
 
-  it('does not run monitors under a trial entitlement, with or without billing configured', async () => {
-    const f = admissionFixture();
-    f.org.subscriptionStatus = 'none';
-    f.query.executionEntitlements.findFirst.mockResolvedValue({
-      expiresAt: new Date(Date.now() + 60000),
-    });
-    const blocked = {
-      blocked: true,
-      reason: 'Monitors require an active subscription',
+  describe('monitors during a trial', () => {
+    const trialFixture = (eligibleIds: string[]) => {
+      const f = admissionFixture();
+      f.org.subscriptionStatus = 'none';
+      f.query.executionEntitlements.findFirst.mockResolvedValue({
+        expiresAt: new Date(Date.now() + 60000),
+        maxMonitors: 5,
+      });
+      const limit = jest
+        .fn()
+        .mockResolvedValue(eligibleIds.map((id) => ({ id })));
+      const select = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit,
+      };
+      const service = new UsageTrackerService({
+        query: f.query,
+        select: jest.fn().mockReturnValue(select),
+      } as never);
+      return { f, service, limit, select };
     };
-    await expect(
-      f.service.shouldBlockExecution('org-1', { monitorId: 'monitor-1' }),
-    ).resolves.toEqual(blocked);
-    delete process.env.POLAR_ACCESS_TOKEN;
-    await expect(
-      f.service.shouldBlockExecution('org-1', { monitorId: 'monitor-1' }),
-    ).resolves.toEqual(blocked);
-    // The same trial still authorizes on-demand runs.
-    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
-      blocked: false,
+
+    it.each([
+      ['with billing configured', true],
+      ['without billing configured', false],
+    ])(
+      'runs a monitor inside the trial allowance %s',
+      async (_label, billing) => {
+        const { service } = trialFixture(['m1', 'm2']);
+        if (!billing) delete process.env.POLAR_ACCESS_TOKEN;
+        await expect(
+          service.shouldBlockExecution('org-1', { monitorId: 'm2' }),
+        ).resolves.toEqual({ blocked: false });
+      },
+    );
+
+    it.each([true, false])(
+      'skips a monitor beyond the allowance (billing configured: %s)',
+      async (billing) => {
+        const { service } = trialFixture(['m1', 'm2', 'm3', 'm4', 'm5']);
+        if (!billing) delete process.env.POLAR_ACCESS_TOKEN;
+        await expect(
+          service.shouldBlockExecution('org-1', { monitorId: 'm6' }),
+        ).resolves.toEqual({
+          blocked: true,
+          reason: 'Monitor exceeds the trial monitor allowance',
+        });
+      },
+    );
+
+    it('bounds the allowance by the entitlement, oldest monitors first, ignoring paused ones', async () => {
+      const { service, limit, select } = trialFixture(['m1']);
+      await service.shouldBlockExecution('org-1', { monitorId: 'm1' });
+      expect(limit).toHaveBeenCalledWith(5);
+      expect(select.orderBy).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('does not apply a monitor allowance to on-demand runs', async () => {
+      const { service, limit } = trialFixture([]);
+      await expect(service.shouldBlockExecution('org-1')).resolves.toEqual({
+        blocked: false,
+      });
+      expect(limit).not.toHaveBeenCalled();
+    });
+
+    it('still refuses once the trial has expired', async () => {
+      const { f, service } = trialFixture(['m1']);
+      f.query.executionEntitlements.findFirst.mockResolvedValue({
+        expiresAt: new Date(Date.now() - 1),
+        maxMonitors: 5,
+      });
+      await expect(
+        service.shouldBlockExecution('org-1', { monitorId: 'm1' }),
+      ).resolves.toMatchObject({ blocked: true });
     });
   });
 

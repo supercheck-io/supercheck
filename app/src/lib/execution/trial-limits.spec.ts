@@ -4,6 +4,8 @@ import {
   TRIAL_LIMITS,
   getActiveTrial,
   buildTrialEntitlement,
+  countTrialInvestigations,
+  getTrialUsage,
   getTrialSummary,
   isTrialActive,
   isTrialEnabled,
@@ -11,6 +13,9 @@ import {
   trialCheckIntervalViolation,
   trialPlanLimits,
 } from "./trial-limits";
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 jest.mock("@/utils/db", () => ({
   db: { query: { executionEntitlements: { findFirst: jest.fn() } } },
@@ -22,6 +27,9 @@ const entitlement = (expiresAt: Date) => ({
   ...TRIAL_LIMITS,
   playwrightUsedMs: 0,
   lifecycleEndedAt: null,
+  midwayNotifiedAt: null,
+  endingNotifiedAt: null,
+  endedNotifiedAt: null,
 });
 
 describe("trial limits", () => {
@@ -169,6 +177,87 @@ describe("trial limits", () => {
         organizationId: "org",
         expiresAt: new Date("2026-11-15T00:00:00Z"),
         ...TRIAL_LIMITS,
+      });
+    });
+  });
+
+  describe("consistency with the database defaults", () => {
+    const migration = readFileSync(
+      resolve(__dirname, "../../db/migrations/0037_execution_entitlements.sql"),
+      "utf8",
+    );
+    const defaultOf = (column: string) => {
+      const match = migration.match(
+        new RegExp(`"${column}" (?:integer|bigint) NOT NULL DEFAULT (\\d+)`),
+      );
+      expect(match).not.toBeNull();
+      return Number(match![1]);
+    };
+
+    it.each([
+      ["running_capacity", TRIAL_LIMITS.runningCapacity],
+      ["queued_capacity", TRIAL_LIMITS.queuedCapacity],
+      ["k6_max_vus", TRIAL_LIMITS.k6MaxVus],
+      ["playwright_budget_ms", TRIAL_LIMITS.playwrightBudgetMs],
+      ["max_monitors", TRIAL_LIMITS.maxMonitors],
+      ["min_check_interval_minutes", TRIAL_LIMITS.minCheckIntervalMinutes],
+      ["max_status_pages", TRIAL_LIMITS.maxStatusPages],
+      ["max_status_page_subscribers", TRIAL_LIMITS.maxStatusPageSubscribers],
+      ["max_team_members", TRIAL_LIMITS.maxTeamMembers],
+      ["max_projects", TRIAL_LIMITS.maxProjects],
+      ["sre_investigation_units", TRIAL_LIMITS.sreInvestigationUnits],
+      ["ai_credits", TRIAL_LIMITS.aiCredits],
+    ])(
+      "keeps the %s default equal to the shared catalog (%s)",
+      (column, expected) => {
+        expect(defaultOf(column)).toBe(expected);
+      },
+    );
+  });
+
+  describe("usage", () => {
+    const selectCount = (count: number) => {
+      const where = jest.fn().mockResolvedValue([{ count }]);
+      return {
+        select: jest.fn(() => ({ from: jest.fn(() => ({ where })) })),
+        where,
+      } as never;
+    };
+
+    it("counts investigations started since the trial began", async () => {
+      await expect(
+        countTrialInvestigations(
+          "org",
+          new Date(Date.now() + 86_400_000),
+          selectCount(4),
+        ),
+      ).resolves.toBe(4);
+    });
+
+    it("counts none when there is no row", async () => {
+      const database = {
+        select: jest.fn(() => ({
+          from: jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) })),
+        })),
+      } as never;
+      await expect(
+        countTrialInvestigations("org", new Date(), database),
+      ).resolves.toBe(0);
+    });
+
+    it("reports browser time in minutes and the investigations started", async () => {
+      await expect(
+        getTrialUsage(
+          "org",
+          {
+            expiresAt: new Date(Date.now() + 86_400_000),
+            playwrightUsedMs: 5 * 60_000 + 30_000,
+          },
+          selectCount(2),
+        ),
+      ).resolves.toEqual({
+        playwrightMinutesUsed: 5.5,
+        sreInvestigationsUsed: 2,
       });
     });
   });

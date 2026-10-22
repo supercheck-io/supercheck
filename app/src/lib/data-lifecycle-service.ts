@@ -53,7 +53,8 @@ import type Redis from "ioredis";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { monitorAggregationService } from "./monitor-aggregation-service";
-import { endExpiredTrials } from "@/lib/execution/trial-lifecycle";
+import { endExpiredTrials, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
+import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -2348,6 +2349,13 @@ export class TrialLifecycleStrategy implements ICleanupStrategy {
     } catch (error) {
       result.success = false;
       result.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    // Reminders are best effort and independent of ending trials: an email
+    // problem must never stop monitors from being paused.
+    try {
+      result.details = { ...result.details, reminders: await sendTrialReminders({ deliver: deliverTrialReminder }) };
+    } catch (error) {
+      result.errors.push(`Trial reminders failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     result.duration = Date.now() - startTime;
     return result;

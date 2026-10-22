@@ -15,6 +15,9 @@ CREATE TABLE "execution_entitlements" (
   "sre_investigation_units" integer NOT NULL DEFAULT 5,
   "ai_credits" integer NOT NULL DEFAULT 100,
   "lifecycle_ended_at" timestamptz,
+  "midway_notified_at" timestamptz,
+  "ending_notified_at" timestamptz,
+  "ended_notified_at" timestamptz,
   CONSTRAINT "execution_entitlements_limits_check" CHECK (
     "running_capacity" > 0 AND "queued_capacity" > 0 AND "k6_max_vus" BETWEEN 1 AND 5
     AND "playwright_budget_ms" > 0 AND "playwright_used_ms" >= 0

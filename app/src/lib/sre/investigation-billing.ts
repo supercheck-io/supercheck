@@ -5,7 +5,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { subscriptionService } from "@/lib/services/subscription-service";
-import { TRIAL_DURATION_DAYS, getActiveTrial } from "@/lib/execution/trial-limits";
+import { countTrialInvestigations, getActiveTrial } from "@/lib/execution/trial-limits";
 import { db } from "@/utils/db";
 
 const SRE_INVESTIGATION_UNITS_PER_RUN = "1.0000";
@@ -58,25 +58,6 @@ export class SreInvestigationBillingError extends Error {
 
 function defaultPeriodEnd(now: Date) {
   return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-}
-
-/** Investigations a trial organization has started during its trial. */
-async function countTrialInvestigations(
-  organizationId: string,
-  trialEndsAt: Date,
-  database: Pick<typeof db, "select"> = db,
-): Promise<number> {
-  const trialStartedAt = new Date(trialEndsAt.getTime() - TRIAL_DURATION_DAYS * 86_400_000);
-  const [row] = await database
-    .select({ count: sql<number>`count(*)::int` })
-    .from(sreInvestigationRuns)
-    .where(and(
-      eq(sreInvestigationRuns.organizationId, organizationId),
-      eq(sreInvestigationRuns.agentType, "investigation"),
-      or(eq(sreInvestigationRuns.status, "running"), eq(sreInvestigationRuns.status, "completed")),
-      gte(sreInvestigationRuns.createdAt, trialStartedAt),
-    ));
-  return Number(row?.count ?? 0);
 }
 
 export async function assertCanStartSreInvestigation(organizationId: string) {

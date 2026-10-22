@@ -14,6 +14,7 @@ jest.mock("@/utils/db", () => ({
       planLimits: { findFirst: jest.fn() },
       executionEntitlements: { findFirst: jest.fn() },
     },
+    select: jest.fn(),
   },
 }));
 jest.mock("@/lib/feature-flags", () => ({
@@ -42,6 +43,9 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
   sreInvestigationUnits: TRIAL_LIMITS.sreInvestigationUnits,
   aiCredits: TRIAL_LIMITS.aiCredits,
   lifecycleEndedAt: null,
+  midwayNotifiedAt: null,
+  endingNotifiedAt: null,
+  endedNotifiedAt: null,
   ...overrides,
 });
 const unsubscribedOrg = {
@@ -157,5 +161,29 @@ describe("trial access", () => {
       plan: "unlimited",
     });
     expect(entitlement).not.toHaveBeenCalled();
+  });
+
+  describe("usage display", () => {
+    it("reports trial browser time and investigations instead of the billing counters", async () => {
+      org.mockResolvedValue({
+        ...unsubscribedOrg,
+        aiCreditsUsed: 12,
+        playwrightMinutesUsed: 0,
+        sreInvestigationUnitsUsed: "0",
+      } as never);
+      entitlement.mockResolvedValue(
+        trial({ playwrightUsedMs: 450_000 }) as never,
+      );
+      const where = jest.fn().mockResolvedValue([{ count: 2 }]);
+      jest
+        .mocked(db.select)
+        .mockReturnValue({ from: jest.fn(() => ({ where })) } as never);
+      await expect(service.getUsageSafe("org")).resolves.toEqual({
+        playwrightMinutes: { used: 7.5, included: 30, overage: 0 },
+        k6VuMinutes: { used: 0, included: 0, overage: 0 },
+        aiCredits: { used: 12, included: 100, overage: 0 },
+        sreInvestigations: { used: 2, included: 5, overage: 0 },
+      });
+    });
   });
 });

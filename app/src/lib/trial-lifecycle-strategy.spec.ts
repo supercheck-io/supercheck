@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const mockWhere = jest.fn();
 const mockEndExpiredTrials = jest.fn();
+const mockSendTrialReminders = jest.fn();
 jest.mock("@/utils/db", () => ({
   db: {
     select: () => ({
@@ -15,6 +16,10 @@ jest.mock("@/lib/monitor-aggregation-service", () => ({
 }));
 jest.mock("@/lib/execution/trial-lifecycle", () => ({
   endExpiredTrials: (...args: unknown[]) => mockEndExpiredTrials(...args),
+  sendTrialReminders: (...args: unknown[]) => mockSendTrialReminders(...args),
+}));
+jest.mock("@/lib/execution/trial-reminder-delivery", () => ({
+  deliverTrialReminder: jest.fn(),
 }));
 import { TrialLifecycleStrategy } from "./data-lifecycle-service";
 
@@ -25,7 +30,10 @@ const strategy = () =>
     enabled: true,
   });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSendTrialReminders.mockResolvedValue({ midway: 0, ending: 0, ended: 0 });
+});
 
 it("ends expired trials and reports what changed", async () => {
   mockEndExpiredTrials.mockResolvedValue({
@@ -68,4 +76,41 @@ it("reports pending expired trials as its statistics", async () => {
     totalRecords: 0,
     oldRecords: 0,
   });
+});
+
+it("sends reminders after ending trials and reports them", async () => {
+  mockEndExpiredTrials.mockResolvedValue({
+    organizations: 1,
+    monitorsPaused: 2,
+    statusPagesArchived: 1,
+  });
+  mockSendTrialReminders.mockResolvedValue({ midway: 3, ending: 1, ended: 1 });
+  const result = await strategy().execute();
+  expect(result.success).toBe(true);
+  expect(result.details).toMatchObject({
+    organizations: 1,
+    reminders: { midway: 3, ending: 1, ended: 1 },
+  });
+  expect(mockSendTrialReminders).toHaveBeenCalledWith({
+    deliver: expect.any(Function),
+  });
+});
+
+it("still ends trials when reminders fail, and records the problem", async () => {
+  mockEndExpiredTrials.mockResolvedValue({
+    organizations: 1,
+    monitorsPaused: 2,
+    statusPagesArchived: 0,
+  });
+  mockSendTrialReminders.mockRejectedValue(new Error("SMTP unavailable"));
+  const result = await strategy().execute();
+  expect(result.success).toBe(true);
+  expect(result.details).toMatchObject({ organizations: 1 });
+  expect(result.errors).toEqual(["Trial reminders failed: SMTP unavailable"]);
+});
+
+it("still sends reminders when ending trials fails", async () => {
+  mockEndExpiredTrials.mockRejectedValue(new Error("database unavailable"));
+  await strategy().execute();
+  expect(mockSendTrialReminders).toHaveBeenCalled();
 });

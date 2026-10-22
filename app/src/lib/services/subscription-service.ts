@@ -8,7 +8,7 @@ import { organization, planLimits, type SubscriptionPlan } from "@/db/schema";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
-import { getActiveTrial, trialPlanLimits } from "@/lib/execution/trial-limits";
+import { getActiveTrial, getTrialUsage, trialPlanLimits } from "@/lib/execution/trial-limits";
 
 // Constants for configuration
 export { POLAR_API_VERSION };
@@ -798,6 +798,31 @@ export class SubscriptionService {
     }
 
     const plan = await this.getOrganizationPlanSafe(organizationId);
+
+    // A trial's browser time and investigations are metered by the trial itself,
+    // not by the billing counters, so report those for the usage display.
+    const trial = plan.id === "trial" ? await getActiveTrial(organizationId) : undefined;
+    const trialUsage = trial ? await getTrialUsage(organizationId, trial) : undefined;
+    if (trialUsage) {
+      return {
+        playwrightMinutes: {
+          used: trialUsage.playwrightMinutesUsed,
+          included: plan.playwrightMinutesIncluded,
+          overage: 0,
+        },
+        k6VuMinutes: { used: 0, included: 0, overage: 0 },
+        aiCredits: {
+          used: org.aiCreditsUsed || 0,
+          included: plan.aiCreditsIncluded,
+          overage: 0,
+        },
+        sreInvestigations: {
+          used: trialUsage.sreInvestigationsUsed,
+          included: Number(plan.sreInvestigationUnitsIncluded || 0),
+          overage: 0,
+        },
+      };
+    }
 
     return {
       playwrightMinutes: {

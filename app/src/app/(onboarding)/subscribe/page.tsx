@@ -77,6 +77,11 @@ export default function SubscribePage() {
     status: "active" | "past_due" | "canceled" | "none" | null;
     reason: string;
     subscriptionEndsAt?: string | null;
+    trial?: {
+      active: boolean;
+      expiresAt: string;
+      daysRemaining: number;
+    } | null;
   }>({
     queryKey: ["subscription-status", organizationId],
     queryFn: async () => {
@@ -108,8 +113,11 @@ export default function SubscribePage() {
   );
   const hasBillingContext = hasCurrentSubscription || billingNeedsAttention;
   const overdue = access?.status === "past_due";
+  const trialActive = !hasBillingContext && access?.trial?.active === true;
+  const trialEnded = !hasBillingContext && access?.trial?.active === false;
   const expired =
     !hasBillingContext &&
+    !trialEnded &&
     Boolean(access?.status === "canceled" || access?.subscriptionEndsAt);
   const canSubscribe =
     activeOrganization?.role === "org_owner" &&
@@ -285,11 +293,13 @@ export default function SubscribePage() {
             ? "Review your billing setup"
             : overdue
               ? "Update your payment method"
-              : expired
-                ? "Restore your subscription"
-                : hasCurrentSubscription
-                  ? "Your subscription"
-                  : "Choose your plan"}
+              : trialEnded
+                ? "Your free trial has ended"
+                : expired
+                  ? "Restore your subscription"
+                  : hasCurrentSubscription
+                    ? "Your subscription"
+                    : "Choose your plan"}
         </h1>
         <p className="text-sm text-muted-foreground">
           One subscription covers all projects in your organization.
@@ -307,13 +317,17 @@ export default function SubscribePage() {
                 ? "Billing needs attention"
                 : overdue
                   ? "Payment overdue"
-                  : expired
-                    ? "Subscription ended"
-                    : hasCurrentSubscription
-                      ? access?.status === "canceled"
-                        ? "Cancellation scheduled"
-                        : "Active"
-                      : "Not subscribed"}
+                  : trialEnded
+                    ? "Trial ended"
+                    : trialActive
+                      ? `Free trial · ${access?.trial?.daysRemaining} days left`
+                      : expired
+                        ? "Subscription ended"
+                        : hasCurrentSubscription
+                          ? access?.status === "canceled"
+                            ? "Cancellation scheduled"
+                            : "Active"
+                          : "Not subscribed"}
             </span>
           )}
         </div>
@@ -392,11 +406,25 @@ export default function SubscribePage() {
         ) : (
           activeOrganization && (
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {expired
-                ? "Your subscription has ended. Choose a plan below to restore access."
-                : "Choose a plan below to activate your organization."}
+              {trialEnded
+                ? "Your monitors are paused and your status pages are archived. Nothing was deleted: choose a plan below and they are restored."
+                : trialActive
+                  ? `You have ${access?.trial?.daysRemaining} days left in your free trial. Choose a plan any time to keep everything running after it ends.`
+                  : expired
+                    ? "Your subscription has ended. Choose a plan below to restore access."
+                    : "Choose a plan below to activate your organization."}
             </p>
           )
+        )}
+        {trialActive && (
+          <div className="border-t pt-4">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/">
+                Continue with your trial
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         )}
       </Card>
 
