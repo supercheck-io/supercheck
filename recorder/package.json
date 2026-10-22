@@ -72,7 +72,7 @@
     "@rollup/plugin-replace": "^6.0.3",
     "@stylistic/eslint-plugin": "^3.0.1",
     "@types/chrome": "^0.3.5",
-    "@types/debug": "^4.1.12",
+    "@types/debug": "^4.1.13",
     "@typescript-eslint/eslint-plugin": "^8.71.2",
     "@typescript-eslint/parser": "^8.71.2",
     "@typescript-eslint/utils": "^8.26.1",
