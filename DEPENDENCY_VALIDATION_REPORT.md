@@ -10,7 +10,7 @@ No PRs were merged and no deployments were made. The change branch is based on `
 
 | Check | Baseline | Current branch | Result |
 | --- | --- | --- | --- |
-| App type/lint/build/coverage | 381 suites / 4,595 tests | 381 suites / 4,595 passed; 3 suites / 6 tests skipped; lint and production Webpack build passed | Pass |
+| App type/lint/build/coverage | 381 suites / 4,595 tests | 381 suites / 4,595 tests passed; 3 suites / 6 tests skipped; lint and production Webpack build passed. App npm 12 install passed after normalizing a mirror URL to the official registry with the same integrity | Pass |
 | Worker unit/coverage/type/lint/container build | 70 suites / 1,632 tests | 70 suites / 1,632 tests passed; 2 suites / 44 tests skipped; final type/lint and image build passed | Pass |
 | CLI unit/coverage/type/lint/build | 45 suites / 667 tests | 45 suites / 667 tests passed; final type/lint/build passed | Pass |
 | Recorder npm install/unit/lint/build | — | npm 12 lock regenerated; frozen CI install, 24 unit tests, lint, and production/test-extension builds passed | Pass |
@@ -22,21 +22,24 @@ No PRs were merged and no deployments were made. The change branch is based on `
 | Local app/worker health | — | Both health checks green | Pass |
 | Retained Monaco browser check | — | Monaco 0.52.2 worker loaded 136 libraries; `goto`, `getByRole`, and TS2345 checks passed | Pass |
 | App browser suite | — | 48/48 passed after test setup added a public showcase component through the UI | Pass; prior failure was a missing existing publish prerequisite in test setup |
-| Recorder browser suite | — | Final Linux build passed; browser run stalls on a redundant worker and was interrupted, matching the macOS run | Pending; unchanged-main baseline build is running; no final two-project browser result yet |
+| Recorder browser suite | — | Earlier macOS/Linux runs stalled during initialization; two missing browser aliases caused top-level exceptions. Static rebuild and bounded VM initialization now pass | Hosted Chrome verification pending; final DevTools browser acceptance unverified after requested local teardown |
 | CLI API acceptance | — | `whoami`, test/monitor/job listing, locations, and token revoke (HTTP 200) passed | Pass |
 | Retained fullscreen flow | — | Worker loaded; Escape and button both closed fullscreen | Pass |
 | Local Kubernetes execution | — | Playwright browser and k6 execution tests passed | Pass locally; no production gVisor acceptance |
 | Job execution | — | Browser flow triggered the selected job and persisted a run | Pass for this flow |
-| Current-head hosted CI | — | Final retained-scope head is awaiting the next push and hosted checks | Pending |
+| Hosted CI on prior head `b0f9a1c` | — | App, worker, CLI, docs, SRE, E2E, and analysis checks passed; recorder Validate failed on lock metadata and DependencyReview flagged LOW IDs from Monaco 0.57 | Stale after scope fixes; not evidence for retained head |
+| Current-head hosted CI | — | Retained scope was pushed as `57aa2c8`; its dependency-review and recorder-validation gates pass. Final recorder-alias head will rerun hosted checks | Pending |
 
-The app browser test now creates and persists a public showcase component through the UI before publishing, preserving its persistence and confirmation assertions. The production guard already required that prerequisite; this was a test setup fix, not a product behavior change. The app browser fixture used an owner credential for the owner/project-admin scenario and did not independently validate a separately authenticated `project_admin` RBAC identity. The follow-up for the publish prerequisite is complete. The earlier baseline app runtime check was inconclusive; the schema export mismatch predates this dependency branch, so no baseline runtime pass is claimed. The current retained-scope hosted checks have not yet run.
+The app browser test now creates and persists a public showcase component through the UI before publishing, preserving its persistence and confirmation assertions. The production guard already required that prerequisite; this was a test setup fix, not a product behavior change. The app browser fixture used an owner credential for the owner/project-admin scenario and did not independently validate a separately authenticated `project_admin` RBAC identity. The follow-up for the publish prerequisite is complete. The earlier baseline app runtime check was inconclusive; the schema export mismatch predates this dependency branch, so no baseline runtime pass is claimed. The retained-scope hosted checks were started at `57aa2c8`; results must be refreshed for the final recorder-alias head. The prior hosted failures were addressed by regenerating the recorder npm 12 lock and reverting Monaco 0.57; the rerun must confirm the current head.
 ## Compatibility changes and exclusions
 
+- Final app count is 381 suites / 4,595 tests: the earlier 382 / 4,596 result included a Monaco 0.57-specific test removed with that upgrade.
 - Final candidate retains Monaco 0.52.2 and `@monaco-editor/loader` 1.6.1. The earlier Monaco 0.57 namespace/hover changes, loader CDN change, shared config/mocks, and added config test were reverted. Retained-scope browser validation loaded 136 libraries and passed the `goto`, `getByRole`, and TS2345 checks.
 - Worker ESLint 10 / `typescript-eslint` 8.71 cleanup applied autofixes across 24 files and manually fixed three remaining errors. The CLI config declares `@eslint/js` ^10 and `typescript-eslint` 8.71 while preserving existing config imports. The one-line CLI lint fix was independently reviewed.
 - App server-action specs use the Node test environment for the AWS SDK browser-ESM change. Virtualizer tests set `clientHeight` and `clientWidth` for the upstream measurement behavior. Recorder changes add Chrome 130 storage type generics, a config-event `unknown` guard, and a test.
 - Grouped PRs #537 and #532 exclude `drizzle-zod` 0.8 because its Zod 4 output conflicts with Zod 3 callers. PR #537 also excludes Monaco 0.57, retains Monaco 0.52.2 with loader 1.6.1, and retains Next config 16.3.8 with an `eslint-plugin-react-hooks` 7.0.1 override while keeping Next runtime 16.4.
 - Docs group #519 retains Fuma Core/UI 16.8.0 because 16.17.5 removes translation-context `.text`, still read by OpenAPI 10.6 as `.text.openapi`; it also retains `mdast` serializer 2.1.2 because 2.2 recursed. Other group members are included in the candidate subset.
+- Recorder Vite aliases now include `node:buffer` and `node:path` using the existing browser implementations. The built worker previously threw before assigning `_runTest`; a bounded VM smoke now reaches that assignment. Static builds, lint, and 24 unit checks pass; independent review approved the two-line fix.
 - The Zod schema runtime export was moved unchanged to `lib/validations/incident-status.ts`; the independent reviewer approved the latest retained-scope locks and publish test. The app rebuild passed, followed by four regression tests.
 
 ## Security status
@@ -102,4 +105,4 @@ The live inventory below contains all 37 PRs from `/private/tmp/supercheck-depen
 
 Validation logs and runner artifacts are under `/private/tmp/supercheck-dependency-validation/`; the live PR snapshot is `/private/tmp/supercheck-dependencies-live.json`. No credentials, private environment contents, kubeconfig contents, or operational PR links are included here.
 
-Before merge readiness: finish the unchanged-main recorder baseline build and determine whether the redundant-worker stall is baseline behavior; complete the Linux recorder browser run without interruption; push the retained-scope head and refresh hosted checks. Two live SRE checks remain skipped, and production gVisor acceptance was not run. Keep the candidate draft; no merge recommendation is made.
+Before merge readiness: complete hosted recorder browser verification and refresh all checks on the final pushed head. The user requested local teardown, so the app, worker, recorder container, isolated storage services and task namespace were stopped/removed; no local runtime was recreated. The interrupted baseline recorder comparison is inconclusive. The existing hosted recorder workflow covers Chrome; its CI configuration omits DevTools, whose final browser acceptance remains unverified. Two live SRE checks remain skipped, and production gVisor acceptance was not run. Keep the candidate draft; no merge recommendation is made.
