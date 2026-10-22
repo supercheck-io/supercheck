@@ -51,6 +51,7 @@ tagCommand
   .description('Delete a tag')
   .option('--force', 'Skip confirmation')
   .action(async (id: string, options: { force?: boolean }) => {
+    if (!id.trim()) throw new CLIError('A tag ID is required.', ExitCode.ConfigError)
     if (!options.force) {
       const { confirmPrompt } = await import('../utils/prompt.js')
       await confirmPrompt(`Delete tag ${id}?`, { default: false })

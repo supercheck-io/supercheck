@@ -1,4 +1,5 @@
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
+import { isInvalidUuidError } from "@/lib/uuid";
 import { updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -110,6 +111,9 @@ export async function GET(
 
     return NextResponse.json(responseMonitor);
   } catch (error) {
+    if (isInvalidUuidError(error)) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
     if (isAuthError(error)) {
       return NextResponse.json(
         {

@@ -2,9 +2,9 @@ import { loadProjectEnv } from './project-env.js'
 import { createJiti } from 'jiti'
 import { deepmergeCustom } from 'deepmerge-ts'
 import { existsSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { resolve, dirname, basename } from 'node:path'
 import { supercheckConfigSchema, type SupercheckConfig } from './schema.js'
-import { CLIError, ConfigNotFoundError, ExitCode } from '../utils/errors.js'
+import { CLIError, ConfigNotFoundError, ConfigurationError, ExitCode } from '../utils/errors.js'
 
 const CONFIG_FILES = [
   'supercheck.config.ts',
@@ -62,7 +62,16 @@ async function loadConfigFile(filePath: string): Promise<unknown> {
     interopDefault: true,
   })
 
-  const mod = await jiti.import(filePath) as Record<string, unknown>
+  let mod: Record<string, unknown>
+  try {
+    mod = await jiti.import(filePath) as Record<string, unknown>
+  } catch (err) {
+    // `init --skip-install` leaves a config that imports the CLI package before it is installed.
+    if (err instanceof Error && /Cannot find (module|package) '@supercheck\/cli'/.test(err.message)) {
+      throw new ConfigurationError(`${basename(filePath)} imports @supercheck/cli, which is not installed here. Run \`npm install\` first.`)
+    }
+    throw err
+  }
   return mod.default ?? mod
 }
 
