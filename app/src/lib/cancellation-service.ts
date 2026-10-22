@@ -8,7 +8,7 @@
 import { getRedisConnection } from "./queue";
 
 const CANCELLATION_KEY_PREFIX = "supercheck:cancel:";
-const CANCELLATION_TTL = 3600; // 1 hour TTL for cancellation flags
+const CANCELLATION_TTL = 7200; // Keep the signal beyond the 80-minute recovery window.
 
 /**
  * Set a cancellation signal for a run

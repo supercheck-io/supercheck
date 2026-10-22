@@ -1,6 +1,7 @@
 const {
   acquireMigrationLock,
   releaseMigrationLock,
+  withMigrationTimeouts,
 } = require("./migration-lock.js");
 
 function createFakePostgres(acquiredResults) {
@@ -26,6 +27,22 @@ function createFakePostgres(acquiredResults) {
 }
 
 describe("migration advisory lock", () => {
+  it("restores incoming timeouts before the next migration or seed", async () => {
+    const client = jest.fn()
+      .mockResolvedValueOnce([{ lock_timeout: "9s", statement_timeout: "2min" }])
+      .mockResolvedValue([]);
+    const migrate = jest.fn(async () => "applied");
+    await expect(withMigrationTimeouts(client, migrate)).resolves.toBe("applied");
+    expect(migrate).toHaveBeenCalledTimes(1);
+    expect(client.mock.calls[1].slice(1)).toEqual(["9s", "2min"]);
+  });
+
+  it("preserves the migration error for transaction rollback", async () => {
+    const client = jest.fn().mockResolvedValue([{ lock_timeout: "0", statement_timeout: "0" }]);
+    const failure = new Error("migration failed");
+    await expect(withMigrationTimeouts(client, async () => { throw failure; })).rejects.toBe(failure);
+    expect(client).toHaveBeenCalledTimes(1);
+  });
   it("keeps the transaction open while waiting, then commits cleanly", async () => {
     const fake = createFakePostgres([false, true]);
     const postgres = jest.fn(() => fake.client);

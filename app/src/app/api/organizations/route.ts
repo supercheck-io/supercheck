@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateOrganizationNameSchema } from '@/lib/validations/organization';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
-import { getUserOrganizations } from '@/lib/session';
+import { getSelectableOrganizations } from '@/lib/session';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
 import { createOrganization, OrganizationManagementError } from '@/lib/services/organization-management';
 
 /**
  * GET /api/organizations
- * Return the assigned organization for the current user
+ * Return selectable organizations and the active selection
  */
 export async function GET() {
   try {
-    const { userId, organizationId } = await requireUserAuthContext();
+    const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
     
-    const userOrganizations = await getUserOrganizations(userId);
+    const userOrganizations = await getSelectableOrganizations(userId);
     
     return NextResponse.json({
       success: true,
-      data: userOrganizations.filter(org => org.id === organizationId).map(org => ({ ...org, isActive: true })),
+      data: userOrganizations.filter(org => !isCliAuth || org.id === organizationId)
+        .map(org => ({ ...org, isActive: org.id === organizationId })),
       activeOrganizationId: organizationId,
     });
   } catch (error) {

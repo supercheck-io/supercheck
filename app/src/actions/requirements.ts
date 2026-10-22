@@ -5,6 +5,7 @@ import {
   requirements,
   requirementsInsertSchema,
   requirementCoverageSnapshots,
+  requirementDocuments,
   testRequirements,
   tests,
   tags,
@@ -175,6 +176,8 @@ export async function getRequirements(options?: {
       sourceDocumentName: sql<string | null>`(
         SELECT name FROM requirement_documents 
         WHERE id = ${requirements.sourceDocumentId}
+          AND project_id = ${requirements.projectId}
+          AND organization_id = ${requirements.organizationId}
       )`.as("source_document_name"),
     })
     .from(requirements)
@@ -302,6 +305,26 @@ export async function createRequirement(
     }
 
     const validatedData = createRequirementSchema.parse(data);
+    if (validatedData.sourceDocumentId) {
+      const [document] = await db
+        .select({ id: requirementDocuments.id })
+        .from(requirementDocuments)
+        .where(
+          and(
+            eq(requirementDocuments.id, validatedData.sourceDocumentId),
+            eq(requirementDocuments.projectId, project.id),
+            eq(requirementDocuments.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      if (!document) {
+        return {
+          id: "",
+          success: false,
+          error: "Source document not found in this project",
+        };
+      }
+    }
     const newId = crypto.randomUUID();
 
     // Insert requirement (without tags - those go in join table)
@@ -1151,6 +1174,8 @@ export async function getRequirement(
         sourceDocumentName: sql<string | null>`(
           SELECT name FROM requirement_documents 
           WHERE id = ${requirements.sourceDocumentId}
+          AND project_id = ${requirements.projectId}
+          AND organization_id = ${requirements.organizationId}
         )`.as("source_document_name"),
       })
       .from(requirements)

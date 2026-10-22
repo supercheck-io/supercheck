@@ -9,13 +9,16 @@ import {
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ReactNode, useEffect, useState } from "react";
+import { useSession } from "@/utils/auth-client";
 
-const CACHE_KEY = "supercheck-cache-v1";
+const CACHE_KEY = "supercheck-cache-v2";
+const LEGACY_CACHE_KEY = "supercheck-cache-v1";
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes - data is fresh for this long
 
 // Share the browser cache across providers and client navigations.
 let browserClient: QueryClient | undefined;
+let browserIdentity: string | null | undefined;
 let unsubscribePersistence: (() => void) | undefined;
 let restorationPromise: Promise<void> | undefined;
 
@@ -35,9 +38,13 @@ function createClient() {
   });
 }
 
-function initializePersistence(client: QueryClient): Promise<void> {
+function initializePersistence(
+  client: QueryClient,
+  identity: string,
+): Promise<void> {
   try {
     const storage = window.localStorage;
+    storage.removeItem(LEGACY_CACHE_KEY);
     const persister = createSyncStoragePersister({
       storage: {
         getItem: (key) => storage.getItem(key),
@@ -47,7 +54,7 @@ function initializePersistence(client: QueryClient): Promise<void> {
         },
         removeItem: (key) => storage.removeItem(key),
       },
-      key: CACHE_KEY,
+      key: `${CACHE_KEY}:${identity}`,
       throttleTime: 500,
     });
 
@@ -73,7 +80,7 @@ function initializePersistence(client: QueryClient): Promise<void> {
     console.error("Failed to initialize query persistence:", error);
     // Clear potentially corrupted cache
     try {
-      window.localStorage.removeItem(CACHE_KEY);
+      window.localStorage.removeItem(`${CACHE_KEY}:${identity}`);
     } catch {
       /* ignore */
     }
@@ -82,8 +89,13 @@ function initializePersistence(client: QueryClient): Promise<void> {
   return Promise.resolve();
 }
 
-function getClient() {
+function getClient(identity: string | null) {
   if (isServer) return createClient();
+
+  if (browserIdentity !== identity) {
+    clearQueryCache();
+    browserIdentity = identity;
+  }
 
   if (!browserClient) {
     browserClient = createClient();
@@ -103,7 +115,9 @@ export function clearQueryCache() {
   browserClient?.clear();
 
   try {
-    window.localStorage.removeItem(CACHE_KEY);
+    window.localStorage.removeItem(LEGACY_CACHE_KEY);
+    if (browserIdentity)
+      window.localStorage.removeItem(`${CACHE_KEY}:${browserIdentity}`);
   } catch {
     /* ignore */
   }
@@ -114,18 +128,45 @@ export function clearQueryCache() {
 }
 
 export function QueryProvider({ children }: { children: ReactNode }) {
-  const client = getClient();
+  const session = useSession();
+  const identity = session.data?.user.id ?? null;
+  return (
+    <IdentityQueryProvider
+      key={identity ?? "anonymous"}
+      identity={identity}
+      pending={session.isPending}
+    >
+      {children}
+    </IdentityQueryProvider>
+  );
+}
+
+function IdentityQueryProvider({
+  children,
+  identity,
+  pending,
+}: {
+  children: ReactNode;
+  identity: string | null;
+  pending: boolean;
+}) {
+  const client = getClient(identity);
   const [isRestoring, setIsRestoring] = useState(true);
 
   useEffect(() => {
     // Server and first client render both use an empty cache. Restore only
     // after mount, with queries paused until the saved cache is ready.
-    restorationPromise ??= initializePersistence(client);
+    if (pending) return;
+    if (!identity) {
+      setIsRestoring(false);
+      return;
+    }
+    restorationPromise ??= initializePersistence(client, identity);
     void restorationPromise.then(
       () => setIsRestoring(false),
       () => setIsRestoring(false),
     );
-  }, [client]);
+  }, [client, identity, pending]);
 
   return (
     <QueryClientProvider client={client}>

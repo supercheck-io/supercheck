@@ -1,4 +1,7 @@
-import { getCurrentUser } from "@/lib/session";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/utils/db";
+import { session } from "@/db/schema";
+import { getCurrentUser, getSelectableOrganizations } from "@/lib/session";
 import { getCachedAuthSession } from "@/lib/session-cache";
 
 export class OrganizationManagementError extends Error {
@@ -12,12 +15,21 @@ async function requireOrganizationSession() {
   if (!currentUser || !authSession?.session?.token) {
     throw new OrganizationManagementError("Authentication required", 401);
   }
+  return { currentUser, authSession };
 }
 
-/** Compatibility endpoints must never create tenants or change billing context. */
-export async function switchOrganization(_organizationId: string): Promise<never> {
-  await requireOrganizationSession();
-  throw new OrganizationManagementError("Organization switching is disabled. Use the project selector to switch projects.", 403);
+export async function switchOrganization(organizationId: string): Promise<{ organizationId: string }> {
+  const { currentUser, authSession } = await requireOrganizationSession();
+  const organizations = await getSelectableOrganizations(currentUser.id);
+  if (!organizations.some(org => org.id === organizationId)) {
+    throw new OrganizationManagementError("Organization not found or access denied", 403);
+  }
+  const updated = await db.update(session)
+    .set({ activeOrganizationId: organizationId, activeProjectId: null })
+    .where(and(eq(session.token, authSession.session.token), eq(session.userId, currentUser.id)))
+    .returning({ activeOrganizationId: session.activeOrganizationId });
+  if (!updated.length) throw new OrganizationManagementError("Authentication required", 401);
+  return { organizationId };
 }
 
 export async function createOrganization(_name: string): Promise<never> {

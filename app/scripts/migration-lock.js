@@ -74,7 +74,22 @@ async function releaseMigrationLock(
   }
 }
 
+async function withMigrationTimeouts(client, migrate) {
+  const [previous] = await client`
+    SELECT current_setting('lock_timeout') AS lock_timeout,
+           current_setting('statement_timeout') AS statement_timeout
+  `;
+  const result = await migrate();
+  // Keep file-local settings out of later migrations and seeds without losing connection defaults.
+  await client`
+    SELECT set_config('lock_timeout', ${previous.lock_timeout}, true),
+           set_config('statement_timeout', ${previous.statement_timeout}, true)
+  `;
+  return result;
+}
+
 module.exports = {
   acquireMigrationLock,
   releaseMigrationLock,
+  withMigrationTimeouts,
 };
