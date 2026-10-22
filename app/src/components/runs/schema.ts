@@ -3,10 +3,10 @@ import { z } from "zod";
 // Define the schema for a test run
 export const runSchema = z.object({
   id: z.string(),
-  jobId: z.string().nullable(),
+  jobId: z.string(),
   jobName: z.string().optional(),
   jobType: z.enum(["playwright", "k6"]).optional(),
-  status: z.enum(["pending", "queued", "running", "passed", "failed", "skipped", "error", "blocked"]),
+  status: z.enum(["pending", "running", "passed", "failed", "skipped", "error"]),
   duration: z.string().nullable().optional(),
   startedAt: z.string().nullable().optional(),
   completedAt: z.string().nullable().optional(),
