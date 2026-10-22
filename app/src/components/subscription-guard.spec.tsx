@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SubscriptionGuard } from "./subscription-guard";
+import { SubscriptionGuard, hasProductAccess } from "./subscription-guard";
 import { useAppConfig } from "@/hooks/use-app-config";
 
 const pushMock = jest.fn();
@@ -20,9 +20,13 @@ jest.mock("next/navigation", () => ({
   usePathname: () => pathname,
 }));
 
-const mockUseAppConfig = useAppConfig as jest.MockedFunction<typeof useAppConfig>;
+const mockUseAppConfig = useAppConfig as jest.MockedFunction<
+  typeof useAppConfig
+>;
 
-function makeAppConfig(overrides: Partial<ReturnType<typeof useAppConfig>> = {}): ReturnType<typeof useAppConfig> {
+function makeAppConfig(
+  overrides: Partial<ReturnType<typeof useAppConfig>> = {},
+): ReturnType<typeof useAppConfig> {
   return {
     config: {
       hosting: { selfHosted: false, cloudHosted: true },
@@ -84,7 +88,7 @@ function renderGuard(props: Parameters<typeof SubscriptionGuard>[0]) {
       <SubscriptionGuard {...props}>
         <div>Protected content</div>
       </SubscriptionGuard>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -157,5 +161,78 @@ describe("SubscriptionGuard", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  describe("free trial", () => {
+    const activeTrial = {
+      active: true,
+      expiresAt: "2026-11-15T00:00:00.000Z",
+      daysRemaining: 9,
+    };
+    const endedTrial = {
+      active: false,
+      expiresAt: "2026-11-01T00:00:00.000Z",
+      daysRemaining: 0,
+    };
+
+    it("keeps an unsubscribed organization with an active trial in the product", async () => {
+      const fetchMock = global.fetch as unknown as jest.Mock;
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ isActive: false, plan: null, trial: activeTrial }),
+      });
+      renderGuard({
+        children: <div>Protected content</div>,
+        initialSubscriptionStatus: {
+          isActive: false,
+          plan: null,
+          trial: activeTrial,
+        },
+        initialIsSelfHosted: false,
+      });
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith("/api/subscription/status"),
+      );
+      expect(screen.getByText("Protected content")).toBeInTheDocument();
+      expect(pushMock).not.toHaveBeenCalled();
+    });
+
+    it("sends an organization whose trial ended to the subscribe page", async () => {
+      const fetchMock = global.fetch as unknown as jest.Mock;
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ isActive: false, plan: null, trial: endedTrial }),
+      });
+      renderGuard({
+        children: <div>Protected content</div>,
+        initialSubscriptionStatus: {
+          isActive: false,
+          plan: null,
+          trial: endedTrial,
+        },
+        initialIsSelfHosted: false,
+      });
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/subscribe"));
+    });
+  });
+});
+
+describe("hasProductAccess", () => {
+  const trial = (active: boolean) => ({
+    active,
+    expiresAt: "2026-11-15T00:00:00.000Z",
+    daysRemaining: active ? 5 : 0,
+  });
+
+  it.each([
+    [{ isActive: true, plan: "plus" }, true],
+    [{ isActive: false, plan: null, trial: trial(true) }, true],
+    [{ isActive: false, plan: null, trial: trial(false) }, false],
+    [{ isActive: false, plan: null, trial: null }, false],
+    [{ isActive: false, plan: null }, false],
+    [null, false],
+    [undefined, false],
+  ])("grants access for %j: %s", (status, expected) => {
+    expect(hasProductAccess(status)).toBe(expected);
   });
 });

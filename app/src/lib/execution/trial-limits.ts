@@ -104,3 +104,48 @@ export async function trialCheckIntervalViolation(
     return null;
   return { minimumMinutes: trial.minCheckIntervalMinutes };
 }
+
+export interface TrialSummary {
+  active: boolean;
+  expiresAt: string;
+  /** Whole days left, rounded up; 0 once the trial has ended. */
+  daysRemaining: number;
+}
+
+export function summarizeTrial(
+  entitlement: Pick<Entitlement, "expiresAt">,
+  now = Date.now(),
+): TrialSummary {
+  const remainingMs = entitlement.expiresAt.getTime() - now;
+  return {
+    active: remainingMs > 0,
+    expiresAt: entitlement.expiresAt.toISOString(),
+    daysRemaining: remainingMs > 0 ? Math.ceil(remainingMs / 86_400_000) : 0,
+  };
+}
+
+/** The trial summary for display, including a trial that has ended. Undefined if the organization never had one. */
+export async function getTrialSummary(
+  organizationId: string,
+  database: Pick<typeof db, "query"> = db,
+): Promise<TrialSummary | undefined> {
+  const entitlement = await database.query.executionEntitlements.findFirst({
+    where: eq(executionEntitlements.organizationId, organizationId),
+  });
+  return entitlement ? summarizeTrial(entitlement) : undefined;
+}
+
+/** Trials are granted at signup only when explicitly enabled (an operator launch switch). */
+export function isTrialEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.TRIAL_ENABLED?.trim().toLowerCase();
+  return value === "true" || value === "1";
+}
+
+/** The entitlement row for a new organization's free trial, starting at `now`. */
+export function buildTrialEntitlement(organizationId: string, now = new Date()): typeof executionEntitlements.$inferInsert {
+  return {
+    organizationId,
+    expiresAt: new Date(now.getTime() + TRIAL_DURATION_DAYS * 86_400_000),
+    ...TRIAL_LIMITS,
+  };
+}

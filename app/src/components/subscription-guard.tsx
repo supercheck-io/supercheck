@@ -23,9 +23,22 @@ const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
   '/connected-apps', // Disconnecting an app must always be possible
 ];
 
+export interface TrialStatus {
+  active: boolean;
+  expiresAt: string;
+  daysRemaining: number;
+}
+
 export interface SubscriptionStatus {
   isActive: boolean;
   plan: string | null;
+  /** Present when the organization has (or had) a free trial. Not a paid subscription. */
+  trial?: TrialStatus | null;
+}
+
+/** Whether the organization may use the product: a paid subscription or an active trial. */
+export function hasProductAccess(status: SubscriptionStatus | null | undefined): boolean {
+  return !!status && (status.isActive || !!status.trial?.active);
 }
 
 interface SubscriptionGuardProps {
@@ -69,7 +82,7 @@ export async function fetchSubscriptionStatus(): Promise<SubscriptionStatus> {
  * The useEffect handles redirects for missing subscriptions in cloud mode.
  * 
  * In cloud mode:
- * - Redirects users without active subscription to billing page
+ * - Redirects users without an active subscription or trial to billing page
  * - Allows access to billing and settings pages without subscription
  * 
  * In self-hosted mode:
@@ -128,14 +141,14 @@ export function SubscriptionGuard({
       return;
     }
 
-    if (subscriptionStatus && !subscriptionStatus.isActive) {
+    if (subscriptionStatus && !hasProductAccess(subscriptionStatus)) {
       router.push('/subscribe');
     }
   }, [hasSelfHostedInfo, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router]);
 
   // Determine if we need to show a loading overlay (only after hydration)
   const needsOverlay = hydrated && !isAllowedRoute && !isSelfHosted && (
-    !hasSelfHostedInfo || (!isFetched && !subscriptionStatus?.isActive)
+    !hasSelfHostedInfo || (!isFetched && !hasProductAccess(subscriptionStatus))
   );
 
   const loadingMessage = !hasSelfHostedInfo ? "Loading configuration..." : "Checking access...";

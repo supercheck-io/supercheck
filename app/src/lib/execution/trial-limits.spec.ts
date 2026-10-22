@@ -3,7 +3,11 @@ import {
   TRIAL_DURATION_DAYS,
   TRIAL_LIMITS,
   getActiveTrial,
+  buildTrialEntitlement,
+  getTrialSummary,
   isTrialActive,
+  isTrialEnabled,
+  summarizeTrial,
   trialCheckIntervalViolation,
   trialPlanLimits,
 } from "./trial-limits";
@@ -105,6 +109,67 @@ describe("trial limits", () => {
       await expect(
         trialCheckIntervalViolation(null, 1, database),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe("summary for display", () => {
+    const now = new Date("2026-11-01T12:00:00Z").getTime();
+
+    it("rounds the remaining time up to whole days", () => {
+      expect(
+        summarizeTrial({ expiresAt: new Date(now + 13 * 86_400_000 + 1) }, now),
+      ).toMatchObject({ active: true, daysRemaining: 14 });
+      expect(
+        summarizeTrial({ expiresAt: new Date(now + 3_600_000) }, now),
+      ).toMatchObject({ active: true, daysRemaining: 1 });
+    });
+
+    it("reports an ended trial as inactive with no days left", () => {
+      expect(summarizeTrial({ expiresAt: new Date(now - 1) }, now)).toEqual({
+        active: false,
+        expiresAt: new Date(now - 1).toISOString(),
+        daysRemaining: 0,
+      });
+    });
+
+    it("looks up the summary, including a trial that has already ended, and nothing for others", async () => {
+      const findFirst = jest.fn();
+      const database = {
+        query: { executionEntitlements: { findFirst } },
+      } as never;
+      findFirst.mockResolvedValue(entitlement(new Date(Date.now() - 1000)));
+      await expect(getTrialSummary("org", database)).resolves.toMatchObject({
+        active: false,
+        daysRemaining: 0,
+      });
+      findFirst.mockResolvedValue(undefined);
+      await expect(getTrialSummary("org", database)).resolves.toBeUndefined();
+    });
+  });
+
+  describe("launch switch and provisioning", () => {
+    it.each([
+      ["true", true],
+      ["1", true],
+      [" TRUE ", true],
+      ["false", false],
+      ["", false],
+      [undefined, false],
+    ])("reads TRIAL_ENABLED=%j as %s", (value, enabled) => {
+      expect(
+        isTrialEnabled({
+          TRIAL_ENABLED: value,
+        } as unknown as NodeJS.ProcessEnv),
+      ).toBe(enabled);
+    });
+
+    it("builds a 14 day entitlement with the trial limits", () => {
+      const now = new Date("2026-11-01T00:00:00Z");
+      expect(buildTrialEntitlement("org", now)).toEqual({
+        organizationId: "org",
+        expiresAt: new Date("2026-11-15T00:00:00Z"),
+        ...TRIAL_LIMITS,
+      });
     });
   });
 });
