@@ -29,6 +29,8 @@ test.describe('Job execution @jobs @execution', () => {
   }) => {
     const page = projectAdminPage;
     const request = projectAdminPage.request;
+    // The two polls below can use 75s combined, above the 60s default.
+    test.setTimeout(120_000);
     const created = await createJob(request);
     if (created.createdTestId) {
       cleanup.add(`test ${created.createdTestId}`, () =>

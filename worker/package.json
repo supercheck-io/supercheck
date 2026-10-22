@@ -27,7 +27,7 @@
     "automation"
   ],
   "engines": {
-    "node": ">=20.9.0",
+    "node": ">=24.9.0 <25",
     "npm": ">=10.0.0"
   },
   "private": false,
