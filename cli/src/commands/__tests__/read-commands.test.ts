@@ -178,6 +178,22 @@ describe('read-only and operational commands', () => {
       expect(mockPost).not.toHaveBeenCalled()
     })
 
+    it('rejects tag names that are too long', async () => {
+      await expect(tagCommand.parseAsync(['node', 'tag', 'create', 'x'.repeat(21)])).rejects.toMatchObject({
+        exitCode: ExitCode.ConfigError,
+      })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('rejects an empty tag id before prompting or calling the API', async () => {
+      await expect(tagCommand.parseAsync(['node', 'tag', 'delete', '  ', '--force'])).rejects.toMatchObject({
+        exitCode: ExitCode.ConfigError,
+        message: 'A tag ID is required.',
+      })
+      expect(mockConfirmPrompt).not.toHaveBeenCalled()
+      expect(mockOutputMutation).not.toHaveBeenCalled()
+    })
+
     it('deletes without prompting when --force is passed', async () => {
       await tagCommand.parseAsync(['node', 'tag', 'delete', 'tag-1', '--force'])
 

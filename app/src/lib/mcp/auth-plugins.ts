@@ -1,4 +1,5 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import type { BetterAuthPlugin } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { mcp } from "@better-auth/mcp";
@@ -185,9 +186,15 @@ export function createMcpAuthPlugins(options: McpAuthPluginOptions) {
         consentReferenceId: ({ user }) =>
           options.resolveProjectReference({ userId: user.id }),
       },
-      customAccessTokenClaims: ({ referenceId }) => ({
-        [MCP_PROJECT_CLAIM]: referenceId ?? null,
-      }),
+      customAccessTokenClaims: ({ referenceId, user }) => {
+        if (!isCredentialOwnerActive(user ? { banned: user.banned, banExpires: user.banExpires } : null)) {
+          throw new APIError("FORBIDDEN", {
+            error: "access_denied",
+            error_description: "Account is suspended or unavailable",
+          });
+        }
+        return { [MCP_PROJECT_CLAIM]: referenceId ?? null };
+      },
     }),
     cimd({
       fetchClientMetadataResource: options.fetchClientMetadataResource ?? fetchMetadataOverNode,

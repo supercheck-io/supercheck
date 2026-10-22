@@ -3,6 +3,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { NextResponse } from "next/server";
 import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/http-policy";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
+import { prepareMcpOAuthRequest } from "@/lib/mcp/request-policy";
 
 const handlers = toNextJsHandler(auth);
 
@@ -36,13 +37,18 @@ function organizationPolicyError(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return organizationPolicyError(request) ?? handlers.POST(request);
+  const denied = organizationPolicyError(request);
+  if (denied) return denied;
+  const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
+  return prepared instanceof Response ? prepared : handlers.POST(prepared);
 }
 
 export async function GET(request: Request) {
   const denied = organizationPolicyError(request);
   if (denied) return denied;
-  const response = await handlers.GET(request);
+  const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
+  if (prepared instanceof Response) return prepared;
+  const response = await handlers.GET(prepared);
   // Better Auth's own copy of the metadata lists endpoints this route refuses; advertise only reachable ones.
   if (isMcpServerEnabled() && new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/.well-known/oauth-authorization-server") {
     return withReachableEndpointsOnly(response);

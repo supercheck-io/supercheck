@@ -82,13 +82,21 @@ describe("verify-key route", () => {
     mockGetRedisConnection.mockResolvedValue(createRedisMock());
   });
 
-  it("accepts Better Auth hashed API keys", async () => {
+  it.each([
+    [false, null, 200],
+    [true, null, 401],
+    [true, new Date(Date.now() + 3600000), 401],
+    [true, new Date(0), 200],
+  ])("checks the owner ban for hashed keys (banned=%s, expires=%s)", async (banned, banExpires, status) => {
     const selectQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([
         {
           id: "key-1",
+          banned,
+          banExpires,
           key: "plugin-hash",
           enabled: true,
           expiresAt: null,
@@ -119,7 +127,12 @@ describe("verify-key route", () => {
     const response = await POST(request);
     const body = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(status);
+    if (status === 401) {
+      expect(body.error).toBeDefined();
+      expect(mockDb.update).not.toHaveBeenCalled();
+      return;
+    }
     expect(body).toEqual({
       valid: true,
       keyId: "key-1",

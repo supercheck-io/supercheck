@@ -20,8 +20,8 @@ jest.mock("@/lib/services/subscription-service", () => ({
 }));
 
 jest.mock("@/lib/rbac/middleware", () => ({
-  getUserRole: jest.fn(),
-  getUserAssignedProjects: jest.fn(),
+  resolveProjectPermissionContext: jest.fn(),
+  checkPermissionWithContext: jest.fn(),
 }));
 
 jest.mock("@/lib/rbac/permissions", () => ({
@@ -77,6 +77,7 @@ describe("Recordings API Route", () => {
   it("rejects non-recorder API keys before processing uploads", async () => {
     const keyQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([
         {
@@ -113,6 +114,7 @@ describe("Recordings API Route", () => {
   it("accepts Better Auth hashed extension keys and continues past authentication", async () => {
     const keyQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([
         {
@@ -129,6 +131,7 @@ describe("Recordings API Route", () => {
 
     const projectQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([]),
     };
@@ -163,12 +166,15 @@ describe("Recordings API Route", () => {
     expect(response.status).toBe(404);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Project not found");
-    expect(mockDefaultKeyHasher).toHaveBeenCalledWith("extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(mockDefaultKeyHasher).toHaveBeenCalledWith(
+      "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    );
   });
 
   it("accepts Better Auth permission objects for recorder uploads", async () => {
     const keyQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([
         {
@@ -185,6 +191,7 @@ describe("Recordings API Route", () => {
 
     const projectQuery = {
       from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([]),
     };
@@ -218,5 +225,98 @@ describe("Recordings API Route", () => {
     expect(response.status).toBe(404);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Project not found");
+  });
+  it("rejects a recorder key while its owner is banned", async () => {
+    const query = {
+      from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue([
+        {
+          id: "key",
+          userId: "user-1",
+          banned: true,
+          banExpires: null,
+          prefix: "ext",
+        },
+      ]),
+    };
+    mockDb.select.mockReturnValueOnce(query);
+    const response = await POST(
+      new NextRequest("http://localhost/api/recordings", {
+        method: "POST",
+        headers: { "X-API-Key": "ext-test" },
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(mockDb.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks the resolved project permission context before saving a recording", async () => {
+    const rows = (result: unknown[]) => ({
+      from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(result),
+    });
+    mockDb.select
+      .mockReturnValueOnce(
+        rows([
+          {
+            id: "key",
+            userId: "user-1",
+            prefix: "ext",
+            banned: false,
+            banExpires: null,
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        rows([
+          { id: "11111111-1111-4111-8111-111111111111", organizationId: "org" },
+        ]),
+      );
+    const { resolveProjectPermissionContext, checkPermissionWithContext } =
+      jest.requireMock("@/lib/rbac/middleware");
+    const context = {
+      userId: "user-1",
+      organizationId: "org",
+      project: {
+        id: "11111111-1111-4111-8111-111111111111",
+        userRole: "project_viewer",
+      },
+    };
+    resolveProjectPermissionContext.mockResolvedValueOnce(context);
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    const response = await POST(
+      new NextRequest("http://localhost/api/recordings", {
+        method: "POST",
+        headers: {
+          "X-API-Key": "ext-test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: context.project.id,
+          name: "Recording",
+          script: "console.log('hello')",
+          metadata: {
+            recordedAt: "2026-10-21",
+            duration: 0,
+            stepsCount: 0,
+            baseUrl: "https://example.com",
+          },
+        }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(resolveProjectPermissionContext).toHaveBeenCalledWith(
+      "user-1",
+      context.project.id,
+    );
+    expect(checkPermissionWithContext).toHaveBeenCalledWith(
+      "test",
+      "create",
+      context,
+    );
   });
 });
