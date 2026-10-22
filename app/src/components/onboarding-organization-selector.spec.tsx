@@ -12,6 +12,7 @@ const organizations = [
 ];
 beforeEach(() => {
   jest.clearAllMocks();
+  window.history.replaceState(null, "", "/subscribe");
   (useOrganizations as jest.Mock).mockReturnValue({ data: organizations, activeOrganization: organizations[0] });
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
 });
@@ -25,6 +26,7 @@ it("selects an organization without an active project", async () => {
     body: JSON.stringify({ organizationId: "empty-team" }),
   }));
   await waitFor(() => expect(reloadProjectContext).toHaveBeenCalledTimes(1));
+  expect(reloadProjectContext).toHaveBeenCalledWith(expect.any(Function), "/subscribe");
   expect(announceProjectChange).toHaveBeenCalledTimes(1);
 });
 it("keeps the existing context when selection is rejected", async () => {

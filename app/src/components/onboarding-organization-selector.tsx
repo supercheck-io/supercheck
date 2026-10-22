@@ -32,7 +32,7 @@ export function OnboardingOrganizationSelector() {
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.error || "Failed to select organization");
             announceProjectChange();
-            reloadProjectContext(clearProjectsCache);
+            reloadProjectContext(clearProjectsCache, window.location.pathname);
           } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to select organization");
           } finally {

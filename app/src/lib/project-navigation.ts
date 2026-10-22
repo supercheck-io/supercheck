@@ -3,11 +3,14 @@
 import { clearQueryCache } from "@/lib/query-provider";
 
 const PROJECT_CHANGE_KEY = "supercheck-project-change";
+const PROJECT_CHANGE_SOURCE = Math.random().toString(36).slice(2);
 
-export function reloadProjectContext(clearProjects: () => void) {
+export function reloadProjectContext(clearProjects: () => void, pathname = "/") {
   clearProjects();
   clearQueryCache();
-  window.location.replace(new URL("/", window.location.origin));
+  const destination = new URL("/", window.location.origin);
+  destination.pathname = pathname;
+  window.location.replace(destination);
 }
 
 export function announceProjectChange() {
@@ -17,7 +20,7 @@ export function announceProjectChange() {
   try {
     if (typeof BroadcastChannel !== "undefined") {
       const channel = new BroadcastChannel(PROJECT_CHANGE_KEY);
-      channel.postMessage("changed");
+      channel.postMessage({ source: PROJECT_CHANGE_SOURCE });
       channel.close();
     }
   } catch { /* Navigation still clears this tab's cache and reloads. */ }
@@ -36,7 +39,9 @@ export function listenForProjectChanges(clearProjects: () => void) {
   window.addEventListener("storage", onStorage);
   const channel = typeof BroadcastChannel !== "undefined"
     ? new BroadcastChannel(PROJECT_CHANGE_KEY) : null;
-  if (channel) channel.onmessage = reload;
+  if (channel) channel.onmessage = (event) => {
+    if (event.data?.source !== PROJECT_CHANGE_SOURCE) reload();
+  };
   return () => {
     window.removeEventListener("storage", onStorage);
     channel?.close();
