@@ -1,7 +1,8 @@
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { NextRequest, NextResponse } from "next/server";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
-import { apikey } from "@/db/schema";
+import { apikey, user } from "@/db/schema";
 import { eq, and, or } from "drizzle-orm";
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
@@ -180,9 +181,12 @@ export async function POST(request: NextRequest) {
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
         userId: apikey.referenceId,
+        banned: user.banned,
+        banExpires: user.banExpires,
         name: apikey.name,
       })
       .from(apikey)
+      .innerJoin(user, eq(user.id, apikey.referenceId))
       .where(
         and(
           eq(apikey.enabled, true),
@@ -193,7 +197,7 @@ export async function POST(request: NextRequest) {
 
     const matchedKey = matchingKeys.length > 0 ? matchingKeys[0] : null;
 
-    if (!matchedKey) {
+    if (!isCredentialOwnerActive(matchedKey)) {
       logger.warn(
         { keyPrefix: trimmedApiKey.substring(0, 8), ip: clientIp },
         "Invalid API key attempted"

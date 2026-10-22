@@ -176,18 +176,30 @@ describe("createMcpAuthPlugins", () => {
     resolveProjectReference.mockResolvedValue("project-1");
     const options = provider(build()).options as {
       postLogin: { consentReferenceId: (c: { user: { id: string } }) => Promise<string | undefined>; shouldRedirect: () => boolean };
-      customAccessTokenClaims: (c: { referenceId?: string }) => Record<string, unknown>;
+      customAccessTokenClaims: (c: { referenceId?: string; user?: {id:string} }) => Record<string, unknown>;
     };
     await expect(options.postLogin.consentReferenceId({ user: { id: "u1" } })).resolves.toBe("project-1");
     expect(resolveProjectReference).toHaveBeenCalledWith({ userId: "u1" });
     // No extra screen between sign-in and consent: the project is chosen on the consent screen itself.
     expect(options.postLogin.shouldRedirect()).toBe(false);
-    expect(options.customAccessTokenClaims({ referenceId: "project-1" })).toEqual({ [MCP_PROJECT_CLAIM]: "project-1" });
-    expect(options.customAccessTokenClaims({})).toEqual({ [MCP_PROJECT_CLAIM]: null });
+    expect(options.customAccessTokenClaims({ referenceId: "project-1", user: {id:"u1"} })).toEqual({ [MCP_PROJECT_CLAIM]: "project-1" });
+    expect(options.customAccessTokenClaims({user:{id:"u1"}})).toEqual({ [MCP_PROJECT_CLAIM]: null });
   });
 
   it("does not add a signed user JWT to session responses", () => {
     const jwtPlugin = build()[0] as BetterAuthPlugin & { options?: { disableSettingJwtHeader?: boolean } };
     expect(jwtPlugin.options?.disableSettingJwtHeader).toBe(true);
+  });
+});
+
+
+describe("MCP token account suspension", () => {
+  const plugins = createMcpAuthPlugins({resource:RESOURCE,dynamicRegistration:false,resolveProjectReference:async()=>"project"});
+  const claims = ((plugins.find(p=>p.id === "oauth-provider") as BetterAuthPlugin)?.options as {customAccessTokenClaims:(ctx:object)=>object}).customAccessTokenClaims;
+  it.each([undefined, null, {id:"u",banned:true}, {id:"u",banned:true,banExpires:new Date(Date.now()+60000)}, {id:"u",banned:true,banExpires:"invalid"}])("rejects unavailable or suspended owners %j", user=>{
+    expect(()=>claims({referenceId:"project",user})).toThrow();
+  });
+  it.each([{id:"u",banned:false},{id:"u",banned:true,banExpires:new Date(0)}])("permits active and expired temporary bans %j", user=>{
+    expect(claims({referenceId:"project",user})).toEqual({[MCP_PROJECT_CLAIM]:"project"});
   });
 });

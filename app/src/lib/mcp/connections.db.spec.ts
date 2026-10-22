@@ -28,6 +28,7 @@ import {
   revokeMcpConnection,
   verifiedHostForClientId,
 } from "./connections";
+import { cleanupMcpOAuthRows } from "./cleanup";
 
 const execFileAsync = promisify(execFile);
 const dbName = `mcp_connections_${randomUUID().replaceAll("-", "")}`;
@@ -104,6 +105,44 @@ describe("MCP connections", () => {
     await client`DELETE FROM oauth_access_token`;
     await client`DELETE FROM oauth_refresh_token`;
     await client`DELETE FROM oauth_consent`;
+  });
+
+  it("expires unused registrations and old tokens while preserving active connections and replay windows", async () => {
+    const oldClient = `unused-${randomUUID()}`;
+    await client`INSERT INTO oauth_client (client_id, redirect_uris, created_at)
+      VALUES (${oldClient}, ARRAY['http://127.0.0.1/cb'], now() - interval '31 days')`;
+    await client`UPDATE oauth_client SET created_at = now() - interval '31 days' WHERE client_id = ${dcrClient}`;
+    const consent = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectA });
+    const expiredToken = randomUUID();
+    const replayToken = randomUUID();
+    await client`INSERT INTO oauth_refresh_token (token, client_id, user_id, scopes, expires_at, created_at, rotated_at, rotation_replay_expires_at)
+      VALUES (${expiredToken}, ${dcrClient}, ${aliceId}, ARRAY['mcp:read'], now() - interval '1 day', now() - interval '32 days', null, null),
+      (${replayToken}, ${dcrClient}, ${aliceId}, ARRAY['mcp:read'], now() + interval '1 day', now() - interval '32 days', now(), now() + interval '1 minute')`;
+    const expiredCode = randomUUID();
+    await client`INSERT INTO verification (id, identifier, value, expires_at) VALUES (${expiredCode}, ${expiredCode}, 'expired-code', now() - interval '1 day')`;
+
+    await cleanupMcpOAuthRows();
+
+    expect(await client`SELECT client_id FROM oauth_client WHERE client_id = ${oldClient}`).toHaveLength(0);
+    expect(await client`SELECT id FROM oauth_consent WHERE id = ${consent}`).toHaveLength(1);
+    expect(await client`SELECT id FROM oauth_refresh_token WHERE token = ${expiredToken}`).toHaveLength(0);
+    expect(await client`SELECT id FROM oauth_refresh_token WHERE token = ${replayToken}`).toHaveLength(1);
+    expect(await client`SELECT id FROM verification WHERE identifier = ${expiredCode}`).toHaveLength(0);
+    await client`UPDATE oauth_client SET created_at = now() WHERE client_id = ${dcrClient}`;
+  });
+
+  it("preserves a registration while another transaction is granting consent", async () => {
+    const clientId = `concurrent-${randomUUID()}`;
+    await client`INSERT INTO oauth_client (client_id, redirect_uris, created_at)
+      VALUES (${clientId}, ARRAY['http://127.0.0.1/cb'], now() - interval '31 days')`;
+    await client.begin(async (tx) => {
+      await tx`INSERT INTO oauth_consent (client_id, user_id, reference_id, scopes, created_at, updated_at)
+        VALUES (${clientId}, ${aliceId}, ${projectA}, ARRAY['mcp:read'], now(), now())`;
+      await cleanupMcpOAuthRows();
+      expect(await tx`SELECT id FROM oauth_client WHERE client_id = ${clientId}`).toHaveLength(1);
+    });
+    await cleanupMcpOAuthRows();
+    expect(await client`SELECT id FROM oauth_consent WHERE client_id = ${clientId}`).toHaveLength(1);
   });
 
   it("lists a user's connections with the project name and a verified host only for metadata-document clients", async () => {

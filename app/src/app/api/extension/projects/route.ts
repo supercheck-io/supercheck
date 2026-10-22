@@ -1,7 +1,8 @@
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { apikey, member } from "@/db/schema";
+import { apikey, member, user } from "@/db/schema";
 import { getUserProjects } from "@/lib/session";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
@@ -26,8 +27,9 @@ export async function GET(request: NextRequest) {
   );
 
   const [extensionKey] = await db
-    .select({ id: apikey.id, userId: apikey.referenceId })
+    .select({ id: apikey.id, userId: apikey.referenceId, banned: user.banned, banExpires: user.banExpires })
     .from(apikey)
+    .innerJoin(user, eq(user.id, apikey.referenceId))
     .where(
       and(
         eq(apikey.enabled, true),
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
     )
     .limit(1);
 
-  if (!extensionKey?.userId) {
+  if (!extensionKey?.userId || !isCredentialOwnerActive(extensionKey)) {
     return NextResponse.json(
       { success: false, error: "Invalid or expired extension key" },
       { status: 401 },
