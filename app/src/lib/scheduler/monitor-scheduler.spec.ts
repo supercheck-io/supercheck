@@ -83,6 +83,7 @@ const mockMonitorsFindFirst = db.query.monitors.findFirst as jest.Mock;
 const mockMonitorResultsFindFirst = db.query.monitorResults.findFirst as jest.Mock;
 
 describe("monitor-scheduler", () => {
+  const currentMonitor = { config: null, projectId: "project-1", type: "website", target: "https://example.com", frequencyMinutes: 5, enabled: true, status: "up" };
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -104,11 +105,30 @@ describe("monitor-scheduler", () => {
       mockGetFirstVisibleProjectRestrictionCode
     );
 
-    mockMonitorsFindFirst.mockResolvedValue({
-      config: null,
-      projectId: "project-1",
-    });
+    mockMonitorsFindFirst.mockResolvedValue(currentMonitor);
     mockMonitorResultsFindFirst.mockResolvedValue(null);
+  });
+
+  it.each([false, true])("refreshes changed routing config at the scheduled trigger (nested=%s)", async (nested) => {
+    const oldConfig = { headers: { Authorization: "Bearer old-target-key" }, locationConfig: { enabled: true, locations: ["us-east"], threshold: 1 } };
+    const config = { headers: { Authorization: "Bearer current-target-key" }, locationConfig: { enabled: true, locations: ["eu-central"], threshold: 1 }, alertChannels: ["new-channel"] };
+    mockMonitorsFindFirst.mockResolvedValue({ ...currentMonitor, config });
+    mockResolveMonitorLocations.mockResolvedValue(["eu-central"]);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorExecutionQueue: { "eu-central": {} } });
+    (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: ["eu-central"], skippedLocations: [] });
+    (enqueueMonitorLocationJobs as jest.Mock).mockResolvedValue("group");
+    const data = { monitorId: "monitor-1", projectId: "project-1", type: "website", target: "https://old.example.com", config: oldConfig };
+    await processScheduledMonitor({ data: nested ? { monitorId: data.monitorId, jobData: data } : data } as never);
+    expect(resolveMonitorLocations).toHaveBeenCalledWith(config.locationConfig, "project-1", { monitorType: "website" });
+    expect(enqueueMonitorLocationJobs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ config, target: currentMonitor.target, type: currentMonitor.type, projectId: currentMonitor.projectId }), ["eu-central"], expect.anything(), expect.anything());
+  });
+
+  it.each([null, { enabled: false }, { status: "paused" }])("skips a removed or paused monitor %j", async monitor => {
+    mockMonitorsFindFirst.mockResolvedValue(monitor);
+    const result = await processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never);
+    expect(result).toEqual({ success: false });
+    expect(resolveMonitorLocations).not.toHaveBeenCalled();
+    expect(enqueueMonitorLocationJobs).not.toHaveBeenCalled();
   });
 
   it("records scheduling failures when project restrictions disable all allowed locations", async () => {
@@ -214,7 +234,7 @@ describe("monitor-scheduler", () => {
   });
 
   it.each(["up", "down"])("updates status-change time only when changing %s to down", async (status) => {
-    mockMonitorsFindFirst.mockResolvedValue({ status, config: null, projectId: "project-1" });
+    mockMonitorsFindFirst.mockResolvedValue({ ...currentMonitor, status });
     mockResolveMonitorLocations.mockRejectedValue(new Error("no jobs enqueued"));
     mockGetFirstVisibleProjectRestrictionCode.mockResolvedValue("eu-central");
     await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow();

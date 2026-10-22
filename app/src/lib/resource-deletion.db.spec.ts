@@ -1,18 +1,28 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import * as schema from "@/db/schema";
+import { NextRequest } from "next/server";
 let mockDatabase: ReturnType<typeof drizzle>;
 const mockDeleteReports = jest.fn();
+const mockRemoveQueuedJob = jest.fn();
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
-jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
+jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true, canCancelRunInProject: async () => true }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...args: unknown[]) => mockDeleteReports(...args) }) }));
+jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: async () => true }));
+jest.mock("@/lib/auth-context", () => ({ requireAuthContext: async () => ({ userId: "user" }), isAuthError: () => false }));
+jest.mock("@/lib/queue", () => ({ getQueues: async () => ({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: () => mockRemoveQueuedJob() }) } }, k6Queues: {} }) }));
+jest.mock("@/lib/cancellation-service", () => ({ setCancellationSignal: jest.fn() }));
+jest.mock("@/lib/capacity-manager", () => ({ getCapacityManager: jest.fn() }));
+jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }) }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor: jest.fn() }));
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { POST as cancelRun } from "@/app/api/runs/[runId]/cancel/route";
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
 
 const databaseName = `deletion_alias_${randomUUID().replaceAll("-", "")}`;
@@ -25,13 +35,13 @@ beforeAll(async () => {
   const url = new URL(process.env.TEST_DATABASE_URL);
   url.pathname = `/${databaseName}`;
   client = postgres(url.toString(), { max: 1 });
-  mockDatabase = drizzle(client);
+  mockDatabase = drizzle(client, { schema });
   await client.unsafe(`
-    CREATE TABLE jobs (id text PRIMARY KEY, project_id text, organization_id text, name text, description text, cron_schedule text);
+    CREATE TABLE jobs (id text PRIMARY KEY, project_id text, organization_id text, name text, description text, cron_schedule text, status text);
     CREATE TABLE job_tests (job_id text REFERENCES jobs(id));
     CREATE TABLE monitors (id text PRIMARY KEY, project_id text, organization_id text, name text, type text, target text);
     CREATE TABLE monitor_results (id text PRIMARY KEY, monitor_id text REFERENCES monitors(id), test_execution_id text, test_report_s3_url text);
-    CREATE TABLE runs (id text PRIMARY KEY, project_id text, job_id text, status text, trigger text, started_at timestamptz, report_s3_url text, logs_s3_url text, metadata jsonb);
+    CREATE TABLE runs (id text PRIMARY KEY, project_id text, job_id text, status text, trigger text, started_at timestamptz, report_s3_url text, logs_s3_url text, metadata jsonb, completed_at timestamptz, error_details text);
     CREATE TABLE reports (id text PRIMARY KEY, entity_id text, entity_type text, report_path text, s3_url text);
     INSERT INTO runs (id, project_id, status) VALUES ('old-run', 'project', 'passed'), ('new-run', 'project', 'passed');
     INSERT INTO reports VALUES ('old', 'old-run', 'test', 'old-run/report', null), ('new', 'new-run', 'test', 'new-run/report', null), ('latest', 'test', 'test', 'new-run/report', null);
@@ -44,7 +54,10 @@ afterAll(async () => {
     await maintenance.end({ timeout: 5 });
   }
 });
-beforeEach(() => mockDeleteReports.mockResolvedValue({ success: true }));
+beforeEach(() => {
+  mockDeleteReports.mockResolvedValue({ success: true });
+  mockRemoveQueuedJob.mockRejectedValue(new Error("Job is locked"));
+});
 it("preserves another run's latest alias and removes the alias when its owner is deleted", async () => {
   const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" } };
   expect((await deleteRunWithContext("old-run", context)).success).toBe(true);
@@ -109,11 +122,11 @@ async function seedMonitor(project = "project", org = "org") {
   const id = randomUUID();
   const resultId = randomUUID();
   const executionId = `test-${randomUUID()}`;
-  const url = `http://storage/monitors/${executionId}/report/index.html`;
+  const url = `http://storage/monitors/${executionId}-a1b2c3d4/report/index.html`;
   await client`INSERT INTO monitors VALUES (${id},${project},${org},'Monitor','synthetic_test','https://example.test')`;
   await client`INSERT INTO monitor_results VALUES (${resultId},${id},${executionId},${url})`;
   await client`INSERT INTO reports VALUES (${`report-${id}`},${executionId},'monitor',${`${executionId}/report`},${url})`;
-  return { id, resultId, executionId };
+  return { id, resultId, executionId, url };
 }
 async function storageSuccessWithoutPinningConnection() {
   await Promise.race([client`SELECT 1`, new Promise((_, reject) => setTimeout(() => reject(new Error('Storage pinned a transaction connection')), 1500).unref())]);
@@ -141,7 +154,7 @@ describe('job and monitor deletion against PostgreSQL', () => {
     const other = await seedMonitor();
     mockDeleteReports.mockImplementationOnce(storageSuccessWithoutPinningConnection);
     expect((await deleteMonitorWithContext(own.id, deletionContext)).success).toBe(true);
-    expect(mockDeleteReports).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ entityType:'monitor', reportPath:own.executionId })]));
+    expect(mockDeleteReports).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ entityType:'monitor', s3Url:own.url })]));
     expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(0);
     expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(0);
     expect(await client`SELECT id FROM reports WHERE entity_id=${own.executionId}`).toHaveLength(0);
@@ -254,4 +267,57 @@ it.each(['run','job','monitor'])('reports successful %s deletion even if audit l
   jest.mocked(logAuditEvent).mockRejectedValueOnce(new Error('audit unavailable'));
   const result = kind === 'job' ? await deleteJobWithContext(own.id,deletionContext) : kind === 'monitor' ? await deleteMonitorWithContext(own.id,deletionContext) : await deleteRunWithContext(own.id,deletionContext);
   expect(result.success).toBe(true);
+});
+
+it("ignores an execution ID without an uploaded monitor report", async () => {
+  const own = await seedMonitor();
+  await client`DELETE FROM reports WHERE id=${`report-${own.id}`}`;
+  await client`UPDATE monitor_results SET test_report_s3_url=NULL WHERE id=${own.resultId}`;
+  mockDeleteReports.mockClear();
+  expect((await deleteMonitorWithContext(own.id, deletionContext)).success).toBe(true);
+  expect(mockDeleteReports).not.toHaveBeenCalled();
+});
+
+it("waits for a cancelled upload to drain and retains its final pointers on deletion failure", async () => {
+  const own = await seedJob();
+  await client`UPDATE runs SET status='running' WHERE id=${own.runId}`;
+  let finishUpload!: () => void;
+  const uploadBlocked = new Promise<void>(resolve => { finishUpload = resolve; });
+  const worker = (async () => {
+    await uploadBlocked;
+    await client`INSERT INTO reports VALUES (${`final-${own.id}`},${own.runId},'job',${`${own.runId}/report`},NULL)`;
+    await client`UPDATE runs SET status='error', completed_at=now() WHERE id=${own.runId}`;
+  })();
+  try {
+    const response = await cancelRun(new NextRequest(`http://localhost/api/runs/${own.runId}/cancel`, { method: "POST" }), { params: Promise.resolve({ runId: own.runId }) });
+    expect(response.status).toBe(200);
+    expect(await client`SELECT status, completed_at FROM runs WHERE id=${own.runId}`).toEqual([{status:'running',completed_at:null}]);
+    mockDeleteReports.mockClear();
+    expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(false);
+    expect(mockDeleteReports).not.toHaveBeenCalled();
+    finishUpload();
+    await worker;
+    mockDeleteReports.mockResolvedValueOnce({success:false});
+    expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(false);
+    expect(await client`SELECT id FROM reports WHERE id=${`final-${own.id}`}`).toHaveLength(1);
+    expect(await client`SELECT id FROM runs WHERE id=${own.runId}`).toHaveLength(1);
+    expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(true);
+    expect(await client`SELECT id FROM reports WHERE id=${`final-${own.id}`}`).toHaveLength(0);
+  } finally {
+    finishUpload();
+    await worker;
+  }
+});
+
+it.each([false, true])("preserves a running callback after queue removal (admission race=%s)", async claimWins => {
+  const own = await seedJob();
+  await client`UPDATE runs SET status=${claimWins ? 'queued' : 'running'} WHERE id=${own.runId}`;
+  mockRemoveQueuedJob.mockImplementationOnce(async () => {
+    if (claimWins) await client`UPDATE runs SET status='running' WHERE id=${own.runId} AND status='queued'`;
+  });
+  const response = await cancelRun(new NextRequest(`http://localhost/api/runs/${own.runId}/cancel`, { method: "POST" }), { params: Promise.resolve({ runId: own.runId }) });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ queueRemoved:true, message:"Cancellation requested; waiting for execution to stop" });
+  expect(await client`SELECT status, completed_at FROM runs WHERE id=${own.runId}`).toEqual([{status:'running',completed_at:null}]);
+  expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(false);
 });
