@@ -3,6 +3,7 @@
   "pages": [
     "app",
     "cli",
+    "mcp",
     "recorder",
     "api"
   ]

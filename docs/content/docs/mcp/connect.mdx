@@ -1,0 +1,70 @@
+---
+title: Connect an AI Tool
+description: Add the Supercheck MCP server to Claude, Cursor, VS Code and other clients
+icon: Link
+---
+
+You need a Supercheck account with access to the project you want to share, and a server where MCP is turned on. Self-hosting? Follow [Self-Hosted](/docs/app/deployment/self-hosted#connecting-ai-tools-mcp-off-by-default) first.
+
+Replace `https://your-supercheck-host` with your Supercheck URL (use `http://localhost:3000` for a local install).
+
+## Claude Code
+
+```bash
+claude mcp add --transport http supercheck https://your-supercheck-host/api/mcp
+```
+
+Then run `/mcp` inside Claude Code, choose **supercheck**, and sign in.
+
+## Cursor
+
+Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (all projects):
+
+```json
+{
+  "mcpServers": {
+    "supercheck": { "url": "https://your-supercheck-host/api/mcp" }
+  }
+}
+```
+
+## VS Code
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "supercheck": { "type": "http", "url": "https://your-supercheck-host/api/mcp" }
+  }
+}
+```
+
+## Claude Desktop, ChatGPT and other clients
+
+Add a **custom connector** (or remote MCP server) and paste the URL `https://your-supercheck-host/api/mcp`. Any client that supports remote MCP servers with OAuth works. Clients that only speak stdio can bridge with `npx mcp-remote https://your-supercheck-host/api/mcp`.
+
+## The approval screen
+
+The first time a tool connects, your browser opens Supercheck:
+
+1. Sign in if you are not already.
+2. Check the app name. An app that proves its identity with a Client ID Metadata Document shows the host that controls it.
+3. **Choose one project.** The list shows only projects you can access.
+4. Select **Approve**. The tool returns to your editor and is connected.
+
+Each connection is tied to one project. Connect again to share another project.
+
+## Try it
+
+Ask your AI tool:
+
+- "Use Supercheck to list the failed runs from today."
+- "Which monitors are down right now?"
+- "Summarize the most recent incident and its root cause."
+
+## Manage or remove a connection
+
+Open **Connected apps** from the user menu. Each row shows the app, the project and when it last refreshed its sign-in. **Disconnect** removes access immediately: the next call from that app is refused, even if it still holds a recent token.
+
+Tool calls are recorded in the audit log with the user, app, project and duration (never arguments or results).

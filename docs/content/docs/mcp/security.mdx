@@ -1,0 +1,45 @@
+---
+title: Security and Privacy
+description: What the Supercheck MCP server protects, and what you stay in control of
+icon: ShieldCheck
+---
+
+## You stay in control
+
+- **You approve each connection** and choose the single project it can read.
+- **Read-only.** There is no tool that writes, triggers runs or consumes quota.
+- **Disconnect works immediately.** Remove an app under **Connected apps**.
+- **Your role applies on every call.** Access is re-checked for each request, not only when you connect, so these take effect at once:
+  - you disconnect the app
+  - you are removed from the project or organization
+  - your account is banned
+  - your role can no longer view that kind of resource
+
+## Sign-in design
+
+| Property | Value |
+|---|---|
+| Protocol | OAuth 2.1 with PKCE (S256) and resource indicators |
+| Scope | `mcp:read` (plus `offline_access` for refresh) |
+| Access token | 15 minutes, bound to this server's URL |
+| Refresh token | 30 days, rotated on use |
+| Client registration | Dynamic registration, or Client ID Metadata Documents. Operators can require metadata documents only |
+
+## What is filtered
+
+- Test scripts, variable values, alert settings and monitor configuration are never returned.
+- Monitor targets are reduced to scheme and host, so URLs that hide a secret in the path or query stay hidden.
+- Text is scanned for credentials (tokens, API keys, `Authorization` and cookie headers, URL passwords) and replaced with `[REDACTED]`, and long fields are truncated.
+- Requests over 1 MB are rejected.
+
+## Prompt injection
+
+Tests, logs and incidents can contain text written by someone else. Tool descriptions tell the AI to treat it as data. Keep that in mind when you give an AI tool other tools that can act (for example shell or deploy access), and review its actions.
+
+## Audit
+
+Tool calls (user, app, project, duration) and access-denied events (user, app, reason) are written to the audit log on a best-effort basis. Arguments and results are not stored.
+
+## Operators
+
+MCP is off unless `MCP_SERVER_ENABLED=true`. See [Self-Hosted](/docs/app/deployment/self-hosted#connecting-ai-tools-mcp-off-by-default) for the settings and proxy requirements.
