@@ -148,7 +148,7 @@ export async function GET(request: Request) {
 
       const sendPayload = async (event: NormalizedQueueEvent) => {
         if (isClosed || cancelled || request.signal.aborted) return;
-        if ((event.category !== "job" && event.category !== "test") || event.queueJobId !== runId) {
+        if (event.category !== "job" || event.queueJobId !== runId) {
           return;
         }
 
