@@ -1,4 +1,5 @@
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
+import { isInvalidUuidError } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
@@ -89,6 +90,9 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
+    if (isInvalidUuidError(error)) {
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
+    }
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },

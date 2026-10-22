@@ -29,11 +29,8 @@ import {
   renderEmailVerificationEmail,
 } from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
-import { createPolarCoreClient } from "@/lib/billing/polar-client";
-import { normalizePolarPayload } from "@/lib/webhooks/polar-payload";
+import { getPolarPlugin } from "@/lib/auth/polar-plugin";
 import {
-  isPolarEnabled,
-  getPolarConfig,
   isCloudHosted,
   isCaptchaEnabled,
 } from "@/lib/feature-flags";
@@ -46,163 +43,6 @@ import { createMcpAuthPlugins } from "@/lib/mcp/auth-plugins";
 import { resolveConsentProject } from "@/lib/mcp/connect-project";
 
 /**
- * Get Polar plugin configuration if enabled
- * Returns null if Polar is disabled or not configured
- */
-function getPolarPlugin() {
-  if (!isPolarEnabled()) {
-    return null;
-  }
-
-  try {
-    const { polar, webhooks } = require("@polar-sh/better-auth");
-
-    const config = getPolarConfig()!;
-
-    const polarClient = createPolarCoreClient({
-      accessToken: config.accessToken,
-      server: config.server,
-    });
-
-    // Polar client initialized successfully
-
-    return polar({
-      client: polarClient,
-      // IMPORTANT: Disable automatic customer creation on signup
-      // This is intentionally disabled because:
-      // 1. If Polar customer creation fails during signup (e.g., external_id conflict),
-      //    the entire signup process would fail and throw an error to the user
-      // 2. Instead, customer creation is handled by /api/auth/setup-defaults after signup
-      //    which has proper error handling (ensurePolarCustomerAndLink function)
-      // 3. This ensures signup always succeeds, and Polar customer is created gracefully
-      createCustomerOnSignUp: false,
-      use: [
-        // Checkout and portal are intentionally exposed through Supercheck's
-        // own billing routes. Those routes enforce active-organization
-        // ownership and fixed products/redirects before calling Polar.
-        webhooks({
-          secret: config.webhookSecret!,
-          // Customer lifecycle handlers - critical for linking customer to organization
-
-          onCustomerCreated: async (payload: any) => {
-            console.log("[Polar] Webhook: customer.created");
-            const { handleCustomerCreated } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleCustomerCreated(normalizePolarPayload(payload));
-          },
-          // Subscription lifecycle handlers
-
-          onSubscriptionActive: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.active");
-            const { handleSubscriptionActive } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionActive(normalizePolarPayload(payload));
-          },
-
-          onSubscriptionCreated: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.created");
-            const { handleSubscriptionCreated } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionCreated(normalizePolarPayload(payload));
-          },
-
-          onSubscriptionUpdated: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.updated");
-            const { handleSubscriptionUpdated } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionUpdated(normalizePolarPayload(payload));
-          },
-
-          onSubscriptionCanceled: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.canceled");
-            const { handleSubscriptionCanceled } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionCanceled(normalizePolarPayload(payload));
-          },
-          // Handle subscription uncancellation - user reverses cancellation during grace period
-
-          onSubscriptionUncanceled: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.uncanceled");
-            const { handleSubscriptionUncanceled } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionUncanceled(normalizePolarPayload(payload));
-          },
-          // CRITICAL: Handle subscription revocation - immediate access termination
-
-          onSubscriptionRevoked: async (payload: any) => {
-            console.log("[Polar] Webhook: subscription.revoked");
-            const { handleSubscriptionRevoked } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleSubscriptionRevoked(normalizePolarPayload(payload));
-          },
-          // Order creation handler
-          // Do NOT activate subscription on order.created.
-          // Subscription activation must happen on subscription.active.
-
-          onOrderCreated: async (payload: any) => {
-            console.log("[Polar] Webhook: order.created");
-            const { handleOrderCreated } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleOrderCreated(normalizePolarPayload(payload));
-          },
-          // Payment confirmation handler
-
-          onOrderPaid: async (payload: any) => {
-            console.log("[Polar] Webhook: order.paid");
-            const { handleOrderPaid } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleOrderPaid(normalizePolarPayload(payload));
-          },
-          // Customer state change - useful for syncing customer data
-          onCustomerStateChanged: async () => {
-            console.log("[Polar] Webhook: customer.state_changed");
-            const { handleCustomerStateChanged } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleCustomerStateChanged();
-          },
-          // CRITICAL: Handle customer deletion - revoke access immediately
-
-          onCustomerDeleted: async (payload: any) => {
-            console.log("[Polar] Webhook: customer.deleted");
-            const { handleCustomerDeleted } = await import(
-              "@/lib/webhooks/polar-webhooks"
-            );
-            await handleCustomerDeleted(normalizePolarPayload(payload));
-          },
-          // Catch-all for logging and handling any other events
-
-          onPayload: async (payload: any) => {
-            // Log all events for debugging/monitoring
-            console.log("[Polar] Webhook received:", payload.type);
-            if (payload.type === "subscription.past_due") {
-              const { handleSubscriptionPastDue } = await import(
-                "@/lib/webhooks/polar-webhooks"
-              );
-              await handleSubscriptionPastDue(normalizePolarPayload(payload));
-            }
-          },
-        }),
-      ],
-    });
-  } catch (error) {
-    console.error("[Better Auth] Failed to initialize Polar plugin:", error);
-    // A configured cloud deployment must not accept payments while its
-    // signature-verified webhook endpoint is unavailable.
-    throw error;
-  }
-}
-
-/**
  * Get CAPTCHA plugin configuration if enabled
  *
  * CAPTCHA protection is automatically enabled when TURNSTILE_SECRET_KEY is set.
@@ -211,7 +51,7 @@ function getPolarPlugin() {
  * Protected endpoints:
  * - /sign-in/email - Email/password sign in
  * - /sign-up/email - Email/password registration
- * - /forget-password - Password reset requests
+ * - /request-password-reset - Password reset requests
  */
 function getCaptchaPlugin() {
   if (!isCaptchaEnabled()) {
@@ -231,7 +71,7 @@ function getCaptchaPlugin() {
     provider: "cloudflare-turnstile",
     secretKey,
     // Protect authentication endpoints from bot attacks
-    endpoints: ["/sign-up/email", "/sign-in/email", "/forget-password"],
+    endpoints: ["/sign-up/email", "/sign-in/email", "/request-password-reset"],
   });
 }
 
@@ -392,6 +232,7 @@ export const auth = betterAuth({
       },
   emailAndPassword: {
     enabled: true,
+    revokeSessionsOnPasswordReset: true,
     // Only require email verification in cloud mode
     requireEmailVerification: isCloudHosted(),
     sendResetPassword: async ({ user, url }, request) => {

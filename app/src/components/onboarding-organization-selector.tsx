@@ -1,56 +1,58 @@
 "use client";
 
 import { useState } from "react";
-import { useProjectContext, type ProjectContext } from "@/hooks/use-project-context";
+import { clearProjectsCache } from "@/hooks/use-project-context";
+import { useOrganizations } from "@/hooks/use-organizations";
+import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
 
 export function OnboardingOrganizationSelector() {
-  const { projects, currentProject, switchProject } = useProjectContext();
+  const { data: organizations = [], activeOrganization } = useOrganizations();
   const [pending, setPending] = useState(false);
-  // One entry per organization. Prefer the default project so switching
-  // organizations does not silently land on an arbitrary project.
-  const organizations = Array.from(
-    projects
-      .reduce((byOrganization, project) => {
-        const current = byOrganization.get(project.organizationId);
-        if (!current || (project.isDefault && !current.isDefault)) {
-          byOrganization.set(project.organizationId, project);
-        }
-        return byOrganization;
-      }, new Map<string, ProjectContext>())
-      .values(),
-  );
+  const [error, setError] = useState<string | null>(null);
   if (organizations.length < 2) return null;
   return (
+    <>
     <label className="flex min-w-0 items-center gap-2 text-sm">
       Organization
       <select
         className="max-w-64 rounded-md border bg-background px-2 py-2"
-        value={currentProject?.organizationId ?? ""}
+        value={activeOrganization?.id ?? ""}
         disabled={pending}
         onChange={async (event) => {
-          const project = organizations.find(
-            (item) => item.organizationId === event.target.value,
-          );
-          if (!project) return;
+          const organizationId = event.target.value;
+          if (!organizations.some(item => item.id === organizationId)) return;
           setPending(true);
+          setError(null);
           try {
-            await switchProject(project.id);
+            const response = await fetch("/api/organizations/switch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ organizationId }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || "Failed to select organization");
+            announceProjectChange();
+            reloadProjectContext(clearProjectsCache, window.location.pathname);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to select organization");
           } finally {
             setPending(false);
           }
         }}
       >
-        {!currentProject && (
+        {!activeOrganization && (
           <option value="" disabled>
             Select an organization
           </option>
         )}
-        {organizations.map((project) => (
-          <option key={project.organizationId} value={project.organizationId}>
-            {project.organizationName || "Organization"}
+        {organizations.map((organization) => (
+          <option key={organization.id} value={organization.id}>
+            {organization.name || "Organization"}
           </option>
         ))}
       </select>
     </label>
+    {error && <span role="alert" className="text-sm text-destructive">{error}</span>}
+    </>
   );
 }

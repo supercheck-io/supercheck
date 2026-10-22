@@ -41,6 +41,7 @@ export function classifyError(error: unknown, hasCredentials = true): ErrorClass
       return { code: 'PAYMENT_REQUIRED', retryable: false, nextActions: [{ command: 'supercheck plan --json', why: 'Inspect plan status' }] }
     }
     if (status === 403) return { code: 'PERMISSION_DENIED', retryable: false, nextActions: [{ command: 'supercheck whoami --json', why: 'Check the role and project of the current credential' }] }
+    if (status === 409) return { code: 'CONFLICT', retryable: false, nextActions: [] }
     if (status === 429) return { code: 'RATE_LIMITED', retryable: true, nextActions: [] }
     if (status === 400 || status === 422) return { code: 'VALIDATION_FAILED', retryable: false, nextActions: [] }
     if (status === 0 || status >= 500) return { code: 'SERVICE_UNAVAILABLE', retryable: true, nextActions: [] }

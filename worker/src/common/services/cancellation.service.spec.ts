@@ -42,7 +42,7 @@ describe('CancellationService', () => {
 
     expect(client.setex).toHaveBeenCalledWith(
       'supercheck:cancel:run-1',
-      3600,
+      7200,
       '1',
     );
   });

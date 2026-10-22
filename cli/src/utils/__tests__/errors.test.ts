@@ -153,3 +153,10 @@ describe('Error hierarchy', () => {
     expect(new TimeoutError('').name).toBe('TimeoutError')
   })
 })
+
+describe('ApiRequestError exit codes', () => {
+  it('maps 401 to the auth exit code on every command', () => {
+    expect(new ApiRequestError('x', 401).exitCode).toBe(ExitCode.AuthError)
+    expect(new ApiRequestError('x', 404).exitCode).toBe(ExitCode.ApiError)
+  })
+})

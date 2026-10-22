@@ -1,4 +1,5 @@
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
+import { isInvalidUuidError } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
@@ -123,6 +124,9 @@ export async function GET(
     
     return NextResponse.json(response);
   } catch (error) {
+    if (isInvalidUuidError(error)) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },

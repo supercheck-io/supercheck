@@ -64,10 +64,10 @@ describe("explicit artifact deletion", () => {
   it.each([
     ["run", deleteRun, [{ id: "run", status: "passed", startedAt: null }, [{ id: "report", reportPath: "run/report", entityType: "job" }]]],
     ["job", deleteJob, [{ id: "job", name: "Job" }, [{ id: "report", reportPath: "run/report", entityType: "job", entityId: "run" }], []]],
-    ["monitor", deleteMonitor, [{ id: "monitor", name: "Monitor" }, [{ id: "result", testExecutionId: "execution", testReportS3Url: null }]]],
+    ["monitor", deleteMonitor, [{ id: "monitor", name: "Monitor" }, [{ id: "result", testExecutionId: "test", testReportS3Url: "http://storage/monitors/test-a1b2c3d4/report/index.html" }]]],
     ["REST run", async (id: string) => (await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: id }) })).json(), [{ id: "run", status: "passed", startedAt: null }, [{ id: "report", reportPath: "run/report", entityType: "job" }]]],
     ["REST job", async (id: string) => (await deleteJobApi(new Request("http://localhost"), { params: Promise.resolve({ id }) })).json(), [{ id: "job", name: "Job" }, [{ id: "report", reportPath: "run/report", entityType: "job", entityId: "run" }], []]],
-    ["REST monitor", async (id: string) => (await deleteMonitorApi(new Request("http://localhost"), { params: Promise.resolve({ id }) })).json(), [{ id: "monitor", name: "Monitor" }, [{ id: "result", testExecutionId: "execution", testReportS3Url: null }]]],
+    ["REST monitor", async (id: string) => (await deleteMonitorApi(new Request("http://localhost"), { params: Promise.resolve({ id }) })).json(), [{ id: "monitor", name: "Monitor" }, [{ id: "result", testExecutionId: "test", testReportS3Url: "http://storage/monitors/test-a1b2c3d4/report/index.html" }]]],
   ] as const)("retains %s pointers after a partial storage failure", async (_name, remove, selections) => {
     for (const rows of selections) mockSelections.push(Array.isArray(rows) ? [...rows] : [rows]);
     mockDeleteReports.mockResolvedValue({ success: false, deletedObjects: ["partial"], failedObjects: [{ key: "remaining", error: "unavailable" }] });
