@@ -1,8 +1,7 @@
 "use server";
 
-import { runHistoryFields, runReportType } from "@/lib/run-history";
 import { db } from "@/utils/db";
-import { runs, reports, jobs, jobTests, projects, tests } from "@/db/schema";
+import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import type { JobType } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import {
@@ -48,7 +47,7 @@ export async function getRun(
       .select({
         id: runs.id,
         jobId: runs.jobId,
-        ...runHistoryFields,
+        jobName: jobs.name,
         projectName: projects.name,
         status: runs.status,
         durationMs: runs.durationMs,
@@ -56,20 +55,21 @@ export async function getRun(
         completedAt: runs.completedAt,
         logs: runs.logs,
         errorDetails: runs.errorDetails,
+        reportUrl: reports.s3Url,
         trigger: runs.trigger,
         location: runs.location,
+        jobType: jobs.jobType,
         projectId: projects.id,
         organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
       .leftJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
-      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
       .leftJoin(
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          eq(reports.entityType, runReportType)
+          eq(reports.entityType, "job")
         )
       )
       .where(eq(runs.id, runId))
@@ -97,7 +97,7 @@ export async function getRun(
     }
 
     // Get test count for this job (if associated with a job)
-    let testCount = run.jobId ? 0 : 1;
+    let testCount = 0;
     if (run.jobId) {
       const testCountResult = await db
         .select({ count: count() })

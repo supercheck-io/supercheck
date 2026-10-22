@@ -1921,7 +1921,7 @@
       "get": {
         "operationId": "listRuns",
         "summary": "List runs",
-        "description": "List standalone test executions and job runs in the active project, with optional job ID and status filters. Standalone executions have a null jobId; jobName identifies their source test. New browser runs retain their own report; older overwritten reports cannot be reconstructed.",
+        "description": "List job runs with optional filters for job ID and status.",
         "tags": [
           "Runs"
         ],
@@ -1952,9 +1952,7 @@
                 "passed",
                 "failed",
                 "error",
-                "blocked",
-                "pending",
-                "skipped"
+                "blocked"
               ]
             },
             "description": "Filter by status"

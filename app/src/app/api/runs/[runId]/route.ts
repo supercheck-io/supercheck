@@ -1,9 +1,8 @@
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
-import { runHistoryFields, runReportType } from "@/lib/run-history";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, reports, jobs, jobTests, projects, tests } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
+import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
@@ -35,32 +34,32 @@ export async function GET(
       .select({
         id: runs.id,
         jobId: runs.jobId,
-        ...runHistoryFields,
+        jobName: jobs.name,
         status: runs.status,
         durationMs: runs.durationMs,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
         logs: runs.logs,
         errorDetails: runs.errorDetails,
+        reportUrl: reports.s3Url,
         trigger: runs.trigger,
         projectId: runs.projectId,
         organizationId: projects.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
-      .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
+      .innerJoin(projects, eq(runs.projectId, projects.id))
       .leftJoin(
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          eq(reports.entityType, runReportType)
+          inArray(reports.entityType, ["job", "k6_job"])
         )
       )
       .where(
         and(
           eq(runs.id, runId),
-          eq(projects.id, authCtx.project.id),
+          eq(runs.projectId, authCtx.project.id),
           eq(projects.organizationId, authCtx.organizationId)
         )
       )
@@ -73,7 +72,7 @@ export async function GET(
     const run = result[0];
 
     // Get test count for this job
-    let testCount = run.jobId ? 0 : 1;
+    let testCount = 0;
     if (run.jobId) {
       const testCountResult = await db
         .select({ count: count() })

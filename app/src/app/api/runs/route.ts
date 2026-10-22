@@ -1,8 +1,7 @@
-import { runHistoryFields, runReportType } from "@/lib/run-history";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, jobs, reports, projects, tests, TestRunStatus } from "@/db/schema";
-import { desc, eq, and, sql } from "drizzle-orm";
+import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
+import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -45,17 +44,15 @@ export async function GET(request: NextRequest) {
 
     // SECURITY: Always filter by org/project from session, never trust client params
     const filters = [
-      eq(projects.id, context.project.id),
-      eq(projects.organizationId, context.organizationId)
+      eq(runs.projectId, context.project.id),
+      eq(jobs.organizationId, context.organizationId)
     ];
     
     // Optional additional filters
     if (jobId) filters.push(eq(runs.jobId, jobId));
     if (status) {
       // Validate status is a valid TestRunStatus
-      const validStatuses: string[] = [
-        "pending",
-        "skipped",
+      const validStatuses: TestRunStatus[] = [
         "queued",
         "running",
         "passed",
@@ -81,32 +78,31 @@ export async function GET(request: NextRequest) {
         .select({ count: sql<number>`count(*)` })
         .from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
-        .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
         .where(whereCondition),
       // Data query with all details
       db
         .select({
           id: runs.id,
           jobId: runs.jobId,
-          ...runHistoryFields,
+          jobName: jobs.name,
+          jobType: jobs.jobType,
           status: runs.status,
           durationMs: runs.durationMs,
           startedAt: runs.startedAt,
           completedAt: runs.completedAt,
           // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
           // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
+          reportUrl: reports.s3Url,
           trigger: runs.trigger,
           location: runs.location,
         })
         .from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
-        .innerJoin(projects, sql`${projects.id} = coalesce(${runs.projectId}, ${jobs.projectId})`)
-        .leftJoin(tests, and(sql`${tests.id}::text = ${runs.metadata}->>'testId'`, eq(tests.projectId, projects.id)))
         .leftJoin(
           reports,
           and(
             sql`${reports.entityId} = ${runs.id}::text`,
-            eq(reports.entityType, runReportType)
+            inArray(reports.entityType, ['job', 'k6_job'])
           )
         )
         .where(whereCondition)

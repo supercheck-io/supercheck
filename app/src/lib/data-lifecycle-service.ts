@@ -1395,7 +1395,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         result.details.organizationsProcessed = Object.keys(orgStats).length;
         result.details.orgStats = orgStats;
 
-        // Standalone run rows and their immutable reports share 30-day retention.
+        // Standalone (playground) run rows have no plan; keep them for 30 days.
         const before = result.recordsDeleted;
         const remaining = maxRecords - Number(result.details.recordsProcessed || 0);
         if (remaining > 0) {
