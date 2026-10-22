@@ -51,7 +51,7 @@ import { resolveConsentProject } from "@/lib/mcp/connect-project";
  * Protected endpoints:
  * - /sign-in/email - Email/password sign in
  * - /sign-up/email - Email/password registration
- * - /forget-password - Password reset requests
+ * - /request-password-reset - Password reset requests
  */
 function getCaptchaPlugin() {
   if (!isCaptchaEnabled()) {
@@ -71,7 +71,7 @@ function getCaptchaPlugin() {
     provider: "cloudflare-turnstile",
     secretKey,
     // Protect authentication endpoints from bot attacks
-    endpoints: ["/sign-up/email", "/sign-in/email", "/forget-password"],
+    endpoints: ["/sign-up/email", "/sign-in/email", "/request-password-reset"],
   });
 }
 
@@ -232,6 +232,7 @@ export const auth = betterAuth({
       },
   emailAndPassword: {
     enabled: true,
+    revokeSessionsOnPasswordReset: true,
     // Only require email verification in cloud mode
     requireEmailVerification: isCloudHosted(),
     sendResetPassword: async ({ user, url }, request) => {
