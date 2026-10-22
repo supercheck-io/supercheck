@@ -74,6 +74,9 @@ export const executionReservations = pgTable(
     }).notNull(),
   },
   (table) => [
+    index('execution_reservations_finished_idx')
+      .on(table.finishedAt)
+      .where(sql`${table.finishedAt} IS NOT NULL`),
     index('execution_reservations_active_idx')
       .on(table.organizationId)
       .where(sql`${table.finishedAt} IS NULL`),

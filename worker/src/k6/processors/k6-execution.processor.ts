@@ -1,4 +1,5 @@
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import {
   Logger,
@@ -538,8 +539,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       };
     } catch (error) {
       if (error instanceof ExecutionCapacityError) {
-        await job.moveToDelayed(Date.now() + 1000, job.token);
-        throw new DelayedError();
+        return deferForCapacity(job, (reason) =>
+          this.dbService
+            .updateRunStatus(runId, 'failed', '0', reason)
+            .catch((err: Error) =>
+              this.logger.error(
+                `[${runId}] Failed to mark run failed after waiting for capacity: ${err.message}`,
+              ),
+            ),
+        );
       }
       const message = `[Job ${job.id}] Failed with error: ${
         error instanceof Error ? error.message : String(error)

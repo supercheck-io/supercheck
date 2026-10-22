@@ -42,6 +42,8 @@ CREATE TABLE "execution_reservations" (
 --> statement-breakpoint
 CREATE INDEX "execution_reservations_active_idx" ON "execution_reservations" ("organization_id") WHERE "finished_at" IS NULL;
 --> statement-breakpoint
+CREATE INDEX "execution_reservations_finished_idx" ON "execution_reservations" ("finished_at") WHERE "finished_at" IS NOT NULL;
+--> statement-breakpoint
 CREATE TABLE "execution_target_domains" (
   "id" uuid PRIMARY KEY DEFAULT uuidv7(),
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE CASCADE,

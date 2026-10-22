@@ -35,6 +35,7 @@ export const executionReservations = pgTable("execution_reservations", {
   // Crash safety: a row whose lease lapsed no longer holds capacity.
   leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }).notNull(),
 }, table => [
+  index("execution_reservations_finished_idx").on(table.finishedAt).where(sql`${table.finishedAt} IS NOT NULL`),
   index("execution_reservations_active_idx").on(table.organizationId).where(sql`${table.finishedAt} IS NULL`),
   check("execution_reservations_values_check", sql`${table.kind} IN ('playwright', 'k6') AND ${table.tier} IN ('paid', 'trial') AND ${table.reservedMs} >= 0 AND ${table.usedMs} >= 0`),
 ]);

@@ -23,11 +23,10 @@ import {
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
 import type { MonitoringLocation } from '../../common/location/location.service';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
-
-const CAPACITY_RETRY_DELAY_MS = 30_000;
 
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
@@ -414,8 +413,12 @@ export class MonitorDynamicWorkerService
       return await this.monitorService.executeMonitor(job.data, location);
     } catch (error) {
       if (!(error instanceof ExecutionCapacityError)) throw error;
-      await job.moveToDelayed(Date.now() + CAPACITY_RETRY_DELAY_MS, job.token);
-      throw new DelayedError();
+      return deferForCapacity(job, (reason) => {
+        this.logger.error(
+          `Monitor ${job.data.monitorId} check dropped: ${reason}`,
+        );
+        return Promise.resolve();
+      });
     }
   }
 

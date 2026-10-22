@@ -2,13 +2,15 @@ import {
   ExecutionAdmissionService,
   ExecutionCapacityError,
   ExecutionEntitlementError,
-  RESERVATION_LEASE_GRACE_MS,
+  RESERVATION_LEASE_TTL_MS,
+  RESERVATION_RENEW_INTERVAL_MS,
+  RESERVATION_RETENTION_MS,
 } from './execution-admission.service';
 
 /** Awaitable stand-in for a drizzle select builder. */
 function rows<T>(result: T) {
   const builder: Record<string, unknown> = {};
-  for (const method of ['from', 'where', 'for'])
+  for (const method of ['from', 'where', 'for', 'limit'])
     builder[method] = jest.fn(() => builder);
   builder.then = (
     resolve: (value: T) => unknown,
@@ -42,6 +44,7 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
 });
 
 interface Scenario {
+  stale?: Array<{ runId: string }>;
   org?: typeof paidOrg | typeof trialOrg;
   entitlement?: ReturnType<typeof trial>;
   limits?: { runningCapacity: number };
@@ -58,9 +61,10 @@ function build(scenario: Scenario) {
     select: jest
       .fn()
       .mockReturnValueOnce(rows(scenario.org ? [scenario.org] : []))
-      .mockReturnValueOnce(
-        rows([scenario.active ?? { count: 0, reserved: 0 }]),
-      ),
+      .mockReturnValueOnce(rows([scenario.active ?? { count: 0, reserved: 0 }]))
+      // Pruning of finished reservations runs after a successful admission.
+      .mockReturnValue(rows(scenario.stale ?? [])),
+    delete: jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) })),
     query: {
       executionEntitlements: {
         findFirst: jest.fn().mockResolvedValue(scenario.entitlement),
@@ -311,7 +315,7 @@ describe('reserve', () => {
     expect(tx.insert).not.toHaveBeenCalled();
   });
 
-  it('leases each reservation for its timeout plus a crash-recovery grace period', async () => {
+  it('leases each reservation for one renewable TTL, independent of the run timeout', async () => {
     const insertValues = jest.fn().mockResolvedValue(undefined);
     const { service, tx } = build({
       org: paidOrg,
@@ -319,16 +323,36 @@ describe('reserve', () => {
     });
     tx.insert.mockReturnValue({ values: insertValues });
     const before = Date.now();
-    await service.reserve('org', 'run', 'playwright', 60_000);
+    await service.reserve('org', 'run', 'playwright', 60 * 60_000);
     const { leaseExpiresAt } = insertValues.mock.calls[0][0] as {
       leaseExpiresAt: Date;
     };
     expect(leaseExpiresAt.getTime() - before).toBeGreaterThanOrEqual(
-      60_000 + RESERVATION_LEASE_GRACE_MS,
+      RESERVATION_LEASE_TTL_MS,
     );
     expect(leaseExpiresAt.getTime() - before).toBeLessThan(
-      60_000 + RESERVATION_LEASE_GRACE_MS + 5_000,
+      RESERVATION_LEASE_TTL_MS + 5_000,
     );
+  });
+
+  it('prunes finished reservations past retention in a bounded batch', async () => {
+    const { service, tx } = build({
+      org: paidOrg,
+      limits: { runningCapacity: 2 },
+      stale: [{ runId: 'old-1' }, { runId: 'old-2' }],
+    });
+    await service.reserve('org', 'run', 'playwright', 5000);
+    expect(tx.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not delete anything when no finished reservation is past retention', async () => {
+    const { service, tx } = build({
+      org: paidOrg,
+      limits: { runningCapacity: 2 },
+    });
+    await service.reserve('org', 'run', 'playwright', 5000);
+    expect(tx.delete).not.toHaveBeenCalled();
+    expect(RESERVATION_RETENTION_MS).toBeGreaterThan(24 * 60 * 60_000);
   });
 
   it.each([
@@ -510,5 +534,109 @@ describe('run', () => {
       })),
     ).resolves.toMatchObject({ reservation: undefined });
     expect(finish).not.toHaveBeenCalled();
+  });
+});
+
+describe('lease renewal', () => {
+  const reservation = {
+    runId: 'run',
+    organizationId: 'org',
+    ownerToken: 'owner',
+    reservedMs: 0,
+    limited: false,
+  };
+
+  function buildRenewal(rowsReturned: Array<{ runId: string }>) {
+    const returning = jest.fn().mockResolvedValue(rowsReturned);
+    const set = jest.fn(() => ({ where: jest.fn(() => ({ returning })) }));
+    const db = { update: jest.fn(() => ({ set })) };
+    return { service: new ExecutionAdmissionService(db as never), set };
+  }
+
+  it("extends only the owner token's live reservation by one TTL", async () => {
+    const { service, set } = buildRenewal([{ runId: 'run' }]);
+    const before = Date.now();
+    await expect(service.renew(reservation)).resolves.toBe(true);
+    const { leaseExpiresAt } = (set.mock.calls[0] as unknown[])[0] as {
+      leaseExpiresAt: Date;
+    };
+    expect(leaseExpiresAt.getTime() - before).toBeGreaterThanOrEqual(
+      RESERVATION_LEASE_TTL_MS,
+    );
+  });
+
+  it('reports that ownership was lost when the reservation was taken over', async () => {
+    const { service } = buildRenewal([]);
+    await expect(service.renew(reservation)).resolves.toBe(false);
+  });
+
+  describe('while a run executes', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('renews on an interval and stops when the run ends', async () => {
+      const { service } = buildRenewal([{ runId: 'run' }]);
+      jest.spyOn(service, 'reserve').mockResolvedValue(reservation);
+      jest.spyOn(service, 'finish').mockResolvedValue(undefined);
+      const renew = jest.spyOn(service, 'renew').mockResolvedValue(true);
+      let finishRun!: (value: { billableMs: number }) => void;
+      const execution = service.run(
+        'org',
+        'run',
+        'playwright',
+        60_000,
+        () =>
+          new Promise<{ billableMs: number }>(
+            (resolve) => (finishRun = resolve),
+          ),
+      );
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 3);
+      expect(renew).toHaveBeenCalledTimes(3);
+      finishRun({ billableMs: 1 });
+      await execution;
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 3);
+      expect(renew).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps the run going and logs when a renewal fails or ownership was lost', async () => {
+      const { service } = buildRenewal([]);
+      jest.spyOn(service, 'reserve').mockResolvedValue(reservation);
+      jest.spyOn(service, 'finish').mockResolvedValue(undefined);
+      const warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => undefined);
+      jest
+        .spyOn(service, 'renew')
+        .mockResolvedValueOnce(false)
+        .mockRejectedValueOnce(new Error('database unavailable'));
+      let finishRun!: (value: { billableMs: number }) => void;
+      const execution = service.run(
+        'org',
+        'run',
+        'playwright',
+        60_000,
+        () =>
+          new Promise<{ billableMs: number }>(
+            (resolve) => (finishRun = resolve),
+          ),
+      );
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 2);
+      finishRun({ billableMs: 1 });
+      await expect(execution).resolves.toMatchObject({ billableMs: 1 });
+      expect(warn).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not renew when no reservation applies', async () => {
+      process.env.SELF_HOSTED = 'true';
+      const { service } = buildRenewal([]);
+      const renew = jest.spyOn(service, 'renew');
+      const execution = service.run('org', 'run', 'k6', 5000, async () => ({
+        billableMs: 1,
+      }));
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 2);
+      await execution;
+      expect(renew).not.toHaveBeenCalled();
+      process.env.SELF_HOSTED = 'false';
+    });
   });
 });

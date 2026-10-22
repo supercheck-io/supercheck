@@ -54,6 +54,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       data: { executionLocation: 'local', type: 'synthetic_test' },
       token: 'token',
       moveToDelayed,
+      updateData: jest.fn().mockResolvedValue(undefined),
     };
     await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
       jest.requireActual('bullmq').DelayedError,

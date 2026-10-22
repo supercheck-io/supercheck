@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
@@ -41,8 +41,16 @@ export class ExecutionEntitlementError extends Error {}
 export const LIMITED_RUN_OVERHEAD_MS = 90_000;
 /** Smallest run the executor accepts (see container resource validation). */
 export const MIN_RESERVED_RUN_MS = 5_000;
-/** Extra time a crashed worker's reservation holds capacity beyond its run timeout. */
-export const RESERVATION_LEASE_GRACE_MS = 10 * 60 * 1000;
+/**
+ * A reservation holds capacity for this long without a renewal. The owner renews
+ * it while the run is alive, so a crashed worker's slot frees itself within one
+ * TTL instead of after the run's full timeout.
+ */
+export const RESERVATION_LEASE_TTL_MS = 5 * 60 * 1000;
+export const RESERVATION_RENEW_INTERVAL_MS = 60 * 1000;
+/** Finished reservations are kept this long for diagnosis, then pruned. */
+export const RESERVATION_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+const PRUNE_BATCH = 50;
 export interface ExecutionReservation {
   runId: string;
   organizationId: string;
@@ -192,9 +200,7 @@ export class ExecutionAdmissionService {
         startedAt,
         finishedAt: null,
         leaseExpiresAt: new Date(
-          startedAt.getTime() +
-            Math.max(requestedMs, reservedMs) +
-            RESERVATION_LEASE_GRACE_MS,
+          startedAt.getTime() + RESERVATION_LEASE_TTL_MS,
         ),
       };
       if (existing)
@@ -203,6 +209,7 @@ export class ExecutionAdmissionService {
           .set(values)
           .where(eq(schema.executionReservations.runId, runId));
       else await tx.insert(schema.executionReservations).values(values);
+      await this.pruneFinished(tx);
       return {
         runId,
         organizationId,
@@ -213,6 +220,45 @@ export class ExecutionAdmissionService {
         expiresAt: entitlement?.expiresAt,
       };
     });
+  }
+
+  /** Extends the lease while the run is alive. Returns false if this owner no longer holds it. */
+  async renew(reservation: ExecutionReservation): Promise<boolean> {
+    const renewed = await this.db
+      .update(schema.executionReservations)
+      .set({ leaseExpiresAt: new Date(Date.now() + RESERVATION_LEASE_TTL_MS) })
+      .where(
+        and(
+          eq(schema.executionReservations.runId, reservation.runId),
+          eq(schema.executionReservations.ownerToken, reservation.ownerToken),
+          isNull(schema.executionReservations.finishedAt),
+        ),
+      )
+      .returning({ runId: schema.executionReservations.runId });
+    return renewed.length > 0;
+  }
+
+  /** Bounded cleanup so finished reservations do not accumulate forever. */
+  private async pruneFinished(
+    tx: Pick<PostgresJsDatabase<typeof schema>, 'select' | 'delete'>,
+  ): Promise<void> {
+    const stale = await tx
+      .select({ runId: schema.executionReservations.runId })
+      .from(schema.executionReservations)
+      .where(
+        lt(
+          schema.executionReservations.finishedAt,
+          new Date(Date.now() - RESERVATION_RETENTION_MS),
+        ),
+      )
+      .limit(PRUNE_BATCH);
+    if (stale.length)
+      await tx.delete(schema.executionReservations).where(
+        inArray(
+          schema.executionReservations.runId,
+          stale.map((row) => row.runId),
+        ),
+      );
   }
 
   async finish(
@@ -263,6 +309,25 @@ export class ExecutionAdmissionService {
     });
   }
 
+  private startRenewal(reservation: ExecutionReservation): NodeJS.Timeout {
+    const timer = setInterval(() => {
+      this.renew(reservation)
+        .then((held) => {
+          if (!held)
+            this.logger.warn(
+              `Execution reservation ${reservation.runId} was taken over; this run no longer holds capacity`,
+            );
+        })
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Unable to renew execution reservation ${reservation.runId}: ${String(error)}`,
+          ),
+        );
+    }, RESERVATION_RENEW_INTERVAL_MS);
+    timer.unref();
+    return timer;
+  }
+
   async run<T extends { billableMs?: number }>(
     organizationId: string | undefined,
     runId: string,
@@ -277,6 +342,7 @@ export class ExecutionAdmissionService {
       timeoutMs,
     );
     let usedMs = 0;
+    const renewal = reservation ? this.startRenewal(reservation) : undefined;
     try {
       const result = await callback(reservation);
       usedMs = result.billableMs ?? 0;
@@ -285,6 +351,7 @@ export class ExecutionAdmissionService {
       usedMs = getBillableMs(error);
       throw error;
     } finally {
+      if (renewal) clearInterval(renewal);
       if (reservation) {
         // The result is already produced (or the original error is in flight); a
         // bookkeeping failure must not replace it. The lease reclaims the slot.
