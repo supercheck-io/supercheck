@@ -1,3 +1,5 @@
+import { getExecutionPolicy } from "@/lib/execution/execution-policy";
+jest.mock("@/lib/execution/execution-policy", () => ({ getExecutionPolicy: jest.fn() }));
 /**
  * Plan Enforcement Middleware Tests
  * Tests for subscription plan limit enforcement
@@ -132,86 +134,13 @@ describe("Plan Enforcement Middleware", () => {
   });
 
   describe("checkCapacityLimits", () => {
-    describe("in self-hosted mode", () => {
-      beforeEach(() => {
-        (isPolarEnabled as jest.Mock).mockReturnValue(false);
-      });
-
-      it("should use environment variables when set", async () => {
-        process.env.RUNNING_CAPACITY = "20";
-        process.env.QUEUED_CAPACITY = "200";
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(20);
-        expect(result.queuedCapacity).toBe(200);
-
-        // Cleanup
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-      });
-
-      it("should fall back to plan limits when env vars not set", async () => {
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 999,
-          queuedCapacity: 9999,
-        });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(999);
-        expect(result.queuedCapacity).toBe(9999);
-      });
-
-      it("should fall back to defaults when plan lookup fails", async () => {
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockRejectedValue(new Error("Plan not found"));
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(5);
-        expect(result.queuedCapacity).toBe(50);
-      });
+    it("uses the authoritative execution policy limits", async () => {
+      jest.mocked(getExecutionPolicy).mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+      await expect(checkCapacityLimits("org-1")).resolves.toEqual({ runningCapacity: 1, queuedCapacity: 10 });
     });
-
-    describe("in cloud mode", () => {
-      beforeEach(() => {
-        (isPolarEnabled as jest.Mock).mockReturnValue(true);
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-      });
-
-      it("should return Plus plan limits", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 5,
-          queuedCapacity: 50,
-        });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(5);
-        expect(result.queuedCapacity).toBe(50);
-      });
-
-      it("should return Pro plan limits", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 10,
-          queuedCapacity: 100,
-        });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(10);
-        expect(result.queuedCapacity).toBe(100);
-      });
+    it("propagates admission failure without default cloud capacity", async () => {
+      jest.mocked(getExecutionPolicy).mockRejectedValue(new Error("Execution entitlement required"));
+      await expect(checkCapacityLimits("org-1")).rejects.toThrow("Execution entitlement required");
     });
   });
 

@@ -43,6 +43,8 @@ export interface ContainerExecutionOptions {
    * Timeout in milliseconds.
    */
   timeoutMs?: number;
+  hardDeadlineMs?: number;
+  expiresAtMs?: number;
 
   /**
    * Memory limit in megabytes (validated but advisory — actual enforcement
@@ -704,6 +706,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       normalizedOptions.extractFromContainer = normalizedExtractPath.normalized;
     }
 
+    if (
+      options.hardDeadlineMs !== undefined &&
+      (!Number.isSafeInteger(options.hardDeadlineMs) ||
+        options.hardDeadlineMs < 1000)
+    ) {
+      throw new Error('Execution allowance must provide at least one second');
+    }
+
     // Default options
     const { timeoutMs = 300000, memoryLimitMb = 512, cpuLimit = 0.5 } = options;
 
@@ -1130,7 +1140,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     delete publicEnv.SUPERCHECK_SECRETS_B64;
     const envVars = this.buildKubernetesEnv(publicEnv, workspace);
     const dnsSettings = this.buildExecutionPodDnsSettings();
-    const deadlineSeconds = Math.ceil((limits.timeoutMs + 120_000) / 1000);
+    const deadlineSeconds =
+      options.hardDeadlineMs === undefined
+        ? Math.ceil((limits.timeoutMs + 120_000) / 1000)
+        : Math.floor(
+            Math.min(
+              limits.timeoutMs,
+              options.hardDeadlineMs,
+              options.expiresAtMs === undefined
+                ? Infinity
+                : options.expiresAtMs - Date.now(),
+            ) / 1000,
+          );
+    if (!Number.isSafeInteger(deadlineSeconds) || deadlineSeconds < 1)
+      throw new Error('Execution entitlement has expired');
     const resourceCpuLimit = `${Math.max(100, Math.round(limits.cpuLimit * 1000))}m`;
     const resourceCpuRequest = `${Math.max(100, Math.round(limits.cpuLimit * 500))}m`;
     // Add overhead for /dev/shm tmpfs (counts against cgroup in K8s) and gVisor Sentry

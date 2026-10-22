@@ -18,6 +18,10 @@ import {
 } from '../../common/utils/script-analysis';
 import { createSecretStream } from '../../common/utils/secret-stream';
 import { decodeStoredTestScript } from '../../common/utils/test-script';
+import {
+  ExecutionAdmissionService,
+  type ExecutionReservation,
+} from './execution-admission.service';
 import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
@@ -179,6 +183,7 @@ export class ExecutionService implements OnModuleDestroy {
     private cancellationService: CancellationService,
     private requirementCoverageService: RequirementCoverageService,
     private variableResolverService: VariableResolverService,
+    private admissionService: ExecutionAdmissionService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
     // Note: Environment variables are always strings, so we must parse them as numbers
@@ -375,6 +380,27 @@ export class ExecutionService implements OnModuleDestroy {
     bypassConcurrencyCheck = false,
     isMonitorExecution = false,
   ): Promise<TestResult> {
+    return this.admissionService.run(
+      task.organizationId,
+      task.runId ?? `test:${crypto.randomUUID()}`,
+      'playwright',
+      this.testExecutionTimeoutMs,
+      (reservation) =>
+        this.runSingleTestReserved(
+          task,
+          bypassConcurrencyCheck,
+          isMonitorExecution,
+          reservation,
+        ),
+    );
+  }
+
+  private async runSingleTestReserved(
+    task: TestExecutionTask,
+    bypassConcurrencyCheck = false,
+    isMonitorExecution = false,
+    reservation?: ExecutionReservation,
+  ): Promise<TestResult> {
     if (task.projectId) {
       const resolved =
         await this.variableResolverService.resolveProjectVariables(
@@ -503,6 +529,7 @@ export class ExecutionService implements OnModuleDestroy {
           : undefined,
         task.runId || undefined, // Pass runId for cancellation tracking
         runtimeEnv,
+        reservation,
       );
 
       billableMs = execResult.billableMs ?? 0;
@@ -724,6 +751,19 @@ export class ExecutionService implements OnModuleDestroy {
    * Uses the native Playwright test runner and HTML reporter.
    */
   async runJob(task: JobExecutionTask): Promise<TestExecutionResult> {
+    return this.admissionService.run(
+      task.organizationId,
+      task.runId,
+      'playwright',
+      this.jobExecutionTimeoutMs,
+      (reservation) => this.runJobReserved(task, reservation),
+    );
+  }
+
+  private async runJobReserved(
+    task: JobExecutionTask,
+    reservation?: ExecutionReservation,
+  ): Promise<TestExecutionResult> {
     const resolved = await this.variableResolverService.resolveProjectVariables(
       task.projectId,
     );
@@ -938,6 +978,7 @@ export class ExecutionService implements OnModuleDestroy {
           ),
           filePaths,
         ),
+        reservation,
       );
 
       const taskSecrets = task.secrets ?? {};
@@ -1152,6 +1193,7 @@ export class ExecutionService implements OnModuleDestroy {
     additionalFiles?: Record<string, string>,
     runId?: string,
     runtimeEnvOverrides?: Record<string, string>,
+    reservation?: ExecutionReservation,
   ): Promise<PlaywrightExecutionResult> {
     return this.executePlaywrightDirectly(
       testScript,
@@ -1160,6 +1202,7 @@ export class ExecutionService implements OnModuleDestroy {
       additionalFiles,
       runId,
       runtimeEnvOverrides,
+      reservation,
     );
   }
 
@@ -1178,6 +1221,7 @@ export class ExecutionService implements OnModuleDestroy {
     additionalFiles?: Record<string, string>,
     runId?: string,
     runtimeEnvOverrides?: Record<string, string>,
+    reservation?: ExecutionReservation,
   ): Promise<PlaywrightExecutionResult> {
     // For jobs with multiple tests, run playwright test /tmp/ to execute all tests
     // For single tests, target specific file
@@ -1247,9 +1291,15 @@ export class ExecutionService implements OnModuleDestroy {
         env: envVars,
         cwd: workerDir,
         shell: false,
-        timeout: isJob
-          ? this.jobExecutionTimeoutMs
-          : this.testExecutionTimeoutMs,
+        timeout: reservation?.limited
+          ? reservation.reservedMs
+          : isJob
+            ? this.jobExecutionTimeoutMs
+            : this.testExecutionTimeoutMs,
+        hardDeadlineMs: reservation?.limited
+          ? reservation.reservedMs
+          : undefined,
+        expiresAtMs: reservation?.expiresAt?.getTime(),
         scriptPath: null, // No host path to mount - using inline script
         workingDir: workerDir,
         runId, // Pass runId for cancellation tracking
@@ -1675,6 +1725,8 @@ export class ExecutionService implements OnModuleDestroy {
       cwd?: string;
       shell?: boolean;
       timeout?: number;
+      hardDeadlineMs?: number;
+      expiresAtMs?: number;
       scriptPath?: string | null; // Path to the script being executed (for container mounting), null for inline mode
       workingDir?: string; // Working directory inside container
       runId?: string; // Run ID for cancellation tracking
@@ -1743,6 +1795,8 @@ export class ExecutionService implements OnModuleDestroy {
         [command, ...args],
         {
           timeoutMs: options.timeout,
+          hardDeadlineMs: options.hardDeadlineMs,
+          expiresAtMs: options.expiresAtMs,
           runId: options.runId, // Pass runId for cancellation tracking
           env: options.env as Record<string, string>,
           workingDir: resolvedWorkingDir,

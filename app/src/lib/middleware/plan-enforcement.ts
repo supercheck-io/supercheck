@@ -1,3 +1,4 @@
+import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 /**
  * Plan Enforcement Middleware
  * Enforces subscription plan limits and quotas
@@ -55,69 +56,9 @@ export async function checkMonitorLimit(
   }
 }
 
-/**
- * Get capacity limits (running and queued) for an organization
- *
- * **Self-Hosted Mode (SELF_HOSTED=true):**
- * - Uses environment variables RUNNING_CAPACITY and QUEUED_CAPACITY if set
- * - Falls back to plan limits from database (unlimited plan)
- * - Falls back to defaults (5 running, 50 queued) if all else fails
- *
- * **Cloud Mode (SELF_HOSTED=false):**
- * - Uses plan-specific limits from database (plus/pro plans)
- * - Plan limits are enforced based on subscription
- * - Returns defaults for unsubscribed users (no error thrown)
- */
 export async function checkCapacityLimits(organizationId: string) {
-  // Default values - used as fallback for users without subscription
-  const defaultRunning = 5;
-  const defaultQueued = 50;
-
-  if (!isPolarEnabled()) {
-    // Self-hosted mode: Check for environment variable overrides first
-    const envRunning = process.env.RUNNING_CAPACITY;
-    const envQueued = process.env.QUEUED_CAPACITY;
-
-    if (envRunning || envQueued) {
-      // Environment variables take precedence in self-hosted mode
-      return {
-        runningCapacity: envRunning ? parseInt(envRunning) : defaultRunning,
-        queuedCapacity: envQueued ? parseInt(envQueued) : defaultQueued,
-      };
-    }
-
-    // Fall back to plan limits from database (unlimited plan for self-hosted)
-    try {
-      const plan =
-        await subscriptionService.getOrganizationPlan(organizationId);
-      return {
-        runningCapacity: plan.runningCapacity,
-        queuedCapacity: plan.queuedCapacity,
-      };
-    } catch {
-      // If plan lookup fails, use defaults
-      return {
-        runningCapacity: defaultRunning,
-        queuedCapacity: defaultQueued,
-      };
-    }
-  }
-
-  // Cloud mode: Use plan-specific limits, with safe fallback for unsubscribed users
-  try {
-    const plan = await subscriptionService.getOrganizationPlan(organizationId);
-    return {
-      runningCapacity: plan.runningCapacity,
-      queuedCapacity: plan.queuedCapacity,
-    };
-  } catch {
-    // User has no active subscription - return defaults (they'll be prompted to subscribe)
-    // This is not an error condition, just unsubscribed state
-    return {
-      runningCapacity: defaultRunning,
-      queuedCapacity: defaultQueued,
-    };
-  }
+  const policy = await getExecutionPolicy(organizationId);
+  return { runningCapacity: policy.runningCapacity, queuedCapacity: policy.queuedCapacity };
 }
 
 /**

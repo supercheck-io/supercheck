@@ -8,6 +8,10 @@ import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
+import {
+  ExecutionCapacityError,
+  ExecutionEntitlementError,
+} from '../execution/services/execution-admission.service';
 import { UsageTrackerService } from '../execution/services/usage-tracker.service';
 import { RedisService } from '../execution/services/redis.service';
 import * as schema from '../db/schema'; // Assuming your schema is here and WILL contain monitorResults
@@ -322,6 +326,17 @@ export class MonitorService {
         }
       }
     } catch (error) {
+      // A busy organization slot is not a target failure; let the processor
+      // defer the check instead of recording a false down result.
+      if (error instanceof ExecutionCapacityError) throw error;
+      if (error instanceof ExecutionEntitlementError) {
+        // No entitlement or allowance is not a target failure: skip the check
+        // like a billing hold instead of recording a false down result.
+        this.logger.warn(
+          `Skipping monitor ${jobData.monitorId}: ${error.message}`,
+        );
+        return null;
+      }
       this.logger.error(
         `Error executing monitor ${jobData.monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,
@@ -2489,6 +2504,7 @@ export class MonitorService {
       const testResult = await this.executionService.runSingleTest(
         {
           testId: test.id,
+          organizationId: test.organizationId ?? undefined,
           code: decodedScript,
           variables: resolvedVariables,
           secrets: resolvedSecrets,
@@ -2599,6 +2615,11 @@ export class MonitorService {
         };
       }
     } catch (error) {
+      if (
+        error instanceof ExecutionCapacityError ||
+        error instanceof ExecutionEntitlementError
+      )
+        throw error;
       const responseTimeMs = Date.now() - startTime;
 
       this.logger.error(

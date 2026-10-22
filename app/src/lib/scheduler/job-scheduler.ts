@@ -1,3 +1,4 @@
+import { getExecutionPolicy, ExecutionWorkloadError } from "@/lib/execution/execution-policy";
 /**
  * Job Scheduler Processor
  *
@@ -21,7 +22,6 @@ import {
 } from '@/lib/location-registry';
 import {
   SubscriptionAccessDeniedError,
-  subscriptionService,
 } from '@/lib/services/subscription-service';
 import { polarUsageService } from '@/lib/services/polar-usage.service';
 
@@ -120,9 +120,8 @@ export async function processScheduledJob(
     // controls as user/API-triggered executions. Expected policy denials skip
     // the tick; operational failures are rethrown for BullMQ retry/backoff.
     try {
-      await subscriptionService.blockUntilSubscribed(organizationId);
-      await subscriptionService.requireValidPolarCustomer(organizationId);
-      const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+      const policy = await getExecutionPolicy(organizationId);
+      const spendingBlock = policy.tier === "paid" ? await polarUsageService.shouldBlockUsage(organizationId) : { blocked: false };
       if (spendingBlock.blocked) {
         logger.warn(
           { jobId, organizationId, reason: spendingBlock.reason },
@@ -131,9 +130,9 @@ export async function processScheduledJob(
         return { success: true };
       }
     } catch (error) {
-      if (error instanceof SubscriptionAccessDeniedError) {
+      if (error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError) {
         logger.warn(
-          { jobId, organizationId, reason: error.reason },
+          { jobId, organizationId, reason: error instanceof SubscriptionAccessDeniedError ? error.reason : "execution_entitlement_required" },
           'Scheduled execution blocked by subscription validation',
         );
         return { success: true };

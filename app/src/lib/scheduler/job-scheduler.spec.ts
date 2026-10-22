@@ -1,3 +1,13 @@
+import { getExecutionPolicy } from "@/lib/execution/execution-policy";
+jest.mock("@/lib/execution/execution-policy", () => ({
+  ...jest.requireActual("@/lib/execution/execution-policy"),
+  getExecutionPolicy: jest.fn(async (organizationId: string) => {
+    const { subscriptionService } = jest.requireMock("@/lib/services/subscription-service");
+    await subscriptionService.blockUntilSubscribed(organizationId);
+    await subscriptionService.requireValidPolarCustomer(organizationId);
+    return { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 };
+  }),
+}));
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
@@ -224,7 +234,8 @@ describe("scheduled execution admission", () => {
     );
   });
 
-  it("rethrows unexpected location resolution errors so the scheduler retries", async () => {
+  it.each(["paid", "trial"] as const)("rethrows unexpected location resolution errors for %s access", async (tier) => {
+    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
     (db.select as jest.Mock)
       .mockReturnValueOnce(
         selectRows([
@@ -241,6 +252,7 @@ describe("scheduled execution admission", () => {
       new Error("db down"),
     );
     await expect(processScheduledJob(scheduledJob)).rejects.toThrow("db down");
+    if (tier === "trial") expect(polarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
   });
 
   it("rethrows unexpected billing dependency errors for scheduler retry", async () => {

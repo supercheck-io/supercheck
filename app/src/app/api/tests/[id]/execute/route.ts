@@ -1,3 +1,4 @@
+import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, runs, type K6Location } from "@/db/schema";
@@ -18,7 +19,7 @@ import {
 import { validateK6Script } from "@/lib/k6-validator";
 import { resolveProjectVariables } from "@/lib/variable-resolver";
 import { randomUUID } from "crypto";
-import { SubscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { buildBillingBlockedResponse } from "@/lib/billing-errors";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
@@ -70,38 +71,16 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     );
     if (rateLimitResponse) return rateLimitResponse;
 
-    // Check subscription plan limits
-    const subscriptionService = new SubscriptionService();
+    let executionPolicy: ExecutionPolicy;
     try {
-      // First check if user has an active subscription (defense-in-depth)
-      await subscriptionService.blockUntilSubscribed(organizationId);
-      // Then validate the Polar customer still exists
-      await subscriptionService.requireValidPolarCustomer(organizationId);
-      // Finally get the plan to check limits
-      await subscriptionService.getOrganizationPlan(organizationId);
+      executionPolicy = await getExecutionPolicy(organizationId);
     } catch (error) {
-      if (!(error instanceof SubscriptionAccessDeniedError)) {
-        console.error("[Test Execute API] Subscription validation failed:", error);
-      }
-      return NextResponse.json(
-        {
-          error: error instanceof SubscriptionAccessDeniedError
-            ? error.message
-            : "Subscription validation failed. Please try again later.",
-          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
-        },
-        { status: error instanceof SubscriptionAccessDeniedError ? 402 : 500 }
-      );
+      const denied = error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError;
+      if (!denied) console.error("[Test Execute API] Execution validation failed:", error);
+      return NextResponse.json({ error: denied ? error.message : "Execution validation unavailable", ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : error instanceof ExecutionWorkloadError ? { code: "execution_entitlement_required" } : {}) }, { status: denied ? 402 : 500 });
     }
-
-    // BILLING: Check spending limit hard-stop before allowing execution
-    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
-    if (spendingBlock.blocked) {
-      return NextResponse.json(
-        buildBillingBlockedResponse(spendingBlock.reason),
-        { status: 402 }
-      );
-    }
+    const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(organizationId) : { blocked: false };
+    if (spendingBlock.blocked) return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });
 
     // Fetch test
     const test = await db.query.tests.findFirst({

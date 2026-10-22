@@ -1,3 +1,5 @@
+jest.mock("@/utils/db", () => ({ db: { update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) })) })) } }));
+jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined) }));
 /**
  * Capacity Manager Tests
  * 
@@ -25,6 +27,8 @@ jest.mock('./queue', () => ({
 
 import { CapacityManager, CapacityReservationUnavailableError, QueuedJobData, setCapacityLogger } from './capacity-manager';
 import { checkCapacityLimits } from './middleware/plan-enforcement';
+import { getExecutionPolicy } from './execution/execution-policy';
+import { getQueues } from './queue';
 import { getRedisConnection } from './queue';
 
 const mockCheckCapacityLimits = checkCapacityLimits as jest.Mock;
@@ -125,7 +129,16 @@ describe('CapacityManager', () => {
   // ==========================================================================
 
   describe('Slot Reservation', () => {
-    describe('reserveSlot', () => {
+    it('refreshes the trusted tier when a queued execution is promoted', async () => {
+    const add = jest.fn().mockResolvedValue({});
+    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: 'trial', priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    jest.mocked(getQueues).mockResolvedValueOnce({ playwrightQueues: { global: { add } } } as unknown as Awaited<ReturnType<typeof getQueues>>);
+    await capacityManager['addJobToBullMQ']({ type: 'playwright', jobId: 'promoted', runId: 'promoted', organizationId: testOrgId, projectId: 'project', taskData: { _executionTier: 'paid' }, queuedAt: Date.now() });
+    expect(add).toHaveBeenCalledWith('promoted', expect.objectContaining({ _executionTier: 'trial' }), { jobId: 'promoted', priority: 1 });
+    expect(getExecutionPolicy).toHaveBeenCalledWith(testOrgId);
+  });
+
+  describe('reserveSlot', () => {
       describe('Positive Cases', () => {
         it('should reserve slot when capacity available (can run immediately)', async () => {
           mockRedisEval.mockResolvedValue(1); // 1 = can run immediately

@@ -1,7 +1,18 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 import { ExecutionQueueError } from "@/lib/execution-errors";
+
+jest.mock("@/lib/execution/execution-policy", () => ({
+  ...jest.requireActual("@/lib/execution/execution-policy"),
+  getExecutionPolicy: jest.fn(async (organizationId: string) => {
+    const { subscriptionService } = jest.requireMock("@/lib/services/subscription-service");
+    await subscriptionService.blockUntilSubscribed(organizationId);
+    await subscriptionService.requireValidPolarCustomer(organizationId);
+    return { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 };
+  }),
+}));
 
 jest.mock("@/utils/db", () => ({
   db: {
@@ -76,6 +87,7 @@ jest.mock("@/lib/api-key-rate-limiter", () => ({
 }));
 
 jest.mock("@/lib/services/subscription-service", () => ({
+  SubscriptionAccessDeniedError: class extends Error { constructor(message: string, readonly reason: string) { super(message); } },
   subscriptionService: {
     blockUntilSubscribed: jest.fn(),
     requireValidPolarCustomer: jest.fn(),
@@ -350,6 +362,13 @@ describe("Execution route regressions", () => {
     expect(mockAddK6TestToQueue).not.toHaveBeenCalled();
   });
 
+  it("admits an active trial without the provider usage probe", async () => {
+    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    const response = await executePlaygroundTest(new NextRequest("http://localhost/api/test", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ script: { invalid: true } }) }));
+    expect(response.status).toBe(400);
+    expect(mockPolarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-string playground script before validation", async () => {
     const response = await executePlaygroundTest(
       new NextRequest("http://localhost/api/test", {
@@ -366,7 +385,8 @@ describe("Execution route regressions", () => {
     expect(mockPlaywrightValidationService.validateCode).not.toHaveBeenCalled();
   });
 
-	  it("POST /api/tests/[id]/execute persists and returns queue status", async () => {
+	  it.each(["paid", "trial"] as const)("POST /api/tests/[id]/execute persists and returns queue status for %s access", async (tier) => {
+    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
     mockDb.query.tests.findFirst.mockResolvedValue({
       id: "test-1",
       type: "playwright",
@@ -404,6 +424,7 @@ describe("Execution route regressions", () => {
 
     expect(response.status).toBe(200);
     expect(json.status).toBe("queued");
+    if (tier === "trial") expect(mockPolarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({ status: "queued" }),
     );

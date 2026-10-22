@@ -1,3 +1,4 @@
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import {
   Logger,
@@ -533,6 +534,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           : (result.error ?? undefined),
       };
     } catch (error) {
+      if (error instanceof ExecutionCapacityError) {
+        await job.moveToDelayed(Date.now() + 1000, job.token);
+        throw new DelayedError();
+      }
       const message = `[Job ${job.id}] Failed with error: ${
         error instanceof Error ? error.message : String(error)
       }`;

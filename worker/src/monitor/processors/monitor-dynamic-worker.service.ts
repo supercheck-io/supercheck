@@ -22,8 +22,12 @@ import {
 } from '../monitor.constants';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import type { MonitoringLocation } from '../../common/location/location.service';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
+
+const CAPACITY_RETRY_DELAY_MS = 30_000;
 
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
@@ -370,7 +374,7 @@ export class MonitorDynamicWorkerService
             testExecutionId: saved.testExecutionId ?? undefined,
             testReportS3Url: saved.testReportS3Url ?? undefined,
           }
-        : await this.monitorService.executeMonitor(job.data, jobLocation);
+        : await this.executeOrDefer(job, jobLocation);
 
       if (!result) return [];
 
@@ -396,6 +400,23 @@ export class MonitorDynamicWorkerService
     // Legacy/single queue mode: the job runs from this worker's own location.
     await this.assertBrowserCapability(job.data, this.workerLocation);
     return this.monitorService.executeMonitorWithLocations(job.data);
+  }
+
+  /**
+   * Runs the check, or re-queues it when the organization's execution slot is
+   * occupied so the wait is never recorded as a monitor failure.
+   */
+  private async executeOrDefer(
+    job: Job<MonitorJobDataDto>,
+    location: MonitoringLocation,
+  ) {
+    try {
+      return await this.monitorService.executeMonitor(job.data, location);
+    } catch (error) {
+      if (!(error instanceof ExecutionCapacityError)) throw error;
+      await job.moveToDelayed(Date.now() + CAPACITY_RETRY_DELAY_MS, job.token);
+      throw new DelayedError();
+    }
   }
 
   /**

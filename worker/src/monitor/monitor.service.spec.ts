@@ -115,6 +115,10 @@ import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
+import {
+  ExecutionCapacityError,
+  ExecutionEntitlementError,
+} from '../execution/services/execution-admission.service';
 import { UsageTrackerService } from '../execution/services/usage-tracker.service';
 import { MonitorAlertService } from './services/monitor-alert.service';
 import { ValidationService } from '../common/validation/validation.service';
@@ -1744,6 +1748,76 @@ describe('MonitorService', () => {
       expect(
         mockUsageTrackerService.trackPlaywrightExecution,
       ).not.toHaveBeenCalled();
+    });
+
+    it('rethrows an occupied execution slot instead of recording a failed check', async () => {
+      mockDbService.getTestById.mockResolvedValue({
+        id: 'test-1',
+        title: 'Health',
+        script: 'test("health", async () => {});',
+      });
+      mockExecutionService.runSingleTest.mockRejectedValue(
+        new ExecutionCapacityError('occupied'),
+      );
+      const synthetic = service as unknown as {
+        executeSyntheticTest: (
+          id: string,
+          config: { testId: string },
+        ) => Promise<unknown>;
+      };
+      await expect(
+        synthetic.executeSyntheticTest('monitor-1', { testId: 'test-1' }),
+      ).rejects.toBeInstanceOf(ExecutionCapacityError);
+    });
+
+    it('does not convert an occupied execution slot into an error result at the monitor level', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            executeSyntheticTest: () => Promise<unknown>;
+          },
+          'executeSyntheticTest',
+        )
+        .mockRejectedValue(new ExecutionCapacityError('occupied'));
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        id: 'monitor-1',
+        status: 'active',
+        organizationId: 'org-1',
+      });
+      await expect(
+        service.executeMonitor({
+          monitorId: 'monitor-1',
+          type: 'synthetic_test',
+          target: '',
+          config: { testId: 'test-1' },
+        } as never),
+      ).rejects.toBeInstanceOf(ExecutionCapacityError);
+    });
+
+    it('skips a synthetic check with no execution allowance instead of recording it as down', async () => {
+      jest
+        .spyOn(
+          service as unknown as {
+            executeSyntheticTest: () => Promise<unknown>;
+          },
+          'executeSyntheticTest',
+        )
+        .mockRejectedValue(
+          new ExecutionEntitlementError('Execution allowance is exhausted'),
+        );
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        id: 'monitor-1',
+        status: 'active',
+        organizationId: 'org-1',
+      });
+      await expect(
+        service.executeMonitor({
+          monitorId: 'monitor-1',
+          type: 'synthetic_test',
+          target: '',
+          config: { testId: 'test-1' },
+        } as never),
+      ).resolves.toBeNull();
     });
 
     it.each([false, true])(

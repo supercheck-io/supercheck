@@ -1,3 +1,9 @@
+import { createTrialK6Script } from '../../common/security/trial-k6-workload';
+import { verifyTargetDns } from '../../common/security/execution-target-domain';
+jest.mock('../../common/security/execution-target-domain', () => ({
+  ...jest.requireActual('../../common/security/execution-target-domain'),
+  verifyTargetDns: jest.fn(),
+}));
 /**
  * K6 Execution Service Tests
  *
@@ -11,6 +17,7 @@
  * - Dashboard Integration (port allocation, web dashboard)
  */
 
+import { ExecutionAdmissionService } from '../../execution/services/execution-admission.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -115,9 +122,12 @@ describe('K6ExecutionService', () => {
 
   const mockDbService = {
     db: {
+      query: { executionTargetDomains: { findFirst: jest.fn() } },
       update: jest.fn().mockReturnValue({
         set: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue(undefined),
+        where: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{ id: 'domain' }]),
+        }),
       }),
       insert: jest.fn().mockReturnValue({
         values: jest.fn().mockResolvedValue(undefined),
@@ -163,12 +173,23 @@ describe('K6ExecutionService', () => {
     tests: [{ id: 'test-1', script: 'test script' }],
   };
 
+  const mockAdmissionService = { run: jest.fn() };
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockAdmissionService.run.mockImplementation(
+      (
+        _org: unknown,
+        _id: unknown,
+        _kind: unknown,
+        _timeout: unknown,
+        callback: (value: undefined) => unknown,
+      ) => callback(undefined),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         K6ExecutionService,
+        { provide: ExecutionAdmissionService, useValue: mockAdmissionService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: S3Service, useValue: mockS3Service },
         { provide: DbService, useValue: mockDbService },
@@ -190,6 +211,148 @@ describe('K6ExecutionService', () => {
   // ==========================================================================
   // INITIALIZATION TESTS
   // ==========================================================================
+
+  it('isolates a constrained workload from control and proxy environment overrides', async () => {
+    await service['executeK6Binary'](
+      ['run', '/tmp/test.js'],
+      'export default function() {}',
+      '/tmp/out',
+      'run-id',
+      'unique',
+      {
+        K6_VUS: '999',
+        HTTPS_PROXY: 'http://attacker.test',
+        K6_WEB_DASHBOARD: 'true',
+      },
+      1000,
+      0,
+      undefined,
+      1000,
+    );
+    const command = mockContainerExecutorService.executeInContainer.mock
+      .calls[0][1] as string[];
+    expect(command.slice(0, 3)).toEqual([
+      'env',
+      '-i',
+      'PATH=/usr/local/bin:/usr/bin:/bin',
+    ]);
+    expect(command).not.toContain('K6_VUS=999');
+    expect(command).not.toContain('HTTPS_PROXY=http://attacker.test');
+    expect(command).toContain('K6_WEB_DASHBOARD=true');
+  });
+
+  describe('constrained HTTP admission', () => {
+    const workload = {
+      url: 'https://example.test/path',
+      vus: 5,
+      durationSeconds: 30,
+    };
+    beforeEach(() => {
+      mockAdmissionService.run.mockImplementation(
+        (
+          _org: unknown,
+          _id: unknown,
+          _kind: unknown,
+          _timeout: unknown,
+          callback: (value: unknown) => unknown,
+        ) =>
+          callback({
+            organizationId: 'org',
+            limited: true,
+            k6MaxVus: 5,
+            reservedMs: 300000,
+            expiresAt: new Date(Date.now() + 3600000),
+          }),
+      );
+      mockDbService.db.query.executionTargetDomains.findFirst.mockResolvedValue(
+        { id: 'domain', verificationToken: 'proof', verifiedAt: new Date() },
+      );
+      jest.mocked(verifyTargetDns).mockResolvedValue(['93.184.216.34']);
+    });
+    it('rejects arbitrary scripts before DNS, variables or execution', async () => {
+      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
+      await expect(
+        service.runK6Test({
+          ...mockTask,
+          script: "http.get('https://other.test')",
+        }),
+      ).rejects.toThrow('arbitrary k6 scripts');
+      expect(execute).not.toHaveBeenCalled();
+      expect(verifyTargetDns).not.toHaveBeenCalled();
+      expect(
+        mockVariableResolverService.resolveProjectVariables,
+      ).not.toHaveBeenCalled();
+    });
+    it('executes only the canonical generated workload pinned to fresh ownership evidence', async () => {
+      const execute = jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockResolvedValue({ success: true } as never);
+      await service.runK6Test({
+        ...mockTask,
+        script: createTrialK6Script(workload),
+      });
+      expect(verifyTargetDns).toHaveBeenCalledWith('example.test', 'proof');
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          script: createTrialK6Script(workload, {
+            'example.test': '93.184.216.34',
+          }),
+          files: {},
+        }),
+        expect.objectContaining({ reservedMs: 30000, limited: true }),
+      );
+    });
+    it('gives the pod time beyond the workload duration to start, finish and export its report', async () => {
+      const executeK6Binary = jest
+        .spyOn(
+          service as unknown as {
+            executeK6Binary: (...args: unknown[]) => Promise<unknown>;
+          },
+          'executeK6Binary',
+        )
+        .mockRejectedValue(new Error('stop after capturing deadlines'));
+      const expiresAt = new Date(Date.now() + 3600000);
+      await service['runK6TestReserved'](
+        {
+          runId: 'run',
+          testId: 'test',
+          script: 'export default function () {}',
+        } as never,
+        {
+          runId: 'run',
+          organizationId: 'org',
+          ownerToken: 'owner',
+          limited: true,
+          reservedMs: 30000,
+          expiresAt,
+        },
+      ).catch(() => undefined);
+      const call = executeK6Binary.mock.calls[0];
+      const [timeoutMs, hardDeadlineMs, expiresAtMs] = [
+        call[6],
+        call[9],
+        call[10],
+      ] as number[];
+      expect(timeoutMs).toBeGreaterThan(30000);
+      expect(hardDeadlineMs).toBeGreaterThan(30000);
+      expect(hardDeadlineMs).toBe(timeoutMs);
+      expect(expiresAtMs).toBe(expiresAt.getTime());
+    });
+
+    it('does not execute after domain proof is revoked', async () => {
+      jest
+        .mocked(verifyTargetDns)
+        .mockRejectedValueOnce(new Error('proof revoked'));
+      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
+      await expect(
+        service.runK6Test({
+          ...mockTask,
+          script: createTrialK6Script(workload),
+        }),
+      ).rejects.toThrow('proof revoked');
+      expect(execute).not.toHaveBeenCalled();
+    });
+  });
 
   describe('Initialization', () => {
     it('should be defined', () => {

@@ -1,3 +1,4 @@
+import { ExecutionWorkloadError } from "./execution/execution-policy";
 import { ExecutionQueueError } from "./execution-errors";
 import {
   buildExecutionQueueErrorResponse,
@@ -5,6 +6,13 @@ import {
 } from "./execution-api-responses";
 
 describe("execution API responses", () => {
+  it("preserves actionable workload and quota rejection responses", async () => {
+    const invalid = buildExecutionQueueErrorResponse(new ExecutionWorkloadError("Generated HTTP workload required"));
+    const quota = buildExecutionQueueErrorResponse(new ExecutionWorkloadError("Trial quota exhausted", 402));
+    expect(invalid?.status).toBe(400);
+    expect(quota?.status).toBe(402);
+    await expect(invalid?.json()).resolves.toMatchObject({ error: "Generated HTTP workload required" });
+  });
   it("returns 429 only for a real rate-limit decision", async () => {
     const response = buildExecutionRateLimitResponse({
       allowed: false,

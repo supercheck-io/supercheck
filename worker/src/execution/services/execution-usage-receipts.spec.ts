@@ -101,13 +101,23 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
         'utf8',
       ),
     );
+    // PGlite predates uuidv7(); the default is irrelevant to usage receipts.
+    await pg.exec(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0037_execution_entitlements.sql',
+        ),
+        'utf8',
+      ).replaceAll('uuidv7()', 'gen_random_uuid()'),
+    );
   });
 
   beforeEach(async () => {
     process.env.SELF_HOSTED = 'false';
     process.env.POLAR_ACCESS_TOKEN = 'test-token';
     await pg.exec(
-      'DROP TRIGGER IF EXISTS reject_usage ON usage_events; TRUNCATE execution_usage_receipts, usage_events, runs, organization CASCADE',
+      'DROP TRIGGER IF EXISTS reject_usage ON usage_events; TRUNCATE execution_usage_receipts, execution_entitlements, usage_events, runs, organization CASCADE',
     );
     await database.insert(schema.organization).values({
       id: orgId,

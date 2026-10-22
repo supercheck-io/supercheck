@@ -301,6 +301,17 @@ describe('single Playwright execution outcome', () => {
           .fn()
           .mockResolvedValue({ hasFailures: false }),
       });
+      Object.assign(service, {
+        admissionService: {
+          run: (
+            _org: unknown,
+            _id: unknown,
+            _kind: unknown,
+            _timeout: unknown,
+            callback: (value: undefined) => unknown,
+          ) => callback(undefined),
+        },
+      });
       const result = await service.runSingleTest(
         { testId: 'test-1', code: "test('x', () => {})" },
         true,

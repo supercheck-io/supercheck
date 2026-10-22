@@ -1,3 +1,4 @@
+import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
@@ -12,7 +13,7 @@ import {
 } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
-import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   apiKeyRateLimiter,
@@ -244,68 +245,16 @@ export async function POST(
       );
     }
 
-    // SECURITY: Validate active subscription before allowing test execution
+    let executionPolicy: ExecutionPolicy;
     try {
-      await subscriptionService.blockUntilSubscribed(job.organizationId);
+      executionPolicy = await getExecutionPolicy(job.organizationId);
     } catch (error) {
-      const errorMessage = error instanceof SubscriptionAccessDeniedError
-        ? error.message
-        : "Subscription validation failed";
-      console.warn(
-        `[Job Trigger] Subscription validation failed for org ${job.organizationId.substring(0, 8)}...`
-      );
-      return NextResponse.json(
-        {
-          error: errorMessage,
-          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
-        },
-        { status: 402 },
-      );
+      const denied = error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError;
+      return NextResponse.json({ error: denied ? error.message : "Execution validation unavailable", ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : error instanceof ExecutionWorkloadError ? { code: "execution_entitlement_required" } : {}) }, { status: denied ? 402 : 500 });
     }
-
-    // Validate Polar customer exists (blocks deleted customers)
-    try {
-      await subscriptionService.requireValidPolarCustomer(job.organizationId);
-    } catch (error) {
-      const errorMessage = error instanceof SubscriptionAccessDeniedError
-        ? error.message
-        : "Polar customer validation failed";
-      console.warn(
-        `[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`
-      );
-      return NextResponse.json(
-        {
-          error: errorMessage,
-          ...(error instanceof SubscriptionAccessDeniedError ? { code: error.reason } : {}),
-        },
-        { status: 402 },
-      );
-    }
-
-    // BILLING: Check spending limit hard-stop before allowing execution
-    const spendingBlock = await polarUsageService.shouldBlockUsage(job.organizationId);
+    const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(job.organizationId) : { blocked: false };
     if (spendingBlock.blocked) {
-      console.warn(
-        `[Job Trigger] Spending limit reached for org ${job.organizationId.substring(0, 8)}...`
-      );
       return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });
-    }
-
-    // Check subscription plan limits
-    try {
-      await subscriptionService.getOrganizationPlan(job.organizationId);
-    } catch (error) {
-      if (!(error instanceof SubscriptionAccessDeniedError)) {
-        console.error("[Job Trigger] Subscription validation failed:", error);
-      }
-      return NextResponse.json(
-        {
-          error: error instanceof SubscriptionAccessDeniedError
-            ? error.message
-            : "Subscription validation failed. Please try again later.",
-        },
-        { status: error instanceof SubscriptionAccessDeniedError ? 402 : 500 }
-      );
     }
 
     // Additional validation: ensure job is not in an error state that prevents triggering

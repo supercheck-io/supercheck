@@ -65,6 +65,7 @@ describe('UsageTrackerService ledger settlement', () => {
       ),
       query: {
         organization: { findFirst: jest.fn().mockResolvedValue(null) },
+        executionEntitlements: { findFirst: jest.fn().mockResolvedValue(null) },
         executionUsageReceipts: {
           findFirst: jest.fn().mockResolvedValue(null),
         },
@@ -281,6 +282,7 @@ describe('UsageTrackerService execution blocking', () => {
     };
     const query = {
       organization: { findFirst: jest.fn().mockResolvedValue(org) },
+      executionEntitlements: { findFirst: jest.fn().mockResolvedValue(null) },
       billingSettings: {
         findFirst: jest.fn().mockResolvedValue({
           enableSpendingLimit: true,
@@ -527,6 +529,25 @@ describe('UsageTrackerService execution blocking', () => {
       });
     },
   );
+
+  it('authorizes a current execution entitlement without changing standard plan limits', async () => {
+    const f = admissionFixture();
+    f.org.subscriptionStatus = 'none';
+    f.query.executionEntitlements.findFirst.mockResolvedValue({
+      expiresAt: new Date(Date.now() + 60000),
+    });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+    delete process.env.POLAR_ACCESS_TOKEN;
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+    f.org.subscriptionStatus = 'active';
+    await expect(
+      f.service.shouldBlockExecution('org-1'),
+    ).resolves.toMatchObject({ blocked: true });
+  });
 
   it('keeps non-metered probes running at the cap but enforces their subscription', async () => {
     const f = admissionFixture();

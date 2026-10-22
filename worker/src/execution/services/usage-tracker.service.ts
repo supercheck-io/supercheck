@@ -1,3 +1,4 @@
+import { hasActiveExecutionPlan } from './execution-admission.service';
 import { ceilUsageCostCents } from '../../common/utils/usage-cost';
 import { v7 as uuidv7 } from 'uuid';
 import {
@@ -74,6 +75,19 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     if (this.recoveryTimer) clearInterval(this.recoveryTimer);
   }
 
+  private async isLimitedOrganization(
+    organizationId: string,
+  ): Promise<boolean> {
+    const entitlement = await this.db.query.executionEntitlements.findFirst({
+      where: eq(schema.executionEntitlements.organizationId, organizationId),
+    });
+    if (!entitlement) return false;
+    const org = await this.db.query.organization.findFirst({
+      where: eq(schema.organization.id, organizationId),
+    });
+    return !!org && !hasActiveExecutionPlan(org);
+  }
+
   async completeRunWithUsage(
     input: ExecutionUsageCompletion,
     persistResult: (tx: ExecutionUsageTransaction) => Promise<void>,
@@ -81,6 +95,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     // No Polar billing, or no evidence the execution container ever ran:
     // persist the result without a receipt so nothing is charged.
     if (!isPolarEnabled() || !(input.durationMs > 0)) {
+      await this.db.transaction(persistResult);
+      return;
+    }
+    if (await this.isLimitedOrganization(input.organizationId)) {
       await this.db.transaction(persistResult);
       return;
     }
@@ -194,6 +212,11 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       if (!Number.isFinite(executionTimeMs) || executionTimeMs < 0) {
         throw new Error('Invalid Playwright execution duration');
       }
+      if (
+        isPolarEnabled() &&
+        (await this.isLimitedOrganization(organizationId))
+      )
+        return { blocked: false };
       // Match the four-decimal ledger precision before updating either sink.
       // No whole-minute minimum: a five-second check uses 0.0833 minutes.
       const minutes = Math.round((executionTimeMs / 60_000) * 10_000) / 10_000;
@@ -251,6 +274,11 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       ) {
         throw new Error('Invalid K6 execution usage');
       }
+      if (
+        isPolarEnabled() &&
+        (await this.isLimitedOrganization(organizationId))
+      )
+        return { blocked: false };
       // Calculate VU minutes: ceil(VUs * duration in minutes)
       const durationMinutes = durationMs / 1000 / 60;
       const vuMinutes = Math.ceil(virtualUsers * durationMinutes);
@@ -691,10 +719,25 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ blocked: boolean; reason?: string }> {
     if (isSelfHosted()) return { blocked: false };
     if (!process.env.POLAR_ACCESS_TOKEN) {
-      return {
-        blocked: true,
-        reason: BILLING_NOT_CONFIGURED,
-      };
+      try {
+        const org = await this.db.query.organization.findFirst({
+          where: eq(schema.organization.id, organizationId),
+        });
+        if (org && !hasActiveExecutionPlan(org)) {
+          const entitlement =
+            await this.db.query.executionEntitlements.findFirst({
+              where: eq(
+                schema.executionEntitlements.organizationId,
+                organizationId,
+              ),
+            });
+          if (entitlement && entitlement.expiresAt.getTime() > Date.now())
+            return { blocked: false };
+        }
+      } catch {
+        // Only an explicit, verifiable grant can run without the standard plan configuration.
+      }
+      return { blocked: true, reason: BILLING_NOT_CONFIGURED };
     }
 
     try {
@@ -703,16 +746,18 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       const org = await this.db.query.organization.findFirst({
         where: eq(schema.organization.id, organizationId),
       });
-      const hasAccess =
-        org &&
-        org.polarCustomerId &&
-        (org.subscriptionPlan === 'plus' || org.subscriptionPlan === 'pro') &&
-        (org.subscriptionStatus === 'active' ||
-          org.subscriptionStatus === 'past_due' ||
-          (org.subscriptionStatus === 'canceled' &&
-            org.subscriptionEndsAt &&
-            org.subscriptionEndsAt.getTime() > Date.now()));
+      const hasAccess = hasActiveExecutionPlan(org);
       if (!hasAccess || !org) {
+        const entitlement = org
+          ? await this.db.query.executionEntitlements.findFirst({
+              where: eq(
+                schema.executionEntitlements.organizationId,
+                organizationId,
+              ),
+            })
+          : undefined;
+        if (entitlement && entitlement.expiresAt.getTime() > Date.now())
+          return { blocked: false };
         return { blocked: true, reason: 'An active subscription is required' };
       }
       if (options.monitorId) {

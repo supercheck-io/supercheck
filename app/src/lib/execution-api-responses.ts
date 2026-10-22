@@ -1,3 +1,4 @@
+import { ExecutionWorkloadError } from "./execution/execution-policy";
 import { NextResponse } from "next/server";
 import type { ExecutionRateLimitResult } from "./execution-rate-limiter";
 import {
@@ -34,6 +35,7 @@ export function buildExecutionRateLimitResponse(
 export function buildExecutionQueueErrorResponse(
   error: unknown,
 ): NextResponse | null {
+  if (error instanceof ExecutionWorkloadError) return NextResponse.json({ error: error.message, code: "EXECUTION_ENTITLEMENT_DENIED" }, { status: error.status });
   if (!isExecutionQueueError(error)) return null;
 
   const capacityExceeded = error.code === "capacity_exceeded";

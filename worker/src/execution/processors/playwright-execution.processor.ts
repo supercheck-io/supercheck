@@ -1,3 +1,4 @@
+import { ExecutionCapacityError } from '../services/execution-admission.service';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, UnrecoverableError, DelayedError } from 'bullmq';
 import {
@@ -260,6 +261,10 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error) {
+      if (error instanceof ExecutionCapacityError) {
+        await job.moveToDelayed(Date.now() + 1000, job.token);
+        throw new DelayedError();
+      }
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
@@ -570,6 +575,10 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error: unknown) {
+      if (error instanceof ExecutionCapacityError) {
+        await job.moveToDelayed(Date.now() + 1000, job.token);
+        throw new DelayedError();
+      }
       ErrorHandler.logError(
         this.logger,
         error,

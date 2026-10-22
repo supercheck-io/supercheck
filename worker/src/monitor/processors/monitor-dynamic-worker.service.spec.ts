@@ -1,3 +1,4 @@
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 jest.mock('bullmq', () => ({
   DelayedError: jest.requireActual('bullmq').DelayedError,
   UnrecoverableError: jest.requireActual('bullmq').UnrecoverableError,
@@ -23,6 +24,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { resetWorkerQueuesForTests } from '../../common/worker-queues';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
+import { EXECUTE_MONITOR_JOB_NAME } from '../monitor.constants';
 import Redis from 'ioredis';
 import { MonitorDynamicWorkerService } from './monitor-dynamic-worker.service';
 import {
@@ -33,6 +35,33 @@ import { DbService } from '../../db/db.service';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 
 describe('MonitorDynamicWorkerService lifecycle', () => {
+  it('defers a synthetic check while its organization slot is occupied', async () => {
+    const { service } = setup();
+    const executeMonitor = jest
+      .fn()
+      .mockRejectedValue(new ExecutionCapacityError('occupied'));
+    const saveDistributedMonitorResult = jest.fn();
+    Object.assign(service['monitorService'], {
+      executeMonitor,
+      saveDistributedMonitorResult,
+    });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { executionLocation: 'local', type: 'synthetic_test' },
+      token: 'token',
+      moveToDelayed,
+    };
+    await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+      jest.requireActual('bullmq').DelayedError,
+    );
+    expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
+    expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
+  });
+
   function setup(location = 'local') {
     const execute = jest.fn().mockRejectedValue(new Error('DB unavailable'));
     const subscriber = Object.assign(new EventEmitter(), {

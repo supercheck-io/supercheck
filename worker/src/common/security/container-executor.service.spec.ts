@@ -155,6 +155,22 @@ describe('ContainerExecutorService', () => {
       expect(ensureClients).toHaveBeenCalled();
     });
 
+    it('keeps a reserved execution deadline free of artifact grace', () => {
+      const manifest = service['buildExecutionJob']({
+        jobName: 'sc-quota',
+        workspace: '/tmp/run',
+        workingDir: '/tmp',
+        limits: {
+          valid: true,
+          timeoutMs: 30_000,
+          memoryLimitMb: 512,
+          cpuLimit: 0.5,
+        },
+        options: { ...defaultOptions, hardDeadlineMs: 10_999 },
+      });
+      expect(manifest.spec?.activeDeadlineSeconds).toBe(10);
+    });
+
     it('bounds execution pod ephemeral storage and tmp volume size', () => {
       const manifest = (service as any).buildExecutionJob({
         jobName: 'sc-exec-test',

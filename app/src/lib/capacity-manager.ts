@@ -1,3 +1,4 @@
+import { getExecutionPolicy, assertExecutionWorkload } from "./execution/execution-policy";
 import Redis from "ioredis";
 import { checkCapacityLimits } from "./middleware/plan-enforcement";
 
@@ -616,6 +617,13 @@ export class CapacityManager {
     
     try {
       // Dynamic import to avoid circular dependency
+      const policy = await getExecutionPolicy(jobData.organizationId);
+      const scripts = jobData.type === 'k6'
+        ? (Array.isArray(jobData.taskData.tests) && jobData.taskData.tests.length
+          ? jobData.taskData.tests.map((test: { script: string }) => test.script)
+          : [String(jobData.taskData.script ?? '')])
+        : [];
+      await assertExecutionWorkload(jobData.organizationId, policy, jobData.type, scripts);
       const queueModule = await import('./queue');
       const queues = await queueModule.getQueues();
 
@@ -623,8 +631,9 @@ export class CapacityManager {
         const queue = queues.playwrightQueues['global'];
         await queue.add(jobData.runId, {
           ...jobData.taskData,
+          _executionTier: policy.tier,
           _capacityStatus: 'promoted', // Mark as promoted from queue
-        }, { jobId: jobData.runId });
+        }, { jobId: jobData.runId, priority: policy.priority });
       } else {
         const location = (jobData.taskData.location as string) || 'global';
         // Capability may have been revoked while the job waited in the capacity queue.
@@ -658,8 +667,9 @@ export class CapacityManager {
         }
         await queue.add(jobData.runId, {
           ...jobData.taskData,
+          _executionTier: policy.tier,
           _capacityStatus: 'promoted',
-        }, { jobId: jobData.runId });
+        }, { jobId: jobData.runId, priority: policy.priority });
       }
       
       // Mark job as added - any subsequent failures should NOT release slot
