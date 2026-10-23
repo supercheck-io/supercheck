@@ -10,7 +10,8 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 const deleteScheduledMonitor = jest.fn().mockResolvedValue(true);
 const scheduleMonitor = jest.fn().mockResolvedValue("sched-new");
 jest.mock("@/lib/monitor-scheduler", () => ({
-  deleteScheduledMonitor: (...args: unknown[]) => deleteScheduledMonitor(...args),
+  deleteScheduledMonitor: (...args: unknown[]) =>
+    deleteScheduledMonitor(...args),
   scheduleMonitor: (...args: unknown[]) => scheduleMonitor(...args),
 }));
 beforeEach(() => {
@@ -55,7 +56,11 @@ const trialOrg = {
 interface Fixture {
   expired?: Array<{ organizationId: string }>;
   org?: Record<string, unknown> | undefined;
-  running?: Array<{ id: string; status: string; scheduledJobId?: string | null }>;
+  running?: Array<{
+    id: string;
+    status: string;
+    scheduledJobId?: string | null;
+  }>;
   published?: Array<{ id: string }>;
 }
 
@@ -173,12 +178,21 @@ describe("endExpiredTrials", () => {
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("sched-1");
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("m1");
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("m2");
-    expect(updates.filter((u) => u.table === "monitors" && u.values.scheduledJobId === null)).toHaveLength(2);
+    expect(
+      updates.filter(
+        (u) => u.table === "monitors" && u.values.scheduledJobId === null,
+      ),
+    ).toHaveLength(2);
   });
 
   it("does not touch schedules when the organization pays", async () => {
     const { database } = build({
-      org: { ...trialOrg, polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active" },
+      org: {
+        ...trialOrg,
+        polarCustomerId: "cus",
+        subscriptionPlan: "plus",
+        subscriptionStatus: "active",
+      },
       running: [{ id: "m1", status: "up", scheduledJobId: "sched-1" }],
     });
     await endExpiredTrials({ now: NOW, database });
@@ -190,7 +204,13 @@ describe("endExpiredTrials", () => {
     const select = (database as unknown as { select: jest.Mock }).select;
     select.mockReset();
     select
-      .mockReturnValueOnce(chain(Array.from({ length: 50 }, (_, i) => ({ organizationId: `org-${i}` }))))
+      .mockReturnValueOnce(
+        chain(
+          Array.from({ length: 50 }, (_, i) => ({
+            organizationId: `org-${i}`,
+          })),
+        ),
+      )
       .mockReturnValueOnce(chain([{ organizationId: "org-last" }]));
     const result = await endExpiredTrials({ now: NOW, database });
     expect(select).toHaveBeenCalledTimes(2);
@@ -279,6 +299,25 @@ describe("endExpiredTrials", () => {
     expect(inserts).toHaveLength(0);
   });
 
+  it("keeps ending the other organizations when one fails", async () => {
+    const { database } = build({
+      expired: [{ organizationId: "a" }, { organizationId: "b" }],
+      org: trialOrg,
+    });
+    const transaction = (database as unknown as { transaction: jest.Mock })
+      .transaction;
+    const original = transaction.getMockImplementation()!;
+    transaction.mockImplementationOnce(async () => {
+      throw new Error("lock timeout");
+    });
+    transaction.mockImplementation(original);
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const result = await endExpiredTrials({ now: NOW, database });
+    spy.mockRestore();
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(result.organizations).toBe(1);
+  });
+
   it("processes every expired organization in its own transaction", async () => {
     const { database } = build({
       expired: [{ organizationId: "a" }, { organizationId: "b" }],
@@ -359,7 +398,11 @@ describe("restoreTrialSuspensions", () => {
   });
 
   it("schedules every resumed monitor again once the status change is written", async () => {
-    const { database } = buildRestore([{ resourceType: "monitor", resourceId: "m1" }], 1, 0);
+    const { database } = buildRestore(
+      [{ resourceType: "monitor", resourceId: "m1" }],
+      1,
+      0,
+    );
     await restoreTrialSuspensions("org", database);
     expect(scheduleMonitor).toHaveBeenCalledWith(
       expect.objectContaining({ monitorId: "m1", frequencyMinutes: 5 }),
@@ -368,8 +411,14 @@ describe("restoreTrialSuspensions", () => {
 
   it("does not fail the restore when a schedule cannot be created", async () => {
     scheduleMonitor.mockRejectedValueOnce(new Error("redis down"));
-    const { database } = buildRestore([{ resourceType: "monitor", resourceId: "m1" }], 1, 0);
-    await expect(restoreTrialSuspensions("org", database)).resolves.toMatchObject({ monitorsResumed: 1 });
+    const { database } = buildRestore(
+      [{ resourceType: "monitor", resourceId: "m1" }],
+      1,
+      0,
+    );
+    await expect(
+      restoreTrialSuspensions("org", database),
+    ).resolves.toMatchObject({ monitorsResumed: 1 });
   });
 
   it("does nothing for an organization with no suspended resources", async () => {
@@ -407,25 +456,59 @@ describe("reconcilePaidTrialSuspensions", () => {
     const database = {
       // The join already limits candidates to paying organizations that still have suspensions.
       selectDistinct: jest.fn(() => chain(candidates)),
-      select: jest.fn(() => chain([{ id: "m1", frequencyMinutes: 5, type: "http_request", target: "x", config: {} }])),
+      select: jest.fn(() =>
+        chain([
+          {
+            id: "m1",
+            frequencyMinutes: 5,
+            type: "http_request",
+            target: "x",
+            config: {},
+          },
+        ]),
+      ),
       update: jest.fn(() => ({ set: jest.fn(() => chain([])) })),
-      transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(tx)),
+      transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
+        callback(tx),
+      ),
     };
     return database as never;
   }
-  const paid = { id: "org", polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active", subscriptionEndsAt: null };
+  const paid = {
+    id: "org",
+    polarCustomerId: "cus",
+    subscriptionPlan: "plus",
+    subscriptionStatus: "active",
+    subscriptionEndsAt: null,
+  };
 
   it("restores an organization that pays but is still suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([paid]) })).resolves.toMatchObject({ organizations: 1, monitorsResumed: 1 });
+    await expect(
+      reconcilePaidTrialSuspensions({
+        now: NOW,
+        database: buildReconcile([paid]),
+      }),
+    ).resolves.toMatchObject({ organizations: 1, monitorsResumed: 1 });
     expect(scheduleMonitor).toHaveBeenCalled();
   });
 
   it("leaves unpaid organizations suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([trialOrg]) })).resolves.toMatchObject({ organizations: 0 });
+    await expect(
+      reconcilePaidTrialSuspensions({
+        now: NOW,
+        database: buildReconcile([trialOrg]),
+      }),
+    ).resolves.toMatchObject({ organizations: 0 });
   });
 
   it("does nothing when nothing is suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([]) })).resolves.toEqual({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
+    await expect(
+      reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([]) }),
+    ).resolves.toEqual({
+      organizations: 0,
+      monitorsResumed: 0,
+      statusPagesRestored: 0,
+    });
   });
 });
 
@@ -446,7 +529,9 @@ describe("sendTrialReminders", () => {
   /** One due list per reminder kind (midway, ending, ended), then owners per organization. */
   function build(
     due: { midway?: unknown[]; ending?: unknown[]; ended?: unknown[] },
-    owners: Array<{ email: string; role?: string }> = [{ email: "owner@example.com" }],
+    owners: Array<{ email: string; role?: string }> = [
+      { email: "owner@example.com" },
+    ],
   ) {
     const sets: Array<Record<string, unknown>> = [];
     const lists = [due.midway ?? [], due.ending ?? [], due.ended ?? []];
@@ -581,7 +666,9 @@ describe("sendTrialReminders", () => {
     ]);
     const deliver = jest.fn().mockResolvedValue(true);
     await sendTrialReminders({ now: NOW, database, deliver });
-    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["admin@example.com"] }));
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ recipients: ["admin@example.com"] }),
+    );
   });
 
   it("prefers owners over admins when both are verified", async () => {
@@ -591,7 +678,9 @@ describe("sendTrialReminders", () => {
     ]);
     const deliver = jest.fn().mockResolvedValue(true);
     await sendTrialReminders({ now: NOW, database, deliver });
-    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["owner@example.com"] }));
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ recipients: ["owner@example.com"] }),
+    );
   });
 
   it("sends to each distinct owner address once", async () => {

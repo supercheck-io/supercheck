@@ -85,6 +85,36 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
   });
 
+  it('aborts the monitor cycle of a check that gave up, so its deadline records no false down', async () => {
+    const { service } = setup();
+    const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
+    Object.assign(service['monitorService'], { abortMonitorCycle });
+    const job = {
+      data: {
+        monitorId: 'm1',
+        executionGroupId: 'g1',
+        executionLocation: 'local',
+        expectedLocations: ['local'],
+        monitorCycle: true,
+        _capacityGaveUp: true,
+      },
+      attemptsMade: 1,
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    await service['handleFinalJobFailure'](job as never, new Error('busy'));
+    expect(abortMonitorCycle).toHaveBeenCalledWith('g1');
+  });
+
+  it('leaves a check outside a monitor cycle alone when it gives up', async () => {
+    const { service } = setup();
+    const abortMonitorCycle = jest.fn();
+    Object.assign(service['monitorService'], { abortMonitorCycle });
+    await service['abortCycleOf']({
+      data: { monitorId: 'm1', executionGroupId: 'g1' },
+    } as never);
+    expect(abortMonitorCycle).not.toHaveBeenCalled();
+  });
+
   it('marks the job when the capacity wait is given up', async () => {
     const { service } = setup();
     const updateData = jest.fn().mockResolvedValue(undefined);

@@ -24,6 +24,7 @@ import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 import { deferForCapacity } from '../../common/capacity-deferral';
+import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 
@@ -376,7 +377,12 @@ export class MonitorDynamicWorkerService
             this.monitorService.executeMonitor(job.data, jobLocation),
           );
 
-      if (!result) return [];
+      if (!result) {
+        // Skipped without a verdict (no entitlement or allowance): end the cycle instead of letting
+        // its deadline record this region as down.
+        await this.abortCycleOf(job);
+        return [];
+      }
 
       try {
         await this.monitorService.saveDistributedMonitorResult(result, {
@@ -402,6 +408,18 @@ export class MonitorDynamicWorkerService
     return this.executeOrDefer(job, () =>
       this.monitorService.executeMonitorWithLocations(job.data),
     );
+  }
+
+  /** A check that never ran must not leave its cycle to be closed with a false failure. */
+  private async abortCycleOf(job: Job<MonitorJobDataDto>): Promise<void> {
+    if (!job.data.monitorCycle || !job.data.executionGroupId) return;
+    await this.monitorService
+      .abortMonitorCycle(job.data.executionGroupId)
+      .catch((error) =>
+        this.logger.error(
+          `Could not abort cycle ${job.data.executionGroupId}: ${getErrorMessage(error)}`,
+        ),
+      );
   }
 
   /**
@@ -479,6 +497,7 @@ export class MonitorDynamicWorkerService
       this.logger.warn(
         `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
       );
+      await this.abortCycleOf(job);
       return;
     }
 

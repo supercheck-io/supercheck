@@ -585,6 +585,24 @@ export class MonitorService {
     return this.evaluator.prepareGroupEvaluation(...args);
   }
 
+  /**
+   * Closes an open monitor cycle without a verdict. Used when a check was skipped for a reason that
+   * says nothing about the target (no execution slot, no entitlement), so the cycle deadline does
+   * not turn the silent region into a failed result and an alert.
+   */
+  async abortMonitorCycle(cycleId: string): Promise<void> {
+    const now = new Date();
+    await this.dbService.db
+      .update(schema.monitorCycles)
+      .set({ status: 'aborted', closedAt: now, notifiedAt: now })
+      .where(
+        and(
+          eq(schema.monitorCycles.id, cycleId),
+          eq(schema.monitorCycles.status, 'open'),
+        ),
+      );
+  }
+
   async saveDistributedMonitorResult(
     result: MonitorExecutionResult,
     options: {

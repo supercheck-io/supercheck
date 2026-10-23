@@ -1,4 +1,15 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+} from "drizzle-orm";
 import {
   executionEntitlements,
   member,
@@ -37,7 +48,10 @@ async function unscheduleMonitors(
         .set({ scheduledJobId: null })
         .where(eq(monitors.id, row.id));
     } catch (error) {
-      console.error(`Failed to unschedule monitor ${row.id} at trial end:`, error);
+      console.error(
+        `Failed to unschedule monitor ${row.id} at trial end:`,
+        error,
+      );
     }
   }
 }
@@ -77,7 +91,10 @@ async function rescheduleMonitors(
         .set({ scheduledJobId: schedulerId })
         .where(eq(monitors.id, monitor.id));
     } catch (error) {
-      console.error(`Failed to reschedule monitor ${monitor.id} after trial:`, error);
+      console.error(
+        `Failed to reschedule monitor ${monitor.id} after trial:`,
+        error,
+      );
     }
   }
 }
@@ -88,7 +105,10 @@ export interface TrialEndResult {
   statusPagesArchived: number;
 }
 
-type Database = Pick<typeof db, "select" | "selectDistinct" | "transaction" | "update">;
+type Database = Pick<
+  typeof db,
+  "select" | "selectDistinct" | "transaction" | "update"
+>;
 
 /**
  * Ends every expired trial exactly once. Monitors are paused and published
@@ -108,107 +128,121 @@ export async function endExpiredTrials(
   };
 
   const processExpired = async (expired: Array<{ organizationId: string }>) => {
-  for (const { organizationId } of expired) {
-    await database.transaction(async (tx) => {
-      // Serialize with a concurrent subscription or restore for this organization.
-      const [org] = await tx
-        .select()
-        .from(organization)
-        .where(eq(organization.id, organizationId))
-        .for("update");
-      const markEnded = () =>
-        tx
-          .update(executionEntitlements)
-          .set({ lifecycleEndedAt: now })
-          .where(
-            and(
-              eq(executionEntitlements.organizationId, organizationId),
-              isNull(executionEntitlements.lifecycleEndedAt),
-            ),
-          );
+    for (const { organizationId } of expired) {
+      try {
+        const paused = await database.transaction(
+          async (
+            tx,
+          ): Promise<Array<{ id: string; scheduledJobId: string | null }>> => {
+            // Serialize with a concurrent subscription or restore for this organization.
+            const [org] = await tx
+              .select()
+              .from(organization)
+              .where(eq(organization.id, organizationId))
+              .for("update");
+            const markEnded = () =>
+              tx
+                .update(executionEntitlements)
+                .set({ lifecycleEndedAt: now })
+                .where(
+                  and(
+                    eq(executionEntitlements.organizationId, organizationId),
+                    isNull(executionEntitlements.lifecycleEndedAt),
+                  ),
+                );
 
-      // A paying organization keeps everything; only record that the trial is over.
-      if (!org || hasPaidAccess(org, now)) {
-        await markEnded();
-        return;
-      }
+            // A paying organization keeps everything; only record that the trial is over.
+            if (!org || hasPaidAccess(org, now)) {
+              await markEnded();
+              return [];
+            }
 
-      const running = await tx
-        .select({
-          id: monitors.id,
-          status: monitors.status,
-          scheduledJobId: monitors.scheduledJobId,
-        })
-        .from(monitors)
-        .where(
-          and(
-            eq(monitors.organizationId, organizationId),
-            ne(monitors.status, "paused"),
-          ),
+            const running = await tx
+              .select({
+                id: monitors.id,
+                status: monitors.status,
+                scheduledJobId: monitors.scheduledJobId,
+              })
+              .from(monitors)
+              .where(
+                and(
+                  eq(monitors.organizationId, organizationId),
+                  ne(monitors.status, "paused"),
+                ),
+              );
+            const published = await tx
+              .select({ id: statusPages.id })
+              .from(statusPages)
+              .where(
+                and(
+                  eq(statusPages.organizationId, organizationId),
+                  eq(statusPages.status, "published"),
+                ),
+              );
+
+            const suspensions = [
+              ...running.map((monitor) => ({
+                organizationId,
+                resourceType: "monitor" as const,
+                resourceId: monitor.id,
+                previousStatus: monitor.status as string,
+              })),
+              ...published.map((page) => ({
+                organizationId,
+                resourceType: "status_page" as const,
+                resourceId: page.id,
+                previousStatus: "published",
+              })),
+            ];
+            if (suspensions.length)
+              await tx
+                .insert(trialSuspensions)
+                .values(suspensions)
+                .onConflictDoNothing();
+
+            if (running.length) {
+              await tx
+                .update(monitors)
+                .set({ status: "paused", updatedAt: now })
+                .where(
+                  inArray(
+                    monitors.id,
+                    running.map((m) => m.id),
+                  ),
+                );
+            }
+            if (published.length) {
+              await tx
+                .update(statusPages)
+                .set({ status: "archived", updatedAt: now })
+                .where(
+                  inArray(
+                    statusPages.id,
+                    published.map((p) => p.id),
+                  ),
+                );
+            }
+            await markEnded();
+
+            result.organizations += 1;
+            result.monitorsPaused += running.length;
+            result.statusPagesArchived += published.length;
+            return running;
+          },
         );
-      const published = await tx
-        .select({ id: statusPages.id })
-        .from(statusPages)
-        .where(
-          and(
-            eq(statusPages.organizationId, organizationId),
-            eq(statusPages.status, "published"),
-          ),
-        );
-
-      const suspensions = [
-        ...running.map((monitor) => ({
-          organizationId,
-          resourceType: "monitor" as const,
-          resourceId: monitor.id,
-          previousStatus: monitor.status as string,
-        })),
-        ...published.map((page) => ({
-          organizationId,
-          resourceType: "status_page" as const,
-          resourceId: page.id,
-          previousStatus: "published",
-        })),
-      ];
-      if (suspensions.length)
-        await tx
-          .insert(trialSuspensions)
-          .values(suspensions)
-          .onConflictDoNothing();
-
-      if (running.length) {
-        await tx
-          .update(monitors)
-          .set({ status: "paused", updatedAt: now })
-          .where(
-            inArray(
-              monitors.id,
-              running.map((m) => m.id),
-            ),
-          );
+        // Only after the commit, so a rolled-back pause never loses a schedule.
+        toUnschedule.push(...paused);
+      } catch (error) {
+        // One organization's lock timeout or constraint failure must not starve the rest of the batch.
+        failed.push(organizationId);
+        console.error(`Failed to end trial for org ${organizationId}:`, error);
       }
-      if (published.length) {
-        await tx
-          .update(statusPages)
-          .set({ status: "archived", updatedAt: now })
-          .where(
-            inArray(
-              statusPages.id,
-              published.map((p) => p.id),
-            ),
-          );
-      }
-      await markEnded();
-
-      result.organizations += 1;
-      result.monitorsPaused += running.length;
-      result.statusPagesArchived += published.length;
-      toUnschedule.push(...running);
-    });
-  }
+    }
   };
 
   const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
+  // Organizations that failed this run are skipped for the rest of it, so one stuck organization cannot starve the others.
+  const failed: string[] = [];
   const deadline = Date.now() + DRAIN_BUDGET_MS;
   // A cohort of trials that began together also ends together: keep draining batches (within a time
   // budget) instead of leaving most of them running until later runs of the job.
@@ -219,6 +253,9 @@ export async function endExpiredTrials(
       .where(
         and(
           lte(executionEntitlements.expiresAt, now),
+          failed.length > 0
+            ? notInArray(executionEntitlements.organizationId, failed)
+            : undefined,
           isNull(executionEntitlements.lifecycleEndedAt),
         ),
       )
@@ -304,10 +341,18 @@ export async function restoreTrialSuspensions(
  */
 export async function reconcilePaidTrialSuspensions(
   options: { now?: Date; database?: Database & Pick<typeof db, "update"> } = {},
-): Promise<{ organizations: number; monitorsResumed: number; statusPagesRestored: number }> {
+): Promise<{
+  organizations: number;
+  monitorsResumed: number;
+  statusPagesRestored: number;
+}> {
   const now = options.now ?? new Date();
   const database = options.database ?? db;
-  const result = { organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 };
+  const result = {
+    organizations: 0,
+    monitorsResumed: 0,
+    statusPagesRestored: 0,
+  };
   // Filter on paid access in SQL: expired trials that never subscribe keep their rows forever, and
   // they must not fill the batch ahead of a paying organization that still needs its restore.
   const orgs = await database
@@ -319,14 +364,20 @@ export async function reconcilePaidTrialSuspensions(
       subscriptionEndsAt: organization.subscriptionEndsAt,
     })
     .from(trialSuspensions)
-    .innerJoin(organization, eq(organization.id, trialSuspensions.organizationId))
+    .innerJoin(
+      organization,
+      eq(organization.id, trialSuspensions.organizationId),
+    )
     .where(
       and(
         isNotNull(organization.polarCustomerId),
         inArray(organization.subscriptionPlan, ["plus", "pro"]),
         or(
           inArray(organization.subscriptionStatus, ["active", "past_due"]),
-          and(eq(organization.subscriptionStatus, "canceled"), gt(organization.subscriptionEndsAt, now)),
+          and(
+            eq(organization.subscriptionStatus, "canceled"),
+            gt(organization.subscriptionEndsAt, now),
+          ),
         ),
       ),
     )
@@ -339,7 +390,10 @@ export async function reconcilePaidTrialSuspensions(
       result.monitorsResumed += restored.monitorsResumed;
       result.statusPagesRestored += restored.statusPagesRestored;
     } catch (error) {
-      console.error(`Failed to restore trial resources for org ${org.id}:`, error);
+      console.error(
+        `Failed to restore trial resources for org ${org.id}:`,
+        error,
+      );
     }
   }
   return result;
