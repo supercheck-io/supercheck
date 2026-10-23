@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
+import { TrialCard } from "@/components/billing/trial-card";
+import { PricingFaqs } from "@/components/billing/pricing-faqs";
 import {
   RefreshCw,
   AlertCircle,
@@ -55,6 +57,8 @@ interface PricingPlan {
 
 interface PricingData {
   plans: PricingPlan[];
+  faqs?: Array<{ question: string; answer: string }>;
+  trial?: { durationDays: number; highlights: string[] };
 }
 
 export default function SubscribePage() {
@@ -428,6 +432,11 @@ export default function SubscribePage() {
         )}
       </Card>
 
+      {/* Free trial allowances while it is active (an ended trial is explained in the account card above) */}
+      {!hasBillingContext && pricingData?.trial && trialActive && (
+        <TrialCard durationDays={pricingData.trial.durationDays} highlights={pricingData.trial.highlights} />
+      )}
+
       {/* Pricing Tier Cards */}
       {!hasBillingContext && (
         <section className="max-w-4xl mx-auto">
@@ -491,6 +500,10 @@ export default function SubscribePage() {
             </a>
           </p>
         </section>
+      )}
+
+      {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
+        <PricingFaqs faqs={pricingData.faqs} />
       )}
 
       <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-4 text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 import catalog from "@/lib/billing/plan-catalog.json";
 import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
+import { trialHighlights, trialValues } from "@/lib/billing/trial-copy";
 import { DEFAULT_OVERAGE_PRICING } from "@/lib/billing/pricing-defaults";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -324,6 +325,7 @@ export async function GET() {
       plans: pricingPlans,
       featureComparison,
       faqs,
+      trial: { durationDays: trialValues().durationDays, highlights: trialHighlights() },
       overagePricing: overagePricingResponse,
     });
   } catch (error) {

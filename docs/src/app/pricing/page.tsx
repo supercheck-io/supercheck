@@ -1,4 +1,5 @@
 import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
+import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/trial-copy';
 import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
@@ -200,32 +201,16 @@ function ComparisonCell({ value }: { value: string }) {
 }
 
 const trial = catalog.trial;
-const trialLimits = trial.limits;
-const trialHighlights = [
-    `${trialLimits.maxMonitors} monitors, checked at most every ${trialLimits.minCheckIntervalMinutes} minutes`,
-    `${trialLimits.maxStatusPages} status pages with up to ${trialLimits.maxStatusPageSubscribers} subscribers each`,
-    `${trialLimits.playwrightMinutes} browser minutes for Playwright tests and synthetic monitors`,
-    `k6 load tests of up to ${trialLimits.k6MaxVus} virtual users for ${trialLimits.k6MaxDurationSeconds / 60} minutes per run (${trialLimits.k6VuMinutes} virtual-user minutes in total), against domains you verify`,
-    `${trialLimits.sreInvestigations} AI SRE investigations and ${trialLimits.aiCredits} AI credits`,
-    `${trialLimits.maxTeamMembers} team members and ${trialLimits.maxProjects} projects`,
-];
 
 const faqs = [
     {
         question: 'Can I try Supercheck before Cloud launches?',
         answer: 'Yes. Explore the free live demo without signing up, or self-host the open-source core today. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
     },
-    {
-        question: 'Is there a free trial?',
-        answer: `Yes. When Cloud opens, every new organization starts with a ${trial.durationDays}-day free trial of the whole product, with no card required. Trial limits keep it safe for everyone: ${trialHighlights.join('; ')}. Choose Plus or Pro at any time to lift the limits.`,
-    },
-    {
-        question: 'What happens when the free trial ends?',
-        answer: 'Your monitors are paused and your status pages are archived, so nothing keeps running or consuming resources without a plan. Nothing is deleted: your tests, monitors, status pages, and history are kept, and subscribing to Plus or Pro restores your monitors and status pages automatically.',
-    },
+    ...trialFaqs(),
     {
         question: 'Can I self-host Supercheck?',
-        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service.',
+        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service. Self-hosted deployments have no trial and no usage limits.',
     },
     {
         question: 'Does one subscription cover all my projects?',
@@ -386,7 +371,7 @@ export default function PricingPage() {
                         Try the whole product with no card required. Limits keep the trial safe for everyone. Cloud signups are opening soon.
                     </p>
                     <ul className="grid gap-2 text-sm sm:grid-cols-2">
-                        {trialHighlights.map((highlight) => (
+                        {trialHighlights().map((highlight) => (
                             <li key={highlight} className="flex items-start gap-3 leading-6">
                                 <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
