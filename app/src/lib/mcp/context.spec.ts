@@ -32,7 +32,7 @@ const denied = (p: Promise<unknown>, reason: string) =>
 
 describe("resolveMcpCallContext", () => {
   it("returns the live context when everything still holds", async () => {
-    selectResults.push([{ banned: false }], [{ scopes: ["mcp:read"] }]);
+    selectResults.push([{ banned: false }], [{ disabled: false }], [{ scopes: ["mcp:read"] }]);
     await expect(resolveMcpCallContext(claims)).resolves.toMatchObject({ organizationId: "o1", projectId: "p1", role: "project_viewer" });
   });
   it.each([{ client: [] }, { client: [{ disabled: true }] }])("rejects a removed or disabled OAuth client", async ({ client }) => {
@@ -49,11 +49,11 @@ describe("resolveMcpCallContext", () => {
     await denied(resolveMcpCallContext(claims), "user_unavailable");
   });
   it("rejects when the consent was revoked", async () => {
-    selectResults.push([{ banned: false }], []);
+    selectResults.push([{ banned: false }], [{ disabled: false }], []);
     await denied(resolveMcpCallContext(claims), "consent_revoked");
   });
   it("rejects when the user lost project access", async () => {
-    selectResults.push([{ banned: false }], [{ scopes: ["mcp:read"] }]);
+    selectResults.push([{ banned: false }], [{ disabled: false }], [{ scopes: ["mcp:read"] }]);
     resolveProjectPermissionContext.mockResolvedValue(null);
     await denied(resolveMcpCallContext(claims), "no_project_access");
   });

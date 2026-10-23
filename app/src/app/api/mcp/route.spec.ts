@@ -49,6 +49,8 @@ describe("/api/mcp", () => {
   it.each([
     { host: "attacker.example", origin: undefined },
     { host: "app.example.com", origin: "https://attacker.example" },
+    { host: "app.example.com", origin: "not a URL" },
+    { host: "app.example.com/evil", origin: undefined },
   ])("rejects untrusted Host/Origin before authentication: %j", async ({ host, origin }) => {
     const headers = new Headers(rpc("initialize").headers);
     headers.set("host", host);
@@ -64,6 +66,13 @@ describe("/api/mcp", () => {
     const headers = new Headers(rpc("initialize").headers);
     headers.set("host", "app.example.com"); headers.set("origin", "https://app.example.com");
     expect((await POST(new Request(rpc("initialize"), { headers }))).status).toBe(200);
+  });
+
+  it("accepts an internal proxy URL only with the validated public Host", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const headers = new Headers(rpc("initialize").headers); headers.set("host", "app.example.com");
+    const req = new Request("http://app:3000/api/mcp", { method:"POST", headers, body:await rpc("initialize").text() });
+    expect((await POST(req)).status).toBe(200);
   });
 
   it("keeps Bearer challenges while shaping auth refusals as JSON-RPC", async () => {
