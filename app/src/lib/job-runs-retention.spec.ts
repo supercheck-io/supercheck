@@ -94,6 +94,16 @@ describe("JobRunsCleanupStrategy retention (dry run)", () => {
     expect(result.details.playgroundRunsDeleted).toBe(2);
   });
 
+  it("only expires terminal standalone runs after their completion age", async () => {
+    await new JobRunsCleanupStrategy(config).execute(true);
+    const condition = whereCalls.filter(call => call.table === runs).at(-1)!.condition;
+    const { sql, params } = new PgDialect().sqlToQuery(condition);
+    expect(sql).toContain('"runs"."status" in');
+    expect(params).toEqual(expect.arrayContaining(["passed", "failed", "error", "blocked"]));
+    expect(params).not.toEqual(expect.arrayContaining(["queued", "running"]));
+    expect(sql).toContain('coalesce("runs"."completed_at", "runs"."created_at")');
+  });
+
   it("uses the configured playground age independently of the job plan", async () => {
     await new JobRunsCleanupStrategy({ ...config, customConfig: { playgroundMaxAgeHours: 48 } }).execute(true);
     const conditions = whereCalls.filter(call => call.table === runs).map(call => call.condition);

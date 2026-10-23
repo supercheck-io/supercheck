@@ -104,7 +104,7 @@ To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false` and recreate the app. 
 
 ### Artifact Retention
 
-Artifacts are cleaned automatically. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.
+Artifacts are cleaned automatically. Job run retention follows the self-hosted unlimited plan, seeded at 180 days; an existing `unlimited` plan value in the database is respected. Standalone playground run rows become eligible for cleanup after their terminal result has been retained for `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` (default 24 hours). For older rows without a completion time, age is measured from creation. Queued and running playground runs are retained. Cleanup runs on a schedule and observes a per-run safety limit, so the configured age is an eligibility threshold rather than an exact deletion time. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.
 
 <Accordions>
   <Accordion title="Registration Controls">
