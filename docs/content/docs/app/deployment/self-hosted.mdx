@@ -87,7 +87,7 @@ In your installation's `deploy/docker` directory, update `.env` and run `sudo do
 Supercheck can let AI tools such as Claude, Cursor and VS Code read one project you choose, using OAuth 2.1 with read-only access. See [Supercheck MCP](/docs/mcp) for what users get.
 
 1. Set `MCP_SERVER_ENABLED=true` in `.env` and recreate the app: `sudo docker compose up -d --force-recreate app`. The app applies database migration 0036 when it starts.
-2. Set `BETTER_AUTH_URL` to the public HTTPS URL of your server (`http://localhost:3000` is accepted for local use). The app fails to start without it, because issued tokens are bound to `<BETTER_AUTH_URL>/api/mcp`.
+2. Make sure `BETTER_AUTH_URL` is the public HTTPS URL of your server (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN`. The app refuses to start with MCP enabled otherwise, because issued tokens are bound to `<BETTER_AUTH_URL>/api/mcp`.
 3. Confirm: `curl -s https://your-host/api/config/app` reports `mcp.enabled: true`, and `curl -si -X POST https://your-host/api/mcp` returns `401` with a `WWW-Authenticate` header.
 
 Users approve each connection and pick the project on the connect screen, and can disconnect any app under **Connected apps** in the user menu. Access is re-checked on every call, so a disconnect, project removal or ban takes effect immediately. Apps normally register themselves; set `MCP_DYNAMIC_CLIENT_REGISTRATION=false` to accept only apps that identify themselves with a Client ID Metadata Document. Browser-based clients cannot call the OAuth endpoints (no CORS headers); native and server-side clients are unaffected. Behind a CDN or extra proxy, set `TRUSTED_PROXY_HOPS` (below) so rate limits see real client addresses.
