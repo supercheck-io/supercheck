@@ -148,6 +148,11 @@ export class S3CleanupService {
         key = parts.slice(1).join("/");
       } else if (url.hostname.startsWith(`${bucket}.`)) {
         key = parts.join("/");
+      } else if (input.reportPath && parts.includes(input.reportPath.split("/")[0])) {
+        // The URL names this execution but under another endpoint or bucket (for example after a
+        // storage move). Delete the execution directory in the configured bucket instead of
+        // blocking monitor deletion forever. A URL that does not name the execution still fails.
+        key = input.reportPath;
       } else {
         throw new Error(`Report URL does not match bucket ${bucket}`);
       }

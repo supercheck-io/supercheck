@@ -20,6 +20,7 @@ import { scheduleJob } from "@/lib/job-scheduler";
 import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
 import { isTestTypeCompatibleWithJobType, getJobTestTypeMismatchError } from "@/lib/script-type-validator";
 import type { TestType } from "@/db/schema/types";
+import { decodeStoredTestScript } from "@/lib/test-script";
 
 import { randomUUID } from "crypto";
 
@@ -86,6 +87,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "100", 10)));
+    // Scripts can be large: only included when asked for, like GET /api/tests.
+    const includeScript = url.searchParams.get("includeScript") === "true";
     const offset = (page - 1) * limit;
 
     // PERFORMANCE: Run count and paginated queries in parallel
@@ -158,6 +161,7 @@ export async function GET(request: Request) {
           description: testsTable.description,
           type: testsTable.type,
           priority: testsTable.priority,
+          ...(includeScript && { script: testsTable.script }),
           createdAt: testsTable.createdAt,
           updatedAt: testsTable.updatedAt,
           orderPosition: jobTests.orderPosition,
@@ -249,6 +253,9 @@ export async function GET(request: Request) {
           description: test.description,
           type: test.type,
           priority: test.priority,
+          ...(includeScript && {
+            script: "script" in test && test.script ? decodeStoredTestScript(test.script) : "",
+          }),
           name: test.title || "",
           tags: testTagsMap.get(test.testId) || [],
           createdAt: test.createdAt ? test.createdAt.toISOString() : null,

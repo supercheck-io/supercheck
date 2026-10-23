@@ -118,6 +118,16 @@ describe("S3 report cleanup", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("deletes a monitor execution whose stored URL predates a storage move", async () => {
+    objects.set("monitors", ["test-ab12/report/index.html", "test-ab123/report/index.html"]);
+    const result = await service.deleteReports([{
+      entityType: "monitor", entityId: "monitor-1", reportPath: "test-ab12",
+      s3Url: "https://old-storage.example/old-monitors/test-ab12/report/index.html",
+    }]);
+    expect(result.success).toBe(true);
+    expect(objects.get("monitors")).toEqual(["test-ab123/report/index.html"]);
+  });
+
   it("rejects a URL for a different bucket", async () => {
     const result = await service.deleteReports([{
       entityType: "monitor", entityId: "monitor-1", reportPath: "legacy-test/report", s3Url: "https://storage.example/tests/test-ab12/report/index.html",

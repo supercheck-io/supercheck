@@ -148,6 +148,23 @@ describe("QueryProvider hydration", () => {
     ).toBeUndefined();
   });
 
+  it("removes other accounts' saved caches when the signed-in account restores its own", async () => {
+    seedCache();
+    localStorage.setItem("supercheck-cache-v2:user-old", "{}");
+    localStorage.setItem("unrelated-key", "keep");
+    mockSession = { data: { user: { id: "user-b" } }, isPending: false };
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(
+      <QueryProvider>
+        <AlertsProbe />
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+    expect(localStorage.getItem("supercheck-cache-v2:user-old")).toBeNull();
+    expect(localStorage.getItem("unrelated-key")).toBe("keep");
+  });
+
   it("replaces in-memory data when an authenticated identity changes", async () => {
     const view = render(
       <QueryProvider>

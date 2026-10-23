@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { discoverRepository } from '../utils/discover.js'
-import { readConfigIdentity } from '../utils/link-config.js'
+import { readConfigBaseUrl, readConfigIdentity } from '../utils/link-config.js'
 import { detectConfigRequirements } from '../utils/config-text.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { resolve } from 'node:path'
@@ -48,11 +48,22 @@ export const doctorCommand = new Command('doctor')
     // 2. Check authentication
     logger.info(pc.bold('Authentication:'))
     const hasCredentials = isAuthenticated()
-    const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
+    const storedBaseUrl = getStoredBaseUrl()
+    const baseUrl = storedBaseUrl ?? 'https://app.supercheck.io'
+    // The config is repository text, so doctor never sends a credential to the URL it names. A config that
+    // targets another API than the one in use is reported instead of producing a misleading "rejected".
+    const declaredBaseUrl = configResult ? readConfigBaseUrl(configResult.text) : null
+    const originOf = (url: string): string => { try { return new URL(url).origin } catch { return url } }
+    // The generated config reads `process.env.SUPERCHECK_URL ?? '<url>'`, so with the variable set it already agrees.
+    const configTargetsOtherApi = declaredBaseUrl !== null && !process.env.SUPERCHECK_URL && originOf(declaredBaseUrl) !== originOf(baseUrl)
+    const plainUrl = (url: string): string => (/^https?:\/\/[A-Za-z0-9.:_-]{1,253}(\/[A-Za-z0-9._~/-]{0,200})?$/.test(url) ? url : '(unprintable URL)')
     // Having a token is not the same as the server accepting it: ask the server before reporting success.
     let hasAuth = false
     let credentialProblem: 'rejected' | 'unreachable' | null = null
-    if (hasCredentials) {
+    if (hasCredentials && configTargetsOtherApi && storedBaseUrl === null) {
+      credentialProblem = 'unreachable'
+      logger.info(`  ${pc.yellow('○')} Credentials present, but supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))} and no API URL is set — set SUPERCHECK_URL (or run: supercheck login --url ...) to verify them there`)
+    } else if (hasCredentials) {
       try {
         await getApiClient({ token: getToken() ?? undefined, baseUrl }).request('GET', '/api/context', { retries: 0, timeout: 5_000 })
         hasAuth = true
@@ -72,6 +83,9 @@ export const doctorCommand = new Command('doctor')
       }
     } else {
       logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login`)
+    }
+    if (hasCredentials && configTargetsOtherApi && storedBaseUrl !== null) {
+      logger.info(`  ${pc.yellow('○')} supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))}, not ${pc.dim(baseUrl)} — commands that use the config will refuse to run until they match`)
     }
 
     logger.newline()

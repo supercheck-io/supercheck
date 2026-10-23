@@ -1193,6 +1193,14 @@
           },
           {
             "$ref": "#/components/parameters/JobLimit"
+          },
+          {
+            "name": "includeScript",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include the decoded script in each job's tests. Defaults to false."
           }
         ],
         "responses": {

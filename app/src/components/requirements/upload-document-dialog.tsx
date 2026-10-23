@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner";
 import { extractRequirementsFromDocument } from "@/actions/extract-requirements";
 import { createRequirement } from "@/actions/requirements";
+import { createExtractedRequirements } from "./create-extracted-requirements";
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -321,23 +322,34 @@ export function UploadDocumentDialog({
         setState("creating");
         setProgress(0);
 
-        try {
-            let created = 0;
-            for (const req of selectedRequirements) {
-                // Combine AI-extracted tags with 'ai' marker, avoiding duplicates
-                const allTags = new Set(["ai", ...req.tags]);
-                await createRequirement({
-                    title: req.title,
-                    description: req.description || "Extracted from document",
-                    priority: req.priority || "medium",
-                    tags: Array.from(allTags).join(", "),
-                    sourceDocumentId: documentId,
-                    createdBy: "ai",
-                });
-                created++;
-                setProgress(Math.round((created / selectedRequirements.length) * 100));
+        const { created, failure } = await createExtractedRequirements(
+            selectedRequirements,
+            documentId,
+            createRequirement,
+            (done) => setProgress(Math.round((done / selectedRequirements.length) * 100)),
+        );
+        if (failure !== undefined) {
+            console.error("Error creating requirements:", failure);
+            const reason = getUserFriendlyError(failure);
+            setError(
+                created > 0
+                    ? `Created ${created} of ${selectedRequirements.length} requirements before it failed: ${reason}`
+                    : reason
+            );
+            setState("error");
+            if (created > 0) {
+                // Those rows exist, so refresh the list even though the batch stopped.
+                try {
+                    await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
+                } catch (refreshError) {
+                    console.error("Error refreshing requirements:", refreshError);
+                }
+                onComplete?.();
             }
+            return;
+        }
 
+        try {
             setState("done");
             toast.success(`Created ${created} requirements from document`);
 

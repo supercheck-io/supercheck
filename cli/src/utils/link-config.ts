@@ -83,6 +83,11 @@ function findLiterals(text: string): { org: Literal | null; project: Literal | n
   return { org, project, baseUrl }
 }
 
+/** The literal fallback in `baseUrl: process.env.SUPERCHECK_URL ?? '<url>'`, read as text like the identity. */
+export function readConfigBaseUrl(text: string): string | null {
+  return findLiterals(text).baseUrl?.value ?? null
+}
+
 export function readConfigIdentity(text: string): { organization: string | null; project: string | null } {
   const { org, project } = findLiterals(text)
   return { organization: org?.value ?? null, project: project?.value ?? null }

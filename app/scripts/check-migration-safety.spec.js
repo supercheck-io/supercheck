@@ -12,6 +12,45 @@ describe("migration safety check", () => {
     expect(findUnsafeStatements(`-- SET LOCAL ${setting} = '5s';\nSELECT 1;`)).toEqual([]);
   });
   it.each([
+    ["SET statement_timeout = 0;", "statement_timeout"],
+    ["SET SESSION lock_timeout = '1s';", "lock_timeout"],
+    ["DO $$ BEGIN SET statement_timeout = 0; END $$;", "statement_timeout"],
+    ["DO $$ BEGIN PERFORM set_config('lock_timeout', '0', false); END $$;", "lock_timeout"],
+  ])("rejects a session-level change: %s", (sql, setting) => {
+    expect(findUnsafeStatements(sql)).toEqual([
+      { line: 1, operation: `session-level ${setting} change (use SET LOCAL or set_config(..., true))` },
+    ]);
+  });
+  it.each([
+    ["EXECUTE 'SET statement_timeout = 0'", "statement_timeout"],
+    ["PERFORM set_config('statement_timeout', coalesce(previous, '1s'), false);", "statement_timeout"],
+    ["PERFORM set_config('lock_timeout', current_setting('app.t'), 'false');", "lock_timeout"],
+  ])("rejects a session-level change hidden in a DO block: %s", (statement, setting) => {
+    expect(findUnsafeStatements(`DO $$ BEGIN ${statement} END $$;`)).toEqual([
+      { line: 1, operation: `session-level ${setting} change (use SET LOCAL or set_config(..., true))` },
+    ]);
+  });
+  it("reports the line of the SET itself, not the preceding statement", () => {
+    expect(findUnsafeStatements("-- x\nSELECT 1;\n\nSET lock_timeout = '1s';")).toEqual([
+      { line: 4, operation: "session-level lock_timeout change (use SET LOCAL or set_config(..., true))" },
+    ]);
+  });
+  it("ignores timeout changes quoted in message text, even after a semicolon", () => {
+    expect(findUnsafeStatements("DO $$ BEGIN RAISE NOTICE 'a; SET statement_timeout = 0'; END $$;")).toEqual([]);
+    expect(findUnsafeStatements("SELECT 'x; SET lock_timeout = 0';")).toEqual([]);
+  });
+  it("allows the transaction-local restore pattern and ignores timeouts in comments or messages", () => {
+    const sql = `
+      -- SET statement_timeout = 0;
+      DO $$ BEGIN
+        PERFORM set_config('lock_timeout', '5s', true);
+        PERFORM set_config('statement_timeout', previous_statement_timeout, true);
+        RAISE NOTICE 'do not SET statement_timeout globally';
+      END $$;
+    `;
+    expect(findUnsafeStatements(sql)).toEqual([]);
+  });
+  it.each([
     ['DROP TABLE "legacy";', "DROP TABLE"],
     ['ALTER TABLE "users" DROP COLUMN "legacy";', "DROP COLUMN"],
     ['DROP TYPE "legacy_status";', "DROP TYPE"],

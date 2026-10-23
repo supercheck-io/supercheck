@@ -59,16 +59,24 @@ const DESTRUCTIVE_PATTERNS = [
 const EXCEPTION_PATTERN =
   /--\s*migration-safety:\s*allow-destructive\s+issue=(?:#\d+|https:\/\/github\.com\/supercheck-io\/supercheck\/issues\/\d+)\s*$/imu;
 
-function maskSqlLiteralsAndComments(sql) {
+// keepLiterals blanks comments only, so the text of strings stays searchable (set_config() names its
+// setting in a string). keepDollarBodies keeps the code inside $$...$$ (a DO block) but still blanks
+// the comments and strings within it, so statements there can be told apart from message text.
+function maskSqlLiteralsAndComments(sql, { keepLiterals = false, keepDollarBodies = false } = {}) {
   let masked = "";
   let index = 0;
   let state = "sql";
   let blockCommentDepth = 0;
   let dollarQuoteDelimiter = "";
+  let dollarBodyStart = 0;
   let singleQuoteBackslashEscapes = false;
 
   const appendMasked = (character) => {
     masked += character === "\r" || character === "\n" ? character : " ";
+  };
+  const appendLiteral = (character) => {
+    if (keepLiterals) masked += character;
+    else appendMasked(character);
   };
 
   while (index < sql.length) {
@@ -97,13 +105,13 @@ function maskSqlLiteralsAndComments(sql) {
         singleQuoteBackslashEscapes =
           (prefix === "E" || prefix === "e") &&
           (beforePrefix === undefined || !/[A-Za-z0-9_$]/u.test(beforePrefix));
-        appendMasked(character);
+        appendLiteral(character);
         index += 1;
         state = "single-quote";
         continue;
       }
       if (character === '"') {
-        appendMasked(character);
+        appendLiteral(character);
         index += 1;
         state = "double-quote";
         continue;
@@ -113,9 +121,10 @@ function maskSqlLiteralsAndComments(sql) {
         if (delimiterMatch) {
           dollarQuoteDelimiter = delimiterMatch[0];
           for (const delimiterCharacter of dollarQuoteDelimiter) {
-            appendMasked(delimiterCharacter);
+            appendLiteral(delimiterCharacter);
           }
           index += dollarQuoteDelimiter.length;
+          dollarBodyStart = index;
           state = "dollar-quote";
           continue;
         }
@@ -155,13 +164,13 @@ function maskSqlLiteralsAndComments(sql) {
     }
 
     if (state === "single-quote") {
-      appendMasked(character);
+      appendLiteral(character);
       index += 1;
       if (singleQuoteBackslashEscapes && character === "\\" && nextCharacter !== undefined) {
-        appendMasked(nextCharacter);
+        appendLiteral(nextCharacter);
         index += 1;
       } else if (character === "'" && nextCharacter === "'") {
-        appendMasked(nextCharacter);
+        appendLiteral(nextCharacter);
         index += 1;
       } else if (character === "'") {
         singleQuoteBackslashEscapes = false;
@@ -171,10 +180,10 @@ function maskSqlLiteralsAndComments(sql) {
     }
 
     if (state === "double-quote") {
-      appendMasked(character);
+      appendLiteral(character);
       index += 1;
       if (character === '"' && nextCharacter === '"') {
-        appendMasked(nextCharacter);
+        appendLiteral(nextCharacter);
         index += 1;
       } else if (character === '"') {
         state = "sql";
@@ -184,14 +193,17 @@ function maskSqlLiteralsAndComments(sql) {
 
     if (state === "dollar-quote") {
       if (sql.startsWith(dollarQuoteDelimiter, index)) {
+        if (keepDollarBodies) {
+          masked += maskSqlLiteralsAndComments(sql.slice(dollarBodyStart, index), { keepDollarBodies });
+        }
         for (const delimiterCharacter of dollarQuoteDelimiter) {
-          appendMasked(delimiterCharacter);
+          appendLiteral(delimiterCharacter);
         }
         index += dollarQuoteDelimiter.length;
         dollarQuoteDelimiter = "";
         state = "sql";
       } else {
-        appendMasked(character);
+        if (!keepDollarBodies) appendLiteral(character);
         index += 1;
       }
     }
@@ -257,6 +269,46 @@ function findUnsafeStatements(sql) {
     } else {
       pendingTimeouts.delete(match[2].toLowerCase());
     }
+  }
+  // A timeout set for the whole session survives the transaction-local restore, so it must be
+  // transaction-local. These changes also hide inside DO blocks and EXECUTE strings.
+  const sessionFindings = [];
+  const bodies = maskSqlLiteralsAndComments(sql, { keepDollarBodies: true });
+  const setStatement = /(?:^|;|\bBEGIN\b|\bTHEN\b|\bELSE\b|\bLOOP\b)\s*(SET\s+(?:SESSION\s+)?(lock_timeout|statement_timeout)\b)/giu;
+  for (const match of bodies.matchAll(setStatement)) {
+    sessionFindings.push({ setting: match[2], index: match.index + match[0].indexOf(match[1]) });
+  }
+  const withStrings = maskSqlLiteralsAndComments(sql, { keepLiterals: true });
+  for (const match of withStrings.matchAll(/\bEXECUTE\s+'[^']*?\bSET\s+(?:SESSION\s+)?(lock_timeout|statement_timeout)\b/giu)) {
+    sessionFindings.push({ setting: match[1], index: match.index });
+  }
+  // set_config(name, value, is_local): flag is_local = false. Locate calls where code is (not in message
+  // text), then read the arguments, which may nest calls, from the text that still has its strings.
+  for (const call of bodies.matchAll(/\bset_config\s*\(/giu)) {
+    const open = call.index + call[0].length;
+    const args = [];
+    let depth = 0;
+    let quoted = false;
+    let start = open;
+    for (let at = open; at < withStrings.length && args.length < 3; at += 1) {
+      const character = withStrings[at];
+      if (quoted) { if (character === "'") quoted = false; continue; }
+      if (character === "'") quoted = true;
+      else if (character === "(") depth += 1;
+      else if (character === ")" && depth === 0) { args.push(withStrings.slice(start, at)); break; }
+      else if (character === ")") depth -= 1;
+      else if (character === "," && depth === 0) { args.push(withStrings.slice(start, at)); start = at + 1; }
+    }
+    const setting = /^\s*'(lock_timeout|statement_timeout)'\s*$/iu.exec(args[0] ?? "");
+    if (setting && /^\s*(?:false|'f'|'false'|0)\s*$/iu.test(args[2] ?? "")) {
+      sessionFindings.push({ setting: setting[1], index: call.index });
+    }
+  }
+  for (const { setting, index } of sessionFindings) {
+    findings.push({
+      operation: `session-level ${setting.toLowerCase()} change (use SET LOCAL or set_config(..., true))`,
+      line: sql.slice(0, index).split(/\r?\n/u).length,
+    });
   }
   for (const [setting, index] of pendingTimeouts) {
     findings.push({

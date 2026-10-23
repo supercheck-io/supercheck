@@ -1,6 +1,7 @@
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError } from "@/lib/uuid";
-import { updateMonitorHandler } from "@/lib/monitor-service";
+import { isDeepStrictEqual } from "node:util";
+import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -542,9 +543,11 @@ export async function PUT(
     }
 
     // Handle frequency changes for non-paused monitors OR config changes
-    const configChanged =
-      JSON.stringify(currentMonitor.config) !==
-      JSON.stringify(updatedMonitor.config);
+    // Same comparison PATCH uses: editing alert channels or regions must not restart the cadence.
+    const configChanged = !isDeepStrictEqual(
+      executionConfig(currentMonitor.config),
+      executionConfig(updatedMonitor.config),
+    );
     const targetChanged = currentMonitor.target !== updatedMonitor.target;
     const typeChanged = currentMonitor.type !== updatedMonitor.type;
 

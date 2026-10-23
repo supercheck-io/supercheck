@@ -38,6 +38,23 @@ function createClient() {
   });
 }
 
+// A cache is only cleared when its own tab sees the session end, so an expired session or a
+// closed browser leaves that account's data in localStorage. Anyone using the browser next could
+// read it, so keep only the identity that is signed in now.
+function pruneOtherIdentityCaches(storage: Storage, identity: string) {
+  const keep = `${CACHE_KEY}:${identity}`;
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && key.startsWith(`${CACHE_KEY}:`) && key !== keep) stale.push(key);
+    }
+    stale.forEach((key) => storage.removeItem(key));
+  } catch {
+    /* pruning is best effort: it must not stop this account's own cache from working */
+  }
+}
+
 function initializePersistence(
   client: QueryClient,
   identity: string,
@@ -45,6 +62,7 @@ function initializePersistence(
   try {
     const storage = window.localStorage;
     storage.removeItem(LEGACY_CACHE_KEY);
+    pruneOtherIdentityCaches(storage, identity);
     const persister = createSyncStoragePersister({
       storage: {
         getItem: (key) => storage.getItem(key),
