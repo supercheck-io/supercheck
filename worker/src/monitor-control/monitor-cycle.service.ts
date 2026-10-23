@@ -14,11 +14,7 @@ import { nextSequenceCounters } from './sequence-counters';
 export const MAX_NOTIFY_ATTEMPTS = 5;
 
 export type CloseOutcome =
-  | 'noop'
-  | 'waiting'
-  | 'closed'
-  | 'superseded'
-  | 'aborted';
+  'noop' | 'waiting' | 'closed' | 'superseded' | 'aborted';
 
 type ResultRow = typeof schema.monitorResults.$inferSelect;
 
@@ -233,8 +229,8 @@ export class MonitorCycleService {
       }
 
       const previousStatus = monitor.status;
-      const observedRows = decision.observed.map(
-        (location) => latest.get(location)!,
+      const observedRows = decision.observed.map((location) =>
+        latest.get(location)!,
       );
       const evaluation: MonitorCycleEvaluation = {
         previousStatus,

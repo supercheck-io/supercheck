@@ -747,8 +747,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     const metrics = summary.metrics as
-      | Record<string, Record<string, number>>
-      | undefined;
+      Record<string, Record<string, number>> | undefined;
     if (!metrics) {
       return {
         totalRequests: 0,
