@@ -129,6 +129,46 @@ describe('CapacityManager', () => {
     mockRedisPipeline.mockReturnValue(mockPipelineInstance);
   });
 
+  describe('promotion preflight', () => {
+    const queued: QueuedJobData = { type: 'playwright', jobId: 'waiting-job', runId: 'waiting-run',
+      organizationId: 'org-test-123', projectId: 'project', taskData: { code: 'test()' }, queuedAt: 1234 };
+
+    it.each(['policy', 'workload'])('keeps the queue payload and capacity untouched on a temporary %s failure', async phase => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+      mockRedisEval.mockResolvedValue(1);
+      const cleanup = jest.spyOn(capacityManager as never, 'cleanupJobData' as never);
+      if (phase === 'policy') jest.mocked(getExecutionPolicy).mockRejectedValueOnce(new Error('database unavailable'));
+      else jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS unavailable', 503 as never));
+      const { db } = jest.requireMock('@/utils/db');
+      expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+      expect(mockRedisEval).not.toHaveBeenCalled();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(cleanup).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a permanently invalid workload without claiming execution capacity', async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+      mockRedisEval.mockResolvedValue(1);
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('target not verified', 400));
+      const { db } = jest.requireMock('@/utils/db');
+      expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+      expect(mockRedisEval).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalled();
+      expect(mockRedisZrem).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queued.jobId);
+    });
+
+    it('leaves a rejected workload queued if recording its terminal status fails', async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('expired', 402));
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockImplementationOnce(() => ({ set: () => ({ where: () => Promise.reject(new Error('database unavailable')) }) }));
+      expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+      expect(mockRedisEval).not.toHaveBeenCalled();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+    });
+  });
+
   // ==========================================================================
   // SLOT RESERVATION TESTS
   // ==========================================================================
