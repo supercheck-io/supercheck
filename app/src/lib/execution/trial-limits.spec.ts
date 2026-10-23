@@ -199,10 +199,10 @@ describe("trial limits", () => {
   });
 
   describe("consistency with the database defaults", () => {
-    const migration = readFileSync(
-      resolve(__dirname, "../../db/migrations/0037_execution_entitlements.sql"),
-      "utf8",
-    );
+    // Column defaults live in 0037 and in the later migration that added the load-test allowance.
+    const migration = ["0037_execution_entitlements.sql", "0038_trial_load_test_budget.sql"]
+      .map((file) => readFileSync(resolve(__dirname, "../../db/migrations", file), "utf8"))
+      .join("\n");
     const defaultOf = (column: string) => {
       const match = migration.match(
         new RegExp(`"${column}" (?:integer|bigint) NOT NULL DEFAULT (\\d+)`),
@@ -216,6 +216,7 @@ describe("trial limits", () => {
       ["queued_capacity", TRIAL_LIMITS.queuedCapacity],
       ["k6_max_vus", TRIAL_LIMITS.k6MaxVus],
       ["playwright_budget_ms", TRIAL_LIMITS.playwrightBudgetMs],
+      ["k6_budget_vu_ms", TRIAL_LIMITS.k6BudgetVuMs],
       ["max_monitors", TRIAL_LIMITS.maxMonitors],
       ["min_check_interval_minutes", TRIAL_LIMITS.minCheckIntervalMinutes],
       ["max_status_pages", TRIAL_LIMITS.maxStatusPages],

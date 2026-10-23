@@ -70,6 +70,7 @@
       "queuedCapacity": 5,
       "k6MaxVus": 5,
       "k6MaxDurationSeconds": 300,
+      "k6VuMinutes": 150,
       "maxMonitors": 5,
       "minCheckIntervalMinutes": 5,
       "maxStatusPages": 2,

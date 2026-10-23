@@ -12,7 +12,7 @@ test('the free trial page states the limits in the shared plan catalog', () => {
     `| Monitors | ${limits.maxMonitors}, checked at most every ${limits.minCheckIntervalMinutes} minutes |`,
     `${limits.maxStatusPages}, each with up to ${limits.maxStatusPageSubscribers} subscribers`,
     `${limits.playwrightMinutes} browser minutes in total, ${limits.runningCapacity} run at a time, ${limits.queuedCapacity} waiting`,
-    `up to ${limits.k6MaxVus} virtual users for ${limits.k6MaxDurationSeconds / 60} minutes`,
+    `up to ${limits.k6MaxVus} virtual users for ${limits.k6MaxDurationSeconds / 60} minutes per run, ${limits.k6VuMinutes} virtual-user minutes in total`,
     `| AI SRE | ${limits.sreInvestigations} full investigations |`,
     `| AI credits | ${limits.aiCredits} |`,
     `${limits.maxTeamMembers} team members and ${limits.maxProjects} projects`,

@@ -51,6 +51,8 @@ export const TRIAL_LIMITS = {
   queuedCapacity: trial.queuedCapacity,
   k6MaxVus: trial.k6MaxVus,
   playwrightBudgetMs: trial.playwrightMinutes * 60 * 1000,
+  /** Load-test allowance in virtual-user milliseconds (virtual users x run time). */
+  k6BudgetVuMs: trial.k6VuMinutes * 60 * 1000,
   maxMonitors: trial.maxMonitors,
   minCheckIntervalMinutes: trial.minCheckIntervalMinutes,
   maxStatusPages: trial.maxStatusPages,

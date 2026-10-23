@@ -205,7 +205,7 @@ const trialHighlights = [
     `${trialLimits.maxMonitors} monitors, checked at most every ${trialLimits.minCheckIntervalMinutes} minutes`,
     `${trialLimits.maxStatusPages} status pages with up to ${trialLimits.maxStatusPageSubscribers} subscribers each`,
     `${trialLimits.playwrightMinutes} browser minutes for Playwright tests and synthetic monitors`,
-    `k6 load tests of up to ${trialLimits.k6MaxVus} virtual users for ${trialLimits.k6MaxDurationSeconds / 60} minutes, against domains you verify`,
+    `k6 load tests of up to ${trialLimits.k6MaxVus} virtual users for ${trialLimits.k6MaxDurationSeconds / 60} minutes per run (${trialLimits.k6VuMinutes} virtual-user minutes in total), against domains you verify`,
     `${trialLimits.sreInvestigations} AI SRE investigations and ${trialLimits.aiCredits} AI credits`,
     `${trialLimits.maxTeamMembers} team members and ${trialLimits.maxProjects} projects`,
 ];
