@@ -1,3 +1,4 @@
+/** @jest-environment node */
 import { NextRequest } from "next/server";
 
 jest.mock("@/lib/s3-proxy", () => ({
