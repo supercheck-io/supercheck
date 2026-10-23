@@ -1,15 +1,8 @@
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError } from "@/lib/uuid";
 import { updateMonitorHandler } from "@/lib/monitor-service";
-import {
-  monitorResumeBlockedResponse,
-  trialIntervalErrorResponse,
-} from "@/lib/execution/trial-interval-response";
-import {
-  monitorConfigForRead,
-  monitorTargetForRead,
-  monitorResultDetailsForRead,
-} from "@/lib/monitor-read-config";
+import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
+import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -98,20 +91,13 @@ export async function GET(
       .orderBy(desc(monitorResults.checkedAt))
       .limit(RECENT_RESULTS_LIMIT);
 
-    const canUpdateMonitor = checkPermissionWithContext(
-      "monitor",
-      "update",
-      context,
-    );
+    const canUpdateMonitor = checkPermissionWithContext("monitor", "update", context);
     // Ensure alertConfig has proper defaults if it's null or undefined
     const responseMonitor = {
       ...monitor,
       config: monitorConfigForRead(monitor.config, canUpdateMonitor),
       target: monitorTargetForRead(monitor.target, canUpdateMonitor),
-      recentResults: recentResults.map((result) => ({
-        ...result,
-        details: monitorResultDetailsForRead(result.details),
-      })),
+      recentResults: recentResults.map((result) => ({ ...result, details: monitorResultDetailsForRead(result.details) })),
       alertConfig: monitor.alertConfig || {
         enabled: false,
         notificationProviders: [],
@@ -198,18 +184,11 @@ export async function PUT(
     }
 
     if (rawData.frequencyMinutes !== undefined) {
-      const trialIntervalError = await trialIntervalErrorResponse(
-        currentMonitor.organizationId,
-        rawData.frequencyMinutes,
-      );
+      const trialIntervalError = await trialIntervalErrorResponse(currentMonitor.organizationId, rawData.frequencyMinutes);
       if (trialIntervalError) return trialIntervalError;
     }
 
-    const resumeBlocked = await monitorResumeBlockedResponse(
-      currentMonitor.organizationId,
-      currentMonitor.status,
-      rawData,
-    );
+    const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, rawData);
     if (resumeBlocked) return resumeBlocked;
 
     const configurationValidation = validateMonitorConfiguration({
@@ -246,12 +225,7 @@ export async function PUT(
       );
       if (unsupported.length > 0) {
         return NextResponse.json(
-          {
-            error: unsupportedMonitorLocationsMessage(
-              unsupported,
-              effectiveType,
-            ),
-          },
+          { error: unsupportedMonitorLocationsMessage(unsupported, effectiveType) },
           { status: 400 },
         );
       }
@@ -805,74 +779,36 @@ export async function PATCH(
     }
 
     if (rawData.frequencyMinutes !== undefined) {
-      const trialIntervalError = await trialIntervalErrorResponse(
-        currentMonitor.organizationId,
-        rawData.frequencyMinutes,
-      );
+      const trialIntervalError = await trialIntervalErrorResponse(currentMonitor.organizationId, rawData.frequencyMinutes);
       if (trialIntervalError) return trialIntervalError;
     }
 
-    const resumeBlocked = await monitorResumeBlockedResponse(
-      currentMonitor.organizationId,
-      currentMonitor.status,
-      rawData,
-    );
+    const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, rawData);
     if (resumeBlocked) return resumeBlocked;
 
     const updatePayload: Parameters<typeof updateMonitorHandler>[1] = {};
-    for (const key of [
-      "name",
-      "description",
-      "type",
-      "target",
-      "frequencyMinutes",
-      "enabled",
-    ] as const) {
-      if (rawData[key] !== undefined)
-        Object.assign(updatePayload, { [key]: rawData[key] });
+    for (const key of ["name", "description", "type", "target", "frequencyMinutes", "enabled"] as const) {
+      if (rawData[key] !== undefined) Object.assign(updatePayload, { [key]: rawData[key] });
     }
     if (rawData.enabled !== undefined && typeof rawData.enabled !== "boolean") {
-      return NextResponse.json(
-        { error: "enabled must be boolean" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "enabled must be boolean" }, { status: 400 });
     }
-    if (
-      rawData.frequencyMinutes !== undefined &&
-      (typeof rawData.frequencyMinutes !== "number" ||
-        !Number.isFinite(rawData.frequencyMinutes) ||
-        rawData.frequencyMinutes < 1 ||
-        rawData.frequencyMinutes > 1440)
-    ) {
-      return NextResponse.json(
-        { error: "frequencyMinutes must be between 1 and 1440" },
-        { status: 400 },
-      );
+    if (rawData.frequencyMinutes !== undefined &&
+      (typeof rawData.frequencyMinutes !== "number" || !Number.isFinite(rawData.frequencyMinutes) ||
+       rawData.frequencyMinutes < 1 || rawData.frequencyMinutes > 1440)) {
+      return NextResponse.json({ error: "frequencyMinutes must be between 1 and 1440" }, { status: 400 });
     }
     if (rawData.status !== undefined) {
       if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
-        return NextResponse.json(
-          { error: "Invalid monitor status" },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
       }
-      if (
-        rawData.enabled !== undefined &&
-        rawData.enabled !== (rawData.status !== "paused")
-      ) {
-        return NextResponse.json(
-          { error: "status and enabled disagree" },
-          { status: 400 },
-        );
+      if (rawData.enabled !== undefined && rawData.enabled !== (rawData.status !== "paused")) {
+        return NextResponse.json({ error: "status and enabled disagree" }, { status: 400 });
       }
       updatePayload.enabled = rawData.status !== "paused";
       updatePayload.status = rawData.status;
     }
-    if (rawData.config)
-      updatePayload.config = deepMerge(
-        currentMonitor.config ?? {},
-        rawData.config,
-      );
+    if (rawData.config) updatePayload.config = deepMerge(currentMonitor.config ?? {}, rawData.config);
 
     const configurationValidation = validateMonitorConfiguration({
       type: updatePayload.type ?? currentMonitor.type,
@@ -885,11 +821,8 @@ export async function PATCH(
 
     if (rawData.config?.locationConfig) {
       const outside = await findLocationsOutsideProject(
-        (
-          updatePayload.config as
-            | { locationConfig?: LocationConfig }
-            | undefined
-        )?.locationConfig,
+        (updatePayload.config as { locationConfig?: LocationConfig } | undefined)
+          ?.locationConfig,
         authCtx.project.id,
       );
       if (outside.length > 0) {
@@ -901,8 +834,7 @@ export async function PATCH(
     }
 
     if (rawData.config || rawData.type) {
-      const effectiveConfig = (updatePayload.config ??
-        currentMonitor.config) as
+      const effectiveConfig = (updatePayload.config ?? currentMonitor.config) as
         | { locationConfig?: LocationConfig | null }
         | null
         | undefined;
@@ -912,12 +844,7 @@ export async function PATCH(
       );
       if (unsupported.length > 0) {
         return NextResponse.json(
-          {
-            error: unsupportedMonitorLocationsMessage(
-              unsupported,
-              currentMonitor.type,
-            ),
-          },
+          { error: unsupportedMonitorLocationsMessage(unsupported, currentMonitor.type) },
           { status: 400 },
         );
       }
@@ -990,31 +917,16 @@ export async function DELETE(
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("monitor", "delete", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     const result = await deleteMonitorWithContext(id, context);
-    const status = result.success
-      ? 200
-      : result.error?.includes("not found")
-        ? 404
-        : result.error?.includes("active")
-          ? 409
-          : 500;
+    const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
     console.error("Error deleting monitor:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to delete monitor" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: "Failed to delete monitor" }, { status: 500 });
   }
 }
