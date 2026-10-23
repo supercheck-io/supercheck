@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { executionTargetDomains } from '../../db/schema';
 import {
   ExecutionAdmissionService,
+  ExecutionCapacityError,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
@@ -10,7 +11,11 @@ import {
   parseTrialK6Workload,
   createTrialK6Script,
 } from '../../common/security/trial-k6-workload';
-import { verifyTargetDns } from '../../common/security/execution-target-domain';
+import {
+  TargetDnsUnavailableError,
+  resolvePublicTargetAddresses,
+  verifyTargetDns,
+} from '../../common/security/execution-target-domain';
 import {
   attachBillableMs,
   getBillableMs,
@@ -313,36 +318,52 @@ export class K6ExecutionService {
             throw new Error(
               'Verify ownership of the HTTP workload domain before execution',
             );
-          const addresses = await verifyTargetDns(
-            hostname,
-            target.verificationToken,
-          );
+          const targetIsFresh =
+            !!target.verifiedUntil &&
+            target.verifiedUntil.getTime() > Date.now();
+          let addresses: string[];
+          try {
+            // Ownership is proven once per verification window; the public-address check, which
+            // pins the address into the run, happens on every execution.
+            addresses = targetIsFresh
+              ? await resolvePublicTargetAddresses(hostname)
+              : await verifyTargetDns(hostname, target.verificationToken);
+          } catch (error) {
+            // A resolver outage says nothing about the target: retry later rather than fail the run.
+            if (error instanceof TargetDnsUnavailableError)
+              throw new ExecutionCapacityError(
+                'DNS verification is temporarily unavailable',
+              );
+            throw error;
+          }
           const address =
             addresses.find((ip) => isIP(ip) === 4) ?? addresses[0];
           if (!address) throw new Error('HTTP workload domain did not resolve');
           const verifiedAt = new Date();
-          const refreshed = await this.dbService.db
-            .update(executionTargetDomains)
-            .set({
-              verifiedAt,
-              verifiedUntil: new Date(
-                verifiedAt.getTime() + 24 * 60 * 60 * 1000,
-              ),
-            })
-            .where(
-              and(
-                eq(executionTargetDomains.id, target.id),
-                eq(
-                  executionTargetDomains.organizationId,
-                  reservation.organizationId,
-                ),
-                eq(
-                  executionTargetDomains.verificationToken,
-                  target.verificationToken,
-                ),
-              ),
-            )
-            .returning({ id: executionTargetDomains.id });
+          const refreshed = targetIsFresh
+            ? [{ id: target.id }]
+            : await this.dbService.db
+                .update(executionTargetDomains)
+                .set({
+                  verifiedAt,
+                  verifiedUntil: new Date(
+                    verifiedAt.getTime() + 24 * 60 * 60 * 1000,
+                  ),
+                })
+                .where(
+                  and(
+                    eq(executionTargetDomains.id, target.id),
+                    eq(
+                      executionTargetDomains.organizationId,
+                      reservation.organizationId,
+                    ),
+                    eq(
+                      executionTargetDomains.verificationToken,
+                      target.verificationToken,
+                    ),
+                  ),
+                )
+                .returning({ id: executionTargetDomains.id });
           if (!refreshed.length)
             throw new Error(
               'HTTP workload domain verification changed; retry execution',
@@ -355,6 +376,11 @@ export class K6ExecutionService {
             throw new Error(
               'HTTP workload duration exceeds entitlement expiry',
             );
+          await this.admissionService.setK6Workload(
+            reservation,
+            workload.vus,
+            workload.durationSeconds * 1000,
+          );
           task = {
             ...task,
             script: createTrialK6Script(workload, { [hostname]: address }),

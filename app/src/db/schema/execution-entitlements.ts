@@ -28,6 +28,13 @@ export const executionEntitlements = pgTable(
     playwrightUsedMs: bigint("playwright_used_ms", { mode: "number" })
       .notNull()
       .default(0),
+    /** Load-test allowance in virtual-user milliseconds (VUs x run time); 9,000,000 = 150 VU-minutes. */
+    k6BudgetVuMs: bigint("k6_budget_vu_ms", { mode: "number" })
+      .notNull()
+      .default(9000000),
+    k6UsedVuMs: bigint("k6_used_vu_ms", { mode: "number" })
+      .notNull()
+      .default(0),
     maxMonitors: integer("max_monitors").notNull().default(5),
     minCheckIntervalMinutes: integer("min_check_interval_minutes")
       .notNull()
@@ -54,6 +61,10 @@ export const executionEntitlements = pgTable(
       "execution_entitlements_limits_check",
       sql`${table.runningCapacity} > 0 AND ${table.queuedCapacity} > 0 AND ${table.k6MaxVus} BETWEEN 1 AND 5 AND ${table.playwrightBudgetMs} > 0 AND ${table.playwrightUsedMs} >= 0`,
     ),
+    check(
+      "execution_entitlements_k6_budget_check",
+      sql`${table.k6BudgetVuMs} > 0 AND ${table.k6UsedVuMs} >= 0`,
+    ),
   ],
 );
 
@@ -68,6 +79,8 @@ export const executionReservations = pgTable(
     tier: text("tier").$type<"paid" | "trial">().notNull(),
     reservedMs: bigint("reserved_ms", { mode: "number" }).notNull(),
     usedMs: bigint("used_ms", { mode: "number" }).notNull().default(0),
+    /** Virtual users of a limited load test, set once its workload is parsed; 0 for browser runs. */
+    vus: integer("vus").notNull().default(0),
     ownerToken: uuid("owner_token").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true })
       .notNull()

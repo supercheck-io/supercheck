@@ -61,9 +61,23 @@ it("keeps DNS proofs and verified target lookup organization-scoped", async () =
   const verified = await verifyRegisteredTarget(owner, row.id);
   expect(verified.verifiedUntil!.getTime() - verified.verifiedAt!.getTime()).toBe(86400000);
   await expect(requireVerifiedTarget(foreign, row.hostname)).rejects.toMatchObject({ status: 400 });
+  // Inside the verification window a lookup needs no DNS at all.
+  jest.mocked(verifyTargetDns).mockClear();
+  await expect(requireVerifiedTarget(owner, row.hostname)).resolves.toMatchObject({ id: row.id });
+  expect(verifyTargetDns).not.toHaveBeenCalled();
+
+  // Past the window the proof is re-checked, but a failed check while merely USING the target must not revoke it.
+  await mockDatabase.update(schema.executionTargetDomains).set({ verifiedUntil: new Date(Date.now() - 1000) }).where(eq(schema.executionTargetDomains.id, row.id));
   jest.mocked(verifyTargetDns).mockRejectedValueOnce(new Error("proof removed"));
   await expect(requireVerifiedTarget(owner, row.hostname)).rejects.toMatchObject({ status: 400 });
-  const [stored] = await mockDatabase.select().from(schema.executionTargetDomains).where(eq(schema.executionTargetDomains.id, row.id));
+  let [stored] = await mockDatabase.select().from(schema.executionTargetDomains).where(eq(schema.executionTargetDomains.id, row.id));
+  expect(stored.verifiedAt).not.toBeNull();
+  expect(stored.verificationToken).toBe(row.verificationToken);
+
+  // Only an explicit verification revokes.
+  jest.mocked(verifyTargetDns).mockRejectedValueOnce(new Error("proof removed"));
+  await expect(verifyRegisteredTarget(owner, row.id)).rejects.toMatchObject({ status: 400 });
+  [stored] = await mockDatabase.select().from(schema.executionTargetDomains).where(eq(schema.executionTargetDomains.id, row.id));
   expect(stored.verifiedAt).toBeNull();
   expect(stored.verificationToken).toBe(row.verificationToken);
 });

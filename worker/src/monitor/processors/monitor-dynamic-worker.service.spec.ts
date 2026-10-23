@@ -63,6 +63,29 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
   });
 
+  it('defers a legacy single-queue check too, instead of failing the job', async () => {
+    const { service } = setup();
+    const executeMonitorWithLocations = jest
+      .fn()
+      .mockRejectedValue(new ExecutionCapacityError('occupied'));
+    Object.assign(service['monitorService'], { executeMonitorWithLocations });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { type: 'synthetic_test' }, // no executionLocation: legacy job
+      token: 'token',
+      moveToDelayed,
+      updateData: jest.fn().mockResolvedValue(undefined),
+    };
+    await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+      jest.requireActual('bullmq').DelayedError,
+    );
+    expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
+  });
+
   function setup(location = 'local') {
     const execute = jest.fn().mockRejectedValue(new Error('DB unavailable'));
     const subscriber = Object.assign(new EventEmitter(), {

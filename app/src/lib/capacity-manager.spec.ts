@@ -27,7 +27,7 @@ jest.mock('./queue', () => ({
 
 import { CapacityManager, CapacityReservationUnavailableError, QueuedJobData, setCapacityLogger } from './capacity-manager';
 import { checkCapacityLimits } from './middleware/plan-enforcement';
-import { getExecutionPolicy, ExecutionWorkloadError } from './execution/execution-policy';
+import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError } from './execution/execution-policy';
 import { getQueues } from './queue';
 import { getRedisConnection } from './queue';
 
@@ -131,11 +131,21 @@ describe('CapacityManager', () => {
   describe('Slot Reservation', () => {
     it('refreshes the trusted tier when a queued execution is promoted', async () => {
     const add = jest.fn().mockResolvedValue({});
-    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: 'trial', priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: 'trial', priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     jest.mocked(getQueues).mockResolvedValueOnce({ playwrightQueues: { global: { add } } } as unknown as Awaited<ReturnType<typeof getQueues>>);
     await capacityManager['addJobToBullMQ']({ type: 'playwright', jobId: 'promoted', runId: 'promoted', organizationId: testOrgId, projectId: 'project', taskData: { _executionTier: 'paid' }, queuedAt: Date.now() });
     expect(add).toHaveBeenCalledWith('promoted', expect.objectContaining({ _executionTier: 'trial' }), { jobId: 'promoted', priority: 1 });
     expect(getExecutionPolicy).toHaveBeenCalledWith(testOrgId);
+  });
+
+  it('keeps a promoted run queued, not failed, when a DNS outage stops its workload check', async () => {
+    jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS verification is temporarily unavailable', 503 as never));
+    mockRedisZadd.mockClear();
+    const queuedAt = Date.now() - 5000;
+    await expect(capacityManager['addJobToBullMQ']({ type: 'k6', jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt })).rejects.toThrow('temporarily unavailable');
+    expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queuedAt, 'dns-job');
+    const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   describe('reserveSlot', () => {

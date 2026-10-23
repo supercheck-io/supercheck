@@ -111,6 +111,15 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
         'utf8',
       ).replaceAll('uuidv7()', 'gen_random_uuid()'),
     );
+    await pg.exec(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0038_trial_load_test_budget.sql',
+        ),
+        'utf8',
+      ),
+    );
   });
 
   beforeEach(async () => {

@@ -34,6 +34,8 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
   k6MaxVus: TRIAL_LIMITS.k6MaxVus,
   playwrightBudgetMs: TRIAL_LIMITS.playwrightBudgetMs,
   playwrightUsedMs: 0,
+  k6BudgetVuMs: 9_000_000,
+  k6UsedVuMs: 0,
   maxMonitors: TRIAL_LIMITS.maxMonitors,
   minCheckIntervalMinutes: TRIAL_LIMITS.minCheckIntervalMinutes,
   maxStatusPages: TRIAL_LIMITS.maxStatusPages,

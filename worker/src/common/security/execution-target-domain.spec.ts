@@ -1,5 +1,7 @@
 import {
+  TargetDnsUnavailableError,
   normalizeTargetHostname,
+  resolvePublicTargetAddresses,
   verifyTargetDns,
 } from './execution-target-domain';
 
@@ -75,4 +77,42 @@ it('re-resolves on every verification and fails closed on DNS failure or rebindi
   await expect(
     verifyTargetDns('target.example.com', 'org-token', resolver),
   ).rejects.toThrow();
+});
+const dnsError = (code: string) => Object.assign(new Error(code), { code });
+describe('resolver outages are not proof about the target', () => {
+  it.each(['ETIMEOUT', 'ESERVFAIL', 'ECONNREFUSED'])(
+    'treats %s on the ownership lookup as temporary',
+    async (code) => {
+      resolver.resolveTxt.mockRejectedValue(dnsError(code));
+      await expect(
+        verifyTargetDns('target.example.com', 'org-token', resolver),
+      ).rejects.toBeInstanceOf(TargetDnsUnavailableError);
+    },
+  );
+  it('treats a missing TXT record as failed ownership, not an outage', async () => {
+    resolver.resolveTxt.mockRejectedValue(dnsError('ENODATA'));
+    await expect(
+      verifyTargetDns('target.example.com', 'org-token', resolver),
+    ).rejects.toThrow('ownership');
+  });
+  it('treats failing address lookups as temporary only when nothing answered', async () => {
+    resolver.resolve4.mockRejectedValue(dnsError('ETIMEOUT'));
+    resolver.resolve6.mockRejectedValue(dnsError('ETIMEOUT'));
+    await expect(
+      resolvePublicTargetAddresses('target.example.com', resolver),
+    ).rejects.toBeInstanceOf(TargetDnsUnavailableError);
+    resolver.resolve4.mockRejectedValue(dnsError('ENODATA'));
+    resolver.resolve6.mockRejectedValue(dnsError('ENODATA'));
+    await expect(
+      resolvePublicTargetAddresses('target.example.com', resolver),
+    ).rejects.toThrow('public addresses');
+  });
+  it('still checks every address on its own, without the ownership proof', async () => {
+    resolver.resolveTxt.mockClear();
+    resolver.resolve6.mockResolvedValue(['::1']);
+    await expect(
+      resolvePublicTargetAddresses('target.example.com', resolver),
+    ).rejects.toThrow('public addresses');
+    expect(resolver.resolveTxt).not.toHaveBeenCalled();
+  });
 });

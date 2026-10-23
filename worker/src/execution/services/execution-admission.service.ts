@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+} from '@nestjs/common';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
@@ -58,12 +63,18 @@ export interface ExecutionReservation {
   reservedMs: number;
   limited: boolean;
   k6MaxVus?: number;
+  /** Set for limited load tests once the workload is parsed; charged to the load-test allowance. */
+  vus?: number;
+  /** When this process took the reservation (for shutdown accounting). */
+  startedAtMs?: number;
   expiresAt?: Date;
 }
 
 @Injectable()
-export class ExecutionAdmissionService {
+export class ExecutionAdmissionService implements OnApplicationShutdown {
   private readonly logger = new Logger(ExecutionAdmissionService.name);
+  /** Reservations this process holds, so a graceful shutdown can settle them. */
+  private readonly held = new Map<string, ExecutionReservation>();
 
   constructor(
     @Inject(DB_PROVIDER_TOKEN)
@@ -99,6 +110,8 @@ export class ExecutionAdmissionService {
         throw new ExecutionEntitlementError(
           'Execution entitlement is required',
         );
+      // Settle first so a crashed run's charge is part of the allowance computed below.
+      await this.settleAbandoned(tx, organizationId);
       const standard = hasActiveExecutionPlan({
         polarCustomerId: org.customer,
         subscriptionPlan: org.plan,
@@ -198,6 +211,7 @@ export class ExecutionAdmissionService {
         reservedMs,
         usedMs: 0,
         startedAt,
+        vus: 0,
         finishedAt: null,
         leaseExpiresAt: new Date(
           startedAt.getTime() + RESERVATION_LEASE_TTL_MS,
@@ -215,6 +229,7 @@ export class ExecutionAdmissionService {
         organizationId,
         ownerToken,
         reservedMs,
+        startedAtMs: startedAt.getTime(),
         limited: !!entitlement,
         k6MaxVus: entitlement?.k6MaxVus,
         expiresAt: entitlement?.expiresAt,
@@ -238,6 +253,156 @@ export class ExecutionAdmissionService {
     return renewed.length > 0;
   }
 
+  /**
+   * Closes reservations of this organization whose owner stopped renewing (a crash or a deploy
+   * that killed the worker). They already stopped counting toward capacity; this also charges the
+   * time the lease was alive so a crashed trial run is not free. Runs under the organization lock.
+   */
+  private async settleAbandoned(
+    tx: Pick<PostgresJsDatabase<typeof schema>, 'select' | 'update'>,
+    organizationId: string,
+  ): Promise<void> {
+    const lapsed = await tx
+      .select()
+      .from(schema.executionReservations)
+      .where(
+        and(
+          eq(schema.executionReservations.organizationId, organizationId),
+          isNull(schema.executionReservations.finishedAt),
+          sql`${schema.executionReservations.leaseExpiresAt} <= now()`,
+        ),
+      )
+      .limit(PRUNE_BATCH);
+    for (const row of lapsed) {
+      const aliveMs = Math.max(
+        0,
+        row.leaseExpiresAt.getTime() - row.startedAt.getTime(),
+      );
+      const chargedMs =
+        row.tier === 'trial' ? Math.min(aliveMs, row.reservedMs) : 0;
+      // Re-check the lease in the UPDATE itself: an owner whose renewal just landed is alive and
+      // must neither be closed nor charged.
+      const closed = await tx
+        .update(schema.executionReservations)
+        .set({ usedMs: chargedMs, finishedAt: row.leaseExpiresAt })
+        .where(
+          and(
+            eq(schema.executionReservations.runId, row.runId),
+            isNull(schema.executionReservations.finishedAt),
+            eq(schema.executionReservations.leaseExpiresAt, row.leaseExpiresAt),
+            sql`${schema.executionReservations.leaseExpiresAt} <= now()`,
+          ),
+        )
+        .returning({ runId: schema.executionReservations.runId });
+      if (closed.length)
+        await this.charge(
+          tx,
+          organizationId,
+          row.tier === 'trial',
+          row.kind,
+          chargedMs,
+          row.vus,
+        );
+    }
+  }
+
+  /** Adds a finished limited run to the organization's allowance. */
+  private async charge(
+    tx: Pick<PostgresJsDatabase<typeof schema>, 'update'>,
+    organizationId: string,
+    limited: boolean,
+    kind: string,
+    chargedMs: number,
+    vus: number,
+  ): Promise<void> {
+    if (!limited || chargedMs <= 0) return;
+    if (kind === 'playwright')
+      await tx
+        .update(schema.executionEntitlements)
+        .set({
+          playwrightUsedMs: sql`${schema.executionEntitlements.playwrightUsedMs} + ${chargedMs}`,
+        })
+        .where(eq(schema.executionEntitlements.organizationId, organizationId));
+    else if (kind === 'k6' && vus > 0)
+      await tx
+        .update(schema.executionEntitlements)
+        .set({
+          k6UsedVuMs: sql`${schema.executionEntitlements.k6UsedVuMs} + ${chargedMs * vus}`,
+        })
+        .where(eq(schema.executionEntitlements.organizationId, organizationId));
+  }
+
+  /**
+   * Fixes the size of a limited load test once its workload is parsed and checks it against the
+   * remaining load-test allowance (VUs x time, minus what other active runs have reserved).
+   */
+  async setK6Workload(
+    reservation: ExecutionReservation,
+    vus: number,
+    durationMs: number,
+  ): Promise<void> {
+    if (!reservation.limited) return;
+    await this.db.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.organization.id })
+        .from(schema.organization)
+        .where(eq(schema.organization.id, reservation.organizationId))
+        .for('update');
+      const entitlement = await tx.query.executionEntitlements.findFirst({
+        where: eq(
+          schema.executionEntitlements.organizationId,
+          reservation.organizationId,
+        ),
+      });
+      const [others] = await tx
+        .select({
+          reserved: sql<number>`coalesce(sum(${schema.executionReservations.reservedMs} * ${schema.executionReservations.vus}),0)::bigint`,
+        })
+        .from(schema.executionReservations)
+        .where(
+          and(
+            eq(
+              schema.executionReservations.organizationId,
+              reservation.organizationId,
+            ),
+            eq(schema.executionReservations.kind, 'k6'),
+            isNull(schema.executionReservations.finishedAt),
+            sql`${schema.executionReservations.leaseExpiresAt} > now()`,
+            sql`${schema.executionReservations.runId} <> ${reservation.runId}`,
+          ),
+        );
+      const remaining = entitlement
+        ? entitlement.k6BudgetVuMs -
+          entitlement.k6UsedVuMs -
+          Number(others.reserved)
+        : 0;
+      if (vus * durationMs > remaining)
+        throw new ExecutionEntitlementError(
+          'Trial load-testing allowance is exhausted',
+        );
+      const updated = await tx
+        .update(schema.executionReservations)
+        .set({ vus, reservedMs: durationMs })
+        .where(
+          and(
+            eq(schema.executionReservations.runId, reservation.runId),
+            eq(schema.executionReservations.ownerToken, reservation.ownerToken),
+            isNull(schema.executionReservations.finishedAt),
+            sql`${schema.executionReservations.leaseExpiresAt} > now()`,
+          ),
+        )
+        .returning({ runId: schema.executionReservations.runId });
+      // The lease lapsed (and may have been settled) while this run was starting: running now
+      // would be unmetered, so ask the queue to try again with a fresh reservation.
+      if (!updated.length)
+        throw new ExecutionCapacityError(
+          'Execution reservation was lost before the workload started',
+        );
+    });
+    reservation.vus = vus;
+    reservation.reservedMs = durationMs;
+  }
+
   /** Bounded cleanup so finished reservations do not accumulate forever. */
   private async pruneFinished(
     tx: Pick<PostgresJsDatabase<typeof schema>, 'select' | 'delete'>,
@@ -246,9 +411,19 @@ export class ExecutionAdmissionService {
       .select({ runId: schema.executionReservations.runId })
       .from(schema.executionReservations)
       .where(
-        lt(
-          schema.executionReservations.finishedAt,
-          new Date(Date.now() - RESERVATION_RETENTION_MS),
+        or(
+          lt(
+            schema.executionReservations.finishedAt,
+            new Date(Date.now() - RESERVATION_RETENTION_MS),
+          ),
+          // A crashed run never finished; once its lease has been lapsed this long it is only clutter.
+          and(
+            isNull(schema.executionReservations.finishedAt),
+            lt(
+              schema.executionReservations.leaseExpiresAt,
+              new Date(Date.now() - RESERVATION_RETENTION_MS),
+            ),
+          ),
         ),
       )
       .limit(PRUNE_BATCH);
@@ -290,18 +465,14 @@ export class ExecutionAdmissionService {
       const chargedMs = reservation.limited
         ? Math.min(usedMs, current.reservedMs)
         : usedMs;
-      if (reservation.limited && current.kind === 'playwright')
-        await tx
-          .update(schema.executionEntitlements)
-          .set({
-            playwrightUsedMs: sql`${schema.executionEntitlements.playwrightUsedMs} + ${chargedMs}`,
-          })
-          .where(
-            eq(
-              schema.executionEntitlements.organizationId,
-              reservation.organizationId,
-            ),
-          );
+      await this.charge(
+        tx,
+        reservation.organizationId,
+        reservation.limited,
+        current.kind,
+        chargedMs,
+        current.vus,
+      );
       await tx
         .update(schema.executionReservations)
         .set({ usedMs: chargedMs, finishedAt: new Date() })
@@ -343,6 +514,7 @@ export class ExecutionAdmissionService {
     );
     let usedMs = 0;
     const renewal = reservation ? this.startRenewal(reservation) : undefined;
+    if (reservation) this.held.set(reservation.runId, reservation);
     try {
       const result = await callback(reservation);
       usedMs = result.billableMs ?? 0;
@@ -353,6 +525,7 @@ export class ExecutionAdmissionService {
     } finally {
       if (renewal) clearInterval(renewal);
       if (reservation) {
+        this.held.delete(reservation.runId);
         // The result is already produced (or the original error is in flight); a
         // bookkeeping failure must not replace it. The lease reclaims the slot.
         await this.finish(reservation, usedMs).catch((error: unknown) =>
@@ -362,5 +535,27 @@ export class ExecutionAdmissionService {
         );
       }
     }
+  }
+
+  /**
+   * A deploy stops this process while runs may still hold reservations. Release them now so the
+   * organization's capacity does not stay blocked for a lease; the runs are retried by the queue.
+   * Time is charged from the reservation start, capped at what was reserved.
+   */
+  async onApplicationShutdown(): Promise<void> {
+    const reservations = [...this.held.values()];
+    this.held.clear();
+    await Promise.all(
+      reservations.map((reservation) =>
+        this.finish(
+          reservation,
+          Date.now() - (reservation.startedAtMs ?? Date.now()),
+        ).catch((error: unknown) =>
+          this.logger.error(
+            `Unable to settle execution reservation ${reservation.runId} at shutdown: ${String(error)}`,
+          ),
+        ),
+      ),
+    );
   }
 }

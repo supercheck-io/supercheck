@@ -26,6 +26,8 @@ const entitlement = (expiresAt: Date) => ({
   expiresAt,
   ...TRIAL_LIMITS,
   playwrightUsedMs: 0,
+  k6BudgetVuMs: 9_000_000,
+  k6UsedVuMs: 0,
   lifecycleEndedAt: null,
   midwayNotifiedAt: null,
   endingNotifiedAt: null,

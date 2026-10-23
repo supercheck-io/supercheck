@@ -235,7 +235,7 @@ describe("scheduled execution admission", () => {
   });
 
   it.each(["paid", "trial"] as const)("rethrows unexpected location resolution errors for %s access", async (tier) => {
-    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     (db.select as jest.Mock)
       .mockReturnValueOnce(
         selectRows([

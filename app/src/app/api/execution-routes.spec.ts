@@ -374,7 +374,7 @@ describe("Execution route regressions", () => {
   });
 
   it("admits an active trial without the provider usage probe", async () => {
-    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     const response = await executePlaygroundTest(new NextRequest("http://localhost/api/test", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ script: { invalid: true } }) }));
     expect(response.status).toBe(400);
     expect(mockPolarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
@@ -397,7 +397,7 @@ describe("Execution route regressions", () => {
   });
 
 	  it.each(["paid", "trial"] as const)("POST /api/tests/[id]/execute persists and returns queue status for %s access", async (tier) => {
-    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, playwrightRemainingMs: 1000 });
+    if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     mockDb.query.tests.findFirst.mockResolvedValue({
       id: "test-1",
       type: "playwright",

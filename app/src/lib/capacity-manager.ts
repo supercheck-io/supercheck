@@ -558,7 +558,7 @@ export class CapacityManager {
           const { db } = await import('@/utils/db');
           const { runs } = await import('@/db/schema');
           const { and, eq, inArray } = await import('drizzle-orm');
-          await db.update(runs).set({ status: 'failed', completedAt: new Date() })
+          await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: reason })
             .where(and(eq(runs.id, runId), inArray(runs.status, ['queued'])));
         } catch (dbError) {
           logger.error({ err: dbError, runId }, "Failed to mark run as failed after entitlement ended");
@@ -733,6 +733,20 @@ export class CapacityManager {
       // If job was added, it will release slot via completed/failed events
       if (!jobAddedToBullMQ) {
         await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+
+        // A resolver outage says nothing about the run: keep it queued (same position) and let the
+        // next pass try again instead of failing it. The job data is still stored.
+        if (error instanceof ExecutionWorkloadError && error.status === 503) {
+          try {
+            const redis = await this.getRedis();
+            await redis.zadd(KEYS.queued(jobData.organizationId), jobData.queuedAt, jobData.jobId);
+            logger.warn({ runId: jobData.runId }, "Returned run to the queue after a temporary DNS outage");
+            throw error;
+          } catch (requeueError) {
+            if (requeueError === error) throw error;
+            logger.error({ err: requeueError, runId: jobData.runId }, "Failed to requeue run after DNS outage");
+          }
+        }
 
         // Mark the run as failed so it doesn't stay in 'queued' status forever.
         // This can happen when a location queue disappears between enqueue and promotion

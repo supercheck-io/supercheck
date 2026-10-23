@@ -37,6 +37,15 @@ beforeAll(async () => {
       'utf8',
     ),
   );
+  await client.unsafe(
+    readFileSync(
+      join(
+        __dirname,
+        '../../app/src/db/migrations/0038_trial_load_test_budget.sql',
+      ),
+      'utf8',
+    ),
+  );
   await client`INSERT INTO organization(id) VALUES (${org})`;
   await client`INSERT INTO plan_limits VALUES ('plus',2),('pro',3)`;
   service = new ExecutionAdmissionService(drizzle(client, { schema }));

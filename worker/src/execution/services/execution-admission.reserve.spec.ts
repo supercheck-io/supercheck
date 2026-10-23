@@ -44,6 +44,7 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
 });
 
 interface Scenario {
+  lapsed?: Array<Record<string, unknown>>;
   stale?: Array<{ runId: string }>;
   org?: typeof paidOrg | typeof trialOrg;
   entitlement?: ReturnType<typeof trial>;
@@ -61,6 +62,8 @@ function build(scenario: Scenario) {
     select: jest
       .fn()
       .mockReturnValueOnce(rows(scenario.org ? [scenario.org] : []))
+      // Reservations whose owner stopped renewing are settled before capacity is counted.
+      .mockReturnValueOnce(rows(scenario.lapsed ?? []))
       .mockReturnValueOnce(rows([scenario.active ?? { count: 0, reserved: 0 }]))
       // Pruning of finished reservations runs after a successful admission.
       .mockReturnValue(rows(scenario.stale ?? [])),

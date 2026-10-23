@@ -147,7 +147,7 @@ describe("Plan Enforcement Middleware", () => {
           queuedCapacity: 10,
           expiresAt: new Date(),
           k6MaxVus: 5,
-          playwrightRemainingMs: 1000,
+          k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000,
         });
       await expect(checkCapacityLimits("org-1")).resolves.toEqual({
         runningCapacity: 1,

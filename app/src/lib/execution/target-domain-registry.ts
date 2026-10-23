@@ -34,10 +34,14 @@ export async function requireVerifiedTarget(organizationId: string, value: strin
     eq(executionTargetDomains.organizationId, organizationId), eq(executionTargetDomains.hostname, hostname),
   ) });
   if (!row?.verifiedAt) throw new TargetDomainError("An organization-verified execution target is required", 400);
-  return verifyRegisteredTarget(organizationId, row.id);
+  // Honour a verification that is still fresh. Past it, re-prove ownership, but a failure while merely
+  // using a target must not revoke it: only an explicit verification does that.
+  if (row.verifiedUntil && row.verifiedUntil.getTime() > Date.now()) return row;
+  return verifyRegisteredTarget(organizationId, row.id, { revokeOnFailure: false });
 }
 
-export async function verifyRegisteredTarget(organizationId: string, id: string) {
+export async function verifyRegisteredTarget(organizationId: string, id: string, options: { revokeOnFailure?: boolean } = {}) {
+  const { revokeOnFailure = true } = options;
   const row = await db.query.executionTargetDomains.findFirst({ where: and(
     eq(executionTargetDomains.id, id), eq(executionTargetDomains.organizationId, organizationId),
   ) });
@@ -48,7 +52,7 @@ export async function verifyRegisteredTarget(organizationId: string, id: string)
   } catch (error) {
     // A resolver timeout says nothing about ownership; keep the stored state.
     if (error instanceof TargetDnsUnavailableError) throw new TargetDomainError("DNS verification is temporarily unavailable; retry shortly", 503);
-    await db.update(executionTargetDomains).set({ verifiedAt: null, verifiedUntil: null }).where(ownedRow);
+    if (revokeOnFailure) await db.update(executionTargetDomains).set({ verifiedAt: null, verifiedUntil: null }).where(ownedRow);
     throw new TargetDomainError("DNS ownership or public address verification failed", 400);
   }
   const now = new Date();

@@ -129,6 +129,21 @@ describe("requireVerifiedTarget", () => {
     await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
   });
 
+  it("trusts a verification that is still inside its window without any DNS lookup", async () => {
+    const fresh = { ...row, verifiedAt: new Date(), verifiedUntil: new Date(Date.now() + 3_600_000) };
+    findFirst.mockResolvedValue(fresh);
+    await expect(requireVerifiedTarget("org", "target.example.com")).resolves.toBe(fresh);
+    expect(verifyTargetDns).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("does not revoke a registered target when using it hits a failed or missing proof", async () => {
+    findFirst.mockResolvedValue({ ...row, verifiedAt: new Date(), verifiedUntil: new Date(Date.now() - 1000) });
+    jest.mocked(verifyTargetDns).mockRejectedValue(new Error("no txt record"));
+    await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it("re-verifies DNS at use time for previously verified hosts", async () => {
     const verifiedRow = { ...row, verifiedAt: new Date() };
     findFirst.mockResolvedValue(verifiedRow);

@@ -1,8 +1,14 @@
 import { createTrialK6Script } from '../../common/security/trial-k6-workload';
-import { verifyTargetDns } from '../../common/security/execution-target-domain';
+import {
+  TargetDnsUnavailableError,
+  resolvePublicTargetAddresses,
+  verifyTargetDns,
+} from '../../common/security/execution-target-domain';
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 jest.mock('../../common/security/execution-target-domain', () => ({
   ...jest.requireActual('../../common/security/execution-target-domain'),
   verifyTargetDns: jest.fn(),
+  resolvePublicTargetAddresses: jest.fn(),
 }));
 /**
  * K6 Execution Service Tests
@@ -173,7 +179,10 @@ describe('K6ExecutionService', () => {
     tests: [{ id: 'test-1', script: 'test script' }],
   };
 
-  const mockAdmissionService = { run: jest.fn() };
+  const mockAdmissionService = {
+    run: jest.fn(),
+    setK6Workload: jest.fn().mockResolvedValue(undefined),
+  };
   beforeEach(async () => {
     jest.clearAllMocks();
     mockAdmissionService.run.mockImplementation(
@@ -337,6 +346,66 @@ describe('K6ExecutionService', () => {
       expect(hardDeadlineMs).toBeGreaterThan(30000);
       expect(hardDeadlineMs).toBe(timeoutMs);
       expect(expiresAtMs).toBe(expiresAt.getTime());
+    });
+
+    it('sizes the reservation to the parsed workload so it is metered in VU-milliseconds', async () => {
+      jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockResolvedValue({ success: true } as never);
+      await service.runK6Test({
+        ...mockTask,
+        script: createTrialK6Script(workload),
+      });
+      expect(mockAdmissionService.setK6Workload).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org' }),
+        5,
+        30000,
+      );
+    });
+
+    it('does not re-prove ownership inside the verification window, but still pins public addresses', async () => {
+      mockDbService.db.query.executionTargetDomains.findFirst.mockResolvedValue(
+        {
+          id: 'domain',
+          verificationToken: 'proof',
+          verifiedAt: new Date(),
+          verifiedUntil: new Date(Date.now() + 3600000),
+        },
+      );
+      jest
+        .mocked(resolvePublicTargetAddresses)
+        .mockResolvedValue(['93.184.216.34']);
+      const execute = jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockResolvedValue({ success: true } as never);
+      await service.runK6Test({
+        ...mockTask,
+        script: createTrialK6Script(workload),
+      });
+      expect(verifyTargetDns).not.toHaveBeenCalled();
+      expect(resolvePublicTargetAddresses).toHaveBeenCalledWith('example.test');
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          script: createTrialK6Script(workload, {
+            'example.test': '93.184.216.34',
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('defers instead of failing the run when the resolver is unavailable', async () => {
+      jest
+        .mocked(verifyTargetDns)
+        .mockRejectedValueOnce(new TargetDnsUnavailableError());
+      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
+      await expect(
+        service.runK6Test({
+          ...mockTask,
+          script: createTrialK6Script(workload),
+        }),
+      ).rejects.toBeInstanceOf(ExecutionCapacityError);
+      expect(execute).not.toHaveBeenCalled();
     });
 
     it('does not execute after domain proof is revoked', async () => {

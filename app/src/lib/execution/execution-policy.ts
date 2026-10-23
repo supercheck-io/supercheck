@@ -5,7 +5,7 @@ import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
 export class ExecutionWorkloadError extends Error {
-  constructor(message: string, readonly status: 400 | 402 = 400) { super(message); this.name = "ExecutionWorkloadError"; }
+  constructor(message: string, readonly status: 400 | 402 | 503 = 400) { super(message); this.name = "ExecutionWorkloadError"; }
 }
 
 interface ExecutionCapacity {
@@ -14,10 +14,28 @@ interface ExecutionCapacity {
 }
 export type ExecutionPolicy = ExecutionCapacity & (
   | { tier: "paid"; priority: 0 }
-  | { tier: "trial"; priority: 1; expiresAt: Date; k6MaxVus: number; playwrightRemainingMs: number }
+  | { tier: "trial"; priority: 1; expiresAt: Date; k6MaxVus: number; k6RemainingVuMs: number; playwrightRemainingMs: number }
 );
 
+// One request resolves the policy several times (route, enqueue, slot reservation, promotion), and each
+// resolution can call the billing provider. Share a result for a few seconds; failures are never cached.
+const POLICY_TTL_MS = 5_000;
+const policyCache = new Map<string, { policy: ExecutionPolicy; expires: number }>();
+
+export function clearExecutionPolicyCache(): void {
+  policyCache.clear();
+}
+
 export async function getExecutionPolicy(organizationId: string): Promise<ExecutionPolicy> {
+  const cached = policyCache.get(organizationId);
+  if (cached && cached.expires > Date.now()) return cached.policy;
+  const policy = Object.freeze(await resolveExecutionPolicy(organizationId)) as ExecutionPolicy;
+  policyCache.set(organizationId, { policy, expires: Date.now() + POLICY_TTL_MS });
+  if (policyCache.size > 1000) for (const [key, entry] of policyCache) if (entry.expires <= Date.now()) policyCache.delete(key);
+  return policy;
+}
+
+async function resolveExecutionPolicy(organizationId: string): Promise<ExecutionPolicy> {
   if (!isCloudHosted()) {
     let capacity: ExecutionCapacity = { runningCapacity: 5, queuedCapacity: 50 };
     if (!process.env.RUNNING_CAPACITY && !process.env.QUEUED_CAPACITY) {
@@ -47,6 +65,7 @@ export async function getExecutionPolicy(organizationId: string): Promise<Execut
   return {
     tier: "trial", priority: 1, runningCapacity: trial.runningCapacity, queuedCapacity: trial.queuedCapacity,
     expiresAt: trial.expiresAt, k6MaxVus: trial.k6MaxVus,
+    k6RemainingVuMs: Math.max(0, trial.k6BudgetVuMs - trial.k6UsedVuMs),
     playwrightRemainingMs: Math.max(0, trial.playwrightBudgetMs - trial.playwrightUsedMs),
   };
 }
@@ -68,9 +87,13 @@ export async function assertExecutionWorkload(
   if (workload.vus > policy.k6MaxVus || workload.durationSeconds * 1000 > policy.expiresAt.getTime() - Date.now()) {
     throw new ExecutionWorkloadError("HTTP workload exceeds the trial VU or remaining duration limit");
   }
+  if (workload.vus * workload.durationSeconds * 1000 > policy.k6RemainingVuMs) {
+    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402);
+  }
   try { await requireVerifiedTarget(organizationId, new URL(workload.url).hostname); }
   catch (error) {
-    if (error instanceof TargetDomainError) throw new ExecutionWorkloadError(error.message);
+    // A DNS outage is temporary: keep its 503 so callers retry instead of treating it as a bad request.
+    if (error instanceof TargetDomainError) throw new ExecutionWorkloadError(error.message, error.status === 503 ? 503 : 400);
     throw error;
   }
 }

@@ -8,6 +8,7 @@ import * as schema from '../../db/schema';
 import {
   ExecutionAdmissionService,
   ExecutionCapacityError,
+  ExecutionEntitlementError,
 } from './execution-admission.service';
 
 jest.setTimeout(60_000);
@@ -64,6 +65,15 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
         ),
         'utf8',
       ).replaceAll('uuidv7()', 'gen_random_uuid()'),
+    );
+    await pg.exec(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0038_trial_load_test_budget.sql',
+        ),
+        'utf8',
+      ),
     );
     service = new ExecutionAdmissionService(
       drizzle(pg, { schema }) as unknown as PostgresJsDatabase<typeof schema>,
@@ -150,5 +160,115 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
     );
     await service.finish(reservation!, 900_000);
     expect(await playwrightUsedMs()).toBe(30_000);
+  });
+
+  it('charges a crashed trial run for the time its lease was alive, and frees it for good', async () => {
+    await service.reserve(orgId, 'run-1', 'playwright', 60_000);
+    await pg.exec(
+      "UPDATE execution_reservations SET started_at = now() - interval '10 minutes', lease_expires_at = now() - interval '7 minutes'",
+    );
+    await service.reserve(orgId, 'run-2', 'playwright', 60_000);
+    // alive for 3 minutes but only 60 s were reserved
+    expect(await playwrightUsedMs()).toBe(60_000);
+    const [crashed] = (await reservations()).filter(
+      (r) => r.run_id === 'run-1',
+    );
+    expect(crashed.finished_at).not.toBeNull();
+  });
+
+  it("counts a crashed run's charge before granting the next reservation", async () => {
+    await pg.exec(
+      'UPDATE execution_entitlements SET playwright_budget_ms = 100000',
+    );
+    await service.reserve(orgId, 'run-1', 'playwright', 100_000);
+    await pg.exec(
+      "UPDATE execution_reservations SET started_at = now() - interval '9 minutes', lease_expires_at = now() - interval '4 minutes'",
+    ); // alive 5 min, reserved 100 s: charged the full 100 s
+    await expect(
+      service.reserve(orgId, 'run-2', 'playwright', 100_000),
+    ).rejects.toBeInstanceOf(ExecutionEntitlementError); // nothing is left
+  });
+
+  it('prunes finished and long-abandoned reservations, keeping recent ones', async () => {
+    await pg.query(
+      `INSERT INTO execution_reservations (run_id, organization_id, kind, tier, reserved_ms, owner_token, started_at, finished_at, lease_expires_at)
+       VALUES ('finished-old', $1, 'playwright', 'trial', 1000, gen_random_uuid(), now() - interval '9 days', now() - interval '8 days', now() - interval '8 days'),
+              ('abandoned-old', $1, 'playwright', 'trial', 1000, gen_random_uuid(), now() - interval '9 days', NULL, now() - interval '8 days'),
+              ('finished-recent', $1, 'playwright', 'trial', 1000, gen_random_uuid(), now() - interval '1 hour', now() - interval '30 minutes', now() - interval '30 minutes')`,
+      [orgId],
+    );
+    await service.reserve(orgId, 'run-new', 'playwright', 60_000);
+    expect((await reservations()).map((r) => r.run_id)).toEqual([
+      'finished-recent',
+      'run-new',
+    ]);
+  });
+
+  it('meters a limited load test in VU-milliseconds against the allowance', async () => {
+    await pg.exec('UPDATE execution_entitlements SET k6_budget_vu_ms = 100000');
+    const first = await service.reserve(orgId, 'k6-1', 'k6', 60_000);
+    await service.setK6Workload(first!, 2, 30_000); // 60 000 VU-ms
+    await service.finish(first!, 30_000);
+    expect(
+      Number(
+        (
+          await pg.query<{ used: string }>(
+            'SELECT k6_used_vu_ms AS used FROM execution_entitlements',
+          )
+        ).rows[0].used,
+      ),
+    ).toBe(60_000);
+
+    const second = await service.reserve(orgId, 'k6-2', 'k6', 60_000);
+    await expect(
+      service.setK6Workload(second!, 2, 30_000),
+    ).rejects.toBeInstanceOf(ExecutionEntitlementError);
+    await expect(
+      service.setK6Workload(second!, 1, 30_000),
+    ).resolves.toBeUndefined();
+  });
+
+  it('refuses to start a load test whose reservation lapsed, instead of running it unmetered', async () => {
+    const reservation = await service.reserve(orgId, 'k6-1', 'k6', 60_000);
+    await expireLeases();
+    await expect(
+      service.setK6Workload(reservation!, 1, 30_000),
+    ).rejects.toBeInstanceOf(ExecutionCapacityError);
+  });
+
+  it('starts a retried run with no VUs carried over from its previous attempt', async () => {
+    const first = await service.reserve(orgId, 'k6-1', 'k6', 60_000);
+    await service.setK6Workload(first!, 5, 30_000);
+    await service.finish(first!, 1_000);
+    await service.reserve(orgId, 'k6-1', 'k6', 60_000);
+    expect(
+      (
+        await pg.query<{ vus: number }>(
+          "SELECT vus FROM execution_reservations WHERE run_id = 'k6-1'",
+        )
+      ).rows[0].vus,
+    ).toBe(0);
+  });
+
+  it('settles reservations held by this process at shutdown so capacity is not blocked', async () => {
+    let release!: () => void;
+    const running = service.run(
+      orgId,
+      'run-1',
+      'playwright',
+      60_000,
+      async () => {
+        await new Promise<void>((resolveRun) => (release = resolveRun));
+        return {};
+      },
+    );
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    await service.onApplicationShutdown();
+    expect((await reservations())[0].finished_at).not.toBeNull();
+    await expect(
+      service.reserve(orgId, 'run-2', 'playwright', 60_000),
+    ).resolves.toMatchObject({ runId: 'run-2' });
+    release();
+    await running;
   });
 });

@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import {
+  clearExecutionPolicyCache,
   getExecutionPolicy,
   assertExecutionWorkload,
   type ExecutionPolicy,
@@ -11,7 +12,11 @@ import {
 } from "./target-domain-registry";
 jest.mock("./target-domain-registry", () => ({
   requireVerifiedTarget: jest.fn(),
-  TargetDomainError: class extends Error {},
+  TargetDomainError: class extends Error {
+    constructor(message: string, readonly status: number = 400) {
+      super(message);
+    }
+  },
 }));
 import { db } from "@/utils/db";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
@@ -46,6 +51,8 @@ const trial = {
   k6MaxVus: 5,
   playwrightBudgetMs: 1800000,
   playwrightUsedMs: 0,
+  k6BudgetVuMs: 9_000_000,
+  k6UsedVuMs: 0,
   maxMonitors: 5,
   minCheckIntervalMinutes: 5,
   maxStatusPages: 2,
@@ -61,6 +68,7 @@ const trial = {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  clearExecutionPolicyCache();
   jest.mocked(isCloudHosted).mockReturnValue(true);
   jest.mocked(isPolarEnabled).mockReturnValue(true);
   jest.mocked(subscriptionService.blockUntilSubscribed).mockResolvedValue();
@@ -186,7 +194,7 @@ describe("trial workload admission", () => {
     queuedCapacity: 5,
     expiresAt: new Date(Date.now() + 60_000),
     k6MaxVus: 2,
-    playwrightRemainingMs: 1000,
+    k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000,
   };
   it("refuses arbitrary scripts, multiple workloads, and excessive VUs before domain checks", async () => {
     const canonical = createTrialK6Script({
@@ -246,7 +254,7 @@ describe("trial workload admission", () => {
     await expect(
       assertExecutionWorkload(
         "org",
-        { ...policy, playwrightRemainingMs: 0 },
+        { ...policy, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 0 },
         "playwright",
         [],
       ),
@@ -259,5 +267,35 @@ describe("trial workload admission", () => {
     await expect(
       assertExecutionWorkload("org", policy, "k6", [canonical]),
     ).rejects.toThrow("remaining duration");
+  });
+  it("keeps a DNS outage a temporary 503 instead of reporting a bad request", async () => {
+    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 1, durationSeconds: 30 });
+    jest
+      .mocked(requireVerifiedTarget)
+      .mockRejectedValueOnce(new TargetDomainError("DNS verification is temporarily unavailable", 503));
+    await expect(
+      assertExecutionWorkload("org", policy, "k6", [canonical]),
+    ).rejects.toMatchObject({ status: 503 });
+  });
+  it("refuses a load test larger than the remaining VU-millisecond allowance", async () => {
+    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
+    await expect(
+      assertExecutionWorkload("org", { ...policy, k6MaxVus: 5, k6RemainingVuMs: 149_999 }, "k6", [canonical]),
+    ).rejects.toMatchObject({ status: 402, message: "Trial load-testing allowance exhausted" });
+    await expect(
+      assertExecutionWorkload("org", { ...policy, k6MaxVus: 5, k6RemainingVuMs: 150_000 }, "k6", [canonical]),
+    ).resolves.toBeUndefined();
+  });
+  it("shares one policy resolution between the calls of a request but never caches a failure", async () => {
+    jest.mocked(isPolarEnabled).mockReturnValue(false);
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue(trial as never);
+    await getExecutionPolicy("org");
+    await getExecutionPolicy("org");
+    expect(db.query.executionEntitlements.findFirst).toHaveBeenCalledTimes(1);
+
+    clearExecutionPolicyCache();
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValueOnce(undefined as never);
+    await expect(getExecutionPolicy("org")).rejects.toMatchObject({ status: 402 });
+    await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "trial" });
   });
 });
