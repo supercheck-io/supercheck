@@ -160,6 +160,14 @@ describe("cancellation drain", () => {
     expect((await cancel()).status).toBe(200);
     expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
   });
+  it("finalizes on retry when an earlier attempt removed the job and wrote the marker but did not finish", async () => {
+    Object.assign(run, { runErrorDetails: "Cancellation requested by user" });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => null } }, k6Queues: {} });
+    const response = await cancel();
+    delete (run as Record<string, unknown>).runErrorDetails;
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
+    expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
+  });
   it("keeps a running callback protected when its unlocked queue entry was removed", async () => {
     (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();

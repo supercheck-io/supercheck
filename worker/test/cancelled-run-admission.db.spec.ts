@@ -158,3 +158,21 @@ it('clears only the cancellation marker when a result completes, keeping any oth
     await client`SELECT error_details FROM runs WHERE id=${withDetail}`,
   ).toEqual([{ error_details: 'Timed out waiting for the page' }]);
 });
+it('keeps the cancellation marker when the stalled sweep ends a cancelled run', async () => {
+  const cancelled = await seed(marker, 'running');
+  const stalled = await seed(null, 'running');
+  await client`UPDATE runs SET started_at=now()-interval '3 hours' WHERE id IN (${cancelled}, ${stalled})`;
+  await recovery(true).checkAndHandleStalledJobs();
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${cancelled}`,
+  ).toEqual([{ status: 'error', error_details: marker }]);
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${stalled}`,
+  ).toEqual([
+    {
+      status: 'error',
+      error_details:
+        'Execution timed out - marked as stalled by automatic recovery',
+    },
+  ]);
+});

@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
-import { and, or, eq, inArray } from 'drizzle-orm';
+import { and, or, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
@@ -216,8 +216,8 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           .set({
             status: 'error',
             completedAt: now,
-            errorDetails:
-              'Execution timed out - marked as stalled by automatic recovery',
+            // A cancelled run keeps its marker: it was stopped on request, not stalled.
+            errorDetails: sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN ${schema.runs.errorDetails} ELSE ${'Execution timed out - marked as stalled by automatic recovery'} END`,
           })
           .where(
             and(

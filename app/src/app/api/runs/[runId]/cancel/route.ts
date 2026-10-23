@@ -420,7 +420,11 @@ export async function POST(
 
       // The app marks a run running as soon as it hands it to BullMQ, so a waiting job's run is
       // usually "running" in the DB. Nothing else will ever finalize it once the job is gone.
-      if (removedFromCapacityQueue || (jobWasRemoved && removedJobNeverStarted)) {
+      // A retry after an earlier attempt removed the job but failed before finishing finds the marker
+      // already written and no job anywhere: nothing else will ever finalize the run.
+      const earlierAttemptRemovedJob =
+        run.runErrorDetails === RUN_CANCELLATION_MARKER && !queueToSearch && !removedFromCapacityQueue;
+      if (removedFromCapacityQueue || (jobWasRemoved && removedJobNeverStarted) || earlierAttemptRemovedJob) {
         const finalized = await tx.update(runs).set({ status: "error", completedAt: now }).where(and(
           eq(runs.id, runId),
           inArray(runs.status, ["queued", "running"]),
