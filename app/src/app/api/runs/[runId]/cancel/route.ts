@@ -12,7 +12,7 @@ import {
 } from "@/lib/job-status-utils";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { setCancellationSignal } from "@/lib/cancellation-service";
+import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCapacityManager } from "@/lib/capacity-manager";
 
@@ -64,6 +64,7 @@ export async function POST(
       .select({
         runId: runs.id,
         runStatus: runs.status,
+        runErrorDetails: runs.errorDetails,
         runJobId: runs.jobId,
         runProjectId: runs.projectId,
         jobId: jobs.id,
@@ -168,6 +169,17 @@ export async function POST(
       );
     }
 
+    // A repeated cancel of an already-cancelled run is a no-op, not an error.
+    if (run.runStatus === "error" && run.runErrorDetails === RUN_CANCELLATION_MARKER) {
+      return NextResponse.json({
+        success: true,
+        message: "Run cancelled successfully",
+        runId,
+        queueRemoved: false,
+        jobType: "unknown",
+      });
+    }
+
     // Check if run can be cancelled (must be running or pending)
     if (!canCancelRun(run.runStatus as RunStatus)) {
       logger.warn(
@@ -214,6 +226,9 @@ export async function POST(
     // For active jobs, the worker will see the cancellation signal and stop
     let removedFromCapacityQueue = false;
     let jobWasRemoved = false; // Track if we successfully removed the job
+    // A job a worker never picked up has no processedOn. One that was handed back
+    // (capacity or active-execution deferral) may still have a live execution behind it.
+    let removedJobNeverStarted = false;
     try {
       // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all
       // active/waiting/delayed jobs for every cancellation request.
@@ -222,7 +237,10 @@ export async function POST(
 
       if (playwrightJob) {
           try {
+            // Re-read just before removing: a worker may have picked the job up and handed it back since the first read.
+            const neverStarted = !((await playwrightQueue.getJob(runId)) ?? playwrightJob).processedOn;
             await playwrightJob.remove();
+            removedJobNeverStarted = neverStarted;
             queueToSearch = "playwright-global";
             jobType = "playwright";
             jobWasRemoved = true;
@@ -257,7 +275,9 @@ export async function POST(
           const k6Job = await k6Queue.getJob(runId);
           if (k6Job) {
               try {
+                const neverStarted = !((await k6Queue.getJob(runId)) ?? k6Job).processedOn;
                 await k6Job.remove();
+                removedJobNeverStarted = neverStarted;
                 queueToSearch = `k6-${region}`;
                 jobType = "k6";
                 jobWasRemoved = true;
@@ -362,15 +382,17 @@ export async function POST(
       await tx
         .update(runs)
         .set({
-          errorDetails: "Cancellation requested by user",
+          errorDetails: RUN_CANCELLATION_MARKER,
         })
         .where(and(eq(runs.id, runId), inArray(runs.status, ["queued", "running"])));
 
-      if (queueRemoved && run.runStatus === "queued") {
+      // The app marks a run running as soon as it hands it to BullMQ, so a waiting job's run is
+      // usually "running" in the DB. Nothing else will ever finalize it once the job is gone.
+      if (removedFromCapacityQueue || (jobWasRemoved && removedJobNeverStarted)) {
         const finalized = await tx.update(runs).set({ status: "error", completedAt: now }).where(and(
           eq(runs.id, runId),
-          eq(runs.status, "queued"),
-          eq(runs.errorDetails, "Cancellation requested by user"),
+          inArray(runs.status, ["queued", "running"]),
+          eq(runs.errorDetails, RUN_CANCELLATION_MARKER),
         )).returning({ id: runs.id });
         cancellationComplete = finalized.length > 0;
       }

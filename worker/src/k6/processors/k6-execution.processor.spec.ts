@@ -398,6 +398,7 @@ describe('k6 execution admission', () => {
     const runK6Test = jest.fn();
     const updateRunStatus = jest.fn();
     const claimRunExecution = jest.fn().mockResolvedValue(false);
+    const finalizeCancelledRun = jest.fn().mockResolvedValue(true);
     const processor = new K6ExecutionProcessor(
       {
         runK6Test,
@@ -405,6 +406,7 @@ describe('k6 execution admission', () => {
       } as unknown as Dependencies[0],
       {
         claimRunExecution,
+        finalizeCancelledRun,
         getTerminalRun: async () => undefined,
         updateRunStatus,
       } as unknown as Dependencies[1],
@@ -422,6 +424,7 @@ describe('k6 execution admission', () => {
       error: 'Cancellation requested by user',
     });
     expect(claimRunExecution).toHaveBeenCalledWith('run-id');
+    expect(finalizeCancelledRun).toHaveBeenCalledWith('run-id');
     expect(runK6Test).not.toHaveBeenCalled();
     expect(updateRunStatus).not.toHaveBeenCalled();
   });

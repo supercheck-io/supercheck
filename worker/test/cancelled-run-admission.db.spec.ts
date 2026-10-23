@@ -3,11 +3,12 @@ import postgres = require('postgres');
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../src/execution/services/db.service';
+import { RUN_CANCELLATION_MARKER } from '../src/common/services/cancellation.service';
 import { StalledJobHandlerService } from '../src/execution/services/stalled-job-handler.service';
 
 jest.mock('execa', () => ({ execa: jest.fn() }));
 
-const marker = 'Cancellation requested by user';
+const marker = RUN_CANCELLATION_MARKER;
 let maintenance: ReturnType<typeof postgres>;
 let client: ReturnType<typeof postgres>;
 let service: DbService;
@@ -21,7 +22,7 @@ beforeAll(async () => {
   url.pathname = `/${name}`;
   client = postgres(url.toString(), { max: 2 });
   await client.unsafe(
-    'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, started_at timestamptz, created_at timestamptz, completed_at timestamptz, error_details text, location text)',
+    'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, started_at timestamptz, created_at timestamptz, completed_at timestamptz, error_details text, location text, duration_ms integer)',
   );
   service = new DbService(drizzle(client), new ConfigService());
 });
@@ -105,4 +106,27 @@ it('keeps a queued cancellation protected while execution activity is present', 
   expect(await client`SELECT status FROM runs WHERE id=${id}`).toEqual([
     { status: 'queued' },
   ]);
+});
+it('ends a cancelled run whose execution claim was refused, even with recovery off', async () => {
+  const id = await seed();
+  const ordinary = await seed(null);
+  expect(await service.claimRunExecution(id)).toBe(false);
+  expect(await service.finalizeCancelledRun(id)).toBe(true);
+  expect(await service.finalizeCancelledRun(id)).toBe(false);
+  expect(await service.finalizeCancelledRun(ordinary)).toBe(false);
+  expect(
+    await client`SELECT status, completed_at IS NOT NULL AS done FROM runs WHERE id=${id}`,
+  ).toEqual([{ status: 'error', done: true }]);
+  expect(await client`SELECT status FROM runs WHERE id=${ordinary}`).toEqual([
+    { status: 'queued' },
+  ]);
+});
+it('lets a completed result replace a late cancellation marker', async () => {
+  const id = await seed(null);
+  expect(await service.claimRunExecution(id)).toBe(true);
+  await client`UPDATE runs SET error_details=${marker} WHERE id=${id}`;
+  await service.updateRunStatus(id, 'passed', '1');
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${id}`,
+  ).toEqual([{ status: 'passed', error_details: null }]);
 });

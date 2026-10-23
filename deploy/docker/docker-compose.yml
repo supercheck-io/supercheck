@@ -117,6 +117,9 @@ x-common-env: &common-env # Database Configuration
   # "monitor" for a lightweight monitoring-only worker.
   WORKER_QUEUES: ${WORKER_QUEUES:-}
 
+  # Finalize runs cancelled while still queued. Leave off until every worker runs this version.
+  CANCELLED_QUEUED_RECOVERY_ENABLED: ${CANCELLED_QUEUED_RECOVERY_ENABLED:-false}
+
   # S3-compatible storage (bundled RustFS)
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is missing from .env. Upgrading from MinIO? Run ./migrate-minio-to-rustfs.sh. Do NOT re-run init-secrets.sh --force on an existing install}
