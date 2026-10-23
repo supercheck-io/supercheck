@@ -14,11 +14,11 @@ for (const path of pages) {
   operationPages++;
   test(`exported API page renders its playground and operations: ${path}`, () => {
     const html = readFileSync(new URL(join('out/docs/api', path.replace(/\.mdx$/, '.html')), docs), 'utf8');
-    const text = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, '');
-    assert.ok(text.includes('Try in Playground'), 'API playground control is missing');
+    const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)];
+    assert.ok(buttons.some(([button]) => button.includes('Try in Playground')), 'API playground control is missing');
     for (const operation of JSON.parse(match[1])) {
-      assert.ok(text.includes(operation.method.toUpperCase()), `${operation.method} label is missing`);
-      assert.ok(text.includes(operation.path.split('{')[0]), `${operation.path} endpoint is missing`);
+      assert.ok(html.includes(`>${operation.method.toUpperCase()}</`), `${operation.method} label is missing`);
+      assert.ok(html.includes(operation.path.split('{')[0]), `${operation.path} endpoint is missing`);
     }
   });
 }
