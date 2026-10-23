@@ -160,7 +160,17 @@ describe('CapacityManager', () => {
       db.update.mockImplementationOnce(() => ({ set: () => ({ where: () => Promise.reject(new Error('database unavailable')) }) }));
       expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
       expect(mockRedisEval).not.toHaveBeenCalled();
-      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queued.queuedAt, queued.jobId);
+    });
+
+    it('cannot reject a queued run another promoter already claimed', async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+      mockRedisZrem.mockResolvedValueOnce(0);
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('target revoked', 400));
+      const { db } = jest.requireMock('@/utils/db');
+      expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(mockRedisEval).not.toHaveBeenCalled();
     });
   });
 

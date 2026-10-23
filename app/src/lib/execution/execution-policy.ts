@@ -102,7 +102,7 @@ export async function assertExecutionWorkload(
             error.status === 503 ? 503 : 400,
           );
         }
-        throw new ExecutionWorkloadError(`Trial tests may only call public domains you have verified: ${hostname}`);
+        throw error;
       }
     }
     return;

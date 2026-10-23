@@ -669,9 +669,18 @@ export class CapacityManager {
           const { db } = await import('@/utils/db');
           const { runs } = await import('@/db/schema');
           const { and, eq } = await import('drizzle-orm');
-          await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: error.message })
-            .where(and(eq(runs.id, jobData.runId), eq(runs.status, 'queued')));
-          await this.removeFromQueuedSet(organizationId, jobId);
+          const redis = await this.getRedis();
+          // Only the caller that removes the queued entry may reject it; a racing promotion may own it.
+          if ((await redis.zrem(queuedKey, jobId)) > 0) {
+            try {
+              await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: error.message })
+                .where(and(eq(runs.id, jobData.runId), eq(runs.status, 'queued')));
+            } catch (recordError) {
+              await redis.zadd(queuedKey, jobData.queuedAt, jobId);
+              throw recordError;
+            }
+            await this.cleanupJobData(jobId);
+          }
         } catch (recordError) {
           logger.error({ err: recordError, jobId }, "Could not record rejected queued workload; retaining it for retry");
         }
