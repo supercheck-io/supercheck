@@ -471,7 +471,8 @@ export class MonitorService {
     let previousStatus = monitor.status;
     const checkedAt = results[0].checkedAt;
     let groupEvaluation:
-      (GroupAlertEvaluation & { resultId: string }) | undefined;
+      | (GroupAlertEvaluation & { resultId: string })
+      | undefined;
     if (options?.executionGroupId) {
       const prepared = await this.prepareGroupEvaluation(
         monitorId,
@@ -2122,7 +2123,8 @@ export class MonitorService {
 
       // Check if we have SSL certificate info to determine smart frequency
       const sslCertificate = monitorConfig.sslCertificate as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
       const daysRemaining =
         sslCertificate?.daysRemaining != null
           ? Number(sslCertificate.daysRemaining)

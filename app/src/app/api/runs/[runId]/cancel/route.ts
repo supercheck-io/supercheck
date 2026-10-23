@@ -44,6 +44,11 @@ const logger = createLogger({ module: "cancel-run-api" }) as {
  * @param params - Route params containing run ID
  * @returns JSON response with cancellation result
  */
+/** BullMQ sets processedOn once a worker has picked a job up, even if it then moved the job back to the queue. */
+function isHandedBack(job: { processedOn?: number | null }): boolean {
+  return Boolean(job.processedOn);
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> }
@@ -211,6 +216,21 @@ export async function POST(
       );
     }
 
+    // The marker is written before any queue work: if removing the job succeeds and a later step fails,
+    // a retry must still find it, and a worker that claims the run in between is refused by it.
+    try {
+      await db
+        .update(runs)
+        .set({ errorDetails: RUN_CANCELLATION_MARKER })
+        .where(and(eq(runs.id, runId), inArray(runs.status, ["queued", "running"])));
+    } catch (markerError) {
+      logger.error({ error: markerError, runId }, "Failed to persist the cancellation marker");
+      return NextResponse.json(
+        { error: "Could not request cancellation; please retry" },
+        { status: 503 }
+      );
+    }
+
     // STEP 2: Try to remove from queue (works for waiting/delayed jobs)
     // Get the BullMQ queues
     const queues = await getQueues();
@@ -237,17 +257,24 @@ export async function POST(
 
       if (playwrightJob) {
           try {
-            // Re-read just before removing: a worker may have picked the job up and handed it back since the first read.
-            const neverStarted = !((await playwrightQueue.getJob(runId)) ?? playwrightJob).processedOn;
-            await playwrightJob.remove();
-            removedJobNeverStarted = neverStarted;
-            queueToSearch = "playwright-global";
-            jobType = "playwright";
-            jobWasRemoved = true;
-            logger.info(
-              { runId, jobId: playwrightJob.id, queue: queueToSearch },
-              "Removed job from BullMQ queue"
-            );
+            // A job a worker already picked up and handed back (capacity or active-execution deferral)
+            // may have an execution behind it. Leave it in the queue: the worker re-checks, is refused
+            // by the cancellation marker and finishes the run itself.
+            if (isHandedBack(await playwrightQueue.getJob(runId) ?? playwrightJob)) {
+              queueToSearch = "playwright-global";
+              jobType = "playwright";
+              logger.info({ runId, jobId: playwrightJob.id }, "Job was handed back by a worker; leaving it for the worker to finish");
+            } else {
+              await playwrightJob.remove();
+              removedJobNeverStarted = true;
+              queueToSearch = "playwright-global";
+              jobType = "playwright";
+              jobWasRemoved = true;
+              logger.info(
+                { runId, jobId: playwrightJob.id, queue: queueToSearch },
+                "Removed job from BullMQ queue"
+              );
+            }
           } catch (removeError) {
             // Job is locked by worker - it's already running, can't remove from queue
             // This is expected - we'll just update the database status
@@ -275,16 +302,21 @@ export async function POST(
           const k6Job = await k6Queue.getJob(runId);
           if (k6Job) {
               try {
-                const neverStarted = !((await k6Queue.getJob(runId)) ?? k6Job).processedOn;
-                await k6Job.remove();
-                removedJobNeverStarted = neverStarted;
-                queueToSearch = `k6-${region}`;
-                jobType = "k6";
-                jobWasRemoved = true;
-                logger.info(
-                  { runId, jobId: k6Job.id, queue: queueToSearch },
-                  "Removed job from BullMQ queue"
-                );
+                if (isHandedBack(await k6Queue.getJob(runId) ?? k6Job)) {
+                  queueToSearch = `k6-${region}`;
+                  jobType = "k6";
+                  logger.info({ runId, jobId: k6Job.id }, "Job was handed back by a worker; leaving it for the worker to finish");
+                } else {
+                  await k6Job.remove();
+                  removedJobNeverStarted = true;
+                  queueToSearch = `k6-${region}`;
+                  jobType = "k6";
+                  jobWasRemoved = true;
+                  logger.info(
+                    { runId, jobId: k6Job.id, queue: queueToSearch },
+                    "Removed job from BullMQ queue"
+                  );
+                }
               } catch (removeError) {
                 // Job is locked by worker - it's already running, can't remove from queue
                 // This is expected - we'll just update the database status

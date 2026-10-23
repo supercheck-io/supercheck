@@ -143,7 +143,8 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
 
     worker.on('completed', (job: Job, result: unknown) => {
       const res = result as
-        { timedOut?: boolean; success?: boolean } | undefined;
+        | { timedOut?: boolean; success?: boolean }
+        | undefined;
       const timedOut = Boolean(res?.timedOut);
       const status = timedOut
         ? 'timed out'

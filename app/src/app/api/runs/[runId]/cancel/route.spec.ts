@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), query: { member: { findFirst: jest.fn() } }, transaction: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), query: { member: { findFirst: jest.fn() } }, transaction: jest.fn() } }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn().mockResolvedValue({ userId: "user-1" }),
@@ -79,6 +79,8 @@ describe("cancellation drain", () => {
   const run = { runId: "run", jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" };
   const set = jest.fn();
   const returning = jest.fn();
+  const markerSet = jest.fn();
+  const markerWhere = jest.fn();
   beforeEach(() => {
     jest.clearAllMocks();
     (requireAuthContext as jest.Mock).mockResolvedValue({ userId: "user-1" });
@@ -89,6 +91,8 @@ describe("cancellation drain", () => {
     returning.mockResolvedValue([{ id: "run" }]);
     set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
     (db.transaction as jest.Mock).mockImplementation(async callback => callback({ update: () => ({ set }) }));
+    markerWhere.mockReset().mockResolvedValue(undefined);
+    (db.update as jest.Mock).mockReturnValue({ set: markerSet.mockReturnValue({ where: markerWhere }) });
     (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot: jest.fn() });
   });
   async function cancel() {
@@ -123,6 +127,26 @@ describe("cancellation drain", () => {
     expect(setCancellationSignal).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
     delete (run as Record<string, unknown>).runErrorDetails;
+  });
+  it("persists the marker before touching the queue, and refuses (without removing anything) if it cannot", async () => {
+    const remove = jest.fn();
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove }) } }, k6Queues: {} });
+    markerWhere.mockRejectedValueOnce(new Error("db down"));
+    const response = await cancel();
+    expect(response.status).toBe(503);
+    expect(remove).not.toHaveBeenCalled();
+    expect(markerSet).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+  });
+  it("leaves a job a worker already handed back in the queue for the worker to finish", async () => {
+    const remove = jest.fn();
+    const releaseRunningSlot = jest.fn();
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), remove }) } }, k6Queues: {} });
+    (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot });
+    const response = await cancel();
+    expect(remove).not.toHaveBeenCalled();
+    expect(releaseRunningSlot).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+    expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
   });
   it("rejects a cancellation when the worker signal cannot be persisted", async () => {
     (setCancellationSignal as jest.Mock).mockRejectedValueOnce(new Error("Redis unavailable"));

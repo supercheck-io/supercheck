@@ -218,7 +218,7 @@ export class DbService implements OnModuleInit {
         durationMs?: number;
         completedAt?: Date;
         startedAt?: Date;
-        errorDetails?: string | null;
+        errorDetails?: string | null | SQL;
         artifactPaths?: any;
       } = {
         status,
@@ -275,8 +275,9 @@ export class DbService implements OnModuleInit {
       if (errorDetails) {
         updateData.errorDetails = errorDetails;
       } else if (status === 'passed' || status === 'failed') {
-        // Completion wins a late-cancel race: do not leave a stale cancellation marker on a finished run.
-        updateData.errorDetails = null;
+        // Completion wins a late-cancel race: drop a stale cancellation marker from a finished run, and
+        // only that marker (any other recorded detail stays).
+        updateData.errorDetails = sql`CASE WHEN ${runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN NULL ELSE ${runs.errorDetails} END`;
       }
 
       // Update the database

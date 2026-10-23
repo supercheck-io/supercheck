@@ -33,9 +33,12 @@ afterAll(async () => {
     await maintenance.end();
   }
 });
-async function seed(errorDetails: string | null = marker) {
+async function seed(
+  errorDetails: string | null = marker,
+  status: 'queued' | 'running' = 'queued',
+) {
   const id = randomUUID();
-  await client`INSERT INTO runs(id,status,created_at,error_details) VALUES (${id},'queued',now()-interval '3 hours',${errorDetails})`;
+  await client`INSERT INTO runs(id,status,created_at,error_details) VALUES (${id},${status},now()-interval '3 hours',${errorDetails})`;
   return id;
 }
 function recovery(enabled: boolean, active = false) {
@@ -129,4 +132,29 @@ it('lets a completed result replace a late cancellation marker', async () => {
   expect(
     await client`SELECT status, error_details FROM runs WHERE id=${id}`,
   ).toEqual([{ status: 'passed', error_details: null }]);
+});
+it('finishes a cancelled run that the app had already marked running, and leaves other runs alone', async () => {
+  const cancelled = await seed(marker, 'running');
+  const finished = await seed(null, 'running');
+  expect(await service.claimRunExecution(cancelled)).toBe(false);
+  expect(await service.finalizeCancelledRun(cancelled)).toBe(true);
+  expect(await service.finalizeCancelledRun(finished)).toBe(false);
+  expect(await client`SELECT status FROM runs WHERE id=${cancelled}`).toEqual([
+    { status: 'error' },
+  ]);
+  expect(await client`SELECT status FROM runs WHERE id=${finished}`).toEqual([
+    { status: 'running' },
+  ]);
+});
+it('clears only the cancellation marker when a result completes, keeping any other detail', async () => {
+  const withMarker = await seed(marker, 'running');
+  const withDetail = await seed('Timed out waiting for the page', 'running');
+  await service.updateRunStatus(withMarker, 'passed', '1');
+  await service.updateRunStatus(withDetail, 'failed', '1');
+  expect(
+    await client`SELECT error_details FROM runs WHERE id=${withMarker}`,
+  ).toEqual([{ error_details: null }]);
+  expect(
+    await client`SELECT error_details FROM runs WHERE id=${withDetail}`,
+  ).toEqual([{ error_details: 'Timed out waiting for the page' }]);
 });

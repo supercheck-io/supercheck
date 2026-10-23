@@ -94,6 +94,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A run the user already cancelled ends as cancelled; the failure must not replace that.
+      if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
+        throw new UnrecoverableError(message);
+      }
       await this.dbService.db
         .update(schema.runs)
         .set({
@@ -430,8 +434,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           } else if (result.error) {
             runUpdate.errorDetails = result.error;
           } else if (runStatus === 'passed' || runStatus === 'failed') {
-            // Completion wins a late-cancel race: do not leave a stale cancellation marker on a finished run.
-            runUpdate.errorDetails = null;
+            // Completion wins a late-cancel race: drop a stale cancellation marker, and only that marker.
+            runUpdate.errorDetails = sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN NULL ELSE ${schema.runs.errorDetails} END`;
           }
 
           if (metadataExpression) {
@@ -743,7 +747,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     const metrics = summary.metrics as
-      Record<string, Record<string, number>> | undefined;
+      | Record<string, Record<string, number>>
+      | undefined;
     if (!metrics) {
       return {
         totalRequests: 0,

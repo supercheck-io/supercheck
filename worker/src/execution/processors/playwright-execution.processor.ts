@@ -133,6 +133,10 @@ export class PlaywrightExecutionProcessor
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A run the user already cancelled ends as cancelled; the failure must not replace that.
+      if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
+        throw new UnrecoverableError(message);
+      }
       await this.dbService
         .updateRunStatus(runId, 'failed', '0', message)
         .catch((err: Error) =>

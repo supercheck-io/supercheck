@@ -618,7 +618,8 @@ export class K6ExecutionService {
 
       // Check if any validation checks failed
       const metrics = summary?.metrics as
-        Record<string, Record<string, number>> | undefined;
+        | Record<string, Record<string, number>>
+        | undefined;
       const checksFailed = timedOut
         ? false
         : metrics?.checks?.fails
