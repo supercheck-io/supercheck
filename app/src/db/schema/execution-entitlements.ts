@@ -49,6 +49,8 @@ export const executionEntitlements = pgTable(
       .notNull()
       .default(5),
     aiCredits: integer("ai_credits").notNull().default(100),
+    /** When the trial began. Extending expires_at must not move the window the allowances are counted in. */
+    trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
     /** Set once the trial-end job has paused and archived the organization's resources. */
     lifecycleEndedAt: timestamp("lifecycle_ended_at", { withTimezone: true }),
     /** Set when the matching reminder email was sent, so each is sent at most once. */
@@ -57,6 +59,9 @@ export const executionEntitlements = pgTable(
     endedNotifiedAt: timestamp("ended_notified_at", { withTimezone: true }),
   },
   (table) => [
+    index("execution_entitlements_open_expiry_idx")
+      .on(table.expiresAt)
+      .where(sql`${table.lifecycleEndedAt} IS NULL`),
     check(
       "execution_entitlements_limits_check",
       sql`${table.runningCapacity} > 0 AND ${table.queuedCapacity} > 0 AND ${table.k6MaxVus} BETWEEN 1 AND 5 AND ${table.playwrightBudgetMs} > 0 AND ${table.playwrightUsedMs} >= 0`,

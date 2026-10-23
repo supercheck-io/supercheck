@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import {
+  literalHostnames,
   clearExecutionPolicyCache,
   getExecutionPolicy,
   assertExecutionWorkload,
@@ -53,6 +54,7 @@ const trial = {
   playwrightUsedMs: 0,
   k6BudgetVuMs: 9_000_000,
   k6UsedVuMs: 0,
+  trialStartedAt: new Date(0),
   maxMonitors: 5,
   minCheckIntervalMinutes: 5,
   maxStatusPages: 2,
@@ -297,5 +299,48 @@ describe("trial workload admission", () => {
     jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValueOnce(undefined as never);
     await expect(getExecutionPolicy("org")).rejects.toMatchObject({ status: 402 });
     await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "trial" });
+  });
+  describe("trial browser and API tests", () => {
+    it("lists the hosts a script writes as absolute URLs, decoding stored scripts", () => {
+      const script = `await page.goto("https://App.Example.com/login");
+        const r = await request.get('https://api.example.com/v1?x=1');
+        const same = "https://app.example.com/other";`;
+      expect(literalHostnames([script, Buffer.from('fetch("http://third.test/")').toString("base64")]).sort()).toEqual([
+        "api.example.com", "app.example.com", "third.test",
+      ]);
+      expect(literalHostnames(["await page.goto('/relative')"])).toEqual([]);
+    });
+
+    it("requires every host in the script to be a verified domain of the organization", async () => {
+      jest.mocked(requireVerifiedTarget).mockResolvedValue({} as never);
+      await expect(
+        assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")', "await request.get('https://api.example.com/')"]),
+      ).resolves.toBeUndefined();
+      expect(requireVerifiedTarget).toHaveBeenCalledWith("org", "app.example.com");
+      expect(requireVerifiedTarget).toHaveBeenCalledWith("org", "api.example.com");
+    });
+
+    it("refuses a script that calls a domain the organization has not verified", async () => {
+      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(new TargetDomainError("An organization-verified execution target is required", 400));
+      await expect(
+        assertExecutionWorkload("org", policy, "playwright", ['await request.get("https://victim.example.org/")']),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("victim.example.org") });
+    });
+
+    it("keeps a DNS outage temporary and does not ask for scripts without URLs", async () => {
+      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(new TargetDomainError("DNS verification is temporarily unavailable", 503));
+      await expect(
+        assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")']),
+      ).rejects.toMatchObject({ status: 503 });
+      jest.mocked(requireVerifiedTarget).mockClear();
+      await expect(assertExecutionWorkload("org", policy, "playwright", ["await page.goto('/x')"])).resolves.toBeUndefined();
+      expect(requireVerifiedTarget).not.toHaveBeenCalled();
+    });
+
+    it("applies none of this to a paid organization", async () => {
+      await expect(
+        assertExecutionWorkload("org", { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 }, "playwright", ['await request.get("https://anything.test/")']),
+      ).resolves.toBeUndefined();
+    });
   });
 });

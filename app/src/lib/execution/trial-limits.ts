@@ -197,20 +197,26 @@ export function buildTrialEntitlement(
 ): typeof executionEntitlements.$inferInsert {
   return {
     organizationId,
+    trialStartedAt: now,
     expiresAt: new Date(now.getTime() + TRIAL_DURATION_DAYS * 86_400_000),
     ...TRIAL_LIMITS,
   };
 }
 
-/** Investigations a trial organization has started during its trial. */
+/**
+ * Investigations a trial organization has started during its trial. Every started investigation counts,
+ * whatever its outcome, so cancelling or failing one does not hand the allowance back. The window starts
+ * at the stored trial start (extending the expiry must not move it); old rows fall back to the default length.
+ */
 export async function countTrialInvestigations(
   organizationId: string,
   trialEndsAt: Date,
   database: Pick<typeof db, "select"> = db,
+  storedStartedAt?: Date | null,
 ): Promise<number> {
-  const trialStartedAt = new Date(
-    trialEndsAt.getTime() - TRIAL_DURATION_DAYS * 86_400_000,
-  );
+  const trialStartedAt =
+    storedStartedAt ??
+    new Date(trialEndsAt.getTime() - TRIAL_DURATION_DAYS * 86_400_000);
   const [row] = await database
     .select({ count: sql<number>`count(*)::int` })
     .from(sreInvestigationRuns)
@@ -218,10 +224,34 @@ export async function countTrialInvestigations(
       and(
         eq(sreInvestigationRuns.organizationId, organizationId),
         eq(sreInvestigationRuns.agentType, "investigation"),
-        or(
-          eq(sreInvestigationRuns.status, "running"),
-          eq(sreInvestigationRuns.status, "completed"),
-        ),
+        eq(sreInvestigationRuns.billingTier, "trial"),
+        gte(sreInvestigationRuns.createdAt, trialStartedAt),
+      ),
+    );
+  return Number(row?.count ?? 0);
+}
+
+/** Triage runs a trial may start in total; triage is cheaper than a full investigation, so it has its own cap. */
+export const TRIAL_TRIAGE_RUNS = 20;
+
+/** Triage runs a trial organization has started during its trial. */
+export async function countTrialTriageRuns(
+  organizationId: string,
+  trialEndsAt: Date,
+  database: Pick<typeof db, "select"> = db,
+  storedStartedAt?: Date | null,
+): Promise<number> {
+  const trialStartedAt =
+    storedStartedAt ??
+    new Date(trialEndsAt.getTime() - TRIAL_DURATION_DAYS * 86_400_000);
+  const [row] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sreInvestigationRuns)
+    .where(
+      and(
+        eq(sreInvestigationRuns.organizationId, organizationId),
+        eq(sreInvestigationRuns.agentType, "triage"),
+        eq(sreInvestigationRuns.billingTier, "trial"),
         gte(sreInvestigationRuns.createdAt, trialStartedAt),
       ),
     );
@@ -231,7 +261,7 @@ export async function countTrialInvestigations(
 /** What a trial organization has used so far, for the usage display. */
 export async function getTrialUsage(
   organizationId: string,
-  entitlement: Pick<Entitlement, "expiresAt" | "playwrightUsedMs">,
+  entitlement: Pick<Entitlement, "expiresAt" | "playwrightUsedMs"> & Partial<Pick<Entitlement, "trialStartedAt">>,
   database: Pick<typeof db, "select"> = db,
 ) {
   return {
@@ -241,6 +271,7 @@ export async function getTrialUsage(
       organizationId,
       entitlement.expiresAt,
       database,
+      entitlement.trialStartedAt,
     ),
   };
 }

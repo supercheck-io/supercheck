@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { executionEntitlements } from "@/db/schema";
 import { db } from "@/utils/db";
+import { decodeStoredTestScript } from "@/lib/test-script";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
@@ -70,16 +71,43 @@ async function resolveExecutionPolicy(organizationId: string): Promise<Execution
   };
 }
 
+/** Hostnames of the absolute http(s) URLs written in the given scripts. Base64-encoded scripts are decoded first. */
+export function literalHostnames(scripts: string[]): string[] {
+  const hosts = new Set<string>();
+  for (const script of scripts) {
+    const text = decodeStoredTestScript(script);
+    for (const match of text.matchAll(/https?:\/\/[^\s'"`<>)\]},\\]+/giu)) {
+      try { hosts.add(new URL(match[0]).hostname.toLowerCase()); } catch { /* not a URL */ }
+    }
+  }
+  return [...hosts];
+}
+
 export async function assertExecutionWorkload(
   organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
 ): Promise<void> {
   if (policy.tier !== "trial") return;
+  const { requireVerifiedTarget, TargetDomainError } = await import("./target-domain-registry");
   if (kind === "playwright") {
     if (policy.playwrightRemainingMs <= 0) throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402);
+    // A browser or API test can send as many requests as a load test, so a trial may only call hosts
+    // it has proven it owns. This reads literal URLs; the cluster egress policy is the control for
+    // addresses a script builds at run time.
+    for (const hostname of literalHostnames(scripts)) {
+      try { await requireVerifiedTarget(organizationId, hostname); }
+      catch (error) {
+        if (error instanceof TargetDomainError) {
+          throw new ExecutionWorkloadError(
+            error.status === 503 ? error.message : `Trial tests may only call domains you have verified: ${hostname}. Verify it under Admin, Load test domains.`,
+            error.status === 503 ? 503 : 400,
+          );
+        }
+        throw new ExecutionWorkloadError(`Trial tests may only call public domains you have verified: ${hostname}`);
+      }
+    }
     return;
   }
   const { parseTrialK6Workload } = await import("./trial-k6-workload");
-  const { requireVerifiedTarget, TargetDomainError } = await import("./target-domain-registry");
   if (scripts.length !== 1) throw new ExecutionWorkloadError("Trials accept one generated HTTP workload per run");
   let workload;
   try { workload = parseTrialK6Workload(scripts[0]); }

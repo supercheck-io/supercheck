@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   OnApplicationShutdown,
+  Optional,
 } from '@nestjs/common';
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -11,6 +12,7 @@ import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
 import { isSelfHostedEnvironment } from '../../common/runtime-mode';
 import { getBillableMs } from '../../common/billable-ms';
+import { ContainerExecutorService } from '../../common/security/container-executor.service';
 
 export function hasActiveExecutionPlan(
   org:
@@ -79,6 +81,7 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
   constructor(
     @Inject(DB_PROVIDER_TOKEN)
     private readonly db: PostgresJsDatabase<typeof schema>,
+    @Optional() private readonly executor?: ContainerExecutorService,
   ) {}
 
   async reserve(
@@ -274,9 +277,12 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
       )
       .limit(PRUNE_BATCH);
     for (const row of lapsed) {
+      // The lease was last extended to renewal + TTL, so the run was alive until one TTL before it.
       const aliveMs = Math.max(
         0,
-        row.leaseExpiresAt.getTime() - row.startedAt.getTime(),
+        row.leaseExpiresAt.getTime() -
+          RESERVATION_LEASE_TTL_MS -
+          row.startedAt.getTime(),
       );
       const chargedMs =
         row.tier === 'trial' ? Math.min(aliveMs, row.reservedMs) : 0;
@@ -480,20 +486,42 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
     });
   }
 
+  /**
+   * Keeps the lease alive. If it cannot be kept (taken over, or no successful renewal for a whole
+   * lease because the database is unreachable), another run may be admitted for this organization
+   * while this container still runs. So this process stops its own container. It does not use the
+   * shared cancellation key: that is per run id and would also cancel the replacement attempt.
+   */
   private startRenewal(reservation: ExecutionReservation): NodeJS.Timeout {
+    let lastRenewedAt = Date.now();
+    let fenced = false;
+    const fence = (reason: string) => {
+      if (fenced) return;
+      fenced = true;
+      this.logger.error(
+        `Execution reservation ${reservation.runId} ${reason}; stopping the run so it cannot overlap a replacement`,
+      );
+      if (!this.executor) {
+        this.logger.error(
+          `No executor is available to stop run ${reservation.runId}; it may overlap a replacement`,
+        );
+        return;
+      }
+      this.executor.abortRun(reservation.runId);
+    };
     const timer = setInterval(() => {
       this.renew(reservation)
         .then((held) => {
-          if (!held)
-            this.logger.warn(
-              `Execution reservation ${reservation.runId} was taken over; this run no longer holds capacity`,
-            );
+          if (held) lastRenewedAt = Date.now();
+          else fence('was taken over');
         })
-        .catch((error: unknown) =>
+        .catch((error: unknown) => {
           this.logger.warn(
             `Unable to renew execution reservation ${reservation.runId}: ${String(error)}`,
-          ),
-        );
+          );
+          if (Date.now() - lastRenewedAt >= RESERVATION_LEASE_TTL_MS)
+            fence('could not be renewed for a whole lease');
+        });
     }, RESERVATION_RENEW_INTERVAL_MS);
     timer.unref();
     return timer;

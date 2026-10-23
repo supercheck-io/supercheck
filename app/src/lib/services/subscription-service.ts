@@ -810,7 +810,12 @@ export class SubscriptionService {
           included: plan.playwrightMinutesIncluded,
           overage: 0,
         },
-        k6VuMinutes: { used: 0, included: 0, overage: 0 },
+        // Load testing is metered in virtual-user milliseconds; show it as virtual-user minutes.
+        k6VuMinutes: {
+          used: Math.ceil(trial!.k6UsedVuMs / 60_000),
+          included: Math.floor(trial!.k6BudgetVuMs / 60_000),
+          overage: 0,
+        },
         aiCredits: {
           used: org.aiCreditsUsed || 0,
           included: plan.aiCreditsIncluded,

@@ -549,19 +549,33 @@ export class CapacityManager {
       const redis = await this.getRedis();
       const jobIds = await redis.zrange(KEYS.queued(organizationId), 0, -1);
       for (const jobId of jobIds) {
-        // Only the caller that removes the entry owns the cleanup.
-        if ((await redis.zrem(KEYS.queued(organizationId), jobId)) === 0) continue;
-        const raw = await redis.get(KEYS.jobData(jobId));
-        await this.cleanupJobData(jobId);
-        const runId = raw ? (JSON.parse(raw) as QueuedJobData).runId : jobId;
         try {
+          // Only the caller that removes the entry owns the cleanup.
+          if ((await redis.zrem(KEYS.queued(organizationId), jobId)) === 0) continue;
+          const raw = await redis.get(KEYS.jobData(jobId));
+          let runId = jobId;
+          if (raw) {
+            try {
+              runId = (JSON.parse(raw) as QueuedJobData).runId ?? jobId;
+            } catch {
+              logger.warn({ jobId }, "Unreadable queued job data; failing the run by job id");
+            }
+          }
           const { db } = await import('@/utils/db');
           const { runs } = await import('@/db/schema');
           const { and, eq, inArray } = await import('drizzle-orm');
-          await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: reason })
-            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued'])));
-        } catch (dbError) {
-          logger.error({ err: dbError, runId }, "Failed to mark run as failed after entitlement ended");
+          try {
+            // The run first: if this fails, put the entry back so the next pass retries it, instead of
+            // leaving a run that stays queued with no job behind it.
+            await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: reason })
+              .where(and(eq(runs.id, runId), inArray(runs.status, ['queued'])));
+          } catch (dbError) {
+            await redis.zadd(KEYS.queued(organizationId), Date.now(), jobId);
+            throw dbError;
+          }
+          await this.cleanupJobData(jobId);
+        } catch (jobError) {
+          logger.error({ err: jobError, jobId, organizationId }, "Failed to fail a queued run after entitlement ended");
         }
       }
       logger.warn({ organizationId, failed: jobIds.length, reason }, "Failed queued runs: execution entitlement ended");
@@ -658,7 +672,11 @@ export class CapacityManager {
         ? (Array.isArray(jobData.taskData.tests) && jobData.taskData.tests.length
           ? jobData.taskData.tests.map((test: { script: string }) => test.script)
           : [String(jobData.taskData.script ?? '')])
-        : [];
+        : jobData.type === 'playwright'
+          ? (Array.isArray(jobData.taskData.testScripts)
+            ? jobData.taskData.testScripts.map((test: { script: string }) => test.script)
+            : [String(jobData.taskData.code ?? '')])
+          : [];
       await assertExecutionWorkload(jobData.organizationId, policy, jobData.type, scripts);
       const queueModule = await import('./queue');
       const queues = await queueModule.getQueues();

@@ -2219,6 +2219,27 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     return `'${value.replace(/'/g, "'\\''")}'`;
   }
 
+  /**
+   * Runs this process was asked to stop (a lost reservation). Local to the process on purpose: the shared
+   * cancellation key is per run id, so using it would also cancel a replacement attempt of the same run.
+   * Entries are consumed by the poller within a second and expire so one can never hit a later attempt.
+   */
+  private readonly abortedRuns = new Map<string, number>();
+
+  abortRun(runId: string): void {
+    const now = Date.now();
+    for (const [id, at] of this.abortedRuns)
+      if (now - at > 30_000) this.abortedRuns.delete(id);
+    this.abortedRuns.set(runId, now);
+  }
+
+  private consumeAbort(runId: string): boolean {
+    const at = this.abortedRuns.get(runId);
+    if (at === undefined) return false;
+    this.abortedRuns.delete(runId);
+    return Date.now() - at <= 30_000;
+  }
+
   private startKubernetesCancellationPoller(
     runId: string,
     jobName: string,
@@ -2227,7 +2248,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const interval = setInterval(() => {
       void (async () => {
         try {
-          const isCancelled = await this.cancellationService.isCancelled(runId);
+          const aborted = this.consumeAbort(runId);
+          const isCancelled =
+            aborted || (await this.cancellationService.isCancelled(runId));
           if (!isCancelled) {
             return;
           }

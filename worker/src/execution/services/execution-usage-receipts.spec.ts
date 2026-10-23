@@ -18,6 +18,18 @@ import {
   ExecutionUsageTransaction,
 } from './execution-usage-receipts';
 
+/** The 0039 statements that touch execution_entitlements (the specs create only that table). */
+function entitlementStatementsOf0039(path: string): string {
+  return readFileSync(path, 'utf8')
+    .split('--> statement-breakpoint')
+    .filter((statement) =>
+      /^(?:\s*--[^\n]*)*\s*(?:ALTER TABLE "execution_entitlements"|UPDATE "execution_entitlements"|CREATE INDEX "execution_entitlements_)/.test(
+        statement,
+      ),
+    )
+    .join('\n');
+}
+
 jest.setTimeout(60_000);
 
 const postgresUrl = process.env.EXECUTION_USAGE_TEST_DATABASE_URL;
@@ -118,6 +130,14 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
           '../../../../app/src/db/migrations/0038_trial_load_test_budget.sql',
         ),
         'utf8',
+      ),
+    );
+    await pg.exec(
+      entitlementStatementsOf0039(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0039_trial_review_hardening.sql',
+        ),
       ),
     );
   });

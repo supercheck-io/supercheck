@@ -35,6 +35,8 @@ import { K6Logo } from "@/components/logo/k6-logo";
 
 interface SubscriptionData {
   organizationId?: string;
+  /** Present for an organization that has (or had) a free trial and no paid plan. */
+  trial?: { active: boolean; daysRemaining: number; expiresAt: string } | null;
   subscription: {
     plan: "plus" | "pro" | "unlimited" | null;
     status: "active" | "canceled" | "past_due" | "none";
@@ -280,6 +282,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const expired = data.subscription.accessReason === "canceled_expired" ||
     (!data.subscription.plan && Boolean(data.subscription.subscriptionEndsAt || data.subscription.status === "canceled"));
   const hasSubscription = data.subscription.plan !== null;
+  const onTrial = !hasSubscription && Boolean(data.trial?.active);
   const plan = data.subscription.plan
     ? planDetails[data.subscription.plan]
     : null;
@@ -443,14 +446,21 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
         </p>
       )}
 
-      {!hasSubscription && (
+      {onTrial && (
+        <p className="text-sm text-muted-foreground">
+          Free trial: {data.trial?.daysRemaining} {data.trial?.daysRemaining === 1 ? "day" : "days"} left. The allowances below
+          are for the whole trial. Choose a plan to keep everything running when it ends.
+        </p>
+      )}
+
+      {!hasSubscription && !onTrial && (
         <p className="text-sm text-muted-foreground">
           {expired ? "Your subscription has ended. Choose a plan to restore access. Existing data remains subject to the retention policy." : "Choose a plan to view paid usage and resource allowances."}
         </p>
       )}
 
       {/* Usage & Resources - Combined Compact Grid */}
-      {hasSubscription && (
+      {(hasSubscription || onTrial) && (
         <div className="grid gap-4 md:grid-cols-2">
           {/* Usage This Period */}
           <Card>

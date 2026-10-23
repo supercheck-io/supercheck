@@ -1269,6 +1269,12 @@ export class ExecutionService implements OnModuleDestroy {
         // omit when running locally so Playwright uses system default
         ...(browsersPath ? { PLAYWRIGHT_BROWSERS_PATH: browsersPath } : {}),
         ...(runtimeEnvOverrides ?? {}),
+        // A limited run may not use more workload time than it reserved. The pod deadline keeps the
+        // extra headroom for startup and report export, which is not charged. Set after the overrides
+        // so nothing a test supplies can lift it.
+        ...(reservation?.limited
+          ? { PLAYWRIGHT_GLOBAL_TIMEOUT_MS: String(reservation.reservedMs) }
+          : {}),
       };
 
       this.logger.debug(

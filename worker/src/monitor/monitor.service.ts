@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isSelfHostedEnvironment } from '../common/runtime-mode';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
@@ -154,6 +155,13 @@ export class MonitorService {
         // Removed log - paused execution is not an error
         // Return null instead of a failed result - paused monitors shouldn't create results
         return null;
+      }
+      if (!monitor.organizationId && !isSelfHostedEnvironment()) {
+        // A cloud monitor with no organization can never be authorized, so it would be skipped silently
+        // forever and look healthy. Make that visible.
+        this.logger.error(
+          `Monitor ${jobData.monitorId} has no organization and cannot run; fix or remove it`,
+        );
       }
       const billing = await this.usageTrackerService.shouldBlockExecution(
         monitor.organizationId ?? '',

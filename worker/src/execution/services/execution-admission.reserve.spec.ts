@@ -626,7 +626,74 @@ describe('lease renewal', () => {
       await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 2);
       finishRun({ billableMs: 1 });
       await expect(execution).resolves.toMatchObject({ billableMs: 1 });
-      expect(warn).toHaveBeenCalledTimes(2);
+      // The takeover is now logged as an error (the run is cancelled); only the failed renewal warns.
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels the run when its reservation was taken over', async () => {
+      const abortRun = jest.fn();
+      const service = new ExecutionAdmissionService(
+        { update: jest.fn() } as never,
+        { abortRun } as never,
+      );
+      jest.spyOn(service, 'reserve').mockResolvedValue(reservation);
+      jest.spyOn(service, 'finish').mockResolvedValue(undefined);
+      jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation(() => undefined);
+      jest.spyOn(service, 'renew').mockResolvedValue(false);
+      let finishRun!: (value: { billableMs: number }) => void;
+      const execution = service.run(
+        'org',
+        'run',
+        'playwright',
+        60_000,
+        () =>
+          new Promise<{ billableMs: number }>(
+            (resolve) => (finishRun = resolve),
+          ),
+      );
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 3);
+      expect(abortRun).toHaveBeenCalledTimes(1); // once, not per tick
+      expect(abortRun).toHaveBeenCalledWith('run');
+      finishRun({ billableMs: 1 });
+      await execution;
+    });
+
+    it('cancels the run when the database cannot be reached for a whole lease', async () => {
+      const abortRun = jest.fn();
+      const service = new ExecutionAdmissionService(
+        { update: jest.fn() } as never,
+        { abortRun } as never,
+      );
+      jest.spyOn(service, 'reserve').mockResolvedValue(reservation);
+      jest.spyOn(service, 'finish').mockResolvedValue(undefined);
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation(() => undefined);
+      jest
+        .spyOn(service, 'renew')
+        .mockRejectedValue(new Error('database unavailable'));
+      let finishRun!: (value: { billableMs: number }) => void;
+      const execution = service.run(
+        'org',
+        'run',
+        'playwright',
+        60_000,
+        () =>
+          new Promise<{ billableMs: number }>(
+            (resolve) => (finishRun = resolve),
+          ),
+      );
+      await jest.advanceTimersByTimeAsync(
+        RESERVATION_LEASE_TTL_MS - RESERVATION_RENEW_INTERVAL_MS,
+      );
+      expect(abortRun).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(RESERVATION_RENEW_INTERVAL_MS * 2);
+      expect(abortRun).toHaveBeenCalledWith('run');
+      finishRun({ billableMs: 1 });
+      await execution;
     });
 
     it('does not renew when no reservation applies', async () => {

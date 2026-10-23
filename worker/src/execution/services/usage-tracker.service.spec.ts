@@ -66,6 +66,9 @@ describe('UsageTrackerService ledger settlement', () => {
       query: {
         organization: { findFirst: jest.fn().mockResolvedValue(null) },
         executionEntitlements: { findFirst: jest.fn().mockResolvedValue(null) },
+        executionReservations: {
+          findFirst: jest.fn().mockResolvedValue(undefined),
+        },
         executionUsageReceipts: {
           findFirst: jest.fn().mockResolvedValue(null),
         },
@@ -98,6 +101,42 @@ describe('UsageTrackerService ledger settlement', () => {
       expect(persistResult).toHaveBeenCalledTimes(1);
       expect(f.tx.insert).not.toHaveBeenCalled();
       expect(f.tx.select).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      'a trial run is not billed even though the organization has since subscribed',
+      'trial',
+      true,
+    ],
+    [
+      'a paid run is still billed even though a trial row lingers',
+      'paid',
+      false,
+    ],
+  ])(
+    'settles by the tier the run was admitted under: %s',
+    async (_label, tier, skipped) => {
+      const f = fixture();
+      f.database.query.executionReservations.findFirst.mockResolvedValue({
+        tier,
+      });
+      // Today the organization has paid access and a lingering trial row.
+      f.database.query.executionEntitlements.findFirst.mockResolvedValue({
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      f.database.query.organization.findFirst.mockResolvedValue({
+        id: 'org-1',
+        polarCustomerId: 'cus',
+        subscriptionPlan: 'plus',
+        subscriptionStatus: 'active',
+        subscriptionEndsAt: null,
+      });
+      await f.service.trackPlaywrightExecution('org-1', 61000, {
+        runId: 'run-1',
+      });
+      expect(f.database.transaction).toHaveBeenCalledTimes(skipped ? 0 : 1);
     },
   );
 
@@ -283,6 +322,9 @@ describe('UsageTrackerService execution blocking', () => {
     const query = {
       organization: { findFirst: jest.fn().mockResolvedValue(org) },
       executionEntitlements: { findFirst: jest.fn().mockResolvedValue(null) },
+      executionReservations: {
+        findFirst: jest.fn().mockResolvedValue(undefined),
+      },
       billingSettings: {
         findFirst: jest.fn().mockResolvedValue({
           enableSpendingLimit: true,

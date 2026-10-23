@@ -41,6 +41,15 @@ export function hasProductAccess(status: SubscriptionStatus | null | undefined):
   return !!status && (status.isActive || !!status.trial?.active);
 }
 
+/**
+ * Whether the pages may be opened. An organization whose free trial ended can still sign in and look at
+ * its data (reads), as the trial documentation promises; creating, running and publishing are refused by the
+ * server routes. Everyone else needs paid access or an active trial.
+ */
+export function canBrowseProduct(status: SubscriptionStatus | null | undefined): boolean {
+  return hasProductAccess(status) || !!status?.trial;
+}
+
 interface SubscriptionGuardProps {
   children: React.ReactNode;
   /** Server-provided subscription status to avoid client-side loading overlay */
@@ -141,14 +150,14 @@ export function SubscriptionGuard({
       return;
     }
 
-    if (subscriptionStatus && !hasProductAccess(subscriptionStatus)) {
+    if (subscriptionStatus && !canBrowseProduct(subscriptionStatus)) {
       router.push('/subscribe');
     }
   }, [hasSelfHostedInfo, isSelfHosted, isAllowedRoute, isFetched, isError, subscriptionStatus, router]);
 
   // Determine if we need to show a loading overlay (only after hydration)
   const needsOverlay = hydrated && !isAllowedRoute && !isSelfHosted && (
-    !hasSelfHostedInfo || (!isFetched && !hasProductAccess(subscriptionStatus))
+    !hasSelfHostedInfo || (!isFetched && !canBrowseProduct(subscriptionStatus))
   );
 
   const loadingMessage = !hasSelfHostedInfo ? "Loading configuration..." : "Checking access...";

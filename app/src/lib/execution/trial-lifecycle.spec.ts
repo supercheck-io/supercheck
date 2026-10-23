@@ -25,6 +25,7 @@ function chain<T>(result: T) {
     "from",
     "innerJoin",
     "where",
+    "orderBy",
     "for",
     "limit",
     "set",
@@ -182,6 +183,18 @@ describe("endExpiredTrials", () => {
     });
     await endExpiredTrials({ now: NOW, database });
     expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  });
+
+  it("keeps draining batches while they come back full, instead of waiting for the next run", async () => {
+    const { database } = build({ org: trialOrg, running: [] });
+    const select = (database as unknown as { select: jest.Mock }).select;
+    select.mockReset();
+    select
+      .mockReturnValueOnce(chain(Array.from({ length: 50 }, (_, i) => ({ organizationId: `org-${i}` }))))
+      .mockReturnValueOnce(chain([{ organizationId: "org-last" }]));
+    const result = await endExpiredTrials({ now: NOW, database });
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(result.organizations).toBe(51);
   });
 
   it("still marks a trial with nothing to suspend as ended", async () => {
@@ -384,20 +397,17 @@ describe("restoreTrialSuspensions", () => {
 });
 
 describe("reconcilePaidTrialSuspensions", () => {
-  function buildReconcile(suspended: string[], orgs: Array<Record<string, unknown>>) {
+  function buildReconcile(candidates: Array<Record<string, unknown>>) {
     const restoredRows = [{ resourceType: "monitor", resourceId: "m1" }];
     const tx = {
       select: jest.fn(() => chain(restoredRows)),
       update: jest.fn(() => ({ set: jest.fn(() => chain([{ id: "m1" }])) })),
       delete: jest.fn(() => chain(undefined)),
     };
-    let selects = 0;
     const database = {
-      selectDistinct: jest.fn(() => chain(suspended.map((organizationId) => ({ organizationId })))),
-      select: jest.fn(() => {
-        selects += 1;
-        return chain(selects === 1 ? orgs : [{ id: "m1", frequencyMinutes: 5, type: "http_request", target: "x", config: {} }]);
-      }),
+      // The join already limits candidates to paying organizations that still have suspensions.
+      selectDistinct: jest.fn(() => chain(candidates)),
+      select: jest.fn(() => chain([{ id: "m1", frequencyMinutes: 5, type: "http_request", target: "x", config: {} }])),
       update: jest.fn(() => ({ set: jest.fn(() => chain([])) })),
       transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(tx)),
     };
@@ -406,16 +416,16 @@ describe("reconcilePaidTrialSuspensions", () => {
   const paid = { id: "org", polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active", subscriptionEndsAt: null };
 
   it("restores an organization that pays but is still suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile(["org"], [paid]) })).resolves.toMatchObject({ organizations: 1, monitorsResumed: 1 });
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([paid]) })).resolves.toMatchObject({ organizations: 1, monitorsResumed: 1 });
     expect(scheduleMonitor).toHaveBeenCalled();
   });
 
   it("leaves unpaid organizations suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile(["org"], [trialOrg]) })).resolves.toMatchObject({ organizations: 0 });
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([trialOrg]) })).resolves.toMatchObject({ organizations: 0 });
   });
 
   it("does nothing when nothing is suspended", async () => {
-    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([], []) })).resolves.toEqual({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([]) })).resolves.toEqual({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
   });
 });
 
@@ -436,7 +446,7 @@ describe("sendTrialReminders", () => {
   /** One due list per reminder kind (midway, ending, ended), then owners per organization. */
   function build(
     due: { midway?: unknown[]; ending?: unknown[]; ended?: unknown[] },
-    owners: Array<{ email: string }> = [{ email: "owner@example.com" }],
+    owners: Array<{ email: string; role?: string }> = [{ email: "owner@example.com" }],
   ) {
     const sets: Array<Record<string, unknown>> = [];
     const lists = [due.midway ?? [], due.ending ?? [], due.ended ?? []];
@@ -563,6 +573,25 @@ describe("sendTrialReminders", () => {
     await sendTrialReminders({ now: NOW, database, deliver });
     expect(deliver).not.toHaveBeenCalled();
     expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
+  });
+
+  it("falls back to verified organization admins when no owner has a verified address", async () => {
+    const { database } = build({ midway: [entry()] }, [
+      { email: "admin@example.com", role: "org_admin" },
+    ]);
+    const deliver = jest.fn().mockResolvedValue(true);
+    await sendTrialReminders({ now: NOW, database, deliver });
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["admin@example.com"] }));
+  });
+
+  it("prefers owners over admins when both are verified", async () => {
+    const { database } = build({ midway: [entry()] }, [
+      { email: "admin@example.com", role: "org_admin" },
+      { email: "owner@example.com", role: "org_owner" },
+    ]);
+    const deliver = jest.fn().mockResolvedValue(true);
+    await sendTrialReminders({ now: NOW, database, deliver });
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["owner@example.com"] }));
   });
 
   it("sends to each distinct owner address once", async () => {

@@ -481,6 +481,32 @@ describe('CapacityManager', () => {
       expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
     });
 
+    it('puts the entry back and keeps its data when the run cannot be updated, so the next pass retries', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockReturnValue({ set: jest.fn(() => ({ where: jest.fn().mockRejectedValue(new Error('db down')) })) });
+      mockRedisZrange.mockResolvedValue(['job-1']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisZadd.mockClear();
+      mockRedisGet.mockResolvedValue(JSON.stringify({ runId: 'run-1' }));
+      const pipelineDel = jest.fn().mockReturnThis();
+      mockRedisPipeline.mockReturnValue({ del: pipelineDel, exec: jest.fn().mockResolvedValue([]) });
+      await capacityManager.processQueuedJobs();
+      expect(mockRedisZadd).toHaveBeenCalledWith(queuedKey, expect.any(Number), 'job-1');
+      expect(pipelineDel).not.toHaveBeenCalled();
+    });
+
+    it('still fails the run, and the rest of the queue, when one job payload is unreadable', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      const set = jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) }));
+      db.update.mockReturnValue({ set });
+      mockRedisZrange.mockResolvedValue(['bad', 'job-2']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisGet.mockImplementation(async (key: string) => (key.endsWith('bad') ? '{not json' : JSON.stringify({ runId: 'run-2' })));
+      mockRedisPipeline.mockReturnValue({ del: jest.fn().mockReturnThis(), exec: jest.fn().mockResolvedValue([]) });
+      await capacityManager.processQueuedJobs();
+      expect(set).toHaveBeenCalledTimes(2);
+    });
+
     it('skips a job another worker already removed', async () => {
       const { db } = jest.requireMock('@/utils/db');
       db.update.mockClear();

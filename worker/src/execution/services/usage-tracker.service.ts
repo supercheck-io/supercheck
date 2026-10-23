@@ -83,6 +83,28 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     if (this.recoveryTimer) clearInterval(this.recoveryTimer);
   }
 
+  /**
+   * Whether this execution was admitted under a free trial. The reservation records the tier the run
+   * was admitted under, so a customer who subscribes (or whose trial ends) while it runs is still
+   * settled the way it was admitted. Without a reservation, fall back to the organization's current state.
+   */
+  private async isLimitedRun(
+    organizationId: string,
+    runId?: string,
+  ): Promise<boolean> {
+    if (runId) {
+      const reservation = await this.db.query.executionReservations.findFirst({
+        where: and(
+          eq(schema.executionReservations.runId, runId),
+          eq(schema.executionReservations.organizationId, organizationId),
+        ),
+        columns: { tier: true },
+      });
+      if (reservation) return reservation.tier === 'trial';
+    }
+    return this.isLimitedOrganization(organizationId);
+  }
+
   private async isLimitedOrganization(
     organizationId: string,
   ): Promise<boolean> {
@@ -106,7 +128,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       await this.db.transaction(persistResult);
       return;
     }
-    if (await this.isLimitedOrganization(input.organizationId)) {
+    if (await this.isLimitedRun(input.organizationId, input.runId)) {
       await this.db.transaction(persistResult);
       return;
     }
@@ -222,7 +244,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       }
       if (
         isPolarEnabled() &&
-        (await this.isLimitedOrganization(organizationId))
+        (await this.isLimitedRun(
+          organizationId,
+          typeof metadata?.runId === 'string' ? metadata.runId : undefined,
+        ))
       )
         return { blocked: false };
       // Match the four-decimal ledger precision before updating either sink.
@@ -284,7 +309,10 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       }
       if (
         isPolarEnabled() &&
-        (await this.isLimitedOrganization(organizationId))
+        (await this.isLimitedRun(
+          organizationId,
+          typeof metadata?.runId === 'string' ? metadata.runId : undefined,
+        ))
       )
         return { blocked: false };
       // Calculate VU minutes: ceil(VUs * duration in minutes)

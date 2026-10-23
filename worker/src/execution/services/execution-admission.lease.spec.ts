@@ -11,6 +11,18 @@ import {
   ExecutionEntitlementError,
 } from './execution-admission.service';
 
+/** The 0039 statements that touch execution_entitlements (the specs create only that table). */
+function entitlementStatementsOf0039(path: string): string {
+  return readFileSync(path, 'utf8')
+    .split('--> statement-breakpoint')
+    .filter((statement) =>
+      /^(?:\s*--[^\n]*)*\s*(?:ALTER TABLE "execution_entitlements"|UPDATE "execution_entitlements"|CREATE INDEX "execution_entitlements_)/.test(
+        statement,
+      ),
+    )
+    .join('\n');
+}
+
 jest.setTimeout(60_000);
 
 /**
@@ -73,6 +85,14 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
           '../../../../app/src/db/migrations/0038_trial_load_test_budget.sql',
         ),
         'utf8',
+      ),
+    );
+    await pg.exec(
+      entitlementStatementsOf0039(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0039_trial_review_hardening.sql',
+        ),
       ),
     );
     service = new ExecutionAdmissionService(
@@ -165,7 +185,7 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
   it('charges a crashed trial run for the time its lease was alive, and frees it for good', async () => {
     await service.reserve(orgId, 'run-1', 'playwright', 60_000);
     await pg.exec(
-      "UPDATE execution_reservations SET started_at = now() - interval '10 minutes', lease_expires_at = now() - interval '7 minutes'",
+      "UPDATE execution_reservations SET started_at = now() - interval '20 minutes', lease_expires_at = now() - interval '7 minutes'",
     );
     await service.reserve(orgId, 'run-2', 'playwright', 60_000);
     // alive for 3 minutes but only 60 s were reserved
@@ -182,11 +202,21 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
     );
     await service.reserve(orgId, 'run-1', 'playwright', 100_000);
     await pg.exec(
-      "UPDATE execution_reservations SET started_at = now() - interval '9 minutes', lease_expires_at = now() - interval '4 minutes'",
-    ); // alive 5 min, reserved 100 s: charged the full 100 s
+      "UPDATE execution_reservations SET started_at = now() - interval '20 minutes', lease_expires_at = now() - interval '4 minutes'",
+    ); // alive 11 min, reserved 100 s: charged the full 100 s
     await expect(
       service.reserve(orgId, 'run-2', 'playwright', 100_000),
     ).rejects.toBeInstanceOf(ExecutionEntitlementError); // nothing is left
+  });
+
+  it('charges a crashed run only for the time up to its last renewal, not the trailing lease', async () => {
+    await service.reserve(orgId, 'run-1', 'playwright', 600_000);
+    // started 20 min ago; last renewed 14 min ago, so the lease ran out 9 min ago
+    await pg.exec(
+      "UPDATE execution_reservations SET started_at = now() - interval '20 minutes', lease_expires_at = now() - interval '9 minutes'",
+    );
+    await service.reserve(orgId, 'run-2', 'playwright', 60_000);
+    expect(await playwrightUsedMs()).toBe(6 * 60_000);
   });
 
   it('prunes finished and long-abandoned reservations, keeping recent ones', async () => {

@@ -10,6 +10,8 @@ jest.mock("@/lib/feature-flags", () => ({
 jest.mock("@/lib/execution/trial-limits", () => ({
   getActiveTrial: jest.fn().mockResolvedValue(undefined),
   countTrialInvestigations: jest.fn().mockResolvedValue(0),
+  countTrialTriageRuns: jest.fn().mockResolvedValue(0),
+  TRIAL_TRIAGE_RUNS: 20,
 }));
 
 jest.mock("@/lib/services/subscription-service", () => ({
@@ -40,6 +42,7 @@ jest.mock("@/utils/db", () => ({
 import { isPolarEnabled } from "@/lib/feature-flags";
 import {
   countTrialInvestigations,
+  countTrialTriageRuns,
   getActiveTrial,
 } from "@/lib/execution/trial-limits";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
@@ -48,6 +51,7 @@ import { db } from "@/utils/db";
 
 import {
   assertCanStartSreInvestigation,
+  withSreTriageAdmission,
   consumeSreInvestigationCredit,
   failStuckSreInvestigationRuns,
   getSreInvestigationUsage,
@@ -215,7 +219,7 @@ describe("SRE investigation billing", () => {
     await expect(withSreInvestigationAdmission("org-1", create)).resolves.toBe(
       "run-1",
     );
-    expect(create).toHaveBeenCalledWith(db);
+    expect(create).toHaveBeenCalledWith(db, "paid");
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
@@ -316,6 +320,41 @@ describe("SRE investigation billing", () => {
         code: "subscription_required",
       } satisfies Partial<SreInvestigationBillingError>,
     );
+  });
+
+  describe("triage admission", () => {
+    const create = jest.fn(async (_database: unknown, tier: string) => tier);
+    beforeEach(() => {
+      create.mockClear();
+      mockSubscriptionService.hasActiveSubscription.mockResolvedValue(false);
+      mockDb.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(lockedTx()));
+    });
+    afterEach(() => jest.mocked(getActiveTrial).mockResolvedValue(undefined));
+
+    function lockedTx() {
+      return { select: jest.fn(() => ({ from: () => ({ where: () => ({ for: async () => [{ id: "org-1" }] }) }) })) };
+    }
+
+    it("creates the run under the trial tier, inside the lock, until the triage runs are used", async () => {
+      jest.mocked(getActiveTrial).mockResolvedValue({ expiresAt: new Date(Date.now() + 86_400_000), trialStartedAt: new Date() } as never);
+      await expect(withSreTriageAdmission("org-1", create)).resolves.toBe("trial");
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      jest.mocked(countTrialTriageRuns).mockResolvedValueOnce(20);
+      await expect(withSreTriageAdmission("org-1", create)).rejects.toMatchObject({ code: "trial_limit" });
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses an organization with no subscription and no active trial instead of letting it triage for free", async () => {
+      jest.mocked(getActiveTrial).mockResolvedValue(undefined);
+      await expect(withSreTriageAdmission("org-1", create)).rejects.toMatchObject({ code: "subscription_required" });
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("lets a subscriber through as paid without taking the lock", async () => {
+      mockSubscriptionService.hasActiveSubscription.mockResolvedValue(true);
+      await expect(withSreTriageAdmission("org-1", create)).resolves.toBe("paid");
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe("during a trial", () => {
@@ -420,7 +459,7 @@ describe("SRE investigation billing", () => {
       await expect(
         withSreInvestigationAdmission("org-1", createRun),
       ).resolves.toBe("run");
-      expect(createRun).toHaveBeenCalledWith(tx);
+      expect(createRun).toHaveBeenCalledWith(tx, "trial");
       expect(mockPolarUsageService.getSpendingStatus).not.toHaveBeenCalled();
     });
   });

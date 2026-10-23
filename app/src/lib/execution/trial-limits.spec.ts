@@ -28,6 +28,7 @@ const entitlement = (expiresAt: Date) => ({
   playwrightUsedMs: 0,
   k6BudgetVuMs: 9_000_000,
   k6UsedVuMs: 0,
+  trialStartedAt: new Date(0),
   lifecycleEndedAt: null,
   midwayNotifiedAt: null,
   endingNotifiedAt: null,
@@ -190,6 +191,7 @@ describe("trial limits", () => {
       const now = new Date("2026-11-01T00:00:00Z");
       expect(buildTrialEntitlement("org", now)).toEqual({
         organizationId: "org",
+        trialStartedAt: now,
         expiresAt: new Date("2026-11-15T00:00:00Z"),
         ...TRIAL_LIMITS,
       });

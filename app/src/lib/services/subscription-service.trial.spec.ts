@@ -36,6 +36,7 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
   playwrightUsedMs: 0,
   k6BudgetVuMs: 9_000_000,
   k6UsedVuMs: 0,
+  trialStartedAt: new Date(0),
   maxMonitors: TRIAL_LIMITS.maxMonitors,
   minCheckIntervalMinutes: TRIAL_LIMITS.minCheckIntervalMinutes,
   maxStatusPages: TRIAL_LIMITS.maxStatusPages,
@@ -174,7 +175,7 @@ describe("trial access", () => {
         sreInvestigationUnitsUsed: "0",
       } as never);
       entitlement.mockResolvedValue(
-        trial({ playwrightUsedMs: 450_000 }) as never,
+        trial({ playwrightUsedMs: 450_000, k6UsedVuMs: 3_000_001 }) as never,
       );
       const where = jest.fn().mockResolvedValue([{ count: 2 }]);
       jest
@@ -182,7 +183,7 @@ describe("trial access", () => {
         .mockReturnValue({ from: jest.fn(() => ({ where })) } as never);
       await expect(service.getUsageSafe("org")).resolves.toEqual({
         playwrightMinutes: { used: 7.5, included: 30, overage: 0 },
-        k6VuMinutes: { used: 0, included: 0, overage: 0 },
+        k6VuMinutes: { used: 51, included: 150, overage: 0 },
         aiCredits: { used: 12, included: 100, overage: 0 },
         sreInvestigations: { used: 2, included: 5, overage: 0 },
       });

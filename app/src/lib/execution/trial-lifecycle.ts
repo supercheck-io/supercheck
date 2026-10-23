@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
 import {
   executionEntitlements,
   member,
@@ -14,6 +14,8 @@ import { hasPaidAccess } from "@/lib/execution/trial-limits";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
 const BATCH_SIZE = 50;
+/** How long one run keeps draining batches of expired trials. */
+const DRAIN_BUDGET_MS = 20_000;
 
 /**
  * Stops the repeatable BullMQ schedule of paused monitors. The scheduled job is a no-op for a paused
@@ -105,18 +107,7 @@ export async function endExpiredTrials(
     statusPagesArchived: 0,
   };
 
-  const expired = await database
-    .select({ organizationId: executionEntitlements.organizationId })
-    .from(executionEntitlements)
-    .where(
-      and(
-        lte(executionEntitlements.expiresAt, now),
-        isNull(executionEntitlements.lifecycleEndedAt),
-      ),
-    )
-    .limit(BATCH_SIZE);
-
-  const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
+  const processExpired = async (expired: Array<{ organizationId: string }>) => {
   for (const { organizationId } of expired) {
     await database.transaction(async (tx) => {
       // Serialize with a concurrent subscription or restore for this organization.
@@ -215,6 +206,27 @@ export async function endExpiredTrials(
       toUnschedule.push(...running);
     });
   }
+  };
+
+  const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
+  const deadline = Date.now() + DRAIN_BUDGET_MS;
+  // A cohort of trials that began together also ends together: keep draining batches (within a time
+  // budget) instead of leaving most of them running until later runs of the job.
+  for (;;) {
+    const expired = await database
+      .select({ organizationId: executionEntitlements.organizationId })
+      .from(executionEntitlements)
+      .where(
+        and(
+          lte(executionEntitlements.expiresAt, now),
+          isNull(executionEntitlements.lifecycleEndedAt),
+        ),
+      )
+      .orderBy(executionEntitlements.expiresAt)
+      .limit(BATCH_SIZE);
+    await processExpired(expired);
+    if (expired.length < BATCH_SIZE || Date.now() >= deadline) break;
+  }
 
   // After every transaction has committed, so a rolled-back pause never loses a schedule.
   await unscheduleMonitors(toUnschedule, database);
@@ -296,15 +308,29 @@ export async function reconcilePaidTrialSuspensions(
   const now = options.now ?? new Date();
   const database = options.database ?? db;
   const result = { organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 };
-  const pending = await database
-    .selectDistinct({ organizationId: trialSuspensions.organizationId })
-    .from(trialSuspensions)
-    .limit(BATCH_SIZE);
-  if (!pending.length) return result;
+  // Filter on paid access in SQL: expired trials that never subscribe keep their rows forever, and
+  // they must not fill the batch ahead of a paying organization that still needs its restore.
   const orgs = await database
-    .select()
-    .from(organization)
-    .where(inArray(organization.id, pending.map((row) => row.organizationId)));
+    .selectDistinct({
+      id: organization.id,
+      polarCustomerId: organization.polarCustomerId,
+      subscriptionPlan: organization.subscriptionPlan,
+      subscriptionStatus: organization.subscriptionStatus,
+      subscriptionEndsAt: organization.subscriptionEndsAt,
+    })
+    .from(trialSuspensions)
+    .innerJoin(organization, eq(organization.id, trialSuspensions.organizationId))
+    .where(
+      and(
+        isNotNull(organization.polarCustomerId),
+        inArray(organization.subscriptionPlan, ["plus", "pro"]),
+        or(
+          inArray(organization.subscriptionStatus, ["active", "past_due"]),
+          and(eq(organization.subscriptionStatus, "canceled"), gt(organization.subscriptionEndsAt, now)),
+        ),
+      ),
+    )
+    .limit(BATCH_SIZE);
   for (const org of orgs) {
     if (!hasPaidAccess(org, now)) continue;
     try {
@@ -424,17 +450,21 @@ export async function sendTrialReminders(options: {
         continue;
       }
       const owners = await database
-        .select({ email: user.email })
+        .select({ email: user.email, role: member.role })
         .from(member)
         .innerJoin(user, eq(user.id, member.userId))
         .where(
           and(
             eq(member.organizationId, entry.organizationId),
-            eq(member.role, "org_owner"),
+            inArray(member.role, ["org_owner", "org_admin"]),
             eq(user.emailVerified, true),
           ),
         );
-      const recipients = [...new Set(owners.map((owner) => owner.email))];
+      // Owners first; when none has a verified address, the admins hear about the trial instead.
+      const owned = owners.filter((owner) => owner.role === "org_owner");
+      const recipients = [
+        ...new Set((owned.length ? owned : owners).map((owner) => owner.email)),
+      ];
       if (recipients.length === 0) {
         await markSent(entry.organizationId);
         continue;

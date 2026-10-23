@@ -274,6 +274,13 @@
       "when": 1792687200000,
       "tag": "0038_trial_load_test_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792690800000,
+      "tag": "0039_trial_review_hardening",
+      "breakpoints": true
     }
   ]
 }

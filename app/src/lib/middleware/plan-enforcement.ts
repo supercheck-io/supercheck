@@ -295,7 +295,7 @@ export async function checkFeatureAvailability(
   if (!available) {
     return {
       available: false,
-      error: `This feature is not available on your ${plan.plan} plan. Please upgrade to access custom domains.`,
+      error: `Custom domains are not available on your ${plan.id === "trial" ? "free trial" : `${plan.plan} plan`}. Please upgrade to use them.`,
     };
   }
 
