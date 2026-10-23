@@ -173,7 +173,9 @@ describe('CapacityManager', () => {
     const add = jest.fn().mockResolvedValue({});
     jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: 'trial', priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     jest.mocked(getQueues).mockResolvedValueOnce({ playwrightQueues: { global: { add } } } as unknown as Awaited<ReturnType<typeof getQueues>>);
-    await capacityManager['addJobToBullMQ']({ type: 'playwright', jobId: 'promoted', runId: 'promoted', organizationId: testOrgId, projectId: 'project', taskData: { _executionTier: 'paid' }, queuedAt: Date.now() });
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ type: 'playwright', jobId: 'promoted', runId: 'promoted', organizationId: testOrgId, projectId: 'project', taskData: { _executionTier: 'paid' }, queuedAt: Date.now() }));
+    mockRedisEval.mockResolvedValueOnce(1);
+    expect(await capacityManager['promoteJob'](testOrgId, 'promoted')).toBe(true);
     expect(add).toHaveBeenCalledWith('promoted', expect.objectContaining({ _executionTier: 'trial' }), { jobId: 'promoted', priority: 1 });
     expect(getExecutionPolicy).toHaveBeenCalledWith(testOrgId);
   });
@@ -182,8 +184,9 @@ describe('CapacityManager', () => {
     jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS verification is temporarily unavailable', 503 as never));
     mockRedisZadd.mockClear();
     const queuedAt = Date.now() - 5000;
-    await expect(capacityManager['addJobToBullMQ']({ type: 'k6', jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt })).rejects.toThrow('temporarily unavailable');
-    expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queuedAt, 'dns-job');
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ type: 'k6', jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt }));
+    expect(await capacityManager['promoteJob'](testOrgId, 'dns-job')).toBe(false);
+    expect(mockRedisEval).not.toHaveBeenCalled();
     const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
     expect(db.update).not.toHaveBeenCalled();
   });
