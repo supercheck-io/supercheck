@@ -104,7 +104,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 6381:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
@@ -146,7 +146,7 @@ jobs:
         run: npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache
         env:
           NODE_ENV: test
-          TEST_REDIS_URL: redis://localhost:6379
+          TEST_REDIS_URL: redis://localhost:6381
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
