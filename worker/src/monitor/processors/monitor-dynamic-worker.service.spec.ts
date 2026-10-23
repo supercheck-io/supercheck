@@ -115,6 +115,27 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(abortMonitorCycle).not.toHaveBeenCalled();
   });
 
+  it('closes a skipped regional group without recording a failed check', async () => {
+    const { service } = setup();
+    const skipDistributedMonitorGroup = jest.fn().mockResolvedValue(undefined);
+    Object.assign(service['monitorService'], { executeMonitor: jest.fn().mockResolvedValue(null), skipDistributedMonitorGroup });
+    jest.spyOn(service as any, 'assertBrowserCapability').mockResolvedValue(undefined);
+    const job = { name: EXECUTE_MONITOR_JOB_NAME, data: { monitorId: 'm1', executionGroupId: 'g1', executionLocation: 'local', expectedLocations: ['local','eu'], monitorCycle: true } };
+    expect(await service['processJob'](job as never)).toEqual([]);
+    expect(skipDistributedMonitorGroup).toHaveBeenCalledWith('m1', 'g1', true);
+  });
+
+  it('retries only group closure after capacity was exhausted, never the check', async () => {
+    const { service } = setup();
+    const executeMonitor = jest.fn();
+    const skipDistributedMonitorGroup = jest.fn().mockResolvedValue(undefined);
+    Object.assign(service['monitorService'], { executeMonitor, skipDistributedMonitorGroup });
+    const job = { name: EXECUTE_MONITOR_JOB_NAME, data: { monitorId: 'm1', executionGroupId: 'g1', executionLocation: 'local', _capacityGaveUp: true } };
+    expect(await service['processJob'](job as never)).toEqual([]);
+    expect(executeMonitor).not.toHaveBeenCalled();
+    expect(skipDistributedMonitorGroup).toHaveBeenCalledWith('m1', 'g1', false);
+  });
+
   it('marks the job when the capacity wait is given up', async () => {
     const { service } = setup();
     const updateData = jest.fn().mockResolvedValue(undefined);
