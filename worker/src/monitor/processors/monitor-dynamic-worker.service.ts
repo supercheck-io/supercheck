@@ -343,6 +343,14 @@ export class MonitorDynamicWorkerService
     const jobLocation = job.data.executionLocation;
 
     if (jobLocation) {
+      if (
+        (job.data as { _capacityGaveUp?: boolean; _groupSkipped?: boolean })
+          ._capacityGaveUp ||
+        (job.data as { _groupSkipped?: boolean })._groupSkipped
+      ) {
+        await this.closeSkippedGroup(job);
+        return [];
+      }
       const saved =
         job.data.aggregationOnly && job.data.executionGroupId
           ? await this.dbService.db.query.monitorResults.findFirst({
@@ -378,9 +386,9 @@ export class MonitorDynamicWorkerService
           );
 
       if (!result) {
-        // Skipped without a verdict (no entitlement or allowance): end the cycle instead of letting
-        // its deadline record this region as down.
-        await this.abortCycleOf(job);
+        // Skipped without a verdict (no entitlement or allowance): close the group or cycle instead of
+        // letting its deadline record this region as down.
+        await this.closeSkippedGroup(job);
         return [];
       }
 
@@ -405,8 +413,10 @@ export class MonitorDynamicWorkerService
 
     // Legacy/single queue mode: the job runs from this worker's own location.
     await this.assertBrowserCapability(job.data, this.workerLocation);
-    return this.executeOrDefer(job, () =>
-      this.monitorService.executeMonitorWithLocations(job.data),
+    return (
+      (await this.executeOrDefer(job, () =>
+        this.monitorService.executeMonitorWithLocations(job.data),
+      )) ?? []
     );
   }
 
@@ -429,20 +439,52 @@ export class MonitorDynamicWorkerService
   private async executeOrDefer<T>(
     job: Job<MonitorJobDataDto>,
     execute: () => Promise<T>,
-  ): Promise<T> {
+  ): Promise<T | null> {
     try {
       return await execute();
     } catch (error) {
       if (!(error instanceof ExecutionCapacityError)) throw error;
+      if (
+        job.data.monitorCycle &&
+        job.data.executionGroupId &&
+        job.data.executionLocation
+      ) {
+        await this.closeSkippedGroup(job);
+        return null;
+      }
       return deferForCapacity(job, async (reason) => {
         this.logger.error(
           `Monitor ${job.data.monitorId} check dropped: ${reason}`,
         );
         // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
-        await job
-          .updateData({ ...job.data, _capacityGaveUp: true } as never)
-          .catch(() => undefined);
+        job.data = { ...job.data, _capacityGaveUp: true } as never;
+        await job.updateData(job.data);
+        await this.closeSkippedGroup(job);
       });
+    }
+  }
+
+  private async closeSkippedGroup(job: Job<MonitorJobDataDto>): Promise<void> {
+    const { monitorId, executionGroupId, monitorCycle } = job.data;
+    if (!executionGroupId) return;
+    const flags = job.data as {
+      _capacityGaveUp?: boolean;
+      _groupSkipped?: boolean;
+    };
+    if (!flags._capacityGaveUp && !flags._groupSkipped) {
+      job.data = { ...job.data, _groupSkipped: true } as never;
+      await job.updateData(job.data);
+    }
+    try {
+      await this.monitorService.skipDistributedMonitorGroup(
+        monitorId,
+        executionGroupId,
+        !!monitorCycle,
+      );
+    } catch (error) {
+      if (!(error instanceof MonitorAggregationBusyError)) throw error;
+      await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
+      throw new DelayedError();
     }
   }
 
@@ -493,7 +535,10 @@ export class MonitorDynamicWorkerService
 
     // The check never ran because the organization's slot stayed busy. That says nothing about the
     // monitored service, so it must not be recorded as a failed check.
-    if ((job.data as { _capacityGaveUp?: boolean })._capacityGaveUp) {
+    if (
+      (job.data as { _capacityGaveUp?: boolean })._capacityGaveUp ||
+      (job.data as { _groupSkipped?: boolean })._groupSkipped
+    ) {
       this.logger.warn(
         `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
       );
