@@ -35,6 +35,12 @@ describe("resolveMcpCallContext", () => {
     selectResults.push([{ banned: false }], [{ scopes: ["mcp:read"] }]);
     await expect(resolveMcpCallContext(claims)).resolves.toMatchObject({ organizationId: "o1", projectId: "p1", role: "project_viewer" });
   });
+  it.each([{ client: [] }, { client: [{ disabled: true }] }])("rejects a removed or disabled OAuth client", async ({ client }) => {
+    selectResults.push([{ banned: false }], client, [{ scopes: ["mcp:read"] }]);
+    await denied(resolveMcpCallContext(claims), "client_unavailable");
+    expect(resolveProjectPermissionContext).not.toHaveBeenCalled();
+  });
+
   it("rejects a token without a project claim", async () => {
     await denied(resolveMcpCallContext({ sub: "u1", azp: "client" }), "token_missing_project");
   });
