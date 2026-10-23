@@ -1,4 +1,7 @@
-import { hasActiveExecutionPlan } from './execution-admission.service';
+import {
+  hasActiveExecutionPlan,
+  MIN_RESERVED_RUN_MS,
+} from './execution-admission.service';
 import { ceilUsageCostCents } from '../../common/utils/usage-cost';
 import { v7 as uuidv7 } from 'uuid';
 import {
@@ -47,6 +50,8 @@ function isPolarEnabled(): boolean {
 /** Reasons that mean billing could not be checked (not that billing blocks the organization). */
 export const BILLING_VERIFICATION_FAILED = 'Unable to verify';
 /** Shown when a trial's monitor allowance does not cover this monitor. */
+export const TRIAL_BROWSER_ALLOWANCE_EXHAUSTED =
+  'Trial browser allowance is used up';
 const TRIAL_MONITOR_ALLOWANCE_EXCEEDED =
   'Monitor exceeds the trial monitor allowance';
 export const BILLING_NOT_CONFIGURED =
@@ -721,7 +726,15 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     organizationId: string,
     allowance: number,
     monitorId?: string,
+    browserRemainingMs?: number,
   ): Promise<{ blocked: boolean; reason?: string }> {
+    // A browser check that cannot get even the smallest run is held, so the missing-region cycle
+    // closes as skipped instead of recording the unrun check as downtime.
+    if (
+      browserRemainingMs !== undefined &&
+      browserRemainingMs < MIN_RESERVED_RUN_MS
+    )
+      return { blocked: true, reason: TRIAL_BROWSER_ALLOWANCE_EXHAUSTED };
     if (!monitorId) return { blocked: false };
     const eligible = await this.db
       .select({ id: schema.monitors.id })
@@ -766,6 +779,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
               organizationId,
               entitlement.maxMonitors,
               options.monitorId,
+              options.checkSpendingLimit
+                ? entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs
+                : undefined,
             );
         }
       } catch {
@@ -795,6 +811,9 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             organizationId,
             entitlement.maxMonitors,
             options.monitorId,
+            options.checkSpendingLimit
+              ? entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs
+              : undefined,
           );
         return { blocked: true, reason: 'An active subscription is required' };
       }

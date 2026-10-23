@@ -10,9 +10,75 @@ import {
 } from "@/db/schema";
 import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
+import { hasPaidAccess } from "@/lib/execution/trial-limits";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
 const BATCH_SIZE = 50;
+
+/**
+ * Stops the repeatable BullMQ schedule of paused monitors. The scheduled job is a no-op for a paused
+ * monitor, but it keeps firing and would be the only trace of a stale schedule after a restart.
+ * Best effort: a failure here must not undo the lifecycle change.
+ */
+async function unscheduleMonitors(
+  monitorRows: Array<{ id: string; scheduledJobId: string | null }>,
+  database: Pick<typeof db, "update">,
+): Promise<void> {
+  if (!monitorRows.length) return;
+  const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
+  for (const row of monitorRows) {
+    try {
+      if (row.scheduledJobId) await deleteScheduledMonitor(row.scheduledJobId);
+      await deleteScheduledMonitor(row.id);
+      await database
+        .update(monitors)
+        .set({ scheduledJobId: null })
+        .where(eq(monitors.id, row.id));
+    } catch (error) {
+      console.error(`Failed to unschedule monitor ${row.id} at trial end:`, error);
+    }
+  }
+}
+
+/**
+ * Re-creates the schedule of monitors resumed by a subscription. The status was set to pending, so
+ * the first check sets the real state. Best effort: the webhook has already saved the subscription.
+ */
+async function rescheduleMonitors(
+  monitorIds: string[],
+  database: Pick<typeof db, "select" | "update">,
+): Promise<void> {
+  if (!monitorIds.length) return;
+  const { scheduleMonitor } = await import("@/lib/monitor-scheduler");
+  const rows = await database
+    .select()
+    .from(monitors)
+    .where(inArray(monitors.id, monitorIds));
+  for (const monitor of rows) {
+    if (!monitor.frequencyMinutes || monitor.frequencyMinutes <= 0) continue;
+    try {
+      const schedulerId = await scheduleMonitor({
+        monitorId: monitor.id,
+        frequencyMinutes: monitor.frequencyMinutes,
+        jobData: {
+          monitorId: monitor.id,
+          projectId: monitor.projectId ?? undefined,
+          type: monitor.type as never,
+          target: monitor.target,
+          config: monitor.config as never,
+          frequencyMinutes: monitor.frequencyMinutes,
+        },
+        retryLimit: 3,
+      });
+      await database
+        .update(monitors)
+        .set({ scheduledJobId: schedulerId })
+        .where(eq(monitors.id, monitor.id));
+    } catch (error) {
+      console.error(`Failed to reschedule monitor ${monitor.id} after trial:`, error);
+    }
+  }
+}
 
 export interface TrialEndResult {
   organizations: number;
@@ -20,33 +86,7 @@ export interface TrialEndResult {
   statusPagesArchived: number;
 }
 
-type Database = Pick<typeof db, "select" | "transaction">;
-
-type PaidAccessFields = Pick<
-  typeof organization.$inferSelect,
-  | "polarCustomerId"
-  | "subscriptionPlan"
-  | "subscriptionStatus"
-  | "subscriptionEndsAt"
->;
-
-function hasPaidAccess(org: PaidAccessFields, now: Date): boolean {
-  if (
-    !org.polarCustomerId ||
-    !["plus", "pro"].includes(org.subscriptionPlan ?? "")
-  )
-    return false;
-  if (
-    org.subscriptionStatus === "active" ||
-    org.subscriptionStatus === "past_due"
-  )
-    return true;
-  return (
-    org.subscriptionStatus === "canceled" &&
-    !!org.subscriptionEndsAt &&
-    org.subscriptionEndsAt > now
-  );
-}
+type Database = Pick<typeof db, "select" | "selectDistinct" | "transaction" | "update">;
 
 /**
  * Ends every expired trial exactly once. Monitors are paused and published
@@ -76,6 +116,7 @@ export async function endExpiredTrials(
     )
     .limit(BATCH_SIZE);
 
+  const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
   for (const { organizationId } of expired) {
     await database.transaction(async (tx) => {
       // Serialize with a concurrent subscription or restore for this organization.
@@ -102,7 +143,11 @@ export async function endExpiredTrials(
       }
 
       const running = await tx
-        .select({ id: monitors.id, status: monitors.status })
+        .select({
+          id: monitors.id,
+          status: monitors.status,
+          scheduledJobId: monitors.scheduledJobId,
+        })
         .from(monitors)
         .where(
           and(
@@ -167,8 +212,12 @@ export async function endExpiredTrials(
       result.organizations += 1;
       result.monitorsPaused += running.length;
       result.statusPagesArchived += published.length;
+      toUnschedule.push(...running);
     });
   }
+
+  // After every transaction has committed, so a rolled-back pause never loses a schedule.
+  await unscheduleMonitors(toUnschedule, database);
 
   return result;
 }
@@ -179,9 +228,10 @@ export async function endExpiredTrials(
  */
 export async function restoreTrialSuspensions(
   organizationId: string,
-  database: Pick<typeof db, "transaction"> = db,
+  database: Pick<typeof db, "transaction" | "select" | "update"> = db,
 ): Promise<{ monitorsResumed: number; statusPagesRestored: number }> {
-  return database.transaction(async (tx) => {
+  const resumedIds: string[] = [];
+  const result = await database.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(trialSuspensions)
@@ -224,11 +274,49 @@ export async function restoreTrialSuspensions(
         .delete(trialSuspensions)
         .where(eq(trialSuspensions.organizationId, organizationId));
 
+    resumedIds.push(...resumed.map((row) => row.id));
     return {
       monitorsResumed: resumed.length,
       statusPagesRestored: restored.length,
     };
   });
+  // Scheduling is a Redis side effect, so it runs once the status change is written.
+  await rescheduleMonitors(resumedIds, database);
+  return result;
+}
+
+/**
+ * Safety net for the activation webhook: restoring is best effort there, so a failure would leave a
+ * paying organization paused. Any organization with outstanding suspensions that now has paid access
+ * is restored here on every lifecycle run. Idempotent.
+ */
+export async function reconcilePaidTrialSuspensions(
+  options: { now?: Date; database?: Database & Pick<typeof db, "update"> } = {},
+): Promise<{ organizations: number; monitorsResumed: number; statusPagesRestored: number }> {
+  const now = options.now ?? new Date();
+  const database = options.database ?? db;
+  const result = { organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 };
+  const pending = await database
+    .selectDistinct({ organizationId: trialSuspensions.organizationId })
+    .from(trialSuspensions)
+    .limit(BATCH_SIZE);
+  if (!pending.length) return result;
+  const orgs = await database
+    .select()
+    .from(organization)
+    .where(inArray(organization.id, pending.map((row) => row.organizationId)));
+  for (const org of orgs) {
+    if (!hasPaidAccess(org, now)) continue;
+    try {
+      const restored = await restoreTrialSuspensions(org.id, database);
+      result.organizations += 1;
+      result.monitorsResumed += restored.monitorsResumed;
+      result.statusPagesRestored += restored.statusPagesRestored;
+    } catch (error) {
+      console.error(`Failed to restore trial resources for org ${org.id}:`, error);
+    }
+  }
+  return result;
 }
 
 export interface TrialReminderDelivery {

@@ -1,11 +1,22 @@
 /** @jest-environment node */
 import {
   endExpiredTrials,
+  reconcilePaidTrialSuspensions,
   restoreTrialSuspensions,
   sendTrialReminders,
 } from "./trial-lifecycle";
 
 jest.mock("@/utils/db", () => ({ db: {} }));
+const deleteScheduledMonitor = jest.fn().mockResolvedValue(true);
+const scheduleMonitor = jest.fn().mockResolvedValue("sched-new");
+jest.mock("@/lib/monitor-scheduler", () => ({
+  deleteScheduledMonitor: (...args: unknown[]) => deleteScheduledMonitor(...args),
+  scheduleMonitor: (...args: unknown[]) => scheduleMonitor(...args),
+}));
+beforeEach(() => {
+  deleteScheduledMonitor.mockClear();
+  scheduleMonitor.mockClear();
+});
 
 /** Awaitable stand-in for a drizzle query builder that resolves to `result`. */
 function chain<T>(result: T) {
@@ -43,7 +54,7 @@ const trialOrg = {
 interface Fixture {
   expired?: Array<{ organizationId: string }>;
   org?: Record<string, unknown> | undefined;
-  running?: Array<{ id: string; status: string }>;
+  running?: Array<{ id: string; status: string; scheduledJobId?: string | null }>;
   published?: Array<{ id: string }>;
 }
 
@@ -82,6 +93,12 @@ function build(fixture: Fixture) {
     select: jest.fn(() =>
       chain(fixture.expired ?? [{ organizationId: "org" }]),
     ),
+    update: jest.fn(() => ({
+      set: jest.fn((values: Record<string, unknown>) => {
+        updates.push({ table: "monitors", values });
+        return chain([]);
+      }),
+    })),
     transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
       callback(tx),
     ),
@@ -141,6 +158,30 @@ describe("endExpiredTrials", () => {
         expect.objectContaining({ lifecycleEndedAt: NOW }),
       ]),
     );
+  });
+
+  it("removes the repeatable schedule of each paused monitor and clears its scheduledJobId", async () => {
+    const { database, updates } = build({
+      org: trialOrg,
+      running: [
+        { id: "m1", status: "up", scheduledJobId: "sched-1" },
+        { id: "m2", status: "down", scheduledJobId: null },
+      ],
+    });
+    await endExpiredTrials({ now: NOW, database });
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("sched-1");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("m1");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("m2");
+    expect(updates.filter((u) => u.table === "monitors" && u.values.scheduledJobId === null)).toHaveLength(2);
+  });
+
+  it("does not touch schedules when the organization pays", async () => {
+    const { database } = build({
+      org: { ...trialOrg, polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active" },
+      running: [{ id: "m1", status: "up", scheduledJobId: "sched-1" }],
+    });
+    await endExpiredTrials({ now: NOW, database });
+    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
   });
 
   it("still marks a trial with nothing to suspend as ended", async () => {
@@ -262,9 +303,21 @@ describe("restoreTrialSuspensions", () => {
         return chain(undefined);
       }),
     };
+    const monitorRows = rows
+      .filter((row) => row.resourceType === "monitor")
+      .map((row) => ({
+        id: row.resourceId,
+        frequencyMinutes: 5,
+        projectId: "project",
+        type: "http_request",
+        target: "https://example.com",
+        config: {},
+      }));
     return {
       database: {
         transaction: async (callback: (tx: unknown) => unknown) => callback(tx),
+        select: jest.fn(() => chain(monitorRows)),
+        update: jest.fn(() => ({ set: jest.fn(() => chain([])) })),
       } as never,
       sets,
       deletes,
@@ -292,6 +345,20 @@ describe("restoreTrialSuspensions", () => {
     expect(deletes).toHaveLength(1);
   });
 
+  it("schedules every resumed monitor again once the status change is written", async () => {
+    const { database } = buildRestore([{ resourceType: "monitor", resourceId: "m1" }], 1, 0);
+    await restoreTrialSuspensions("org", database);
+    expect(scheduleMonitor).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorId: "m1", frequencyMinutes: 5 }),
+    );
+  });
+
+  it("does not fail the restore when a schedule cannot be created", async () => {
+    scheduleMonitor.mockRejectedValueOnce(new Error("redis down"));
+    const { database } = buildRestore([{ resourceType: "monitor", resourceId: "m1" }], 1, 0);
+    await expect(restoreTrialSuspensions("org", database)).resolves.toMatchObject({ monitorsResumed: 1 });
+  });
+
   it("does nothing for an organization with no suspended resources", async () => {
     const { database, tx } = buildRestore([]);
     await expect(restoreTrialSuspensions("org", database)).resolves.toEqual({
@@ -313,6 +380,42 @@ describe("restoreTrialSuspensions", () => {
       statusPagesRestored: 0,
     });
     expect(tx.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reconcilePaidTrialSuspensions", () => {
+  function buildReconcile(suspended: string[], orgs: Array<Record<string, unknown>>) {
+    const restoredRows = [{ resourceType: "monitor", resourceId: "m1" }];
+    const tx = {
+      select: jest.fn(() => chain(restoredRows)),
+      update: jest.fn(() => ({ set: jest.fn(() => chain([{ id: "m1" }])) })),
+      delete: jest.fn(() => chain(undefined)),
+    };
+    let selects = 0;
+    const database = {
+      selectDistinct: jest.fn(() => chain(suspended.map((organizationId) => ({ organizationId })))),
+      select: jest.fn(() => {
+        selects += 1;
+        return chain(selects === 1 ? orgs : [{ id: "m1", frequencyMinutes: 5, type: "http_request", target: "x", config: {} }]);
+      }),
+      update: jest.fn(() => ({ set: jest.fn(() => chain([])) })),
+      transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(tx)),
+    };
+    return database as never;
+  }
+  const paid = { id: "org", polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active", subscriptionEndsAt: null };
+
+  it("restores an organization that pays but is still suspended", async () => {
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile(["org"], [paid]) })).resolves.toMatchObject({ organizations: 1, monitorsResumed: 1 });
+    expect(scheduleMonitor).toHaveBeenCalled();
+  });
+
+  it("leaves unpaid organizations suspended", async () => {
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile(["org"], [trialOrg]) })).resolves.toMatchObject({ organizations: 0 });
+  });
+
+  it("does nothing when nothing is suspended", async () => {
+    await expect(reconcilePaidTrialSuspensions({ now: NOW, database: buildReconcile([], []) })).resolves.toEqual({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
   });
 });
 

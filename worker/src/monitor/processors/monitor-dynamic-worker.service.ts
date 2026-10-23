@@ -416,11 +416,14 @@ export class MonitorDynamicWorkerService
       return await execute();
     } catch (error) {
       if (!(error instanceof ExecutionCapacityError)) throw error;
-      return deferForCapacity(job, (reason) => {
+      return deferForCapacity(job, async (reason) => {
         this.logger.error(
           `Monitor ${job.data.monitorId} check dropped: ${reason}`,
         );
-        return Promise.resolve();
+        // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
+        await job
+          .updateData({ ...job.data, _capacityGaveUp: true } as never)
+          .catch(() => undefined);
       });
     }
   }
@@ -469,6 +472,15 @@ export class MonitorDynamicWorkerService
     } = job.data;
 
     if (!executionGroupId || !executionLocation) return;
+
+    // The check never ran because the organization's slot stayed busy. That says nothing about the
+    // monitored service, so it must not be recorded as a failed check.
+    if ((job.data as { _capacityGaveUp?: boolean })._capacityGaveUp) {
+      this.logger.warn(
+        `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
+      );
+      return;
+    }
 
     // Stalled recovery and unrecoverable errors can fail permanently before
     // attemptsMade reaches attempts. Never synthesize an error for a retry.

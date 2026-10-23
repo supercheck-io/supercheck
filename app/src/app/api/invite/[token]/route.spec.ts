@@ -91,6 +91,9 @@ describe("invitation privacy and acceptance", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
+  const trialRow = jest.fn();
+  beforeEach(() => trialRow.mockReset().mockResolvedValue(undefined));
+
   function acceptance({ projectRows = [{ id: "22222222-2222-4222-8222-222222222222" }], sessionRows = [{ id: "session" }], claimRows = [{ id: invite.id }] } = {}) {
     (isCloudHosted as jest.Mock).mockReturnValue(false);
     auth.api.getSession.mockResolvedValue({ session: { token: "browser-token" } });
@@ -102,6 +105,7 @@ describe("invitation privacy and acceptance", () => {
     const tx = {
       select: jest.fn().mockReturnValueOnce(selectRows([{ id: "user-1" }])).mockReturnValue(selectRows(projectRows)), insert,
       execute: jest.fn().mockResolvedValue([{ value: "0" }]),
+      query: { executionEntitlements: { findFirst: trialRow } },
       update: jest.fn().mockReturnValueOnce({ set: jest.fn().mockReturnValue({ where: claimWhere }) })
         .mockReturnValue({ set: sessionSet }),
     };
@@ -140,6 +144,26 @@ describe("invitation privacy and acceptance", () => {
     expect(response.status).toBe(402);
     expect(tx.update).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["admits a member while the trial team has room", 2, 200],
+    ["refuses once the trial team cap is reached", 3, 402],
+  ])("an organization on a free trial %s", async (_label, count, status) => {
+    const { tx } = acceptance();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
+    (isPolarEnabled as jest.Mock).mockReturnValue(true);
+    trialRow.mockResolvedValue({ organizationId: "org-1", expiresAt: new Date(Date.now() + 86_400_000), maxTeamMembers: 3 });
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }]))
+      .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
+    tx.select.mockReset()
+      .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
+      .mockReturnValueOnce(selectRows([{ plan: null }]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([{ count }]))
+      .mockReturnValue(selectRows([{ id: "22222222-2222-4222-8222-222222222222" }]));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(status);
   });
 
   it("skips plan limits in cloud mode when Polar billing is not enabled", async () => {

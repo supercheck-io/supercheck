@@ -63,6 +63,47 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
   });
 
+  it('does not record downtime when a check gave up waiting for an execution slot', async () => {
+    const { service } = setup();
+    const saveDistributedMonitorResult = jest.fn();
+    Object.assign(service['monitorService'], { saveDistributedMonitorResult });
+    const job = {
+      data: {
+        monitorId: 'm1',
+        executionGroupId: 'g1',
+        executionLocation: 'local',
+        expectedLocations: ['local'],
+        _capacityGaveUp: true,
+      },
+      attemptsMade: 1,
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    await service['handleFinalJobFailure'](
+      job as never,
+      new Error('capacity stayed occupied'),
+    );
+    expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
+  });
+
+  it('marks the job when the capacity wait is given up', async () => {
+    const { service } = setup();
+    const updateData = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      data: { monitorId: 'm1', _capacityDeferrals: 720 },
+      token: 't',
+      updateData,
+      moveToDelayed: jest.fn(),
+    };
+    await expect(
+      service['executeOrDefer'](job as never, () =>
+        Promise.reject(new ExecutionCapacityError('busy')),
+      ),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(updateData).toHaveBeenCalledWith(
+      expect.objectContaining({ _capacityGaveUp: true }),
+    );
+  });
+
   it('defers a legacy single-queue check too, instead of failing the job', async () => {
     const { service } = setup();
     const executeMonitorWithLocations = jest

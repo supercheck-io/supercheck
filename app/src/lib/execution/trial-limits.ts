@@ -1,11 +1,39 @@
 import { and, eq, gt, gte, or, sql } from "drizzle-orm";
 import {
   executionEntitlements,
+  organization,
   sreInvestigationRuns,
   type planLimits,
 } from "@/db/schema";
 import catalog from "@/lib/billing/plan-catalog.json";
 import { db } from "@/utils/db";
+
+export type PaidAccessFields = Pick<
+  typeof organization.$inferSelect,
+  | "polarCustomerId"
+  | "subscriptionPlan"
+  | "subscriptionStatus"
+  | "subscriptionEndsAt"
+>;
+
+/** Active (or still-running canceled) Plus/Pro subscription: paid access outranks any trial row. */
+export function hasPaidAccess(org: PaidAccessFields, now: Date): boolean {
+  if (
+    !org.polarCustomerId ||
+    !["plus", "pro"].includes(org.subscriptionPlan ?? "")
+  )
+    return false;
+  if (
+    org.subscriptionStatus === "active" ||
+    org.subscriptionStatus === "past_due"
+  )
+    return true;
+  return (
+    org.subscriptionStatus === "canceled" &&
+    !!org.subscriptionEndsAt &&
+    org.subscriptionEndsAt > now
+  );
+}
 
 export const TRIAL_DURATION_DAYS = catalog.trial.durationDays;
 
@@ -105,12 +133,24 @@ export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
 export async function trialCheckIntervalViolation(
   organizationId: string | null | undefined,
   frequencyMinutes: unknown,
-  database: Pick<typeof db, "query"> = db,
+  database: Pick<typeof db, "query" | "select"> = db,
 ): Promise<{ minimumMinutes: number } | null> {
   if (!organizationId) return null;
   const trial = await getActiveTrial(organizationId, database);
   if (!trial || Number(frequencyMinutes) >= trial.minCheckIntervalMinutes)
     return null;
+  // The trial row outlives an upgrade; paid access always wins, so a subscriber keeps 1-minute checks.
+  const [org] = await database
+    .select({
+      polarCustomerId: organization.polarCustomerId,
+      subscriptionPlan: organization.subscriptionPlan,
+      subscriptionStatus: organization.subscriptionStatus,
+      subscriptionEndsAt: organization.subscriptionEndsAt,
+    })
+    .from(organization)
+    .where(eq(organization.id, organizationId))
+    .limit(1);
+  if (org && hasPaidAccess(org, new Date())) return null;
   return { minimumMinutes: trial.minCheckIntervalMinutes };
 }
 

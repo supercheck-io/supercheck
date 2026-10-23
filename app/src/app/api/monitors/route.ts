@@ -21,7 +21,7 @@ import {
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
-import { trialCheckIntervalViolation } from "@/lib/execution/trial-limits";
+import { trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import {
   subscriptionService,
@@ -43,17 +43,7 @@ const logger = createLogger({ module: "monitors-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-async function trialFrequencyError(organizationId: string | null | undefined, frequencyMinutes: unknown) {
-  const violation = await trialCheckIntervalViolation(organizationId, frequencyMinutes);
-  if (!violation) return null;
-  return NextResponse.json(
-    {
-      error: "Check interval too short for a trial",
-      details: `During the trial, monitors run at most every ${violation.minimumMinutes} minutes. Subscribe for 1-minute checks.`,
-    },
-    { status: 400 },
-  );
-}
+const trialFrequencyError = trialIntervalErrorResponse;
 
 export async function GET(request: Request) {
   try {

@@ -75,10 +75,15 @@ describe("trial limits", () => {
 
   describe("lookups", () => {
     const findFirst = jest.fn();
+    const orgRows = jest.fn();
     const database = {
       query: { executionEntitlements: { findFirst } },
+      select: () => ({ from: () => ({ where: () => ({ limit: orgRows }) }) }),
     } as never;
-    beforeEach(() => findFirst.mockReset());
+    beforeEach(() => {
+      findFirst.mockReset();
+      orgRows.mockReset().mockResolvedValue([]);
+    });
 
     it("returns an unexpired entitlement and ignores an expired or missing one", async () => {
       findFirst.mockResolvedValue(entitlement(new Date(Date.now() + 1000)));
@@ -99,6 +104,14 @@ describe("trial limits", () => {
       await expect(
         trialCheckIntervalViolation("org", "4", database),
       ).resolves.toEqual({ minimumMinutes: 5 });
+    });
+
+    it("lets an organization that has subscribed keep one-minute checks while its trial row lingers", async () => {
+      findFirst.mockResolvedValue(entitlement(new Date(Date.now() + 1000)));
+      orgRows.mockResolvedValue([{ polarCustomerId: "cus", subscriptionPlan: "plus", subscriptionStatus: "active", subscriptionEndsAt: null }]);
+      await expect(trialCheckIntervalViolation("org", 1, database)).resolves.toBeNull();
+      orgRows.mockResolvedValue([{ polarCustomerId: null, subscriptionPlan: null, subscriptionStatus: "none", subscriptionEndsAt: null }]);
+      await expect(trialCheckIntervalViolation("org", 1, database)).resolves.toEqual({ minimumMinutes: 5 });
     });
 
     it("allows the minimum interval and anything longer", async () => {

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const mockWhere = jest.fn();
 const mockEndExpiredTrials = jest.fn();
+const mockReconcile = jest.fn();
 const mockSendTrialReminders = jest.fn();
 jest.mock("@/utils/db", () => ({
   db: {
@@ -17,6 +18,7 @@ jest.mock("@/lib/monitor-aggregation-service", () => ({
 jest.mock("@/lib/execution/trial-lifecycle", () => ({
   endExpiredTrials: (...args: unknown[]) => mockEndExpiredTrials(...args),
   sendTrialReminders: (...args: unknown[]) => mockSendTrialReminders(...args),
+  reconcilePaidTrialSuspensions: (...args: unknown[]) => mockReconcile(...args),
 }));
 jest.mock("@/lib/execution/trial-reminder-delivery", () => ({
   deliverTrialReminder: jest.fn(),
@@ -33,6 +35,7 @@ const strategy = () =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockSendTrialReminders.mockResolvedValue({ midway: 0, ending: 0, ended: 0 });
+  mockReconcile.mockResolvedValue({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
 });
 
 it("ends expired trials and reports what changed", async () => {
@@ -113,4 +116,16 @@ it("still sends reminders when ending trials fails", async () => {
   mockEndExpiredTrials.mockRejectedValue(new Error("database unavailable"));
   await strategy().execute();
   expect(mockSendTrialReminders).toHaveBeenCalled();
+});
+
+it("repairs paid organizations that are still suspended and keeps going if that fails", async () => {
+  mockEndExpiredTrials.mockResolvedValue({ organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 });
+  mockReconcile.mockResolvedValueOnce({ organizations: 1, monitorsResumed: 2, statusPagesRestored: 1 });
+  await expect(strategy().execute(false)).resolves.toMatchObject({
+    details: { restored: { organizations: 1, monitorsResumed: 2, statusPagesRestored: 1 } },
+  });
+  mockReconcile.mockRejectedValueOnce(new Error("db down"));
+  const failed = await strategy().execute(false);
+  expect(failed.errors).toEqual(["Trial restore reconciliation failed: db down"]);
+  expect(mockSendTrialReminders).toHaveBeenCalledTimes(2);
 });

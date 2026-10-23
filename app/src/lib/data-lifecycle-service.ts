@@ -53,7 +53,7 @@ import type Redis from "ioredis";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { monitorAggregationService } from "./monitor-aggregation-service";
-import { endExpiredTrials, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
+import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 // ============================================================================
@@ -2349,6 +2349,13 @@ export class TrialLifecycleStrategy implements ICleanupStrategy {
     } catch (error) {
       result.success = false;
       result.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    // A paid organization whose resources are still suspended (the activation webhook could not
+    // restore them) is repaired here, independent of ending trials.
+    try {
+      result.details = { ...result.details, restored: await reconcilePaidTrialSuspensions() };
+    } catch (error) {
+      result.errors.push(`Trial restore reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     // Reminders are best effort and independent of ending trials: an email
     // problem must never stop monitors from being paused.

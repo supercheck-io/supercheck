@@ -22,6 +22,10 @@ jest.mock("@/lib/monitor-scheduler", () => ({
   deleteScheduledMonitor: jest.fn(),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+const trialIntervalErrorResponse = jest.fn();
+jest.mock("@/lib/execution/trial-interval-response", () => ({
+  trialIntervalErrorResponse: (...args: unknown[]) => trialIntervalErrorResponse(...args),
+}));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
 jest.mock("@/lib/queue", () => ({}));
 jest.mock("@/lib/monitor-validation", () => ({
@@ -41,7 +45,7 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PATCH, PUT } from "./route";
 
 const locationConfig = (locations: string[], enabled = true) => ({
@@ -157,4 +161,28 @@ it("PATCH applies CLI fields and refreshes the scheduler payload", async () => {
   expect(await response.json()).toMatchObject(saved);
   const { scheduleMonitor } = await import("@/lib/monitor-scheduler");
   expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ frequencyMinutes: 10, jobData: expect.objectContaining({ target: changes.target, config: saved.config }) }));
+});
+
+describe("trial check interval on monitor updates", () => {
+  const stored = { ...existing("http_request", { timeoutSeconds: 30 }), status: "up", frequencyMinutes: 5, scheduledJobId: "sched-1", alertConfig: null };
+  const tooFast = () => NextResponse.json({ error: "Check interval too short for a trial" }, { status: 400 });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findFirst.mockResolvedValue(stored);
+    trialIntervalErrorResponse.mockResolvedValue(null);
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s refuses a faster interval than the trial allows and writes nothing", async (method, handler) => {
+    trialIntervalErrorResponse.mockResolvedValueOnce(tooFast());
+    const response = await call(handler, method, { frequencyMinutes: 1 });
+    expect(response.status).toBe(400);
+    expect(trialIntervalErrorResponse).toHaveBeenCalledWith("org-1", 1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s does not check the interval when it is not being changed", async (method, handler) => {
+    await call(handler, method, { name: "Renamed" });
+    expect(trialIntervalErrorResponse).not.toHaveBeenCalled();
+  });
 });

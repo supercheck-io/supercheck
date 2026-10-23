@@ -611,6 +611,35 @@ describe('UsageTrackerService execution blocking', () => {
       );
     });
 
+    it.each([true, false])(
+      'holds a browser check once the trial browser allowance is used up, but not an HTTP check (billing configured: %s)',
+      async (billing) => {
+        const { f, service } = trialFixture(['m1']);
+        if (!billing) delete process.env.POLAR_ACCESS_TOKEN;
+        f.query.executionEntitlements.findFirst.mockResolvedValue({
+          expiresAt: new Date(Date.now() + 60000),
+          maxMonitors: 5,
+          playwrightBudgetMs: 100000,
+          playwrightUsedMs: 98000,
+        });
+        await expect(
+          service.shouldBlockExecution('org-1', {
+            monitorId: 'm1',
+            checkSpendingLimit: true,
+          }),
+        ).resolves.toEqual({
+          blocked: true,
+          reason: 'Trial browser allowance is used up',
+        });
+        await expect(
+          service.shouldBlockExecution('org-1', {
+            monitorId: 'm1',
+            checkSpendingLimit: false,
+          }),
+        ).resolves.toEqual({ blocked: false });
+      },
+    );
+
     it('does not apply a monitor allowance to on-demand runs', async () => {
       const { service, limit } = trialFixture([]);
       await expect(service.shouldBlockExecution('org-1')).resolves.toEqual({
