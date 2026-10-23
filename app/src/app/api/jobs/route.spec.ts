@@ -187,6 +187,15 @@ describe("Jobs route regressions", () => {
       expect(body.data[0].tests[0]).not.toHaveProperty("script");
     });
 
+    it("serves smaller pages when scripts are included", async () => {
+      mockJobWithTest();
+      const body = await (await GET(new NextRequest("http://localhost/api/jobs?includeScript=true&limit=100"))).json();
+      expect(body.pagination.limit).toBe(25);
+      mockJobWithTest();
+      const plain = await (await GET(new NextRequest("http://localhost/api/jobs?limit=100"))).json();
+      expect(plain.pagination.limit).toBe(100);
+    });
+
     it("includes the decoded script when asked", async () => {
       mockJobWithTest();
       const body = await (await GET(new NextRequest("http://localhost/api/jobs?includeScript=true"))).json();

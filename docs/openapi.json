@@ -1200,7 +1200,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "Include the decoded script in each job's tests. Defaults to false."
+            "description": "Include the decoded script in each job's tests. Defaults to false. Pages are limited to 25 jobs when scripts are included."
           }
         ],
         "responses": {

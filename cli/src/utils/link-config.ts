@@ -54,7 +54,15 @@ export function maskComments(text: string): string {
 
 interface Literal { start: number; end: number; value: string }
 
-function findLiterals(text: string): { org: Literal | null; project: Literal | null; baseUrl: Literal | null } {
+function findLiterals(text: string): {
+  org: Literal | null
+  project: Literal | null
+  /** Only the generated `process.env.SUPERCHECK_URL ?? '...'` form (what `link` may rewrite). */
+  baseUrl: Literal | null
+  /** Any literal api.baseUrl, generated or hand-written. */
+  declaredBaseUrl: Literal | null
+  baseUrlFollowsEnv: boolean
+} {
   const masked = maskComments(text)
   const open = /\bproject\s*:\s*\{/.exec(masked)
   let org: Literal | null = null
@@ -75,18 +83,49 @@ function findLiterals(text: string): { org: Literal | null; project: Literal | n
     }
   }
   let baseUrl: Literal | null = null
+  let baseUrlFollowsEnv = false
   const b = /\bbaseUrl\s*:\s*process\.env\.SUPERCHECK_URL\s*\?\?\s*(["'`])([^"'`\n\\]{0,2048})\1/.exec(masked)
   if (b) {
     const start = b.index + b[0].indexOf(b[1], b[0].indexOf('??'))
     baseUrl = { start, end: start + b[2].length + 2, value: b[2] }
+    baseUrlFollowsEnv = true
   }
-  return { org, project, baseUrl }
+  // A hand-written config often just has `api: { baseUrl: 'https://...' }`; the loader reads that too.
+  let declaredBaseUrl: Literal | null = baseUrl
+  if (!declaredBaseUrl) {
+    const api = /\bapi\s*:\s*\{/.exec(masked)
+    if (api) {
+      const bodyStart = api.index + api[0].length
+      const close = masked.indexOf('}', bodyStart)
+      if (close !== -1 && close - bodyStart <= MAX_BLOCK) {
+        const m = /\bbaseUrl\s*:\s*(["'`])([^"'`\n\\]{0,2048})\1/.exec(masked.slice(bodyStart, close))
+        if (m) {
+          const start = bodyStart + m.index + m[0].indexOf(m[1])
+          declaredBaseUrl = { start, end: start + m[2].length + 2, value: m[2] }
+        }
+      }
+    }
+  }
+  return { org, project, baseUrl, declaredBaseUrl, baseUrlFollowsEnv }
 }
 
 /** The literal fallback in `baseUrl: process.env.SUPERCHECK_URL ?? '<url>'`, read as text like the identity. */
 export function readConfigBaseUrl(text: string): string | null {
-  return findLiterals(text).baseUrl?.value ?? null
+  return findLiterals(text).declaredBaseUrl?.value ?? null
 }
+
+/**
+ * The API URL a config declares, and whether it follows SUPERCHECK_URL. A config of the generated form
+ * (`process.env.SUPERCHECK_URL ?? '...'`) agrees with the environment by construction; a plain literal
+ * does not, and the CLI refuses to sync when it differs from the API in use.
+ */
+export function readConfigBaseUrlInfo(text: string): { url: string; followsEnv: boolean } | null {
+  const found = findLiterals(text)
+  return found.declaredBaseUrl ? { url: found.declaredBaseUrl.value, followsEnv: found.baseUrlFollowsEnv } : null
+}
+
+/** Same names, in the loader's precedence order (local overrides main), as config/loader.ts. */
+export const LOCAL_CONFIG_FILES = ['supercheck.config.local.ts', 'supercheck.config.local.js', 'supercheck.config.local.mjs'] as const
 
 export function readConfigIdentity(text: string): { organization: string | null; project: string | null } {
   const { org, project } = findLiterals(text)

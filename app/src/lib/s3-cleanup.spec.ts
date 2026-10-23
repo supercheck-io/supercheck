@@ -128,6 +128,18 @@ describe("S3 report cleanup", () => {
     expect(objects.get("monitors")).toEqual(["test-ab123/report/index.html"]);
   });
 
+  it("does not use the fallback for a URL that points into another configured bucket", async () => {
+    objects.set("monitors", ["test-ab12/report/index.html"]);
+    for (const s3Url of [
+      "https://old-storage.example/tests/test-ab12/report/index.html",
+      "https://k6-tests.old-storage.example/test-ab12/report/index.html",
+    ]) {
+      const result = await service.deleteReports([{ entityType: "monitor", entityId: "monitor-1", reportPath: "test-ab12", s3Url }]);
+      expect(result.success).toBe(false);
+    }
+    expect(objects.get("monitors")).toEqual(["test-ab12/report/index.html"]);
+  });
+
   it("rejects a URL for a different bucket", async () => {
     const result = await service.deleteReports([{
       entityType: "monitor", entityId: "monitor-1", reportPath: "legacy-test/report", s3Url: "https://storage.example/tests/test-ab12/report/index.html",

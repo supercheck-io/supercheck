@@ -134,6 +134,29 @@ describe('doctor with a config that declares its own API URL', () => {
     expect(apiGet).toHaveBeenCalledTimes(1)
     expect(info.mock.calls.flat().join(' ')).toMatch(/Authenticated and verified[\s\S]*targets .*checks\.example\.com/)
   })
+  it('catches a hand-written api.baseUrl literal, not only the generated form', async () => {
+    writeFileSync(join(dir, 'supercheck.config.ts'), "export default { api: { baseUrl: 'https://checks.example.com' }, project: { organization: 'o', project: 'p' } }\n")
+    storedUrl = null
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(apiGet).not.toHaveBeenCalled()
+    expect(info.mock.calls.flat().join(' ')).toMatch(/targets .*checks\.example\.com/)
+  })
+  it('does not treat SUPERCHECK_URL as agreement with a hand-written literal', async () => {
+    writeFileSync(join(dir, 'supercheck.config.ts'), "export default { api: { baseUrl: 'https://checks.example.com' }, project: { organization: 'o', project: 'p' } }\n")
+    process.env.SUPERCHECK_URL = 'https://demo.supercheck.io'
+    try {
+      await doctorCommand.parseAsync(['node', 'doctor'])
+    } finally {
+      delete process.env.SUPERCHECK_URL
+    }
+    expect(info.mock.calls.flat().join(' ')).toMatch(/targets .*checks\.example\.com/)
+  })
+  it('reads supercheck.config.local.ts first, because it overrides the main config', async () => {
+    selfHosted()
+    writeFileSync(join(dir, 'supercheck.config.local.ts'), "export default { api: { baseUrl: 'https://demo.supercheck.io' } }\n")
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(info.mock.calls.flat().join(' ')).not.toMatch(/targets/)
+  })
   it('says nothing extra when SUPERCHECK_URL is set, since the config follows it', async () => {
     selfHosted()
     process.env.SUPERCHECK_URL = 'https://demo.supercheck.io'

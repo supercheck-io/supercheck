@@ -165,6 +165,22 @@ describe("QueryProvider hydration", () => {
     expect(localStorage.getItem("unrelated-key")).toBe("keep");
   });
 
+  it("stops writing the saved cache once another tab removed it (it signed out)", async () => {
+    render(<QueryProvider><AlertsProbe /></QueryProvider>);
+    await screen.findByText("Alerts: 1; channels: 1");
+    act(() => {
+      localStorage.removeItem(CACHE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: CACHE_KEY, newValue: null, oldValue: "{}", storageArea: localStorage }));
+    });
+    jest.useFakeTimers();
+    act(() => {
+      mountedClient.setQueryData(["public"], "late-write");
+      jest.advanceTimersByTime(1000);
+    });
+    jest.useRealTimers();
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+
   it("replaces in-memory data when an authenticated identity changes", async () => {
     const view = render(
       <QueryProvider>

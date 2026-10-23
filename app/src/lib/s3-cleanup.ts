@@ -132,6 +132,17 @@ export class S3CleanupService {
     }
   }
 
+  /** True when the URL points into a configured bucket other than the expected one (path or virtual-host style). */
+  private namesAnotherConfiguredBucket(url: URL, parts: string[], expected: string): boolean {
+    const buckets = new Set(
+      (["job", "test", "monitor", "k6_test", "k6_job", "status"] as const).map((type) =>
+        this.getBucketForEntityType(type),
+      ),
+    );
+    buckets.delete(expected);
+    return [...buckets].some((other) => parts[0] === other || url.hostname.startsWith(`${other}.`));
+  }
+
   /**
    * Extract S3 key from various input formats
    */
@@ -148,7 +159,11 @@ export class S3CleanupService {
         key = parts.slice(1).join("/");
       } else if (url.hostname.startsWith(`${bucket}.`)) {
         key = parts.join("/");
-      } else if (input.reportPath && parts.includes(input.reportPath.split("/")[0])) {
+      } else if (
+        input.reportPath &&
+        parts.includes(input.reportPath.split("/")[0]) &&
+        !this.namesAnotherConfiguredBucket(url, parts, bucket)
+      ) {
         // The URL names this execution but under another endpoint or bucket (for example after a
         // storage move). Delete the execution directory in the configured bucket instead of
         // blocking monitor deletion forever. A URL that does not name the execution still fails.

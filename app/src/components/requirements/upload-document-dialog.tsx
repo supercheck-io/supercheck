@@ -35,7 +35,7 @@ import {
 import { toast } from "sonner";
 import { extractRequirementsFromDocument } from "@/actions/extract-requirements";
 import { createRequirement } from "@/actions/requirements";
-import { createExtractedRequirements } from "./create-extracted-requirements";
+import { createExtractedRequirements, withoutCreated } from "./create-extracted-requirements";
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -331,13 +331,13 @@ export function UploadDocumentDialog({
         if (failure !== undefined) {
             console.error("Error creating requirements:", failure);
             const reason = getUserFriendlyError(failure);
-            setError(
-                created > 0
-                    ? `Created ${created} of ${selectedRequirements.length} requirements before it failed: ${reason}`
-                    : reason
-            );
-            setState("error");
             if (created > 0) {
+                // The first `created` selected rows exist now. Take them off the list and go back to the
+                // review step, so trying again can only create what is still missing (no duplicates).
+                setExtractedRequirements((prev) => withoutCreated(prev, selectedRequirements, created));
+                setProgress(0);
+                setState("review");
+                toast.error(`Created ${created} of ${selectedRequirements.length} requirements before it failed: ${reason}`);
                 // Those rows exist, so refresh the list even though the batch stopped.
                 try {
                     await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
@@ -345,6 +345,9 @@ export function UploadDocumentDialog({
                     console.error("Error refreshing requirements:", refreshError);
                 }
                 onComplete?.();
+            } else {
+                setError(reason);
+                setState("error");
             }
             return;
         }

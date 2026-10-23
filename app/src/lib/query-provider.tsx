@@ -21,6 +21,10 @@ let browserClient: QueryClient | undefined;
 let browserIdentity: string | null | undefined;
 let unsubscribePersistence: (() => void) | undefined;
 let restorationPromise: Promise<void> | undefined;
+// Set when another tab removed this identity's saved cache (it signed out): until this tab's identity
+// changes, nothing may write that cache back, even if this tab still shows the old data for a moment.
+let cacheClearedByOtherTab = false;
+let stopWatchingCacheKey: (() => void) | undefined;
 
 function createClient() {
   return new QueryClient({
@@ -63,12 +67,22 @@ function initializePersistence(
     const storage = window.localStorage;
     storage.removeItem(LEGACY_CACHE_KEY);
     pruneOtherIdentityCaches(storage, identity);
+    cacheClearedByOtherTab = false;
+    stopWatchingCacheKey?.();
+    const ownKey = `${CACHE_KEY}:${identity}`;
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea === storage && event.key === ownKey && event.newValue === null) {
+        cacheClearedByOtherTab = true;
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    stopWatchingCacheKey = () => window.removeEventListener("storage", onStorage);
     const persister = createSyncStoragePersister({
       storage: {
         getItem: (key) => storage.getItem(key),
         setItem: (key, value) => {
-          // A throttled save must not restore a signed-out user's cache.
-          if (browserClient === client) storage.setItem(key, value);
+          // A throttled save must not restore a signed-out user's cache, here or in another tab.
+          if (browserClient === client && !cacheClearedByOtherTab) storage.setItem(key, value);
         },
         removeItem: (key) => storage.removeItem(key),
       },
@@ -130,6 +144,8 @@ export function clearQueryCache() {
     unsubscribePersistence = undefined;
   }
 
+  stopWatchingCacheKey?.();
+  stopWatchingCacheKey = undefined;
   browserClient?.clear();
 
   try {

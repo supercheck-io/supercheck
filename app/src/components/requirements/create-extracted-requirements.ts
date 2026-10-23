@@ -51,3 +51,12 @@ export async function createExtractedRequirements(
   }
   return { created };
 }
+
+/**
+ * What is left to review after a batch stopped partway: the first `created` selected rows were written, so they
+ * leave the list, and everything else (including unselected rows) stays. Retrying then cannot duplicate rows.
+ */
+export function withoutCreated<T extends { id: string }>(all: T[], selected: T[], created: number): T[] {
+  const written = new Set(selected.slice(0, created).map((row) => row.id));
+  return all.filter((row) => !written.has(row.id));
+}

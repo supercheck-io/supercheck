@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { discoverRepository } from '../utils/discover.js'
-import { readConfigBaseUrl, readConfigIdentity } from '../utils/link-config.js'
+import { LOCAL_CONFIG_FILES, readConfigBaseUrlInfo, readConfigIdentity } from '../utils/link-config.js'
 import { detectConfigRequirements } from '../utils/config-text.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { resolve } from 'node:path'
@@ -52,10 +52,16 @@ export const doctorCommand = new Command('doctor')
     const baseUrl = storedBaseUrl ?? 'https://app.supercheck.io'
     // The config is repository text, so doctor never sends a credential to the URL it names. A config that
     // targets another API than the one in use is reported instead of producing a misleading "rejected".
-    const declaredBaseUrl = configResult ? readConfigBaseUrl(configResult.text) : null
+    // The loader lets supercheck.config.local.* override the main config, so read that first.
+    const localText = LOCAL_CONFIG_FILES.map((name) => readSmallFile(resolve(cwd, name))).find((text) => text !== null) ?? null
+    const declared =
+      (localText !== null ? readConfigBaseUrlInfo(localText) : null) ?? (configResult ? readConfigBaseUrlInfo(configResult.text) : null)
+    const declaredBaseUrl = declared?.url ?? null
     const originOf = (url: string): string => { try { return new URL(url).origin } catch { return url } }
-    // The generated config reads `process.env.SUPERCHECK_URL ?? '<url>'`, so with the variable set it already agrees.
-    const configTargetsOtherApi = declaredBaseUrl !== null && !process.env.SUPERCHECK_URL && originOf(declaredBaseUrl) !== originOf(baseUrl)
+    // The generated form `process.env.SUPERCHECK_URL ?? '<url>'` agrees with the variable by construction.
+    // A hand-written literal does not, and managed commands refuse to run when it differs from the API in use.
+    const followsEnv = declared?.followsEnv === true && !!process.env.SUPERCHECK_URL
+    const configTargetsOtherApi = declaredBaseUrl !== null && !followsEnv && originOf(declaredBaseUrl) !== originOf(baseUrl)
     const plainUrl = (url: string): string => (/^https?:\/\/[A-Za-z0-9.:_-]{1,253}(\/[A-Za-z0-9._~/-]{0,200})?$/.test(url) ? url : '(unprintable URL)')
     // Having a token is not the same as the server accepting it: ask the server before reporting success.
     let hasAuth = false

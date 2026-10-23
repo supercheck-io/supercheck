@@ -86,9 +86,11 @@ export async function GET(request: Request) {
     // OPTIMIZED: Parse pagination params with sensible defaults
     const url = new URL(request.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "100", 10)));
     // Scripts can be large: only included when asked for, like GET /api/tests.
     const includeScript = url.searchParams.get("includeScript") === "true";
+    // With scripts, a page is smaller: 100 jobs of many tests each could otherwise reach hundreds of MB.
+    const maxLimit = includeScript ? 25 : 100;
+    const limit = Math.min(maxLimit, Math.max(1, parseInt(url.searchParams.get("limit") || String(maxLimit), 10)));
     const offset = (page - 1) * limit;
 
     // PERFORMANCE: Run count and paginated queries in parallel

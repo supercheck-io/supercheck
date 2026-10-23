@@ -1,4 +1,4 @@
-import { createExtractedRequirements } from "./create-extracted-requirements";
+import { createExtractedRequirements, withoutCreated } from "./create-extracted-requirements";
 
 const requirement = (title: string) => ({ title, description: null, priority: null, tags: ["ai", "auth"] });
 
@@ -34,5 +34,14 @@ describe("createExtractedRequirements", () => {
     const create = jest.fn().mockRejectedValue(boom);
 
     expect(await createExtractedRequirements([requirement("A")], "doc-1", create)).toEqual({ created: 0, failure: boom });
+  });
+});
+
+describe("withoutCreated", () => {
+  const rows = ["a", "b", "c", "d"].map((id) => ({ id }));
+  it("drops only the rows that were written, keeping the unselected and the unwritten", () => {
+    const selected = [rows[0], rows[2], rows[3]];
+    expect(withoutCreated(rows, selected, 2).map((r) => r.id)).toEqual(["b", "d"]);
+    expect(withoutCreated(rows, selected, 0)).toHaveLength(4);
   });
 });
