@@ -69,6 +69,7 @@ import { monitorAggregationService } from "./monitor-aggregation-service";
  * - "job_runs": Test execution results and artifacts
  * - "playground_artifacts": Temporary test runs from playground
  * - "webhook_idempotency": Webhook deduplication keys with TTL
+ * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
  * 
@@ -84,6 +85,7 @@ export type CleanupEntityType =
   | "job_runs"
   | "playground_artifacts"
   | "webhook_idempotency"
+  | "credential_revocation_retry"
   | "alert_history"
   | "audit_logs";
 
@@ -1761,17 +1763,6 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
       details: { cutoffTime: now.toISOString(), dryRun },
     };
 
-    // Finish credential revocations that failed right after a password reset. Best effort and
-    // independent of the cleanup below; the same daily run is the only always-on place for it.
-    if (!dryRun) {
-      try {
-        const retried = await retryPendingCredentialRevocations();
-        if (retried > 0) result.details = { ...result.details, credentialRevocationsRetried: retried };
-      } catch (retryError) {
-        console.error("Pending credential revocation sweep failed:", retryError);
-      }
-    }
-
     try {
       let totalDeleted = 0;
       let iterations = 0;
@@ -1854,6 +1845,55 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
       );
     }
 
+    return result;
+  }
+}
+
+/**
+ * Credential Revocation Retry Strategy
+ *
+ * Finishes the revocation of API keys, trigger keys and connected-app grants when it failed right
+ * after a password reset. It deletes nothing of its own: a pending marker is removed once the
+ * revocation succeeds, and unfinished markers are logged on every run so they can be alerted on.
+ */
+export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "credential_revocation_retry";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+    this.validate();
+  }
+
+  validate(): void {
+    // No special validation needed
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    return { totalRecords: 0, oldRecords: 0 };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun },
+    };
+    if (!dryRun) {
+      try {
+        const retried = await retryPendingCredentialRevocations();
+        result.details = { ...result.details, credentialRevocationsRetried: retried };
+      } catch (error) {
+        result.success = false;
+        result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error("[DATA_LIFECYCLE] [credential_revocation_retry] Sweep failed:", error);
+      }
+    }
+    result.duration = Date.now() - startTime;
     return result;
   }
 }
@@ -2356,6 +2396,9 @@ export class DataLifecycleService {
           break;
         case "webhook_idempotency":
           strategy = new WebhookIdempotencyCleanupStrategy(config);
+          break;
+        case "credential_revocation_retry":
+          strategy = new CredentialRevocationRetryStrategy(config);
           break;
         case "alert_history":
           strategy = new AlertHistoryCleanupStrategy(config);
@@ -2871,6 +2914,18 @@ export function createDataLifecycleService(): DataLifecycleService {
       maxRecordsPerRun: parseInt(
         process.env.WEBHOOK_CLEANUP_SAFETY_LIMIT || "100000",
         10
+      ),
+    },
+
+    // Credential revocation retry
+    // Security remediation, so it has its own switch and does not depend on webhook cleanup.
+    // Failed markers expire after 7 days; hourly retries leave many chances before that.
+    {
+      entityType: "credential_revocation_retry",
+      enabled: parseBooleanEnv(process.env.CREDENTIAL_REVOCATION_RETRY_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.CREDENTIAL_REVOCATION_RETRY_CRON,
+        "20 * * * *" // hourly
       ),
     },
 
