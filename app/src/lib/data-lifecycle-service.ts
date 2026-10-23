@@ -21,7 +21,7 @@
  * - Each organization's data is cleaned based on their subscription plan's dataRetentionDays
  * - Plus plan: 7 days raw data, 30 days aggregated/job data
  * - Pro plan: 7 days raw data, 90 days aggregated/job data
- * - Unlimited plan: 30 days raw data, 180 days aggregated/job data (self-hosted)
+ * - Unlimited plan: 7 days raw data, 90 days aggregated/job data (self-hosted seed)
  * - Cleanup is performed per-organization to respect plan limits
  *
  * PostgreSQL TTL Note:
@@ -299,7 +299,7 @@ async function getOrganizationAggregatedRetentionSettings(
  * Supercheck values:
  * - Plus: 30 days
  * - Pro: 90 days
- * - Unlimited: 180 days (self-hosted seed)
+ * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
  */
 async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
@@ -1267,7 +1267,7 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
  * Plan-Based Retention (industry standards):
  * - Plus: 30 days (matches CircleCI)
  * - Pro: 90 days (matches GitHub Actions default)
- * - Unlimited: 180 days (self-hosted seed)
+ * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
  *
  * Note: This strategy handles ALL runs in the database:
  * - Job runs (where jobId is not null)
