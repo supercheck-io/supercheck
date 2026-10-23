@@ -59,6 +59,7 @@ describe("Artifact retention strategies", () => {
         where: (condition: SQL) => typeof query;
         limit: (limit: number) => typeof query;
         orderBy: (...columns: SQL[]) => typeof query;
+        for: (mode: string) => Promise<unknown[]>;
         as: (alias: string) => { isStatusChange: typeof monitorResults.isStatusChange };
         then: (resolve: (rows: unknown[]) => unknown) => Promise<unknown>;
       } = {
@@ -66,6 +67,7 @@ describe("Artifact retention strategies", () => {
         where: jest.fn((condition: SQL) => { predicates.push(condition); return query; }),
         limit: jest.fn((limit: number) => { limits.push(limit); return query; }),
         orderBy: jest.fn((...columns: SQL[]) => { orderings.push(columns); return query; }),
+        for: jest.fn().mockResolvedValue([]),
         as: jest.fn(() => ({ isStatusChange: monitorResults.isStatusChange })),
         then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(selections.shift() || []).then(resolve),
       };
@@ -268,6 +270,16 @@ describe("Artifact retention strategies", () => {
     deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "run-1/metrics.json", error: "Access denied" }] });
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
     expect(result.success).toBe(false);
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("retains the owning run when an alias-only storage cleanup fails", async () => {
+    jobSelections("tenant");
+    selections[4] = [{ id: "alias", entityId: "saved-test", entityType: "test", reportPath: "run-1/report", s3Url: null }];
+    deleteReports.mockResolvedValue({ ...s3Success, success: false, failedObjects: [{ key: "run-1/report/index.html", error: "Denied" }] });
+    getFailedReportEntityIds.mockReturnValue(new Set(["saved-test"]));
+    const result = await new JobRunsCleanupStrategy(jobConfig).execute();
+    expect(result).toMatchObject({ success: false, recordsDeleted: 0 });
     expect(db.delete).not.toHaveBeenCalled();
   });
 

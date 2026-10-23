@@ -421,8 +421,8 @@ export class ExecutionService implements OnModuleDestroy {
     // Generate unique ID for this run to avoid conflicts in parallel executions
     const uniqueRunId = `${testId}-${crypto.randomUUID().substring(0, 8)}`;
     // For monitor executions, use uniqueRunId to preserve historical reports and separate bucket
-    // For regular test execution, use testId to maintain existing behavior (overwrite previous report)
-    const executionId = isMonitorExecution ? uniqueRunId : testId;
+    // Run-backed tests own immutable directories, including repeated saved-test executions.
+    const executionId = isMonitorExecution ? uniqueRunId : task.runId || testId;
     const s3ReportKeyPrefix = `${executionId}/report`;
     const entityType = isMonitorExecution ? 'monitor' : 'test';
     let finalResult: TestResult;
@@ -463,6 +463,10 @@ export class ExecutionService implements OnModuleDestroy {
       // 2. Store initial metadata about the run
       await this.dbService.storeReportMetadata({
         entityId: executionId,
+        aliasEntityId:
+          !isMonitorExecution && task.runId && task.runId !== testId
+            ? testId
+            : undefined,
         entityType,
         status: 'running',
         reportPath: s3ReportKeyPrefix,
@@ -562,6 +566,10 @@ export class ExecutionService implements OnModuleDestroy {
         // Publish final status
         await this.dbService.storeReportMetadata({
           entityId: executionId,
+          aliasEntityId:
+            !isMonitorExecution && task.runId && task.runId !== testId
+              ? testId
+              : undefined,
           entityType,
           reportPath: s3ReportKeyPrefix,
           status: finalStatus,
@@ -624,6 +632,10 @@ export class ExecutionService implements OnModuleDestroy {
         // Update status *after* logging and upload attempt
         await this.dbService.storeReportMetadata({
           entityId: executionId,
+          aliasEntityId:
+            !isMonitorExecution && task.runId && task.runId !== testId
+              ? testId
+              : undefined,
           entityType,
           reportPath: s3ReportKeyPrefix,
           status: 'failed',
@@ -670,6 +682,10 @@ export class ExecutionService implements OnModuleDestroy {
       await this.dbService
         .storeReportMetadata({
           entityId: executionId,
+          aliasEntityId:
+            !isMonitorExecution && task.runId && task.runId !== testId
+              ? testId
+              : undefined,
           entityType,
           reportPath: s3ReportKeyPrefix,
           status: finalStatus,

@@ -10,6 +10,7 @@ import {
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getContentType } from '../services/execution.service';
+import { writeRunArtifact } from './run-callback';
 import { MEMORY_LIMITS } from '../../common/constants/memory.constants';
 
 // Utility function to safely get error message
@@ -333,17 +334,19 @@ export class S3Service implements OnModuleInit {
       const determinedContentType =
         contentType || getContentType(localFilePath);
 
-      await this.withRetry(
-        () =>
-          this.s3Client.send(
-            new PutObjectCommand({
-              Bucket: targetBucket,
-              Key: s3Key,
-              Body: fileBuffer,
-              ContentType: determinedContentType,
-            }),
-          ),
-        `Upload file ${s3Key}`,
+      await writeRunArtifact(targetBucket, s3Key, () =>
+        this.withRetry(
+          () =>
+            this.s3Client.send(
+              new PutObjectCommand({
+                Bucket: targetBucket,
+                Key: s3Key,
+                Body: fileBuffer,
+                ContentType: determinedContentType,
+              }),
+            ),
+          `Upload file ${s3Key}`,
+        ),
       );
 
       // Removed success log for individual file uploads

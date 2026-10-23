@@ -1,3 +1,7 @@
+import {
+  withRunCallback,
+  RunCallbackBusyError,
+} from '../services/run-callback';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, UnrecoverableError, DelayedError } from 'bullmq';
 import {
@@ -73,6 +77,22 @@ export class PlaywrightExecutionProcessor
   }
 
   async process(
+    job: Job<JobExecutionTask | TestExecutionTask>,
+  ): Promise<TestExecutionResult | TestResult> {
+    try {
+      return await withRunCallback(this.dbService.db, job.data.runId, () =>
+        this.processOwned(job),
+      );
+    } catch (error) {
+      if (error instanceof RunCallbackBusyError) {
+        await job.moveToDelayed(Date.now() + 10_000, job.token);
+        throw new DelayedError();
+      }
+      throw error;
+    }
+  }
+
+  private async processOwned(
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
