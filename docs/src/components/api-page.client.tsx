@@ -1,8 +1,8 @@
 'use client';
-import { defineClientConfig } from 'fumadocs-openapi/ui/client';
+import { createOpenAPIPage } from 'fumadocs-openapi/ui';
 
-export default defineClientConfig({
+export default createOpenAPIPage({
   playground: {
-    requestTimeout: 30,
+    fetchOptions: { requestTimeout: 30 },
   },
 });

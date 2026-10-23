@@ -16,7 +16,8 @@
     "start": "next start",
     "postinstall": "fumadocs-mdx",
     "generate-docs": "tsx scripts/generate-docs.mts",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:rendered-api": "node --test scripts/rendered-api.spec.mjs"
   },
   "dependencies": {
     "fumadocs-core": "16.17.8",
