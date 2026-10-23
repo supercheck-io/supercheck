@@ -7,9 +7,11 @@ import { jobs, organization, planLimits, runs } from "@/db/schema";
 const DAY = 86_400_000;
 const whereCalls: Array<{ table: unknown; condition: SQL }> = [];
 let isPolar = true;
+let noOrganizations = false;
 
 const rowsFor = (table: unknown, condition?: SQL): unknown[] => {
   if (table === organization) {
+    if (noOrganizations) return [];
     return isPolar
       ? [
           { organizationId: "org-plus", subscriptionPlan: "plus" },
@@ -73,15 +75,16 @@ describe("JobRunsCleanupStrategy retention (dry run)", () => {
   beforeEach(() => {
     whereCalls.length = 0;
     isPolar = true;
+    noOrganizations = false;
   });
 
-  it("applies each organization's plan retention and a 30 day cutoff to standalone runs", async () => {
+  it("applies each organization's plan retention and a 24 hour cutoff to standalone runs", async () => {
     const result = await new JobRunsCleanupStrategy(config).execute(true);
     const runConditions = whereCalls.filter((call) => call.table === runs).map((call) => call.condition);
 
     expect(result.success).toBe(true);
     // Plus org, Pro org, then standalone (jobId IS NULL) runs.
-    expect(runConditions.map(cutoffDays)).toEqual([30, 90, 30]);
+    expect(runConditions.map(cutoffDays)).toEqual([30, 90, 1]);
     expect(new PgDialect().sqlToQuery(runConditions[0]).sql).toContain('"runs"."job_id" in');
     expect(new PgDialect().sqlToQuery(runConditions[2]).sql).toContain('"runs"."job_id" IS NULL');
     expect(result.details.orgStats).toMatchObject({
@@ -89,6 +92,25 @@ describe("JobRunsCleanupStrategy retention (dry run)", () => {
       "org-pro": { retentionDays: 90 },
     });
     expect(result.details.playgroundRunsDeleted).toBe(2);
+  });
+
+  it("uses the configured playground age independently of the job plan", async () => {
+    await new JobRunsCleanupStrategy({ ...config, customConfig: { playgroundMaxAgeHours: 48 } }).execute(true);
+    const conditions = whereCalls.filter(call => call.table === runs).map(call => call.condition);
+    expect(conditions.map(cutoffDays)).toEqual([30, 90, 2]);
+  });
+
+  it("keeps standalone retention when no organizations remain", async () => {
+    noOrganizations = true;
+    await new JobRunsCleanupStrategy(config).execute(true);
+    const conditions = whereCalls.filter(call => call.table === runs).map(call => call.condition);
+    expect(conditions.map(cutoffDays)).toEqual([30, 1]);
+    expect(new PgDialect().sqlToQuery(conditions[0]).sql).toContain('"runs"."job_id" IS NOT NULL');
+    expect(new PgDialect().sqlToQuery(conditions[1]).sql).toContain('"runs"."job_id" IS NULL');
+  });
+
+  it.each([0, -1, NaN, Infinity])("rejects invalid playground retention %s", playgroundMaxAgeHours => {
+    expect(() => new JobRunsCleanupStrategy({ ...config, customConfig: { playgroundMaxAgeHours } })).toThrow();
   });
 
   it("uses the unlimited plan retention for every self-hosted organization", async () => {
