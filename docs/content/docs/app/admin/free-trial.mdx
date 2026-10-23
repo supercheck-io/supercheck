@@ -14,35 +14,37 @@ The trial includes monitors, status pages, Playwright tests, k6 load tests, AI f
 | --- | --- |
 | Monitors | 5, checked at most every 5 minutes |
 | Status pages | 2, each with up to 50 subscribers (custom domains are available on paid plans) |
-| Playwright | 30 browser minutes in total, 1 run at a time, 5 waiting in the queue |
-| k6 load tests | HTTP GET tests of up to 5 virtual users for 5 minutes per run, 150 virtual-user minutes in total, against domains you verify (a verification stays valid for 24 hours) |
+| Playwright | 30 browser minutes in total, 1 run at a time, 5 waiting in the queue. Tests may call only domains you have verified |
+| k6 load tests | HTTP GET tests of up to 5 virtual users for 5 minutes per run, 150 virtual-user minutes in total, against domains you verify |
 | AI SRE | 5 full investigations |
 | AI credits | 100 |
 | Team and projects | 3 team members and 3 projects |
 
 Browser synthetic monitors use the same 30 browser minutes as Playwright tests. When the minutes are used up, those monitors are skipped instead of being reported as down.
 
-## Load testing in a trial
+## Domains you verify
 
-To protect other people's sites, a trial can only run k6 load tests against domains your organization owns.
+To protect other people's sites, a trial can only send test traffic to domains your organization owns. This applies to k6 load tests and to Playwright browser and API tests (the web addresses written in the test).
 
 1. Go to **Admin → Load test domains** and add the domain.
 2. Publish the TXT record shown for it in your DNS.
-3. Select **Verify**. Supercheck checks the record again each time a test starts.
+3. Select **Verify**.
 
-A trial generates the test script for you from a URL, a user count, and a duration. Custom k6 scripts are available on paid plans.
+A verification stays valid for 24 hours. After that, Supercheck checks the record again the next time a test needs the domain. Every run also confirms that the domain resolves only to public addresses.
+
+A trial generates the k6 script for you from a URL, a user count, and a duration. Custom k6 scripts are available on paid plans.
 
 ## See how much is left
 
-A banner shows how many days are left. The **Subscription** tab in Admin shows your remaining AI SRE investigations and AI credits.
+A banner shows how many days are left. The **Subscription** tab in Admin shows your trial allowances: browser minutes, load-test virtual-user minutes, AI SRE investigations, AI credits and the resource limits.
 
 ## When the trial ends
 
 On the last day, subscribe to Plus or Pro to keep everything running. If you do not:
 
 - Your monitors are **paused** and your status pages are **archived**, so nothing runs without a plan.
-- **Nothing is deleted.** Your tests, jobs, monitors, status pages, and history are kept.
-- You can still sign in, see your data, and subscribe.
+- **Nothing is deleted when the trial ends.** Your tests, jobs, monitors, status pages, and history are kept, and normal data retention still applies to old results and artifacts.
+- You can still sign in and look at your data, but you cannot create, run, or publish anything until you subscribe.
 
 When you subscribe, your paused monitors resume and your archived status pages are republished automatically. Anything you changed yourself in the meantime is left as you set it.
 
