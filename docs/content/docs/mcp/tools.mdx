@@ -16,8 +16,8 @@ Returned text (test titles, error excerpts, incident summaries) comes from your 
 | `list_tests` | tests | `limit`, `cursor` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
-| `list_runs` | jobs | `limit`, `cursor` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
-| `get_run` | jobs | `id` | One run plus a redacted, truncated `error` excerpt |
+| `list_runs` | runs | `limit`, `cursor` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
+| `get_run` | runs | `id` | One run plus a redacted, truncated `error` excerpt |
 | `list_monitors` | monitors | `limit`, `cursor` | `name`, `type`, `target` (scheme and host only), `status`, `lastCheckAt` |
 | `list_incidents` | incidents | `limit`, `cursor` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt` |
 | `get_incident` | incidents | `id` | One incident with its root-cause summary |
