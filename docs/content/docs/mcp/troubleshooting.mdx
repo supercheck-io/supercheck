@@ -10,6 +10,8 @@ icon: LifeBuoy
 | The browser never opens | Run the tool's auth command (for example `/mcp` in Claude Code) and choose **supercheck**. Check the URL ends in `/api/mcp` |
 | `401` after working earlier | The token expired and could not refresh. Sign in again from the client, or reconnect |
 | `403 access_denied` | Access was removed. If the app was disconnected, reconnect and approve again. If you were removed from the project or your account is banned, ask an admin; access returns once it is restored, with no reconnect needed |
+| `429 rate_limited` or `too_many_concurrent_requests` | One connection may send up to 300 requests a minute, 4 at a time. Wait for the `Retry-After` seconds, or send fewer calls at once |
+| `400 batch_too_large` | A single request may carry at most 20 calls. Split larger batches |
 | Project missing on the approval screen | You can only share projects you can access. Ask an owner to add you |
 | `forbidden` from a tool | Your role cannot view that resource type. Ask for a role that can |
 | The server crashes on start with a `BETTER_AUTH_URL` error | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN` |

@@ -36,6 +36,12 @@ icon: ShieldCheck
 
 Tests, logs and incidents can contain text written by someone else. Tool descriptions tell the AI to treat it as data. Keep that in mind when you give an AI tool other tools that can act (for example shell or deploy access), and review its actions.
 
+## Limits
+
+Each connection may send up to 300 requests a minute (a batch counts once per call), at most 4 at a time, and at most 20 calls in one batch. Over the limit, the server answers `429` with `Retry-After`.
+
+Resetting your password signs you out everywhere and disconnects every connected app. Reconnect the ones you still use.
+
 ## Audit
 
 Tool calls (user, app, project, duration) and access-denied events (user, app, reason) are written to the audit log on a best-effort basis. Arguments and results are not stored.
