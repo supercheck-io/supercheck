@@ -915,7 +915,9 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
   // Bring back the monitors and status pages the trial end paused or archived.
   // This must never fail the webhook: the subscription itself is already saved.
   try {
-    const restored = await restoreTrialSuspensions(org.id);
+    // Reuse the webhook's own transaction: a second connection per event can exhaust the pool when
+    // events arrive together, with every event waiting for a connection another one holds.
+    const restored = await restoreTrialSuspensions(org.id, getPolarWebhookDb(org.id));
     if (restored.monitorsResumed || restored.statusPagesRestored) {
       console.log(
         `[Polar] Restored ${restored.monitorsResumed} monitors and ${restored.statusPagesRestored} status pages for org ${truncateId(org.id)}`,

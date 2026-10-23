@@ -356,7 +356,7 @@ describe("Polar webhook helpers", () => {
         data: { id: "sub_new", status: "active", product_id: "prod_plus", customer_id: "cus_123",
           current_period_start: "2026-06-01T00:00:00Z", current_period_end: "2026-07-01T00:00:00Z" },
       });
-      expect(restoreTrialSuspensions).toHaveBeenCalledWith("org_123");
+      expect(restoreTrialSuspensions).toHaveBeenCalledWith("org_123", expect.anything());
     });
 
     it("still completes the activation when restoring trial resources fails", async () => {
