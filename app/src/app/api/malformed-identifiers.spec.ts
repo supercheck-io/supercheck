@@ -27,6 +27,10 @@ jest.mock("@/lib/monitor-scheduler", () => ({ scheduleMonitor: jest.fn(), delete
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
 jest.mock("@/lib/queue", () => ({}));
+jest.mock("@/lib/job-scheduler", () => ({ scheduleJob: jest.fn() }));
+jest.mock("@/lib/services/subscription-service", () => ({
+  subscriptionService: {}, SubscriptionAccessDeniedError: class extends Error {},
+}));
 
 import { db } from "@/utils/db";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -38,6 +42,8 @@ import { PUT as updateJob, PATCH as patchJob, DELETE as deleteJob } from "./jobs
 import { PUT as updateMonitor, PATCH as patchMonitor, DELETE as deleteMonitor } from "./monitors/[id]/route";
 import { DELETE as deleteRun } from "./runs/[runId]/route";
 import { GET as listRuns } from "./runs/route";
+import { PUT as updateJobByBody } from "./jobs/route";
+import { PUT as updateMonitorByBody } from "./monitors/route";
 
 const mutations = [
   ["tests", "PUT", updateTest],
@@ -97,6 +103,19 @@ describe("malformed resource identifiers", () => {
     expect(response.status).toBe(404);
     expectNoDataAccess();
   });
+
+  it.each([["jobs", updateJobByBody], ["monitors", updateMonitorByBody]] as const)(
+    "%s legacy PUT rejects a malformed body ID before data access", async (resource, handler) => {
+      const response = await handler(new NextRequest(`http://localhost/api/${resource}`, {
+        method: "PUT", body: JSON.stringify({
+          id: "bad", name: "Job", description: "Job", cronSchedule: "0 * * * *",
+          tests: [{ id: "00000000-0000-4000-8000-000000000001" }],
+        }),
+      }));
+      expect(response.status).toBe(404);
+      expectNoDataAccess();
+    },
+  );
 
   it.each(["bad", "", "00000000-0000-0000-0000-00000000000g"])("rejects a malformed jobId filter (%s)", async (jobId) => {
     const response = await listRuns(new NextRequest(`http://localhost/api/runs?jobId=${jobId}`));

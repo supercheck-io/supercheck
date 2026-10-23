@@ -9,6 +9,7 @@ import {
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { isUuid } from "@/lib/uuid";
 import {
   insertMonitorRecord,
   scheduleCreatedMonitor,
@@ -661,6 +662,9 @@ export async function PUT(req: NextRequest) {
         { error: "Monitor ID is required" },
         { status: 400 },
       );
+    }
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
     // Verify monitor belongs to current project context

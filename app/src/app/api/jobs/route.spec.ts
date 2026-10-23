@@ -189,7 +189,7 @@ describe("Jobs route regressions", () => {
         where: jest.fn().mockReturnValue({
           limit: jest.fn().mockResolvedValue([
             {
-              id: "job-1",
+              id: "00000000-0000-4000-8000-000000000005",
               projectId: "project-1",
               organizationId: "org-1",
               jobType: "playwright",
@@ -205,7 +205,7 @@ describe("Jobs route regressions", () => {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        id: "job-1",
+        id: "00000000-0000-4000-8000-000000000005",
         name: "Nightly Job",
         description: "Nightly",
         cronSchedule: "0 * * * *",
@@ -227,7 +227,7 @@ describe("Jobs route regressions", () => {
       from: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnValue({
           limit: jest.fn().mockResolvedValue([{
-            id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright",
+            id: "00000000-0000-4000-8000-000000000005", projectId: "project-1", organizationId: "org-1", jobType: "playwright",
           }]),
         }),
       }),
@@ -238,7 +238,7 @@ describe("Jobs route regressions", () => {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        id: "job-1", name: "Nightly Job", description: "Nightly",
+        id: "00000000-0000-4000-8000-000000000005", name: "Nightly Job", description: "Nightly",
         cronSchedule: "0 * * * *", tests: [{ id: "test-1" }],
         alertConfig: { enabled: true, notificationProviders: ["foreign-provider"] },
       }),

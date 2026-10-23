@@ -14,6 +14,7 @@ import {
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { scheduleJob } from "@/lib/job-scheduler";
@@ -642,6 +643,10 @@ export async function PUT(request: Request) {
     // Get current project context (includes auth verification)
     const context = await requireAuthContext();
     const { project, organizationId } = context;
+
+    if (!isUuid(targetJobId)) {
+      return NextResponse.json({ success: false, error: "Job not found" }, { status: 404 });
+    }
 
     // Validate required fields
     if (!jobData.name || !jobData.cronSchedule || !jobData.description) {

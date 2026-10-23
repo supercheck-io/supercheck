@@ -1,5 +1,5 @@
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -147,6 +147,7 @@ export async function PUT(
   try {
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     const rawData = await request.json();
     const validationResult = monitorsUpdateSchema.safeParse(rawData);
@@ -744,6 +745,7 @@ export async function PATCH(
   try {
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     const rawData = await request.json();
 
@@ -899,6 +901,7 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     if (!checkPermissionWithContext("monitor", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }

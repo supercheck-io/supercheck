@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
@@ -102,6 +102,7 @@ export async function PUT(
 
   try {
     const context = await requireAuthContext();
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
 
     // Find test scoped to current project
@@ -227,6 +228,7 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    if (!isUuid(id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const { project, organizationId } = context;
 
     const canDelete = checkPermissionWithContext("test", "delete", context);

@@ -1,5 +1,5 @@
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
@@ -151,6 +151,7 @@ export async function PATCH(
   try {
     const context = await requireAuthContext();
     const { userId, project, organizationId } = context;
+    if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
@@ -225,6 +226,7 @@ export async function PUT(
   const params = await routeContext.params;
   try {
     const context = await requireAuthContext();
+    if (!isUuid(params.id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
@@ -292,6 +294,7 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
+    if (!isUuid(id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     if (!checkPermissionWithContext("job", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }

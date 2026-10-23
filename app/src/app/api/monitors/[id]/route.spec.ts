@@ -52,7 +52,7 @@ const locationConfig = (locations: string[], enabled = true) => ({
 });
 
 const existing = (type: string, config: object = {}) => ({
-  id: "m1",
+  id: "00000000-0000-4000-8000-000000000002",
   type,
   target: "https://example.com",
   projectId: "project-1",
@@ -66,11 +66,11 @@ const call = (
   body: object,
 ) =>
   handler(
-    new NextRequest("http://localhost/api/monitors/m1", {
+    new NextRequest("http://localhost/api/monitors/00000000-0000-4000-8000-000000000002", {
       method,
       body: JSON.stringify(body),
     }),
-    { params: Promise.resolve({ id: "m1" }) },
+    { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000002" }) },
   );
 
 describe("monitor update location validation", () => {
