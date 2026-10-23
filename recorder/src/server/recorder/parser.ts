@@ -19,7 +19,8 @@ import * as acorn from 'acorn';
 import type { AwaitExpression, Expression, ExpressionStatement } from 'acorn';
 import * as walk from 'acorn-walk';
 import { fromKeyboardModifiers } from 'playwright-core/lib/server/codegen/language';
-import type { BrowserContextOptions, SmartKeyboardModifier } from 'playwright-core/lib/server/types';
+import type { SmartKeyboardModifier } from 'playwright-core/lib/server/types';
+import type { CrxBrowserContextOptions } from 'src/types/types';
 import { locatorOrSelectorAsSelector } from 'playwright-core/lib/utils/isomorphic/locatorParser';
 import type { CallMetadata } from '@protocol/callMetadata';
 
@@ -126,16 +127,10 @@ function indexToLineColumn(code: string, index: number) {
   return { line: line + 1, column: column + 1 };
 }
 
-export type TestBrowserContextOptions = Pick<BrowserContextOptions,
-  | 'colorScheme'
-  | 'locale'
-  | 'timezoneId'
-  | 'geolocation'
-  | 'viewport'
-  | 'permissions'
-  | 'serviceWorkers'
-  | 'recordHar'
-> & { storageState?: string };
+export type TestBrowserContextOptions = CrxBrowserContextOptions & {
+  recordHar?: { path: string; mode?: 'full' | 'minimal'; content?: 'attach' | 'embed' | 'omit'; urlGlob?: string };
+  storageState?: string;
+};
 
 export type TestOptions = {
   deviceName?: string;
