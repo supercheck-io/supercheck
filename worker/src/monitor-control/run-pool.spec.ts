@@ -18,13 +18,27 @@ describe('runPool', () => {
 
   it('lets a slow item run while the rest drain', async () => {
     const order: string[] = [];
-    await runPool(['slow', 'a', 'b', 'c'], 2, async (item) => {
-      await new Promise((resolve) =>
-        setTimeout(resolve, item === 'slow' ? 30 : 1),
-      );
-      order.push(item);
+    let releaseSlow!: () => void;
+    let finishFast!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
     });
-    expect(order[order.length - 1]).toBe('slow');
+    const fast = new Promise<void>((resolve) => {
+      finishFast = resolve;
+    });
+    const pending = runPool(['slow', 'a', 'b', 'c'], 2, async (item) => {
+      if (item === 'slow') await slow;
+      order.push(item);
+      if (item === 'c') finishFast();
+    });
+    try {
+      await fast;
+      expect(order).toEqual(['a', 'b', 'c']);
+    } finally {
+      releaseSlow();
+      await pending;
+    }
+    expect(order).toEqual(['a', 'b', 'c', 'slow']);
   });
 
   it('handles an empty list', async () => {
