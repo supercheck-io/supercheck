@@ -32,6 +32,7 @@
  * @module data-lifecycle-service
  */
 
+import { retryPendingCredentialRevocations } from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
 import {
   monitorResults,
@@ -1759,6 +1760,17 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
       errors: [],
       details: { cutoffTime: now.toISOString(), dryRun },
     };
+
+    // Finish credential revocations that failed right after a password reset. Best effort and
+    // independent of the cleanup below; the same daily run is the only always-on place for it.
+    if (!dryRun) {
+      try {
+        const retried = await retryPendingCredentialRevocations();
+        if (retried > 0) result.details = { ...result.details, credentialRevocationsRetried: retried };
+      } catch (retryError) {
+        console.error("Pending credential revocation sweep failed:", retryError);
+      }
+    }
 
     try {
       let totalDeleted = 0;

@@ -19,7 +19,7 @@ import {
 import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
-import { revokeCredentialsAfterPasswordReset } from "@/lib/security/password-reset-cleanup";
+import { revokeCredentialsAfterPasswordResetSafely } from "@/lib/security/password-reset-cleanup";
 import {
   checkPasswordResetRateLimit,
   checkEmailVerificationRateLimit,
@@ -284,7 +284,7 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     // Sessions are revoked above; also end API/MCP credentials and any other pending reset link.
     onPasswordReset: async ({ user }) => {
-      await revokeCredentialsAfterPasswordReset(user.id);
+      await revokeCredentialsAfterPasswordResetSafely(user.id);
     },
     // Only require email verification in cloud mode
     requireEmailVerification: isCloudHosted(),

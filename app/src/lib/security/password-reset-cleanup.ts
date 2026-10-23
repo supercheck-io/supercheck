@@ -1,5 +1,7 @@
-import { and, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, like } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { db } from "@/utils/db";
+import { logAuditEvent } from "@/lib/audit-logger";
 import {
   apikey,
   deviceAuthorizations,
@@ -58,4 +60,59 @@ export async function revokeCredentialsAfterPasswordReset(userId: string): Promi
       await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
     }
   }
+}
+
+const PENDING_PREFIX = "pending-credential-revocation:";
+const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Runs from Better Auth after the new password is committed. The password change must not fail because
+ * cleanup did: the reset link is already spent, so an error would only confuse the user. If the cleanup
+ * cannot be completed it is audited, and a marker is stored so a later sweep finishes the job.
+ */
+export async function revokeCredentialsAfterPasswordResetSafely(userId: string): Promise<void> {
+  try {
+    await revokeCredentialsAfterPasswordReset(userId);
+  } catch (error) {
+    console.error("Credential revocation after password reset failed; it will be retried", { userId, error });
+    await logAuditEvent({
+      userId,
+      action: "password_reset_credential_revocation_failed",
+      resource: "user",
+      resourceId: userId,
+      metadata: { retry: "scheduled" },
+      success: false,
+    }).catch(() => undefined);
+    await db
+      .insert(verification)
+      .values({
+        id: randomUUID(),
+        identifier: `${PENDING_PREFIX}${userId}`,
+        value: userId,
+        expiresAt: new Date(Date.now() + PENDING_TTL_MS),
+      })
+      .catch((markerError: unknown) =>
+        console.error("Could not record the pending credential revocation", { userId, markerError }),
+      );
+  }
+}
+
+/** Finishes revocations that failed earlier. Safe to run repeatedly. */
+export async function retryPendingCredentialRevocations(limit = 50): Promise<number> {
+  const pending = await db
+    .select({ id: verification.id, userId: verification.value })
+    .from(verification)
+    .where(and(like(verification.identifier, `${PENDING_PREFIX}%`), gt(verification.expiresAt, new Date())))
+    .limit(limit);
+  let done = 0;
+  for (const row of pending) {
+    try {
+      await revokeCredentialsAfterPasswordReset(row.userId);
+      await db.delete(verification).where(eq(verification.id, row.id));
+      done += 1;
+    } catch (error) {
+      console.error("Retry of credential revocation failed", { userId: row.userId, error });
+    }
+  }
+  return done;
 }

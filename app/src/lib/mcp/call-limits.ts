@@ -67,17 +67,20 @@ export async function admitMcpCall(
     else inFlight.set(key, remaining);
   };
 
-  for (let i = 0; i < Math.max(1, messages); i++) {
-    const limit = await apiKeyRateLimiter
-      .checkAndIncrement(`mcp:call:${key}`, { enabled: true, timeWindow: 60, maxRequests: MCP_MESSAGES_PER_MINUTE })
-      .catch((error) => {
-        release();
-        throw error;
-      });
-    if (!limit.allowed) {
+  // One atomic call for the whole batch: it is admitted entirely or refused without using any quota.
+  const limit = await apiKeyRateLimiter
+    .checkAndIncrement(
+      `mcp:call:${key}`,
+      { enabled: true, timeWindow: 60, maxRequests: MCP_MESSAGES_PER_MINUTE },
+      Math.max(1, messages),
+    )
+    .catch((error) => {
       release();
-      return { status: 429, error: "rate_limited", retryAfter: limit.retryAfter ?? 60 };
-    }
+      throw error;
+    });
+  if (!limit.allowed) {
+    release();
+    return { status: 429, error: "rate_limited", retryAfter: limit.retryAfter ?? 60 };
   }
   return { release };
 }

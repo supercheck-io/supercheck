@@ -72,7 +72,7 @@ describe("/api/mcp", () => {
     resolveMcpCallContext.mockRejectedValue(new McpAccessDeniedError("consent_revoked"));
     const res = await POST(rpc("initialize"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "access_denied" });
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", id: null, error: { code: -32000, data: { code: "access_denied" } } });
   });
 
   it("rejects oversized bodies", async () => {
@@ -99,8 +99,9 @@ describe("/api/mcp", () => {
     it("counts every message of a batch against the token's quota", async () => {
       resolveMcpCallContext.mockResolvedValue(init.ctx);
       await POST(batch(5));
-      expect(checkAndIncrement).toHaveBeenCalledTimes(5);
-      expect(checkAndIncrement).toHaveBeenCalledWith("mcp:call:u:c", expect.objectContaining({ timeWindow: 60 }));
+      // One atomic call carrying the whole batch, so a refused batch uses none of the quota.
+      expect(checkAndIncrement).toHaveBeenCalledTimes(1);
+      expect(checkAndIncrement).toHaveBeenCalledWith("mcp:call:u:c", expect.objectContaining({ timeWindow: 60 }), 5);
     });
 
     it("refuses a chunked body over the cap even without a Content-Length", async () => {
@@ -128,8 +129,21 @@ describe("/api/mcp", () => {
       resolveMcpCallContext.mockResolvedValue(init.ctx);
       const res = await POST(batch(100));
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "batch_too_large" });
+      expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { data: { code: "batch_too_large" } } });
       expect(checkAndIncrement).not.toHaveBeenCalled();
+    });
+
+    it("spends no database work on a request the quota refuses", async () => {
+      checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0, limit: 300, resetAt: new Date(), retryAfter: 5 });
+      const res = await POST(rpc("initialize"));
+      expect(res.status).toBe(429);
+      expect(resolveMcpCallContext).not.toHaveBeenCalled();
+    });
+
+    it("frees the slot when access is denied", async () => {
+      const { McpAccessDeniedError } = jest.requireMock("@/lib/mcp/context");
+      resolveMcpCallContext.mockRejectedValue(new McpAccessDeniedError("consent_revoked"));
+      for (let i = 0; i < 6; i += 1) expect((await POST(rpc("initialize"))).status).toBe(403);
     });
 
     it("answers 429 with Retry-After once the quota is spent", async () => {
@@ -138,7 +152,7 @@ describe("/api/mcp", () => {
       const res = await POST(rpc("initialize"));
       expect(res.status).toBe(429);
       expect(res.headers.get("retry-after")).toBe("17");
-      expect(await res.json()).toEqual({ error: "rate_limited" });
+      expect(await res.json()).toMatchObject({ jsonrpc: "2.0", id: null, error: { data: { code: "rate_limited" } } });
     });
 
     it("caps concurrent requests per token and frees the slot afterwards", async () => {
@@ -153,7 +167,7 @@ describe("/api/mcp", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       const refused = await POST(rpc("initialize"));
       expect(refused.status).toBe(429);
-      expect(await refused.json()).toEqual({ error: "too_many_concurrent_requests" });
+      expect(await refused.json()).toMatchObject({ error: { data: { code: "too_many_concurrent_requests" } } });
       release();
       expect((await Promise.all(running)).map((r) => r.status)).toEqual([200, 200, 200, 200]);
       expect((await POST(rpc("initialize"))).status).toBe(200);

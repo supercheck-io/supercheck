@@ -80,6 +80,14 @@ export const TurnstileCaptcha = forwardRef<
 ) {
     const turnstileRef = useRef<TurnstileInstance>(null);
     const [config, setConfig] = useState<CaptchaConfig | null>(null);
+    // Resolves once the configuration request has finished, so execute() never races it: a submit
+    // before the config arrived would otherwise go out with no token and be rejected by the server.
+    const [configReady] = useState(() => {
+        let done!: () => void;
+        const promise = new Promise<void>((resolve) => { done = resolve; });
+        return { promise, done };
+    });
+    const configRef = useRef<CaptchaConfig | null>(null);
     const [token, setToken] = useState<string | null>(null);
     // Promise resolver for execute() — allows await-ing a fresh token
     const executeResolverRef = useRef<((token: string | null) => void) | null>(null);
@@ -103,11 +111,16 @@ export const TurnstileCaptcha = forwardRef<
     // Fetch CAPTCHA configuration on mount
     useEffect(() => {
         const fetchConfig = async () => {
+            const finish = (value: CaptchaConfig) => {
+                configRef.current = value;
+                setConfig(value);
+                configReady.done();
+            };
             try {
                 const response = await fetch("/api/config/captcha");
                 if (!response.ok) {
                     console.warn("[CAPTCHA] Failed to fetch config:", response.status);
-                    setConfig({ enabled: false });
+                    finish({ enabled: false });
                     return;
                 }
                 const data = await response.json();
@@ -115,19 +128,19 @@ export const TurnstileCaptcha = forwardRef<
                 const parsed = captchaConfigSchema.safeParse(data);
                 if (!parsed.success) {
                     console.warn("[CAPTCHA] Invalid config response:", parsed.error.message);
-                    setConfig({ enabled: false });
+                    finish({ enabled: false });
                     return;
                 }
-                setConfig(parsed.data);
+                finish(parsed.data);
             } catch (error) {
                 // Fail-safe: disable CAPTCHA on network errors
                 console.warn("[CAPTCHA] Config fetch error:", error instanceof Error ? error.message : "Unknown error");
-                setConfig({ enabled: false });
+                finish({ enabled: false });
             }
         };
 
         fetchConfig();
-    }, []);
+    }, [configReady]);
 
     // Clean up pending execute() promise and timeout on unmount
     useEffect(() => {
@@ -143,10 +156,16 @@ export const TurnstileCaptcha = forwardRef<
             setToken(null);
         },
         getToken: () => token,
-        execute: () => {
+        execute: async () => {
+            // Wait (bounded) for the configuration, then decide whether a token is needed at all.
+            await Promise.race([
+                configReady.promise,
+                new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+            ]);
+            const current = configRef.current;
             // If CAPTCHA is not enabled, resolve immediately with null (no token needed)
-            if (!config || !config.enabled || !config.siteKey) {
-                return Promise.resolve(null);
+            if (!current || !current.enabled || !current.siteKey) {
+                return null;
             }
             // Resolve any pending execute() to avoid leaving callers hanging
             resolveExecute(null);
@@ -167,7 +186,7 @@ export const TurnstileCaptcha = forwardRef<
                 }, 30000); // 30 second timeout
             });
         },
-    }), [token, config]);
+    }), [token, configReady]);
 
     const handleSuccess = (newToken: string) => {
         setToken(newToken);

@@ -94,7 +94,7 @@ it.each([false, true])("validates reset CAPTCHA responses (success=%s)", async (
 describe("password reset", () => {
   it("revokes API and MCP credentials, not just sessions, after a reset", () => {
     expect(property("revokeSessionsOnPasswordReset").getText(source)).toBe("true");
-    expect(property("onPasswordReset").getText(source)).toContain("revokeCredentialsAfterPasswordReset(user.id)");
+    expect(property("onPasswordReset").getText(source)).toContain("revokeCredentialsAfterPasswordResetSafely(user.id)");
   });
 
   it("does not make the reset response wait on Redis or SMTP", () => {

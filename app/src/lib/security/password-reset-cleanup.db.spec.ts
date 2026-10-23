@@ -13,8 +13,14 @@ jest.mock("@/utils/db", () => ({
     return mockDatabase;
   },
 }));
+const logAuditEvent = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...args: unknown[]) => logAuditEvent(...args) }));
 
-import { revokeCredentialsAfterPasswordReset } from "./password-reset-cleanup";
+import {
+  retryPendingCredentialRevocations,
+  revokeCredentialsAfterPasswordReset,
+  revokeCredentialsAfterPasswordResetSafely,
+} from "./password-reset-cleanup";
 
 const execFileAsync = promisify(execFile);
 const dbName = `reset_cleanup_${randomUUID().replaceAll("-", "")}`;
@@ -103,5 +109,25 @@ describe("revokeCredentialsAfterPasswordReset", () => {
 
     expect(await counts(aliceId)).toEqual({ consents: 0, refresh: 0, access: 0, cli: 0, trigger: 1, grants: 0, resets: 0, other: 1 });
     expect(await counts(bobId)).toEqual({ consents: 1, refresh: 1, access: 1, cli: 1, trigger: 1, grants: 1, resets: 1, other: 1 });
+  });
+
+  it("does not fail the reset when cleanup fails: it audits, records a marker, and a later sweep finishes the job", async () => {
+    const victim = randomUUID();
+    await client`INSERT INTO "user" (id, name, email) VALUES (${victim}, 'Vic', ${`v-${victim}@example.com`})`;
+    await seedCredentials(victim);
+    // Make the cleanup transaction fail by breaking the table it deletes from first.
+    await client.unsafe("ALTER TABLE oauth_access_token RENAME TO oauth_access_token_off");
+    try {
+      await expect(revokeCredentialsAfterPasswordResetSafely(victim)).resolves.toBeUndefined();
+    } finally {
+      await client.unsafe("ALTER TABLE oauth_access_token_off RENAME TO oauth_access_token");
+    }
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "password_reset_credential_revocation_failed", userId: victim, success: false }));
+    expect((await counts(victim)).cli).toBe(1);
+
+    expect(await retryPendingCredentialRevocations()).toBe(1);
+    expect(await counts(victim)).toMatchObject({ consents: 0, refresh: 0, access: 0, cli: 0, trigger: 1, grants: 0 });
+    // The marker is consumed, so a second sweep does nothing.
+    expect(await retryPendingCredentialRevocations()).toBe(0);
   });
 });
