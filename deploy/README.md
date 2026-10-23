@@ -25,6 +25,8 @@ If you use browser-based integrations such as Azure DevOps dashboard widgets or 
 
 See [docker/README.md](docker/README.md) for detailed configuration options, including multi-region workers, external managed services, the outbound-only private agent, and the optional AI SRE integration lab.
 
+For upgrades that introduce run callback fencing, follow the [migration and worker drain procedure](run-artifact-fencing.md).
+
 ## Documentation
 
 Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**

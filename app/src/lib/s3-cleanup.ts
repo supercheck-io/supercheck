@@ -411,6 +411,11 @@ export class S3CleanupService {
   /**
    * Delete multiple reports in batch (for efficient cleanup)
    */
+  async deleteRunArtifacts(bucket: string, runId: string): Promise<S3DeletionResult> {
+    const keys = await this.listObjectsWithPrefix(bucket, `${runId}/`);
+    return this.deleteObjectsBatch(bucket, keys);
+  }
+
   async deleteReports(
     inputs: ReportDeletionInput[]
   ): Promise<S3DeletionResult> {

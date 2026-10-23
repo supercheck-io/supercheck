@@ -1,3 +1,4 @@
+import { lockRecoverableRunCallbacks } from './run-callback';
 import {
   Injectable,
   Logger,
@@ -128,8 +129,15 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           createdAt: schema.runs.createdAt,
           status: schema.runs.status,
           location: schema.runs.location,
+          callbackHeartbeatAt: schema.runCallbacks.heartbeatAt,
+          callbackFinishedAt: schema.runCallbacks.finishedAt,
+          callbackRevokedAt: schema.runCallbacks.revokedAt,
         })
         .from(schema.runs)
+        .leftJoin(
+          schema.runCallbacks,
+          eq(schema.runCallbacks.runId, schema.runs.id),
+        )
         .where(
           or(
             eq(schema.runs.status, 'running'),
@@ -165,18 +173,25 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         }
 
         const ageMs = now.getTime() - referenceTime.getTime();
+        const unfinishedCallback =
+          !!run.callbackHeartbeatAt && !run.callbackFinishedAt;
+        const staleCallback =
+          unfinishedCallback &&
+          (run.callbackRevokedAt ||
+            run.callbackHeartbeatAt!.getTime() <= now.getTime() - 120_000);
+        if (unfinishedCallback && !staleCallback) continue;
 
         // If a run has been "running" for longer than threshold + buffer, it's likely stuck
         // Threshold matches lockDuration in queue config (70 minutes)
         // Buffer provides additional time for graceful completion (10 minutes)
         if (
+          staleCallback ||
           ageMs >
-          TIMEOUTS.STALLED_JOB_THRESHOLD_MS + TIMEOUTS.STALLED_JOB_BUFFER_MS
+            TIMEOUTS.STALLED_JOB_THRESHOLD_MS + TIMEOUTS.STALLED_JOB_BUFFER_MS
         ) {
-          const bullMqActive = await this.isBullMqJobActive(
-            run.id,
-            run.location,
-          );
+          const bullMqActive =
+            !staleCallback &&
+            (await this.isBullMqJobActive(run.id, run.location));
           const kubernetesActive = bullMqActive
             ? false
             : await this.containerExecutorService.hasActiveExecution(run.id);
@@ -210,41 +225,63 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
       try {
         // Batch update all stalled runs at once
         const runIds = stalledRuns.map((r) => r.id);
-        await this.dbService.db
-          .update(schema.runs)
-          .set({
-            status: 'error',
-            completedAt: now,
-            errorDetails:
-              'Execution timed out - marked as stalled by automatic recovery',
-          })
-          .where(
-            and(
-              inArray(schema.runs.id, runIds),
-              or(
-                and(
-                  eq(schema.runs.status, 'running'),
-                  inArray(
-                    schema.runs.id,
-                    stalledRuns
-                      .filter((run) => run.status === 'running')
-                      .map((run) => run.id),
+        await this.dbService.db.transaction(async (tx) => {
+          const recoverableIds = await lockRecoverableRunCallbacks(tx, runIds);
+          if (!recoverableIds.length) return;
+          await tx
+            .update(schema.runs)
+            .set({
+              status: 'error',
+              completedAt: now,
+              errorDetails:
+                'Execution timed out - marked as stalled by automatic recovery',
+            })
+            .where(
+              and(
+                inArray(schema.runs.id, recoverableIds),
+                or(
+                  and(
+                    eq(schema.runs.status, 'running'),
+                    inArray(
+                      schema.runs.id,
+                      stalledRuns
+                        .filter((run) => run.status === 'running')
+                        .map((run) => run.id),
+                    ),
+                  ),
+                  recoverQueuedCancellations
+                    ? and(
+                        queuedCancellation,
+                        inArray(
+                          schema.runs.id,
+                          stalledRuns
+                            .filter((run) => run.status === 'queued')
+                            .map((run) => run.id),
+                        ),
+                      )
+                    : undefined,
+                ),
+              ),
+            );
+          await tx
+            .update(schema.reports)
+            .set({ status: 'error', updatedAt: now })
+            .where(
+              and(
+                eq(schema.reports.status, 'running'),
+                or(
+                  inArray(schema.reports.entityId, recoverableIds),
+                  and(
+                    eq(schema.reports.entityType, 'test'),
+                    inArray(
+                      schema.reports.reportPath,
+                      recoverableIds.map((id) => `${id}/report`),
+                    ),
                   ),
                 ),
-                recoverQueuedCancellations
-                  ? and(
-                      queuedCancellation,
-                      inArray(
-                        schema.runs.id,
-                        stalledRuns
-                          .filter((run) => run.status === 'queued')
-                          .map((run) => run.id),
-                      ),
-                    )
-                  : undefined,
               ),
-            ),
-          );
+            );
+        });
 
         this.logger.log(`Successfully marked ${runIds.length} runs as error`);
 

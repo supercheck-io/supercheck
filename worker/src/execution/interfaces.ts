@@ -95,6 +95,7 @@ export interface JobExecutionTask {
 // Optional: Interface for database report metadata storage
 export interface ReportMetadata {
   entityId: string;
+  aliasEntityId?: string;
   entityType: ReportType;
   reportPath: string; // This might be the S3 key/path
   status: TestRunStatus;

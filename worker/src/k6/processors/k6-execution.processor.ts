@@ -1,5 +1,10 @@
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 import { deferForCapacity } from '../../common/capacity-deferral';
+import {
+  withRunCallback,
+  RunCallbackBusyError,
+  canPersistK6Result,
+} from '../../execution/services/run-callback';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import {
   Logger,
@@ -116,6 +121,22 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   }
 
   async handleProcess(
+    job: Job<K6Task>,
+  ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
+    try {
+      return await withRunCallback(this.dbService.db, job.data.runId, () =>
+        this.handleProcessOwned(job),
+      );
+    } catch (error) {
+      if (error instanceof RunCallbackBusyError) {
+        await job.moveToDelayed(Date.now() + 10_000, job.token);
+        throw new DelayedError();
+      }
+      throw error;
+    }
+  }
+
+  private async handleProcessOwned(
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
@@ -330,6 +351,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           },
         },
         async (transaction) => {
+          if (
+            !(await canPersistK6Result(
+              transaction,
+              taskData.organizationId,
+              taskData.projectId,
+              taskData.jobId,
+            ))
+          )
+            return;
           // A replay can arrive after completion committed but before BullMQ
           // acknowledged it. Reuse the existing performance record for this run.
           const existingPerformanceRun =

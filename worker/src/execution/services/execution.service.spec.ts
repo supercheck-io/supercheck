@@ -284,6 +284,9 @@ describe('single Playwright execution outcome', () => {
         activeExecutions: new Map(),
         maxConcurrentExecutions: 1,
         dbService: { storeReportMetadata },
+        cancellationService: {
+          isCancelled: jest.fn().mockResolvedValue(false),
+        },
         reportUploadService: {
           uploadReport: jest
             .fn()
@@ -314,7 +317,7 @@ describe('single Playwright execution outcome', () => {
         },
       });
       const result = await service.runSingleTest(
-        { testId: 'test-1', code: "test('x', () => {})" },
+        { testId: 'test-1', runId: 'run-1', code: "test('x', () => {})" },
         true,
         monitor,
       );
@@ -323,6 +326,10 @@ describe('single Playwright execution outcome', () => {
       expect(storeReportMetadata).toHaveBeenLastCalledWith(
         expect.objectContaining({
           status: runnerSuccess ? 'passed' : 'failed',
+          entityId: monitor ? expect.stringMatching(/^test-1-/) : 'run-1',
+          reportPath: monitor
+            ? expect.stringMatching(/^test-1-.*\/report$/)
+            : 'run-1/report',
         }),
       );
     },

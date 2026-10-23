@@ -401,8 +401,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return a stable internal report proxy URL for backward compatibility.
-    // Playwright playground reports are keyed by ephemeral testId (worker
-    // stores reports.entityId = testId); k6 reports are keyed by run id.
+    // Reports are run-owned; the proxy resolves legacy playground testId aliases.
     // /api/test-results authorizes playground testIds via runs.metadata.testId.
     const reportEntityId = isPerformanceTest
       ? runIdForQueue || testId
