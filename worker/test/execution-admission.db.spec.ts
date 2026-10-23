@@ -55,11 +55,19 @@ beforeAll(async () => {
       'utf8',
     )
       .split('--> statement-breakpoint')
-      .filter((statement) =>
-        /^(?:\s*--[^\n]*)*\s*(?:ALTER TABLE "execution_entitlements"|UPDATE "execution_entitlements"|CREATE INDEX "execution_entitlements_)/.test(
-          statement,
-        ),
-      )
+      .filter((statement) => {
+        // Skip leading comment lines, then look at how the statement starts (no regex: no backtracking).
+        const body = statement
+          .split('\n')
+          .filter((line) => !line.trimStart().startsWith('--'))
+          .join('\n')
+          .trimStart();
+        return [
+          'ALTER TABLE "execution_entitlements"',
+          'UPDATE "execution_entitlements"',
+          'CREATE INDEX "execution_entitlements_',
+        ].some((prefix) => body.startsWith(prefix));
+      })
       .join('\n'),
   );
   await client`INSERT INTO organization(id) VALUES (${org})`;
