@@ -1939,6 +1939,47 @@ describe('MonitorService', () => {
       });
     }
 
+    describe('neutral skipped groups', () => {
+      const skip = (cycle = false) => (service as unknown as {
+        skipDistributedMonitorGroup(monitorId: string, groupId: string, cycle?: boolean): Promise<void>
+      }).skipDistributedMonitorGroup(mockMonitor.id, 'group-skipped', cycle);
+
+      it('closes a legacy group without creating uptime, downtime or alerts', async () => {
+        const aggregate = jest.spyOn(service, 'saveMonitorResults').mockResolvedValue(undefined);
+        await skip();
+        expect(mockRedisService.getClient().set).toHaveBeenCalledWith('monitor:aggr:aborted:group-skipped', '1', 'EX', 604800);
+        expect(aggregate).not.toHaveBeenCalled();
+        expect(mockDbService.db.insert).not.toHaveBeenCalled();
+      });
+
+      it('does not replace a completed group with a skipped outcome', async () => {
+        mockRedisService.getClient().get.mockImplementation(async (key: string) => key.includes(':completed:') ? '1' : null);
+        await skip();
+        expect(mockRedisService.getClient().set).not.toHaveBeenCalledWith('monitor:aggr:aborted:group-skipped', expect.anything(), expect.anything(), expect.anything());
+      });
+
+      it('remains retryable when the group lock is busy', async () => {
+        mockRedisService.getClient().set.mockResolvedValueOnce(null);
+        await expect(skip()).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+      });
+
+      it('aborts only an open, owned control-plane cycle', async () => {
+        persistedRows([{ monitorId: mockMonitor.id, status: 'open' }] as never);
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        mockDbService.db.update.mockReturnValue({ set });
+        await skip(true);
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'aborted', closedAt: expect.any(Date), notifiedAt: expect.any(Date) }));
+        expect(mockRedisService.getClient().set).not.toHaveBeenCalled();
+      });
+
+      it("does not abort another monitor's cycle", async () => {
+        persistedRows([{ monitorId: 'someone-else', status: 'open' }] as never);
+        await skip(true);
+        expect(mockDbService.db.update).not.toHaveBeenCalled();
+      });
+    });
+
     it('aggregates a location that reports five minutes after the first without a Redis completion gate', async () => {
       const persist = jest
         .spyOn(
