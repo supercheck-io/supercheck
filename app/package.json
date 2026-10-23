@@ -204,7 +204,6 @@
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",
     "jose": "^6.2.13",
-    "shadcn": "2.5.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",

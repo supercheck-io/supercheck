@@ -103,6 +103,23 @@ for a patched `braces`.
 
 ## What would change this decision
 
+### 2026-10-23 app tooling reduction
+
+The app no longer installs the unused `shadcn` generator. UI component source is
+checked in, and no app script or source import uses the CLI package. The
+`components.json` generator configuration remains available for future component
+authoring.
+
+The app lockfile audit drops from eight high findings to five after removing that
+dependency and its `ts-morph` chain. The remaining findings are the Next ESLint
+plugin's `fast-glob` / `micromatch` / `braces` chain. Registry checks still report
+`braces@3.0.3` as the latest release; upgrading its parent packages does not remove
+that dependency. The CLI lockfile audit is now clean. These results do not resolve
+the remaining docs or recorder tooling findings, and no major downgrade or audit
+suppression was applied.
+
+### Revisit criteria
+
 1. `braces` or `sprintf-js` publishes a version above the vulnerable range.
    Upgrade with the package manager (`npm install <pkg>@<fixed>` plus
    `overrides` where the transitive parent pins it) and re-run the affected
