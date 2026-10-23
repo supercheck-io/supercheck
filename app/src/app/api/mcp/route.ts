@@ -7,6 +7,13 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
 import { registerMcpTools } from "@/lib/mcp/tools";
+import {
+  McpBodyTooLargeError,
+  admitMcpCall,
+  countMcpMessages,
+  isMcpRefusal,
+  readMcpBody,
+} from "@/lib/mcp/call-limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,16 +51,42 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
     return json({ error: "server_error" }, 500);
   }
 
-  // Stateless: a fresh server and transport per request, safe across replicas.
-  const server = new McpServer({ name: "supercheck", version: "1.0.0" });
-  registerMcpTools(server, context);
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-    maxRequestBodySize: MAX_BODY_BYTES,
-  });
-  await server.connect(transport);
-  return transport.handleRequest(request);
+  // Read the body once, capped even without a Content-Length, and reuse it for the transport.
+  let parsedBody: unknown;
+  try {
+    parsedBody = await readMcpBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof McpBodyTooLargeError) return json({ error: "payload_too_large" }, 413);
+    throw error;
+  }
+
+  // Throttle per token (user + client), counting every JSON-RPC message in a batch.
+  const permit = await admitMcpCall(
+    `${typeof claims.sub === "string" ? claims.sub : "unknown"}:${typeof claims.azp === "string" ? claims.azp : "unknown"}`,
+    countMcpMessages(parsedBody),
+  );
+  if (isMcpRefusal(permit)) {
+    return json(
+      { error: permit.error },
+      permit.status,
+      permit.retryAfter ? { "Retry-After": String(permit.retryAfter) } : {},
+    );
+  }
+
+  try {
+    // Stateless: a fresh server and transport per request, safe across replicas.
+    const server = new McpServer({ name: "supercheck", version: "1.0.0" });
+    registerMcpTools(server, context);
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+      maxRequestBodySize: MAX_BODY_BYTES,
+    });
+    await server.connect(transport);
+    return await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });
+  } finally {
+    permit.release();
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

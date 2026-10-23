@@ -2,6 +2,7 @@
 const requireMcpAuth = jest.fn();
 const resolveMcpCallContext = jest.fn();
 const isMcpServerEnabled = jest.fn();
+const checkAndIncrement = jest.fn();
 
 jest.mock("@better-auth/mcp", () => ({ requireMcpAuth: (...a: unknown[]) => requireMcpAuth(...a) }));
 jest.mock("@/utils/auth", () => ({ auth: {} }));
@@ -18,6 +19,9 @@ jest.mock("@/lib/mcp/context", () => {
   }
   return { McpAccessDeniedError, resolveMcpCallContext: (...a: unknown[]) => resolveMcpCallContext(...a) };
 });
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: (...a: unknown[]) => checkAndIncrement(...a) },
+}));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/mcp/tools", () => ({ registerMcpTools: jest.fn() }));
 
@@ -36,8 +40,9 @@ const rpc = (method: string) =>
 beforeEach(() => {
   jest.clearAllMocks();
   isMcpServerEnabled.mockReturnValue(true);
+  checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 10, limit: 300, resetAt: new Date() });
   // Run the wrapped handler with fixed claims, like a valid token would.
-  requireMcpAuth.mockImplementation((_auth, handler) => (req: Request) => handler(req, { sub: "u" }));
+  requireMcpAuth.mockImplementation((_auth, handler) => (req: Request) => handler(req, { sub: "u", azp: "c" }));
 });
 
 describe("/api/mcp", () => {
@@ -81,5 +86,77 @@ describe("/api/mcp", () => {
     const res = await POST(rpc("initialize"));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ result: { serverInfo: { name: "supercheck" } } });
+  });
+
+  describe("throttling", () => {
+    const batch = (size: number) =>
+      new Request("https://app.example.com/api/mcp", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: JSON.stringify(Array.from({ length: size }, (_, id) => ({ jsonrpc: "2.0", id, method: "ping" }))),
+      });
+
+    it("counts every message of a batch against the token's quota", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      await POST(batch(5));
+      expect(checkAndIncrement).toHaveBeenCalledTimes(5);
+      expect(checkAndIncrement).toHaveBeenCalledWith("mcp:call:u:c", expect.objectContaining({ timeWindow: 60 }));
+    });
+
+    it("refuses a chunked body over the cap even without a Content-Length", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      const chunk = new TextEncoder().encode("x".repeat(512 * 1024));
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.enqueue(chunk);
+          controller.enqueue(chunk);
+          controller.close();
+        },
+      });
+      const req = new Request("https://app.example.com/api/mcp", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: stream,
+        duplex: "half",
+      } as RequestInit);
+      expect((await POST(req)).status).toBe(413);
+      expect(checkAndIncrement).not.toHaveBeenCalled();
+    });
+
+    it("rejects an oversized batch before doing any work", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      const res = await POST(batch(100));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "batch_too_large" });
+      expect(checkAndIncrement).not.toHaveBeenCalled();
+    });
+
+    it("answers 429 with Retry-After once the quota is spent", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0, limit: 300, resetAt: new Date(), retryAfter: 17 });
+      const res = await POST(rpc("initialize"));
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBe("17");
+      expect(await res.json()).toEqual({ error: "rate_limited" });
+    });
+
+    it("caps concurrent requests per token and frees the slot afterwards", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      checkAndIncrement.mockImplementation(async () => {
+        await gate;
+        return { allowed: true, remaining: 10, limit: 300, resetAt: new Date() };
+      });
+      const running = Array.from({ length: 4 }, () => POST(rpc("initialize")));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const refused = await POST(rpc("initialize"));
+      expect(refused.status).toBe(429);
+      expect(await refused.json()).toEqual({ error: "too_many_concurrent_requests" });
+      release();
+      expect((await Promise.all(running)).map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      expect((await POST(rpc("initialize"))).status).toBe(200);
+    });
   });
 });

@@ -14,6 +14,9 @@ export async function prepareMcpOAuthRequest(request: Request): Promise<Request 
   const maxRequests = LIMITS[path];
   if (!maxRequests) return request;
 
+  // Next.js fills X-Forwarded-For from the socket when a request arrives without one, so this
+  // only fails when TRUSTED_PROXY_HOPS is larger than the proxies actually in front of the app.
+  // Behind a proxy, set it to the real hop count; with no proxy, leave it at 0.
   const ip = getClientIP(request.headers);
   if (ip === "unknown") {
     return Response.json({ error: "Client address unavailable" }, { status: 503 });

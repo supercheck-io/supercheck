@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
+import { jobs, apikey, runs, JobTrigger, user } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
 import { eq, sql, and, inArray } from "drizzle-orm";
 import crypto from "crypto";
@@ -20,6 +20,7 @@ import {
   createRateLimitHeaders,
 } from "@/lib/api-key-rate-limiter";
 import { hashApiKey } from "@/lib/security/api-key-hash";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
@@ -106,8 +107,11 @@ export async function POST(
         rateLimitEnabled: apikey.rateLimitEnabled,
         rateLimitTimeWindow: apikey.rateLimitTimeWindow,
         rateLimitMax: apikey.rateLimitMax,
+        banned: user.banned,
+        banExpires: user.banExpires,
       })
       .from(apikey)
+      .innerJoin(user, eq(user.id, apikey.referenceId))
       .where(and(
         eq(apikey.jobId, jobId),
         eq(apikey.enabled, true),
@@ -117,7 +121,9 @@ export async function POST(
 
     const matchedKey = apiKeysForJob[0] ?? null;
 
-    if (!matchedKey) {
+    // A banned owner's key stops working like every other owner-bound credential. Same answer
+    // as an unknown key, so a response never reveals that the owner is banned.
+    if (!matchedKey || !isCredentialOwnerActive(matchedKey)) {
       console.warn(
         `Invalid API key attempted: ${apiKeyUsed}... for job ${jobId}`
       );

@@ -27,7 +27,6 @@ export default function ForgotPasswordPage() {
 
   // CAPTCHA state management
   const {
-    captchaToken,
     captchaError,
     captchaRef,
     handleCaptchaSuccess,
@@ -42,19 +41,30 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
-      // Include CAPTCHA token in request headers if available
+      // Turnstile tokens are single-use and expire after minutes: request a fresh
+      // one for every submit instead of resending the one cached at page load.
+      const freshToken = await captchaRef.current?.execute();
       const result = await requestPasswordReset({
         email,
         redirectTo: `${window.location.origin}/reset-password`,
         fetchOptions: {
-          headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
+          headers: freshToken ? { "x-captcha-response": freshToken } : {},
         },
       });
 
       if (result.error) {
-        setError(
-          "Too many password reset attempts. Please try again after some time."
-        );
+        // Only a real rate-limit response means "too many attempts"; a rejected
+        // CAPTCHA says nothing about how often the user tried.
+        const message = result.error.message?.toLowerCase() ?? "";
+        if (result.error.status === 429 || message.includes("too many")) {
+          setError(
+            "Too many password reset attempts. Please try again after some time."
+          );
+        } else if (message.includes("captcha")) {
+          setError("Verification failed. Please try again.");
+        } else {
+          setError("Could not send the reset link. Please try again.");
+        }
         resetCaptcha();
       } else {
         setIsSuccess(true);

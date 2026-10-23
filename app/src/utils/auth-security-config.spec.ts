@@ -90,3 +90,17 @@ it.each([false, true])("validates reset CAPTCHA responses (success=%s)", async (
     fetchMock.mockRestore();
   }
 });
+
+describe("password reset", () => {
+  it("revokes API and MCP credentials, not just sessions, after a reset", () => {
+    expect(property("revokeSessionsOnPasswordReset").getText(source)).toBe("true");
+    expect(property("onPasswordReset").getText(source)).toContain("revokeCredentialsAfterPasswordReset(user.id)");
+  });
+
+  it("does not make the reset response wait on Redis or SMTP", () => {
+    // Known and unknown addresses must take the same time, or the response reveals which have accounts.
+    const body = property("sendResetPassword").getText(source);
+    expect(body).toContain("void deliverPasswordResetEmail");
+    expect(body).not.toMatch(/await\s/);
+  });
+});
