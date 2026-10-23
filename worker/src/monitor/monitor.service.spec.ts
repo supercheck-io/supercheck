@@ -362,6 +362,34 @@ describe('MonitorService', () => {
   // INITIALIZATION TESTS
   // ==========================================================================
 
+  describe('legacy multi-location execution', () => {
+    it('completes synthetic locations with only one execution slot', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue(['eu-central', 'us-east']);
+      let active = false;
+      const execute = jest.spyOn(service, 'executeMonitor').mockImplementation(async (data, location) => {
+        if (active) throw new Error('organization capacity exhausted');
+        active = true;
+        await Promise.resolve();
+        active = false;
+        return { monitorId: data.monitorId, location } as MonitorExecutionResult;
+      });
+
+      const results = await service.executeMonitorWithLocations({ ...mockJobData, type: 'synthetic_test' });
+
+      expect(results.map(result => result.location)).toEqual(['eu-central', 'us-east']);
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('omits skipped synthetic locations and stops on an execution error', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue(['eu-central', 'us-east']);
+      const execute = jest.spyOn(service, 'executeMonitor').mockResolvedValueOnce(null)
+        .mockRejectedValueOnce(new Error('unavailable'));
+      await expect(service.executeMonitorWithLocations({ ...mockJobData, type: 'synthetic_test' }))
+        .rejects.toThrow('unavailable');
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('Initialization', () => {
     it('should be defined', () => {
       expect(service).toBeDefined();
