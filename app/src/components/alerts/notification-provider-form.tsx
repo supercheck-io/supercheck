@@ -126,7 +126,7 @@ export const createNotificationProviderSchema = (
           }
         ),
       method: z.enum(["GET", "POST", "PUT"]).optional(),
-      headers: z.record(z.string()).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
       bodyTemplate: z
         .string()
         .max(
@@ -294,7 +294,7 @@ const MASKED_FIELD_LABELS: Record<string, string> = {
 const WEBHOOK_DOCS_URL =
   "https://supercheck.io/docs/app/communicate/alerts#body-template";
 
-type FormValues = z.infer<ReturnType<typeof createNotificationProviderSchema>>;
+type FormValues = z.input<ReturnType<typeof createNotificationProviderSchema>>;
 
 type WebhookTestDetails = {
   method?: string;
@@ -424,7 +424,11 @@ export function NotificationProviderForm({
     getHeadersError(initialHeadersText),
   );
 
-  const form = useForm<FormValues>({
+  const form = useForm<
+    FormValues,
+    unknown,
+    z.output<ReturnType<typeof createNotificationProviderSchema>>
+  >({
     resolver: zodResolver(notificationProviderSchema),
     mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: initialData

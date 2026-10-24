@@ -56,7 +56,7 @@ export function BanUserDialog({
       return null;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return error.errors[0]?.message || "Invalid ban reason";
+        return error.issues[0]?.message || "Invalid ban reason";
       }
       return "Invalid ban reason";
     }

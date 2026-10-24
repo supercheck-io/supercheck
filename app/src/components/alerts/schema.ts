@@ -14,9 +14,9 @@ export const alertHistorySchema = z.object({
   metadata: z
     .object({
       errorMessage: z.string().nullable().optional(),
-      provider: z.record(z.unknown()).optional(),
-      correlation: z.record(z.unknown()).optional(),
-      delivery: z.record(z.unknown()).optional(),
+      provider: z.record(z.string(), z.unknown()).optional(),
+      correlation: z.record(z.string(), z.unknown()).optional(),
+      delivery: z.record(z.string(), z.unknown()).optional(),
     })
     .catchall(z.unknown())
     .optional(),

@@ -13,9 +13,9 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_ATTACHMENTS = 10;
 const MAX_EVIDENCE_IDS = 100;
 
-const scopeSchema = z.record(z.unknown()).optional().nullable();
+const scopeSchema = z.record(z.string(), z.unknown()).optional().nullable();
 const attachmentsSchema = z
-  .array(z.record(z.unknown()))
+  .array(z.record(z.string(), z.unknown()))
   .max(MAX_ATTACHMENTS)
   .optional()
   .nullable();

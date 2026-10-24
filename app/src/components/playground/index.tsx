@@ -788,7 +788,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       console.error("Error validating form:", error);
       if (error instanceof z.ZodError) {
         const formattedErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
+        error.issues.forEach((err) => {
           if (err.path[0]) {
             formattedErrors[err.path[0] as string] = err.message;
           }

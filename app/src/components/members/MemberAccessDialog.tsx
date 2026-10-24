@@ -278,8 +278,8 @@ export function MemberAccessDialog({
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        if (error.errors && error.errors.length > 0) {
-          toast.error(error.errors[0].message);
+        if (error.issues && error.issues.length > 0) {
+          toast.error(error.issues[0].message);
           return;
         }
       }

@@ -57,12 +57,12 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     description: string,
     resource: Parameters<typeof assertCanView>[1],
     shape: S,
-    run: (args: z.objectOutputType<S, z.ZodTypeAny>) => Promise<Record<string, unknown>>,
+    run: (args: z.output<z.ZodObject<S>>) => Promise<Record<string, unknown>>,
   ) {
     server.registerTool(
       name,
       { description, inputSchema: shape, annotations: ANNOTATIONS },
-      (async (args: z.objectOutputType<S, z.ZodTypeAny>) => {
+      (async (args: z.output<z.ZodObject<S>>) => {
         const started = Date.now();
         let success = true;
         try {

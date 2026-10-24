@@ -15,10 +15,10 @@ import { db } from "@/utils/db";
 const diagnosticQueryTypes = ["sql", "promql", "logql", "traceql", "http_get"] as const;
 
 const flatJsonSchema: z.ZodType<Record<string, unknown>> = z.record(
-  z.union([z.string().max(2000), z.number(), z.boolean(), z.null(), z.array(z.union([z.string().max(200), z.number(), z.boolean()])).max(50)])
+  z.string(), z.union([z.string().max(2000), z.number(), z.boolean(), z.null(), z.array(z.union([z.string().max(200), z.number(), z.boolean()])).max(50)])
 );
 
-const parameterSchemaJson: z.ZodType<Record<string, unknown>> = z.record(z.unknown());
+const parameterSchemaJson: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
 
 const createDiagnosticQuerySchema = z.object({
   connectorId: z.string().uuid(),
@@ -62,7 +62,7 @@ export type SreDiagnosticQuerySetupOptions = {
 
 function formatValidationErrors(error: z.ZodError) {
   const flattened = error.flatten().fieldErrors;
-  return Object.fromEntries(Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0)) as Record<string, string[]>;
+  return Object.fromEntries(Object.entries(flattened).filter(([, errors]) => Array.isArray(errors) && errors.length > 0)) as Record<string, string[]>;
 }
 
 function assertCanConfigureDiagnosticQueries(userId: string, organizationId: string, project: ProjectContext) {

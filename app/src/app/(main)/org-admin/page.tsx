@@ -629,8 +629,8 @@ function OrgAdminDashboardContent() {
     try {
       updateOrganizationNameSchema.parse({ name: trimmedName });
     } catch (error) {
-      if (error instanceof z.ZodError && error.errors.length > 0) {
-        toast.error(error.errors[0].message);
+      if (error instanceof z.ZodError && error.issues.length > 0) {
+        toast.error(error.issues[0].message);
         return;
       }
       toast.error("Please enter a valid organization name");
@@ -676,8 +676,8 @@ function OrgAdminDashboardContent() {
     } catch (error) {
       if (error instanceof Error) {
         const zodError = error as z.ZodError;
-        if (zodError.errors && zodError.errors.length > 0) {
-          toast.error(zodError.errors[0].message);
+        if (zodError.issues && zodError.issues.length > 0) {
+          toast.error(zodError.issues[0].message);
           return;
         }
       }
@@ -751,8 +751,8 @@ function OrgAdminDashboardContent() {
     } catch (error) {
       if (error instanceof Error) {
         const zodError = error as z.ZodError;
-        if (zodError.errors && zodError.errors.length > 0) {
-          toast.error(zodError.errors[0].message);
+        if (zodError.issues && zodError.issues.length > 0) {
+          toast.error(zodError.issues[0].message);
           return;
         }
       }

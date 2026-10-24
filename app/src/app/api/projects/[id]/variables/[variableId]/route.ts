@@ -456,7 +456,7 @@ async function handleFileVariableUpdate(
     const keyResult = keySchema.safeParse(key);
     if (!keyResult.success) {
       return NextResponse.json(
-        { error: keyResult.error.errors[0]?.message || "Invalid variable name" },
+        { error: keyResult.error.issues[0]?.message || "Invalid variable name" },
         { status: 400 }
       );
     }

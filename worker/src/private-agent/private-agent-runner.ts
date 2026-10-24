@@ -13,7 +13,7 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const MAX_RESULT_ITEMS = 100;
 
 const credentialValueSchema = z
-  .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
   .nullable()
   .optional();
 
@@ -49,7 +49,7 @@ const connectorJobSpecSchema = z.object({
     maxSeconds: z.number().int().min(1).max(30),
     maxCost: z.number().min(0),
   }),
-  filters: z.record(z.unknown()).default({}),
+  filters: z.record(z.string(), z.unknown()).default({}),
 });
 
 const leasedJobSchema = z.object({

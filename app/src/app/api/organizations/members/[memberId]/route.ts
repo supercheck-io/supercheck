@@ -82,7 +82,7 @@ export async function PUT(
     });
 
     if (!parseResult.success) {
-      const firstError = parseResult.error.errors[0];
+      const firstError = parseResult.error.issues[0];
       return NextResponse.json(
         { error: firstError?.message || 'Invalid request data' },
         { status: 400 }

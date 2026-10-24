@@ -39,7 +39,7 @@ describe("subscribeToStatusPage", () => {
     (
       mockDb.query.statusPages.findFirst as unknown as jest.Mock
     ).mockResolvedValue({
-      id: "00000000-0000-0000-0000-000000000123",
+      id: "00000000-0000-4000-8000-000000000123",
       status: "published",
       allowPageSubscribers: true,
       allowIncidentSubscribers: false,
@@ -62,7 +62,7 @@ describe("subscribeToStatusPage", () => {
       values: jest.fn().mockReturnValue({
         returning: jest.fn().mockResolvedValue([
           {
-            id: "00000000-0000-0000-0000-000000000999",
+            id: "00000000-0000-4000-8000-000000000999",
           },
         ]),
       }),
@@ -71,7 +71,7 @@ describe("subscribeToStatusPage", () => {
 
   it("allows non-incident webhook subscriptions when incident subscribers are disabled", async () => {
     const result = await subscribeToStatusPage({
-      statusPageId: "00000000-0000-0000-0000-000000000123",
+      statusPageId: "00000000-0000-4000-8000-000000000123",
       subscriptionMode: "webhook",
       endpoint: "https://example.com/webhooks/status",
       subscribeToAllComponents: true,
@@ -85,7 +85,7 @@ describe("subscribeToStatusPage", () => {
 
   it("blocks explicit incident-interest subscriptions when incident subscribers are disabled", async () => {
     const result = await subscribeToStatusPage({
-      statusPageId: "00000000-0000-0000-0000-000000000123",
+      statusPageId: "00000000-0000-4000-8000-000000000123",
       subscriptionMode: "webhook",
       endpoint: "https://example.com/webhooks/status",
       subscribeToAllComponents: true,

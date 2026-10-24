@@ -105,7 +105,7 @@ export function validateMonitorConfiguration({
 
   if (
     (monitorType === "ping_host" || monitorType === "port_check") &&
-    !hostnamePattern.test(target) && !z.string().ip({ version: "v6" }).safeParse(target).success
+    !hostnamePattern.test(target) && !z.ipv6().safeParse(target).success
   ) {
     return invalid(
       "Invalid monitor target",

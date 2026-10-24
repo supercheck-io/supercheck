@@ -63,14 +63,14 @@ const mockLogAuditEvent = logAuditEvent as jest.Mock;
 
 describe("Requirements Server Actions", () => {
   // Use valid UUIDs for Zod validation
-  const testUserId = "11111111-1111-1111-1111-111111111111";
-  const testOrgId = "22222222-2222-2222-2222-222222222222";
-  const testProjectId = "33333333-3333-3333-3333-333333333333";
-  const testRequirementId = "44444444-4444-4444-4444-444444444444";
-  const testIdA = "66666666-6666-6666-6666-666666666666";
-  const testIdB = "77777777-7777-7777-7777-777777777777";
-  const foreignTestId = "88888888-8888-8888-8888-888888888888";
-  const foreignRequirementId = "99999999-9999-9999-9999-999999999999";
+  const testUserId = "11111111-1111-4111-8111-111111111111";
+  const testOrgId = "22222222-2222-4222-8222-222222222222";
+  const testProjectId = "33333333-3333-4333-8333-333333333333";
+  const testRequirementId = "44444444-4444-4444-8444-444444444444";
+  const testIdA = "66666666-6666-4666-8666-666666666666";
+  const testIdB = "77777777-7777-4777-8777-777777777777";
+  const foreignTestId = "88888888-8888-4888-8888-888888888888";
+  const foreignRequirementId = "99999999-9999-4999-8999-999999999999";
 
   const mockProjectContext = {
     userId: testUserId,
@@ -362,7 +362,7 @@ describe("Requirements Server Actions", () => {
       const result = await updateRequirement({
         id: testRequirementId,
         title: "Updated",
-        tagIds: ["55555555-5555-5555-5555-555555555555"],
+        tagIds: ["55555555-5555-4555-8555-555555555555"],
       });
 
       expect(result.success).toBe(false);

@@ -277,7 +277,7 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        message: error.errors[0]?.message || "Invalid input data",
+        message: error.issues[0]?.message || "Invalid input data",
       };
     }
 

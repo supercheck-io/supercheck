@@ -205,6 +205,14 @@ describe("accepted invitation quota", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it("returns the schema validation message for an invalid role", async () => {
+    const response = await POST(request("org_owner"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Please select a valid role" });
+    expect(redis.eval).not.toHaveBeenCalled();
+  });
+
   it.each(["invalid", "duplicate", "foreign-project", "unauthorized"])(
     "does not reserve quota for %s requests",
     async (reason) => {

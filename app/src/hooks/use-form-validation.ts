@@ -29,7 +29,7 @@ export function useFormValidation<T extends Record<string, unknown>>({
         if (error instanceof z.ZodError) {
           const newErrors: Partial<T> = {}
           
-          error.errors.forEach((err) => {
+          error.issues.forEach((err) => {
             if (err.path) {
               const field = err.path[0] as keyof T
               newErrors[field] = err.message as T[keyof T]

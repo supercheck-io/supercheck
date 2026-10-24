@@ -57,7 +57,7 @@ function normalizeOptional(value: string | null | undefined) {
 function formatValidationErrors(error: z.ZodError) {
   const flattened = error.flatten().fieldErrors;
   return Object.fromEntries(
-    Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0)
+    Object.entries(flattened).filter(([, errors]) => Array.isArray(errors) && errors.length > 0)
   ) as Record<string, string[]>;
 }
 

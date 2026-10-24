@@ -150,7 +150,7 @@ export async function PUT(
     // Validate organization name
     const nameValidation = updateOrgNameSchema.safeParse({ name });
     if (!nameValidation.success) {
-      const firstError = nameValidation.error.errors[0];
+      const firstError = nameValidation.error.issues[0];
       return NextResponse.json(
         { error: firstError?.message || 'Invalid organization name' },
         { status: 400 }

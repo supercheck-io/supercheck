@@ -28,7 +28,7 @@ import {
 import { db } from "@/utils/db";
 
 const jsonMetadataSchema: z.ZodType<Record<string, unknown>> = z.record(
-  z.union([
+  z.string(), z.union([
     z.string().max(500),
     z.number(),
     z.boolean(),
@@ -94,7 +94,7 @@ export type SreIntegrationBindingSetupOptions = {
 function formatValidationErrors(error: z.ZodError) {
   const flattened = error.flatten().fieldErrors;
   return Object.fromEntries(
-    Object.entries(flattened).filter(([, errors]) => errors && errors.length > 0),
+    Object.entries(flattened).filter(([, errors]) => Array.isArray(errors) && errors.length > 0),
   ) as Record<string, string[]>;
 }
 
