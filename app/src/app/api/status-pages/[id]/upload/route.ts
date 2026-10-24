@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateProxyUrl } from "@/lib/asset-proxy";
@@ -97,6 +98,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Check if status page exists and belongs to user's org/project
     // SECURITY: Verify ownership to prevent cross-org asset uploads
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const statusPage = await db.query.statusPages.findFirst({
       where: and(
         eq(statusPages.id, statusPageId),

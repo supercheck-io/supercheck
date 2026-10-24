@@ -11,7 +11,7 @@ const lock = jest.fn();
 const insert = jest.fn();
 const tx = { select: jest.fn(), insert };
 const rows = (data: unknown[]) => ({ from: () => ({ where: () => ({ limit: async () => data, for: lock }) }) });
-const post = () => POST(new NextRequest("http://localhost/api/projects/project-1/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "project-1" }) });
+const post = () => POST(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
 beforeEach(() => {
   jest.clearAllMocks();
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "admin-1" });

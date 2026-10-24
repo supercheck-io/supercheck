@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
@@ -75,6 +76,7 @@ export async function PATCH(
     }
 
     // Verify the token belongs to this project and is a CLI token (no jobId)
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const tokenRecord = await db
       .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId })
       .from(apikey)
@@ -154,6 +156,7 @@ export async function DELETE(
     }
 
     // Verify the token belongs to this project and is a CLI token
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const tokenRecord = await db
       .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId })
       .from(apikey)

@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -42,6 +43,7 @@ export async function GET(
       );
     }
 
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [provider] = await db
       .select()
       .from(notificationProviders)
@@ -118,6 +120,7 @@ export async function PUT(
       );
     }
 
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [existingProvider] = await db
       .select()
       .from(notificationProviders)
@@ -330,6 +333,7 @@ export async function DELETE(
       );
     }
 
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [existingProvider] = await db
       .select()
       .from(notificationProviders)

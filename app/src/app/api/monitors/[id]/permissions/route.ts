@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
@@ -29,6 +30,7 @@ export async function GET(
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Find the monitor to get project and organization IDs
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
       columns: {

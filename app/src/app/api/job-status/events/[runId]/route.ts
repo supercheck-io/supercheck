@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/utils/db";
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
+  if (!isUuid(runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
   const runRecord = await db
     .select({
       runId: runs.id,

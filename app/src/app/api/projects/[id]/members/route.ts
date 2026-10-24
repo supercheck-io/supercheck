@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
@@ -19,6 +20,7 @@ export async function GET(
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
@@ -103,6 +105,7 @@ export async function POST(
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
@@ -222,6 +225,7 @@ export async function PUT(
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
@@ -316,6 +320,7 @@ export async function DELETE(
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)

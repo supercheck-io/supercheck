@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projectMembers, projects } from '@/db/schema';
@@ -32,6 +33,7 @@ export async function GET(
     }
 
     // Get project assignments for the specific user in the active organization
+    if (!isUuid((await params).userId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const userProjectAssignments = await db
       .select({
         projectId: projectMembers.projectId,
