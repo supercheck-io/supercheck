@@ -67,7 +67,6 @@ export const doctorCommand = new Command('doctor')
     let hasAuth = false
     let credentialProblem: 'rejected' | 'unreachable' | null = null
     if (hasCredentials && configTargetsOtherApi && storedBaseUrl === null) {
-      credentialProblem = 'unreachable'
       logger.info(`  ${pc.yellow('○')} Credentials present, but supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))} and no API URL is set — set SUPERCHECK_URL (or run: supercheck login --url ...) to verify them there`)
     } else if (hasCredentials) {
       try {
@@ -93,6 +92,10 @@ export const doctorCommand = new Command('doctor')
     if (hasCredentials && configTargetsOtherApi && storedBaseUrl !== null) {
       logger.info(`  ${pc.yellow('○')} supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))}, not ${pc.dim(baseUrl)} — commands that use the config will refuse to run until they match`)
     }
+
+    // Managed commands refuse to run when the config targets a different API than the one in use, so this is
+    // a configuration problem (exit 3), however the credential check went.
+    const configMismatch = hasCredentials && configTargetsOtherApi
 
     logger.newline()
 
@@ -174,11 +177,11 @@ export const doctorCommand = new Command('doctor')
       cloudCredentialsPresent: hasCredentials,
       apiUrl: baseUrl,
       configFound: Boolean(configResult),
-      ready: missingRequired.length === 0 && hasAuth && Boolean(configResult),
+      ready: missingRequired.length === 0 && hasAuth && Boolean(configResult) && !configMismatch,
     }, null, 2))
 
-    if (options.strict && !(missingRequired.length === 0 && hasAuth && configResult)) {
-      const strictCode = missingRequired.length > 0 || !configResult ? ExitCode.ConfigError
+    if (options.strict && !(missingRequired.length === 0 && hasAuth && configResult && !configMismatch)) {
+      const strictCode = missingRequired.length > 0 || !configResult || configMismatch ? ExitCode.ConfigError
         : credentialProblem === 'rejected' || !hasCredentials ? ExitCode.AuthError
         : credentialProblem === 'unreachable' ? ExitCode.ApiError
         : ExitCode.ConfigError

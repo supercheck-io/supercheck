@@ -123,10 +123,15 @@ describe('doctor with a config that declares its own API URL', () => {
     expect(printed).toMatch(/targets .*checks\.example\.com.* set SUPERCHECK_URL/)
     expect(printed).not.toMatch(/rejected/)
   })
-  it('is not a strict-mode credential rejection', async () => {
+  it('is a configuration problem (exit 3) in strict mode, not a network failure', async () => {
     selfHosted()
     storedUrl = null
-    await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 4 })
+    await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 3 })
+  })
+  it('fails strict mode with exit 3 even when the token verifies against the active API', async () => {
+    selfHosted()
+    apiGet.mockResolvedValueOnce({ data: {} })
+    await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 3 })
   })
   it('verifies against the active API and flags the mismatch when one is set', async () => {
     selfHosted()
