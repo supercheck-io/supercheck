@@ -35,12 +35,16 @@ import {
 import { toast } from "sonner";
 import { extractRequirementsFromDocument } from "@/actions/extract-requirements";
 import { createRequirement } from "@/actions/requirements";
+import { createExtractedRequirements, withoutCreated } from "./create-extracted-requirements";
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { createUuid } from "@/lib/uuid";
 
 interface ExtractedRequirement {
     id: string;
+    /** Minted once per extraction; sent as the requirement id so a repeated create cannot duplicate the row. */
+    clientId: string;
     title: string;
     description: string | null;
     priority: "low" | "medium" | "high" | null;
@@ -268,6 +272,7 @@ export function UploadDocumentDialog({
             const requirements: ExtractedRequirement[] = result.requirements.map(
                 (req: { title: string; description?: string; priority?: string; tags?: string[] }, index: number) => ({
                     id: `extracted-${index}`,
+                    clientId: createUuid(),
                     title: req.title,
                     description: req.description || null,
                     priority: (req.priority as "low" | "medium" | "high") || null,
@@ -321,23 +326,37 @@ export function UploadDocumentDialog({
         setState("creating");
         setProgress(0);
 
-        try {
-            let created = 0;
-            for (const req of selectedRequirements) {
-                // Combine AI-extracted tags with 'ai' marker, avoiding duplicates
-                const allTags = new Set(["ai", ...req.tags]);
-                await createRequirement({
-                    title: req.title,
-                    description: req.description || "Extracted from document",
-                    priority: req.priority || "medium",
-                    tags: Array.from(allTags).join(", "),
-                    sourceDocumentId: documentId,
-                    createdBy: "ai",
-                });
-                created++;
-                setProgress(Math.round((created / selectedRequirements.length) * 100));
+        const { created, failure } = await createExtractedRequirements(
+            selectedRequirements,
+            documentId,
+            createRequirement,
+            (done) => setProgress(Math.round((done / selectedRequirements.length) * 100)),
+        );
+        if (failure !== undefined) {
+            console.error("Error creating requirements:", failure);
+            const reason = getUserFriendlyError(failure);
+            if (created > 0) {
+                // The first `created` selected rows exist now. Take them off the list and go back to the
+                // review step, so trying again can only create what is still missing (no duplicates).
+                setExtractedRequirements((prev) => withoutCreated(prev, selectedRequirements, created));
+                setProgress(0);
+                setState("review");
+                toast.error(`Created ${created} of ${selectedRequirements.length} requirements before it failed: ${reason}`);
+                // Those rows exist, so refresh the list even though the batch stopped.
+                try {
+                    await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
+                } catch (refreshError) {
+                    console.error("Error refreshing requirements:", refreshError);
+                }
+                onComplete?.();
+            } else {
+                setError(reason);
+                setState("error");
             }
+            return;
+        }
 
+        try {
             setState("done");
             toast.success(`Created ${created} requirements from document`);
 

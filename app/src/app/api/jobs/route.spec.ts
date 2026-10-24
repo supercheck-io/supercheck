@@ -162,6 +162,55 @@ describe("Jobs route regressions", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
+  describe("GET /api/jobs includeScript", () => {
+    // Every query in the route is a chain that is finally awaited; resolve whichever it ends on.
+    const chain = (rows: unknown[]) => {
+      const node: Record<string, unknown> = {};
+      for (const method of ["from", "where", "orderBy", "limit", "offset", "innerJoin"]) node[method] = jest.fn(() => node);
+      node.then = (resolve: (value: unknown[]) => unknown) => resolve(rows);
+      return node;
+    };
+    const encoded = Buffer.from("test('a', async () => {});").toString("base64");
+
+    function mockJobWithTest() {
+      mockDb.select
+        .mockReturnValueOnce(chain([{ count: 1 }]))
+        .mockReturnValueOnce(chain([{ id: "job-1", name: "Nightly", createdAt: new Date() }]))
+        .mockReturnValueOnce(chain([{ jobId: "job-1", testId: "t-1", title: "A", type: "browser", script: encoded }]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]));
+    }
+
+    it("leaves scripts out by default", async () => {
+      mockJobWithTest();
+      const body = await (await GET(new NextRequest("http://localhost/api/jobs"))).json();
+      expect(body.data[0].tests[0]).not.toHaveProperty("script");
+    });
+
+    it("serves smaller pages when scripts are included", async () => {
+      mockJobWithTest();
+      const body = await (await GET(new NextRequest("http://localhost/api/jobs?includeScript=true&limit=100"))).json();
+      expect(body.pagination.limit).toBe(25);
+      mockJobWithTest();
+      const plain = await (await GET(new NextRequest("http://localhost/api/jobs?limit=100"))).json();
+      expect(plain.pagination.limit).toBe(100);
+    });
+
+    it.each(["limit=abc", "limit=", "page=abc", "page=&limit=NaN", "page=99999999999999999999"])("falls back to defaults for a non-numeric pagination value (%s)", async (query) => {
+      mockJobWithTest();
+      const response = await GET(new NextRequest(`http://localhost/api/jobs?${query}`));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.pagination).toMatchObject({ page: 1, limit: 100 });
+    });
+
+    it("includes the decoded script when asked", async () => {
+      mockJobWithTest();
+      const body = await (await GET(new NextRequest("http://localhost/api/jobs?includeScript=true"))).json();
+      expect(body.data[0].tests[0].script.trim()).toBe("test('a', async () => {});");
+    });
+  });
+
   it("POST /api/jobs rejects duplicate test IDs", async () => {
     const request = new NextRequest("http://localhost/api/jobs", {
       method: "POST",
