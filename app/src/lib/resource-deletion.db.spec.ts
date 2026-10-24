@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 let mockDatabase: ReturnType<typeof drizzle>;
 const mockDeleteReports = jest.fn();
 const mockRemoveQueuedJob = jest.fn();
+let mockJobProcessedOn: number | undefined = Date.now();
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true, canCancelRunInProject: async () => true }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn().mockResolvedValue(undefined) }));
@@ -13,8 +14,8 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...args: unknown[]) => mockDeleteReports(...args) }) }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: async () => true }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: async () => ({ userId: "user" }), isAuthError: () => false }));
-jest.mock("@/lib/queue", () => ({ getQueues: async () => ({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: () => mockRemoveQueuedJob() }) } }, k6Queues: {} }) }));
-jest.mock("@/lib/cancellation-service", () => ({ setCancellationSignal: jest.fn() }));
+jest.mock("@/lib/queue", () => ({ getQueues: async () => ({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: mockJobProcessedOn, remove: () => mockRemoveQueuedJob() }) } }, k6Queues: {} }) }));
+jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cancellation requested by user", setCancellationSignal: jest.fn() }));
 jest.mock("@/lib/capacity-manager", () => ({ getCapacityManager: jest.fn() }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }) }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn() }));
@@ -309,15 +310,51 @@ it("waits for a cancelled upload to drain and retains its final pointers on dele
   }
 });
 
-it.each([false, true])("preserves a running callback after queue removal (admission race=%s)", async claimWins => {
-  const own = await seedJob();
-  await client`UPDATE runs SET status=${claimWins ? 'queued' : 'running'} WHERE id=${own.runId}`;
-  mockRemoveQueuedJob.mockImplementationOnce(async () => {
-    if (claimWins) await client`UPDATE runs SET status='running' WHERE id=${own.runId} AND status='queued'`;
+const cancelOwnRun = (runId: string) =>
+  cancelRun(new NextRequest(`http://localhost/api/runs/${runId}/cancel`, { method: "POST" }), { params: Promise.resolve({ runId }) });
+
+describe("cancelling a run whose job a worker already handed back", () => {
+  beforeEach(() => { mockJobProcessedOn = Date.now(); });
+  afterAll(() => { mockJobProcessedOn = undefined; });
+
+  it.each(["queued", "running"])("leaves the %s run and its job for the worker, with the marker persisted", async status => {
+    const own = await seedJob();
+    await client`UPDATE runs SET status=${status} WHERE id=${own.runId}`;
+    mockRemoveQueuedJob.mockClear();
+    const response = await cancelOwnRun(own.runId);
+    expect(response.status).toBe(200);
+    expect(mockRemoveQueuedJob).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
+    expect(await client`SELECT status, completed_at, error_details FROM runs WHERE id=${own.runId}`).toEqual([{ status, completed_at: null, error_details: "Cancellation requested by user" }]);
+    expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(false);
   });
-  const response = await cancelRun(new NextRequest(`http://localhost/api/runs/${own.runId}/cancel`, { method: "POST" }), { params: Promise.resolve({ runId: own.runId }) });
-  expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ queueRemoved:true, message:"Cancellation requested; waiting for execution to stop" });
-  expect(await client`SELECT status, completed_at FROM runs WHERE id=${own.runId}`).toEqual([{status:'running',completed_at:null}]);
-  expect((await deleteRunWithContext(own.runId, deletionContext)).success).toBe(false);
+});
+
+describe("cancelling a run whose waiting job was never picked up", () => {
+  beforeEach(() => { mockJobProcessedOn = undefined; mockRemoveQueuedJob.mockReset().mockResolvedValue(undefined); });
+
+  it.each(["queued", "running"])("ends the %s run right away", async status => {
+    const own = await seedJob();
+    await client`UPDATE runs SET status=${status} WHERE id=${own.runId}`;
+    const response = await cancelOwnRun(own.runId);
+    expect(await response.json()).toMatchObject({ queueRemoved: true, message: "Run cancelled successfully" });
+    expect(await client`SELECT status, completed_at IS NOT NULL AS done FROM runs WHERE id=${own.runId}`).toEqual([{ status: "error", done: true }]);
+  });
+
+  it("never overwrites a run that finished before the cancel committed", async () => {
+    const own = await seedJob();
+    await client`UPDATE runs SET status='passed', completed_at=now() WHERE id=${own.runId}`;
+    const response = await cancelOwnRun(own.runId);
+    expect(response.status).toBe(400);
+    expect(await client`SELECT status FROM runs WHERE id=${own.runId}`).toEqual([{ status: "passed" }]);
+  });
+
+  it("answers a repeated cancel without changing anything", async () => {
+    const own = await seedJob();
+    await client`UPDATE runs SET status='running' WHERE id=${own.runId}`;
+    await cancelOwnRun(own.runId);
+    const again = await cancelOwnRun(own.runId);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ message: "Run cancelled successfully", queueRemoved: false });
+  });
 });

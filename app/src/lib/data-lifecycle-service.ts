@@ -32,6 +32,10 @@
  * @module data-lifecycle-service
  */
 
+import {
+  countPendingCredentialRevocations,
+  retryPendingCredentialRevocations,
+} from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
 import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
@@ -73,6 +77,7 @@ import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
  * - "job_runs": Test execution results and artifacts
  * - "playground_artifacts": Temporary test runs from playground
  * - "webhook_idempotency": Webhook deduplication keys with TTL
+ * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
  * - "trial_lifecycle": Ends expired trials (pauses monitors, archives status pages)
@@ -90,6 +95,7 @@ export type CleanupEntityType =
   | "job_runs"
   | "playground_artifacts"
   | "webhook_idempotency"
+  | "credential_revocation_retry"
   | "alert_history"
   | "audit_logs"
   | "trial_lifecycle";
@@ -1954,6 +1960,69 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
 }
 
 /**
+ * Credential Revocation Retry Strategy
+ *
+ * Finishes the revocation of CLI tokens, extension keys and connected-app grants when it failed right
+ * after a password reset. Job trigger keys are deliberately not revoked: they belong to a job, not to a
+ * session, and deleting them would silently break CI pipelines that only hold the key.
+ *
+ * It deletes nothing of its own: a pending marker is removed once the revocation succeeds and is retried
+ * until then. A run that leaves any revocation unfinished reports failure, so a stolen credential that is
+ * still alive cannot sit behind a green dashboard.
+ */
+export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "credential_revocation_retry";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+    this.validate();
+  }
+
+  validate(): void {
+    // No special validation needed
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    // Every pending revocation is overdue by definition: the first attempt already failed.
+    const pending = await countPendingCredentialRevocations();
+    return { totalRecords: pending, oldRecords: pending };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun },
+    };
+    if (!dryRun) {
+      try {
+        const { done, failed } = await retryPendingCredentialRevocations();
+        result.details = {
+          ...result.details,
+          credentialRevocationsRetried: done,
+          credentialRevocationsFailed: failed,
+        };
+        if (failed > 0) {
+          result.success = false;
+          result.errors.push(`${failed} credential revocation(s) are still failing and will be retried`);
+        }
+      } catch (error) {
+        result.success = false;
+        result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error("[DATA_LIFECYCLE] [credential_revocation_retry] Sweep failed:", error);
+      }
+    }
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+}
+
+/**
  * Alert History Cleanup Strategy
  *
  * Manages cleanup of old alert history records to prevent unbounded table growth.
@@ -2520,6 +2589,9 @@ export class DataLifecycleService {
         case "webhook_idempotency":
           strategy = new WebhookIdempotencyCleanupStrategy(config);
           break;
+        case "credential_revocation_retry":
+          strategy = new CredentialRevocationRetryStrategy(config);
+          break;
         case "alert_history":
           strategy = new AlertHistoryCleanupStrategy(config);
           break;
@@ -3040,6 +3112,18 @@ export function createDataLifecycleService(): DataLifecycleService {
       maxRecordsPerRun: parseInt(
         process.env.WEBHOOK_CLEANUP_SAFETY_LIMIT || "100000",
         10
+      ),
+    },
+
+    // Credential revocation retry
+    // Security remediation, so it has its own switch and does not depend on webhook cleanup.
+    // Failed markers expire after 7 days; hourly retries leave many chances before that.
+    {
+      entityType: "credential_revocation_retry",
+      enabled: parseBooleanEnv(process.env.CREDENTIAL_REVOCATION_RETRY_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.CREDENTIAL_REVOCATION_RETRY_CRON,
+        "20 * * * *" // hourly
       ),
     },
 

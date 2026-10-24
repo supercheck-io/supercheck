@@ -19,20 +19,23 @@ submitting changes. The docs build runs the same read-only check.
 
 ## OpenAPI and local checks
 
-Use Node.js 22 or newer. `openapi.json` is the manually maintained public API
-source; deployment-specific service endpoints are intentionally excluded from it and all
-published copies. Update it alongside route changes; it is not generated from
-route handlers. `npm run sync:openapi`
-updates the published JSON/YAML copies and the app's copy. `npm run generate-docs`
-explicitly syncs those copies and regenerates API pages, excluding deployment-specific
-pages. `npm run check:openapi` checks semantic parity without writing files.
-Run `npm run test:openapi`, `npm run lint`, `npx tsc --noEmit`, and `npm run build`
-before submitting docs changes.
+Use Node.js 24 (`>=24 <25`), as declared in `package.json`. `openapi.json` is the
+manually maintained public API source; deployment-specific service endpoints are
+intentionally excluded from it and all published copies. Update it alongside route
+changes; it is not generated from route handlers. `npm run sync:openapi` updates the
+published JSON/YAML copies and the app's copy. `npm run generate-docs` explicitly
+syncs those copies and regenerates API pages, excluding deployment-specific pages.
+`npm run check:openapi` checks semantic parity without writing files.
 
-`fumadocs-openapi` is pinned to 10.6.8. The published 10.8.6 package fails API
-generation on Node 22 with a missing `require_js2xml` export in its bundled
-`xml-js` module. Upgrade once a published version passes API generation,
-TypeScript, and the production build; do not patch installed package files.
+The docs use the compatible `fumadocs-core`/`fumadocs-ui` 16.17.8 and
+`fumadocs-openapi` 12.5.5 integration. `fumadocs-mdx` remains at 13.0.8, and the
+`mdast-util-to-markdown` 2.1.2 override preserves the custom Markdown handler.
+The API page bundles its OpenAPI document and keeps playground requests behind
+`/api/proxy` with a 30-second timeout.
+
+Run `npm run test:openapi`, `npm run lint`, `npx tsc --noEmit`, and `npm run build`.
+After the production build, run `npm run test:rendered-api` to check the generated
+API pages before submitting docs changes.
 
 ## Static Docker preview
 

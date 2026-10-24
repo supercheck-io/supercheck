@@ -162,6 +162,8 @@ Run full Playwright browser tests on a schedule to validate complete user flows.
 4. Set the check interval (minimum 5 minutes)
 5. Monitor runs your test and reports pass/fail status
 
+When a legacy single queue job runs a synthetic monitor from several locations, it checks those locations one at a time. This lets each browser execution use an organization's single available execution slot. Lightweight HTTP, website, ping, and port checks can still run in parallel; distributed per-location jobs keep their existing behavior.
+
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
 
 <Callout type="info">
@@ -242,6 +244,8 @@ When **missing-region detection** is enabled for your deployment, each scheduled
 - If every region is silent, the monitor goes down once and you receive one alert.
 - A result that arrives after the deadline is kept for troubleshooting but does not change the closed run.
 - Paused or disabled monitors, and monitors held for billing reasons, never become downtime because a region was silent.
+
+A check that is deliberately skipped also neutrally aborts its whole expected group. It does not count as up or down and does not change status, uptime, or alerts. Results already observed from sibling regions remain available for diagnosis. A skipped regional capacity check aborts that scheduled cycle immediately instead of waiting for capacity and later appearing as missing-region downtime. This intentionally leaves a data gap: the skipped check starts no compute and creates no usage. Playwright, K6, and legacy monitor checks continue to use the shared capacity deferral behavior.
 
 Supercheck Cloud manages this for you. Self-hosted installations enable it separately; see [self-hosted deployment](/docs/app/deployment/self-hosted#missing-region-detection-optional).
 

@@ -362,6 +362,95 @@ describe('MonitorService', () => {
   // INITIALIZATION TESTS
   // ==========================================================================
 
+  describe('legacy multi-location execution', () => {
+    it('completes synthetic locations with only one execution slot', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue([
+        'eu-central',
+        'us-east',
+      ]);
+      let active = false;
+      const execute = jest
+        .spyOn(service, 'executeMonitor')
+        .mockImplementation(async (data, location) => {
+          if (active) throw new Error('organization capacity exhausted');
+          active = true;
+          await Promise.resolve();
+          active = false;
+          return {
+            monitorId: data.monitorId,
+            location,
+          } as MonitorExecutionResult;
+        });
+
+      const results = await service.executeMonitorWithLocations({
+        ...mockJobData,
+        type: 'synthetic_test',
+      });
+
+      expect(results.map((result) => result.location)).toEqual([
+        'eu-central',
+        'us-east',
+      ]);
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('omits skipped synthetic locations and stops on an execution error', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue([
+        'eu-central',
+        'us-east',
+      ]);
+      const execute = jest
+        .spyOn(service, 'executeMonitor')
+        .mockResolvedValueOnce(null)
+        .mockRejectedValueOnce(new Error('unavailable'));
+      await expect(
+        service.executeMonitorWithLocations({
+          ...mockJobData,
+          type: 'synthetic_test',
+        }),
+      ).rejects.toThrow('unavailable');
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('omits skipped synthetic locations from a completed group', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue([
+        'eu-central',
+        'us-east',
+      ]);
+      jest
+        .spyOn(service, 'executeMonitor')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          monitorId: mockJobData.monitorId,
+          location: 'us-east',
+        } as MonitorExecutionResult);
+      const results = await service.executeMonitorWithLocations({
+        ...mockJobData,
+        type: 'synthetic_test',
+      });
+      expect(results.map((result) => result.location)).toEqual(['us-east']);
+    });
+
+    it('keeps lightweight checks concurrent', async () => {
+      mockLocationService.getEffectiveLocations.mockReturnValue([
+        'eu-central',
+        'us-east',
+      ]);
+      const releases: Array<() => void> = [];
+      const execute = jest
+        .spyOn(service, 'executeMonitor')
+        .mockImplementation(
+          () => new Promise((resolve) => releases.push(() => resolve(null))),
+        );
+      const pending = service.executeMonitorWithLocations(mockJobData);
+      await Promise.resolve();
+      const started = execute.mock.calls.length;
+      releases.forEach((release) => release());
+      expect(started).toBe(2);
+      await expect(pending).resolves.toEqual([]);
+    });
+  });
+
   describe('Initialization', () => {
     it('should be defined', () => {
       expect(service).toBeDefined();
@@ -1938,6 +2027,100 @@ describe('MonitorService', () => {
         limit: jest.fn().mockResolvedValue(rows),
       });
     }
+
+    describe('neutral skipped groups', () => {
+      const skip = (cycle = false) =>
+        (
+          service as unknown as {
+            skipDistributedMonitorGroup(
+              monitorId: string,
+              groupId: string,
+              cycle?: boolean,
+            ): Promise<void>;
+          }
+        ).skipDistributedMonitorGroup(mockMonitor.id, 'group-skipped', cycle);
+
+      it('closes a legacy group without creating uptime, downtime or alerts', async () => {
+        const aggregate = jest
+          .spyOn(service, 'saveMonitorResults')
+          .mockResolvedValue(undefined);
+        await skip();
+        expect(mockRedisService.getClient().set).toHaveBeenCalledWith(
+          'monitor:aggr:aborted:group-skipped',
+          '1',
+          'EX',
+          604800,
+        );
+        expect(aggregate).not.toHaveBeenCalled();
+        expect(mockDbService.db.insert).not.toHaveBeenCalled();
+      });
+
+      it('does not replace a completed group with a skipped outcome', async () => {
+        mockRedisService
+          .getClient()
+          .get.mockImplementation(async (key: string) =>
+            key.includes(':completed:') ? '1' : null,
+          );
+        await skip();
+        expect(mockRedisService.getClient().set).not.toHaveBeenCalledWith(
+          'monitor:aggr:aborted:group-skipped',
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('remains retryable when the group lock is busy', async () => {
+        mockRedisService.getClient().set.mockResolvedValueOnce(null);
+        await expect(skip()).rejects.toBeInstanceOf(
+          MonitorAggregationBusyError,
+        );
+      });
+
+      it('keeps the real cause when Redis fails, instead of reporting a busy lease', async () => {
+        const outage = new Error('redis unavailable');
+        mockRedisService.getClient().set.mockRejectedValueOnce(outage);
+        await expect(skip()).rejects.toBe(outage);
+      });
+
+      it('keeps the real cause when the database fails while closing a cycle', async () => {
+        const outage = new Error('database unavailable');
+        mockDbService.db.select.mockImplementationOnce(() => {
+          throw outage;
+        });
+        await expect(skip(true)).rejects.toBe(outage);
+      });
+
+      it('aborts only an open, owned control-plane cycle', async () => {
+        persistedRows([{ monitorId: mockMonitor.id, status: 'open' }] as never);
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        mockDbService.db.update.mockReturnValue({ set });
+        await skip(true);
+        expect(set).toHaveBeenCalledWith(
+          expect.objectContaining({
+            status: 'aborted',
+            closedAt: expect.any(Date),
+            notifiedAt: expect.any(Date),
+          }),
+        );
+        expect(mockRedisService.getClient().set).not.toHaveBeenCalled();
+      });
+
+      it('leaves a closed control-plane cycle unchanged', async () => {
+        persistedRows([
+          { monitorId: mockMonitor.id, status: 'closed' },
+        ] as never);
+        await skip(true);
+        expect(mockDbService.db.update).not.toHaveBeenCalled();
+      });
+
+      it("does not abort another monitor's cycle", async () => {
+        persistedRows([{ monitorId: 'someone-else', status: 'open' }] as never);
+        await skip(true);
+        expect(mockDbService.db.update).not.toHaveBeenCalled();
+      });
+    });
 
     it('aggregates a location that reports five minutes after the first without a Redis completion gate', async () => {
       const persist = jest

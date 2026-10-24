@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
-import { and, or, eq, inArray } from 'drizzle-orm';
+import { and, or, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
@@ -16,6 +16,7 @@ import { Queue } from 'bullmq';
 import { PLAYWRIGHT_QUEUE } from '../constants';
 import { K6_QUEUE, k6QueueName } from '../../k6/k6.constants';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 /**
  * Service to handle stalled jobs
@@ -118,7 +119,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         'true';
       const queuedCancellation = and(
         eq(schema.runs.status, 'queued'),
-        eq(schema.runs.errorDetails, 'Cancellation requested by user'),
+        eq(schema.runs.errorDetails, RUN_CANCELLATION_MARKER),
       );
       // Enable queued recovery only after every worker uses atomic execution admission.
       const activeRuns = await this.dbService.db
@@ -233,8 +234,8 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
             .set({
               status: 'error',
               completedAt: now,
-              errorDetails:
-                'Execution timed out - marked as stalled by automatic recovery',
+              // A cancelled run keeps its marker while callback recovery locks protect its artifacts.
+              errorDetails: sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN ${schema.runs.errorDetails} ELSE ${'Execution timed out - marked as stalled by automatic recovery'} END`,
             })
             .where(
               and(

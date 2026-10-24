@@ -1,5 +1,7 @@
 # Supercheck Deployment
 
+Queue and monitor behavior is documented in [Execution queue follow-ups](execution-queue-followups.md).
+
 Self-host Supercheck on your own infrastructure.
 
 > **Linux Required:** The test-execution sandbox requires the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
@@ -30,3 +32,5 @@ For upgrades that introduce run callback fencing, follow the [migration and work
 ## Documentation
 
 Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**
+
+MCP operators should follow the [request and authorization contract](mcp-request-hardening.md) when configuring proxies and browser clients.

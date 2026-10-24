@@ -26,7 +26,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 import { NextRequest } from "next/server";
-import { getRequirement, getRequirements } from "@/actions/requirements";
+import { createRequirement, getRequirement, getRequirements } from "@/actions/requirements";
 import { GET } from "@/app/api/requirements/route";
 
 const databaseName = `requirements_pagination_${randomUUID().replaceAll("-", "")}`;
@@ -141,3 +141,39 @@ describe.each(["action", "API"])(
     });
   },
 );
+
+const otherProjectDocument = randomUUID();
+const otherOrgDocument = randomUUID();
+const deletedDocument = randomUUID();
+
+describe("createRequirement source document scoping (real SQL, not a mock that returns rows regardless of predicates)", () => {
+  beforeAll(async () => {
+    await client.unsafe(`
+      INSERT INTO requirement_documents (id, name, project_id, organization_id) VALUES
+        ('${otherProjectDocument}', 'Other project', 'project-2', 'org-1'),
+        ('${otherOrgDocument}', 'Other org', 'project-1', 'org-2');
+    `);
+  });
+
+  it.each([
+    ["another project", otherProjectDocument],
+    ["another organization", otherOrgDocument],
+    ["a deleted document", deletedDocument],
+  ])(
+    "rejects a source document from %s before writing anything",
+    async (_label, sourceDocumentId) => {
+      const [{ count: before }] = await client`SELECT count(*)::int AS count FROM requirements`;
+      const result = await createRequirement({
+        title: "Imported",
+        description: "From a document",
+        priority: "medium",
+        tags: "",
+        sourceDocumentId,
+        createdBy: "ai",
+      });
+      expect(result).toMatchObject({ success: false, error: "Source document not found in this project" });
+      const [{ count: after }] = await client`SELECT count(*)::int AS count FROM requirements`;
+      expect(after).toBe(before);
+    },
+  );
+});

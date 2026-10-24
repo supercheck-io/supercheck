@@ -103,6 +103,9 @@ x-common-env: &common-env # Database Configuration
   # "monitor" for a lightweight monitoring-only worker.
   WORKER_QUEUES: ${WORKER_QUEUES:-}
 
+  # Finalize runs cancelled while still queued. Leave off until every worker runs this version.
+  CANCELLED_QUEUED_RECOVERY_ENABLED: ${CANCELLED_QUEUED_RECOVERY_ENABLED:-false}
+
   # S3-compatible storage (RustFS). Development only: the app and rustfs read the same
   # AWS_* variables, so setting them in .env changes both together. These public fallbacks
   # exist so a source checkout starts without running init-secrets.sh; never use them on a

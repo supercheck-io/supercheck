@@ -10,7 +10,10 @@ import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
-import { CancellationService } from '../../common/services/cancellation.service';
+import {
+  CancellationService,
+  RUN_CANCELLATION_MARKER,
+} from '../../common/services/cancellation.service';
 import { RequirementCoverageService } from './requirement-coverage.service';
 import {
   filterSecretVariablesToUsedKeys,
@@ -698,7 +701,7 @@ export class ExecutionService implements OnModuleDestroy {
       // Use 'error' status for cancellation, 'failed' for other errors
       const finalStatus = isCancellation ? 'error' : 'failed';
       const errorDetails = isCancellation
-        ? 'Cancellation requested by user'
+        ? RUN_CANCELLATION_MARKER
         : errorMessage;
 
       this.logger.error(
@@ -1131,7 +1134,7 @@ export class ExecutionService implements OnModuleDestroy {
       // Use 'error' status for cancellation, 'failed' for other errors
       const finalStatus = isCancellation ? 'error' : 'failed';
       const errorDetails = isCancellation
-        ? 'Cancellation requested by user'
+        ? RUN_CANCELLATION_MARKER
         : errorMessage;
 
       // Attempt to mark DB with appropriate status
