@@ -416,7 +416,17 @@ export class MonitorService {
       `Executing monitor ${jobData.monitorId} from ${locations.length} location(s): ${locations.join(', ')}`,
     );
 
-    // Execute from all locations in parallel
+    // Synthetic locations share the organization's execution capacity in legacy mode.
+    if (resolvedJobData.type === 'synthetic_test') {
+      const results: MonitorExecutionResult[] = [];
+      for (const location of locations) {
+        const result = await this.executeMonitor(resolvedJobData, location);
+        if (result) results.push(result);
+      }
+      return results;
+    }
+
+    // Lightweight checks do not acquire an execution slot.
     const results = await Promise.all(
       locations.map((location) =>
         this.executeMonitor(resolvedJobData, location),
