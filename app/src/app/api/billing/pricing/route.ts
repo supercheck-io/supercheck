@@ -1,6 +1,7 @@
 import catalog from "@/lib/billing/plan-catalog.json";
 import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
-import { trialHighlights, trialValues } from "@/lib/billing/trial-copy";
+import { trialFaqs, trialHighlights, trialValues } from "@/lib/billing/trial-copy";
+import { isTrialEnabled } from "@/lib/execution/trial-limits";
 import { DEFAULT_OVERAGE_PRICING } from "@/lib/billing/pricing-defaults";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -290,7 +291,11 @@ export async function GET() {
       },
     ];
 
-    const faqs = PRICING_FAQS;
+    // Advertise the trial only while trials are actually granted (the same switch as signup): a page that
+    // promises a free trial the signup flow will not give is worse than no mention at all.
+    const trialOffered = isTrialEnabled();
+    const trialQuestions = new Set(trialFaqs().map((faq) => faq.question));
+    const faqs = trialOffered ? PRICING_FAQS : PRICING_FAQS.filter((faq) => !trialQuestions.has(faq.question));
 
     // Build overage pricing data from database
     const plusOverage = overagePricingMap.get("plus");
@@ -325,7 +330,7 @@ export async function GET() {
       plans: pricingPlans,
       featureComparison,
       faqs,
-      trial: { durationDays: trialValues().durationDays, highlights: trialHighlights() },
+      trial: trialOffered ? { durationDays: trialValues().durationDays, highlights: trialHighlights() } : undefined,
       overagePricing: overagePricingResponse,
     });
   } catch (error) {
