@@ -148,6 +148,52 @@ describe('CapacityManager', () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
+  // The requeued run is promoted again from its stored payload, and its slot must be releasable again.
+  describe('requeue after a temporary DNS outage', () => {
+    const dnsOutage = () => jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS verification is temporarily unavailable', 503 as never));
+    const job = (extra: object = {}) => ({ type: 'k6' as const, jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt: 1000, ...extra });
+    const deletedByPipeline = () => mockRedisPipeline.mock.results.flatMap((result) => (result.value as { del: jest.Mock }).del.mock.calls.map(([key]) => key as string));
+
+    it('keeps the stored job payload so the next promotion has something to run', async () => {
+      dnsOutage();
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      expect(deletedByPipeline()).not.toContain('capacity:job:dns-job');
+    });
+
+    it('clears the released flag after queueing again, so the slot is not leaked on the next promotion', async () => {
+      dnsOutage();
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow();
+      expect(mockRedisDel).toHaveBeenCalledWith('capacity:released:dns-job');
+      // Only after the run is back in the queue: a failed requeue must not leave a cleared flag behind.
+      expect(mockRedisZadd.mock.invocationCallOrder[0]).toBeLessThan(mockRedisDel.mock.invocationCallOrder[mockRedisDel.mock.calls.findIndex(([key]) => key === 'capacity:released:dns-job')]);
+    });
+
+    it('still reports the outage when clearing the flag fails, without failing the run', async () => {
+      dnsOutage();
+      mockRedisDel.mockImplementation(async (key: string) => { if (key === 'capacity:released:dns-job') throw new Error('redis down'); return 1; });
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('fails the run and discards the payload when it cannot be queued again', async () => {
+      dnsOutage();
+      mockRedisZadd.mockRejectedValueOnce(new Error('redis down'));
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+      expect(db.update).toHaveBeenCalled(); // marked failed, not left queued with no queue entry
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+      expect(mockRedisDel).not.toHaveBeenCalledWith('capacity:released:dns-job');
+    });
+
+    it('does not keep the payload for a permanent workload rejection', async () => {
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('target not verified', 400));
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('target not verified');
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reserveSlot', () => {
       describe('Positive Cases', () => {
         it('should reserve slot when capacity available (can run immediately)', async () => {

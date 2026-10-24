@@ -313,7 +313,11 @@ export class CapacityManager {
    * - If not, sets the flag and decrements the counter
    * - If already released, does nothing (idempotent)
    */
-  async releaseRunningSlot(organizationId: string = 'global', jobId?: string): Promise<void> {
+  async releaseRunningSlot(
+    organizationId: string = 'global',
+    jobId?: string,
+    options: { keepJobData?: boolean } = {},
+  ): Promise<void> {
     try {
       const redis = await this.getRedis();
       const runningKey = KEYS.running(organizationId);
@@ -369,8 +373,9 @@ export class CapacityManager {
         logger.debug({ jobId, organizationId }, "Slot already released, skipping decrement");
       }
 
-      // Clean up job data regardless of whether we released
-      await this.cleanupJobData(jobId);
+      // Clean up job data regardless of whether we released, unless the caller is about to put the job
+      // back in the queue: promotion needs that payload again.
+      if (!options.keepJobData) await this.cleanupJobData(jobId);
     } catch (error) {
       logger.error({ err: error, organizationId, jobId }, "Failed to release running slot");
     }
@@ -750,20 +755,33 @@ export class CapacityManager {
       // CRITICAL: Only release slot if job was NEVER added to BullMQ
       // If job was added, it will release slot via completed/failed events
       if (!jobAddedToBullMQ) {
-        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+        // A resolver outage says nothing about the run: keep it queued (same position) and let the next pass
+        // try again instead of failing it. Its stored payload must survive, or the next promotion would find
+        // nothing to run.
+        const temporaryOutage = error instanceof ExecutionWorkloadError && error.status === 503;
+        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId, { keepJobData: temporaryOutage });
 
-        // A resolver outage says nothing about the run: keep it queued (same position) and let the
-        // next pass try again instead of failing it. The job data is still stored.
-        if (error instanceof ExecutionWorkloadError && error.status === 503) {
+        if (temporaryOutage) {
+          let requeued = false;
+          let redis: Awaited<ReturnType<CapacityManager['getRedis']>> | undefined;
           try {
-            const redis = await this.getRedis();
+            redis = await this.getRedis();
             await redis.zadd(KEYS.queued(jobData.organizationId), jobData.queuedAt, jobData.jobId);
-            logger.warn({ runId: jobData.runId }, "Returned run to the queue after a temporary DNS outage");
-            throw error;
+            requeued = true;
           } catch (requeueError) {
-            if (requeueError === error) throw error;
             logger.error({ err: requeueError, runId: jobData.runId }, "Failed to requeue run after DNS outage");
           }
+          if (requeued && redis) {
+            // The slot was released once above. Clear the flag only now that the run is queued again, so the
+            // release after its next promotion is not mistaken for a repeat and the counter cannot leak.
+            await redis.del(KEYS.released(jobData.jobId)).catch((flagError: unknown) =>
+              logger.error({ err: flagError, runId: jobData.runId }, "Failed to clear the released flag after requeue"),
+            );
+            logger.warn({ runId: jobData.runId }, "Returned run to the queue after a temporary DNS outage");
+            throw error;
+          }
+          // Could not requeue: the run is failed below, so the payload kept for the retry is now garbage.
+          await this.cleanupJobData(jobData.jobId);
         }
 
         // Mark the run as failed so it doesn't stay in 'queued' status forever.
