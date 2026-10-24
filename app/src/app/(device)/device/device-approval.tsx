@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { signOut } from "@/utils/auth-client";
+import { cn } from "@/lib/utils";
 
 export interface DeviceProjectOption {
   id: string;
@@ -40,6 +44,22 @@ const ERROR_COPY: Record<string, string> = {
   authentication_required: "Your session expired. Reload the page to sign in again.",
 };
 
+const CODE_LENGTH = 8;
+
+/**
+ * A person often pastes the full verification URL, `?code=...`, or a code with
+ * spaces and dashes. Accept all of those and keep only the eight code characters.
+ */
+function normalizeConfirmation(value: string): string {
+  const fromUrl = value.match(/[?&]code=([a-z0-9-]+)/i) ?? value.match(/^\s*code\s*=\s*([a-z0-9-]+)/i);
+  const raw = fromUrl ? fromUrl[1] : value;
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LENGTH);
+}
+
+function formatConfirmation(value: string): string {
+  return value.length > 4 ? `${value.slice(0, 4)}-${value.slice(4)}` : value;
+}
+
 export function DeviceApproval({ userCode, userEmail, projects, client }: Props) {
   const [projectId, setProjectId] = useState(
     (projects.find((p) => p.isDefault) ?? projects[0]).id,
@@ -48,12 +68,23 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   const [error, setError] = useState<string | null>(null);
   const [typedCode, setTypedCode] = useState("");
   const [billingState, setBillingState] = useState<"idle" | "opening" | "opened" | "blocked" | "failed">("idle");
+  const [switchingAccount, setSwitchingAccount] = useState(false);
   // The code arrives pre-filled in the URL, so a hurried click could approve a stranger's request.
   // Require the person to retype what their terminal shows.
-  const codeMatches = typedCode.toUpperCase().replace(/[^A-Z0-9]/g, "") === userCode.replace("-", "");
+  const expectedCode = userCode.replace(/[^A-Z0-9]/g, "");
+  const codeMatches = typedCode.length === CODE_LENGTH && typedCode === expectedCode;
+  const codeIncomplete = typedCode.length > 0 && typedCode.length < CODE_LENGTH;
 
   const selected = projects.find((p) => p.id === projectId) ?? projects[0];
   const needsPlan = selected.plan?.active === false;
+
+  const confirmStatus = codeMatches
+    ? "Code matches."
+    : typedCode.length === 0
+      ? "Enter the code to enable Approve."
+      : codeIncomplete
+        ? `${CODE_LENGTH - typedCode.length} more character${CODE_LENGTH - typedCode.length === 1 ? "" : "s"}.`
+        : "That code doesn’t match the code in your terminal.";
 
   // Opens the existing checkout in a new tab so this request (and its 15-minute code) stays intact. Checkout charges
   // the session's *active* organization, so make the selected project's organization active first; otherwise a person
@@ -87,6 +118,20 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
     }
   }
 
+  async function switchAccount() {
+    setSwitchingAccount(true);
+    setError(null);
+    try {
+      const result = await signOut();
+      if (result?.error) throw new Error("sign out failed");
+      // Keep the pending code so the next person can approve the same CLI request.
+      window.location.replace(new URL(`/device?code=${encodeURIComponent(userCode)}`, window.location.origin).toString());
+    } catch {
+      setError("Could not sign out. Reload the page and try again.");
+      setSwitchingAccount(false);
+    }
+  }
+
   async function decide(kind: "approve" | "deny") {
     setPhase("submitting");
     setError(null);
@@ -112,133 +157,128 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
 
   if (phase === "approved") {
     return (
-      <div role="status" className="space-y-2 text-center">
-        <p className="text-lg font-semibold">You&apos;re connected.</p>
-        <p className="text-sm text-muted-foreground">
-          Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
-        </p>
+      <div role="status" className="space-y-3 py-4 text-center">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <Check className="size-5" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">You&apos;re connected.</p>
+          <p className="text-sm text-muted-foreground">
+            Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
+          </p>
+        </div>
       </div>
     );
   }
   if (phase === "denied") {
     return (
-      <div role="status" className="space-y-2 text-center">
-        <p className="text-lg font-semibold">Request denied.</p>
-        <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
+      <div role="status" className="space-y-3 py-4 text-center">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <X className="size-5" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">Request denied.</p>
+          <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
+        </div>
       </div>
     );
   }
 
-  const busy = phase === "submitting";
+  const busy = phase === "submitting" || switchingAccount;
   return (
-    <div className="space-y-5">
-      <div className="rounded-md border bg-muted/40 p-3 text-center">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Code</p>
-        <p className="font-mono text-2xl tracking-widest" aria-label="Device code">
-          {userCode}
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (codeMatches && !busy) void decide("approve");
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs text-muted-foreground">Account</p>
+          <p className="truncate text-sm font-medium" title={userEmail}>{userEmail}</p>
+          <button
+            type="button"
+            aria-label="Use a different account"
+            onClick={() => void switchAccount()}
+            disabled={busy || billingState === "opening"}
+            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:underline disabled:opacity-50"
+          >
+            {switchingAccount ? "Signing out…" : "Switch account"}
+          </button>
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground" aria-label="About CLI access">
+              <Info className="size-4" aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" aria-label="About CLI access" className="space-y-3 text-sm">
+            <p>Access follows your role in the selected project. The key expires in 90 days and can be revoked in CLI tokens.</p>
+            {client.hostname || client.version ? (
+              <p className="break-words text-xs text-muted-foreground">
+                {client.hostname ?? "Unknown device"}{client.version ? ` · CLI ${client.version}` : ""}. Device details are self-reported and not verified.
+              </p>
+            ) : null}
+            {needsPlan ? (
+              <div role="note" className="space-y-2 border-t pt-3">
+                <p className="text-xs text-muted-foreground">{selected.organizationName} has no active plan. You can connect without a plan.</p>
+                {selected.plan?.canPurchase ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
+                      {billingState === "opening" ? "Opening…" : "Choose a plan"}
+                    </Button>
+                    {billingState === "opened" ? <p className="text-xs text-muted-foreground">Billing opened in a new tab for {selected.organizationName}.</p> : null}
+                    {billingState === "blocked" ? <a className="block text-xs underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a> : null}
+                    {billingState === "failed" ? <p role="alert" className="text-xs text-destructive">Could not open billing. Try again.</p> : null}
+                  </>
+                ) : <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan.</p>}
+              </div>
+            ) : null}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="cli-project">Project</Label>
+        <Select value={projectId} disabled={busy || billingState === "opening"} onValueChange={(next) => { setProjectId(next); setBillingState("idle"); }}>
+          <SelectTrigger id="cli-project" className="h-10 min-w-0"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                <span className="truncate">{project.organizationName} / {project.name}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="confirm-code">Code from your terminal</Label>
+        <Input
+          id="confirm-code"
+          value={formatConfirmation(typedCode)}
+          onChange={(event) => setTypedCode(normalizeConfirmation(event.target.value))}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          maxLength={512}
+          placeholder="XXXX-XXXX"
+          className="h-11 font-mono text-base tracking-widest uppercase"
+          aria-describedby="confirm-code-status"
+          aria-invalid={typedCode.length === CODE_LENGTH && !codeMatches}
+          disabled={busy}
+        />
+        <p id="confirm-code-status" aria-live="polite" className={cn("min-h-4 text-xs", codeMatches ? "text-muted-foreground" : "text-destructive")}>
+          {typedCode.length > 0 ? confirmStatus : " "}
         </p>
       </div>
 
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Signed in as</dt>
-        <dd className="truncate">{userEmail}</dd>
-        {client.hostname ? (<><dt className="text-muted-foreground">Device</dt><dd className="truncate">{client.hostname}</dd></>) : null}
-        {client.version ? (<><dt className="text-muted-foreground">CLI version</dt><dd className="truncate">{client.version}</dd></>) : null}
-        {client.requestIp ? (<><dt className="text-muted-foreground">Requested from</dt><dd className="truncate">{client.requestIp}</dd></>) : null}
-      </dl>
-      <p className="text-xs text-muted-foreground">
-        Device details are reported by the requesting program and are not verified.
-      </p>
-
-      <fieldset className="space-y-2" disabled={busy || billingState === "opening"}>
-        <legend className="text-sm font-medium">Project the CLI can access</legend>
-        <RadioGroup
-          value={projectId}
-          onValueChange={(next) => {
-            // A billing message belongs to the project it was shown for; never carry it to another organization.
-            setProjectId(next);
-            setBillingState("idle");
-          }}
-          className="space-y-1"
-        >
-          {projects.map((project) => (
-            <div key={project.id} className="flex items-center gap-2 rounded-md border p-2">
-              <RadioGroupItem value={project.id} id={`project-${project.id}`} />
-              <Label htmlFor={`project-${project.id}`} className="flex-1 cursor-pointer">
-                <span className="font-medium">{project.name}</span>
-                <span className="block text-xs text-muted-foreground">{project.organizationName}</span>
-              </Label>
-            </div>
-          ))}
-        </RadioGroup>
-      </fieldset>
-
-      <div className="space-y-1">
-        <Label htmlFor="confirm-code" className="text-sm font-medium">
-          Type the code shown in your terminal to confirm
-        </Label>
-        <Input
-          id="confirm-code"
-          value={typedCode}
-          onChange={(e) => setTypedCode(e.target.value)}
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={12}
-          placeholder="XXXX-XXXX"
-          className="font-mono tracking-widest"
-          disabled={busy}
-        />
-      </div>
-
-      {needsPlan ? (
-        <div role="note" className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-          <p className="font-medium">{selected.organizationName} has no active plan</p>
-          <p className="text-muted-foreground">
-            You can connect the CLI now and run tests locally. Deploying and running tests in the cloud needs a plan.
-            Approving does not depend on it.
-          </p>
-          {selected.plan?.canPurchase ? (
-            <div className="space-y-1">
-              <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
-                {billingState === "opening" ? "Opening…" : "Choose a plan"}
-              </Button>
-              {billingState === "opened" ? (
-                <p className="text-xs text-muted-foreground">
-                  Billing opened in a new tab for {selected.organizationName}. Finish there; this page stays ready. Afterwards run
-                  {" "}<code>supercheck plan</code> to confirm.
-                </p>
-              ) : null}
-              {billingState === "blocked" ? (
-                <p className="text-xs text-muted-foreground">
-                  Your browser blocked the new tab.{" "}
-                  <a className="underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a>.
-                </p>
-              ) : null}
-              {billingState === "failed" ? (
-                <p role="alert" className="text-xs text-destructive">Could not open billing. Try again, or open it from the dashboard.</p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan. Ask an owner of {selected.organizationName}.</p>
-          )}
-        </div>
-      ) : null}
-
-      <p className="text-xs text-muted-foreground">
-        Approving creates a CLI key for this project that expires in 90 days. It can do what your role
-        allows in this project and can be revoked any time under CLI tokens.
-      </p>
-
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-
-      <div className="flex gap-2">
-        <Button className="flex-1" disabled={busy || !codeMatches} onClick={() => decide("approve")}>
-          {busy ? "Working…" : "Approve"}
-        </Button>
-        <Button variant="outline" className="flex-1" disabled={busy} onClick={() => decide("deny")}>
-          Deny
-        </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <Button type="button" variant="outline" disabled={busy} onClick={() => void decide("deny")}>Deny</Button>
+        <Button type="submit" disabled={!codeMatches || busy}>{phase === "submitting" ? "Connecting…" : "Approve"}</Button>
       </div>
-    </div>
+    </form>
   );
 }

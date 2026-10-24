@@ -1,5 +1,8 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { DeviceApproval, type DeviceProjectOption } from "./device-approval";
+import { signOut } from "@/utils/auth-client";
+
+jest.mock("@/utils/auth-client", () => ({ signOut: jest.fn() }));
 
 const projects: DeviceProjectOption[] = [
   { id: "p-1", name: "Alpha", organizationName: "Org", isDefault: false },
@@ -8,15 +11,32 @@ const projects: DeviceProjectOption[] = [
 const client = { name: "supercheck-cli", version: "0.4.0", hostname: "laptop", requestIp: "203.0.113.9" };
 const fetchMock = jest.fn();
 
+beforeAll(() => {
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
 beforeEach(() => {
   fetchMock.mockReset();
   global.fetch = fetchMock as unknown as typeof fetch;
+  (signOut as jest.Mock).mockReset().mockResolvedValue(undefined);
 });
+
+function openInfo() {
+  const button = screen.getByRole("button", { name: "About CLI access" });
+  if (button.getAttribute("aria-expanded") !== "true") fireEvent.click(button);
+}
+
+async function chooseProject(name: RegExp) {
+  const wasOpen = screen.getByRole("button", { name: "About CLI access" }).getAttribute("aria-expanded") === "true";
+  await act(async () => { fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" }); });
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name })); });
+  if (wasOpen) openInfo();
+}
 
 function setup() {
   render(<DeviceApproval userCode="BCDF-GHJK" userEmail="me@example.com" projects={projects} client={client} />);
   const approve = screen.getByRole("button", { name: "Approve" });
-  const input = screen.getByLabelText(/type the code/i);
+  const input = screen.getByLabelText(/code from your terminal/i);
   return { approve, input };
 }
 
@@ -25,8 +45,11 @@ describe("DeviceApproval plan step", () => {
     { ...projects[0], plan: a },
     { ...projects[1], plan: b },
   ];
-  const view = (list: DeviceProjectOption[]) =>
-    render(<DeviceApproval userCode="BCDF-GHJK" userEmail="me@example.com" projects={list} client={client} />);
+  const view = (list: DeviceProjectOption[]) => {
+    const result = render(<DeviceApproval userCode="BCDF-GHJK" userEmail="me@example.com" projects={list} client={client} />);
+    openInfo();
+    return result;
+  };
 
   it("shows nothing when the plan is active, unknown or not reported", () => {
     for (const plan of [{ active: true, canPurchase: true }, { active: null, canPurchase: true }, undefined]) {
@@ -39,16 +62,16 @@ describe("DeviceApproval plan step", () => {
   it("explains a missing plan without blocking approval", () => {
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     expect(screen.getByRole("note")).toHaveTextContent(/no active plan/i);
-    expect(screen.getByRole("note")).toHaveTextContent(/approving does not depend on it/i);
-    fireEvent.change(screen.getByLabelText(/type the code/i), { target: { value: "BCDF-GHJK" } });
+    expect(screen.getByRole("note")).toHaveTextContent(/connect without a plan/i);
+    fireEvent.change(screen.getByLabelText(/code from your terminal/i), { target: { value: "BCDF-GHJK" } });
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
 
-  it("follows the selected project's organization", () => {
+  it("follows the selected project's organization", async () => {
     view(withPlan({ active: false, canPurchase: true }, { active: true, canPurchase: true }));
     // default project (index 1) is active, so no notice until the inactive one is chosen
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/Alpha/));
+    await chooseProject(/Alpha/);
     expect(screen.getByRole("note")).toHaveTextContent(/no active plan/i);
   });
 
@@ -57,7 +80,7 @@ describe("DeviceApproval plan step", () => {
     const open = jest.spyOn(window, "open").mockReturnValue(tab);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     view(withPlan({ active: false, canPurchase: true }, { active: true, canPurchase: true }));
-    fireEvent.click(screen.getByLabelText(/Alpha/));
+    await chooseProject(/Alpha/);
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     await waitFor(() => expect(tab.location.href).toBe("/subscribe"));
     // opened synchronously in the click (popup-blocker safe); navigated only after the switch succeeded
@@ -77,11 +100,11 @@ describe("DeviceApproval plan step", () => {
     const open = jest.spyOn(window, "open").mockReturnValue(tab);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
-    fireEvent.click(screen.getByLabelText(/Alpha/));
+    await chooseProject(/Alpha/);
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(await screen.findByText(/billing opened in a new tab/i)).toBeInTheDocument();
     // choosing the other project must clear the message: billing was opened for the first organization only
-    fireEvent.click(screen.getByLabelText(/Default Project/));
+    await chooseProject(/Default Project/);
     expect(screen.queryByText(/billing opened in a new tab/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose a plan" })).toBeEnabled();
     open.mockRestore();
@@ -94,9 +117,10 @@ describe("DeviceApproval plan step", () => {
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
-    expect(screen.getByLabelText(/Alpha/)).toBeDisabled();
+    expect(screen.getByRole("button", { name: /different account/i })).toBeDisabled();
+    expect(screen.getByRole("combobox")).toBeDisabled();
     release({ ok: true, json: async () => ({}) });
-    await waitFor(() => expect(screen.getByLabelText(/Alpha/)).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeEnabled());
   });
 
   it("offers a link when the browser blocks the new tab, and reports a failed switch", async () => {
@@ -140,13 +164,69 @@ describe("DeviceApproval", () => {
   it("shows who is asking and keeps Approve disabled until the code is retyped", () => {
     const { approve, input } = setup();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
-    expect(screen.getByText("laptop")).toBeInTheDocument();
+    expect(screen.queryByText(/laptop/)).not.toBeInTheDocument();
+    openInfo();
+    expect(screen.getByText(/laptop/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "About CLI access" })).toBeInTheDocument();
     expect(screen.getByText(/not verified/i)).toBeInTheDocument();
+    expect(screen.queryByText("203.0.113.9")).not.toBeInTheDocument();
     expect(approve).toBeDisabled();
     fireEvent.change(input, { target: { value: "WRONG-CODE" } });
     expect(approve).toBeDisabled();
     fireEvent.change(input, { target: { value: "bcdf ghjk" } });
     expect(approve).toBeEnabled();
+  });
+
+  it("accepts a pasted code with a code= prefix", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "code=BCDF-GHJK" } });
+    expect(input).toHaveValue("BCDF-GHJK");
+    expect(approve).toBeEnabled();
+  });
+
+  it("accepts a pasted verification URL", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "https://app.supercheck.io/device?code=BCDF-GHJK" } });
+    expect(input).toHaveValue("BCDF-GHJK");
+    expect(approve).toBeEnabled();
+  });
+
+  it("explains an incomplete or mismatched confirmation code", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF" } });
+    expect(screen.getByText(/4 more characters/i)).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+    fireEvent.change(input, { target: { value: "ZZZZ-ZZZZ" } });
+    expect(screen.getByText(/doesn’t match/i)).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+  });
+
+  it("lets the person switch accounts and reports a failed sign-out", async () => {
+    (signOut as jest.Mock).mockRejectedValueOnce(new Error("offline"));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not sign out/i);
+  });
+
+  it("reports resolved sign-out errors and keeps the approval page available", async () => {
+    (signOut as jest.Mock).mockResolvedValueOnce({ error: { message: "Unavailable" } });
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not sign out/i);
+    expect(approve).toBeEnabled();
+  });
+
+  it("disables approval and project selection while signing out", () => {
+    (signOut as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    expect(approve).toBeDisabled();
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    fireEvent.submit(approve.closest("form")!);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("preselects the default project and approves exactly that project", async () => {
@@ -164,7 +244,7 @@ describe("DeviceApproval", () => {
   it("lets the person choose a different project", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { approve, input } = setup();
-    fireEvent.click(screen.getByLabelText(/Alpha/));
+    await chooseProject(/Alpha/);
     fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
     fireEvent.click(approve);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());

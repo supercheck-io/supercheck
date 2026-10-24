@@ -22,7 +22,6 @@ import { buildDeviceReturnPath } from "@/lib/auth/safe-next-path";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { DeviceApproval, type DeviceProjectOption } from "./device-approval";
 import { WorkspaceSetup } from "./workspace-setup";
 
@@ -37,13 +36,12 @@ export const metadata: Metadata = {
 
 function Shell({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
-    <Card className="w-full max-w-md shadow-sm">
-      <CardHeader className="items-center space-y-3 text-center">
-        <CheckIcon className="size-12" aria-hidden="true" />
-        <CardTitle className="text-2xl font-bold">{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
+    <Card className="w-full max-w-sm shadow-sm">
+      <CardHeader className="space-y-2">
+        <CardTitle className="text-xl font-semibold tracking-tight">{title}</CardTitle>
+        {description ? <CardDescription className="text-sm leading-relaxed">{description}</CardDescription> : null}
       </CardHeader>
-      {children ? <CardContent className="space-y-4">{children}</CardContent> : null}
+      {children ? <CardContent className="space-y-5">{children}</CardContent> : null}
     </Card>
   );
 }
@@ -184,8 +182,8 @@ export default async function DevicePage({
 
   return (
     <Shell
-      title="Authorize the Supercheck CLI"
-      description="Only approve if you just ran `supercheck login` yourself and the code below matches your terminal."
+      title="Connect the CLI"
+      description="Only approve a request you started."
     >
       <DeviceApproval
         userCode={formatted}

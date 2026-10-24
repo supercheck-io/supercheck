@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 const mockRedirect = jest.fn((url: string) => { throw new Error(`REDIRECT:${url}`); });
 const mockGetSession = jest.fn();
@@ -109,16 +109,18 @@ describe("/device page", () => {
   it("shows only projects the user can create keys for, and the approval UI", async () => {
     mockProjects.mockResolvedValue([project("project_viewer"), { ...project("org_owner", true), name: "Mine" }]);
     await render_("BCDF-GHJK");
-    expect(screen.getByText("Mine")).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(screen.queryByText("P")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Acme Inc")).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
   it("shows the plan notice for an organization without an active plan, and lets only owners purchase", async () => {
     mockAccess.mockResolvedValue({ isActive: false });
     await render_("BCDF-GHJK");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "About CLI access" }));
     expect(screen.getByRole("note")).toHaveTextContent(/Acme Inc has no active plan/i);
     expect(screen.getByRole("button", { name: "Choose a plan" })).toBeInTheDocument();
   });
@@ -127,6 +129,7 @@ describe("/device page", () => {
     mockAccess.mockResolvedValue({ isActive: false });
     mockMemberships.mockResolvedValue([{ organizationId: "o1", role: "org_admin" }]);
     await render_("BCDF-GHJK");
+    fireEvent.click(screen.getByRole("button", { name: "About CLI access" }));
     expect(screen.getByRole("note")).toHaveTextContent(/only an organization owner/i);
     expect(screen.queryByRole("button", { name: "Choose a plan" })).not.toBeInTheDocument();
   });
