@@ -38,6 +38,8 @@ jest.mock("next/cache", () => ({
 }));
 
 // Import after mocks
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -513,24 +515,68 @@ describe("Requirements Server Actions", () => {
       expect(mockLogAuditEvent).not.toHaveBeenCalled();
     });
 
+    // The replay lookup, recording the condition it was given so the tenant scope can be asserted.
+    const mockReplayLookup = (rows: unknown[]) => {
+      const lookup: { where?: SQL } = {};
+      (mockDb.select as jest.Mock).mockImplementationOnce(() => ({
+        from: () => ({
+          where: (condition: SQL) => {
+            lookup.where = condition;
+            return { limit: () => Promise.resolve(rows) };
+          },
+        }),
+      }));
+      return lookup;
+    };
+
     it("treats a replay of the same id in this project as already created", async () => {
       const tx = useTransaction([() => Promise.resolve([])]);
-      mockSelectResults([{ id: clientId }]);
+      const lookup = mockReplayLookup([{ id: clientId }]);
 
       const result = await createRequirement({ title: "Atomic", id: clientId });
 
       expect(result).toEqual({ id: clientId, success: true });
       expect(tx.insert).toHaveBeenCalledTimes(1); // no second snapshot, no tags re-synced
       expect(mockLogAuditEvent).not.toHaveBeenCalled();
+
+      // Success is only for the same tenant: the lookup is scoped to this org and project, not just the id.
+      const { sql, params } = new PgDialect().sqlToQuery(lookup.where as SQL);
+      expect(sql).toContain('"requirements"."organization_id" = $');
+      expect(sql).toContain('"requirements"."project_id" = $');
+      expect(params).toEqual(expect.arrayContaining([clientId, testOrgId, testProjectId]));
     });
 
     it("refuses an id that already belongs to another project instead of claiming it", async () => {
       useTransaction([() => Promise.resolve([])]);
-      mockSelectResults([]);
+      mockReplayLookup([]);
 
       const result = await createRequirement({ title: "Atomic", id: clientId });
 
       expect(result).toEqual({ id: "", success: false, error: "Requirement id is already in use" });
+    });
+
+    it("writes tags through the transaction as well, never through the shared pool", async () => {
+      const rows = [{ id: clientId, name: "ai" }];
+      const chain = (data: unknown): unknown =>
+        Object.assign(Promise.resolve(data), {
+          returning: () => Promise.resolve(data),
+          onConflictDoNothing: () => chain(data),
+        });
+      const tx = {
+        insert: jest.fn(() => ({ values: () => chain(rows) })),
+        select: jest.fn(() => ({ from: () => ({ where: () => Promise.resolve([]) }) })),
+        delete: jest.fn(() => ({ where: () => Promise.resolve() })),
+      };
+      (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: typeof tx) => unknown) => run(tx));
+
+      const result = await createRequirement({ title: "Tagged", id: clientId, tags: "ai, Auth, ai" });
+
+      expect(result).toEqual({ id: clientId, success: true });
+      expect(tx.select).toHaveBeenCalled(); // existing-tag lookup
+      expect(tx.delete).toHaveBeenCalled(); // tag association replace
+      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.delete).not.toHaveBeenCalled();
     });
   });
 

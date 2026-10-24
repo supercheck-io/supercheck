@@ -351,7 +351,8 @@ export async function createRequirement(
           createdByUserId: userId,
           createdAt: new Date(),
         })
-        .onConflictDoNothing()
+        // Only the primary key means "already created"; any other unique violation must still fail and roll back.
+        .onConflictDoNothing({ target: requirements.id })
         .returning({ id: requirements.id });
       if (!row) return false;
 

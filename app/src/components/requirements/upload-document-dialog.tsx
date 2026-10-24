@@ -39,6 +39,7 @@ import { createExtractedRequirements, withoutCreated } from "./create-extracted-
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { createUuid } from "@/lib/uuid";
 
 interface ExtractedRequirement {
     id: string;
@@ -271,7 +272,7 @@ export function UploadDocumentDialog({
             const requirements: ExtractedRequirement[] = result.requirements.map(
                 (req: { title: string; description?: string; priority?: string; tags?: string[] }, index: number) => ({
                     id: `extracted-${index}`,
-                    clientId: crypto.randomUUID(),
+                    clientId: createUuid(),
                     title: req.title,
                     description: req.description || null,
                     priority: (req.priority as "low" | "medium" | "high") || null,

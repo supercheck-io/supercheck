@@ -63,7 +63,8 @@ export async function syncRequirementTagsByName(
 ): Promise<void> {
   if (tagNames.length === 0) return;
 
-  const normalizedNames = tagNames.map((name) => name.trim().toLowerCase());
+  // "AI" and "ai" are one tag; two rows with the same (project, name) would violate the unique index.
+  const normalizedNames = [...new Set(tagNames.map((name) => name.trim().toLowerCase()))];
 
   // Find existing tags
   const existingTags = await executor
