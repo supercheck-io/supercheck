@@ -196,6 +196,14 @@ describe("Jobs route regressions", () => {
       expect(plain.pagination.limit).toBe(100);
     });
 
+    it.each(["limit=abc", "limit=", "page=abc", "page=&limit=NaN"])("falls back to defaults for a non-numeric pagination value (%s)", async (query) => {
+      mockJobWithTest();
+      const response = await GET(new NextRequest(`http://localhost/api/jobs?${query}`));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.pagination).toMatchObject({ page: 1, limit: 100 });
+    });
+
     it("includes the decoded script when asked", async () => {
       mockJobWithTest();
       const body = await (await GET(new NextRequest("http://localhost/api/jobs?includeScript=true"))).json();

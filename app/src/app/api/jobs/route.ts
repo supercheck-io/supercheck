@@ -24,6 +24,12 @@ import { decodeStoredTestScript } from "@/lib/test-script";
 
 import { randomUUID } from "crypto";
 
+/** A non-numeric value (?limit=abc) would otherwise reach Postgres as NaN and fail the request with a 500. */
+function integerParam(value: string | null, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 
 interface Test {
   id: string;
@@ -85,12 +91,12 @@ export async function GET(request: Request) {
 
     // OPTIMIZED: Parse pagination params with sensible defaults
     const url = new URL(request.url);
-    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+    const page = Math.max(1, integerParam(url.searchParams.get("page"), 1));
     // Scripts can be large: only included when asked for, like GET /api/tests.
     const includeScript = url.searchParams.get("includeScript") === "true";
     // With scripts, a page is smaller: 100 jobs of many tests each could otherwise reach hundreds of MB.
     const maxLimit = includeScript ? 25 : 100;
-    const limit = Math.min(maxLimit, Math.max(1, parseInt(url.searchParams.get("limit") || String(maxLimit), 10)));
+    const limit = Math.min(maxLimit, Math.max(1, integerParam(url.searchParams.get("limit"), maxLimit)));
     const offset = (page - 1) * limit;
 
     // PERFORMANCE: Run count and paginated queries in parallel
