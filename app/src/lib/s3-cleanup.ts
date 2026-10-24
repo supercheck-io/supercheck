@@ -144,6 +144,15 @@ export class S3CleanupService {
   }
 
   /**
+   * True when the path is `[<bucket>/]<executionId>/report/...`. Matching the execution id anywhere in the path
+   * would also accept an unrelated object in an unconfigured bucket that merely contains the same segment.
+   */
+  private namesExecutionReport(parts: string[], executionId: string): boolean {
+    const at = parts.indexOf(executionId);
+    return (at === 0 || at === 1) && parts[at + 1] === "report";
+  }
+
+  /**
    * Extract S3 key from various input formats
    */
   private extractS3Key(input: ReportDeletionInput): string {
@@ -161,7 +170,7 @@ export class S3CleanupService {
         key = parts.join("/");
       } else if (
         input.reportPath &&
-        parts.includes(input.reportPath.split("/")[0]) &&
+        this.namesExecutionReport(parts, input.reportPath.split("/")[0]) &&
         !this.namesAnotherConfiguredBucket(url, parts, bucket)
       ) {
         // The URL names this execution but under another endpoint or bucket (for example after a
