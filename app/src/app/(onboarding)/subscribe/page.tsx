@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
+import { TrialCard } from "@/components/billing/trial-card";
+import { PricingFaqs } from "@/components/billing/pricing-faqs";
 import {
   RefreshCw,
   AlertCircle,
@@ -55,6 +57,8 @@ interface PricingPlan {
 
 interface PricingData {
   plans: PricingPlan[];
+  faqs?: Array<{ question: string; answer: string }>;
+  trial?: { durationDays: number; highlights: string[] };
 }
 
 export default function SubscribePage() {
@@ -132,7 +136,29 @@ export default function SubscribePage() {
   const [error, setError] = useState(false);
   const checkoutPending = useRef(false);
   const setupAttempted = useRef(false);
+  // The setup request can fail (for example an unverified email); say so and let the user retry, instead
+  // of leaving them on a message that promises an update that will not come.
+  const [setupFailed, setSetupFailed] = useState(false);
+  const [setupRun, setSetupRun] = useState(0);
   const [subscribing, setSubscribing] = useState<string | null>(null);
+
+  const retrySetup = () => {
+    setupAttempted.current = false;
+    setSetupFailed(false);
+    setSetupRun((run) => run + 1);
+  };
+
+  // Checkout leaves the page with a plain navigation. Pressing Back can restore this page from the
+  // back/forward cache with its state intact, which would leave every plan button disabled until a reload.
+  useEffect(() => {
+    const restore = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      checkoutPending.current = false;
+      setSubscribing(null);
+    };
+    window.addEventListener("pageshow", restore);
+    return () => window.removeEventListener("pageshow", restore);
+  }, []);
 
   const fetchPricing = useCallback(() => {
     setLoading(true);
@@ -175,7 +201,10 @@ export default function SubscribePage() {
         const response = await fetch("/api/auth/setup-defaults", {
           method: "POST",
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          setSetupFailed(true);
+          return;
+        }
 
         const result = (await response.json().catch(() => null)) as {
           pendingInvitationId?: string;
@@ -194,11 +223,12 @@ export default function SubscribePage() {
         await queryClient.invalidateQueries({ queryKey: ["organizations"] });
       } catch (setupError) {
         console.warn("Setup defaults failed:", setupError);
+        setSetupFailed(true);
       }
     };
 
     void setupDefaults();
-  }, [organizationError, organizationId, organizationLoading, queryClient]);
+  }, [organizationError, organizationId, organizationLoading, queryClient, setupRun]);
 
   const handleSubscribe = async (planSlug: string) => {
     // Prevent double-click: if already subscribing, ignore
@@ -341,12 +371,31 @@ export default function SubscribePage() {
             Unable to load your organization. Refresh this page to retry.
           </p>
         )}
-        {!organizationLoading && !organizationError && !activeOrganization && (
-          <p className="text-sm text-muted-foreground">
-            Your default organization is still being set up. This page will
-            update automatically; refresh if it does not.
-          </p>
-        )}
+        {!organizationLoading &&
+          !organizationError &&
+          !activeOrganization &&
+          !setupFailed && (
+            <p className="text-sm text-muted-foreground">
+              Your default organization is still being set up. This page will
+              update automatically; refresh if it does not.
+            </p>
+          )}
+        {!organizationLoading &&
+          !organizationError &&
+          !activeOrganization &&
+          setupFailed && (
+            <div role="alert" className="space-y-2">
+              <p className="text-sm text-destructive">
+                We couldn&apos;t finish setting up your default organization. If
+                you haven&apos;t verified your email address yet, do that first,
+                then try again.
+              </p>
+              <Button variant="outline" size="sm" onClick={retrySetup}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try again
+              </Button>
+            </div>
+          )}
         {activeOrganization && activeOrganization.role !== "org_owner" ? (
           <p className="text-sm text-muted-foreground">
             Only this organization&apos;s owner can subscribe. Contact the
@@ -428,6 +477,11 @@ export default function SubscribePage() {
         )}
       </Card>
 
+      {/* Free trial allowances while it is active (an ended trial is explained in the account card above) */}
+      {!hasBillingContext && pricingData?.trial && trialActive && (
+        <TrialCard durationDays={pricingData.trial.durationDays} highlights={pricingData.trial.highlights} />
+      )}
+
       {/* Pricing Tier Cards */}
       {!hasBillingContext && (
         <section className="max-w-4xl mx-auto">
@@ -491,6 +545,10 @@ export default function SubscribePage() {
             </a>
           </p>
         </section>
+      )}
+
+      {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
+        <PricingFaqs faqs={pricingData.faqs} />
       )}
 
       <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-4 text-xs text-muted-foreground">

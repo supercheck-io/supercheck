@@ -8,6 +8,17 @@ export class TargetDomainError extends Error {
   constructor(message: string, readonly status: 400 | 404 | 409 | 503) { super(message); }
 }
 
+// A failed re-verification happens inside run admission and costs up to two 3-second DNS lookups, and every
+// retry of every queued run would repeat it. Remember the answer briefly so one broken record or resolver
+// outage is looked up once, not once per attempt. An explicit verification bypasses and clears it.
+const FAILURE_TTL_MS = 60_000;
+const recentFailures = new Map<string, { message: string; status: 400 | 503; expires: number }>();
+const failureKey = (organizationId: string, hostname: string) => `${organizationId}:${hostname}`;
+
+export function clearRecentTargetFailures(): void {
+  recentFailures.clear();
+}
+
 export async function registerTargetDomain(organizationId: string, value: string) {
   let hostname: string;
   try { hostname = normalizeTargetHostname(value); }
@@ -37,7 +48,20 @@ export async function requireVerifiedTarget(organizationId: string, value: strin
   // Honour a verification that is still fresh. Past it, re-prove ownership, but a failure while merely
   // using a target must not revoke it: only an explicit verification does that.
   if (row.verifiedUntil && row.verifiedUntil.getTime() > Date.now()) return row;
-  return verifyRegisteredTarget(organizationId, row.id, { revokeOnFailure: false });
+
+  const key = failureKey(organizationId, hostname);
+  const remembered = recentFailures.get(key);
+  if (remembered && remembered.expires > Date.now()) throw new TargetDomainError(remembered.message, remembered.status);
+  try {
+    return await verifyRegisteredTarget(organizationId, row.id, { revokeOnFailure: false });
+  } catch (error) {
+    // 409 is a race with a concurrent change, not an answer about the domain: never remember it.
+    if (error instanceof TargetDomainError && (error.status === 400 || error.status === 503)) {
+      if (recentFailures.size >= 1000) for (const [k, v] of recentFailures) if (v.expires <= Date.now()) recentFailures.delete(k);
+      recentFailures.set(key, { message: error.message, status: error.status, expires: Date.now() + FAILURE_TTL_MS });
+    }
+    throw error;
+  }
 }
 
 export async function verifyRegisteredTarget(organizationId: string, id: string, options: { revokeOnFailure?: boolean } = {}) {
@@ -60,5 +84,6 @@ export async function verifyRegisteredTarget(organizationId: string, id: string,
     .set({ verifiedAt: now, verifiedUntil: new Date(now.getTime() + 86400000) })
     .where(ownedRow).returning();
   if (!verified) throw new TargetDomainError("Execution target changed during verification; retry", 409);
+  recentFailures.delete(failureKey(organizationId, row.hostname));
   return verified;
 }

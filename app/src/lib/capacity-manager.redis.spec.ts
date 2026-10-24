@@ -117,6 +117,23 @@ suite("promotion ownership (real Redis)", () => {
     expect(await redis.zscore(keys[1], queued.jobId)).toBeNull();
   });
 
+  it("does not resurrect a run cancelled during a DNS outage, even when rotating repeated failures", async () => {
+    const failureKey = `capacity:promote-failures:${queued.jobId}`;
+    keys.push(failureKey);
+    await redis.set(failureKey, "2");
+    jest.mocked(assertExecutionWorkload).mockImplementationOnce(async () => {
+      await redis.zrem(keys[1], queued.jobId);
+      await redis.del(keys[2]);
+      throw new ExecutionWorkloadError("DNS unavailable", 503);
+    });
+    expect(await manager["promoteJob"](queued.organizationId, queued.jobId)).toBe(false);
+    expect(await redis.zscore(keys[1], queued.jobId)).toBeNull();
+    expect(await redis.get(keys[2])).toBeNull();
+    expect(await redis.get(keys[0])).toBeNull();
+    expect(add).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it("releases a newly promoted slot even if a prior promotion left its release marker", async () => {
     await redis.set(keys[4], "1");
     expect(

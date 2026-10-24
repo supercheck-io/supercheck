@@ -9,7 +9,8 @@ on:
       - "app/src/lib/billing/plan-catalog.json"
       - ".github/workflows/docs-deploy.yml"
   pull_request:
-    branches: [main]
+    # Any base: a PR stacked on another branch needs the docs build too. Deploy still runs only on main.
+    branches: ["**"]
     paths:
       - "docs/**"
       - "app/public/openapi.json"
@@ -52,13 +53,17 @@ jobs:
         working-directory: docs
         run: npm run test:openapi
 
-      - name: Check the free trial page matches the plan catalog
+      - name: Check the pricing page trial copy comes from the plan catalog
         working-directory: docs
         run: npm run test:trial-docs
 
       - name: Build static site
         working-directory: docs
         run: npm run build
+
+      - name: Verify rendered API pages
+        working-directory: docs
+        run: npm run test:rendered-api
 
   deploy-docs:
     name: Build and Deploy Docs

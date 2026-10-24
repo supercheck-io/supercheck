@@ -1,3 +1,4 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   ExecutionAdmissionService,
   ExecutionCapacityError,
@@ -346,6 +347,21 @@ describe('reserve', () => {
     });
     await service.reserve('org', 'run', 'playwright', 5000);
     expect(tx.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it("prunes only the reserving organization's rows, so another organization's unbilled crash is not discarded", async () => {
+    const { service, tx } = build({
+      org: paidOrg,
+      limits: { runningCapacity: 2 },
+      stale: [{ runId: 'old-1' }],
+    });
+    await service.reserve('org', 'run', 'playwright', 5000);
+    // The prune select is the first select after the org lookup, lapsed-lease sweep and active count.
+    const pruneWhere = (tx.select.mock.results[3].value.where as jest.Mock).mock
+      .calls[0][0];
+    const { sql, params } = new PgDialect().sqlToQuery(pruneWhere);
+    expect(sql).toContain('"organization_id" = $');
+    expect(params).toContain('org');
   });
 
   it('does not delete anything when no finished reservation is past retention', async () => {

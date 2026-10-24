@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
 import {
   executionEntitlements,
   member,
@@ -109,7 +109,8 @@ export async function endExpiredTrials(
 
   const processExpired = async (expired: Array<{ organizationId: string }>) => {
   for (const { organizationId } of expired) {
-    await database.transaction(async (tx) => {
+    try {
+    const paused = await database.transaction(async (tx): Promise<Array<{ id: string; scheduledJobId: string | null }>> => {
       // Serialize with a concurrent subscription or restore for this organization.
       const [org] = await tx
         .select()
@@ -130,7 +131,7 @@ export async function endExpiredTrials(
       // A paying organization keeps everything; only record that the trial is over.
       if (!org || hasPaidAccess(org, now)) {
         await markEnded();
-        return;
+        return [];
       }
 
       const running = await tx
@@ -203,12 +204,21 @@ export async function endExpiredTrials(
       result.organizations += 1;
       result.monitorsPaused += running.length;
       result.statusPagesArchived += published.length;
-      toUnschedule.push(...running);
+      return running;
     });
+    // Only after the commit, so a rolled-back pause never loses a schedule.
+    toUnschedule.push(...paused);
+    } catch (error) {
+      // One organization's lock timeout or constraint failure must not starve the rest of the batch.
+      failed.push(organizationId);
+      console.error(`Failed to end trial for org ${organizationId}:`, error);
+    }
   }
   };
 
   const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
+  // Organizations that failed this run are skipped for the rest of it, so one stuck organization cannot starve the others.
+  const failed: string[] = [];
   const deadline = Date.now() + DRAIN_BUDGET_MS;
   // A cohort of trials that began together also ends together: keep draining batches (within a time
   // budget) instead of leaving most of them running until later runs of the job.
@@ -219,6 +229,7 @@ export async function endExpiredTrials(
       .where(
         and(
           lte(executionEntitlements.expiresAt, now),
+      failed.length > 0 ? notInArray(executionEntitlements.organizationId, failed) : undefined,
           isNull(executionEntitlements.lifecycleEndedAt),
         ),
       )

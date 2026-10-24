@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { JWTPayload } from "jose";
-import { oauthConsent, user } from "@/db/schema";
+import { oauthClient, oauthConsent, user } from "@/db/schema";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { db } from "@/utils/db";
 import {
   checkPermissionWithContext,
@@ -28,7 +29,7 @@ export class McpAccessDeniedError extends Error {
  * Re-checks authority on every request, independent of what the 15-minute JWT claims.
  * A JWT cannot be revoked, so Disconnect, project removal and bans must take effect here:
  *  1. the token names a project;
- *  2. the user is not banned;
+ *  2. the user is not banned (an expired ban no longer counts);
  *  3. the (client, user, project) consent row still exists and covers mcp:read;
  *  4. the user still has a role on the project and may view it.
  */
@@ -41,11 +42,16 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
   }
 
   const [account] = await db
-    .select({ banned: user.banned })
+    .select({ banned: user.banned, banExpires: user.banExpires })
     .from(user)
     .where(eq(user.id, userId))
     .limit(1);
-  if (!account || account.banned) throw new McpAccessDeniedError("user_unavailable");
+  // A ban that has expired no longer blocks the account; the row is read fresh, never taken from the token.
+  if (!isCredentialOwnerActive(account)) throw new McpAccessDeniedError("user_unavailable");
+
+  const [client] = await db.select({ disabled: oauthClient.disabled }).from(oauthClient)
+    .where(eq(oauthClient.clientId, clientId)).limit(1);
+  if (!client || client.disabled) throw new McpAccessDeniedError("client_unavailable");
 
   const [consent] = await db
     .select({ scopes: oauthConsent.scopes })
@@ -79,7 +85,7 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
 /** Per-tool check against the live role, on top of the project-level gate above. */
 export function assertCanView(
   context: McpCallContext,
-  resource: "test" | "job" | "monitor" | "sre_incident" | "project",
+  resource: "test" | "job" | "run" | "monitor" | "sre_incident" | "project",
 ): void {
   const allowed = checkPermissionWithContext(resource, "view", {
     userId: context.userId,

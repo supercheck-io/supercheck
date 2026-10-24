@@ -91,6 +91,13 @@ export async function getActiveTrial(
   return isTrialActive(entitlement) ? entitlement : undefined;
 }
 
+/** How long a trial organization's data is kept; the plan-shaped view and the retention sweeps share it. */
+export const TRIAL_RETENTION = {
+  dataRetentionDays: 7,
+  aggregatedDataRetentionDays: 30,
+  jobDataRetentionDays: 30,
+} as const;
+
 /**
  * The plan-shaped view of a trial, so every existing limit check (monitors,
  * status pages, team members, projects, SRE, AI credits) enforces trial limits
@@ -119,9 +126,7 @@ export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
     // Custom domains and SSO need production DNS/TLS and identity setup; keep them paid.
     customDomains: false,
     ssoEnabled: false,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 30,
-    jobDataRetentionDays: 30,
+    ...TRIAL_RETENTION,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };

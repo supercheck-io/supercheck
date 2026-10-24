@@ -2077,6 +2077,20 @@ describe('MonitorService', () => {
         );
       });
 
+      it('keeps the real cause when Redis fails, instead of reporting a busy lease', async () => {
+        const outage = new Error('redis unavailable');
+        mockRedisService.getClient().set.mockRejectedValueOnce(outage);
+        await expect(skip()).rejects.toBe(outage);
+      });
+
+      it('keeps the real cause when the database fails while closing a cycle', async () => {
+        const outage = new Error('database unavailable');
+        mockDbService.db.select.mockImplementationOnce(() => {
+          throw outage;
+        });
+        await expect(skip(true)).rejects.toBe(outage);
+      });
+
       it('aborts only an open, owned control-plane cycle', async () => {
         persistedRows([{ monitorId: mockMonitor.id, status: 'open' }] as never);
         const where = jest.fn().mockResolvedValue(undefined);

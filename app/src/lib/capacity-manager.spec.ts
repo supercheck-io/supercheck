@@ -142,6 +142,99 @@ describe('CapacityManager', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
 
+    describe('a queued job that keeps failing to promote', () => {
+      const failureKey = `capacity:promote-failures:${queued.jobId}`;
+      const queuedKeyFor = expect.stringContaining(testOrgId);
+
+      it.each([
+        ['an error', () => jest.mocked(getExecutionPolicy).mockRejectedValue(new Error('database unavailable'))],
+        ['a DNS outage', () => jest.mocked(assertExecutionWorkload).mockRejectedValue(new ExecutionWorkloadError('DNS unavailable', 503 as never))],
+      ])('steps behind the others after three failures (%s), and its run is never failed', async (_name, fail) => {
+        mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+        fail();
+        const { db } = jest.requireMock('@/utils/db');
+        for (const count of [1, 2, 3]) {
+          mockRedisIncr.mockResolvedValueOnce(count);
+          expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        }
+        expect(mockRedisIncr).toHaveBeenCalledWith(failureKey);
+        // Only the third failure moves it, and only if it is still queued (XX), to the back of the queue.
+        expect(mockRedisZadd).toHaveBeenCalledTimes(1);
+        expect(mockRedisZadd).toHaveBeenCalledWith(queuedKeyFor, 'XX', expect.any(Number), queued.jobId);
+        expect(mockRedisZrem).not.toHaveBeenCalled();
+        expect(db.update).not.toHaveBeenCalled();
+        jest.mocked(getExecutionPolicy).mockReset().mockResolvedValue({ tier: 'paid', priority: 0 } as never);
+        jest.mocked(assertExecutionWorkload).mockReset().mockResolvedValue(undefined);
+      });
+
+      it('keeps stepping aside every third failure, not just once', async () => {
+        mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+        jest.mocked(getExecutionPolicy).mockRejectedValue(new Error('database unavailable'));
+        for (let count = 1; count <= 6; count += 1) {
+          mockRedisIncr.mockResolvedValueOnce(count);
+          await capacityManager['promoteJob'](testOrgId, queued.jobId);
+        }
+        expect(mockRedisZadd).toHaveBeenCalledTimes(2);
+        jest.mocked(getExecutionPolicy).mockReset().mockResolvedValue({ tier: 'paid', priority: 0 } as never);
+      });
+
+      it('does not count a permanent rejection or a lost race', async () => {
+        mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+        jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('target not verified', 400));
+        await capacityManager['promoteJob'](testOrgId, queued.jobId);
+        expect(mockRedisIncr).not.toHaveBeenCalled();
+      });
+
+      it('forgets the count once the job is promoted', async () => {
+        mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+        mockRedisEval.mockResolvedValue(1);
+        jest.spyOn(capacityManager as never, 'addJobToBullMQ' as never).mockResolvedValue(undefined as never);
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(true);
+        expect(mockRedisDel).toHaveBeenCalledWith(failureKey);
+      });
+
+      it('clears the count together with the rest of the job data', async () => {
+        await capacityManager['cleanupJobData'](queued.jobId);
+        const deleted = mockRedisPipeline.mock.results.flatMap((result) => (result.value as { del: jest.Mock }).del.mock.calls.map(([key]) => key as string));
+        expect(deleted).toContain(failureKey);
+      });
+
+      it('does not let a failure to record the count break the queue pass', async () => {
+        mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+        jest.mocked(getExecutionPolicy).mockRejectedValueOnce(new Error('database unavailable'));
+        mockRedisIncr.mockRejectedValueOnce(new Error('redis down'));
+        await expect(capacityManager['promoteJob'](testOrgId, queued.jobId)).resolves.toBe(false);
+      });
+    });
+
+    describe('a queued job whose payload cannot be read', () => {
+      it('is failed and dropped instead of holding the head of the queue forever', async () => {
+        mockRedisGet.mockResolvedValue('{"type": not json');
+        const { db } = jest.requireMock('@/utils/db');
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(getExecutionPolicy).not.toHaveBeenCalledWith(expect.anything());
+        expect(mockRedisZrem).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queued.jobId);
+        expect(db.update).toHaveBeenCalled();
+        expect(mockRedisEval).not.toHaveBeenCalled();
+      });
+
+      it('is left alone when another promoter already removed it', async () => {
+        mockRedisGet.mockResolvedValue('not json');
+        mockRedisZrem.mockResolvedValueOnce(0);
+        const { db } = jest.requireMock('@/utils/db');
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(db.update).not.toHaveBeenCalled();
+      });
+
+      it('goes back in the queue if its run cannot be marked failed, so it is retried', async () => {
+        mockRedisGet.mockResolvedValue('not json');
+        const { db } = jest.requireMock('@/utils/db');
+        db.update.mockImplementationOnce(() => ({ set: () => ({ where: () => Promise.reject(new Error('database unavailable')) }) }));
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), expect.any(Number), queued.jobId);
+      });
+    });
+
     it('rejects a permanently invalid workload without claiming execution capacity', async () => {
       mockRedisGet.mockResolvedValue(JSON.stringify(queued));
       mockRedisEval.mockResolvedValue(1);

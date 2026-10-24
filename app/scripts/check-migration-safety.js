@@ -59,16 +59,31 @@ const DESTRUCTIVE_PATTERNS = [
 const EXCEPTION_PATTERN =
   /--\s*migration-safety:\s*allow-destructive\s+issue=(?:#\d+|https:\/\/github\.com\/supercheck-io\/supercheck\/issues\/\d+)\s*$/imu;
 
-function maskSqlLiteralsAndComments(sql) {
+// keepLiterals blanks comments only, so the text of strings stays searchable (set_config() names its
+// setting in a string). keepDollarBodies keeps the code inside $$...$$ (a DO block) but still blanks
+// the comments and strings within it, so statements there can be told apart from message text.
+// keepIdentifiers keeps the text of "double-quoted" identifiers (the quote marks become spaces), because
+// SET "lock_timeout" names the same setting as SET lock_timeout. Every mask keeps the length of the input,
+// so an index found in one mask is the same position in the others.
+function maskSqlLiteralsAndComments(sql, { keepLiterals = false, keepDollarBodies = false, keepIdentifiers = false } = {}) {
   let masked = "";
   let index = 0;
   let state = "sql";
   let blockCommentDepth = 0;
   let dollarQuoteDelimiter = "";
+  let dollarBodyStart = 0;
   let singleQuoteBackslashEscapes = false;
 
   const appendMasked = (character) => {
     masked += character === "\r" || character === "\n" ? character : " ";
+  };
+  const appendLiteral = (character) => {
+    if (keepLiterals) masked += character;
+    else appendMasked(character);
+  };
+  const appendIdentifier = (character) => {
+    if (keepIdentifiers && !keepLiterals) masked += character === '"' ? " " : character;
+    else appendLiteral(character);
   };
 
   while (index < sql.length) {
@@ -97,13 +112,13 @@ function maskSqlLiteralsAndComments(sql) {
         singleQuoteBackslashEscapes =
           (prefix === "E" || prefix === "e") &&
           (beforePrefix === undefined || !/[A-Za-z0-9_$]/u.test(beforePrefix));
-        appendMasked(character);
+        appendLiteral(character);
         index += 1;
         state = "single-quote";
         continue;
       }
       if (character === '"') {
-        appendMasked(character);
+        appendIdentifier(character);
         index += 1;
         state = "double-quote";
         continue;
@@ -113,9 +128,10 @@ function maskSqlLiteralsAndComments(sql) {
         if (delimiterMatch) {
           dollarQuoteDelimiter = delimiterMatch[0];
           for (const delimiterCharacter of dollarQuoteDelimiter) {
-            appendMasked(delimiterCharacter);
+            appendLiteral(delimiterCharacter);
           }
           index += dollarQuoteDelimiter.length;
+          dollarBodyStart = index;
           state = "dollar-quote";
           continue;
         }
@@ -155,13 +171,13 @@ function maskSqlLiteralsAndComments(sql) {
     }
 
     if (state === "single-quote") {
-      appendMasked(character);
+      appendLiteral(character);
       index += 1;
       if (singleQuoteBackslashEscapes && character === "\\" && nextCharacter !== undefined) {
-        appendMasked(nextCharacter);
+        appendLiteral(nextCharacter);
         index += 1;
       } else if (character === "'" && nextCharacter === "'") {
-        appendMasked(nextCharacter);
+        appendLiteral(nextCharacter);
         index += 1;
       } else if (character === "'") {
         singleQuoteBackslashEscapes = false;
@@ -171,10 +187,10 @@ function maskSqlLiteralsAndComments(sql) {
     }
 
     if (state === "double-quote") {
-      appendMasked(character);
+      appendIdentifier(character);
       index += 1;
       if (character === '"' && nextCharacter === '"') {
-        appendMasked(nextCharacter);
+        appendIdentifier(nextCharacter);
         index += 1;
       } else if (character === '"') {
         state = "sql";
@@ -184,14 +200,17 @@ function maskSqlLiteralsAndComments(sql) {
 
     if (state === "dollar-quote") {
       if (sql.startsWith(dollarQuoteDelimiter, index)) {
+        if (keepDollarBodies) {
+          masked += maskSqlLiteralsAndComments(sql.slice(dollarBodyStart, index), { keepDollarBodies, keepIdentifiers });
+        }
         for (const delimiterCharacter of dollarQuoteDelimiter) {
-          appendMasked(delimiterCharacter);
+          appendLiteral(delimiterCharacter);
         }
         index += dollarQuoteDelimiter.length;
         dollarQuoteDelimiter = "";
         state = "sql";
       } else {
-        appendMasked(character);
+        if (!keepDollarBodies) appendLiteral(character);
         index += 1;
       }
     }
@@ -248,7 +267,8 @@ function findUnsafeStatements(sql) {
 
   const timeoutChanges = /\b(?:SET\s+LOCAL\s+(lock_timeout|statement_timeout)|RESET\s+(lock_timeout|statement_timeout|ALL))\b/giu;
   const pendingTimeouts = new Map();
-  for (const match of maskedSql.matchAll(timeoutChanges)) {
+  const withIdentifiers = maskSqlLiteralsAndComments(sql, { keepIdentifiers: true });
+  for (const match of withIdentifiers.matchAll(timeoutChanges)) {
     if (match[1]) {
       const setting = match[1].toLowerCase();
       if (!pendingTimeouts.has(setting)) pendingTimeouts.set(setting, match.index);
@@ -257,6 +277,80 @@ function findUnsafeStatements(sql) {
     } else {
       pendingTimeouts.delete(match[2].toLowerCase());
     }
+  }
+  // A timeout set for the whole session survives the transaction-local restore, so it must be
+  // transaction-local. These changes also hide inside DO blocks and EXECUTE strings.
+  const sessionFindings = [];
+  const bodies = maskSqlLiteralsAndComments(sql, { keepDollarBodies: true, keepIdentifiers: true });
+  const setStatement = /(?:^|;|\bBEGIN\b|\bTHEN\b|\bELSE\b|\bLOOP\b)\s*(SET\s+(?:SESSION\s+)?(lock_timeout|statement_timeout)\b)/giu;
+  for (const match of bodies.matchAll(setStatement)) {
+    sessionFindings.push({ setting: match[2], index: match.index + match[0].indexOf(match[1]) });
+  }
+  const withStrings = maskSqlLiteralsAndComments(sql, { keepLiterals: true });
+  // EXECUTE can build the statement any way it likes: E'..', $q$..$q$, 'SET ' || 'lock_timeout', format(). So look
+  // at the whole EXECUTE statement, and accept a timeout name only right after SET LOCAL or RESET.
+  for (const execute of bodies.matchAll(/\bEXECUTE\b/giu)) {
+    const statementEnd = bodies.indexOf(";", execute.index);
+    // 'lock_' || 'timeout' is one literal once joined; a name split across literals must still be seen.
+    const text = withStrings
+      .slice(execute.index, statementEnd === -1 ? withStrings.length : statementEnd)
+      .replace(/'\s*\|\|\s*'/gu, "");
+    for (const name of text.matchAll(/\b(lock_timeout|statement_timeout)\b/giu)) {
+      if (!/\b(?:SET\s+LOCAL|RESET)\s+$/iu.test(text.slice(0, name.index))) {
+        sessionFindings.push({ setting: name[1], index: execute.index });
+      }
+    }
+  }
+  // A string that starts with SET <timeout> is executed somewhere (EXECUTE v), even when it is built apart.
+  for (const match of withStrings.matchAll(/(?:'|\$[A-Za-z_]*\$)\s*SET\s+(?:SESSION\s+)?(lock_timeout|statement_timeout)\b/giu)) {
+    sessionFindings.push({ setting: match[1], index: match.index });
+  }
+  // ALTER ROLE / DATABASE / SYSTEM ... SET changes the default for every later session, not just this one.
+  for (const match of bodies.matchAll(/\bALTER\s+(?:ROLE|USER|DATABASE|SYSTEM)\b[^;]*?\bSET\s+(lock_timeout|statement_timeout)\b/giu)) {
+    findings.push({
+      operation: `persistent ${match[1].toLowerCase()} change (ALTER ROLE/DATABASE/SYSTEM SET)`,
+      line: sql.slice(0, match.index).split(/\r?\n/u).length,
+    });
+  }
+  // set_config(name, value, is_local): anything but a clear `true` for is_local is session-wide. Locate calls
+  // where code is (not in message text), then read the arguments, which may nest calls, from the text that
+  // still has its strings. A name that is not one plain literal could be built to name a timeout.
+  const SET_CONFIG_LOCAL = /^\(?\s*(?:true|'(?:t|tr|tru|true|y|ye|yes|on|1)')\s*\)?(?:\s*::\s*bool(?:ean)?)?\s*$/iu;
+  for (const call of bodies.matchAll(/\bset_config\s*\(/giu)) {
+    const open = call.index + call[0].length;
+    const args = [];
+    let depth = 0;
+    let quoted = false;
+    let start = open;
+    for (let at = open; at < withStrings.length && args.length < 3; at += 1) {
+      const character = withStrings[at];
+      if (quoted) { if (character === "'") quoted = false; continue; }
+      if (character === "'") quoted = true;
+      else if (character === "(") depth += 1;
+      else if (character === ")" && depth === 0) { args.push(withStrings.slice(start, at)); break; }
+      else if (character === ")") depth -= 1;
+      else if (character === "," && depth === 0) { args.push(withStrings.slice(start, at)); start = at + 1; }
+    }
+    const name = (args[0] ?? "").trim();
+    const timeout =
+      /^[Ee]?'(lock_timeout|statement_timeout)'$/iu.exec(name) ?? /^(\$[A-Za-z_]*\$)(lock_timeout|statement_timeout)\1$/iu.exec(name);
+    const plainLiteral = /^[Ee]?'[^']*'$/u.test(name) || /^(\$[A-Za-z_]*\$)[^$]*\1$/u.test(name);
+    if (SET_CONFIG_LOCAL.test((args[2] ?? "").trim())) continue;
+    if (timeout) {
+      sessionFindings.push({ setting: timeout[2] ?? timeout[1], index: call.index });
+    } else if (!plainLiteral) {
+      sessionFindings.push({ setting: "lock_timeout/statement_timeout", index: call.index, dynamic: true });
+    }
+  }
+  const reported = new Set();
+  for (const { setting, index, dynamic } of sessionFindings) {
+    const line = sql.slice(0, index).split(/\r?\n/u).length;
+    const operation = dynamic
+      ? "set_config() with a computed setting name and no is_local = true (could set a session-level timeout; use a literal name)"
+      : `session-level ${setting.toLowerCase()} change (use SET LOCAL or set_config(..., true))`;
+    if (reported.has(`${line}:${operation}`)) continue;
+    reported.add(`${line}:${operation}`);
+    findings.push({ operation, line });
   }
   for (const [setting, index] of pendingTimeouts) {
     findings.push({
@@ -319,6 +413,68 @@ function findUnsafeStatements(sql) {
   return findings.sort((left, right) => left.line - right.line);
 }
 
+// The migration runner applies *.sql files by filename and never reads meta/_journal.json, so a journal that
+// has drifted from the files breaks `drizzle-kit generate` and hides collisions between PRs that each add
+// the next migration. Entries before this idx predate the ordering check: idx 9 was committed with an earlier
+// `when` than idx 8 and cannot be rewritten without changing applied history.
+const JOURNAL_ORDER_ENFORCED_FROM_IDX = 10;
+
+function checkJournal(migrationsDir) {
+  const journalFile = path.join(migrationsDir, "meta", "_journal.json");
+  const violations = [];
+  const report = (operation) => violations.push({ file: journalFile, line: 1, operation });
+
+  let entries;
+  try {
+    entries = JSON.parse(fs.readFileSync(journalFile, "utf8")).entries;
+    if (!Array.isArray(entries)) throw new Error("no entries array");
+  } catch (error) {
+    report(`migration journal is unreadable (${error instanceof Error ? error.message : String(error)})`);
+    return violations;
+  }
+
+  entries.forEach((entry, position) => {
+    if (entry.idx !== position) {
+      report(`journal idx ${entry.idx} is at position ${position}; idx must be contiguous from 0 (${entry.tag})`);
+    }
+    if (typeof entry.tag !== "string" || !entry.tag.startsWith(`${String(entry.idx).padStart(4, "0")}_`)) {
+      report(`journal tag ${entry.tag} does not start with its idx ${String(entry.idx).padStart(4, "0")}_`);
+    }
+    if (entry.idx >= JOURNAL_ORDER_ENFORCED_FROM_IDX && position > 0 && !(entry.when > entries[position - 1].when)) {
+      report(
+        `journal idx ${entry.idx} (${entry.tag}) has when=${entry.when}, not after idx ${entries[position - 1].idx}; ` +
+          "a migration merged out of order would be skipped by drizzle-kit",
+      );
+    }
+  });
+
+  const files = fs.readdirSync(migrationsDir).filter((name) => /^\d{4}_.*\.sql$/u.test(name));
+  const tags = new Set(entries.map((entry) => entry.tag));
+  for (const name of files) {
+    if (!tags.has(name.slice(0, -".sql".length))) report(`${name} has no journal entry`);
+  }
+  const present = new Set(files);
+  for (const tag of tags) {
+    if (!present.has(`${tag}.sql`)) report(`journal entry ${tag} has no ${tag}.sql file`);
+  }
+  const seen = new Map();
+  for (const name of files) {
+    const prefix = name.slice(0, 4);
+    if (seen.has(prefix)) report(`migrations ${seen.get(prefix)} and ${name} share the number ${prefix}`);
+    else seen.set(prefix, name);
+  }
+  return violations;
+}
+
+function journalDirsFor(files, explicitDirs) {
+  const dirs = new Set(explicitDirs.map((dir) => path.resolve(dir)));
+  for (const file of files) {
+    const dir = path.dirname(path.resolve(file));
+    if (fs.existsSync(path.join(dir, "meta", "_journal.json"))) dirs.add(dir);
+  }
+  return [...dirs];
+}
+
 function checkFiles(files) {
   const violations = [];
 
@@ -337,14 +493,26 @@ function checkFiles(files) {
 }
 
 function main(argv) {
-  if (argv.length === 0) {
-    console.error("Usage: node scripts/check-migration-safety.js <migration.sql> [...]");
+  const files = [];
+  const journalDirs = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === "--journal") {
+      const dir = argv[(index += 1)];
+      if (!dir) throw new Error("--journal needs a migrations directory");
+      journalDirs.push(dir);
+    } else {
+      files.push(argv[index]);
+    }
+  }
+  if (files.length === 0 && journalDirs.length === 0) {
+    console.error("Usage: node scripts/check-migration-safety.js [--journal <migrations-dir>] <migration.sql> [...]");
     return 2;
   }
 
-  const violations = checkFiles(argv);
+  // A migration next to meta/_journal.json also gets the journal checked, so adding one cannot leave it stale.
+  const violations = [...checkFiles(files), ...journalDirsFor(files, journalDirs).flatMap(checkJournal)];
   if (violations.length === 0) {
-    console.log(`Migration safety check passed for ${argv.length} file(s).`);
+    console.log(`Migration safety check passed for ${files.length} file(s).`);
     return 0;
   }
 
@@ -354,7 +522,8 @@ function main(argv) {
   }
   console.error(
     "Restore timeout settings before the migration ends. Use an expand/contract migration for schema changes. For an intentional cleanup phase, add " +
-      '"-- migration-safety: allow-destructive issue=#123" immediately before the statement.',
+      '"-- migration-safety: allow-destructive issue=#123" immediately before the statement. ' +
+      "Journal errors mean meta/_journal.json and the .sql files disagree: renumber the newer migration and its snapshot, then rebase.",
   );
   return 1;
 }
@@ -368,4 +537,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { checkFiles, findUnsafeStatements, maskSqlLiteralsAndComments };
+module.exports = { checkFiles, checkJournal, findUnsafeStatements, maskSqlLiteralsAndComments };

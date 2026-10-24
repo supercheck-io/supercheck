@@ -279,6 +279,24 @@ describe("endExpiredTrials", () => {
     expect(inserts).toHaveLength(0);
   });
 
+  it("keeps ending the other organizations when one fails", async () => {
+    const { database } = build({
+      expired: [{ organizationId: "a" }, { organizationId: "b" }],
+      org: trialOrg,
+    });
+    const transaction = (database as unknown as { transaction: jest.Mock }).transaction;
+    const original = transaction.getMockImplementation()!;
+    transaction.mockImplementationOnce(async () => {
+      throw new Error("lock timeout");
+    });
+    transaction.mockImplementation(original);
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const result = await endExpiredTrials({ now: NOW, database });
+    spy.mockRestore();
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(result.organizations).toBe(1);
+  });
+
   it("processes every expired organization in its own transaction", async () => {
     const { database } = build({
       expired: [{ organizationId: "a" }, { organizationId: "b" }],

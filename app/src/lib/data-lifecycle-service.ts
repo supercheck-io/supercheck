@@ -32,7 +32,12 @@
  * @module data-lifecycle-service
  */
 
+import {
+  countPendingCredentialRevocations,
+  retryPendingCredentialRevocations,
+} from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
+import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
   monitorResults,
   monitors,
@@ -71,6 +76,7 @@ import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
  * - "job_runs": Test execution results and artifacts
  * - "playground_artifacts": Temporary test runs from playground
  * - "webhook_idempotency": Webhook deduplication keys with TTL
+ * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
  * - "trial_lifecycle": Ends expired trials (pauses monitors, archives status pages)
@@ -87,6 +93,7 @@ export type CleanupEntityType =
   | "job_runs"
   | "playground_artifacts"
   | "webhook_idempotency"
+  | "credential_revocation_retry"
   | "alert_history"
   | "audit_logs"
   | "trial_lifecycle";
@@ -155,13 +162,39 @@ interface OrganizationRetention {
 // ============================================================================
 
 /**
+ * Organizations on an active free trial. They have no subscription plan, so plan-based retention would give
+ * them the default; their entitlement carries the shorter trial retention instead. An organization with a
+ * plan always uses the plan, and an ended trial falls back to the default (never to a shorter period).
+ * A failed lookup throws, so the caller skips cleanup rather than guessing.
+ */
+async function getActiveTrialOrganizationIds(): Promise<Set<string>> {
+  const rows = await db
+    .select({ organizationId: executionEntitlements.organizationId })
+    .from(executionEntitlements)
+    .where(gt(executionEntitlements.expiresAt, new Date()));
+  return new Set(rows.map((row) => row.organizationId));
+}
+
+/**
+ * A free trial is an organization with an unexpired entitlement and no billing history at all: no plan and no
+ * subscription status. One that subscribed (even if the webhook has not set the plan yet) or whose plan was
+ * cleared by a revocation keeps the default retention, so a destructive sweep never shortens it.
+ */
+function isOnFreeTrial(
+  org: { organizationId: string; subscriptionStatus: string | null },
+  activeTrials: Set<string>,
+): boolean {
+  return !org.subscriptionStatus && activeTrials.has(org.organizationId);
+}
+
+/**
  * Get retention settings for all organizations based on their subscription plans
  * Seeded raw retention is 7 days on all plans; deployments can change plan_limits.
  *
  * @param fallbackRetentionDays - Default retention for missing plan settings
  * @returns Array of organization retention settings
  */
-async function getOrganizationRetentionSettings(
+export async function getOrganizationRetentionSettings(
   fallbackRetentionDays: number
 ): Promise<OrganizationRetention[]> {
   try {
@@ -192,6 +225,7 @@ async function getOrganizationRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -201,11 +235,15 @@ async function getOrganizationRetentionSettings(
       plans.map((p) => [p.plan, p.dataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       retentionDays: org.subscriptionPlan
         ? planRetentionMap.get(org.subscriptionPlan) || fallbackRetentionDays
-        : fallbackRetentionDays,
+        : isOnFreeTrial(org, trialOrganizations)
+          ? TRIAL_RETENTION.dataRetentionDays
+          : fallbackRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
@@ -224,7 +262,7 @@ async function getOrganizationRetentionSettings(
  * Returns a list of organization IDs with their aggregated data retention periods
  * based on subscription plans. Used by MonitorAggregatesCleanupStrategy.
  */
-async function getOrganizationAggregatedRetentionSettings(
+export async function getOrganizationAggregatedRetentionSettings(
   fallbackAggregatedRetentionDays: number
 ): Promise<
   Array<{
@@ -261,6 +299,7 @@ async function getOrganizationAggregatedRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -270,12 +309,16 @@ async function getOrganizationAggregatedRetentionSettings(
       plans.map((p) => [p.plan, p.aggregatedDataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       aggregatedRetentionDays: org.subscriptionPlan
         ? planAggregatedRetentionMap.get(org.subscriptionPlan) ||
           fallbackAggregatedRetentionDays
-        : fallbackAggregatedRetentionDays,
+        : isOnFreeTrial(org, trialOrganizations)
+          ? TRIAL_RETENTION.aggregatedDataRetentionDays
+          : fallbackAggregatedRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
@@ -304,7 +347,7 @@ async function getOrganizationAggregatedRetentionSettings(
  * - Pro: 90 days
  * - Unlimited: 90 days (self-hosted seed)
  */
-async function getOrganizationJobRetentionSettings(
+export async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
 ): Promise<
   Array<{
@@ -341,6 +384,7 @@ async function getOrganizationJobRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -350,12 +394,16 @@ async function getOrganizationJobRetentionSettings(
       plans.map((p) => [p.plan, p.jobDataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       jobRetentionDays: org.subscriptionPlan
         ? planJobRetentionMap.get(org.subscriptionPlan) ||
           fallbackJobRetentionDays
-        : fallbackJobRetentionDays,
+        : isOnFreeTrial(org, trialOrganizations)
+          ? TRIAL_RETENTION.jobDataRetentionDays
+          : fallbackJobRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
@@ -1852,6 +1900,69 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
 }
 
 /**
+ * Credential Revocation Retry Strategy
+ *
+ * Finishes the revocation of CLI tokens, extension keys and connected-app grants when it failed right
+ * after a password reset. Job trigger keys are deliberately not revoked: they belong to a job, not to a
+ * session, and deleting them would silently break CI pipelines that only hold the key.
+ *
+ * It deletes nothing of its own: a pending marker is removed once the revocation succeeds and is retried
+ * until then. A run that leaves any revocation unfinished reports failure, so a stolen credential that is
+ * still alive cannot sit behind a green dashboard.
+ */
+export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "credential_revocation_retry";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+    this.validate();
+  }
+
+  validate(): void {
+    // No special validation needed
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    // Every pending revocation is overdue by definition: the first attempt already failed.
+    const pending = await countPendingCredentialRevocations();
+    return { totalRecords: pending, oldRecords: pending };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun },
+    };
+    if (!dryRun) {
+      try {
+        const { done, failed } = await retryPendingCredentialRevocations();
+        result.details = {
+          ...result.details,
+          credentialRevocationsRetried: done,
+          credentialRevocationsFailed: failed,
+        };
+        if (failed > 0) {
+          result.success = false;
+          result.errors.push(`${failed} credential revocation(s) are still failing and will be retried`);
+        }
+      } catch (error) {
+        result.success = false;
+        result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error("[DATA_LIFECYCLE] [credential_revocation_retry] Sweep failed:", error);
+      }
+    }
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+}
+
+/**
  * Alert History Cleanup Strategy
  *
  * Manages cleanup of old alert history records to prevent unbounded table growth.
@@ -2415,6 +2526,9 @@ export class DataLifecycleService {
         case "webhook_idempotency":
           strategy = new WebhookIdempotencyCleanupStrategy(config);
           break;
+        case "credential_revocation_retry":
+          strategy = new CredentialRevocationRetryStrategy(config);
+          break;
         case "alert_history":
           strategy = new AlertHistoryCleanupStrategy(config);
           break;
@@ -2932,6 +3046,18 @@ export function createDataLifecycleService(): DataLifecycleService {
       maxRecordsPerRun: parseInt(
         process.env.WEBHOOK_CLEANUP_SAFETY_LIMIT || "100000",
         10
+      ),
+    },
+
+    // Credential revocation retry
+    // Security remediation, so it has its own switch and does not depend on webhook cleanup.
+    // Failed markers expire after 7 days; hourly retries leave many chances before that.
+    {
+      entityType: "credential_revocation_retry",
+      enabled: parseBooleanEnv(process.env.CREDENTIAL_REVOCATION_RETRY_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.CREDENTIAL_REVOCATION_RETRY_CRON,
+        "20 * * * *" // hourly
       ),
     },
 

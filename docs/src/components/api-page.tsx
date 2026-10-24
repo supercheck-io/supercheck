@@ -1,7 +1,17 @@
 import { openapi } from '../lib/openapi';
-import { createAPIPage } from 'fumadocs-openapi/ui';
-import client from './api-page.client';
+import type { OpenAPIPageProps_Spec } from 'fumadocs-openapi/ui';
+import OpenAPIPage from './api-page.client';
 
-export const APIPage = createAPIPage(openapi, {
-  client,
-});
+export async function APIPage({
+  document,
+  ...props
+}: Omit<OpenAPIPageProps_Spec, 'payload'> & { document: string }) {
+  const { bundled } = await openapi.getSchema(document);
+  return (
+    <OpenAPIPage
+      {...props}
+      document={document}
+      payload={{ bundled, proxyUrl: openapi.options.proxyUrl }}
+    />
+  );
+}

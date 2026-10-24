@@ -226,7 +226,7 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
           .set(values)
           .where(eq(schema.executionReservations.runId, runId));
       else await tx.insert(schema.executionReservations).values(values);
-      await this.pruneFinished(tx);
+      await this.pruneFinished(tx, organizationId);
       return {
         runId,
         organizationId,
@@ -409,25 +409,33 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
     reservation.reservedMs = durationMs;
   }
 
-  /** Bounded cleanup so finished reservations do not accumulate forever. */
+  /**
+   * Bounded cleanup so finished reservations do not accumulate forever. Limited to the organization whose
+   * lock is held: another organization's crashed run is only charged when that organization next reserves
+   * (`settleAbandoned`), so deleting it from here would discard usage that was never billed.
+   */
   private async pruneFinished(
     tx: Pick<PostgresJsDatabase<typeof schema>, 'select' | 'delete'>,
+    organizationId: string,
   ): Promise<void> {
     const stale = await tx
       .select({ runId: schema.executionReservations.runId })
       .from(schema.executionReservations)
       .where(
-        or(
-          lt(
-            schema.executionReservations.finishedAt,
-            new Date(Date.now() - RESERVATION_RETENTION_MS),
-          ),
-          // A crashed run never finished; once its lease has been lapsed this long it is only clutter.
-          and(
-            isNull(schema.executionReservations.finishedAt),
+        and(
+          eq(schema.executionReservations.organizationId, organizationId),
+          or(
             lt(
-              schema.executionReservations.leaseExpiresAt,
+              schema.executionReservations.finishedAt,
               new Date(Date.now() - RESERVATION_RETENTION_MS),
+            ),
+            // A crashed run never finished; once its lease has been lapsed this long it is only clutter.
+            and(
+              isNull(schema.executionReservations.finishedAt),
+              lt(
+                schema.executionReservations.leaseExpiresAt,
+                new Date(Date.now() - RESERVATION_RETENTION_MS),
+              ),
             ),
           ),
         ),

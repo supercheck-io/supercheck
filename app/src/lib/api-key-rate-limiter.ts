@@ -46,6 +46,8 @@ export interface ApiKeyRateLimitResult {
   limit: number; // Maximum requests allowed
   resetAt: Date; // When the window resets
   retryAfter?: number; // Seconds until retry is allowed (only set if rate limited)
+  /** The limiter itself failed (Redis down); `allowed` is false but the caller is not over its quota. */
+  unavailable?: boolean;
 }
 
 /**
@@ -105,7 +107,8 @@ export class ApiKeyRateLimiter {
    */
   async checkAndIncrement(
     apiKeyId: string,
-    config: ApiKeyRateLimitConfig
+    config: ApiKeyRateLimitConfig,
+    cost = 1,
   ): Promise<ApiKeyRateLimitResult> {
     // If rate limiting is disabled, always allow
     if (!config.enabled) {
@@ -132,19 +135,23 @@ export class ApiKeyRateLimiter {
         local maxRequests = tonumber(ARGV[3])
         local ttl = tonumber(ARGV[4])
         local entryId = ARGV[5]
+        local cost = tonumber(ARGV[6])
 
         redis.call('ZREMRANGEBYSCORE', key, 0, windowStart)
         local currentCount = redis.call('ZCARD', key)
-        if currentCount >= maxRequests then
+        -- All or nothing: a request that costs N units is admitted only if all N fit.
+        if currentCount + cost > maxRequests then
           local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
           local oldestTimestamp = oldest[2] or now
           return {0, currentCount, oldestTimestamp}
         end
 
-        redis.call('ZADD', key, now, entryId)
+        for unit = 1, cost do
+          redis.call('ZADD', key, now, entryId .. ':' .. unit)
+        end
         redis.call('EXPIRE', key, ttl)
         local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-        return {1, currentCount + 1, oldest[2] or now}
+        return {1, currentCount + cost, oldest[2] or now}
       `;
 
       const result = (await redis.eval(
@@ -156,6 +163,7 @@ export class ApiKeyRateLimiter {
         config.maxRequests,
         config.timeWindow + 60,
         `${now}:${randomUUID()}`,
+        Math.max(1, Math.floor(cost)),
       )) as [number, number, number];
       const [allowed, currentCount, rawOldestTimestamp] = result;
       const oldestTimestamp = Number(rawOldestTimestamp) || now;
@@ -220,6 +228,7 @@ export class ApiKeyRateLimiter {
         limit: config.maxRequests,
         resetAt: fallbackResetAt,
         retryAfter: config.timeWindow,
+        unavailable: true,
       };
     }
   }
