@@ -763,24 +763,26 @@ export class CapacityManager {
 
         if (temporaryOutage) {
           let requeued = false;
-          let redis: Awaited<ReturnType<CapacityManager['getRedis']>> | undefined;
           try {
-            redis = await this.getRedis();
-            await redis.zadd(KEYS.queued(jobData.organizationId), jobData.queuedAt, jobData.jobId);
-            requeued = true;
+            const redis = await this.getRedis();
+            if (await this.isRunStillWaiting(jobData.runId)) {
+              // The slot was released once above. Clear the flag BEFORE the run can be promoted again, so the
+              // release after that promotion is not mistaken for a repeat and the counter cannot leak. Until the
+              // run is back in the queued set nothing can promote it, so this cannot race with another replica.
+              await redis.del(KEYS.released(jobData.jobId));
+              await redis.zadd(KEYS.queued(jobData.organizationId), jobData.queuedAt, jobData.jobId);
+              requeued = true;
+            } else {
+              logger.info({ runId: jobData.runId }, "Run was cancelled while its target was being checked; not requeueing");
+            }
           } catch (requeueError) {
             logger.error({ err: requeueError, runId: jobData.runId }, "Failed to requeue run after DNS outage");
           }
-          if (requeued && redis) {
-            // The slot was released once above. Clear the flag only now that the run is queued again, so the
-            // release after its next promotion is not mistaken for a repeat and the counter cannot leak.
-            await redis.del(KEYS.released(jobData.jobId)).catch((flagError: unknown) =>
-              logger.error({ err: flagError, runId: jobData.runId }, "Failed to clear the released flag after requeue"),
-            );
+          if (requeued) {
             logger.warn({ runId: jobData.runId }, "Returned run to the queue after a temporary DNS outage");
             throw error;
           }
-          // Could not requeue: the run is failed below, so the payload kept for the retry is now garbage.
+          // Not requeued (cancelled, or the requeue failed): the payload kept for the retry is now garbage.
           await this.cleanupJobData(jobData.jobId);
         }
 
@@ -807,6 +809,26 @@ export class CapacityManager {
   // ===========================================================================
   // UTILITY METHODS
   // ===========================================================================
+
+  /**
+   * Whether a run that is about to be put back in the queue is still waiting to start. A run cancelled while
+   * its target was being checked must not come back: its payload would be promoted and run. When the answer
+   * cannot be determined, keep it queued; a worker refuses a cancelled run when it claims it.
+   */
+  private async isRunStillWaiting(runId: string): Promise<boolean> {
+    try {
+      const { isCancelled } = await import('./cancellation-service');
+      if (await isCancelled(runId)) return false;
+      const { db } = await import('@/utils/db');
+      const { runs } = await import('@/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const [run] = await db.select({ status: runs.status }).from(runs).where(eq(runs.id, runId)).limit(1);
+      return run?.status === 'queued';
+    } catch (error) {
+      logger.warn({ err: error, runId }, "Could not tell whether the run was cancelled; keeping it queued");
+      return true;
+    }
+  }
 
   /**
    * Clean up job data from Redis
