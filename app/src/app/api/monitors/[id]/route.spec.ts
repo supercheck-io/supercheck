@@ -23,6 +23,12 @@ jest.mock("@/lib/monitor-scheduler", () => ({
   deleteScheduledMonitor: jest.fn(),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+const trialIntervalErrorResponse = jest.fn();
+const monitorResumeBlockedResponse = jest.fn();
+jest.mock("@/lib/execution/trial-interval-response", () => ({
+  trialIntervalErrorResponse: (...args: unknown[]) => trialIntervalErrorResponse(...args),
+  monitorResumeBlockedResponse: (...args: unknown[]) => monitorResumeBlockedResponse(...args),
+}));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: jest.fn() }));
 jest.mock("@/lib/queue", () => ({}));
 jest.mock("@/lib/monitor-validation", () => ({
@@ -42,7 +48,7 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { DELETE, PATCH, PUT } from "./route";
 import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 
@@ -78,6 +84,7 @@ const call = (
 describe("monitor update location validation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    monitorResumeBlockedResponse.mockResolvedValue(null);
     update.mockReturnValue({
       set: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([]) }),
@@ -124,6 +131,16 @@ describe("monitor update location validation", () => {
     );
     const response = await call(PATCH, "PATCH", { status: "paused" });
     expect(response.status).not.toBe(400);
+  });
+
+  it("PUT and PATCH refuse to resume a paused monitor when the organization has no plan", async () => {
+    findFirst.mockResolvedValue(existing("website", { status: "paused" }));
+    monitorResumeBlockedResponse.mockResolvedValue(Response.json({ error: "Active subscription required." }, { status: 402 }));
+    for (const [handler, method] of [[PUT, "PUT"], [PATCH, "PATCH"]] as const) {
+      const response = await call(handler, method, { enabled: true });
+      expect(response.status).toBe(402);
+    }
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("PUT rejects switching to synthetic while probe-only regions are selected", async () => {
@@ -231,5 +248,30 @@ describe("monitor PUT reschedule policy", () => {
     const response = await call(PUT, "PUT", { config: { timeoutSeconds: 10, alertChannels: ["a"] } });
     expect(response.status).toBe(200);
     expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("trial check interval on monitor updates", () => {
+  const stored = { ...existing("http_request", { timeoutSeconds: 30 }), status: "up", frequencyMinutes: 5, scheduledJobId: "sched-1", alertConfig: null };
+  const tooFast = () => NextResponse.json({ error: "Check interval too short for a trial" }, { status: 400 });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findFirst.mockResolvedValue(stored);
+    trialIntervalErrorResponse.mockResolvedValue(null);
+    monitorResumeBlockedResponse.mockResolvedValue(null);
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s refuses a faster interval than the trial allows and writes nothing", async (method, handler) => {
+    trialIntervalErrorResponse.mockResolvedValueOnce(tooFast());
+    const response = await call(handler, method, { frequencyMinutes: 1 });
+    expect(response.status).toBe(400);
+    expect(trialIntervalErrorResponse).toHaveBeenCalledWith("org-1", 1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s does not check the interval when it is not being changed", async (method, handler) => {
+    await call(handler, method, { name: "Renamed" });
+    expect(trialIntervalErrorResponse).not.toHaveBeenCalled();
   });
 });

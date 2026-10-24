@@ -8,6 +8,8 @@ jest.mock("@/lib/feature-flags", () => ({
   isCloudHosted: jest.fn(() => true),
   getPlanPricing: jest.fn(() => ({ monthlyPriceCents: 4900, name: "Plus" })),
 }));
+const getTrialSummary = jest.fn();
+jest.mock("@/lib/execution/trial-limits", () => ({ getTrialSummary: (...args: unknown[]) => getTrialSummary(...args) }));
 import { GET } from "./route";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -17,6 +19,7 @@ import { getPlanPricing } from "@/lib/feature-flags";
 describe("current billing subscription display", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getTrialSummary.mockResolvedValue(undefined);
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ organizationId: "org-1" });
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
       id: "org-1", polarCustomerId: "customer-1", usagePeriodStart: null,
@@ -64,5 +67,19 @@ describe("current billing subscription display", () => {
     const { planFeatures } = await response.json();
     expect(planFeatures).not.toHaveProperty("ssoEnabled");
     expect(planFeatures).toMatchObject({ customDomains: true, dataRetentionDays: 30 });
+  });
+
+  it("reports the free trial so the Subscription tab can show its allowances", async () => {
+    getTrialSummary.mockResolvedValue({ active: true, expiresAt: "2026-11-15T00:00:00.000Z", daysRemaining: 9 });
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: false, plan: null, status: "none", reason: "no_subscription" });
+    (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({ plan: "plus", maxMonitors: 5, maxStatusPages: 2, maxProjects: 3, maxTeamMembers: 3, runningCapacity: 1, queuedCapacity: 5, customDomains: false, dataRetentionDays: 7, aggregatedDataRetentionDays: 30 });
+    (subscriptionService.getUsageSafe as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 1, included: 30, overage: 0 }, k6VuMinutes: { used: 10, included: 150, overage: 0 },
+      aiCredits: { used: 0, included: 100, overage: 0 }, sreInvestigations: { used: 0, included: 5, overage: 0 },
+    });
+    const body = await (await GET()).json();
+    expect(body.trial).toEqual({ active: true, expiresAt: "2026-11-15T00:00:00.000Z", daysRemaining: 9 });
+    expect(body.subscription.plan).toBeNull();
+    expect(body.usage.k6VuMinutes).toMatchObject({ used: 10, included: 150 });
   });
 });

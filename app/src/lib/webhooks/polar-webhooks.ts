@@ -18,6 +18,7 @@ import {
 import { organization, webhookIdempotency } from "@/db/schema";
 import { eq, and, lt, lte, isNull, or } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
+import { restoreTrialSuspensions } from "@/lib/execution/trial-lifecycle";
 
 // A short processing lease prevents concurrent delivery from running twice.
 // Completed records are retained for 24 hours to suppress provider retries.
@@ -910,6 +911,24 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   console.log(`[Polar] ✅ Activated ${plan} for org ${truncateId(org.id)}`);
+
+  // Bring back the monitors and status pages the trial end paused or archived.
+  // This must never fail the webhook: the subscription itself is already saved.
+  try {
+    // Reuse the webhook's own transaction: a second connection per event can exhaust the pool when
+    // events arrive together, with every event waiting for a connection another one holds.
+    const restored = await restoreTrialSuspensions(org.id, getPolarWebhookDb(org.id));
+    if (restored.monitorsResumed || restored.statusPagesRestored) {
+      console.log(
+        `[Polar] Restored ${restored.monitorsResumed} monitors and ${restored.statusPagesRestored} status pages for org ${truncateId(org.id)}`,
+      );
+    }
+  } catch (restoreError) {
+    console.error(
+      `[Polar] Failed to restore trial resources for org ${truncateId(org.id)}:`,
+      restoreError,
+    );
+  }
 
   // Mark webhook as successfully processed
   await updateWebhookResult(

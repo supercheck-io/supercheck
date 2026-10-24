@@ -1,3 +1,21 @@
+import { and, eq } from 'drizzle-orm';
+import { isIP } from 'node:net';
+import { executionTargetDomains } from '../../db/schema';
+import {
+  ExecutionAdmissionService,
+  ExecutionCapacityError,
+  type ExecutionReservation,
+  LIMITED_RUN_OVERHEAD_MS,
+} from '../../execution/services/execution-admission.service';
+import {
+  parseTrialK6Workload,
+  createTrialK6Script,
+} from '../../common/security/trial-k6-workload';
+import {
+  TargetDnsUnavailableError,
+  resolvePublicTargetAddresses,
+  verifyTargetDns,
+} from '../../common/security/execution-target-domain';
 import {
   attachBillableMs,
   getBillableMs,
@@ -112,6 +130,7 @@ export class K6ExecutionService {
     private dbService: DbService,
     private redisService: RedisService,
     private containerExecutorService: ContainerExecutorService,
+    private admissionService: ExecutionAdmissionService,
     private variableResolverService: VariableResolverService,
   ) {
     // Check for k6 binary in multiple common locations
@@ -267,15 +286,134 @@ export class K6ExecutionService {
   }
 
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
-    const resolved = await this.variableResolverService.resolveProjectVariables(
-      task.projectId,
+    const timeoutMs = task.jobId
+      ? this.jobExecutionTimeoutMs
+      : this.testExecutionTimeoutMs;
+    return this.admissionService.run(
+      task.organizationId,
+      task.runId,
+      'k6',
+      timeoutMs,
+      async (reservation) => {
+        if (reservation?.limited) {
+          const workload = parseTrialK6Workload(task.script);
+          if (workload.vus > (reservation.k6MaxVus ?? 0))
+            throw new Error('HTTP workload exceeds the VU allowance');
+          if (workload.durationSeconds * 1000 > reservation.reservedMs)
+            throw new Error(
+              'HTTP workload duration exceeds entitlement expiry',
+            );
+          const hostname = new URL(workload.url).hostname;
+          const target =
+            await this.dbService.db.query.executionTargetDomains.findFirst({
+              where: and(
+                eq(
+                  executionTargetDomains.organizationId,
+                  reservation.organizationId,
+                ),
+                eq(executionTargetDomains.hostname, hostname),
+              ),
+            });
+          if (!target?.verifiedAt)
+            throw new Error(
+              'Verify ownership of the HTTP workload domain before execution',
+            );
+          const targetIsFresh =
+            !!target.verifiedUntil &&
+            target.verifiedUntil.getTime() > Date.now();
+          let addresses: string[];
+          try {
+            // Ownership is proven once per verification window; the public-address check, which
+            // pins the address into the run, happens on every execution.
+            addresses = targetIsFresh
+              ? await resolvePublicTargetAddresses(hostname)
+              : await verifyTargetDns(hostname, target.verificationToken);
+          } catch (error) {
+            // A resolver outage says nothing about the target: retry later rather than fail the run.
+            if (error instanceof TargetDnsUnavailableError)
+              throw new ExecutionCapacityError(
+                'DNS verification is temporarily unavailable',
+              );
+            throw error;
+          }
+          const address =
+            addresses.find((ip) => isIP(ip) === 4) ?? addresses[0];
+          if (!address) throw new Error('HTTP workload domain did not resolve');
+          const verifiedAt = new Date();
+          const refreshed = targetIsFresh
+            ? [{ id: target.id }]
+            : await this.dbService.db
+                .update(executionTargetDomains)
+                .set({
+                  verifiedAt,
+                  verifiedUntil: new Date(
+                    verifiedAt.getTime() + 24 * 60 * 60 * 1000,
+                  ),
+                })
+                .where(
+                  and(
+                    eq(executionTargetDomains.id, target.id),
+                    eq(
+                      executionTargetDomains.organizationId,
+                      reservation.organizationId,
+                    ),
+                    eq(
+                      executionTargetDomains.verificationToken,
+                      target.verificationToken,
+                    ),
+                  ),
+                )
+                .returning({ id: executionTargetDomains.id });
+          if (!refreshed.length)
+            throw new Error(
+              'HTTP workload domain verification changed; retry execution',
+            );
+          if (
+            reservation.expiresAt &&
+            Date.now() + workload.durationSeconds * 1000 >
+              reservation.expiresAt.getTime()
+          )
+            throw new Error(
+              'HTTP workload duration exceeds entitlement expiry',
+            );
+          await this.admissionService.setK6Workload(
+            reservation,
+            workload.vus,
+            workload.durationSeconds * 1000,
+          );
+          task = {
+            ...task,
+            script: createTrialK6Script(workload, { [hostname]: address }),
+            files: {},
+          };
+          reservation = {
+            ...reservation,
+            reservedMs: workload.durationSeconds * 1000,
+          };
+        }
+        return this.runK6TestReserved(task, reservation);
+      },
     );
-    task = {
-      ...task,
-      variables: resolved.variables,
-      secrets: resolved.secrets,
-      files: resolved.files,
-    };
+  }
+
+  private async runK6TestReserved(
+    task: K6ExecutionTask,
+    reservation?: ExecutionReservation,
+  ): Promise<K6ExecutionResult> {
+    if (reservation?.limited)
+      task = { ...task, variables: {}, secrets: {}, files: {} };
+    else {
+      const resolved =
+        await this.variableResolverService.resolveProjectVariables(
+          task.projectId,
+        );
+      task = {
+        ...task,
+        variables: resolved.variables,
+        secrets: resolved.secrets,
+        files: resolved.files,
+      };
+    }
     const { runId, testId: _testId, script, location } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
@@ -300,9 +438,11 @@ export class K6ExecutionService {
       runId,
     });
 
-    const executionTimeoutMs = task.jobId
-      ? this.jobExecutionTimeoutMs
-      : this.testExecutionTimeoutMs;
+    const executionTimeoutMs = reservation?.limited
+      ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
+      : task.jobId
+        ? this.jobExecutionTimeoutMs
+        : this.testExecutionTimeoutMs;
 
     this.logger.log(
       `[${runId}] Starting k6 test${location ? ` (location: ${location})` : ''}`,
@@ -331,7 +471,9 @@ export class K6ExecutionService {
       const htmlExportFileName = 'report.html';
       const htmlExportPathContainer = `${k6OutputDir}/${reportDirName}/${htmlExportFileName}`;
 
-      const preparedScript = this.injectK6VariableRuntimeHelpers(script);
+      const preparedScript = reservation?.limited
+        ? script
+        : this.injectK6VariableRuntimeHelpers(script);
 
       // Filter file variables to only those referenced by getFile() in the script,
       // then download from S3
@@ -339,7 +481,9 @@ export class K6ExecutionService {
         script,
       ]);
       const { additionalFiles: fileAdditionalFiles, filePaths } =
-        await this.s3Service.prepareFileVariables(filteredFiles);
+        reservation?.limited
+          ? { additionalFiles: {}, filePaths: {} }
+          : await this.s3Service.prepareFileVariables(filteredFiles);
 
       const args = [
         'run',
@@ -360,10 +504,12 @@ export class K6ExecutionService {
 
       // Configure web dashboard environment variables for robust HTML export
       // These settings ensure the HTML report is generated regardless of port conflicts
-      const maxDashboardAttempts = Math.max(
-        this.configService.get<number>('K6_WEB_DASHBOARD_MAX_ATTEMPTS', 5),
-        1,
-      );
+      const maxDashboardAttempts = reservation?.limited
+        ? 1
+        : Math.max(
+            this.configService.get<number>('K6_WEB_DASHBOARD_MAX_ATTEMPTS', 5),
+            1,
+          );
 
       let execResult: {
         exitCode: number;
@@ -387,11 +533,13 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...this.buildVariableRuntimeEnv(
-            runtimeVariables,
-            filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
-            filePaths,
-          ),
+          ...(reservation?.limited
+            ? {}
+            : this.buildVariableRuntimeEnv(
+                runtimeVariables,
+                filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
+                filePaths,
+              )),
         };
 
         try {
@@ -407,6 +555,10 @@ export class K6ExecutionService {
             Object.keys(fileAdditionalFiles).length > 0
               ? fileAdditionalFiles
               : undefined,
+            reservation?.limited
+              ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
+              : undefined,
+            reservation?.expiresAt?.getTime(),
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -808,6 +960,8 @@ export class K6ExecutionService {
     timeoutMs?: number,
     dashboardPort?: number,
     additionalFiles?: Record<string, string>,
+    hardDeadlineMs?: number,
+    expiresAtMs?: number,
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -879,21 +1033,63 @@ export class K6ExecutionService {
           );
         }
       });
+      const strict = hardDeadlineMs !== undefined;
+      const allowedEnv = [
+        'K6_WEB_DASHBOARD',
+        'K6_WEB_DASHBOARD_PERIOD',
+        'K6_WEB_DASHBOARD_EXPORT',
+        'K6_WEB_DASHBOARD_PORT',
+        'K6_WEB_DASHBOARD_ADDR',
+        'K6_NO_COLOR',
+      ];
+      const executionEnv = strict
+        ? Object.fromEntries(
+            Object.entries(overrideEnv).filter(([key]) =>
+              allowedEnv.includes(key),
+            ),
+          )
+        : overrideEnv;
+      const executionArgs = strict
+        ? [
+            ...args.slice(0, -1),
+            '--no-usage-report',
+            '--config',
+            '/tmp/k6-control.json',
+            args[args.length - 1],
+          ]
+        : args;
+      const executionCommand = strict
+        ? [
+            'env',
+            '-i',
+            'PATH=/usr/local/bin:/usr/bin:/bin',
+            'HOME=/tmp',
+            ...Object.entries(executionEnv).map(
+              ([key, value]) => `${key}=${value}`,
+            ),
+            'k6',
+            ...executionArgs,
+          ]
+        : ['k6', ...args];
       const containerResult =
         await this.containerExecutorService.executeInContainer(
           null, // No host script path - using inline content
-          ['k6', ...args],
+          executionCommand,
           {
             runId, // Pass runId for cancellation tracking
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
-            additionalFiles, // File variables for data files
+            additionalFiles: strict
+              ? { 'k6-control.json': '{}' }
+              : additionalFiles,
             ensureDirectories: Array.from(directoriesToEnsure),
             extractFromContainer: this.K6_OUTPUT_DIR, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
             timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
+            hardDeadlineMs,
+            expiresAtMs,
             env: {
-              ...overrideEnv,
+              ...executionEnv,
               K6_NO_COLOR: '1', // Disable ANSI colors
             },
             // Do NOT set workingDir here — the container executor defaults to

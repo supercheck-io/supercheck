@@ -50,6 +50,23 @@ export class UsageTracker {
       const plan = await subscriptionService.getOrganizationPlan(organizationId);
       const limit = plan.aiCreditsIncluded;
 
+      // A trial has no subscription row to recheck; its allowance is the entitlement.
+      if (plan.id === "trial") {
+        const trialResult = await db
+          .update(organization)
+          .set({ aiCreditsUsed: sql`COALESCE(${organization.aiCreditsUsed}, 0) + 1` })
+          .where(and(eq(organization.id, organizationId), sql`COALESCE(${organization.aiCreditsUsed}, 0) < ${limit}`))
+          .returning({ aiCreditsUsed: organization.aiCreditsUsed });
+        if (trialResult.length > 0) return { allowed: true, used: trialResult[0].aiCreditsUsed ?? 0, limit };
+        return {
+          allowed: false,
+          reason: `You've used all ${limit} AI credits included in your trial. Subscribe to keep using AI features.`,
+          used: limit,
+          limit,
+          status: 429,
+        };
+      }
+
       // ATOMIC: Increment only if under limit by putting the condition in WHERE.
       // If the WHERE doesn't match (already at/above limit), no rows are returned,
       // giving us a clear signal that the limit was reached without consuming a credit.

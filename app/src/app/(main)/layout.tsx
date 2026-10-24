@@ -23,6 +23,8 @@ import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { getTrialSummary } from "@/lib/execution/trial-limits";
+import { TrialBanner } from "@/components/trial-banner";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 function deriveInitialSubscriptionStatus(
@@ -88,6 +90,12 @@ export default async function MainLayout({
       org,
       initialIsSelfHosted
     );
+    // A free trial is separate from a paid subscription; without it an
+    // unsubscribed organization would be sent to the subscribe page.
+    if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
+      const trial = await getTrialSummary(org.id).catch(() => undefined);
+      initialSubscriptionStatus = { ...initialSubscriptionStatus, trial: trial ?? null };
+    }
     try {
       const [projectsResult, currentProjectResult] = await Promise.all([
         getSelectableProjects(user.id),
@@ -193,6 +201,7 @@ export default async function MainLayout({
                   </div>
                 </header>
                 <main className="flex-1 flex-col gap-4 overflow-y-auto">
+                  <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
                   <SubscriptionGuard
                     initialSubscriptionStatus={initialSubscriptionStatus}
                     initialIsSelfHosted={initialIsSelfHosted}

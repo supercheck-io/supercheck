@@ -2,6 +2,7 @@ import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
 import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
+import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -184,6 +185,14 @@ export async function PUT(
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
+
+    if (rawData.frequencyMinutes !== undefined) {
+      const trialIntervalError = await trialIntervalErrorResponse(currentMonitor.organizationId, rawData.frequencyMinutes);
+      if (trialIntervalError) return trialIntervalError;
+    }
+
+    const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, rawData);
+    if (resumeBlocked) return resumeBlocked;
 
     const configurationValidation = validateMonitorConfiguration({
       type: updateData.type ?? currentMonitor.type,
@@ -514,7 +523,7 @@ export async function PUT(
           );
       } else if (
         oldStatus === "paused" &&
-        (newStatus === "up" || newStatus === "down")
+        (newStatus === "up" || newStatus === "down" || newStatus === "pending")
       ) {
         // Resume monitor - add to scheduler if it has valid frequency
         if (newFrequency && newFrequency > 0) {
@@ -775,6 +784,14 @@ export async function PATCH(
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
+
+    if (rawData.frequencyMinutes !== undefined) {
+      const trialIntervalError = await trialIntervalErrorResponse(currentMonitor.organizationId, rawData.frequencyMinutes);
+      if (trialIntervalError) return trialIntervalError;
+    }
+
+    const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, rawData);
+    if (resumeBlocked) return resumeBlocked;
 
     const updatePayload: Parameters<typeof updateMonitorHandler>[1] = {};
     for (const key of ["name", "description", "type", "target", "frequencyMinutes", "enabled"] as const) {

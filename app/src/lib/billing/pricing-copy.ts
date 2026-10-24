@@ -1,3 +1,5 @@
+import { trialFaqs } from "./trial-copy";
+
 export const PRICING_FAQS = [
   {
     question: "Does one subscription cover the projects in my organization?",
@@ -53,6 +55,7 @@ export const PRICING_FAQS = [
     question: "Do unused allowances roll over?",
     answer: "No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.",
   },
+  ...trialFaqs(),
   {
     question: "Can I try Supercheck before subscribing?",
     answer: "Yes. Try our free demo at demo.supercheck.dev — no signup required. When you are ready, choose a monthly plan. Cancel anytime.",
@@ -65,6 +68,6 @@ export const PRICING_FAQS = [
   {
     question: "Can I self-host Supercheck?",
     answer:
-      "Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost. You still pay your own infrastructure and AI provider costs. See the self-hosting guide at supercheck.io/docs/app/deployment/self-hosted.",
+      "Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost, and with no trial or usage limits. You still pay your own infrastructure and AI provider costs. See the self-hosting guide at supercheck.io/docs/app/deployment/self-hosted.",
   },
 ];

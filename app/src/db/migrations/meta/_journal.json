@@ -260,6 +260,27 @@
       "when": 1792680000000,
       "tag": "0036_oauth_mcp_server",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792683600000,
+      "tag": "0037_execution_entitlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792687200000,
+      "tag": "0038_trial_load_test_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792690800000,
+      "tag": "0039_trial_review_hardening",
+      "breakpoints": true
     }
   ]
 }

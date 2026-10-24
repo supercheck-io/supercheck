@@ -53,6 +53,10 @@ jobs:
         working-directory: docs
         run: npm run test:openapi
 
+      - name: Check the pricing page trial copy comes from the plan catalog
+        working-directory: docs
+        run: npm run test:trial-docs
+
       - name: Build static site
         working-directory: docs
         run: npm run build

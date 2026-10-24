@@ -4,6 +4,8 @@ import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
+import { ExecutionWorkloadError } from '@/lib/execution/execution-policy';
+import { SubscriptionAccessDeniedError } from '@/lib/services/subscription-service';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,8 +36,14 @@ export async function GET() {
 
     // console.log(`[API] Querying database for running/queued runs in org ${organizationId}`);
 
-    // Get capacity limits for this organization
-    const capacityLimits = await checkCapacityLimits(organizationId);
+    // Capacity is display-only here. An organization with no active plan or trial
+    // (for example after a trial ends) must still see its runs, with no capacity.
+    const capacityLimits = await checkCapacityLimits(organizationId).catch((error: unknown) => {
+      if (error instanceof SubscriptionAccessDeniedError || error instanceof ExecutionWorkloadError) {
+        return { runningCapacity: 0, queuedCapacity: 0 };
+      }
+      throw error;
+    });
 
     // Get all running and queued runs for this organization
     const activeRuns = await db

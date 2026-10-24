@@ -794,6 +794,8 @@ export const sreInvestigationRuns = pgTable(
     completedAt: timestamp("completed_at"),
     durationMs: integer("duration_ms"),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    /** The tier the run was admitted under; a trial run is never billed, even after the organization subscribes. */
+    billingTier: varchar("billing_tier", { length: 8 }).$type<"paid" | "trial">().notNull().default("paid"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -806,6 +808,7 @@ export const sreInvestigationRuns = pgTable(
     modelIdIdx: index("sre_investigation_runs_model_id_idx").on(table.modelId),
     lowConfidenceIdx: index("sre_investigation_runs_low_confidence_idx").on(table.confidenceScore).where(sql`confidence_score < 0.5`),
     createdAtIdx: index("sre_investigation_runs_created_at_idx").on(table.createdAt),
+    billingTierCheck: check("sre_investigation_runs_billing_tier_check", sql`${table.billingTier} IN ('paid', 'trial')`),
   })
 );
 

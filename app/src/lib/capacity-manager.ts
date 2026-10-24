@@ -1,3 +1,4 @@
+import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError } from "./execution/execution-policy";
 import Redis from "ioredis";
 import { checkCapacityLimits } from "./middleware/plan-enforcement";
 
@@ -312,7 +313,11 @@ export class CapacityManager {
    * - If not, sets the flag and decrements the counter
    * - If already released, does nothing (idempotent)
    */
-  async releaseRunningSlot(organizationId: string = 'global', jobId?: string): Promise<void> {
+  async releaseRunningSlot(
+    organizationId: string = 'global',
+    jobId?: string,
+    options: { keepJobData?: boolean } = {},
+  ): Promise<void> {
     try {
       const redis = await this.getRedis();
       const runningKey = KEYS.running(organizationId);
@@ -368,8 +373,9 @@ export class CapacityManager {
         logger.debug({ jobId, organizationId }, "Slot already released, skipping decrement");
       }
 
-      // Clean up job data regardless of whether we released
-      await this.cleanupJobData(jobId);
+      // Clean up job data regardless of whether we released, unless the caller is about to put the job
+      // back in the queue: promotion needs that payload again.
+      if (!options.keepJobData) await this.cleanupJobData(jobId);
     } catch (error) {
       logger.error({ err: error, organizationId, jobId }, "Failed to release running slot");
     }
@@ -529,7 +535,57 @@ export class CapacityManager {
         await this.promoteJob(organizationId, jobId);
       }
     } catch (error) {
+      if (error instanceof ExecutionWorkloadError) {
+        // The entitlement lapsed while runs were queued. They can never be
+        // admitted, so fail them instead of retrying every cycle indefinitely.
+        await this.failQueuedJobs(organizationId, error.message);
+        return;
+      }
       logger.error({ err: error, organizationId }, "Failed to process organization queue");
+    }
+  }
+
+  /**
+   * Remove every queued job of an organization and mark its run failed.
+   * Used when the organization is no longer entitled to execute.
+   */
+  private async failQueuedJobs(organizationId: string, reason: string): Promise<void> {
+    try {
+      const redis = await this.getRedis();
+      const jobIds = await redis.zrange(KEYS.queued(organizationId), 0, -1);
+      for (const jobId of jobIds) {
+        try {
+          // Only the caller that removes the entry owns the cleanup.
+          if ((await redis.zrem(KEYS.queued(organizationId), jobId)) === 0) continue;
+          const raw = await redis.get(KEYS.jobData(jobId));
+          let runId = jobId;
+          if (raw) {
+            try {
+              runId = (JSON.parse(raw) as QueuedJobData).runId ?? jobId;
+            } catch {
+              logger.warn({ jobId }, "Unreadable queued job data; failing the run by job id");
+            }
+          }
+          const { db } = await import('@/utils/db');
+          const { runs } = await import('@/db/schema');
+          const { and, eq, inArray } = await import('drizzle-orm');
+          try {
+            // The run first: if this fails, put the entry back so the next pass retries it, instead of
+            // leaving a run that stays queued with no job behind it.
+            await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: reason })
+              .where(and(eq(runs.id, runId), inArray(runs.status, ['queued'])));
+          } catch (dbError) {
+            await redis.zadd(KEYS.queued(organizationId), Date.now(), jobId);
+            throw dbError;
+          }
+          await this.cleanupJobData(jobId);
+        } catch (jobError) {
+          logger.error({ err: jobError, jobId, organizationId }, "Failed to fail a queued run after entitlement ended");
+        }
+      }
+      logger.warn({ organizationId, failed: jobIds.length, reason }, "Failed queued runs: execution entitlement ended");
+    } catch (error) {
+      logger.error({ err: error, organizationId }, "Failed to clear queued runs after entitlement ended");
     }
   }
 
@@ -616,6 +672,17 @@ export class CapacityManager {
     
     try {
       // Dynamic import to avoid circular dependency
+      const policy = await getExecutionPolicy(jobData.organizationId);
+      const scripts = jobData.type === 'k6'
+        ? (Array.isArray(jobData.taskData.tests) && jobData.taskData.tests.length
+          ? jobData.taskData.tests.map((test: { script: string }) => test.script)
+          : [String(jobData.taskData.script ?? '')])
+        : jobData.type === 'playwright'
+          ? (Array.isArray(jobData.taskData.testScripts)
+            ? jobData.taskData.testScripts.map((test: { script: string }) => test.script)
+            : [String(jobData.taskData.code ?? '')])
+          : [];
+      await assertExecutionWorkload(jobData.organizationId, policy, jobData.type, scripts);
       const queueModule = await import('./queue');
       const queues = await queueModule.getQueues();
 
@@ -623,8 +690,9 @@ export class CapacityManager {
         const queue = queues.playwrightQueues['global'];
         await queue.add(jobData.runId, {
           ...jobData.taskData,
+          _executionTier: policy.tier,
           _capacityStatus: 'promoted', // Mark as promoted from queue
-        }, { jobId: jobData.runId });
+        }, { jobId: jobData.runId, priority: policy.priority });
       } else {
         const location = (jobData.taskData.location as string) || 'global';
         // Capability may have been revoked while the job waited in the capacity queue.
@@ -658,8 +726,9 @@ export class CapacityManager {
         }
         await queue.add(jobData.runId, {
           ...jobData.taskData,
+          _executionTier: policy.tier,
           _capacityStatus: 'promoted',
-        }, { jobId: jobData.runId });
+        }, { jobId: jobData.runId, priority: policy.priority });
       }
       
       // Mark job as added - any subsequent failures should NOT release slot
@@ -686,7 +755,36 @@ export class CapacityManager {
       // CRITICAL: Only release slot if job was NEVER added to BullMQ
       // If job was added, it will release slot via completed/failed events
       if (!jobAddedToBullMQ) {
-        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+        // A resolver outage says nothing about the run: keep it queued (same position) and let the next pass
+        // try again instead of failing it. Its stored payload must survive, or the next promotion would find
+        // nothing to run.
+        const temporaryOutage = error instanceof ExecutionWorkloadError && error.status === 503;
+        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId, { keepJobData: temporaryOutage });
+
+        if (temporaryOutage) {
+          let requeued = false;
+          try {
+            const redis = await this.getRedis();
+            if (await this.isRunStillWaiting(jobData.runId)) {
+              // The slot was released once above. Clear the flag BEFORE the run can be promoted again, so the
+              // release after that promotion is not mistaken for a repeat and the counter cannot leak. Until the
+              // run is back in the queued set nothing can promote it, so this cannot race with another replica.
+              await redis.del(KEYS.released(jobData.jobId));
+              await redis.zadd(KEYS.queued(jobData.organizationId), jobData.queuedAt, jobData.jobId);
+              requeued = true;
+            } else {
+              logger.info({ runId: jobData.runId }, "Run was cancelled while its target was being checked; not requeueing");
+            }
+          } catch (requeueError) {
+            logger.error({ err: requeueError, runId: jobData.runId }, "Failed to requeue run after DNS outage");
+          }
+          if (requeued) {
+            logger.warn({ runId: jobData.runId }, "Returned run to the queue after a temporary DNS outage");
+            throw error;
+          }
+          // Not requeued (cancelled, or the requeue failed): the payload kept for the retry is now garbage.
+          await this.cleanupJobData(jobData.jobId);
+        }
 
         // Mark the run as failed so it doesn't stay in 'queued' status forever.
         // This can happen when a location queue disappears between enqueue and promotion
@@ -711,6 +809,26 @@ export class CapacityManager {
   // ===========================================================================
   // UTILITY METHODS
   // ===========================================================================
+
+  /**
+   * Whether a run that is about to be put back in the queue is still waiting to start. A run cancelled while
+   * its target was being checked must not come back: its payload would be promoted and run. When the answer
+   * cannot be determined, keep it queued; a worker refuses a cancelled run when it claims it.
+   */
+  private async isRunStillWaiting(runId: string): Promise<boolean> {
+    try {
+      const { isCancelled } = await import('./cancellation-service');
+      if (await isCancelled(runId)) return false;
+      const { db } = await import('@/utils/db');
+      const { runs } = await import('@/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const [run] = await db.select({ status: runs.status }).from(runs).where(eq(runs.id, runId)).limit(1);
+      return run?.status === 'queued';
+    } catch (error) {
+      logger.warn({ err: error, runId }, "Could not tell whether the run was cancelled; keeping it queued");
+      return true;
+    }
+  }
 
   /**
    * Clean up job data from Redis

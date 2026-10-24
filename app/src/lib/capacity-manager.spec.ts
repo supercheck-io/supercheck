@@ -1,3 +1,9 @@
+jest.mock("@/utils/db", () => ({ db: {
+  update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) })) })),
+  select: jest.fn(() => ({ from: () => ({ where: () => ({ limit: async () => [{ status: "queued" }] }) }) })),
+} }));
+jest.mock("./cancellation-service", () => ({ isCancelled: jest.fn().mockResolvedValue(false) }));
+jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined), ExecutionWorkloadError: class ExecutionWorkloadError extends Error { constructor(message: string, readonly status: 400 | 402 = 400) { super(message); } } }));
 /**
  * Capacity Manager Tests
  * 
@@ -25,6 +31,9 @@ jest.mock('./queue', () => ({
 
 import { CapacityManager, CapacityReservationUnavailableError, QueuedJobData, setCapacityLogger } from './capacity-manager';
 import { checkCapacityLimits } from './middleware/plan-enforcement';
+import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError } from './execution/execution-policy';
+import { getQueues } from './queue';
+import { isCancelled } from './cancellation-service';
 import { getRedisConnection } from './queue';
 
 const mockCheckCapacityLimits = checkCapacityLimits as jest.Mock;
@@ -125,7 +134,103 @@ describe('CapacityManager', () => {
   // ==========================================================================
 
   describe('Slot Reservation', () => {
-    describe('reserveSlot', () => {
+    it('refreshes the trusted tier when a queued execution is promoted', async () => {
+    const add = jest.fn().mockResolvedValue({});
+    jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier: 'trial', priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
+    jest.mocked(getQueues).mockResolvedValueOnce({ playwrightQueues: { global: { add } } } as unknown as Awaited<ReturnType<typeof getQueues>>);
+    await capacityManager['addJobToBullMQ']({ type: 'playwright', jobId: 'promoted', runId: 'promoted', organizationId: testOrgId, projectId: 'project', taskData: { _executionTier: 'paid' }, queuedAt: Date.now() });
+    expect(add).toHaveBeenCalledWith('promoted', expect.objectContaining({ _executionTier: 'trial' }), { jobId: 'promoted', priority: 1 });
+    expect(getExecutionPolicy).toHaveBeenCalledWith(testOrgId);
+  });
+
+  it('keeps a promoted run queued, not failed, when a DNS outage stops its workload check', async () => {
+    jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS verification is temporarily unavailable', 503 as never));
+    mockRedisZadd.mockClear();
+    const queuedAt = Date.now() - 5000;
+    await expect(capacityManager['addJobToBullMQ']({ type: 'k6', jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt })).rejects.toThrow('temporarily unavailable');
+    expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queuedAt, 'dns-job');
+    const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  // The requeued run is promoted again from its stored payload, and its slot must be releasable again.
+  describe('requeue after a temporary DNS outage', () => {
+    const dnsOutage = () => jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('DNS verification is temporarily unavailable', 503 as never));
+    const job = (extra: object = {}) => ({ type: 'k6' as const, jobId: 'dns-job', runId: 'dns-run', organizationId: testOrgId, projectId: 'project', taskData: { script: 's' }, queuedAt: 1000, ...extra });
+    const deletedByPipeline = () => mockRedisPipeline.mock.results.flatMap((result) => (result.value as { del: jest.Mock }).del.mock.calls.map(([key]) => key as string));
+
+    it('keeps the stored job payload so the next promotion has something to run', async () => {
+      dnsOutage();
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      expect(deletedByPipeline()).not.toContain('capacity:job:dns-job');
+    });
+
+    it('clears the released flag before the run is queued again, so no other replica can promote it first', async () => {
+      dnsOutage();
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow();
+      const flagCall = mockRedisDel.mock.calls.findIndex(([key]) => key === 'capacity:released:dns-job');
+      expect(flagCall).toBeGreaterThanOrEqual(0);
+      // Until the zadd the run is in no queued set and cannot be promoted, so clearing first leaves no window in
+      // which a second promotion could fail and have its release skipped as a repeat.
+      expect(mockRedisDel.mock.invocationCallOrder[flagCall]).toBeLessThan(mockRedisZadd.mock.invocationCallOrder[0]);
+    });
+
+    it('does not queue the run again when the released flag cannot be cleared, and fails it cleanly', async () => {
+      dnsOutage();
+      mockRedisDel.mockImplementation(async (key: string) => { if (key === 'capacity:released:dns-job') throw new Error('redis down'); return 1; });
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+      expect(mockRedisZadd).not.toHaveBeenCalled(); // a run queued with a stale flag would leak its next slot
+      expect(db.update).toHaveBeenCalled();
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+    });
+
+    // The lookup can take seconds; the user may cancel meanwhile. The kept payload would otherwise be promoted and run.
+    it('does not bring back a run that was cancelled while its target was being checked', async () => {
+      dnsOutage();
+      jest.mocked(isCancelled).mockResolvedValueOnce(true);
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+      expect(mockRedisDel).not.toHaveBeenCalledWith('capacity:released:dns-job');
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+    });
+
+    it('does not bring back a run the database no longer shows as queued', async () => {
+      dnsOutage();
+      const { db } = jest.requireMock('@/utils/db') as { db: { select: jest.Mock } };
+      db.select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ status: 'error' }] }) }) });
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+    });
+
+    it('keeps the run queued when it cannot be determined whether it was cancelled', async () => {
+      dnsOutage();
+      jest.mocked(isCancelled).mockRejectedValueOnce(new Error('redis timeout'));
+      await expect(capacityManager['addJobToBullMQ'](job({ queuedAt: 1234 }))).rejects.toThrow('temporarily unavailable');
+      expect(mockRedisZadd).toHaveBeenCalledWith(expect.stringContaining(testOrgId), 1234, 'dns-job');
+    });
+
+    it('fails the run and discards the payload when it cannot be queued again', async () => {
+      dnsOutage();
+      mockRedisZadd.mockRejectedValueOnce(new Error('redis down'));
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('temporarily unavailable');
+      const { db } = jest.requireMock('@/utils/db') as { db: { update: jest.Mock } };
+      expect(db.update).toHaveBeenCalled(); // marked failed, not left queued with no queue entry
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+      // The flag was already cleared before the failed queueing. That is harmless: the slot was released once,
+      // the run is failed and nothing will release it again.
+    });
+
+    it('does not keep the payload for a permanent workload rejection', async () => {
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('target not verified', 400));
+      await expect(capacityManager['addJobToBullMQ'](job())).rejects.toThrow('target not verified');
+      expect(deletedByPipeline()).toContain('capacity:job:dns-job');
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reserveSlot', () => {
       describe('Positive Cases', () => {
         it('should reserve slot when capacity available (can run immediately)', async () => {
           mockRedisEval.mockResolvedValue(1); // 1 = can run immediately
@@ -426,6 +531,90 @@ describe('CapacityManager', () => {
   // ==========================================================================
   // COUNTER RESET TESTS
   // ==========================================================================
+
+  describe('processQueuedJobs with an ended entitlement', () => {
+    const queuedKey = `capacity:queued:${testOrgId}`;
+    const expired = () => new ExecutionWorkloadError('Execution entitlement required or trial expired', 402);
+
+    beforeEach(() => {
+      mockRedisScan.mockResolvedValue(['0', [queuedKey]]);
+      mockCheckCapacityLimits.mockRejectedValue(expired());
+    });
+
+    it('removes queued jobs, clears their data and marks the runs failed', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      const where = jest.fn().mockResolvedValue(undefined);
+      const set = jest.fn(() => ({ where }));
+      db.update.mockReturnValue({ set });
+      mockRedisZrange.mockResolvedValue(['job-1', 'job-2']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisGet.mockImplementation(async (key: string) =>
+        key === 'capacity:job:job-1' ? JSON.stringify({ runId: 'run-1' }) : null);
+      const pipelineDel = jest.fn().mockReturnThis();
+      mockRedisPipeline.mockReturnValue({ del: pipelineDel, exec: jest.fn().mockResolvedValue([]) });
+
+      await capacityManager.processQueuedJobs();
+
+      expect(mockRedisZrem).toHaveBeenCalledWith(queuedKey, 'job-1');
+      expect(mockRedisZrem).toHaveBeenCalledWith(queuedKey, 'job-2');
+      expect(pipelineDel).toHaveBeenCalledWith('capacity:job:job-1');
+      expect(pipelineDel).toHaveBeenCalledWith('capacity:job:job-2');
+      expect(set).toHaveBeenCalledTimes(2);
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
+    it('puts the entry back and keeps its data when the run cannot be updated, so the next pass retries', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockReturnValue({ set: jest.fn(() => ({ where: jest.fn().mockRejectedValue(new Error('db down')) })) });
+      mockRedisZrange.mockResolvedValue(['job-1']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisZadd.mockClear();
+      mockRedisGet.mockResolvedValue(JSON.stringify({ runId: 'run-1' }));
+      const pipelineDel = jest.fn().mockReturnThis();
+      mockRedisPipeline.mockReturnValue({ del: pipelineDel, exec: jest.fn().mockResolvedValue([]) });
+      await capacityManager.processQueuedJobs();
+      expect(mockRedisZadd).toHaveBeenCalledWith(queuedKey, expect.any(Number), 'job-1');
+      expect(pipelineDel).not.toHaveBeenCalled();
+    });
+
+    it('still fails the run, and the rest of the queue, when one job payload is unreadable', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      const set = jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) }));
+      db.update.mockReturnValue({ set });
+      mockRedisZrange.mockResolvedValue(['bad', 'job-2']);
+      mockRedisZrem.mockResolvedValue(1);
+      mockRedisGet.mockImplementation(async (key: string) => (key.endsWith('bad') ? '{not json' : JSON.stringify({ runId: 'run-2' })));
+      mockRedisPipeline.mockReturnValue({ del: jest.fn().mockReturnThis(), exec: jest.fn().mockResolvedValue([]) });
+      await capacityManager.processQueuedJobs();
+      expect(set).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips a job another worker already removed', async () => {
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockClear();
+      mockRedisZrange.mockResolvedValue(['job-1']);
+      mockRedisZrem.mockResolvedValue(0);
+      await capacityManager.processQueuedJobs();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps processing other organizations after failing one', async () => {
+      mockRedisScan.mockResolvedValue(['0', [queuedKey, 'capacity:queued:org-other']]);
+      mockCheckCapacityLimits
+        .mockRejectedValueOnce(expired())
+        .mockResolvedValueOnce(defaultCapacityLimits);
+      mockRedisZrange.mockResolvedValue([]);
+      await capacityManager.processQueuedJobs();
+      expect(mockCheckCapacityLimits).toHaveBeenCalledWith('org-other');
+    });
+
+    it('leaves queued jobs untouched on an operational failure so the next cycle retries', async () => {
+      mockCheckCapacityLimits.mockRejectedValue(new Error('database unavailable'));
+      await capacityManager.processQueuedJobs();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
+    });
+  });
 
   describe('Counter Reset', () => {
     describe('resetCounters', () => {

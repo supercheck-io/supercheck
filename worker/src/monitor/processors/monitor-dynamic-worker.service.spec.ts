@@ -1,3 +1,4 @@
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 jest.mock('bullmq', () => ({
   DelayedError: jest.requireActual('bullmq').DelayedError,
   UnrecoverableError: jest.requireActual('bullmq').UnrecoverableError,
@@ -23,6 +24,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { resetWorkerQueuesForTests } from '../../common/worker-queues';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
+import { EXECUTE_MONITOR_JOB_NAME } from '../monitor.constants';
 import Redis from 'ioredis';
 import { MonitorDynamicWorkerService } from './monitor-dynamic-worker.service';
 import {
@@ -33,6 +35,128 @@ import { DbService } from '../../db/db.service';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 
 describe('MonitorDynamicWorkerService lifecycle', () => {
+  it('defers a synthetic check while its organization slot is occupied', async () => {
+    const { service } = setup();
+    const executeMonitor = jest
+      .fn()
+      .mockRejectedValue(new ExecutionCapacityError('occupied'));
+    const saveDistributedMonitorResult = jest.fn();
+    Object.assign(service['monitorService'], {
+      executeMonitor,
+      saveDistributedMonitorResult,
+    });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { executionLocation: 'local', type: 'synthetic_test' },
+      token: 'token',
+      moveToDelayed,
+      updateData: jest.fn().mockResolvedValue(undefined),
+    };
+    await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+      jest.requireActual('bullmq').DelayedError,
+    );
+    expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
+    expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
+  });
+
+  it('does not record downtime when a check gave up waiting for an execution slot', async () => {
+    const { service } = setup();
+    const saveDistributedMonitorResult = jest.fn();
+    Object.assign(service['monitorService'], { saveDistributedMonitorResult });
+    const job = {
+      data: {
+        monitorId: 'm1',
+        executionGroupId: 'g1',
+        executionLocation: 'local',
+        expectedLocations: ['local'],
+        _capacityGaveUp: true,
+      },
+      attemptsMade: 1,
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    await service['handleFinalJobFailure'](
+      job as never,
+      new Error('capacity stayed occupied'),
+    );
+    expect(saveDistributedMonitorResult).not.toHaveBeenCalled();
+  });
+
+  it('aborts the monitor cycle of a check that gave up, so its deadline records no false down', async () => {
+    const { service } = setup();
+    const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
+    Object.assign(service['monitorService'], { abortMonitorCycle });
+    const job = {
+      data: {
+        monitorId: 'm1',
+        executionGroupId: 'g1',
+        executionLocation: 'local',
+        expectedLocations: ['local'],
+        monitorCycle: true,
+        _capacityGaveUp: true,
+      },
+      attemptsMade: 1,
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    await service['handleFinalJobFailure'](job as never, new Error('busy'));
+    expect(abortMonitorCycle).toHaveBeenCalledWith('g1');
+  });
+
+  it('leaves a check outside a monitor cycle alone when it gives up', async () => {
+    const { service } = setup();
+    const abortMonitorCycle = jest.fn();
+    Object.assign(service['monitorService'], { abortMonitorCycle });
+    await service['abortCycleOf']({
+      data: { monitorId: 'm1', executionGroupId: 'g1' },
+    } as never);
+    expect(abortMonitorCycle).not.toHaveBeenCalled();
+  });
+
+  it('marks the job when the capacity wait is given up', async () => {
+    const { service } = setup();
+    const updateData = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      data: { monitorId: 'm1', _capacityDeferrals: 720 },
+      token: 't',
+      updateData,
+      moveToDelayed: jest.fn(),
+    };
+    await expect(
+      service['executeOrDefer'](job as never, () =>
+        Promise.reject(new ExecutionCapacityError('busy')),
+      ),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(updateData).toHaveBeenCalledWith(
+      expect.objectContaining({ _capacityGaveUp: true }),
+    );
+  });
+
+  it('defers a legacy single-queue check too, instead of failing the job', async () => {
+    const { service } = setup();
+    const executeMonitorWithLocations = jest
+      .fn()
+      .mockRejectedValue(new ExecutionCapacityError('occupied'));
+    Object.assign(service['monitorService'], { executeMonitorWithLocations });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { type: 'synthetic_test' }, // no executionLocation: legacy job
+      token: 'token',
+      moveToDelayed,
+      updateData: jest.fn().mockResolvedValue(undefined),
+    };
+    await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+      jest.requireActual('bullmq').DelayedError,
+    );
+    expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
+  });
+
   function setup(location = 'local') {
     const execute = jest.fn().mockRejectedValue(new Error('DB unavailable'));
     const subscriber = Object.assign(new EventEmitter(), {

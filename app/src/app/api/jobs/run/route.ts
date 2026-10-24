@@ -1,3 +1,4 @@
+import { getExecutionPolicy, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs } from "@/db/schema";
@@ -15,7 +16,6 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
-import { subscriptionService } from "@/lib/services/subscription-service";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   assertProjectSupportsBrowser,
@@ -28,6 +28,7 @@ import {
   buildExecutionQueueErrorResponse,
   buildExecutionRateLimitResponse,
   getSafeExecutionQueueErrorDetails,
+  buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
@@ -129,22 +130,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let executionPolicy: ExecutionPolicy;
     try {
-      await subscriptionService.blockUntilSubscribed(organizationId);
-      await subscriptionService.requireValidPolarCustomer(organizationId);
-    } catch (subscriptionError) {
-      const errorMessage =
-        subscriptionError instanceof Error
-          ? subscriptionError.message
-          : "Subscription validation failed";
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 402 }
-      );
+      executionPolicy = await getExecutionPolicy(organizationId);
+    } catch (policyError) {
+      return buildExecutionPolicyFailureResponse(policyError);
     }
 
     // BILLING: Check spending limit hard-stop before allowing execution
-    const spendingBlock = await polarUsageService.shouldBlockUsage(organizationId);
+    const spendingBlock = executionPolicy.tier === "paid" ? await polarUsageService.shouldBlockUsage(organizationId) : { blocked: false };
     if (spendingBlock.blocked) {
       return NextResponse.json(
         buildBillingBlockedResponse(spendingBlock.reason),

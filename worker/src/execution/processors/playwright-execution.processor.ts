@@ -1,3 +1,5 @@
+import { ExecutionCapacityError } from '../services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, UnrecoverableError, DelayedError } from 'bullmq';
 import {
@@ -114,6 +116,21 @@ export class PlaywrightExecutionProcessor
     } else {
       return this.processJob(job as Job<JobExecutionTask>);
     }
+  }
+
+  /** Records why a run was never started after its organization's slot stayed occupied. */
+  private async failRunAfterCapacityWait(
+    runId: string | null | undefined,
+    reason: string,
+  ): Promise<void> {
+    if (!runId) return;
+    await this.dbService
+      .updateRunStatus(runId, 'failed', '0', reason)
+      .catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to mark run failed after waiting for capacity: ${err.message}`,
+        ),
+      );
   }
 
   /**
@@ -269,6 +286,11 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error) {
+      if (error instanceof ExecutionCapacityError) {
+        return deferForCapacity(job, (reason) =>
+          this.failRunAfterCapacityWait(runId, reason),
+        );
+      }
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
@@ -579,6 +601,11 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error: unknown) {
+      if (error instanceof ExecutionCapacityError) {
+        return deferForCapacity(job, (reason) =>
+          this.failRunAfterCapacityWait(runId, reason),
+        );
+      }
       ErrorHandler.logError(
         this.logger,
         error,

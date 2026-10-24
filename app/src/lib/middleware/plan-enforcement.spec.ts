@@ -1,3 +1,7 @@
+import { getExecutionPolicy } from "@/lib/execution/execution-policy";
+jest.mock("@/lib/execution/execution-policy", () => ({
+  getExecutionPolicy: jest.fn(),
+}));
 /**
  * Plan Enforcement Middleware Tests
  * Tests for subscription plan limit enforcement
@@ -31,6 +35,7 @@ import {
   checkStatusPageLimit,
   checkTeamMemberLimit,
   checkProjectLimit,
+  checkSubscriberLimit,
   checkFeatureAvailability,
 } from "./plan-enforcement";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -132,86 +137,30 @@ describe("Plan Enforcement Middleware", () => {
   });
 
   describe("checkCapacityLimits", () => {
-    describe("in self-hosted mode", () => {
-      beforeEach(() => {
-        (isPolarEnabled as jest.Mock).mockReturnValue(false);
-      });
-
-      it("should use environment variables when set", async () => {
-        process.env.RUNNING_CAPACITY = "20";
-        process.env.QUEUED_CAPACITY = "200";
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(20);
-        expect(result.queuedCapacity).toBe(200);
-
-        // Cleanup
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-      });
-
-      it("should fall back to plan limits when env vars not set", async () => {
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 999,
-          queuedCapacity: 9999,
+    it("uses the authoritative execution policy limits", async () => {
+      jest
+        .mocked(getExecutionPolicy)
+        .mockResolvedValue({
+          tier: "trial",
+          priority: 1,
+          runningCapacity: 1,
+          queuedCapacity: 10,
+          expiresAt: new Date(),
+          k6MaxVus: 5,
+          k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000,
         });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(999);
-        expect(result.queuedCapacity).toBe(9999);
-      });
-
-      it("should fall back to defaults when plan lookup fails", async () => {
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockRejectedValue(new Error("Plan not found"));
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(5);
-        expect(result.queuedCapacity).toBe(50);
+      await expect(checkCapacityLimits("org-1")).resolves.toEqual({
+        runningCapacity: 1,
+        queuedCapacity: 10,
       });
     });
-
-    describe("in cloud mode", () => {
-      beforeEach(() => {
-        (isPolarEnabled as jest.Mock).mockReturnValue(true);
-        process.env.RUNNING_CAPACITY = "";
-        process.env.QUEUED_CAPACITY = "";
-      });
-
-      it("should return Plus plan limits", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 5,
-          queuedCapacity: 50,
-        });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(5);
-        expect(result.queuedCapacity).toBe(50);
-      });
-
-      it("should return Pro plan limits", async () => {
-        (
-          subscriptionService.getOrganizationPlan as jest.Mock
-        ).mockResolvedValue({
-          runningCapacity: 10,
-          queuedCapacity: 100,
-        });
-
-        const result = await checkCapacityLimits("org-1");
-        expect(result.runningCapacity).toBe(10);
-        expect(result.queuedCapacity).toBe(100);
-      });
+    it("propagates admission failure without default cloud capacity", async () => {
+      jest
+        .mocked(getExecutionPolicy)
+        .mockRejectedValue(new Error("Execution entitlement required"));
+      await expect(checkCapacityLimits("org-1")).rejects.toThrow(
+        "Execution entitlement required",
+      );
     });
   });
 
@@ -285,7 +234,7 @@ describe("Plan Enforcement Middleware", () => {
         (db.query.organization.findFirst as jest.Mock).mockResolvedValue(null);
 
         await expect(
-          checkUsageLimit("org-1", "playwright", 100)
+          checkUsageLimit("org-1", "playwright", 100),
         ).rejects.toThrow("Organization not found");
       });
     });
@@ -395,6 +344,67 @@ describe("Plan Enforcement Middleware", () => {
     });
   });
 
+  describe("checkSubscriberLimit", () => {
+    it("is unlimited in self-hosted mode", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(false);
+      await expect(checkSubscriberLimit("org-1", 10_000)).resolves.toEqual({
+        allowed: true,
+      });
+    });
+
+    describe("in cloud mode", () => {
+      beforeEach(() => {
+        (isPolarEnabled as jest.Mock).mockReturnValue(true);
+      });
+
+      it("allows while under the per status page limit", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "plus", maxStatusPageSubscribers: 100 });
+        const result = await checkSubscriberLimit("org-1", 40);
+        expect(result).toMatchObject({
+          allowed: true,
+          limit: 100,
+          remaining: 60,
+          currentPlan: "plus",
+        });
+      });
+
+      it("rejects at the limit and suggests Pro from Plus", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "plus", maxStatusPageSubscribers: 100 });
+        const result = await checkSubscriberLimit("org-1", 100);
+        expect(result).toMatchObject({
+          allowed: false,
+          upgrade: "pro",
+          currentPlan: "plus",
+        });
+        expect(result.error).toContain("Subscriber limit reached");
+      });
+
+      it("does not suggest an upgrade from the top plan", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockResolvedValue({ plan: "pro", maxStatusPageSubscribers: 1000 });
+        const result = await checkSubscriberLimit("org-1", 1000);
+        expect(result.allowed).toBe(false);
+        expect(result).toMatchObject({ upgrade: undefined });
+      });
+
+      it("denies with a subscription prompt when the plan cannot be loaded", async () => {
+        (
+          subscriptionService.getOrganizationPlan as jest.Mock
+        ).mockRejectedValue(new Error("Subscription required"));
+        await expect(checkSubscriberLimit("org-1", 1)).resolves.toMatchObject({
+          allowed: false,
+          requiresSubscription: true,
+          error: "Subscription required",
+        });
+      });
+    });
+  });
+
   describe("checkProjectLimit", () => {
     describe("in self-hosted mode", () => {
       beforeEach(() => {
@@ -449,7 +459,7 @@ describe("Plan Enforcement Middleware", () => {
       it("should allow custom domains", async () => {
         const customDomains = await checkFeatureAvailability(
           "org-1",
-          "customDomains"
+          "customDomains",
         );
 
         expect(customDomains.available).toBe(true);
@@ -568,5 +578,98 @@ describe("Plan Enforcement Middleware", () => {
         expect(result.available).toBe(true);
       });
     });
+  });
+});
+
+describe("plan enforcement for an organization on a free trial", () => {
+  // A trial reports plan "plus" so its limits flow through the same checks, but it is not the Plus plan.
+  const trialPlan = {
+    id: "trial",
+    plan: "plus",
+    maxMonitors: 5,
+    maxStatusPages: 1,
+    maxTeamMembers: 3,
+    maxProjects: 1,
+    maxStatusPageSubscribers: 50,
+    customDomains: false,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isPolarEnabled as jest.Mock).mockReturnValue(true);
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue(trialPlan);
+  });
+
+  it("calls the trial a free trial in the monitor limit message, not a plus plan", async () => {
+    const result = await checkMonitorLimit("org-1", 5);
+    expect(result.error).toContain("Your free trial allows 5 monitors");
+    expect(result.error).not.toMatch(/plus plan/i);
+  });
+
+  it("tells a trial to subscribe to Plus rather than suggesting Pro", async () => {
+    const result = await checkMonitorLimit("org-1", 5);
+    expect(result.upgrade).toBe("plus");
+  });
+
+  it.each([
+    ["status pages", () => checkStatusPageLimit("org-1", 1), "Your free trial allows 1 status pages"],
+    ["team members", () => checkTeamMemberLimit("org-1", 3), "Your free trial allows 3 team members"],
+    ["projects", () => checkProjectLimit("org-1", 1), "Your free trial allows 1 projects"],
+    ["subscribers", () => checkSubscriberLimit("org-1", 50), "Your free trial allows 50 subscribers"],
+  ])("names the free trial in the %s limit message", async (_name, run, expected) => {
+    const result = await run();
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain(expected);
+  });
+
+  it("keeps naming a paid plan by its name", async () => {
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ id: "p", plan: "plus", maxMonitors: 25 });
+    const result = await checkMonitorLimit("org-1", 25);
+    expect(result.error).toContain("Your plus plan allows 25 monitors");
+    expect(result.upgrade).toBe("pro");
+  });
+
+  it("explains that custom domains are not part of the free trial", async () => {
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({
+      available: false,
+      error: "Custom domains are not available on your free trial. Please upgrade to use them.",
+    });
+  });
+});
+
+describe("checkFeatureAvailability when there is no active subscription or trial", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isPolarEnabled as jest.Mock).mockReturnValue(true);
+  });
+
+  it("answers with the reason instead of throwing, so an ended trial is not an 'unexpected error'", async () => {
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(
+      new Error("No active subscription. Please subscribe to a plan to continue."),
+    );
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({
+      available: false,
+      error: "No active subscription. Please subscribe to a plan to continue.",
+    });
+  });
+
+  it.each(["Organization not found", "Invalid subscription plan: legacy. Only plus and pro plans are available."])(
+    "also describes the organization's own state: %s",
+    async (message) => {
+      (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(new Error(message));
+      await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: false, error: message });
+    },
+  );
+
+  it("does not turn a database failure into 'feature not available', or show its text", async () => {
+    const failure = new Error('Failed query: select "id" from "organization" where "id" = $1 params: org-1');
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(failure);
+    await expect(checkFeatureAvailability("org-1", "customDomains")).rejects.toBe(failure);
+  });
+
+  it("still allows everything in self-hosted mode without asking for a plan", async () => {
+    (isPolarEnabled as jest.Mock).mockReturnValue(false);
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: true });
+    expect(subscriptionService.getOrganizationPlan).not.toHaveBeenCalled();
   });
 });

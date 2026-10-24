@@ -18,6 +18,26 @@ import {
   ExecutionUsageTransaction,
 } from './execution-usage-receipts';
 
+/** The 0039 statements that touch execution_entitlements (the specs create only that table). */
+function entitlementStatementsOf0039(path: string): string {
+  return readFileSync(path, 'utf8')
+    .split('--> statement-breakpoint')
+    .filter((statement) => {
+      // Skip leading comment lines, then look at how the statement starts (no regex: no backtracking).
+      const body = statement
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('--'))
+        .join('\n')
+        .trimStart();
+      return [
+        'ALTER TABLE "execution_entitlements"',
+        'UPDATE "execution_entitlements"',
+        'CREATE INDEX "execution_entitlements_',
+      ].some((prefix) => body.startsWith(prefix));
+    })
+    .join('\n');
+}
+
 jest.setTimeout(60_000);
 
 const postgresUrl = process.env.EXECUTION_USAGE_TEST_DATABASE_URL;
@@ -101,13 +121,40 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
         'utf8',
       ),
     );
+    // PGlite predates uuidv7(); the default is irrelevant to usage receipts.
+    await pg.exec(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0037_execution_entitlements.sql',
+        ),
+        'utf8',
+      ).replaceAll('uuidv7()', 'gen_random_uuid()'),
+    );
+    await pg.exec(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0038_trial_load_test_budget.sql',
+        ),
+        'utf8',
+      ),
+    );
+    await pg.exec(
+      entitlementStatementsOf0039(
+        resolve(
+          __dirname,
+          '../../../../app/src/db/migrations/0039_trial_review_hardening.sql',
+        ),
+      ),
+    );
   });
 
   beforeEach(async () => {
     process.env.SELF_HOSTED = 'false';
     process.env.POLAR_ACCESS_TOKEN = 'test-token';
     await pg.exec(
-      'DROP TRIGGER IF EXISTS reject_usage ON usage_events; TRUNCATE execution_usage_receipts, usage_events, runs, organization CASCADE',
+      'DROP TRIGGER IF EXISTS reject_usage ON usage_events; TRUNCATE execution_usage_receipts, execution_entitlements, usage_events, runs, organization CASCADE',
     );
     await database.insert(schema.organization).values({
       id: orgId,

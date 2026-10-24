@@ -39,6 +39,11 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+// Trial interval enforcement reads the database; these tests are about request validation.
+jest.mock("@/lib/execution/trial-interval-response", () => ({
+  trialIntervalErrorResponse: jest.fn().mockResolvedValue(null),
+  monitorResumeBlockedResponse: jest.fn().mockResolvedValue(null),
+}));
 
 import { POST } from "./route";
 import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";

@@ -22,6 +22,9 @@ import {
 } from '../monitor.constants';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
+import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 
@@ -370,9 +373,16 @@ export class MonitorDynamicWorkerService
             testExecutionId: saved.testExecutionId ?? undefined,
             testReportS3Url: saved.testReportS3Url ?? undefined,
           }
-        : await this.monitorService.executeMonitor(job.data, jobLocation);
+        : await this.executeOrDefer(job, () =>
+            this.monitorService.executeMonitor(job.data, jobLocation),
+          );
 
-      if (!result) return [];
+      if (!result) {
+        // Skipped without a verdict (no entitlement or allowance): end the cycle instead of letting
+        // its deadline record this region as down.
+        await this.abortCycleOf(job);
+        return [];
+      }
 
       try {
         await this.monitorService.saveDistributedMonitorResult(result, {
@@ -395,7 +405,45 @@ export class MonitorDynamicWorkerService
 
     // Legacy/single queue mode: the job runs from this worker's own location.
     await this.assertBrowserCapability(job.data, this.workerLocation);
-    return this.monitorService.executeMonitorWithLocations(job.data);
+    return this.executeOrDefer(job, () =>
+      this.monitorService.executeMonitorWithLocations(job.data),
+    );
+  }
+
+  /** A check that never ran must not leave its cycle to be closed with a false failure. */
+  private async abortCycleOf(job: Job<MonitorJobDataDto>): Promise<void> {
+    if (!job.data.monitorCycle || !job.data.executionGroupId) return;
+    await this.monitorService
+      .abortMonitorCycle(job.data.executionGroupId)
+      .catch((error) =>
+        this.logger.error(
+          `Could not abort cycle ${job.data.executionGroupId}: ${getErrorMessage(error)}`,
+        ),
+      );
+  }
+
+  /**
+   * Runs the check, or re-queues it when the organization's execution slot is
+   * occupied so the wait is never recorded as a monitor failure.
+   */
+  private async executeOrDefer<T>(
+    job: Job<MonitorJobDataDto>,
+    execute: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await execute();
+    } catch (error) {
+      if (!(error instanceof ExecutionCapacityError)) throw error;
+      return deferForCapacity(job, async (reason) => {
+        this.logger.error(
+          `Monitor ${job.data.monitorId} check dropped: ${reason}`,
+        );
+        // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
+        await job
+          .updateData({ ...job.data, _capacityGaveUp: true } as never)
+          .catch(() => undefined);
+      });
+    }
   }
 
   /**
@@ -442,6 +490,16 @@ export class MonitorDynamicWorkerService
     } = job.data;
 
     if (!executionGroupId || !executionLocation) return;
+
+    // The check never ran because the organization's slot stayed busy. That says nothing about the
+    // monitored service, so it must not be recorded as a failed check.
+    if ((job.data as { _capacityGaveUp?: boolean })._capacityGaveUp) {
+      this.logger.warn(
+        `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
+      );
+      await this.abortCycleOf(job);
+      return;
+    }
 
     // Stalled recovery and unrecoverable errors can fail permanently before
     // attemptsMade reaches attempts. Never synthesize an error for a retry.

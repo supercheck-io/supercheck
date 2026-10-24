@@ -7,6 +7,7 @@ import { buildSreTriagePrompt, buildSreTriageSystemPrompt } from "@/sre/agents/t
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
+import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 
 export type RunSreIncidentTriageInput = {
   organizationId: string;
@@ -25,7 +26,7 @@ export type RunSreIncidentTriageResult =
     }
   | {
       success: false;
-      status: 404 | 409 | 502;
+      status: 402 | 404 | 409 | 502;
       error: string;
       investigationRunId?: string;
     };
@@ -70,13 +71,14 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
   const initialModelId = getActualModelName();
   let run: typeof sreInvestigationRuns.$inferSelect;
   try {
-    [run] = await db
+    [run] = await withSreTriageAdmission(input.organizationId, async (database, billingTier) => database
       .insert(sreInvestigationRuns)
       .values({
         organizationId: input.organizationId,
         projectId: input.projectId,
         incidentId: incident.id,
         agentType: "triage",
+        billingTier,
         status: "running",
         modelId: initialModelId,
         promptInput: {
@@ -89,8 +91,11 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         startedAt: new Date(startedAt),
         createdAt: new Date(),
       })
-      .returning();
+      .returning());
   } catch (error) {
+    if (error instanceof SreInvestigationBillingError) {
+      return { success: false, status: 402, error: error.message };
+    }
     if (isActiveIncidentRunConflict(error)) {
       return { success: false, status: 409, error: "An investigation is already running for this incident" };
     }

@@ -43,6 +43,8 @@ export interface ContainerExecutionOptions {
    * Timeout in milliseconds.
    */
   timeoutMs?: number;
+  hardDeadlineMs?: number;
+  expiresAtMs?: number;
 
   /**
    * Memory limit in megabytes (validated but advisory — actual enforcement
@@ -704,6 +706,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       normalizedOptions.extractFromContainer = normalizedExtractPath.normalized;
     }
 
+    if (
+      options.hardDeadlineMs !== undefined &&
+      (!Number.isSafeInteger(options.hardDeadlineMs) ||
+        options.hardDeadlineMs < 1000)
+    ) {
+      throw new Error('Execution allowance must provide at least one second');
+    }
+
     // Default options
     const { timeoutMs = 300000, memoryLimitMb = 512, cpuLimit = 0.5 } = options;
 
@@ -1130,7 +1140,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     delete publicEnv.SUPERCHECK_SECRETS_B64;
     const envVars = this.buildKubernetesEnv(publicEnv, workspace);
     const dnsSettings = this.buildExecutionPodDnsSettings();
-    const deadlineSeconds = Math.ceil((limits.timeoutMs + 120_000) / 1000);
+    const deadlineSeconds =
+      options.hardDeadlineMs === undefined
+        ? Math.ceil((limits.timeoutMs + 120_000) / 1000)
+        : Math.floor(
+            Math.min(
+              limits.timeoutMs,
+              options.hardDeadlineMs,
+              options.expiresAtMs === undefined
+                ? Infinity
+                : options.expiresAtMs - Date.now(),
+            ) / 1000,
+          );
+    if (!Number.isSafeInteger(deadlineSeconds) || deadlineSeconds < 1)
+      throw new Error('Execution entitlement has expired');
     const resourceCpuLimit = `${Math.max(100, Math.round(limits.cpuLimit * 1000))}m`;
     const resourceCpuRequest = `${Math.max(100, Math.round(limits.cpuLimit * 500))}m`;
     // Add overhead for /dev/shm tmpfs (counts against cgroup in K8s) and gVisor Sentry
@@ -2196,6 +2219,27 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     return `'${value.replace(/'/g, "'\\''")}'`;
   }
 
+  /**
+   * Runs this process was asked to stop (a lost reservation). Local to the process on purpose: the shared
+   * cancellation key is per run id, so using it would also cancel a replacement attempt of the same run.
+   * Entries are consumed by the poller within a second and expire so one can never hit a later attempt.
+   */
+  private readonly abortedRuns = new Map<string, number>();
+
+  abortRun(runId: string): void {
+    const now = Date.now();
+    for (const [id, at] of this.abortedRuns)
+      if (now - at > 30_000) this.abortedRuns.delete(id);
+    this.abortedRuns.set(runId, now);
+  }
+
+  private consumeAbort(runId: string): boolean {
+    const at = this.abortedRuns.get(runId);
+    if (at === undefined) return false;
+    this.abortedRuns.delete(runId);
+    return Date.now() - at <= 30_000;
+  }
+
   private startKubernetesCancellationPoller(
     runId: string,
     jobName: string,
@@ -2204,7 +2248,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const interval = setInterval(() => {
       void (async () => {
         try {
-          const isCancelled = await this.cancellationService.isCancelled(runId);
+          const aborted = this.consumeAbort(runId);
+          const isCancelled =
+            aborted || (await this.cancellationService.isCancelled(runId));
           if (!isCancelled) {
             return;
           }
