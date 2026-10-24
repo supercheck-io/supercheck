@@ -410,6 +410,70 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.useRealTimers());
 
+  it('caps regional concurrency at the configured database pool size', async () => {
+    const previous = process.env.DB_POOL_MAX;
+    process.env.DB_POOL_MAX = '2';
+    const { service } = setup('eu');
+    try {
+      await service['handleQueueRefresh'](
+        JSON.stringify({ locationCodes: ['eu'] }),
+      );
+      expect(Worker).toHaveBeenCalledWith(
+        'monitor-eu',
+        expect.any(Function),
+        expect.objectContaining({ concurrency: 2 }),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.DB_POOL_MAX;
+      else process.env.DB_POOL_MAX = previous;
+      await service.onModuleDestroy();
+    }
+  });
+
+  it('allows unrelated regional checks to progress while a slow check is running', async () => {
+    const { service } = setup('eu');
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu'] }),
+    );
+    expect(Worker).toHaveBeenCalledWith(
+      'monitor-eu',
+      expect.any(Function),
+      expect.objectContaining({ concurrency: 10 }),
+    );
+    let finishSlow: () => void = () => {};
+    const slow = new Promise<void>((resolve) => {
+      finishSlow = resolve;
+    });
+    const executeMonitor = jest
+      .fn()
+      .mockImplementation(async (data: MonitorJobDataDto) => {
+        if (data.monitorId === 'slow') await slow;
+        return { monitorId: data.monitorId, location: 'eu', isUp: true };
+      });
+    Object.assign(service['monitorService'], {
+      executeMonitor,
+      saveDistributedMonitorResult: jest.fn().mockResolvedValue(undefined),
+    });
+    const process = (Worker as unknown as jest.Mock).mock.calls[0][1] as (
+      job: Job<MonitorJobDataDto>,
+    ) => Promise<unknown>;
+    const job = (id: string) =>
+      ({
+        name: EXECUTE_MONITOR_JOB_NAME,
+        data: { monitorId: id, executionLocation: 'eu', type: 'http_request' },
+      }) as Job<MonitorJobDataDto>;
+    const pending = process(job('slow'));
+    try {
+      await expect(process(job('fast'))).resolves.toEqual([
+        expect.objectContaining({ monitorId: 'fast' }),
+      ]);
+    } finally {
+      finishSlow();
+      await pending;
+      await service.onModuleDestroy();
+    }
+  });
+
   it('shares the owned command connection and closes it after workers drain', async () => {
     const { service, connection } = setup();
     await service['handleQueueRefresh'](
