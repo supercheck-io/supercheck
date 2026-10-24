@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, like } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "@/utils/db";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -22,6 +22,12 @@ import {
  * - device sign-in grants the user approved but the CLI has not yet exchanged, which would
  *   otherwise mint a brand-new CLI token after the reset;
  * - every other pending reset link, so an older emailed link cannot overwrite the new password.
+ *
+ * This deliberately removes everything the user has, including anything created after the reset. A retry
+ * runs some time after a failed first attempt, and the owner may have reconnected an app meanwhile; that app
+ * has to be connected again. Sparing "credentials newer than the reset" is NOT safe: a refresh grant inserts
+ * a new refresh token row stamped with the time of the refresh and keeps no link to the one it replaced, so a
+ * thief who refreshes a stolen token after the reset would hold a chain that looks newer than the reset.
  *
  * Sessions are revoked separately by Better Auth (`revokeSessionsOnPasswordReset`).
  */
@@ -63,7 +69,9 @@ export async function revokeCredentialsAfterPasswordReset(userId: string): Promi
 }
 
 const PENDING_PREFIX = "pending-credential-revocation:";
-const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// A marker is removed when its revocation succeeds and is retried until then, however long that takes. This
+// expiry only lets the verification table's own cleanup drop a marker that has failed for a year.
+const PENDING_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 /**
  * Runs from Better Auth after the new password is committed. The password change must not fail because
@@ -97,22 +105,40 @@ export async function revokeCredentialsAfterPasswordResetSafely(userId: string):
   }
 }
 
+export interface PendingRevocationResult {
+  /** Revocations finished (and their markers removed) by this run. */
+  done: number;
+  /** Revocations that failed again; their markers stay for the next run. */
+  failed: number;
+}
+
 /** Finishes revocations that failed earlier. Safe to run repeatedly. */
-export async function retryPendingCredentialRevocations(limit = 50): Promise<number> {
+export async function retryPendingCredentialRevocations(limit = 50): Promise<PendingRevocationResult> {
+  // No expiry filter: a marker that is overdue is exactly one that still needs finishing.
   const pending = await db
     .select({ id: verification.id, userId: verification.value })
     .from(verification)
-    .where(and(like(verification.identifier, `${PENDING_PREFIX}%`), gt(verification.expiresAt, new Date())))
+    .where(like(verification.identifier, `${PENDING_PREFIX}%`))
     .limit(limit);
-  let done = 0;
+  const result: PendingRevocationResult = { done: 0, failed: 0 };
   for (const row of pending) {
     try {
       await revokeCredentialsAfterPasswordReset(row.userId);
       await db.delete(verification).where(eq(verification.id, row.id));
-      done += 1;
+      result.done += 1;
     } catch (error) {
+      result.failed += 1;
       console.error("Retry of credential revocation failed", { userId: row.userId, error });
     }
   }
-  return done;
+  return result;
+}
+
+/** How many revocations are still waiting for a successful retry, so a stuck backlog can be alerted on. */
+export async function countPendingCredentialRevocations(): Promise<number> {
+  const [row] = await db
+    .select({ pending: count() })
+    .from(verification)
+    .where(like(verification.identifier, `${PENDING_PREFIX}%`));
+  return row?.pending ?? 0;
 }

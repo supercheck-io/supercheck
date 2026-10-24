@@ -32,7 +32,10 @@
  * @module data-lifecycle-service
  */
 
-import { retryPendingCredentialRevocations } from "@/lib/security/password-reset-cleanup";
+import {
+  countPendingCredentialRevocations,
+  retryPendingCredentialRevocations,
+} from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
 import {
   monitorResults,
@@ -1852,9 +1855,13 @@ export class WebhookIdempotencyCleanupStrategy implements ICleanupStrategy {
 /**
  * Credential Revocation Retry Strategy
  *
- * Finishes the revocation of API keys, trigger keys and connected-app grants when it failed right
- * after a password reset. It deletes nothing of its own: a pending marker is removed once the
- * revocation succeeds, and unfinished markers are logged on every run so they can be alerted on.
+ * Finishes the revocation of CLI tokens, extension keys and connected-app grants when it failed right
+ * after a password reset. Job trigger keys are deliberately not revoked: they belong to a job, not to a
+ * session, and deleting them would silently break CI pipelines that only hold the key.
+ *
+ * It deletes nothing of its own: a pending marker is removed once the revocation succeeds and is retried
+ * until then. A run that leaves any revocation unfinished reports failure, so a stolen credential that is
+ * still alive cannot sit behind a green dashboard.
  */
 export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "credential_revocation_retry";
@@ -1870,7 +1877,9 @@ export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
   }
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
-    return { totalRecords: 0, oldRecords: 0 };
+    // Every pending revocation is overdue by definition: the first attempt already failed.
+    const pending = await countPendingCredentialRevocations();
+    return { totalRecords: pending, oldRecords: pending };
   }
 
   async execute(dryRun = false): Promise<CleanupOperationResult> {
@@ -1885,8 +1894,16 @@ export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
     };
     if (!dryRun) {
       try {
-        const retried = await retryPendingCredentialRevocations();
-        result.details = { ...result.details, credentialRevocationsRetried: retried };
+        const { done, failed } = await retryPendingCredentialRevocations();
+        result.details = {
+          ...result.details,
+          credentialRevocationsRetried: done,
+          credentialRevocationsFailed: failed,
+        };
+        if (failed > 0) {
+          result.success = false;
+          result.errors.push(`${failed} credential revocation(s) are still failing and will be retried`);
+        }
       } catch (error) {
         result.success = false;
         result.errors.push(error instanceof Error ? error.message : String(error));

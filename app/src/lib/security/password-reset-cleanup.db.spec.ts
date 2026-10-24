@@ -17,6 +17,7 @@ const logAuditEvent = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...args: unknown[]) => logAuditEvent(...args) }));
 
 import {
+  countPendingCredentialRevocations,
   retryPendingCredentialRevocations,
   revokeCredentialsAfterPasswordReset,
   revokeCredentialsAfterPasswordResetSafely,
@@ -33,23 +34,34 @@ let projectId: string;
 let jobId: string;
 const oauthClientId = "reset-cleanup-client";
 
-async function seedCredentials(userId: string) {
+/**
+ * One of each credential kind for the user, created `createdOffsetSeconds` from now (negative = already
+ * existed before a reset happening now; positive = created after it).
+ */
+async function seedCredentials(userId: string, createdOffsetSeconds = 0) {
   const tag = randomUUID();
+  const at = client`now() + make_interval(secs => ${createdOffsetSeconds})`;
   await client`INSERT INTO oauth_consent (client_id, user_id, reference_id, scopes, created_at, updated_at)
-    VALUES (${oauthClientId}, ${userId}, ${projectId}, ARRAY['mcp:read'], now(), now())`;
+    VALUES (${oauthClientId}, ${userId}, ${`${projectId}:${tag}`}, ARRAY['mcp:read'], ${at}, ${at})`;
   await client`INSERT INTO oauth_refresh_token (token, client_id, user_id, scopes, expires_at, created_at)
-    VALUES (${`r-${tag}`}, ${oauthClientId}, ${userId}, ARRAY['mcp:read'], now() + interval '30 days', now())`;
+    VALUES (${`r-${tag}`}, ${oauthClientId}, ${userId}, ARRAY['mcp:read'], now() + interval '30 days', ${at})`;
   await client`INSERT INTO oauth_access_token (token, client_id, user_id, reference_id, scopes, expires_at, created_at)
-    VALUES (${`a-${tag}`}, ${oauthClientId}, ${userId}, ${projectId}, ARRAY['mcp:read'], now() + interval '15 minutes', now())`;
+    VALUES (${`a-${tag}`}, ${oauthClientId}, ${userId}, ${projectId}, ARRAY['mcp:read'], now() + interval '15 minutes', ${at})`;
   await client`INSERT INTO apikey (id, key, user_id, project_id, created_at, updated_at)
-    VALUES (${randomUUID()}, ${`cli-${tag}`}, ${userId}, ${projectId}, now(), now())`;
+    VALUES (${randomUUID()}, ${`cli-${tag}`}, ${userId}, ${projectId}, ${at}, ${at})`;
   await client`INSERT INTO apikey (id, key, user_id, job_id, project_id, created_at, updated_at)
-    VALUES (${randomUUID()}, ${`trigger-${tag}`}, ${userId}, ${jobId}, ${projectId}, now(), now())`;
-  await client`INSERT INTO device_authorizations (device_code_hash, user_code_hash, client_id, status, expires_at, approved_user_id)
-    VALUES (${`d-${tag}`.slice(0, 64)}, ${`u-${tag}`.slice(0, 64)}, 'supercheck-cli', 'approved', now() + interval '10 minutes', ${userId})`;
-  await client`INSERT INTO verification (id, identifier, value, expires_at)
-    VALUES (${randomUUID()}, ${`reset-password:${tag}`}, ${userId}, now() + interval '1 hour'),
-           (${randomUUID()}, ${`email-verification:${tag}`}, ${userId}, now() + interval '1 hour')`;
+    VALUES (${randomUUID()}, ${`trigger-${tag}`}, ${userId}, ${jobId}, ${projectId}, ${at}, ${at})`;
+  await client`INSERT INTO device_authorizations (device_code_hash, user_code_hash, client_id, status, expires_at, approved_user_id, approved_at)
+    VALUES (${`d-${tag}`.slice(0, 64)}, ${`u-${tag}`.slice(0, 64)}, 'supercheck-cli', 'approved', now() + interval '10 minutes', ${userId}, ${at})`;
+  await client`INSERT INTO verification (id, identifier, value, expires_at, created_at)
+    VALUES (${randomUUID()}, ${`reset-password:${tag}`}, ${userId}, now() + interval '1 hour', ${at}),
+           (${randomUUID()}, ${`email-verification:${tag}`}, ${userId}, now() + interval '1 hour', ${at})`;
+}
+
+async function newUser(name: string) {
+  const id = randomUUID();
+  await client`INSERT INTO "user" (id, name, email) VALUES (${id}, ${name}, ${`${name}-${id}@example.com`})`;
+  return id;
 }
 
 async function counts(userId: string) {
@@ -125,9 +137,93 @@ describe("revokeCredentialsAfterPasswordReset", () => {
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "password_reset_credential_revocation_failed", userId: victim, success: false }));
     expect((await counts(victim)).cli).toBe(1);
 
-    expect(await retryPendingCredentialRevocations()).toBe(1);
+    expect(await retryPendingCredentialRevocations()).toEqual({ done: 1, failed: 0 });
     expect(await counts(victim)).toMatchObject({ consents: 0, refresh: 0, access: 0, cli: 0, trigger: 1, grants: 0 });
     // The marker is consumed, so a second sweep does nothing.
-    expect(await retryPendingCredentialRevocations()).toBe(0);
+    expect(await retryPendingCredentialRevocations()).toEqual({ done: 0, failed: 0 });
+    expect(await countPendingCredentialRevocations()).toBe(0);
+  });
+});
+
+describe("credentials created after the reset", () => {
+  // A refresh grant does not extend the old refresh token: it marks it revoked and inserts a NEW row stamped
+  // with the time of the refresh, with no link back. So "created after the reset" cannot tell the owner's new
+  // connection from a thief refreshing a stolen token, and the cleanup must not spare it.
+  it("removes a refresh chain a thief rotated after the reset, which looks newer than the reset", async () => {
+    const thief = await newUser("rotated");
+    const code = `code-${randomUUID()}`;
+    await client`INSERT INTO oauth_refresh_token (token, client_id, user_id, scopes, authorization_code_id, expires_at, created_at, revoked, rotated_at)
+      VALUES (${`r0-${randomUUID()}`}, ${oauthClientId}, ${thief}, ARRAY['mcp:read'], ${code}, now() + interval '30 days', now() - interval '1 hour', now() + interval '1 hour', now() + interval '1 hour')`;
+    const [rotated] = await client<{ id: string }[]>`
+      INSERT INTO oauth_refresh_token (token, client_id, user_id, scopes, authorization_code_id, expires_at, created_at)
+      VALUES (${`r1-${randomUUID()}`}, ${oauthClientId}, ${thief}, ARRAY['mcp:read'], ${code}, now() + interval '30 days', now() + interval '1 hour')
+      RETURNING id`;
+    await client`INSERT INTO oauth_access_token (token, client_id, user_id, reference_id, refresh_id, scopes, expires_at, created_at)
+      VALUES (${`a1-${randomUUID()}`}, ${oauthClientId}, ${thief}, ${projectId}, ${rotated.id}, ARRAY['mcp:read'], now() + interval '15 minutes', now() + interval '1 hour')`;
+
+    await revokeCredentialsAfterPasswordReset(thief);
+
+    expect(await counts(thief)).toMatchObject({ refresh: 0, access: 0 });
+  });
+
+  it("removes everything the user has, including what was created after the reset", async () => {
+    const user = await newUser("everything");
+    await seedCredentials(user, -3600);
+    await seedCredentials(user, 3600);
+
+    await revokeCredentialsAfterPasswordReset(user);
+
+    // Only the trigger keys (kept by design) and unrelated verifications remain.
+    expect(await counts(user)).toEqual({ consents: 0, refresh: 0, access: 0, cli: 0, trigger: 2, grants: 0, resets: 0, other: 2 });
+  });
+
+  it("is also what a later retry of a failed revocation does: an app reconnected meanwhile is revoked too", async () => {
+    const user = await newUser("retry");
+    await seedCredentials(user, -3600);
+    await client.unsafe("ALTER TABLE oauth_access_token RENAME TO oauth_access_token_off");
+    try {
+      await revokeCredentialsAfterPasswordResetSafely(user);
+    } finally {
+      await client.unsafe("ALTER TABLE oauth_access_token_off RENAME TO oauth_access_token");
+    }
+    await seedCredentials(user, 3600); // reconnected before the hourly sweep ran
+
+    expect(await retryPendingCredentialRevocations()).toEqual({ done: 1, failed: 0 });
+    expect(await counts(user)).toMatchObject({ consents: 0, refresh: 0, access: 0, cli: 0, grants: 0 });
+  });
+});
+
+describe("pending revocation markers", () => {
+  const withBrokenTable = async (run: () => Promise<void>) => {
+    await client.unsafe("ALTER TABLE oauth_access_token RENAME TO oauth_access_token_off");
+    try {
+      await run();
+    } finally {
+      await client.unsafe("ALTER TABLE oauth_access_token_off RENAME TO oauth_access_token");
+    }
+  };
+
+  it("report a retry that fails again and stay until it succeeds", async () => {
+    const user = await newUser("stuck");
+    await seedCredentials(user, -3600);
+    await withBrokenTable(async () => {
+      await revokeCredentialsAfterPasswordResetSafely(user);
+      expect(await retryPendingCredentialRevocations()).toEqual({ done: 0, failed: 1 });
+    });
+    expect(await countPendingCredentialRevocations()).toBe(1);
+
+    expect(await retryPendingCredentialRevocations()).toEqual({ done: 1, failed: 0 });
+    expect(await countPendingCredentialRevocations()).toBe(0);
+  });
+
+  it("are retried even after their expiry date has passed", async () => {
+    const user = await newUser("overdue");
+    await seedCredentials(user, -3600);
+    await withBrokenTable(() => revokeCredentialsAfterPasswordResetSafely(user));
+    // The old behaviour ignored a marker after 7 days, leaving a stolen credential alive and the sweep green.
+    await client`UPDATE verification SET expires_at = now() - interval '30 days' WHERE identifier = ${`pending-credential-revocation:${user}`}`;
+
+    expect(await retryPendingCredentialRevocations()).toEqual({ done: 1, failed: 0 });
+    expect(await counts(user)).toMatchObject({ consents: 0, refresh: 0, access: 0, cli: 0, grants: 0 });
   });
 });
