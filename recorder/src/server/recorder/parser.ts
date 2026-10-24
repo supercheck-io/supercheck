@@ -128,7 +128,7 @@ function indexToLineColumn(code: string, index: number) {
 }
 
 export type TestBrowserContextOptions = CrxBrowserContextOptions & {
-  recordHar?: { path: string; mode?: 'full' | 'minimal'; content?: 'attach' | 'embed' | 'omit'; urlGlob?: string };
+  recordHar?: { path: string; mode?: 'full' | 'minimal'; content?: 'attach' | 'embed' | 'omit'; urlFilter?: string };
   storageState?: string;
 };
 
@@ -434,7 +434,7 @@ export function parse(code: string, file: string = 'playwright-test') {
           path: harAction.har,
           content: harAction.updateContent,
           mode: harAction.updateMode,
-          urlGlob: harAction.url,
+          urlFilter: harAction.url,
         };
       }
 

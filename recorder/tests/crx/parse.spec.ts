@@ -246,7 +246,7 @@ test('test', async ({ page }) => {
 
   expect(options.contextOptions?.recordHar).toEqual({
     path: 'har.har',
-    urlGlob: undefined,
+    urlFilter: undefined,
   });
 });
 
@@ -259,6 +259,6 @@ test('test', async ({ page }) => {
 
   expect(options.contextOptions?.recordHar).toEqual({
     path: 'har.har',
-    urlGlob: '**/*.js',
+    urlFilter: '**/*.js',
   });
 });
