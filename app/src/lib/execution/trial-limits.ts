@@ -91,12 +91,6 @@ export async function getActiveTrial(
   return isTrialActive(entitlement) ? entitlement : undefined;
 }
 
-/**
- * The plan-shaped view of a trial, so every existing limit check (monitors,
- * status pages, team members, projects, SRE, AI credits) enforces trial limits
- * without a second code path. The trial is never billed: no Polar customer,
- * overage or spending limit applies to it.
- */
 /** How long a trial organization's data is kept; the plan-shaped view and the retention sweeps share it. */
 export const TRIAL_RETENTION = {
   dataRetentionDays: 7,
@@ -104,6 +98,12 @@ export const TRIAL_RETENTION = {
   jobDataRetentionDays: 30,
 } as const;
 
+/**
+ * The plan-shaped view of a trial, so every existing limit check (monitors,
+ * status pages, team members, projects, SRE, AI credits) enforces trial limits
+ * without a second code path. The trial is never billed: no Polar customer,
+ * overage or spending limit applies to it.
+ */
 export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
   return {
     id: "trial",

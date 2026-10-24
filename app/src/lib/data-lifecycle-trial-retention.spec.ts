@@ -42,7 +42,10 @@ import {
 const FALLBACK = { raw: 90, aggregated: 365, job: 180 };
 const plus = { plan: "plus", dataRetentionDays: 30, aggregatedDataRetentionDays: 180, jobDataRetentionDays: 120 };
 
-function seed(orgs: Array<{ organizationId: string; subscriptionPlan: string | null }>, trialOrgIds: string[]) {
+function seed(
+  orgs: Array<{ organizationId: string; subscriptionPlan: string | null; subscriptionStatus?: string | null }>,
+  trialOrgIds: string[],
+) {
   tableRows.set(organization, orgs);
   tableRows.set(planLimits, [plus]);
   tableRows.set(executionEntitlements, trialOrgIds.map((organizationId) => ({ organizationId })));
@@ -79,6 +82,19 @@ describe("retention of trial organizations", () => {
     expect(result.aggregated.get("ended")).toBe(FALLBACK.aggregated);
     expect(result.job.get("ended")).toBe(FALLBACK.job);
   });
+
+  // Retention deletes data, so only an organization with no billing history at all is treated as a trial.
+  it.each(["active", "past_due", "canceled", "revoked"])(
+    "keeps the default for an organization that has a subscription status (%s) even while its trial row is unexpired",
+    async (subscriptionStatus) => {
+      // Just subscribed before the webhook set the plan, or a plan cleared by a revocation or customer deletion.
+      seed([{ organizationId: "billed", subscriptionPlan: null, subscriptionStatus }], ["billed"]);
+      const result = await bySetting();
+      expect(result.raw.get("billed")).toBe(FALLBACK.raw);
+      expect(result.aggregated.get("billed")).toBe(FALLBACK.aggregated);
+      expect(result.job.get("billed")).toBe(FALLBACK.job);
+    },
+  );
 
   it("uses the plan, not the trial, for an organization that has both", async () => {
     seed([{ organizationId: "paid", subscriptionPlan: "plus" }], ["paid"]);

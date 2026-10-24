@@ -170,6 +170,18 @@ async function getActiveTrialOrganizationIds(): Promise<Set<string>> {
 }
 
 /**
+ * A free trial is an organization with an unexpired entitlement and no billing history at all: no plan and no
+ * subscription status. One that subscribed (even if the webhook has not set the plan yet) or whose plan was
+ * cleared by a revocation keeps the default retention, so a destructive sweep never shortens it.
+ */
+function isOnFreeTrial(
+  org: { organizationId: string; subscriptionStatus: string | null },
+  activeTrials: Set<string>,
+): boolean {
+  return !org.subscriptionStatus && activeTrials.has(org.organizationId);
+}
+
+/**
  * Get retention settings for all organizations based on their subscription plans
  * Seeded raw retention is 7 days on all plans; deployments can change plan_limits.
  *
@@ -207,6 +219,7 @@ export async function getOrganizationRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -222,7 +235,7 @@ export async function getOrganizationRetentionSettings(
       organizationId: org.organizationId,
       retentionDays: org.subscriptionPlan
         ? planRetentionMap.get(org.subscriptionPlan) || fallbackRetentionDays
-        : trialOrganizations.has(org.organizationId)
+        : isOnFreeTrial(org, trialOrganizations)
           ? TRIAL_RETENTION.dataRetentionDays
           : fallbackRetentionDays,
       plan: org.subscriptionPlan || "fallback",
@@ -280,6 +293,7 @@ export async function getOrganizationAggregatedRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -296,7 +310,7 @@ export async function getOrganizationAggregatedRetentionSettings(
       aggregatedRetentionDays: org.subscriptionPlan
         ? planAggregatedRetentionMap.get(org.subscriptionPlan) ||
           fallbackAggregatedRetentionDays
-        : trialOrganizations.has(org.organizationId)
+        : isOnFreeTrial(org, trialOrganizations)
           ? TRIAL_RETENTION.aggregatedDataRetentionDays
           : fallbackAggregatedRetentionDays,
       plan: org.subscriptionPlan || "fallback",
@@ -364,6 +378,7 @@ export async function getOrganizationJobRetentionSettings(
       .select({
         organizationId: organization.id,
         subscriptionPlan: organization.subscriptionPlan,
+        subscriptionStatus: organization.subscriptionStatus,
       })
       .from(organization);
 
@@ -380,7 +395,7 @@ export async function getOrganizationJobRetentionSettings(
       jobRetentionDays: org.subscriptionPlan
         ? planJobRetentionMap.get(org.subscriptionPlan) ||
           fallbackJobRetentionDays
-        : trialOrganizations.has(org.organizationId)
+        : isOnFreeTrial(org, trialOrganizations)
           ? TRIAL_RETENTION.jobDataRetentionDays
           : fallbackJobRetentionDays,
       plan: org.subscriptionPlan || "fallback",
