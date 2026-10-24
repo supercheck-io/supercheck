@@ -9,6 +9,19 @@ DEPLOY = Path(__file__).resolve().parent
 
 
 class InstallerTests(unittest.TestCase):
+    def test_execution_tcp_egress_excludes_private_overlay_peers(self):
+        import ipaddress
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        policy = source.split('name: execution-egress', 1)[1].split('\nYAML', 1)[0]
+        exclusions = policy.split('except:', 1)[1].split('      ports:', 1)[0]
+        networks = [ipaddress.ip_network(line.strip()[2:])
+                    for line in exclusions.splitlines() if line.strip().startswith('- ')]
+        for address in ('10.0.0.1', '172.16.0.1', '192.168.0.1',
+                        '169.254.169.254', '100.64.0.1', '100.127.255.254'):
+            with self.subTest(address=address):
+                self.assertTrue(any(ipaddress.ip_address(address) in network for network in networks))
+        self.assertFalse(any(ipaddress.ip_address('1.1.1.1') in network for network in networks))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
