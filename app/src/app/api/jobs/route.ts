@@ -24,10 +24,11 @@ import { decodeStoredTestScript } from "@/lib/test-script";
 
 import { randomUUID } from "crypto";
 
-/** A non-numeric value (?limit=abc) would otherwise reach Postgres as NaN and fail the request with a 500. */
+/** A non-numeric or absurdly large value (?limit=abc, ?page=1e20) would otherwise reach Postgres and fail the request with a 500. */
 function integerParam(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  // Beyond 2^53 the value is not exact and (page - 1) * limit would overflow the bigint OFFSET.
+  return Number.isSafeInteger(parsed) ? parsed : fallback;
 }
 
 

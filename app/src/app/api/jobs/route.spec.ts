@@ -196,7 +196,7 @@ describe("Jobs route regressions", () => {
       expect(plain.pagination.limit).toBe(100);
     });
 
-    it.each(["limit=abc", "limit=", "page=abc", "page=&limit=NaN"])("falls back to defaults for a non-numeric pagination value (%s)", async (query) => {
+    it.each(["limit=abc", "limit=", "page=abc", "page=&limit=NaN", "page=99999999999999999999"])("falls back to defaults for a non-numeric pagination value (%s)", async (query) => {
       mockJobWithTest();
       const response = await GET(new NextRequest(`http://localhost/api/jobs?${query}`));
       expect(response.status).toBe(200);

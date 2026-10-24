@@ -140,12 +140,22 @@ describe("S3 report cleanup", () => {
     expect(objects.get("monitors")).toEqual(["test-ab12/report/index.html"]);
   });
 
+  it("deletes a monitor execution from a legacy URL with a longer endpoint and bucket prefix", async () => {
+    objects.set("monitors", ["test-ab12/report/index.html", "test-ab123/report/index.html"]);
+    const result = await service.deleteReports([{
+      entityType: "monitor", entityId: "monitor-1", reportPath: "test-ab12",
+      s3Url: "https://old-storage.example/team/s3/old-monitors/test-ab12/report/index.html",
+    }]);
+    expect(result.success).toBe(true);
+    expect(objects.get("monitors")).toEqual(["test-ab123/report/index.html"]);
+  });
+
   it("does not use the fallback unless the execution directory is followed by /report", async () => {
     objects.set("monitors", ["test-ab12/report/index.html"]);
     for (const s3Url of [
-      "https://old-storage.example/team/old-monitors/test-ab12/report/index.html",
       "https://old-storage.example/old-monitors/test-ab12/export.csv",
-      "https://old-storage.example/test-ab12-copy/other/test-ab12/report/index.html",
+      "https://old-storage.example/old-monitors/report/test-ab12/index.html",
+      "https://old-storage.example/test-ab12-copy/report/index.html",
     ]) {
       const result = await service.deleteReports([{ entityType: "monitor", entityId: "monitor-1", reportPath: "test-ab12", s3Url }]);
       expect(result.success).toBe(false);

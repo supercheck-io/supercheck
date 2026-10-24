@@ -144,12 +144,12 @@ export class S3CleanupService {
   }
 
   /**
-   * True when the path is `[<bucket>/]<executionId>/report/...`. Matching the execution id anywhere in the path
-   * would also accept an unrelated object in an unconfigured bucket that merely contains the same segment.
+   * True when the path contains `<executionId>/report` as consecutive segments, after any endpoint or bucket prefix
+   * a previous storage layout used. A bare occurrence of the id (an export file, a similarly named directory) does
+   * not count, so unrelated objects are not reported as cleaned.
    */
   private namesExecutionReport(parts: string[], executionId: string): boolean {
-    const at = parts.indexOf(executionId);
-    return (at === 0 || at === 1) && parts[at + 1] === "report";
+    return parts.some((part, index) => part === executionId && parts[index + 1] === "report");
   }
 
   /**
