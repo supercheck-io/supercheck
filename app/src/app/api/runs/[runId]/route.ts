@@ -1,5 +1,5 @@
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
@@ -115,6 +115,7 @@ export async function DELETE(
     if (!checkPermissionWithContext("run", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    if (!isUuid(runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await deleteRunWithContext(runId, context);
     const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });

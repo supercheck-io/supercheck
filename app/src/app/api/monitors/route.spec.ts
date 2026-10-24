@@ -104,3 +104,47 @@ describe("POST /api/monitors paywall", () => {
     expect(response.status).toBe(402);
   });
 });
+
+describe("POST /api/monitors synthetic monitor test id", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // The paywall tests above leave a rejecting implementation behind.
+    subscriptionService.blockUntilSubscribed.mockReset();
+    subscriptionService.requireValidPolarCustomer.mockReset();
+    requireAuthContext.mockResolvedValue({
+      userId: "user-1",
+      organizationId: "org-1",
+      project: { id: "project-1", name: "Project" },
+      isCliAuth: false,
+    });
+  });
+
+  // `db` is an empty object here, so reaching the test lookup would throw and answer 500.
+  it.each<unknown>([
+    "not-a-uuid",
+    "123",
+    "00000000-0000-0000-0000-00000000000g",
+    123,
+    // String() of these is a valid-looking uuid, but the array itself would reach the uuid column.
+    ["00000000-0000-4000-8000-000000000001"],
+    [["00000000-0000-4000-8000-000000000001"]],
+    { toString: "x" },
+  ])(
+    "answers 400 for config.testId %j before looking the test up",
+    async (testId) => {
+      const response = await POST(
+        new NextRequest("http://localhost/api/monitors", {
+          method: "POST",
+          body: JSON.stringify({ name: "m", type: "synthetic_test", config: { testId } }),
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "Invalid monitor configuration",
+        details: "config.testId must be a valid test ID for synthetic monitors",
+      });
+    },
+  );
+});
+

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
@@ -102,6 +102,19 @@ export async function PUT(
 
   try {
     const context = await requireAuthContext();
+
+    // Check permissions before looking anything up, so a caller who may not update tests cannot tell a
+    // missing test from an existing one (and a malformed id gets the same 403 as a well-formed one).
+    const canUpdate = checkPermissionWithContext("test", "update", context);
+
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 },
+      );
+    }
+
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
 
     // Find test scoped to current project
@@ -115,16 +128,6 @@ export async function PUT(
 
     if (!existingTest) {
       return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    }
-
-    // Check permissions
-    const canUpdate = checkPermissionWithContext("test", "update", context);
-
-    if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
     }
 
     if (
@@ -236,6 +239,7 @@ export async function DELETE(
         { status: 403 },
       );
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
 
     // Use a transaction to prevent race conditions between usage checks and delete
     const txResult = await db.transaction(async (tx) => {

@@ -1,4 +1,4 @@
-import { isInvalidUuidError, isUuid } from "./uuid";
+import { createUuid, isInvalidUuidError, isUuid } from "./uuid";
 
 describe("uuid helpers", () => {
   it("accepts canonical uuids only", () => {
@@ -14,3 +14,31 @@ describe("uuid helpers", () => {
     expect(isInvalidUuidError(new Error("connection refused"))).toBe(false);
   });
 });
+
+describe("createUuid", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID") ?? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(globalThis.crypto), "randomUUID");
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (original) Object.defineProperty(globalThis.crypto, "randomUUID", original);
+  });
+
+  it("returns a valid v4 uuid", () => {
+    const id = createUuid();
+    expect(isUuid(id)).toBe(true);
+    expect(id[14]).toBe("4");
+    expect("89ab").toContain(id[19]);
+  });
+
+  it("still works where crypto.randomUUID is unavailable (plain-HTTP origins)", () => {
+    Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true });
+    const ids = new Set(Array.from({ length: 50 }, createUuid));
+    expect(ids.size).toBe(50);
+    for (const id of ids) {
+      expect(isUuid(id)).toBe(true);
+      expect(id[14]).toBe("4");
+      expect("89ab").toContain(id[19]);
+    }
+  });
+});
+
