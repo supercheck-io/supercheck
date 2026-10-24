@@ -57,6 +57,10 @@ jobs:
         working-directory: docs
         run: npm run build
 
+      - name: Verify rendered API pages
+        working-directory: docs
+        run: npm run test:rendered-api
+
   deploy-docs:
     name: Build and Deploy Docs
     # Production Pages content must always come from the reviewed default branch.
