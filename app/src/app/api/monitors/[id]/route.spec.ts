@@ -2,9 +2,10 @@
 
 const findFirst = jest.fn();
 const update = jest.fn();
+const transaction = jest.fn();
 
 jest.mock("@/utils/db", () => ({
-  db: { query: { monitors: { findFirst: (...args: unknown[]) => findFirst(...args) } }, update: (...args: unknown[]) => update(...args) },
+  db: { query: { monitors: { findFirst: (...args: unknown[]) => findFirst(...args) } }, update: (...args: unknown[]) => update(...args), transaction: (...args: unknown[]) => transaction(...args) },
 }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn().mockResolvedValue({
@@ -43,6 +44,7 @@ jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn()
 
 import { NextRequest } from "next/server";
 import { DELETE, PATCH, PUT } from "./route";
+import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 
 const locationConfig = (locations: string[], enabled = true) => ({
   enabled,
@@ -182,3 +184,52 @@ describe("malformed monitor id versus permission", () => {
   });
 });
 
+describe("monitor PUT reschedule policy", () => {
+  const stored = {
+    ...existing("http_request", { timeoutSeconds: 30, alertChannels: ["a"] }),
+    status: "up",
+    frequencyMinutes: 5,
+    scheduledJobId: "sched-1",
+    alertConfig: null,
+  };
+
+  function updateReturns(config: object) {
+    // PUT writes inside a transaction; hand the callback a tx whose update returns the new row.
+    transaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        update: () => ({
+          set: () => ({ where: () => ({ returning: async () => [{ ...stored, config }] }) }),
+        }),
+      }),
+    );
+    update.mockReturnValue({
+      set: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{ ...stored, config }]),
+        }),
+      }),
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findFirst.mockResolvedValue(stored);
+    (scheduleMonitor as jest.Mock).mockResolvedValue("sched-2");
+    (deleteScheduledMonitor as jest.Mock).mockResolvedValue(true);
+  });
+
+  it("keeps the schedule when only alert channels change", async () => {
+    updateReturns({ timeoutSeconds: 30, alertChannels: ["a", "b"] });
+    const response = await call(PUT, "PUT", { config: { timeoutSeconds: 30, alertChannels: ["a", "b"] } });
+    expect(response.status).toBe(200);
+    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+
+  it("reschedules when a check setting changes", async () => {
+    updateReturns({ timeoutSeconds: 10, alertChannels: ["a"] });
+    const response = await call(PUT, "PUT", { config: { timeoutSeconds: 10, alertChannels: ["a"] } });
+    expect(response.status).toBe(200);
+    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+  });
+});

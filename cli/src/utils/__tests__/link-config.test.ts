@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { planLink, readConfigIdentity } from '../link-config.js'
+import { planLink, readConfigBaseUrlInfo, readConfigIdentity } from '../link-config.js'
 import { isTokenSafeUrl, sanitizeApiUrl } from '../api-url.js'
 
 const cfg = (org = 'my-org', project = 'my-project', url = 'https://app.supercheck.io') => `export default defineConfig({
@@ -92,5 +92,19 @@ describe('api url helpers', () => {
     expect(sanitizeApiUrl('https://h.example.com/supercheck/?a=1#x')).toBe('https://h.example.com/supercheck')
     expect(sanitizeApiUrl('javascript:alert(1)')).toBeNull()
     expect(sanitizeApiUrl('https://u:p@h.example.com')).toBeNull()
+  })
+})
+
+describe('readConfigBaseUrlInfo', () => {
+  it('reads the generated env-default form and says it follows SUPERCHECK_URL', () => {
+    expect(readConfigBaseUrlInfo("export default { api: { baseUrl: process.env.SUPERCHECK_URL ?? 'https://a.example.com' } }")).toEqual({ url: 'https://a.example.com', followsEnv: true })
+  })
+  it('reads a hand-written literal inside the api block', () => {
+    expect(readConfigBaseUrlInfo("export default { api: { timeout: 5, baseUrl: 'https://b.example.com' } }")).toEqual({ url: 'https://b.example.com', followsEnv: false })
+  })
+  it('ignores baseUrl outside api, commented-out values, and configs that declare none', () => {
+    expect(readConfigBaseUrlInfo("export default { other: { baseUrl: 'https://x.test' } }")).toBeNull()
+    expect(readConfigBaseUrlInfo("export default { api: { /* baseUrl: 'https://old.test' */ } }")).toBeNull()
+    expect(readConfigBaseUrlInfo("export default { project: {} }")).toBeNull()
   })
 })

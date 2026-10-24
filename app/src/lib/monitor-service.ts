@@ -137,7 +137,8 @@ export async function createMonitorHandler(data: MonitorApiData) {
   return scheduleCreatedMonitor(newMonitor, enabled);
 }
 
-function executionConfig(config: MonitorConfig | null | undefined) {
+/** Config that changes what a check does. Alert channels, regions and bookkeeping must not reset the schedule. */
+export function executionConfig(config: MonitorConfig | null | undefined) {
   return Object.fromEntries(Object.entries(config ?? {}).filter(([key]) =>
     !["locationConfig", "regions", "alertChannels", "sslLastCheckedAt", "testTitle", "retryStrategy"].includes(key)
   ));

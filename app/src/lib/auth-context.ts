@@ -125,6 +125,8 @@ async function getBearerToken(): Promise<string | null> {
  * and the organization — exactly matching the shape from requireProjectContext().
  */
 async function authenticateCliToken(token: string): Promise<AuthContext | null> {
+  // The token itself is valid in the cases below that throw: its owner just no longer has access. That is
+  // a 403 ("authenticated, not permitted"), so clients stop telling the user to log in again.
   // Verify by exact hash lookup instead of the display-only `start` column.
   // This supports old SHA-256 keys and Better Auth api-key hashes while avoiding
   // brittle auth failures when manually inserted keys have a stale display prefix.
@@ -241,7 +243,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       { keyId: matchedKey.id, userId: matchedKey.userId, projectId: matchedKey.projectId },
       "CLI token owner has no org or project membership — access denied"
     );
-    return null;
+    throw new AuthError("The token's owner no longer has access to this project", 403);
   }
 
   const orgRole = ctx.orgRole ? normalizeRole(ctx.orgRole) : null;
@@ -268,7 +270,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       { keyId: matchedKey.id, userId: matchedKey.userId, projectId: matchedKey.projectId, orgRole: ctx.orgRole, projectRole: ctx.projectRole },
       "CLI token owner has no valid role for project — access denied"
     );
-    return null;
+    throw new AuthError("The token's owner no longer has a role in this project", 403);
   }
 
   // Update last request timestamp (best-effort, non-blocking for auth flow)

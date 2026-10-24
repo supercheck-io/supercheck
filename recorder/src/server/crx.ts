@@ -88,7 +88,7 @@ export class Crx extends SdkObject {
         browserProcess,
         protocolLogger: helper.debugProtocolLogger(),
         browserLogsCollector,
-        originalLaunchOptions: {},
+        originalLaunchOptions: { timeout: 0 },
         artifactsDir: '/tmp/artifacts',
         downloadsPath: '/tmp/downloads',
         tracesDir: '/tmp/traces',

@@ -21,6 +21,10 @@ let browserClient: QueryClient | undefined;
 let browserIdentity: string | null | undefined;
 let unsubscribePersistence: (() => void) | undefined;
 let restorationPromise: Promise<void> | undefined;
+// Set when another tab removed this identity's saved cache (it signed out): until this tab's identity
+// changes, nothing may write that cache back, even if this tab still shows the old data for a moment.
+let cacheClearedByOtherTab = false;
+let stopWatchingCacheKey: (() => void) | undefined;
 
 function createClient() {
   return new QueryClient({
@@ -38,6 +42,23 @@ function createClient() {
   });
 }
 
+// A cache is only cleared when its own tab sees the session end, so an expired session or a
+// closed browser leaves that account's data in localStorage. Anyone using the browser next could
+// read it, so keep only the identity that is signed in now.
+function pruneOtherIdentityCaches(storage: Storage, identity: string) {
+  const keep = `${CACHE_KEY}:${identity}`;
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && key.startsWith(`${CACHE_KEY}:`) && key !== keep) stale.push(key);
+    }
+    stale.forEach((key) => storage.removeItem(key));
+  } catch {
+    /* pruning is best effort: it must not stop this account's own cache from working */
+  }
+}
+
 function initializePersistence(
   client: QueryClient,
   identity: string,
@@ -45,12 +66,23 @@ function initializePersistence(
   try {
     const storage = window.localStorage;
     storage.removeItem(LEGACY_CACHE_KEY);
+    pruneOtherIdentityCaches(storage, identity);
+    cacheClearedByOtherTab = false;
+    stopWatchingCacheKey?.();
+    const ownKey = `${CACHE_KEY}:${identity}`;
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea === storage && event.key === ownKey && event.newValue === null) {
+        cacheClearedByOtherTab = true;
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    stopWatchingCacheKey = () => window.removeEventListener("storage", onStorage);
     const persister = createSyncStoragePersister({
       storage: {
         getItem: (key) => storage.getItem(key),
         setItem: (key, value) => {
-          // A throttled save must not restore a signed-out user's cache.
-          if (browserClient === client) storage.setItem(key, value);
+          // A throttled save must not restore a signed-out user's cache, here or in another tab.
+          if (browserClient === client && !cacheClearedByOtherTab) storage.setItem(key, value);
         },
         removeItem: (key) => storage.removeItem(key),
       },
@@ -112,6 +144,8 @@ export function clearQueryCache() {
     unsubscribePersistence = undefined;
   }
 
+  stopWatchingCacheKey?.();
+  stopWatchingCacheKey = undefined;
   browserClient?.clear();
 
   try {
