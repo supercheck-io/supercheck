@@ -27,6 +27,7 @@ import { deferForCapacity } from '../../common/capacity-deferral';
 import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
+import { getDatabasePoolMax } from '../../db/db-pool';
 
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
@@ -139,7 +140,8 @@ export class MonitorDynamicWorkerService
         // BullMQ creates and closes its own blocking connection. The service
         // owns this shared command connection and closes it during shutdown.
         connection: this.connection,
-        concurrency: 1,
+        // Probes wait on network I/O; keep unrelated checks moving within the DB pool budget.
+        concurrency: Math.min(10, getDatabasePoolMax()),
         // A synthetic check may run 5 minutes plus pod startup and artifact
         // extraction; keep the lock comfortably above that so a slow check is
         // not reported as stalled and rerun.
