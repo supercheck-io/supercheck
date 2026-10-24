@@ -2,7 +2,7 @@ import { waitForRun } from '../utils/wait.js'
 import { parseIntStrict } from '../utils/number.js'
 import { Command } from 'commander'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { discoverFiles } from '../utils/discovery.js'
@@ -49,7 +49,8 @@ type LocalTestFile = {
 }
 
 function toDisplayName(cwd: string, filePath: string): string {
-  const normalized = filePath.replace(cwd, '').replace(/^\//, '')
+  const local = relative(cwd, filePath)
+  const normalized = local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local) ? filePath : local
   return normalized.startsWith('_supercheck_/') ? normalized.replace(/^_supercheck_\//, '') : normalized
 }
 
@@ -235,7 +236,7 @@ testCommand
     try {
       script = readFileSync(filePath, 'utf-8')
     } catch {
-      throw new CLIError(`Cannot read file: ${filePath}`, ExitCode.GeneralError)
+      throw new CLIError(`Cannot read file: ${filePath}`, ExitCode.ConfigError)
     }
 
     const typeArg = options.type || inferTestType(options.file) || 'playwright'

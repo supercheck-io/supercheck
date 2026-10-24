@@ -1,7 +1,7 @@
 import { getApiClient } from '../api/client.js'
 import { discoverFiles, readFileContent } from './discovery.js'
 import { logger } from './logger.js'
-import { ApiRequestError } from './errors.js'
+import { ApiRequestError, CLIError, ExitCode } from './errors.js'
 import { extractUuidFromFilename, stripTitleMetadata } from './slug.js'
 import { decodeStoredTestScript, sanitizeTestScript } from './script.js'
 import type { LocalResource, RemoteResource } from './reconcile.js'
@@ -70,6 +70,9 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
 
   if (Array.isArray(config.monitors)) {
     for (const m of config.monitors) {
+      if ((m.target && /\/\/REDACTED@|[?&][^=&]*=REDACTED(?:&|#|$)/i.test(m.target)) || JSON.stringify(m.config ?? {}).includes('"[REDACTED]"')) {
+        throw new CLIError(`Monitor "${m.name}" has redacted credentials. Restore its target and request configuration securely before deploying.`, ExitCode.ConfigError)
+      }
       resources.push({
         id: m.id,
         type: 'monitor',

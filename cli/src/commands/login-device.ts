@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { getApiClient } from '../api/client.js'
 import { getStoredBaseUrl, getToken, setCredentials } from '../auth/store.js'
-import { apiBase, pollDeviceToken, requestDeviceCode } from '../auth/device-flow.js'
+import { apiBase, DEVICE_CLIENT_ID, pollDeviceToken, requestDeviceCode } from '../auth/device-flow.js'
 import { DeviceLoginError, loginStep, loginWait, type LoginDeps, type LoginOutcome } from '../auth/device-login.js'
 import { createPendingStore } from '../auth/pending-device.js'
 import { getOutputFormat } from '../output/formatter.js'
@@ -112,15 +112,18 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
   const requestedUrl = options.url ?? getStoredBaseUrl() ?? DEFAULT_API_URL
   const apiUrl = apiBase(requestedUrl)
   const envToken = Boolean(process.env.SUPERCHECK_TOKEN?.trim())
+  let deps = depsOverride
+  const pending = envToken ? null : (deps ??= defaultDeps()).store.load()
+  const resuming = pending?.apiUrl === apiUrl && pending.clientId === DEVICE_CLIENT_ID && pending.expiresAt > (deps?.now() ?? Date.now())
 
-  // Existing, working credentials win unless the user explicitly re-authenticates. The stored
+  // Resume an in-flight account switch before accepting the old login. The stored
   // key is only ever sent to the host it was issued for, never to an arbitrary --url.
   const existing = getToken()
   const knownBase = getStoredBaseUrl() ?? DEFAULT_API_URL
   const sameHost = (() => {
     try { return new URL(knownBase).origin === new URL(apiUrl).origin } catch { return false }
   })()
-  if (existing && !options.reauth && sameHost) {
+  if (existing && !options.reauth && !resuming && sameHost) {
     try {
       const { data } = await getApiClient({ baseUrl: apiUrl, token: existing }).get<{
         organization?: { id: string; name: string | null; slug: string | null }
@@ -148,7 +151,7 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
     )
   }
 
-  const deps = depsOverride ?? defaultDeps()
+  deps ??= defaultDeps()
   const interactive = options.wait === true ||
     (!json && Boolean(process.stdin.isTTY && process.stderr.isTTY) && !process.env.CI)
 

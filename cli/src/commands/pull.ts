@@ -16,6 +16,7 @@ import { detectPackageManager, ensurePackageJson, installDependencies } from '..
 import { extractUuidFromFilename } from '../utils/slug.js'
 import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
+import { redact } from '../utils/redact.js'
 
 import pc from '../utils/colors.js'
 import type { ApiClient } from '../api/client.js'
@@ -152,6 +153,7 @@ function mapTestType(apiType: string): 'playwright' | 'k6' {
  * Returns true if the file was written (new or changed), false if unchanged.
  */
 function writeIfChanged(filePath: string, content: string, summary?: PullSummary): boolean {
+  resolveWithin(process.cwd(), filePath)
   if (existsSync(filePath)) {
     const existing = readFileSync(filePath, 'utf-8')
     if (existing === content) return false
@@ -438,7 +440,9 @@ function buildMonitorDefinitions(
       if (Object.keys(alert).length > 0) def.alertConfig = alert
     }
 
-    return def
+    const masked = redact(def)
+    if (JSON.stringify(masked) !== JSON.stringify(def)) logger.warn(`Monitor "${m.name}" credentials were redacted; restore them securely before deploying.`)
+    return masked
   })
 }
 
@@ -859,6 +863,7 @@ export const pullCommand = new Command('pull')
 
     // Try loading existing config for baseUrl context
     const existing = await tryLoadConfig({ cwd, configPath: options.config })
+    if (!options.testsOnly) resolveWithin(cwd, existing?.configPath ?? options.config ?? 'supercheck.config.ts')
 
     const client = createAuthenticatedClient(existing?.config?.api?.baseUrl)
 
@@ -950,6 +955,10 @@ export const pullCommand = new Command('pull')
     else if (tests.length === 0) logger.info('No remote test scripts to pull.')
 
     const pkgPath = resolve(cwd, 'package.json')
+    if (!options.skipInstall && !existsSync(pkgPath)) {
+      resolveWithin(cwd, 'package.json')
+      resolveWithin(cwd, 'tsconfig.supercheck.json')
+    }
     const plannedFiles = [
       ...tests.map((test) => ({ path: resolve(cwd, managedPaths.get(test.id)!), kind: 'test', id: test.id })),
       ...(!options.testsOnly ? [{ path: existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts'), kind: 'config' }] : []),

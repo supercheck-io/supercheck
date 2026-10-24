@@ -25,11 +25,11 @@ export const loginCommand = new Command('login')
   .option('--wait', 'Wait for browser approval instead of returning immediately (default in interactive terminals)')
   .option('--timeout <seconds>', 'With --wait: give up after this many seconds', '900')
   .action(async (options: { token?: string; url?: string; reauth?: boolean; browser?: boolean; wait?: boolean; timeout?: string }) => {
-    if (options.token) {
+    if (options.token !== undefined) {
       const token = options.token.trim()
       if (!validateTokenFormat(token)) {
         throw new CLIError(
-          'Invalid token. `supercheck login` requires a CLI token (sck_live_* or sck_test_*). Trigger keys (sck_trigger_* / job_*) are only for `supercheck job trigger` via SUPERCHECK_TRIGGER_KEY.',
+          'TOKEN_INVALID: `supercheck login` requires a CLI token (sck_live_* or sck_test_*). Trigger keys (sck_trigger_* / job_*) are only for `supercheck job trigger` via SUPERCHECK_TRIGGER_KEY.',
           ExitCode.AuthError,
         )
       }
@@ -96,7 +96,9 @@ export const whoamiCommand = new Command('whoami')
     const token = getToken()
     if (!token) {
       throw new CLIError(
-        'Not authenticated. Run `supercheck login` to authenticate.',
+        process.env.SUPERCHECK_TOKEN?.trim() || getStoredToken()
+          ? 'TOKEN_INVALID: The supplied credential is not a CLI token. Replace it or run `supercheck login --reauth`.'
+          : 'Not authenticated. Run `supercheck login` to authenticate.',
         ExitCode.AuthError,
       )
     }

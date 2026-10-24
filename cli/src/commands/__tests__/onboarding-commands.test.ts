@@ -151,7 +151,7 @@ describe('classifyError', () => {
     const wrapped = (status: number) => new CLIError('Failed to verify authentication. Your token may be expired or invalid.', ExitCode.AuthError, { status })
     expect(classifyError(wrapped(401))).toMatchObject({ code: 'TOKEN_INVALID', nextActions: [{ command: expect.stringMatching(/login --reauth|SUPERCHECK_TOKEN/) }] })
     expect(classifyError(wrapped(403))?.code).toBe('PERMISSION_DENIED')
-    expect(classifyError(new CLIError('x', ExitCode.AuthError, { status: 'nope' }), true)).toBeUndefined()
+    expect(classifyError(new CLIError('x', ExitCode.AuthError, { status: 'nope' }), true)?.code).toBe('TOKEN_INVALID')
   })
   it('maps statuses without inferring billing from permission failures', () => {
     expect(classifyError(api(401))?.code).toBe('TOKEN_INVALID')
@@ -163,12 +163,12 @@ describe('classifyError', () => {
     expect(classifyError(api(429))).toMatchObject({ code: 'RATE_LIMITED', retryable: true })
     expect(classifyError(api(503))).toMatchObject({ code: 'SERVICE_UNAVAILABLE', retryable: true })
     expect(classifyError(api(400))?.code).toBe('VALIDATION_FAILED')
-    expect(classifyError(new Error('boom'))).toBeUndefined()
+    expect(classifyError(new Error('boom'))).toMatchObject({ code: 'COMMAND_FAILED', retryable: false, nextActions: [] })
     expect(classifyError(new CLIError('Not authenticated. Run `supercheck login`.', ExitCode.AuthError), false)?.code).toBe('AUTH_REQUIRED')
-    expect(classifyError(new CLIError('Not authenticated.', ExitCode.AuthError), true)).toBeUndefined()
+    expect(classifyError(new CLIError('Not authenticated.', ExitCode.AuthError), true)?.code).toBe('TOKEN_INVALID')
     // a rejected or malformed pasted token is not "sign in"
-    expect(classifyError(new CLIError('Token verification failed. Please check your token and try again.', ExitCode.AuthError), false)).toBeUndefined()
-    expect(classifyError(new CLIError('Invalid token. `supercheck login` requires a CLI token', ExitCode.AuthError), false)).toBeUndefined()
+    expect(classifyError(new CLIError('Token verification failed. Please check your token and try again.', ExitCode.AuthError), false)?.code).toBe('TOKEN_INVALID')
+    expect(classifyError(new CLIError('Invalid token. `supercheck login` requires a CLI token', ExitCode.AuthError), false)?.code).toBe('TOKEN_INVALID')
   })
 })
 

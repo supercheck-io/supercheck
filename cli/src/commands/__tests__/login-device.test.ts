@@ -41,6 +41,58 @@ beforeEach(() => {
 })
 
 describe('device login selection', () => {
+  it('finishes an approved reauth grant on plain login before using the old account', async () => {
+    token = 'sck_live_' + 'a'.repeat(32)
+    storedUrl = 'https://app.example.com'
+    get.mockResolvedValue({ data: { user: { id: 'old-user' } } })
+    const d = deps()
+    await runDeviceLogin({ reauth: true }, d)
+    const nextPollAt = d.store.load()!.nextPollAt
+    d.now = () => nextPollAt
+    d.pollToken = jest.fn<LoginDeps['pollToken']>(async () => ({
+      kind: 'success', accessToken: 'sck_live_' + 'b'.repeat(32), expiresIn: 900,
+      context: { user: { id: 'new-user' } },
+    }))
+    await runDeviceLogin({}, d)
+    expect(get).not.toHaveBeenCalled()
+    expect(d.finalize).toHaveBeenCalledWith(storedUrl, 'sck_live_' + 'b'.repeat(32))
+    expect(d.store.load()).toBeNull()
+    expect(JSON.parse(String(output.mock.calls.at(-1)![0]))).toMatchObject({
+      authenticated: true, user: { id: 'new-user' },
+    })
+  })
+
+  it.each(['expired', 'other-server', 'other-client'])('ignores a %s pending grant for an existing login', async (kind) => {
+    token = 'sck_live_' + 'a'.repeat(32)
+    storedUrl = 'https://app.example.com'
+    get.mockResolvedValue({ data: { user: { id: 'old-user' } } })
+    const d = deps()
+    await runDeviceLogin({ reauth: true }, d)
+    const pending = d.store.load()!
+    d.store.save({ ...pending,
+      ...(kind === 'expired' ? { expiresAt: d.now() - 1 } : {}),
+      ...(kind === 'other-server' ? { apiUrl: 'https://other.example.com' } : {}),
+      ...(kind === 'other-client' ? { clientId: 'another-client' } : {}),
+    })
+    await runDeviceLogin({}, d)
+    expect(get).toHaveBeenCalledWith('/api/context')
+    expect(d.pollToken).not.toHaveBeenCalled()
+    expect(d.finalize).not.toHaveBeenCalled()
+  })
+
+  it('does not consume a pending reauth grant while an environment token takes precedence', async () => {
+    token = 'sck_live_' + 'a'.repeat(32)
+    storedUrl = 'https://app.example.com'
+    const d = deps()
+    await runDeviceLogin({ reauth: true }, d)
+    const pending = d.store.load()
+    process.env.SUPERCHECK_TOKEN = token
+    get.mockResolvedValue({ data: { user: { id: 'env-user' } } })
+    await runDeviceLogin({}, d)
+    expect(d.pollToken).not.toHaveBeenCalled()
+    expect(d.store.load()).toEqual(pending)
+  })
+
   it('never sends a stored token to a different host than the one it was issued for', async () => {
     token = 'sck_live_' + 'a'.repeat(32)
     storedUrl = 'https://app.supercheck.io'

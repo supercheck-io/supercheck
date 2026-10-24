@@ -73,6 +73,14 @@ describe('CLI authentication', () => {
     await whoamiCommand.parseAsync(['node', 'whoami'])
     expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ project: context.project, organization: context.organization, role: 'project_viewer', userId: 'u1', tokenName: null })
   })
+  it('identifies a malformed supplied token instead of reporting missing authentication', async () => {
+    defaultLoggedIn = false
+    process.env.SUPERCHECK_TOKEN = 'not-a-cli-token'
+    await expect(whoamiCommand.parseAsync(['node', 'whoami'])).rejects.toMatchObject({
+      exitCode: 2, message: expect.stringMatching(/^TOKEN_INVALID:/),
+    })
+    expect(get).not.toHaveBeenCalled()
+  })
   it('rejects invalid URLs before fetching or persisting credentials', async () => {
     await expect(loginCommand.parseAsync(['node', 'login', '--token', 'sck_live_fixture', '--url', 'not-a-url'])).rejects.toMatchObject({ exitCode: 3 })
     expect(get).not.toHaveBeenCalled()

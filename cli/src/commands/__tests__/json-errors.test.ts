@@ -15,6 +15,6 @@ describe('nested command JSON failures', () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', entry, '--json', ...args], { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } })
     expect(result.status).not.toBe(0)
     expect(result.stdout).toBe('')
-    expect(JSON.parse(result.stderr)).toMatchObject({ error: expect.any(String), exitCode: result.status })
+    expect(JSON.parse(result.stderr)).toMatchObject({ error: expect.any(String), exitCode: result.status, code: expect.any(String), retryable: expect.any(Boolean), nextActions: expect.any(Array) })
   })
 })

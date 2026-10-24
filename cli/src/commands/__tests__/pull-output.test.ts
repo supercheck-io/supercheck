@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -30,6 +30,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { info: log, warn: log, success: log, error: log, header: log, debug: jest.fn(), newline: jest.fn() },
 }))
 const { pullCommand } = await import('../pull.js')
+const { setRevealSecrets } = await import('../../utils/redact.js')
 const remoteTest = { id: '019a0000-0000-7000-8000-000000000001', title: 'Homepage', type: 'browser', script: '// @title Homepage\n' }
 let cwd: string
 let cwdSpy: ReturnType<typeof jest.spyOn>
@@ -131,3 +132,46 @@ describe('pull output and local file effects', () => {
     expect(confirm).not.toHaveBeenCalled()
   })
 })
+
+
+describe('pull write boundaries', () => {
+  it('refuses a symlinked config without changing its target', async () => {
+    const outside = mkdtempSync(resolve(tmpdir(), 'supercheck-outside-'))
+    const target = resolve(outside, 'config.ts')
+    writeFileSync(target, 'outside sentinel')
+    symlinkSync(target, resolve(cwd, 'supercheck.config.ts'))
+    try {
+      await expect(pull('--config-only', '--force')).rejects.toThrow(/outside|symlink/i)
+      expect(readFileSync(target, 'utf8')).toBe('outside sentinel')
+    } finally { rmSync(outside, { recursive: true, force: true }) }
+  })
+
+  it.each(['https://user:pw@example.com/p?token=abc&public=yes', 'HTTPS://user:pw@example.com/p?token=abc&public=yes', 'Https://user@example.com/p?token=abc&public=yes'])('masks monitor URL credentials in generated files: %s', async (target) => {
+    resources = { '/api/monitors': [{ id: 'monitor', name: 'Secret', type: 'http_request', target }] }
+    await pull('--config-only', '--force')
+    const text = readFileSync(resolve(cwd, 'supercheck.config.ts'), 'utf8')
+    expect(text).not.toContain('user:pw')
+    expect(text).not.toContain('user@example.com')
+    expect(text).not.toContain('token=abc')
+    expect(text).toContain('public=yes')
+    expect(text).toContain('REDACTED')
+  })
+})
+
+  it('masks request credentials and warns before a pulled config can be deployed', async () => {
+    resources = { '/api/monitors': [{ id: 'monitor', name: 'Secret header', type: 'http_request', target: 'https://example.com', config: { headers: { Authorization: 'Bearer private-value' } } }] }
+    await pull('--config-only', '--force')
+    const text = readFileSync(resolve(cwd, 'supercheck.config.ts'), 'utf8')
+    expect(text).not.toContain('private-value')
+    expect(text).toContain('[REDACTED]')
+    expect(output()).toContain('restore them securely')
+  })
+
+  it('reveals URL credentials only with an explicit secrets preference', async () => {
+    resources = { '/api/monitors': [{ id: 'monitor', name: 'Secret', type: 'http_request', target: 'https://user:pw@example.com/?token=abc' }] }
+    setRevealSecrets(true)
+    try {
+      await pull('--config-only', '--force')
+      expect(readFileSync(resolve(cwd, 'supercheck.config.ts'), 'utf8')).toContain('user:pw@example.com/?token=abc')
+    } finally { setRevealSecrets(false) }
+  })

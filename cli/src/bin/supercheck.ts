@@ -5,7 +5,9 @@ import { planCommand } from '../commands/plan.js'
 import { linkCommand } from '../commands/link.js'
 import { ciCommand } from '../commands/ci.js'
 import { classifyError } from '../utils/error-codes.js'
-import { assertDeclaredOrigin, verifyContext } from '../utils/managed.js'
+import { verifyContext } from '../utils/managed.js'
+import { parseIntStrict } from '../utils/number.js'
+import { isUuid } from '../utils/paths.js'
 import { getToken, getStoredBaseUrl, isAuthenticated } from '../auth/store.js'
 import { skillsCommand, schemaCommand, capabilitiesCommand } from '../commands/skills.js'
 import { redact, redactText, setRevealSecrets } from '../utils/redact.js'
@@ -41,10 +43,6 @@ import { DependencyError } from '../utils/deps.js'
 import { CLI_VERSION } from '../version.js'
 import { createAuthenticatedClient, getResolvedDeclaredBaseUrl, getResolvedProject, resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
 
-// Verbs that only read or observe. Everything else is checked against the configured project before it runs, so a newly
-// added command is guarded by default; these skip the extra /api/context request and cannot fail on a stale config.
-const READ_ONLY_VERBS = new Set(['list', 'get', 'status', 'stream', 'wait', 'results', 'stats', 'timeline', 'history', 'permissions', 'dependencies', 'health'])
-
 const program = new Command()
   .name('supercheck')
   .description('Open-source testing, monitoring, and AI SRE — as code')
@@ -77,12 +75,26 @@ const program = new Command()
     if (opts.debug && !opts.json) {
       setLogLevel('debug')
     }
+    if (opts.envelope && !opts.json) throw new CLIError('--envelope requires --json.', ExitCode.ConfigError)
 
     if (['skills', 'schema'].includes(actionCommand.name()) || ['skills', 'schema'].includes(actionCommand.parent?.name() ?? '')) return
 
     const actionOpts = typeof actionCommand.opts === 'function'
       ? actionCommand.opts<Record<string, unknown>>()
       : {}
+    for (const key of ['page', 'limit'] as const) {
+      if (typeof actionOpts[key] === 'string') {
+        const max = key === 'limit' ? (['test', 'run'].includes(actionCommand.parent?.name() ?? '') ? 1000 : 100) : undefined
+        parseIntStrict(actionOpts[key], `--${key}`, { min: 1, max })
+      }
+    }
+    let topLevel: Command = actionCommand
+    while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
+    for (const [index, argument] of actionCommand.registeredArguments.entries()) {
+      if (['job', 'test', 'monitor', 'run', 'tag', 'notification', 'notifications', 'service'].includes(topLevel.name()) && /^(id|jobId|keyId|runId|testId)$/.test(argument.name()) && !isUuid(actionCommand.args[index]?.toLowerCase())) {
+        throw new CLIError(`${argument.name()} must be a valid UUID.`, ExitCode.ConfigError)
+      }
+    }
 
     const isNotificationCommand =
       actionCommand.name() === 'notification' ||
@@ -92,8 +104,6 @@ const program = new Command()
 
     // Commands that inspect an untrusted checkout must never load its .env or execute its config.
     // Identify them by their top-level command, not by a (possibly coincidental) subcommand name.
-    let topLevel: Command = actionCommand
-    while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
     if (['discover', 'onboard', 'plan', 'ci', 'agent', 'link'].includes(topLevel.name())) return
 
     if (actionOpts.offline || ['init', 'login', 'logout', 'doctor'].includes(actionCommand.name()) || (actionCommand.name() === 'capabilities' && !actionOpts.online)) return
@@ -111,15 +121,15 @@ const program = new Command()
       logger.warn('Ignoring invalid project configuration for diagnostics. Set SUPERCHECK_URL to select the API target explicitly.')
       return
     }
+    // Script validation uses the configured server and .env, but has no project resources to resolve.
+    if (topLevel.name() === 'test' && actionCommand.name() === 'validate') return
     if (diagnostic) return
     const project = getResolvedProject()
     const group = actionCommand.parent?.name()
     const sync = ['deploy', 'diff', 'destroy', 'pull'].includes(actionCommand.name())
     if (project && getToken() && !sync && !['config', 'supercheck'].includes(group ?? '')) {
       const client = createAuthenticatedClient()
-      // Reads skip the /api/context request but still must not run against a server the config does not declare.
-      if (READ_ONLY_VERBS.has(actionCommand.name())) assertDeclaredOrigin(client, getResolvedDeclaredBaseUrl())
-      else await verifyContext(client, { project }, true, getResolvedDeclaredBaseUrl())
+      await verifyContext(client, { project }, true, getResolvedDeclaredBaseUrl())
     }
   })
 
@@ -205,7 +215,7 @@ async function main(): Promise<void> {
         ...(err instanceof ApiRequestError ? { status: err.statusCode, details: err.responseBody } : {}),
         ...(err instanceof CLIError && err.details !== undefined ? { details: err.details } : {}),
         code: err instanceof Error && /^[A-Z_]+:/.test(err.message) ? err.message.split(':')[0] : classified?.code,
-        ...(classified ? { retryable: classified.retryable, nextActions: classified.nextActions.length ? classified.nextActions : undefined } : {}),
+        ...(classified ? { retryable: classified.retryable, nextActions: classified.nextActions } : {}),
       })))
       process.exit(code)
     }

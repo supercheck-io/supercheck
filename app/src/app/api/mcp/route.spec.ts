@@ -150,6 +150,49 @@ describe("/api/mcp", () => {
     expect(await res.json()).toMatchObject({ result: { serverInfo: { name: "supercheck" } } });
   });
 
+  it.each([{}, { protocolVersion: 123, capabilities: {}, clientInfo: { name: "private input", version: "1" } }])(
+    "returns sanitized invalid params for malformed initialize: %j", async (params) => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      const res = await POST(new Request(rpc("initialize"), {
+        body: JSON.stringify({ jsonrpc: "2.0", id: "init-1", method: "initialize", params }),
+      }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        jsonrpc: "2.0", id: "init-1",
+        error: { code: -32602, message: "Invalid initialize params", data: { code: "invalid_params" } },
+      });
+      expect(resolveMcpCallContext).not.toHaveBeenCalled();
+    },
+  );
+
+  it("sanitizes invalid initialize params in a single-message batch", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const res = await POST(new Request(rpc("initialize"), {
+      body: JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }]),
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      jsonrpc: "2.0", id: 1,
+      error: { code: -32602, message: "Invalid initialize params", data: { code: "invalid_params" } },
+    });
+    expect(resolveMcpCallContext).not.toHaveBeenCalled();
+  });
+
+  it("rejects a batch combining initialization with other messages without SDK details", async () => {
+    const res = await POST(new Request(rpc("initialize"), {
+      body: JSON.stringify([
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+        { jsonrpc: "2.0", id: 2, method: "ping", params: {} },
+      ]),
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      jsonrpc: "2.0", id: null,
+      error: { code: -32600, message: "Initialize must be sent as a single request", data: { code: "invalid_request" } },
+    });
+    expect(resolveMcpCallContext).not.toHaveBeenCalled();
+  });
+
   describe("throttling", () => {
     const batch = (size: number) =>
       new Request("https://app.example.com/api/mcp", {

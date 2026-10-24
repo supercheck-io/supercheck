@@ -70,7 +70,7 @@ async function loadConfigFile(filePath: string): Promise<unknown> {
     if (err instanceof Error && /Cannot find (module|package) '@supercheck\/cli'/.test(err.message)) {
       throw new ConfigurationError(`${basename(filePath)} imports @supercheck/cli, which is not installed here. Run \`npm install\` first.`)
     }
-    throw err
+    throw new ConfigurationError(`Cannot load ${basename(filePath)}: ${err instanceof Error ? err.message : String(err)}`)
   }
   return mod.default ?? mod
 }
@@ -182,7 +182,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
   const parsed = supercheckConfigSchema.safeParse(config)
   if (!parsed.success) {
     const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
       .join('\n')
     throw new CLIError(
       `Invalid configuration:\n${issues}`,
