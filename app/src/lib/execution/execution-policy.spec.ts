@@ -349,6 +349,12 @@ describe("trial workload admission", () => {
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("victim.example.org") });
     });
 
+    it("does not turn an unknown target lookup outage into a permanent workload rejection", async () => {
+      const outage = new Error("database unavailable");
+      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(outage);
+      await expect(assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")'])).rejects.toBe(outage);
+    });
+
     it("keeps a DNS outage temporary and does not ask for scripts without URLs", async () => {
       jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(new TargetDomainError("DNS verification is temporarily unavailable", 503));
       await expect(

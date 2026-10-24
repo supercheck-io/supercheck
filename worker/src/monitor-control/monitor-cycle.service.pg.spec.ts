@@ -5,6 +5,7 @@
  */
 import postgres = require('postgres');
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { MonitorService } from '../monitor/monitor.service';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
@@ -82,6 +83,58 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       threshold: options.threshold ?? 50,
     });
   }
+
+  it('neutrally aborts a skipped regional group and retains observed diagnostics', async () => {
+    await openCycle('skip-neutral');
+    await report('skip-neutral', 'eu', false);
+    const before = await db.query.monitors.findFirst({
+      where: eq(schema.monitors.id, monitorId),
+    });
+    const worker = Object.assign(Object.create(MonitorService.prototype), {
+      dbService: { db },
+      logger: { warn: jest.fn() },
+    }) as MonitorService;
+    await worker.skipDistributedMonitorGroup(monitorId, 'skip-neutral', true);
+    expect(
+      await db.query.monitorCycles.findFirst({
+        where: eq(schema.monitorCycles.id, 'skip-neutral'),
+      }),
+    ).toMatchObject({ status: 'aborted', notifiedAt: expect.any(Date) });
+    await service.closeCycle('skip-neutral', afterDeadline);
+    expect(
+      await db.query.monitors.findFirst({
+        where: eq(schema.monitors.id, monitorId),
+      }),
+    ).toEqual(before);
+    expect(
+      await db.query.monitorResults.findMany({
+        where: eq(schema.monitorResults.executionGroupId, 'skip-neutral'),
+      }),
+    ).toHaveLength(1);
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not replace an already closed cycle with an abort', async () => {
+    await openCycle('skip-after-closed');
+    await db
+      .update(schema.monitorCycles)
+      .set({ status: 'closed', resultStatus: 'up', closedAt: afterDeadline })
+      .where(eq(schema.monitorCycles.id, 'skip-after-closed'));
+    const worker = Object.assign(Object.create(MonitorService.prototype), {
+      dbService: { db },
+      logger: { warn: jest.fn() },
+    }) as MonitorService;
+    await worker.skipDistributedMonitorGroup(
+      monitorId,
+      'skip-after-closed',
+      true,
+    );
+    expect(
+      await db.query.monitorCycles.findFirst({
+        where: eq(schema.monitorCycles.id, 'skip-after-closed'),
+      }),
+    ).toMatchObject({ status: 'closed', resultStatus: 'up' });
+  });
 
   async function report(
     cycleId: string,

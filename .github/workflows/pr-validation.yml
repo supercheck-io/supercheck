@@ -104,6 +104,16 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -139,6 +149,7 @@ jobs:
         run: npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache
         env:
           NODE_ENV: test
+          TEST_REDIS_URL: redis://localhost:6381
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

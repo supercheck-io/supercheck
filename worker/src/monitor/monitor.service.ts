@@ -603,6 +603,61 @@ export class MonitorService {
       );
   }
 
+  /** A skipped expected check cannot establish uptime or downtime for the group. */
+  async skipDistributedMonitorGroup(
+    monitorId: string,
+    executionGroupId: string,
+    monitorCycle = false,
+  ): Promise<void> {
+    try {
+      if (monitorCycle) {
+        const [cycle] = await this.dbService.db
+          .select({
+            monitorId: schema.monitorCycles.monitorId,
+            status: schema.monitorCycles.status,
+          })
+          .from(schema.monitorCycles)
+          .where(eq(schema.monitorCycles.id, executionGroupId))
+          .limit(1);
+        if (cycle) {
+          if (cycle.monitorId !== monitorId || cycle.status !== 'open') return;
+          const now = new Date();
+          await this.dbService.db
+            .update(schema.monitorCycles)
+            .set({ status: 'aborted', closedAt: now, notifiedAt: now })
+            .where(
+              and(
+                eq(schema.monitorCycles.id, executionGroupId),
+                eq(schema.monitorCycles.monitorId, monitorId),
+                eq(schema.monitorCycles.status, 'open'),
+              ),
+            );
+          return;
+        }
+      }
+      const redis = this.redisService.getClient();
+      await this.withAggregationLease(monitorId, async (assertOwned) => {
+        if (await redis.get(`monitor:aggr:completed:${executionGroupId}`))
+          return;
+        await assertOwned();
+        await redis.set(
+          `monitor:aggr:aborted:${executionGroupId}`,
+          '1',
+          'EX',
+          7 * 86400,
+        );
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Unable to close skipped group ${executionGroupId}: ${getErrorMessage(error)}`,
+      );
+      // Only a busy lease is worth waiting for. Any other failure (a database or Redis outage) keeps its own
+      // cause, so the caller's job fails and retries within its attempts and the real reason is not lost behind
+      // an endless "busy" retry.
+      throw error;
+    }
+  }
+
   async saveDistributedMonitorResult(
     result: MonitorExecutionResult,
     options: {

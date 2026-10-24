@@ -243,6 +243,8 @@ When **missing-region detection** is enabled for your deployment, each scheduled
 - A result that arrives after the deadline is kept for troubleshooting but does not change the closed run.
 - Paused or disabled monitors, and monitors held for billing reasons, never become downtime because a region was silent.
 
+A check that is deliberately skipped also neutrally aborts its whole expected group. It does not count as up or down and does not change status, uptime, or alerts. Results already observed from sibling regions remain available for diagnosis. A skipped regional capacity check aborts that scheduled cycle immediately instead of waiting for capacity and later appearing as missing-region downtime. This intentionally leaves a data gap: the skipped check starts no compute and creates no usage. Playwright, K6, and legacy monitor checks continue to use the shared capacity deferral behavior.
+
 Supercheck Cloud manages this for you. Self-hosted installations enable it separately; see [self-hosted deployment](/docs/app/deployment/self-hosted#missing-region-detection-optional).
 
 <Callout type="info">
