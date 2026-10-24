@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getActiveTrial } from "@/lib/execution/trial-limits";
 import { db } from '@/utils/db';
 import { invitation, member, organization, planLimits, projects, projectMembers, session, user as userTable } from '@/db/schema';
 import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
@@ -238,12 +239,20 @@ export async function POST(
         const [existingMember] = await tx.select({ id: member.id }).from(member)
           .where(and(eq(member.organizationId, invite.organizationId), eq(member.userId, currentUser.id))).limit(1);
         if (!existingMember) {
-          if (!org || (org.plan !== "plus" && org.plan !== "pro")) throw new Error("INVITE_MEMBER_LIMIT");
-          const [limits] = await tx.select({ max: planLimits.maxTeamMembers }).from(planLimits)
-            .where(eq(planLimits.plan, org.plan)).limit(1);
+          if (!org) throw new Error("INVITE_MEMBER_LIMIT");
+          // A paid plan sets the cap; an organization on a free trial has no plan and uses its trial's cap.
+          let maxMembers: number | undefined;
+          if (org.plan === "plus" || org.plan === "pro") {
+            const [limits] = await tx.select({ max: planLimits.maxTeamMembers }).from(planLimits)
+              .where(eq(planLimits.plan, org.plan)).limit(1);
+            maxMembers = limits?.max;
+          } else {
+            maxMembers = (await getActiveTrial(invite.organizationId, tx))?.maxTeamMembers;
+          }
+          if (maxMembers === undefined) throw new Error("INVITE_MEMBER_LIMIT");
           const [members] = await tx.select({ count: sql<number>`count(*)::int` }).from(member)
             .where(eq(member.organizationId, invite.organizationId));
-          if (!limits || Number(members?.count ?? 0) >= limits.max) throw new Error("INVITE_MEMBER_LIMIT");
+          if (Number(members?.count ?? 0) >= maxMembers) throw new Error("INVITE_MEMBER_LIMIT");
         }
       }
       // Claim the pending invitation before any membership/session changes.

@@ -26,7 +26,7 @@ const engines = url ? ['embedded', 'postgres'] : ['embedded'];
 const migration = readFileSync(
   resolve(
     __dirname,
-    '../../../../app/src/db/migrations/0038_run_callback_fencing.sql',
+    '../../../../app/src/db/migrations/0040_run_callback_fencing.sql',
   ),
   'utf8',
 );

@@ -66,4 +66,5 @@ export * from "./sre";
 // Device authorization grants for CLI login
 export * from "./deviceAuthorization";
 
+export * from "./execution-entitlements";
 export * from './run-callback';

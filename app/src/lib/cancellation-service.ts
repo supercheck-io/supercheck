@@ -7,6 +7,13 @@
 
 import { getRedisConnection } from "./queue";
 
+/**
+ * errorDetails value that marks a run as cancelled by a user. The cancel route writes it, and the
+ * worker's admission, recovery and finalization all compare against it. Keep it identical to
+ * worker/src/common/services/cancellation.service.ts (asserted by cancellation-marker.spec.ts).
+ */
+export const RUN_CANCELLATION_MARKER = "Cancellation requested by user";
+
 const CANCELLATION_KEY_PREFIX = "supercheck:cancel:";
 const CANCELLATION_TTL = 7200; // Keep the signal beyond the 80-minute recovery window.
 

@@ -8,6 +8,10 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
+import {
+  subscriptionService,
+  SubscriptionAccessDeniedError,
+} from "@/lib/services/subscription-service";
 
 export async function publishStatusPage(statusPageId: string) {
   try {
@@ -42,6 +46,17 @@ export async function publishStatusPage(statusPageId: string) {
         success: false,
         message: "Insufficient permissions to publish status pages",
       };
+    }
+
+    // An expired trial or lapsed subscription must not bring an archived page back online.
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (error) {
+      if (error instanceof SubscriptionAccessDeniedError) {
+        return { success: false, message: error.message };
+      }
+      throw error;
     }
 
     // SECURITY: Verify ownership - status page must belong to this organization AND project

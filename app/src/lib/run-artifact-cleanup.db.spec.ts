@@ -26,7 +26,7 @@ beforeAll(async () => {
   client = postgres(url.toString(), { max: 1 });
   mockDatabase = drizzle(client, { schema });
   await client.unsafe("CREATE TABLE runs (id uuid PRIMARY KEY)");
-  await client.unsafe(readFileSync(path.join(__dirname, "../db/migrations/0038_run_callback_fencing.sql"), "utf8"));
+  await client.unsafe(readFileSync(path.join(__dirname, "../db/migrations/0040_run_callback_fencing.sql"), "utf8"));
 });
 afterAll(async () => {
   await client?.end({ timeout: 5 });

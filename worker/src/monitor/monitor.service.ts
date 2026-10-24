@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isSelfHostedEnvironment } from '../common/runtime-mode';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
 import * as tls from 'tls';
@@ -8,6 +9,10 @@ import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
+import {
+  ExecutionCapacityError,
+  ExecutionEntitlementError,
+} from '../execution/services/execution-admission.service';
 import { UsageTrackerService } from '../execution/services/usage-tracker.service';
 import { RedisService } from '../execution/services/redis.service';
 import * as schema from '../db/schema'; // Assuming your schema is here and WILL contain monitorResults
@@ -150,6 +155,13 @@ export class MonitorService {
         // Removed log - paused execution is not an error
         // Return null instead of a failed result - paused monitors shouldn't create results
         return null;
+      }
+      if (!monitor.organizationId && !isSelfHostedEnvironment()) {
+        // A cloud monitor with no organization can never be authorized, so it would be skipped silently
+        // forever and look healthy. Make that visible.
+        this.logger.error(
+          `Monitor ${jobData.monitorId} has no organization and cannot run; fix or remove it`,
+        );
       }
       const billing = await this.usageTrackerService.shouldBlockExecution(
         monitor.organizationId ?? '',
@@ -322,6 +334,17 @@ export class MonitorService {
         }
       }
     } catch (error) {
+      // A busy organization slot is not a target failure; let the processor
+      // defer the check instead of recording a false down result.
+      if (error instanceof ExecutionCapacityError) throw error;
+      if (error instanceof ExecutionEntitlementError) {
+        // No entitlement or allowance is not a target failure: skip the check
+        // like a billing hold instead of recording a false down result.
+        this.logger.warn(
+          `Skipping monitor ${jobData.monitorId}: ${error.message}`,
+        );
+        return null;
+      }
       this.logger.error(
         `Error executing monitor ${jobData.monitorId}: ${getErrorMessage(error)}`,
         error instanceof Error ? error.stack : undefined,
@@ -393,7 +416,17 @@ export class MonitorService {
       `Executing monitor ${jobData.monitorId} from ${locations.length} location(s): ${locations.join(', ')}`,
     );
 
-    // Execute from all locations in parallel
+    // Synthetic locations share the organization's execution capacity in legacy mode.
+    if (resolvedJobData.type === 'synthetic_test') {
+      const results: MonitorExecutionResult[] = [];
+      for (const location of locations) {
+        const result = await this.executeMonitor(resolvedJobData, location);
+        if (result) results.push(result);
+      }
+      return results;
+    }
+
+    // Lightweight checks do not acquire an execution slot.
     const results = await Promise.all(
       locations.map((location) =>
         this.executeMonitor(resolvedJobData, location),
@@ -560,6 +593,79 @@ export class MonitorService {
     ...args: Parameters<MonitorEvaluator['prepareGroupEvaluation']>
   ) {
     return this.evaluator.prepareGroupEvaluation(...args);
+  }
+
+  /**
+   * Closes an open monitor cycle without a verdict. Used when a check was skipped for a reason that
+   * says nothing about the target (no execution slot, no entitlement), so the cycle deadline does
+   * not turn the silent region into a failed result and an alert.
+   */
+  async abortMonitorCycle(cycleId: string): Promise<void> {
+    const now = new Date();
+    await this.dbService.db
+      .update(schema.monitorCycles)
+      .set({ status: 'aborted', closedAt: now, notifiedAt: now })
+      .where(
+        and(
+          eq(schema.monitorCycles.id, cycleId),
+          eq(schema.monitorCycles.status, 'open'),
+        ),
+      );
+  }
+
+  /** A skipped expected check cannot establish uptime or downtime for the group. */
+  async skipDistributedMonitorGroup(
+    monitorId: string,
+    executionGroupId: string,
+    monitorCycle = false,
+  ): Promise<void> {
+    try {
+      if (monitorCycle) {
+        const [cycle] = await this.dbService.db
+          .select({
+            monitorId: schema.monitorCycles.monitorId,
+            status: schema.monitorCycles.status,
+          })
+          .from(schema.monitorCycles)
+          .where(eq(schema.monitorCycles.id, executionGroupId))
+          .limit(1);
+        if (cycle) {
+          if (cycle.monitorId !== monitorId || cycle.status !== 'open') return;
+          const now = new Date();
+          await this.dbService.db
+            .update(schema.monitorCycles)
+            .set({ status: 'aborted', closedAt: now, notifiedAt: now })
+            .where(
+              and(
+                eq(schema.monitorCycles.id, executionGroupId),
+                eq(schema.monitorCycles.monitorId, monitorId),
+                eq(schema.monitorCycles.status, 'open'),
+              ),
+            );
+          return;
+        }
+      }
+      const redis = this.redisService.getClient();
+      await this.withAggregationLease(monitorId, async (assertOwned) => {
+        if (await redis.get(`monitor:aggr:completed:${executionGroupId}`))
+          return;
+        await assertOwned();
+        await redis.set(
+          `monitor:aggr:aborted:${executionGroupId}`,
+          '1',
+          'EX',
+          7 * 86400,
+        );
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Unable to close skipped group ${executionGroupId}: ${getErrorMessage(error)}`,
+      );
+      // Only a busy lease is worth waiting for. Any other failure (a database or Redis outage) keeps its own
+      // cause, so the caller's job fails and retries within its attempts and the real reason is not lost behind
+      // an endless "busy" retry.
+      throw error;
+    }
   }
 
   async saveDistributedMonitorResult(
@@ -2489,6 +2595,7 @@ export class MonitorService {
       const testResult = await this.executionService.runSingleTest(
         {
           testId: test.id,
+          organizationId: test.organizationId ?? undefined,
           code: decodedScript,
           variables: resolvedVariables,
           secrets: resolvedSecrets,
@@ -2599,6 +2706,11 @@ export class MonitorService {
         };
       }
     } catch (error) {
+      if (
+        error instanceof ExecutionCapacityError ||
+        error instanceof ExecutionEntitlementError
+      )
+        throw error;
       const responseTimeMs = Date.now() - startTime;
 
       this.logger.error(

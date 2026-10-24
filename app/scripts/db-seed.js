@@ -55,7 +55,10 @@ function logError(message) {
  * - GitLab CI: 30-90 days depending on plan
  */
 const PLAN_LIMITS_SEED = [
-  ...Object.entries(catalog).map(([plan, details]) => ({ plan, ...details.limits })),
+  // The trial entry describes execution_entitlements, not a purchasable plan row.
+  ...Object.entries(catalog)
+    .filter(([plan]) => plan !== "trial")
+    .map(([plan, details]) => ({ plan, ...details.limits })),
   {
     plan: "unlimited",
     maxMonitors: 999999,

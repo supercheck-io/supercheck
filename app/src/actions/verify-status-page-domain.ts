@@ -5,6 +5,7 @@ import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
+import { checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
 import { revalidatePath } from "next/cache";
 import { resolve4, resolve6, resolveCname, resolveTxt } from "node:dns/promises";
 import { z } from "zod";
@@ -37,6 +38,11 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
     );
+
+    const availability = await checkFeatureAvailability(organizationId, "customDomains");
+    if (!availability.available) {
+      return { success: false, message: availability.error ?? "Custom domains are not available on your plan." };
+    }
 
     // SECURITY: Get status page with ownership verification
     const statusPage = await db.query.statusPages.findFirst({

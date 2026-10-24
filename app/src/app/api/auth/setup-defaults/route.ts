@@ -8,6 +8,7 @@ import {
   session,
   invitation,
   user as userTable,
+  executionEntitlements,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
 import { eq, and, gte, desc, asc, sql } from "drizzle-orm";
@@ -18,6 +19,7 @@ import {
   isCloudHosted,
 } from "@/lib/feature-flags";
 import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
+import { buildTrialEntitlement, isTrialEnabled } from "@/lib/execution/trial-limits";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
 
@@ -163,6 +165,13 @@ export async function POST(request: NextRequest) {
           subscriptionStatus: isSelfHosted ? "active" : "none",
         })
         .returning();
+
+      // Cloud only: a verified user's first organization starts a free trial, so
+      // the whole product can be tried before choosing a plan. It is granted once
+      // (this branch runs only when the user has no organization) and is never billed.
+      if (!isSelfHosted && isTrialEnabled()) {
+        await tx.insert(executionEntitlements).values(buildTrialEntitlement(newOrg.id));
+      }
 
       // Add user as owner of the organization
       await tx.insert(member).values({

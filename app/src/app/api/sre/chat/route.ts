@@ -348,7 +348,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const subscriptionError = await requireSreSubscription(context.organizationId);
+  const subscriptionError = await requireSreSubscription(context.organizationId, { allowTrial: false });
   if (subscriptionError) return subscriptionError;
 
   const rateLimit = await checkSreChatRateLimit(context.userId);

@@ -132,6 +132,26 @@ export class S3CleanupService {
     }
   }
 
+  /** True when the URL points into a configured bucket other than the expected one (path or virtual-host style). */
+  private namesAnotherConfiguredBucket(url: URL, parts: string[], expected: string): boolean {
+    const buckets = new Set(
+      (["job", "test", "monitor", "k6_test", "k6_job", "status"] as const).map((type) =>
+        this.getBucketForEntityType(type),
+      ),
+    );
+    buckets.delete(expected);
+    return [...buckets].some((other) => parts[0] === other || url.hostname.startsWith(`${other}.`));
+  }
+
+  /**
+   * True when the path contains `<executionId>/report` as consecutive segments, after any endpoint or bucket prefix
+   * a previous storage layout used. A bare occurrence of the id (an export file, a similarly named directory) does
+   * not count, so unrelated objects are not reported as cleaned.
+   */
+  private namesExecutionReport(parts: string[], executionId: string): boolean {
+    return parts.some((part, index) => part === executionId && parts[index + 1] === "report");
+  }
+
   /**
    * Extract S3 key from various input formats
    */
@@ -148,6 +168,15 @@ export class S3CleanupService {
         key = parts.slice(1).join("/");
       } else if (url.hostname.startsWith(`${bucket}.`)) {
         key = parts.join("/");
+      } else if (
+        input.reportPath &&
+        this.namesExecutionReport(parts, input.reportPath.split("/")[0]) &&
+        !this.namesAnotherConfiguredBucket(url, parts, bucket)
+      ) {
+        // The URL names this execution but under another endpoint or bucket (for example after a
+        // storage move). Delete the execution directory in the configured bucket instead of
+        // blocking monitor deletion forever. A URL that does not name the execution still fails.
+        key = input.reportPath;
       } else {
         throw new Error(`Report URL does not match bucket ${bucket}`);
       }

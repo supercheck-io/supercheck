@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { z } from "zod";
 
 /**
@@ -43,8 +44,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // A trial is separate from a paid subscription: isActive stays false for it.
+    const trial = access.isActive ? undefined : await getTrialSummary(organizationId);
+
     return NextResponse.json({
       organizationId,
+      trial: trial ?? null,
       isActive: access.isActive,
       plan: access.plan,
       status: access.status,

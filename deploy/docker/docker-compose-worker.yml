@@ -95,6 +95,9 @@ services:
       # "monitor" for a lightweight monitoring-only worker.
       WORKER_QUEUES: ${WORKER_QUEUES:-}
 
+      # Finalize runs cancelled while still queued. Leave off until every worker runs this version.
+      CANCELLED_QUEUED_RECOVERY_ENABLED: ${CANCELLED_QUEUED_RECOVERY_ENABLED:-false}
+
       # S3 storage (required)
       S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT is required - S3 endpoint URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}

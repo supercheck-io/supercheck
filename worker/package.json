@@ -43,6 +43,7 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "npm test -- --watch",
     "test:cov": "npm test -- --coverage",
+    "test:db": "node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.db.config.js --runInBand",
     "test:debug": "node --experimental-vm-modules --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
   },
   "dependencies": {

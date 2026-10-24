@@ -17,6 +17,9 @@ import {
   MonitorAlertEmail,
   TestEmail,
   UsageNotificationEmail,
+  TrialNotificationEmail,
+  trialNotificationSubject,
+  type TrialNotificationKind,
 } from "@/emails";
 import {
   getTranslations,
@@ -218,6 +221,24 @@ export async function renderUsageNotificationEmail(params: {
     subject:
       subjectMap[params.notificationType] ||
       `Usage Alert - ${params.organizationName}`,
+    html: await render(component, { pretty: false }),
+    text: await render(component, { plainText: true }),
+  };
+}
+
+/**
+ * Free trial reminder (midway, ending, ended)
+ */
+export async function renderTrialNotificationEmail(params: {
+  organizationName: string;
+  kind: TrialNotificationKind;
+  daysRemaining: number;
+  subscribeUrl: string;
+}): Promise<RenderedEmail> {
+  const component = TrialNotificationEmail(params);
+
+  return {
+    subject: trialNotificationSubject(params.kind, params.organizationName, params.daysRemaining),
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };

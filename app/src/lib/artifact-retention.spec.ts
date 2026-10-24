@@ -5,7 +5,7 @@ import { Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import { S3Client, HeadBucketCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { db } from "@/utils/db";
-import { monitorResults, reports, runs } from "@/db/schema";
+import { executionEntitlements, monitorResults, reports, runs } from "@/db/schema";
 import { isPolarEnabled } from "./feature-flags";
 import { createS3CleanupService } from "./s3-cleanup";
 import { DataLifecycleService, MonitorResultsCleanupStrategy, JobRunsCleanupStrategy, PlaygroundArtifactsCleanupStrategy } from "./data-lifecycle-service";
@@ -54,8 +54,11 @@ describe("Artifact retention strategies", () => {
     events = [];
     jest.mocked(isPolarEnabled).mockReturnValue(true);
     jest.mocked(db.select).mockImplementation(() => {
+      // Retention also asks which organizations are on an active free trial. These tests are about artifact
+      // cleanup, not trials, so that lookup answers "none" without using up the staged results below.
+      let onTrialLookup = false;
       const query: {
-        from: () => typeof query;
+        from: (table?: unknown) => typeof query;
         where: (condition: SQL) => typeof query;
         limit: (limit: number) => typeof query;
         orderBy: (...columns: SQL[]) => typeof query;
@@ -63,13 +66,13 @@ describe("Artifact retention strategies", () => {
         as: (alias: string) => { isStatusChange: typeof monitorResults.isStatusChange };
         then: (resolve: (rows: unknown[]) => unknown) => Promise<unknown>;
       } = {
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn((condition: SQL) => { predicates.push(condition); return query; }),
+        from: jest.fn((table?: unknown) => { onTrialLookup = table === executionEntitlements; return query; }),
+        where: jest.fn((condition: SQL) => { if (!onTrialLookup) predicates.push(condition); return query; }),
         limit: jest.fn((limit: number) => { limits.push(limit); return query; }),
         orderBy: jest.fn((...columns: SQL[]) => { orderings.push(columns); return query; }),
         for: jest.fn().mockResolvedValue([]),
         as: jest.fn(() => ({ isStatusChange: monitorResults.isStatusChange })),
-        then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(selections.shift() || []).then(resolve),
+        then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(onTrialLookup ? [] : selections.shift() || []).then(resolve),
       };
       return query as unknown as ReturnType<typeof db.select>;
     });

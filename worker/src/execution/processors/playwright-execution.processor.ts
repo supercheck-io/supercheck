@@ -1,3 +1,5 @@
+import { ExecutionCapacityError } from '../services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
 import {
   withRunCallback,
   RunCallbackBusyError,
@@ -15,7 +17,10 @@ import { DbService } from '../services/db.service';
 import { JobNotificationService } from '../services/job-notification.service';
 import { UsageTrackerService } from '../services/usage-tracker.service';
 import { HardStopNotificationService } from '../services/hard-stop-notification.service';
-import { CancellationService } from '../../common/services/cancellation.service';
+import {
+  CancellationService,
+  RUN_CANCELLATION_MARKER,
+} from '../../common/services/cancellation.service';
 import {
   JobExecutionTask,
   TestExecutionTask,
@@ -105,10 +110,13 @@ export class PlaywrightExecutionProcessor
         throw new DelayedError();
       }
       if (!(await this.dbService.claimRunExecution(data.runId))) {
+        // Refused because cancellation was requested, or because the run already finished (a replay of a terminal run);
+        // either way nothing is running, so end the run here (finalizing is a no-op if it is already terminal).
+        await this.dbService.finalizeCancelledRun(data.runId);
         terminal = {
           id: data.runId,
           status: 'error',
-          errorDetails: 'Cancellation requested by user',
+          errorDetails: RUN_CANCELLATION_MARKER,
         };
       }
     }
@@ -136,6 +144,21 @@ export class PlaywrightExecutionProcessor
     }
   }
 
+  /** Records why a run was never started after its organization's slot stayed occupied. */
+  private async failRunAfterCapacityWait(
+    runId: string | null | undefined,
+    reason: string,
+  ): Promise<void> {
+    if (!runId) return;
+    await this.dbService
+      .updateRunStatus(runId, 'failed', '0', reason)
+      .catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to mark run failed after waiting for capacity: ${err.message}`,
+        ),
+      );
+  }
+
   /**
    * Whether a live execution exists for the run. If Kubernetes stays
    * unreachable past the bounded wait, fail the run terminally (no retry, no
@@ -148,6 +171,10 @@ export class PlaywrightExecutionProcessor
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A run the user already cancelled ends as cancelled; the failure must not replace that.
+      if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
+        throw new UnrecoverableError(message);
+      }
       await this.dbService
         .updateRunStatus(runId, 'failed', '0', message)
         .catch((err: Error) =>
@@ -224,8 +251,7 @@ export class PlaywrightExecutionProcessor
 
       // Check if this was a cancellation
       const isCancellation =
-        !result.success &&
-        result.error?.includes('Cancellation requested by user');
+        !result.success && result.error?.includes(RUN_CANCELLATION_MARKER);
       const status = isCancellation
         ? 'error'
         : result.success
@@ -244,7 +270,7 @@ export class PlaywrightExecutionProcessor
       // Update the runs table status for playground tests (critical for preventing stale runs)
       if (runId) {
         const errorDetails = isCancellation
-          ? 'Cancellation requested by user'
+          ? RUN_CANCELLATION_MARKER
           : result.error || undefined;
         const persistResult = async (transaction?: ExecutionUsageTransaction) =>
           this.dbService.updateRunStatus(
@@ -289,6 +315,11 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error) {
+      if (error instanceof ExecutionCapacityError) {
+        return deferForCapacity(job, (reason) =>
+          this.failRunAfterCapacityWait(runId, reason),
+        );
+      }
       const errorMessage = (error as Error).message;
       const isCancellation =
         errorMessage.includes('cancelled') ||
@@ -337,7 +368,7 @@ export class PlaywrightExecutionProcessor
       if (runId) {
         const errorStatus = isCancellation ? 'error' : 'failed';
         const errorDetails = isCancellation
-          ? 'Cancellation requested by user'
+          ? RUN_CANCELLATION_MARKER
           : errorMessage;
         await (
           job.data.organizationId &&
@@ -389,7 +420,7 @@ export class PlaywrightExecutionProcessor
       if (isCancellation) {
         return {
           success: false,
-          error: 'Cancellation requested by user',
+          error: RUN_CANCELLATION_MARKER,
           reportUrl: null,
           testId,
           stdout: '',
@@ -434,12 +465,12 @@ export class PlaywrightExecutionProcessor
       return {
         jobId: originalJobId || jobData.jobId,
         success: false,
-        error: 'Cancellation requested by user',
+        error: RUN_CANCELLATION_MARKER,
         reportUrl: null,
         results: jobData.testScripts.map((test) => ({
           testId: test.id,
           success: false,
-          error: 'Cancellation requested by user',
+          error: RUN_CANCELLATION_MARKER,
           reportUrl: null,
         })),
         timestamp: new Date().toISOString(),
@@ -521,10 +552,7 @@ export class PlaywrightExecutionProcessor
       // Check if execution service already set error status (for cancellations)
       // Don't override 'error' status with 'failed'
       let finalStatus: 'passed' | 'failed' | 'error';
-      if (
-        !result.success &&
-        result.error?.includes('Cancellation requested by user')
-      ) {
+      if (!result.success && result.error?.includes(RUN_CANCELLATION_MARKER)) {
         // Execution was cancelled, keep 'error' status
         finalStatus = 'error';
       } else {
@@ -599,6 +627,11 @@ export class PlaywrightExecutionProcessor
 
       return result;
     } catch (error: unknown) {
+      if (error instanceof ExecutionCapacityError) {
+        return deferForCapacity(job, (reason) =>
+          this.failRunAfterCapacityWait(runId, reason),
+        );
+      }
       ErrorHandler.logError(
         this.logger,
         error,
@@ -643,7 +676,7 @@ export class PlaywrightExecutionProcessor
       // Update database with error status
       const errorStatus = isCancellation ? 'error' : 'failed';
       const errorDetails = isCancellation
-        ? 'Cancellation requested by user'
+        ? RUN_CANCELLATION_MARKER
         : errorMessage;
 
       // Update run status first
@@ -728,7 +761,7 @@ export class PlaywrightExecutionProcessor
         return {
           jobId: runId,
           success: false,
-          error: 'Cancellation requested by user',
+          error: RUN_CANCELLATION_MARKER,
           reportUrl: null,
           results: [],
           timestamp: new Date().toISOString(),

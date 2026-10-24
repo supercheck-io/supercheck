@@ -46,6 +46,19 @@ class ComposeTests(unittest.TestCase):
                     worker = json.loads(result.stdout)['services']['worker']
                     self.assertEqual(worker['environment']['WORKER_QUEUES'], queues)
 
+    def test_cancelled_queued_recovery_flag_is_forwarded_and_off_by_default(self):
+        for file in ('docker-compose.yml', 'docker-compose-local.yml',
+                     'docker-compose-external.yml', 'docker-compose-worker.yml'):
+            with self.subTest(file=file):
+                env = {key: value for key, value in os.environ.items()
+                       if key not in ('COMPOSE_PROFILES', 'CANCELLED_QUEUED_RECOVERY_ENABLED')}
+                result = subprocess.run(
+                    ['docker', 'compose', '--env-file', '/dev/null', '-f', file,
+                     'config', '--format', 'json'],
+                    cwd=DEPLOY, env=env, text=True, capture_output=True, check=True, timeout=30)
+                worker = json.loads(result.stdout)['services']['worker']
+                self.assertEqual(worker['environment']['CANCELLED_QUEUED_RECOVERY_ENABLED'], 'false')
+
     def test_monitor_control_receives_only_the_environment_it_reads(self):
         forbidden = ('BETTER_AUTH_SECRET', 'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID',
                      'REDIS_PASSWORD', 'REDIS_URL', 'OPENAI_API_KEY', 'GITHUB_CLIENT_SECRET')

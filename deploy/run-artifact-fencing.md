@@ -1,6 +1,6 @@
 # Run callback fencing rollout
 
-This release adds migration `0038_run_callback_fencing.sql`. Apply migrations before starting the new App or workers. The migration is additive and creates `run_callbacks` plus a `BEFORE DELETE` trigger on `runs`; it does not backfill existing callbacks.
+This release adds migration `0040_run_callback_fencing.sql`. Apply migrations before starting the new App or workers. The migration is additive and creates `run_callbacks` plus a `BEFORE DELETE` trigger on `runs`; it does not backfill existing callbacks.
 
 ## Upgrade order
 

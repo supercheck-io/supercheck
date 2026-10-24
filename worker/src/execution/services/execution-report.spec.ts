@@ -35,6 +35,7 @@ function createService(env: Record<string, string> = {}) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 }
 

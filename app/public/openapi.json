@@ -1193,6 +1193,14 @@
           },
           {
             "$ref": "#/components/parameters/JobLimit"
+          },
+          {
+            "name": "includeScript",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include the decoded script in each job's tests. Defaults to false. Pages are limited to 25 jobs when scripts are included."
           }
         ],
         "responses": {
@@ -1311,7 +1319,7 @@
       "patch": {
         "operationId": "updateJob",
         "summary": "Update a job",
-        "description": "Update job configuration. Only provided fields are changed.",
+        "description": "Update job configuration. Only provided fields are changed. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Jobs"
         ],
@@ -1353,7 +1361,7 @@
       "delete": {
         "operationId": "deleteJob",
         "summary": "Delete a job",
-        "description": "Permanently delete a job and all its associated runs.",
+        "description": "Permanently delete a job and all its associated runs. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Jobs"
         ],
@@ -1394,7 +1402,7 @@
       "put": {
         "operationId": "replaceJobConfiguration",
         "summary": "Update a job configuration",
-        "description": "Update job configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "description": "Update job configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Jobs"
         ],
@@ -1939,7 +1947,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Filter by job ID"
+            "description": "Filter by job ID. An empty value means no filter; a malformed UUID returns 400."
           },
           {
             "name": "status",
@@ -1986,6 +1994,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "description": "The jobId filter is not a canonical UUID."
           }
         }
       }
@@ -2032,7 +2043,7 @@
       "delete": {
         "operationId": "deleteRun",
         "summary": "Delete a run",
-        "description": "Permanently delete a run and its associated data.",
+        "description": "Permanently delete a run and its associated data. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Runs"
         ],
@@ -2449,7 +2460,7 @@
       "patch": {
         "operationId": "updateTest",
         "summary": "Update a test",
-        "description": "Update test title, script, description, or type.",
+        "description": "Update test title, script, description, or type. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Tests"
         ],
@@ -2506,7 +2517,7 @@
       "delete": {
         "operationId": "deleteTest",
         "summary": "Delete a test",
-        "description": "Delete a test. Fails if the test is in use by active jobs or synthetic monitors.",
+        "description": "Delete a test. Fails if the test is in use by active jobs or synthetic monitors. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Tests"
         ],
@@ -2550,7 +2561,7 @@
       "put": {
         "operationId": "updateTestLegacyPut",
         "summary": "Update a test using the legacy PUT alias",
-        "description": "Update test title, script, description, or type. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "description": "Update test title, script, description, or type. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Tests"
         ],
@@ -3031,7 +3042,7 @@
       "patch": {
         "operationId": "updateMonitor",
         "summary": "Update a monitor",
-        "description": "Update monitor configuration. Only provided fields are changed.",
+        "description": "Update monitor configuration. Only provided fields are changed. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],
@@ -3073,7 +3084,7 @@
       "delete": {
         "operationId": "deleteMonitor",
         "summary": "Delete a monitor",
-        "description": "Permanently delete a monitor and its check history.",
+        "description": "Permanently delete a monitor and its check history. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],
@@ -3114,7 +3125,7 @@
       "put": {
         "operationId": "replaceMonitorConfiguration",
         "summary": "Update a monitor configuration",
-        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH.",
+        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],

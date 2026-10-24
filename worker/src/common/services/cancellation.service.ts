@@ -4,6 +4,13 @@ import { buildRedisOptions } from '../redis/redis-options';
 import Redis from 'ioredis';
 
 /**
+ * errorDetails value that marks a run as cancelled by a user. The app's cancel route writes it and
+ * admission, recovery and finalization here compare against it. Keep it identical to
+ * app/src/lib/cancellation-service.ts (asserted by app/scripts/cancellation-marker.spec.ts).
+ */
+export const RUN_CANCELLATION_MARKER = 'Cancellation requested by user';
+
+/**
  * Service to manage execution cancellation signals
  *
  * Uses Redis to store cancellation flags that workers can check

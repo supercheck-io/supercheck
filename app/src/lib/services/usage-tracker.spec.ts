@@ -40,6 +40,27 @@ describe("AI credit admission", () => {
     await expect(tracker.consumeAICredit("org-1", "ai_create")).resolves.toMatchObject({ allowed: false, status: 429, used: 100 });
   });
 
+  it("meters trial AI credits against the entitlement without requiring a subscription", async () => {
+    jest.mocked(subscriptionService.getOrganizationPlan).mockResolvedValue({
+      id: "trial", plan: "plus", aiCreditsIncluded: 100,
+    } as Awaited<ReturnType<typeof subscriptionService.getOrganizationPlan>>);
+    returning.mockResolvedValue([{ aiCreditsUsed: 7 }]);
+    await expect(tracker.consumeAICredit("org-1", "ai_create")).resolves.toMatchObject({ allowed: true, used: 7, limit: 100 });
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0][0] as SQL);
+    expect(query.sql).not.toContain("polar_customer_id");
+    expect(query.sql).not.toContain("subscription_status");
+  });
+
+  it("stops trial AI credits at the allowance with a subscribe message", async () => {
+    jest.mocked(subscriptionService.getOrganizationPlan).mockResolvedValue({
+      id: "trial", plan: "plus", aiCreditsIncluded: 100,
+    } as Awaited<ReturnType<typeof subscriptionService.getOrganizationPlan>>);
+    returning.mockResolvedValue([]);
+    await expect(tracker.consumeAICredit("org-1", "ai_fix")).resolves.toMatchObject({
+      allowed: false, status: 429, limit: 100, reason: expect.stringContaining("trial"),
+    });
+  });
+
   it("denies usage if the atomic credit write fails", async () => {
     returning.mockRejectedValue(new Error("database unavailable"));
     await expect(tracker.consumeAICredit("org-1", "ai_fix")).resolves.toMatchObject({ allowed: false, status: 503 });

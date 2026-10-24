@@ -56,4 +56,5 @@ export * from './billing';
 // AI SRE service topology, incidents, evidence, connectors, and chat
 export * from './sre';
 
+export * from './execution-entitlements';
 export * from './run-callback';

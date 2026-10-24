@@ -15,6 +15,8 @@ describe("queue location refresh", () => {
   const invalidateBullBoard = jest.fn();
   const getActiveWorkerQueueNames = jest.fn();
   const reserveSlot = jest.fn();
+  const enqueue = jest.fn();
+  const getExecutionPolicy = jest.fn();
   const expire = jest.fn();
   const persist = jest.fn();
   const flowAddBulk = jest.fn();
@@ -48,6 +50,8 @@ describe("queue location refresh", () => {
     scan.mockResolvedValue(["0", []]);
     getActiveWorkerQueueNames.mockResolvedValue(new Set());
     reserveSlot.mockResolvedValue(0);
+    enqueue.mockResolvedValue({ id: "run" });
+    getExecutionPolicy.mockResolvedValue({ tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 });
     jest.doMock("ioredis", () => ({
       __esModule: true,
       default: class extends EventEmitter {
@@ -86,6 +90,7 @@ describe("queue location refresh", () => {
       FlowProducer: class extends EventEmitter { addBulk = flowAddBulk; close = flowClose; },
       Queue: class extends EventEmitter {
         constructor(public name: string, public opts: object) { super(); }
+        add = enqueue;
         close = jest.fn().mockResolvedValue(undefined);
         clean = jest.fn().mockResolvedValue([]);
         trimEvents = jest.fn().mockResolvedValue(0);
@@ -109,7 +114,7 @@ describe("queue location refresh", () => {
     jest.doMock("./capacity-manager", () => ({
       setupCapacityManagement,
       CapacityReservationUnavailableError: class extends Error {},
-      getCapacityManager: jest.fn(async () => ({ reserveSlot })),
+      getCapacityManager: jest.fn(async () => ({ reserveSlot, trackJobOrganization: jest.fn(), releaseRunningSlot: jest.fn(), addToQueue: jest.fn().mockResolvedValue(1) })),
       reconcileCapacityCounters: jest.fn().mockResolvedValue(undefined),
       resetCapacityManager: jest.fn(),
     }));
@@ -126,6 +131,10 @@ describe("queue location refresh", () => {
       abortMonitorCycle,
       MonitorCycleClosedError,
     }));
+    jest.doMock("./execution/execution-policy", () => ({
+      getExecutionPolicy,
+      assertExecutionWorkload: jest.fn().mockResolvedValue(undefined),
+    }));
     jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames }));
     queueModule = await import("./queue");
   });
@@ -135,6 +144,16 @@ describe("queue location refresh", () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
     Reflect.deleteProperty(globalThis, "__SUPERCHECK_QUEUE_SINGLETON__");
+  });
+
+  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s stamps authoritative tier and priority after caller input", async (producer) => {
+    reserveSlot.mockResolvedValue(1);
+    getExecutionPolicy.mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 10 });
+    getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
+    const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", location: "eu-central", code: "code", script: "code", tests: [{ id: "test", script: "code" }], testScripts: [{ id: "test", script: "code" }], _executionTier: "paid" };
+    await queueModule[producer](task);
+    expect(enqueue).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ _executionTier: "trial" }), { jobId: "run", priority: 1 });
+    expect(getExecutionPolicy).toHaveBeenCalledWith("org");
   });
 
   it("adds locations while preserving global, scheduler, and existing regional clients", async () => {
