@@ -1,3 +1,7 @@
+jest.mock('../../execution/services/run-callback', () => ({
+  ...jest.requireActual('../../execution/services/run-callback'),
+  withRunCallback: jest.fn((_db, _runId, callback) => callback()),
+}));
 jest.mock('execa', () => ({
   execa: jest.fn(),
 }));

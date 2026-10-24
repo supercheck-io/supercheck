@@ -42,6 +42,7 @@ import {
   monitorResults,
   monitors,
   runs,
+  runCallbacks,
   reports,
   webhookIdempotency,
   organization,
@@ -90,6 +91,7 @@ export type CleanupEntityType =
   | "monitor_aggregates"
   | "monitor_aggregation_hourly"
   | "monitor_aggregation_daily"
+  | "run_artifacts"
   | "job_runs"
   | "playground_artifacts"
   | "webhook_idempotency"
@@ -1324,6 +1326,53 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
  * - Job runs (where jobId is not null)
  * - Playground runs (where jobId is null and metadata.source = 'playground')
  */
+/** Permanent tombstones cover PUTs that can commit after local failure or cleanup. */
+export class RunArtifactsCleanupStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "run_artifacts";
+  constructor(public config: CleanupStrategyConfig) {}
+  validate(): void {}
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    const [total] = await db.select({ count: sql<number>`count(*)` }).from(runCallbacks);
+    const [due] = await db.select({ count: sql<number>`count(*)` }).from(runCallbacks)
+      .where(sql`${runCallbacks.cleanupAt} <= now()` );
+    return { totalRecords: Number(total.count), oldRecords: Number(due.count) };
+  }
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const start = Date.now();
+    const result: CleanupOperationResult = {
+      entityType: this.entityType, success: true, recordsDeleted: 0,
+      s3ObjectsDeleted: 0, duration: 0, errors: [], details: {},
+    };
+    const limit = this.config.maxRecordsPerRun || 1000;
+    const storage = createS3CleanupService();
+    const due = await db.select().from(runCallbacks)
+      .where(sql`${runCallbacks.cleanupAt} <= now()` )
+      .orderBy(asc(runCallbacks.cleanupAt)).limit(limit);
+    result.details.recordsProcessed = due.length;
+    for (const callback of due) {
+      if (dryRun) continue;
+      // Claim briefly, then release the connection before storage I/O.
+      const claimed = await db.update(runCallbacks)
+        .set({ cleanupAt: new Date(Date.now() + 86400000) })
+        .where(and(eq(runCallbacks.runId, callback.runId), sql`${runCallbacks.cleanupAt} <= now()`))
+        .returning({ id: runCallbacks.runId });
+      if (!claimed.length || !callback.bucket) continue;
+      try {
+        const cleanup = await storage.deleteRunArtifacts(callback.bucket, callback.runId);
+        result.s3ObjectsDeleted! += cleanup.deletedObjects.length;
+        if (!cleanup.success) throw new Error("Storage cleanup failed");
+      } catch (error) {
+        result.success = false;
+        result.errors.push(`Run ${callback.runId}: ${error instanceof Error ? error.message : String(error)}`);
+        await db.update(runCallbacks).set({ cleanupAt: new Date(Date.now() + 900000) })
+          .where(eq(runCallbacks.runId, callback.runId));
+      }
+    }
+    result.duration = Date.now() - start;
+    return result;
+  }
+}
+
 export class JobRunsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "job_runs";
   config: CleanupStrategyConfig;
@@ -1501,7 +1550,8 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       const runIds = oldRuns.map(run => run.id);
       const associatedReports = await db.select().from(reports).where(and(
         inArray(reports.entityType, ["job", "test", "k6_test", "k6_job"]),
-        inArray(reports.entityId, runIds)
+        or(inArray(reports.entityId, runIds), and(eq(reports.entityType, "test"),
+          inArray(reports.reportPath, runIds.map(id => `${id}/report`))))
       ));
       const inputs: ReportDeletionInput[] = associatedReports.map(report => ({
         reportPath: report.reportPath,
@@ -1523,17 +1573,27 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         const s3Result = await this.s3Service.deleteReports(inputs);
         result.s3ObjectsDeleted! += s3Result.deletedObjects.length;
         if (!s3Result.success) {
-          for (const id of this.s3Service.getFailedReportEntityIds(inputs, s3Result)) invalidRunIds.add(id);
+          for (const id of this.s3Service.getFailedReportEntityIds(inputs, s3Result)) {
+            invalidRunIds.add(id);
+            for (const report of associatedReports.filter(report => report.entityId === id)) {
+              const owner = report.reportPath.split("/")[0];
+              if (runIds.includes(owner)) invalidRunIds.add(owner);
+            }
+          }
           result.success = false;
           result.errors.push(`Run artifact cleanup had ${s3Result.failedObjects.length} S3 failures; preserving failed pointers for retry`);
         }
       }
       const validRunIds = runIds.filter(id => !invalidRunIds.has(id));
-      const validReportIds = associatedReports.filter(report => !invalidRunIds.has(report.entityId)).map(report => report.id);
+      const validReportIds = associatedReports.filter(report => !invalidRunIds.has(report.entityId) && !invalidRunIds.has(report.reportPath.split("/")[0])).map(report => report.id);
       // Keep report pointers and runs together if either database deletion fails.
       if (validRunIds.length > 0) await db.transaction(async tx => {
+        await tx.select({ id: runs.id }).from(runs).where(inArray(runs.id, validRunIds))
+          .orderBy(asc(runs.id)).for("update");
         if (validReportIds.length > 0) {
-          await tx.delete(reports).where(inArray(reports.id, validReportIds));
+          await tx.delete(reports).where(and(inArray(reports.id, validReportIds),
+            or(inArray(reports.entityId, validRunIds), and(eq(reports.entityType, "test"),
+              inArray(reports.reportPath, validRunIds.map(id => `${id}/report`))))));
         }
         await tx.delete(runs).where(inArray(runs.id, validRunIds));
       });
@@ -2517,6 +2577,9 @@ export class DataLifecycleService {
         case "monitor_aggregation_daily":
           strategy = new MonitorAggregationDailyStrategy(config);
           break;
+        case "run_artifacts":
+          strategy = new RunArtifactsCleanupStrategy(config);
+          break;
         case "job_runs":
           strategy = new JobRunsCleanupStrategy(config);
           break;
@@ -2994,6 +3057,9 @@ export function createDataLifecycleService(): DataLifecycleService {
         "15 0 * * *"
       ),
     },
+
+    { entityType: "run_artifacts", enabled: true, cronSchedule: "*/15 * * * *",
+      batchSize: 100, maxRecordsPerRun: 1000 },
 
     // Job Runs Cleanup
     // Enabled by default for storage management

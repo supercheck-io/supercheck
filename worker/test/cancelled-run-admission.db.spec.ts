@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import postgres = require('postgres');
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { ConfigService } from '@nestjs/config';
@@ -23,6 +25,18 @@ beforeAll(async () => {
   client = postgres(url.toString(), { max: 2 });
   await client.unsafe(
     'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, started_at timestamptz, created_at timestamptz, completed_at timestamptz, error_details text, location text, duration_ms integer)',
+  );
+  await client.unsafe(
+    readFileSync(
+      join(
+        __dirname,
+        '../../app/src/db/migrations/0040_run_callback_fencing.sql',
+      ),
+      'utf8',
+    ),
+  );
+  await client.unsafe(
+    'CREATE TABLE reports (entity_id uuid, entity_type text, report_path text, status text, updated_at timestamptz)',
   );
   service = new DbService(drizzle(client), new ConfigService());
 });
@@ -175,4 +189,27 @@ it('keeps the cancellation marker when the stalled sweep ends a cancelled run', 
         'Execution timed out - marked as stalled by automatic recovery',
     },
   ]);
+});
+
+it('preserves a fresh callback and keeps the cancellation marker when recovering a stale callback', async () => {
+  const fresh = await seed(marker, 'running');
+  const stale = await seed(marker, 'running');
+  await client`INSERT INTO run_callbacks(run_id,owner,heartbeat_at) VALUES (${fresh},${randomUUID()},now()), (${stale},${randomUUID()},now()-interval '3 minutes')`;
+  await client`INSERT INTO reports(entity_id,status) VALUES (${fresh},'running'), (${stale},'running')`;
+  await recovery(true).checkAndHandleStalledJobs();
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${fresh}`,
+  ).toEqual([{ status: 'running', error_details: marker }]);
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${stale}`,
+  ).toEqual([{ status: 'error', error_details: marker }]);
+  expect(
+    await client`SELECT revoked_at IS NOT NULL AS revoked FROM run_callbacks WHERE run_id=${stale}`,
+  ).toEqual([{ revoked: true }]);
+  expect(
+    await client`SELECT status FROM reports WHERE entity_id=${fresh}`,
+  ).toEqual([{ status: 'running' }]);
+  expect(
+    await client`SELECT status FROM reports WHERE entity_id=${stale}`,
+  ).toEqual([{ status: 'error' }]);
 });

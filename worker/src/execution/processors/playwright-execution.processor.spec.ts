@@ -1,3 +1,7 @@
+jest.mock('../services/run-callback', () => ({
+  ...jest.requireActual('../services/run-callback'),
+  withRunCallback: jest.fn((_db, _runId, callback) => callback()),
+}));
 /**
  * Playwright Execution Processor Tests
  *

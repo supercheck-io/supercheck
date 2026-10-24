@@ -1,3 +1,4 @@
+import { canPersistRunCallback } from './run-callback';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -74,56 +75,29 @@ export class DbService implements OnModuleInit {
     );
 
     try {
-      const existing = await this.db
-        .select()
-        .from(reports)
-        .where(
-          and(
-            eq(reports.entityId, entityId),
-            eq(reports.entityType, entityType),
-          ),
-        )
-        .limit(1);
+      await this.db.transaction(async (tx) => {
+        if (!(await canPersistRunCallback(tx))) return;
 
-      if (existing.length > 0) {
-        this.logger.debug(
-          `Updating existing report metadata for ${entityType}/${entityId}`,
-        );
-        await this.db
-          .update(reports)
-          .set({
-            reportPath, // This is likely the S3 key now
-            status,
-            s3Url,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(reports.entityId, entityId),
-              eq(reports.entityType, entityType),
-            ),
-          )
-          .execute();
-      } else {
-        this.logger.debug(
-          `Inserting new report metadata for ${entityType}/${entityId}`,
-        );
-        await this.db
-          .insert(reports)
-          .values({
-            entityId,
-            entityType,
-            reportPath, // S3 key
-            status,
-            s3Url,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .execute();
-      }
-      this.logger.log(
-        `Successfully stored report metadata for ${entityType}/${entityId}`,
-      );
+        for (const id of new Set(
+          [entityId, metadata.aliasEntityId].filter((id): id is string => !!id),
+        )) {
+          await tx
+            .insert(reports)
+            .values({
+              entityId: id,
+              entityType,
+              reportPath,
+              status,
+              s3Url,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: [reports.entityType, reports.entityId],
+              set: { reportPath, status, s3Url, updatedAt: new Date() },
+            });
+        }
+      });
     } catch (error) {
       this.logger.error(
         `Error storing report metadata for ${entityType}/${entityId}: ${(error as Error).message}`,

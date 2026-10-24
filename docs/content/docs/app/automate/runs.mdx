@@ -67,3 +67,5 @@ For self-hosted deployments, an administrator must [configure an AI provider](/d
 ## Delete a Run
 
 Queued or running executions cannot be deleted. Stop the execution before retrying. Deletion waits for artifact storage cleanup; if storage is unavailable, the run stays available so you can retry. A partial cleanup may already have removed some artifacts.
+
+Reports belong to individual runs, including repeated executions of the same saved test. If a worker upload completes after a run has been deleted, background cleanup removes the late artifacts. This cleanup can take another scheduled pass.
