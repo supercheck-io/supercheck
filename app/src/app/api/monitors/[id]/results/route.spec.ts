@@ -33,6 +33,7 @@ jest.mock("@/lib/logger/index", () => ({
 
 import { buildMonitorResultsDateRange } from "./date-range";
 import { GET } from "./route";
+import { GET as getStats } from "../stats/route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
@@ -97,6 +98,19 @@ describe("GET /api/monitors/[id]/results validation", () => {
       organizationId: "org-1",
       projectId: "project-1",
     });
+  });
+
+  it.each([["results", GET], ["stats", getStats]] as const)("%s checks permission before rejecting a malformed ID", async (endpoint, handler) => {
+    mockCheckPermissionWithContext.mockReturnValue(false);
+    const response = await handler(new NextRequest(`http://localhost/api/monitors/bad/${endpoint}`), { params: Promise.resolve({ id: "bad" }) });
+    expect(response.status).toBe(403);
+    expect(mockDb.query.monitors.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each([["results", GET], ["stats", getStats]] as const)("%s rejects malformed IDs before data access for permitted users", async (endpoint, handler) => {
+    const response = await handler(new NextRequest(`http://localhost/api/monitors/bad/${endpoint}`), { params: Promise.resolve({ id: "bad" }) });
+    expect(response.status).toBe(404);
+    expect(mockDb.query.monitors.findFirst).not.toHaveBeenCalled();
   });
 
   it("rejects invalid date filters before querying the database", async () => {

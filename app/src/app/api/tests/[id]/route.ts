@@ -39,6 +39,7 @@ export async function GET(
     }
 
     // Find the test scoped to current project
+    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const result = await db
       .select()
       .from(tests)

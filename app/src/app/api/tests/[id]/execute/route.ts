@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       );
     }
 
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const rateLimitResponse = buildExecutionRateLimitResponse(
       await checkExecutionRateLimit(userId, organizationId),
     );

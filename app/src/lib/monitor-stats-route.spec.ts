@@ -50,8 +50,8 @@ it("preserves historical 30d aggregates when the 24h window only has raw data", 
     { totalChecks: 2, upChecks: 2, avgResponseTime: 50 },
   ]);
   const response = await GET(
-    new NextRequest("http://localhost/api/monitors/id/stats"),
-    { params: Promise.resolve({ id: "id" }) },
+    new NextRequest("http://localhost/api/monitors/00000000-0000-4000-8000-000000000099/stats"),
+    { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000099" }) },
   );
   expect(response.status).toBe(200);
   const body = await response.json();
@@ -89,8 +89,8 @@ it.each(["hourly", "daily"])(
         [10, 20, 30, 40, 50].map((responseTimeMs) => ({ responseTimeMs })),
       );
     const response = await GET(
-      new NextRequest("http://localhost/api/monitors/id/stats"),
-      { params: Promise.resolve({ id: "id" }) },
+      new NextRequest("http://localhost/api/monitors/00000000-0000-4000-8000-000000000099/stats"),
+      { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000099" }) },
     );
     const body = await response.json();
     expect(

@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 /**
  * GET/PUT/DELETE /api/variables/[id]
  *
@@ -37,6 +38,7 @@ export async function GET(
       );
     }
 
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [variable] = await db
       .select()
       .from(projectVariables)
@@ -92,6 +94,7 @@ export async function PUT(
     }
 
     // Verify variable exists and belongs to project
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [existing] = await db
       .select()
       .from(projectVariables)
@@ -245,6 +248,7 @@ export async function DELETE(
     }
 
     // Verify variable exists and belongs to project
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const [existing] = await db
       .select({
         id: projectVariables.id,

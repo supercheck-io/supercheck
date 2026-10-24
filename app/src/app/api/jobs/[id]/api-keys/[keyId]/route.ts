@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs } from "@/db/schema";
@@ -20,6 +21,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
+    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const keyRecord = await db
       .select({
         id: apikey.id,
@@ -88,6 +90,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
+    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const keyRecord = await db
       .select({
         id: apikey.id,

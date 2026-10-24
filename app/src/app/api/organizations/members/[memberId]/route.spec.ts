@@ -11,12 +11,12 @@ import { requireUserAuthContext } from "@/lib/auth-context";
 const lock = jest.fn();
 const returning = jest.fn();
 const tx = { select: jest.fn(), update: jest.fn(() => ({ set: () => ({ where: () => ({ returning }) }) })), delete: jest.fn(), insert: jest.fn() };
-const post = () => PUT(new NextRequest("http://localhost/api/organizations/members/target", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: "project_editor", projectAssignments: [{ projectId: "11111111-1111-4111-8111-111111111111" }] }) }), { params: Promise.resolve({ memberId: "target" }) });
+const post = () => PUT(new NextRequest("http://localhost/api/organizations/members/target", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: "project_editor", projectAssignments: [{ projectId: "11111111-1111-4111-8111-111111111111" }] }) }), { params: Promise.resolve({ memberId: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
 beforeEach(() => {
   jest.clearAllMocks();
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "actor", organizationId: "org-1", isCliAuth: false });
   (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
-  (db.select as jest.Mock).mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "target", role: "project_viewer" }] }) }) }) }).mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: async () => [] }) }) });
+  (db.select as jest.Mock).mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", role: "project_viewer" }] }) }) }) }).mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: async () => [] }) }) });
   (db.transaction as jest.Mock).mockImplementation(async fn => fn(tx));
   tx.select.mockReturnValue({ from: () => ({ where: () => ({ for: lock }) }) });
   lock.mockResolvedValue([]);

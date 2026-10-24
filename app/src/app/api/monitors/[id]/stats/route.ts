@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults, MonitoringLocation } from "@/db/schema";
@@ -49,8 +50,16 @@ export async function GET(
 
   try {
     const authContext = await requireAuthContext();
+    const canView = checkPermissionWithContext("monitor", "view", authContext);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this monitor" },
+        { status: 403 }
+      );
+    }
 
     // First, find the monitor to check permissions
+    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
     });
@@ -64,13 +73,7 @@ export async function GET(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const canView = checkPermissionWithContext("monitor", "view", authContext);
-    if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to view this monitor" },
-        { status: 403 }
-      );
-    }
+
 
     // Calculate date boundaries
     const now = new Date();

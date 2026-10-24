@@ -31,6 +31,7 @@ export async function GET(
     }
 
     // Find the run scoped to current project
+    if (!isUuid((await routeContext.params).runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     const result = await db
       .select({
         id: runs.id,
