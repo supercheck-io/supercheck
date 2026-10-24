@@ -27,6 +27,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Mermaid,
     DiagramEmbed,
     APIPage,
+    OpenAPIPage: APIPage,
     ...components,
   };
 }

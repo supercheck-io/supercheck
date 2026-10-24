@@ -203,6 +203,34 @@ const { checkExecutionRateLimit: mockCheckExecutionRateLimit } =
     checkExecutionRateLimit: jest.Mock;
   };
 
+// The trigger route joins the key to its owner's current ban state.
+function triggerKeySelect(jobId: string, owner: { banned?: boolean | null; banExpires?: Date | null } = {}) {
+  return {
+    from: jest.fn().mockReturnValue({
+      innerJoin: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          limit: jest.fn().mockResolvedValue([{
+            id: "apikey-1",
+            name: "key-1",
+            key: "hashed-key",
+            enabled: true,
+            expiresAt: null,
+            jobId,
+            userId: "user-1",
+            lastRequest: null,
+            requestCount: 0,
+            rateLimitEnabled: true,
+            rateLimitTimeWindow: 60,
+            rateLimitMax: 10,
+            banned: owner.banned ?? false,
+            banExpires: owner.banExpires ?? null,
+          }]),
+        }),
+      }),
+    }),
+  };
+}
+
 describe("Execution route regressions", () => {
   const authCtx = {
     userId: "user-1",
@@ -650,26 +678,7 @@ describe("Execution route regressions", () => {
   it("POST /api/jobs/[id]/trigger starts queued and updates status from queue result", async () => {
     const jobId = "00000000-0000-4000-8000-000000000010";
 
-    const apiKeySelect = {
-      from: jest.fn().mockReturnValue({
-        where: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue([{
-            id: "apikey-1",
-            name: "key-1",
-            key: "hashed-key",
-            enabled: true,
-            expiresAt: null,
-            jobId,
-            userId: "user-1",
-            lastRequest: null,
-            requestCount: 0,
-            rateLimitEnabled: true,
-            rateLimitTimeWindow: 60,
-            rateLimitMax: 10,
-          }]),
-        }),
-      }),
-    };
+    const apiKeySelect = triggerKeySelect(jobId);
 
     const jobSelect = {
       from: jest.fn().mockReturnValue({
@@ -724,5 +733,26 @@ describe("Execution route regressions", () => {
       expect.objectContaining({ status: "queued", jobId }),
     );
     expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
+  });
+
+  it.each([
+    ["banned with no expiry", { banned: true, banExpires: null }],
+    ["banned until a future date", { banned: true, banExpires: new Date(Date.now() + 3_600_000) }],
+  ])("POST /api/jobs/[id]/trigger rejects a key whose owner is %s", async (_label, owner) => {
+    const jobId = "00000000-0000-4000-8000-000000000011";
+    mockDb.select.mockReturnValueOnce(triggerKeySelect(jobId, owner));
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "Invalid API key" });
+    expect(mockAddJobToQueue).not.toHaveBeenCalled();
   });
 });
