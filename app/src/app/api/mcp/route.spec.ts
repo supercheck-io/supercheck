@@ -99,9 +99,10 @@ describe("/api/mcp", () => {
     it("counts every message of a batch against the token's quota", async () => {
       resolveMcpCallContext.mockResolvedValue(init.ctx);
       await POST(batch(5));
-      // One atomic call carrying the whole batch, so a refused batch uses none of the quota.
-      expect(checkAndIncrement).toHaveBeenCalledTimes(1);
-      expect(checkAndIncrement).toHaveBeenCalledWith("mcp:call:u:c", expect.objectContaining({ timeWindow: 60 }), 5);
+      // One atomic call per bucket carrying the whole batch: this app, then the user's total across apps.
+      expect(checkAndIncrement).toHaveBeenCalledTimes(2);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(1, "mcp:call:u:c", expect.objectContaining({ timeWindow: 60, maxRequests: 300 }), 5);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(2, "mcp:user:u", expect.objectContaining({ timeWindow: 60, maxRequests: 600 }), 5);
     });
 
     it("refuses a chunked body over the cap even without a Content-Length", async () => {
@@ -153,6 +154,16 @@ describe("/api/mcp", () => {
       expect(res.status).toBe(429);
       expect(res.headers.get("retry-after")).toBe("17");
       expect(await res.json()).toMatchObject({ jsonrpc: "2.0", id: null, error: { data: { code: "rate_limited" } } });
+    });
+
+    it("answers 503, not 429, when the rate limiter itself is down", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0, limit: 300, resetAt: new Date(), retryAfter: 60, unavailable: true });
+      const res = await POST(rpc("initialize"));
+      expect(res.status).toBe(503);
+      expect(res.headers.get("retry-after")).toBe("5");
+      expect(await res.json()).toMatchObject({ error: { data: { code: "rate_limiter_unavailable" } } });
+      expect(resolveMcpCallContext).not.toHaveBeenCalled();
     });
 
     it("caps concurrent requests per token and frees the slot afterwards", async () => {

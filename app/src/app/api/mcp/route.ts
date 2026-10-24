@@ -45,15 +45,20 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
     throw error;
   }
 
-  // Throttle per token (user + client) before any database work, so a flood costs a Redis call, not
+  // Throttle per connected app and per user before any database work, so a flood costs a Redis call, not
   // several queries. A batch counts once per JSON-RPC message.
   const permit = await admitMcpCall(
-    `${typeof claims.sub === "string" ? claims.sub : "unknown"}:${typeof claims.azp === "string" ? claims.azp : "unknown"}`,
+    {
+      user: typeof claims.sub === "string" ? claims.sub : "unknown",
+      client: typeof claims.azp === "string" ? claims.azp : "unknown",
+    },
     countMcpMessages(parsedBody),
   );
   if (isMcpRefusal(permit)) {
     const retry: Record<string, string> = permit.retryAfter ? { "Retry-After": String(permit.retryAfter) } : {};
-    return rpcError(permit.status, permit.error, permit.status === 429 ? "Too many requests" : "Batch is too large", retry);
+    const message =
+      permit.status === 429 ? "Too many requests" : permit.status === 503 ? "Rate limiting is temporarily unavailable" : "Batch is too large";
+    return rpcError(permit.status, permit.error, message, retry);
   }
 
   try {

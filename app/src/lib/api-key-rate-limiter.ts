@@ -46,6 +46,8 @@ export interface ApiKeyRateLimitResult {
   limit: number; // Maximum requests allowed
   resetAt: Date; // When the window resets
   retryAfter?: number; // Seconds until retry is allowed (only set if rate limited)
+  /** The limiter itself failed (Redis down); `allowed` is false but the caller is not over its quota. */
+  unavailable?: boolean;
 }
 
 /**
@@ -226,6 +228,7 @@ export class ApiKeyRateLimiter {
         limit: config.maxRequests,
         resetAt: fallbackResetAt,
         retryAfter: config.timeWindow,
+        unavailable: true,
       };
     }
   }
