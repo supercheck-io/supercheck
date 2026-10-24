@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, member, projects } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { getQueues } from "@/lib/queue";
+import { getCapacityQueues } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 import {
   calculateJobStatus,
@@ -264,7 +264,8 @@ export async function POST(
     // (capacity or active-execution deferral) may still have a live execution behind it.
     let removedJobNeverStarted = false;
     try {
-      const queues = await getQueues();
+      // Include disabled regions that still hold running work, which the plain queue list no longer shows.
+      const queues = await getCapacityQueues();
       // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all
       // active/waiting/delayed jobs for every cancellation request.
       const playwrightQueue = queues.playwrightQueues["global"];

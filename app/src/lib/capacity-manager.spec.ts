@@ -325,6 +325,29 @@ describe('CapacityManager', () => {
         expect(position).toBe(6); // 0-indexed rank + 1
       });
     });
+
+    // Cancellation uses this to learn whether a run is still waiting. "Could not check" must never look like
+    // "not waiting", or a run that is still queued would be finalized on a guess.
+    describe('removeFromQueuedSet', () => {
+      it('removes a waiting job together with its payload and reports it', async () => {
+        mockRedisZrem.mockResolvedValue(1);
+        await expect(capacityManager.removeFromQueuedSet(testOrgId, 'job-1')).resolves.toBe(true);
+        expect(mockRedisZrem).toHaveBeenCalledWith(expect.stringContaining(testOrgId), 'job-1');
+        expect(mockRedisPipeline).toHaveBeenCalled(); // payload cleanup
+      });
+
+      it('reports false, without touching the payload, when the job is not queued', async () => {
+        mockRedisZrem.mockResolvedValue(0);
+        await expect(capacityManager.removeFromQueuedSet(testOrgId, 'job-1')).resolves.toBe(false);
+        expect(mockRedisPipeline).not.toHaveBeenCalled();
+      });
+
+      it('rethrows when Redis cannot be reached instead of answering that the job was not queued', async () => {
+        const outage = new Error('redis unavailable');
+        mockRedisZrem.mockRejectedValue(outage);
+        await expect(capacityManager.removeFromQueuedSet(testOrgId, 'job-1')).rejects.toBe(outage);
+      });
+    });
   });
 
   // ==========================================================================
