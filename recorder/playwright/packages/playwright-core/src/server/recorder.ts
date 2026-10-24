@@ -24,7 +24,7 @@ import { buildFullSelector, metadataToCallLog } from './recorder/recorderUtils';
 import { locatorOrSelectorAsSelector } from '../utils/isomorphic/locatorParser';
 import { stringifySelector } from '../utils/isomorphic/selectorParser';
 
-import type { Language } from './codegen/types';
+import type { Language, LanguageGeneratorOptions } from './codegen/types';
 import type { Frame } from './frames';
 import type { CallMetadata, InstrumentationListener, SdkObject } from './instrumentation';
 import type { Page } from './page';
@@ -33,7 +33,7 @@ import type { Point } from '../utils/isomorphic/types';
 import type { AriaTemplateNode } from '@isomorphic/ariaSnapshot';
 import type * as channels from '@protocol/channels';
 import type * as actions from '@recorder/actions';
-import type { CallLog, CallLogStatus, ElementInfo, EventData, Mode, OverlayState, Source, UIState } from '@recorder/recorderTypes';
+import type { CallLog, CallLogStatus, ElementInfo, EventData, Mode, OverlayState, Source, SourceHighlight, UIState } from '@recorder/recorderTypes';
 
 const recorderSymbol = Symbol('recorderSymbol');
 
