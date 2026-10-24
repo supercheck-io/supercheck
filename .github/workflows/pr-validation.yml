@@ -239,6 +239,13 @@ jobs:
           EXECUTION_USAGE_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/execution_usage_test
           MONITOR_CYCLE_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
 
+      - name: Run database integration tests
+        working-directory: ./worker
+        run: npm run test:db
+        env:
+          NODE_ENV: test
+          TEST_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+
       - name: Verify execution admission against PostgreSQL
         working-directory: ./worker
         run: npm test -- --rootDir . --setupFilesAfterEnv ./jest.setup.ts --runInBand --runTestsByPath test/execution-admission.db.spec.ts

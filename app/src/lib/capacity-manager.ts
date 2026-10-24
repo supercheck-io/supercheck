@@ -387,6 +387,7 @@ export class CapacityManager {
    * This handles jobs that are waiting to be promoted but haven't started yet.
    * Note: Queued jobs don't consume running capacity - they only consume queued capacity.
    * @returns true if job was found and removed
+   * @throws when the queued set cannot be reached, so a failed check is never mistaken for "not queued"
    */
   async removeFromQueuedSet(organizationId: string, jobId: string): Promise<boolean> {
     try {
@@ -402,7 +403,9 @@ export class CapacityManager {
       return false;
     } catch (error) {
       logger.error({ err: error, jobId, organizationId }, "Failed to remove job from queued set");
-      return false;
+      // Not `false`: that would read as "it was not queued", and a caller deciding whether anything is still
+      // waiting (cancellation) must be able to tell "absent" from "could not check".
+      throw error;
     }
   }
 

@@ -269,6 +269,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # "monitor" for a lightweight monitoring-only worker.
   WORKER_QUEUES: ${WORKER_QUEUES:-}
 
+  # Finalize runs cancelled while still queued. Leave off until every worker runs this version.
+  CANCELLED_QUEUED_RECOVERY_ENABLED: ${CANCELLED_QUEUED_RECOVERY_ENABLED:-false}
+
   # Traefik/HTTPS Configuration
   APP_DOMAIN: ${APP_DOMAIN}
   ACME_EMAIL: ${ACME_EMAIL}

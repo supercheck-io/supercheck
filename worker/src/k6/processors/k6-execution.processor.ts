@@ -16,7 +16,10 @@ import {
 import { DbService } from '../../execution/services/db.service';
 import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
 import { HardStopNotificationService } from '../../execution/services/hard-stop-notification.service';
-import { CancellationService } from '../../common/services/cancellation.service';
+import {
+  CancellationService,
+  RUN_CANCELLATION_MARKER,
+} from '../../common/services/cancellation.service';
 import {
   getBillableMs,
   getBillableVirtualUsers,
@@ -93,6 +96,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A run the user already cancelled ends as cancelled; the failure must not replace that.
+      if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
+        throw new UnrecoverableError(message);
+      }
       await this.dbService.db
         .update(schema.runs)
         .set({
@@ -149,7 +156,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       throw new DelayedError();
     }
     if (!(await this.dbService.claimRunExecution(runId))) {
-      return { success: false, error: 'Cancellation requested by user' };
+      // Refused because cancellation was requested, or because the run already finished (a replay of a
+      // terminal run). Either way nothing is running, so end the run here (finalizing is a no-op if it is
+      // already terminal) instead of leaving it queued until a recovery sweep (which is off by default).
+      await this.dbService.finalizeCancelledRun(runId);
+      return { success: false, error: RUN_CANCELLATION_MARKER };
     }
     const isJobRun = Boolean(taskData.jobId);
     const testId = taskData.tests?.[0]?.id || taskData.testId || null;
@@ -176,7 +187,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .set({
           status: 'error',
           completedAt: new Date(),
-          errorDetails: 'Execution cancelled by user',
+          errorDetails: RUN_CANCELLATION_MARKER,
         })
         .where(
           and(
@@ -188,7 +199,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       return {
         success: false,
         timedOut: false,
-        error: 'Cancellation requested by user',
+        error: RUN_CANCELLATION_MARKER,
       };
     }
 
@@ -369,7 +380,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               summaryS3Url: result.summaryUrl ?? null,
               consoleS3Url: result.consoleUrl ?? null,
               errorDetails: wasCancelled
-                ? 'Cancellation requested by user'
+                ? RUN_CANCELLATION_MARKER
                 : result.error,
               consoleOutput: result.consoleOutput
                 ? result.consoleOutput.slice(0, 10000)
@@ -410,7 +421,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           }
 
           if (wasCancelled) {
-            runUpdate.errorDetails = 'Cancellation requested by user';
+            runUpdate.errorDetails = RUN_CANCELLATION_MARKER;
           } else if (result.timedOut) {
             const baseExpression =
               metadataExpression ?? sql`coalesce(metadata, '{}'::jsonb)`;
@@ -425,6 +436,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               result.error ?? 'k6 execution timed out before completion.';
           } else if (result.error) {
             runUpdate.errorDetails = result.error;
+          } else if (runStatus === 'passed' || runStatus === 'failed') {
+            // Completion wins a late-cancel race: drop a stale cancellation marker, and only that marker.
+            runUpdate.errorDetails = sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN NULL ELSE ${schema.runs.errorDetails} END`;
           }
 
           if (metadataExpression) {
@@ -534,7 +548,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         success: result.success,
         timedOut: result.timedOut,
         error: wasCancelled
-          ? 'Cancellation requested by user'
+          ? RUN_CANCELLATION_MARKER
           : (result.error ?? undefined),
       };
     } catch (error) {
@@ -610,9 +624,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               status: isCancellation ? 'error' : 'failed',
               completedAt: new Date(),
               durationMs: Date.now() - processStartTime,
-              errorDetails: isCancellation
-                ? 'Cancellation requested by user'
-                : message,
+              errorDetails: isCancellation ? RUN_CANCELLATION_MARKER : message,
             })
             .where(
               and(

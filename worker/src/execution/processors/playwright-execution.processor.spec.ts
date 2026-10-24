@@ -27,6 +27,7 @@ const mockExecutionService = {
 const mockDbService = {
   getTerminalRun: jest.fn(),
   claimRunExecution: jest.fn(),
+  finalizeCancelledRun: jest.fn().mockResolvedValue(true),
   updateRunStatus: jest.fn(),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
@@ -88,6 +89,7 @@ jest.mock('../services/hard-stop-notification.service', () => ({
 }));
 
 jest.mock('../../common/services/cancellation.service', () => ({
+  RUN_CANCELLATION_MARKER: 'Cancellation requested by user',
   CancellationService: jest
     .fn()
     .mockImplementation(() => mockCancellationService),
@@ -227,6 +229,9 @@ describe('PlaywrightExecutionProcessor', () => {
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
       expect(mockExecutionService.runJob).not.toHaveBeenCalled();
       expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+      expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
+        mockTestTask.runId,
+      );
     });
 
     it('keeps executions without a persisted run outside run admission', async () => {
@@ -294,7 +299,23 @@ describe('PlaywrightExecutionProcessor', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it('ends a run the user already cancelled as cancelled when Kubernetes state cannot be verified', async () => {
+      mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
+        new Error('Unable to verify Kubernetes execution state for run-456'),
+      );
+      mockDbService.finalizeCancelledRun.mockResolvedValueOnce(true);
+      mockDbService.updateRunStatus.mockClear();
+      await expect(
+        processor.process(createMockJob(mockTestTask)),
+      ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
+      expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
+        mockTestTask.runId,
+      );
+      expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+    });
+
     it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
+      mockDbService.finalizeCancelledRun.mockResolvedValueOnce(false);
       mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
         new Error('Unable to verify Kubernetes execution state for run-456'),
       );

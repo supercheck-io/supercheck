@@ -99,6 +99,7 @@ describe('k6 durable completion', () => {
           db,
           getTerminalRun,
           claimRunExecution: jest.fn().mockResolvedValue(true),
+          finalizeCancelledRun: jest.fn().mockResolvedValue(false),
         } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
         {} as Dependencies[3],
@@ -197,6 +198,7 @@ describe('k6 location capability backstop', () => {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
         claimRunExecution: jest.fn().mockResolvedValue(true),
+        finalizeCancelledRun: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[1],
       { get: () => 'us-east' } as unknown as Dependencies[2],
       {} as Dependencies[3],
@@ -280,6 +282,7 @@ describe('k6 container-start metering', () => {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
         claimRunExecution: jest.fn().mockResolvedValue(true),
+        finalizeCancelledRun: jest.fn().mockResolvedValue(false),
         getRunStatusesForJob: jest.fn(),
         updateJobStatus: jest.fn(),
       } as unknown as Dependencies[1],
@@ -398,6 +401,7 @@ describe('k6 execution admission', () => {
     const runK6Test = jest.fn();
     const updateRunStatus = jest.fn();
     const claimRunExecution = jest.fn().mockResolvedValue(false);
+    const finalizeCancelledRun = jest.fn().mockResolvedValue(true);
     const processor = new K6ExecutionProcessor(
       {
         runK6Test,
@@ -405,6 +409,7 @@ describe('k6 execution admission', () => {
       } as unknown as Dependencies[0],
       {
         claimRunExecution,
+        finalizeCancelledRun,
         getTerminalRun: async () => undefined,
         updateRunStatus,
       } as unknown as Dependencies[1],
@@ -422,6 +427,7 @@ describe('k6 execution admission', () => {
       error: 'Cancellation requested by user',
     });
     expect(claimRunExecution).toHaveBeenCalledWith('run-id');
+    expect(finalizeCancelledRun).toHaveBeenCalledWith('run-id');
     expect(runK6Test).not.toHaveBeenCalled();
     expect(updateRunStatus).not.toHaveBeenCalled();
   });

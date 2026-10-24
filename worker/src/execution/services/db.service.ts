@@ -29,6 +29,7 @@ import { NotificationProvider } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
 import type { ExecutionUsageTransaction } from './execution-usage-receipts';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 // Re-export from canonical location for backward compatibility.
 // All new code should import directly from '../../db/db.constants'.
@@ -217,7 +218,7 @@ export class DbService implements OnModuleInit {
         durationMs?: number;
         completedAt?: Date;
         startedAt?: Date;
-        errorDetails?: string;
+        errorDetails?: string | null | SQL;
         artifactPaths?: any;
       } = {
         status,
@@ -273,6 +274,10 @@ export class DbService implements OnModuleInit {
       // Add error details if provided
       if (errorDetails) {
         updateData.errorDetails = errorDetails;
+      } else if (status === 'passed' || status === 'failed') {
+        // Completion wins a late-cancel race: drop a stale cancellation marker from a finished run, and
+        // only that marker (any other recorded detail stays).
+        updateData.errorDetails = sql`CASE WHEN ${runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN NULL ELSE ${runs.errorDetails} END`;
       }
 
       // Update the database
@@ -536,12 +541,37 @@ export class DbService implements OnModuleInit {
           inArray(runs.status, ['queued', 'running']),
           or(
             isNull(runs.errorDetails),
-            ne(runs.errorDetails, 'Cancellation requested by user'),
+            ne(runs.errorDetails, RUN_CANCELLATION_MARKER),
           ),
         ),
       )
       .returning({ id: runs.id });
     return !!claimed;
+  }
+
+  /**
+   * Finalize a run whose cancellation was requested before any execution started. The caller has
+   * already ruled out a live execution; the marker comparison keeps this from touching a run that
+   * finished normally.
+   */
+  async finalizeCancelledRun(runId: string): Promise<boolean> {
+    const [finalized] = await this.db
+      .update(runs)
+      .set({ status: 'error', completedAt: new Date() })
+      .where(
+        and(
+          eq(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+          eq(runs.errorDetails, RUN_CANCELLATION_MARKER),
+        ),
+      )
+      .returning({ id: runs.id, jobId: runs.jobId });
+    if (!finalized) return false;
+    if (finalized.jobId) {
+      const statuses = await this.getRunStatusesForJob(finalized.jobId);
+      await this.updateJobStatus(finalized.jobId, statuses);
+    }
+    return true;
   }
 
   /** A committed terminal result makes a redelivered queue task a replay. */
