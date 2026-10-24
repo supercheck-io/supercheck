@@ -1311,7 +1311,8 @@ paths:
           schema:
             type: string
             format: uuid
-          description: Filter by job ID. A malformed or empty UUID returns 404.
+          description: Filter by job ID. An empty value means no filter; a malformed UUID
+            returns 400.
         - name: status
           in: query
           schema:
@@ -1338,10 +1339,10 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/Run"
+        "400":
+          description: The jobId filter is not a canonical UUID.
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: The jobId filter is not a canonical UUID.
   /api/runs/{runId}:
     parameters:
       - name: runId
