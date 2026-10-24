@@ -4,6 +4,7 @@ import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
 import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +26,10 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limitParam = searchParams.get('limit');
     const jobId = searchParams.get('jobId');
+    // An empty ?jobId= means no filter, like a missing one. A malformed id is a bad request, not a missing job.
+    if (jobId && !isUuid(jobId)) {
+      return NextResponse.json({ error: 'Invalid jobId' }, { status: 400 });
+    }
     const status = searchParams.get('status');
 
     // If no limit specified, fetch all data (for client-side filtering)

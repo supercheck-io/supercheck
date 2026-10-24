@@ -29,7 +29,7 @@ export class McpAccessDeniedError extends Error {
  * Re-checks authority on every request, independent of what the 15-minute JWT claims.
  * A JWT cannot be revoked, so Disconnect, project removal and bans must take effect here:
  *  1. the token names a project;
- *  2. the user is not banned;
+ *  2. the user is not banned (an expired ban no longer counts);
  *  3. the (client, user, project) consent row still exists and covers mcp:read;
  *  4. the user still has a role on the project and may view it.
  */

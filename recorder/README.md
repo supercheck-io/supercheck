@@ -180,6 +180,9 @@ npm run lint
 # Build library, examples, and extension bundle
 npm run build
 
+# Check recorder and imported vendor source types after bundle preparation
+npm run typecheck
+
 # Install test browser dependencies
 npm run test:install
 
@@ -191,6 +194,16 @@ npm run test:browser
 ```
 
 ### Vendored Playwright source
+
+Use Node.js 24 for CI-equivalent development checks. The `electron` development
+dependency is a pinned alias to `electron-types`: it supplies the official SDK
+declarations without installing or running an Electron binary, and retains Node
+20 installation support.
+`npm run build` prepares the locked vendor bundles before `npm run typecheck`.
+After changing root dependencies, prepare those bundles again before typechecking.
+The compiler checks recorder source and its imported vendor code with the existing
+Node 20.8 declaration baseline, plus Chrome and Vite declarations resolved from
+the recorder root. Strictness and source coverage are unchanged.
 
 The `playwright/` directory contains the exact subset of Microsoft Playwright v1.53.0 source needed to build the extension without external build dependencies or private repositories. When updating Playwright, replace vendored packages from the corresponding upstream source, update `playwright/VERSION`, and verify the build and browser test suites.
 

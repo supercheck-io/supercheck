@@ -56,6 +56,9 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
+      - name: Typecheck recorder source
+        run: npm run typecheck
+
   browser-tests:
     name: Browser Tests
     # Only on the weekly schedule or manual dispatch, never on pull requests.

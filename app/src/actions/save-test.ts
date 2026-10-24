@@ -37,8 +37,8 @@ const saveTestSchema = testsInsertSchema.omit({
 
 // Add an optional id field for updates
 const saveTestWithIdSchema = saveTestSchema.extend({
-  id: z.string().optional(),
-  requirementId: z.string().optional(),
+  id: z.string().uuid().optional(),
+  requirementId: z.string().uuid().optional(),
 });
 
 export type SaveTestInput = z.infer<typeof saveTestWithIdSchema>;

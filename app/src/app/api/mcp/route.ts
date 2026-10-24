@@ -48,8 +48,6 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
     throw error;
   }
 
-  if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
-
   // Throttle per connected app and per user before any database work, so a flood costs a Redis call, not
   // several queries. A batch counts once per JSON-RPC message.
   const permit = await admitMcpCall(
@@ -67,6 +65,8 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
   }
 
   try {
+    if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
+
     let context;
     try {
       context = await resolveMcpCallContext(claims);
@@ -100,7 +100,7 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
       allowedOrigins: [request.headers.get("origin") ?? new URL(getMcpResourceUrl()).origin],
     });
     await server.connect(transport);
-    return await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });
+    return await transport.handleRequest(request, { parsedBody });
   } finally {
     permit.release();
   }
@@ -140,6 +140,8 @@ export async function POST(request: Request): Promise<Response> {
       const body = await response.clone().json().catch(() => null) as { jsonrpc?: string } | null;
       if (body?.jsonrpc !== "2.0") {
         responseHeaders.delete("content-length");
+        responseHeaders.delete("content-type");
+        responseHeaders.delete("content-encoding");
         const code = response.status === 401 ? "unauthorized" : response.status === 403 ? "access_denied" : "request_failed";
         return rpcError(response.status, code, response.status === 401 ? "Authentication required" : "Request refused", responseHeaders);
       }

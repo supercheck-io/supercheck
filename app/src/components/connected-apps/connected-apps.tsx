@@ -124,8 +124,8 @@ export function ConnectedApps() {
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect {pending?.clientName ?? "this app"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It will stop getting access to {pending?.projectName ?? "that project"}. A short-lived token it already
-              holds can keep working for up to 15 minutes. You can connect it again later.
+              It loses access to {pending?.projectName ?? "that project"} immediately, including with a token it
+              already holds. You can connect it again later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

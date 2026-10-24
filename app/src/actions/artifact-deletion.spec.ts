@@ -72,7 +72,7 @@ describe("explicit artifact deletion", () => {
     for (const rows of selections) mockSelections.push(Array.isArray(rows) ? [...rows] : [rows]);
     mockDeleteReports.mockResolvedValue({ success: false, deletedObjects: ["partial"], failedObjects: [{ key: "remaining", error: "unavailable" }] });
 
-    const result = await remove("resource");
+    const result = await remove("00000000-0000-4000-8000-000000000003");
 
     expect(result.success).toBe(false);
     expect(mockDeleteReports).toHaveBeenCalledTimes(1);
@@ -110,13 +110,13 @@ describe("explicit artifact deletion", () => {
 
   it("keeps REST permission and active-run status responses", async () => {
     mockPermission.mockReturnValue(false);
-    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "run" }) })).status).toBe(403);
+    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "00000000-0000-4000-8000-000000000003" }) })).status).toBe(403);
     expect(mockDelete).not.toHaveBeenCalled();
     mockPermission.mockReturnValue(true);
     mockSelections.push([{ id: "run", status: "running" }]);
-    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "run" }) })).status).toBe(409);
+    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "00000000-0000-4000-8000-000000000003" }) })).status).toBe(409);
     mockSelections.push([]);
-    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "missing" }) })).status).toBe(404);
+    expect((await deleteRunApi(new Request("http://localhost"), { params: Promise.resolve({ runId: "00000000-0000-4000-8000-000000000004" }) })).status).toBe(404);
   });
 
 });

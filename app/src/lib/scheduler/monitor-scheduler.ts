@@ -68,14 +68,16 @@ export async function processScheduledMonitor(
   const retryLimit = data.retryLimit || 3;
 
   const finalAttempt = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
+  // Read outside the try: a database failure here says nothing about the monitored service, so it
+  // must surface to BullMQ for a retry and not be recorded as the monitor being down.
+  const monitor = await db.query.monitors.findFirst({
+    where: eq(monitors.id, monitorId),
+    columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true },
+  });
+  if (!monitor || monitor.enabled === false || monitor.status === 'paused') {
+    return { success: false };
+  }
   try {
-    const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, monitorId),
-      columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true },
-    });
-    if (!monitor || monitor.enabled === false || monitor.status === 'paused') {
-      return { success: false };
-    }
     executionJobData = {
       ...executionJobData,
       target: monitor.target,
