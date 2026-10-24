@@ -291,7 +291,10 @@ function findUnsafeStatements(sql) {
   // at the whole EXECUTE statement, and accept a timeout name only right after SET LOCAL or RESET.
   for (const execute of bodies.matchAll(/\bEXECUTE\b/giu)) {
     const statementEnd = bodies.indexOf(";", execute.index);
-    const text = withStrings.slice(execute.index, statementEnd === -1 ? withStrings.length : statementEnd);
+    // 'lock_' || 'timeout' is one literal once joined; a name split across literals must still be seen.
+    const text = withStrings
+      .slice(execute.index, statementEnd === -1 ? withStrings.length : statementEnd)
+      .replace(/'\s*\|\|\s*'/gu, "");
     for (const name of text.matchAll(/\b(lock_timeout|statement_timeout)\b/giu)) {
       if (!/\b(?:SET\s+LOCAL|RESET)\s+$/iu.test(text.slice(0, name.index))) {
         sessionFindings.push({ setting: name[1], index: execute.index });
@@ -332,7 +335,7 @@ function findUnsafeStatements(sql) {
     const timeout =
       /^[Ee]?'(lock_timeout|statement_timeout)'$/iu.exec(name) ?? /^(\$[A-Za-z_]*\$)(lock_timeout|statement_timeout)\1$/iu.exec(name);
     const plainLiteral = /^[Ee]?'[^']*'$/u.test(name) || /^(\$[A-Za-z_]*\$)[^$]*\1$/u.test(name);
-    if (SET_CONFIG_LOCAL.test(args[2] ?? "")) continue;
+    if (SET_CONFIG_LOCAL.test((args[2] ?? "").trim())) continue;
     if (timeout) {
       sessionFindings.push({ setting: timeout[2] ?? timeout[1], index: call.index });
     } else if (!plainLiteral) {

@@ -216,6 +216,7 @@ describe("timeout changes that were previously missed", () => {
     "EXECUTE format('SET %I = 0', 'lock_timeout');",
     "EXECUTE 'SET \"lock_timeout\" = 0';",
     "EXECUTE 'SET SESSION lock_timeout = 0';",
+    "EXECUTE 'SET SESSION ' || 'lock_' || 'timeout=0';",
   ])("rejects a session-level change built inside EXECUTE: %s", (statement) => {
     expect(findUnsafeStatements(`DO $$ BEGIN ${statement} END $$;`)).toEqual(session("lock_timeout"));
   });
@@ -255,6 +256,7 @@ describe("timeout changes that were previously missed", () => {
     "SELECT set_config('lock_timeout', '5s', 'true');",
     "SELECT set_config('lock_timeout', '5s', 'on');",
     "SELECT set_config('statement_timeout', '5s', true::boolean);",
+    "SELECT set_config('lock_timeout', '0', (true));",
     "SELECT set_config('app.current_user', 'x', false);",
     "DO $$ BEGIN EXECUTE 'SET LOCAL lock_timeout = ''5s'''; END $$;",
     "DO $$ BEGIN EXECUTE 'RESET lock_timeout'; END $$;",
