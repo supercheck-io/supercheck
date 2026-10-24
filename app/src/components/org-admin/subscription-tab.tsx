@@ -279,7 +279,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
     );
   }
 
-  const expired = data.subscription.accessReason === "canceled_expired" ||
+  const expired = Boolean(data.trial && !data.trial.active) || data.subscription.accessReason === "canceled_expired" ||
     (!data.subscription.plan && Boolean(data.subscription.subscriptionEndsAt || data.subscription.status === "canceled"));
   const hasSubscription = data.subscription.plan !== null;
   const onTrial = !hasSubscription && Boolean(data.trial?.active);
@@ -407,7 +407,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               </p>
             </div>}
             {/* Only organization owners can open the organization's billing portal. */}
-            {canManageSubscription && data.subscription.hasBillingCustomer && (
+            {canManageSubscription && hasSubscription && (
               <Button
                 variant="outline"
                 onClick={handleManageSubscription}

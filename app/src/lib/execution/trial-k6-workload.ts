@@ -1,4 +1,17 @@
-import { normalizeTargetHostname } from "./target-domain";
+import { isIP } from "node:net";
+import { domainToASCII } from "node:url";
+
+export function normalizeTargetHostname(value: string): string {
+  if (/[\u0000-\u0020\u007f/:?#@*\\]/u.test(value)) throw new Error("An exact public DNS hostname is required");
+  const hostname = domainToASCII(value.toLowerCase().replace(/\.$/, ""));
+  if (!hostname || hostname.length > 253 || isIP(hostname) || !hostname.includes(".") ||
+      !hostname.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) ||
+      /\.(?:localhost|local|internal|lan|home)$/.test(hostname) ||
+      /\.(?:\d+|0x[0-9a-f]*)$/.test(hostname)) {
+    throw new Error("An exact public DNS hostname is required");
+  }
+  return hostname;
+}
 
 export interface TrialK6Workload {
   url: string;

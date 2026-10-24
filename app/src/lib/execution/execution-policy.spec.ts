@@ -1,6 +1,5 @@
 /** @jest-environment node */
 import {
-  literalHostnames,
   clearExecutionPolicyCache,
   POLICY_TTL_MS,
   getExecutionPolicy,
@@ -8,18 +7,6 @@ import {
   type ExecutionPolicy,
 } from "./execution-policy";
 import { createTrialK6Script } from "./trial-k6-workload";
-import {
-  requireVerifiedTarget,
-  TargetDomainError,
-} from "./target-domain-registry";
-jest.mock("./target-domain-registry", () => ({
-  requireVerifiedTarget: jest.fn(),
-  TargetDomainError: class extends Error {
-    constructor(message: string, readonly status: number = 400) {
-      super(message);
-    }
-  },
-}));
 import { db } from "@/utils/db";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import {
@@ -155,8 +142,18 @@ it("preserves self hosted capacity overrides", async () => {
 });
 
 describe("local execution capacity", () => {
+  const originalRunning = process.env.RUNNING_CAPACITY;
+  const originalQueued = process.env.QUEUED_CAPACITY;
   beforeEach(() => {
+    Reflect.deleteProperty(process.env, "RUNNING_CAPACITY");
+    Reflect.deleteProperty(process.env, "QUEUED_CAPACITY");
     jest.mocked(isCloudHosted).mockReturnValue(false);
+  });
+  afterEach(() => {
+    if (originalRunning === undefined) Reflect.deleteProperty(process.env, "RUNNING_CAPACITY");
+    else process.env.RUNNING_CAPACITY = originalRunning;
+    if (originalQueued === undefined) Reflect.deleteProperty(process.env, "QUEUED_CAPACITY");
+    else process.env.QUEUED_CAPACITY = originalQueued;
   });
   it("uses existing plan capacity when no environment overrides exist", async () => {
     await expect(getExecutionPolicy("org")).resolves.toMatchObject({
@@ -199,7 +196,7 @@ describe("trial workload admission", () => {
     k6MaxVus: 2,
     k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000,
   };
-  it("refuses arbitrary scripts, multiple workloads, and excessive VUs before domain checks", async () => {
+  it("refuses arbitrary scripts, multiple workloads, and excessive VUs before execution", async () => {
     const canonical = createTrialK6Script({
       url: "https://example.com/",
       vus: 3,
@@ -216,42 +213,11 @@ describe("trial workload admission", () => {
     await expect(
       assertExecutionWorkload("org", policy, "k6", [canonical]),
     ).rejects.toThrow("trial VU");
-    expect(requireVerifiedTarget).not.toHaveBeenCalled();
   });
-  it("checks exact organization domain ownership for an accepted canonical workload", async () => {
-    const canonical = createTrialK6Script({
-      url: "https://example.com/",
-      vus: 2,
-      durationSeconds: 1,
-    });
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).resolves.toBeUndefined();
-    expect(requireVerifiedTarget).toHaveBeenCalledWith("org", "example.com");
-  });
-  it("does not expose storage errors as workload rejection messages", async () => {
-    const canonical = createTrialK6Script({
-      url: "https://example.com/",
-      vus: 1,
-      durationSeconds: 1,
-    });
-    jest
-      .mocked(requireVerifiedTarget)
-      .mockRejectedValueOnce(new Error("internal query failure"));
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).rejects.toThrow("internal query failure");
-    jest
-      .mocked(requireVerifiedTarget)
-      .mockRejectedValueOnce(
-        new TargetDomainError("Domain ownership proof required", 400),
-      );
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).rejects.toMatchObject({
-      status: 400,
-      message: "Domain ownership proof required",
-    });
+  it("admits a canonical trial workload without a registered domain", async () => {
+    await expect(assertExecutionWorkload("org", policy, "k6", [createTrialK6Script({
+      url: "https://unregistered.example.com/", vus: 2, durationSeconds: 1,
+    })])).resolves.toBeUndefined();
   });
   it("refuses exhausted browser quotas and workloads longer than the remaining trial", async () => {
     await expect(
@@ -270,15 +236,6 @@ describe("trial workload admission", () => {
     await expect(
       assertExecutionWorkload("org", policy, "k6", [canonical]),
     ).rejects.toThrow("remaining duration");
-  });
-  it("keeps a DNS outage a temporary 503 instead of reporting a bad request", async () => {
-    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 1, durationSeconds: 30 });
-    jest
-      .mocked(requireVerifiedTarget)
-      .mockRejectedValueOnce(new TargetDomainError("DNS verification is temporarily unavailable", 503));
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).rejects.toMatchObject({ status: 503 });
   });
   it("refuses a load test larger than the remaining VU-millisecond allowance", async () => {
     const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
@@ -323,52 +280,15 @@ describe("trial workload admission", () => {
     }
   });
   describe("trial browser and API tests", () => {
-    it("lists the hosts a script writes as absolute URLs, decoding stored scripts", () => {
-      const script = `await page.goto("https://App.Example.com/login");
-        const r = await request.get('https://api.example.com/v1?x=1');
-        const same = "https://app.example.com/other";`;
-      expect(literalHostnames([script, Buffer.from('fetch("http://third.test/")').toString("base64")]).sort()).toEqual([
-        "api.example.com", "app.example.com", "third.test",
-      ]);
-      expect(literalHostnames(["await page.goto('/relative')"])).toEqual([]);
+    it("admits trial scripts targeting unregistered public URLs", async () => {
+      await expect(assertExecutionWorkload("org", policy, "playwright", [
+        'await page.goto("https://unregistered.example.com/")',
+        'await request.get("https://api.example.com/")',
+      ])).resolves.toBeUndefined();
     });
-
-    it("requires every host in the script to be a verified domain of the organization", async () => {
-      jest.mocked(requireVerifiedTarget).mockResolvedValue({} as never);
-      await expect(
-        assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")', "await request.get('https://api.example.com/')"]),
-      ).resolves.toBeUndefined();
-      expect(requireVerifiedTarget).toHaveBeenCalledWith("org", "app.example.com");
-      expect(requireVerifiedTarget).toHaveBeenCalledWith("org", "api.example.com");
-    });
-
-    it("refuses a script that calls a domain the organization has not verified", async () => {
-      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(new TargetDomainError("An organization-verified execution target is required", 400));
-      await expect(
-        assertExecutionWorkload("org", policy, "playwright", ['await request.get("https://victim.example.org/")']),
-      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("victim.example.org") });
-    });
-
-    it("does not turn an unknown target lookup outage into a permanent workload rejection", async () => {
-      const outage = new Error("database unavailable");
-      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(outage);
-      await expect(assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")'])).rejects.toBe(outage);
-    });
-
-    it("keeps a DNS outage temporary and does not ask for scripts without URLs", async () => {
-      jest.mocked(requireVerifiedTarget).mockRejectedValueOnce(new TargetDomainError("DNS verification is temporarily unavailable", 503));
-      await expect(
-        assertExecutionWorkload("org", policy, "playwright", ['await page.goto("https://app.example.com/")']),
-      ).rejects.toMatchObject({ status: 503 });
-      jest.mocked(requireVerifiedTarget).mockClear();
-      await expect(assertExecutionWorkload("org", policy, "playwright", ["await page.goto('/x')"])).resolves.toBeUndefined();
-      expect(requireVerifiedTarget).not.toHaveBeenCalled();
-    });
-
-    it("applies none of this to a paid organization", async () => {
-      await expect(
-        assertExecutionWorkload("org", { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 }, "playwright", ['await request.get("https://anything.test/")']),
-      ).resolves.toBeUndefined();
+    it("does not restrict paid workloads", async () => {
+      await expect(assertExecutionWorkload("org", { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 },
+        "playwright", ['await request.get("https://anything.test/")'])).resolves.toBeUndefined();
     });
   });
 });

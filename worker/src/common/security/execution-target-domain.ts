@@ -27,7 +27,7 @@ export function normalizeTargetHostname(value: string): string {
   return hostname;
 }
 
-/** The resolver could not answer (timeout, SERVFAIL): retryable, never proof of non-ownership. */
+/** The resolver could not answer (timeout, SERVFAIL): retryable. */
 export class TargetDnsUnavailableError extends Error {
   constructor() {
     super('DNS lookup is temporarily unavailable');
@@ -39,7 +39,7 @@ function isMissingRecord(error: unknown): boolean {
   return code === 'ENODATA' || code === 'ENOTFOUND';
 }
 
-type TargetResolver = Pick<Resolver, 'resolveTxt' | 'resolve4' | 'resolve6'>;
+type TargetResolver = Pick<Resolver, 'resolve4' | 'resolve6'>;
 
 /**
  * Resolves the hostname and requires every answer to be a public address. This is the security
@@ -79,24 +79,4 @@ export async function resolvePublicTargetAddresses(
     throw new Error('Execution targets must resolve only to public addresses');
   }
   return addresses;
-}
-
-export async function verifyTargetDns(
-  value: string,
-  token: string,
-  resolver: TargetResolver = new Resolver({ timeout: 3000, tries: 1 }),
-): Promise<string[]> {
-  const hostname = normalizeTargetHostname(value);
-  const proof = await resolver
-    .resolveTxt(`_supercheck-load-test.${hostname}`)
-    .catch((error: unknown): string[][] => {
-      if (isMissingRecord(error)) return [];
-      throw new TargetDnsUnavailableError();
-    });
-  if (
-    !proof.some((parts) => parts.join('') === `supercheck-load-test=${token}`)
-  ) {
-    throw new Error('DNS ownership proof does not match this organization');
-  }
-  return resolvePublicTargetAddresses(hostname, resolver);
 }

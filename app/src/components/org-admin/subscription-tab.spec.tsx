@@ -87,6 +87,26 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText("0.0833 / 100")).toBeInTheDocument();
   });
 
+  it.each([true, false])("hides the portal for a customer without a plan (active trial: %s)", async (active) => {
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/current")
+        ? { ...billing, subscription: { ...subscription, plan: null, status: "none", basePriceCents: null },
+            trial: { active, daysRemaining: active ? 9 : 0, expiresAt: "2026-11-01T00:00:00.000Z" } }
+        : { organizationId: "org_1", spending: { currentDollars: 0 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByRole("link", { name: active ? "Choose a plan" : "Resubscribe" })).toHaveAttribute("href", "/subscribe");
+    expect(screen.queryByRole("button", { name: "Manage Subscription" })).not.toBeInTheDocument();
+  });
+  it.each(["past_due", "canceled"])("keeps the portal for an existing %s plan", async (status) => {
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/current")
+        ? { ...billing, subscription: { ...subscription, status, currentPeriodEnd: "2099-11-01T00:00:00.000Z" } }
+        : { organizationId: "org_1", spending: { currentDollars: 0 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    expect(await screen.findByRole("button", { name: "Manage Subscription" })).toBeEnabled();
+  });
   it("does not offer the owner portal action to an admin", async () => {
     render(<SubscriptionTab currentUserRole="org_admin" />);
     await screen.findByText("Plus Plan");
@@ -163,7 +183,7 @@ describe("SubscriptionTab", () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("No active plan");
     expect(screen.getByRole("link", { name: "Resubscribe" })).toHaveAttribute("href", "/subscribe");
-    expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Manage Subscription" })).not.toBeInTheDocument();
     expect(screen.queryByText("$49.00")).not.toBeInTheDocument();
   });
 

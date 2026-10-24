@@ -15,8 +15,9 @@ export function TrialCard({ durationDays, highlights }: TrialCardProps) {
           What your free trial includes
         </h2>
         <p className="text-sm text-muted-foreground">
-          Most of the product for {durationDays} days, no card required. Custom domains and single sign-on are on paid plans. These
-          allowances are for the whole trial; choose a plan at any time to lift them.
+          Most of the product for {durationDays} days, no card required. Playwright and k6 run
+          without domain approval; the trial allowances below apply. Custom domains and single
+          sign-on are on paid plans. Choose a plan at any time to lift the allowances.
         </p>
       </div>
       <ul className="grid gap-2 text-sm sm:grid-cols-2">
