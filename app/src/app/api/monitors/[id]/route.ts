@@ -148,6 +148,15 @@ export async function PUT(
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
 
+    // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
+    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 },
+      );
+    }
+
     const rawData = await request.json();
     const validationResult = monitorsUpdateSchema.safeParse(rawData);
 
@@ -160,14 +169,6 @@ export async function PUT(
 
     const updateData = validationResult.data;
 
-    // Check permission via context
-    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
-    if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
-    }
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
@@ -746,9 +747,7 @@ export async function PATCH(
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
 
-    const rawData = await request.json();
-
-    // Check permission via context
+    // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
     const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
     if (!canUpdate) {
       return NextResponse.json(
@@ -756,6 +755,9 @@ export async function PATCH(
         { status: 403 },
       );
     }
+
+    const rawData = await request.json();
+
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)

@@ -120,8 +120,17 @@ describe("POST /api/monitors synthetic monitor test id", () => {
   });
 
   // `db` is an empty object here, so reaching the test lookup would throw and answer 500.
-  it.each(["not-a-uuid", "123", "00000000-0000-0000-0000-00000000000g"])(
-    "answers 400 for config.testId %s before looking the test up",
+  it.each<unknown>([
+    "not-a-uuid",
+    "123",
+    "00000000-0000-0000-0000-00000000000g",
+    123,
+    // String() of these is a valid-looking uuid, but the array itself would reach the uuid column.
+    ["00000000-0000-4000-8000-000000000001"],
+    [["00000000-0000-4000-8000-000000000001"]],
+    { toString: "x" },
+  ])(
+    "answers 400 for config.testId %j before looking the test up",
     async (testId) => {
       const response = await POST(
         new NextRequest("http://localhost/api/monitors", {

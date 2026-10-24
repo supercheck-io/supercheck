@@ -301,7 +301,9 @@ export async function POST(req: NextRequest) {
       }
       // The test lookup below runs before the full configuration validation, and a malformed id would fail
       // it with a Postgres uuid error (a 500) instead of this 400.
-      if (!isUuid(String(rawData.config.testId))) {
+      // Check the value itself, not String(value): a one-element array stringifies to a valid-looking id but
+      // would still reach the uuid column as an array.
+      if (typeof rawData.config.testId !== "string" || !isUuid(rawData.config.testId)) {
         return NextResponse.json(
           {
             error: "Invalid monitor configuration",

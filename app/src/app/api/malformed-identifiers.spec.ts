@@ -34,6 +34,7 @@ jest.mock("@/lib/services/subscription-service", () => ({
 
 import { db } from "@/utils/db";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
@@ -84,6 +85,37 @@ describe("malformed resource identifiers", () => {
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("not found") });
     expectNoDataAccess();
+  });
+
+  describe("without permission", () => {
+    // The documented answer to a caller who may not write is 403, whatever they send as the id. A 404 for a
+    // malformed id (and a 403 for a well-formed one) would also tell them which ids are shaped like real ones.
+    beforeEach(() => jest.mocked(checkPermissionWithContext).mockReturnValue(false));
+    afterEach(() => jest.mocked(checkPermissionWithContext).mockReturnValue(true));
+
+    it.each(mutations)("%s %s answers 403 for a malformed ID, with no data access", async (resource, method, handler) => {
+      const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
+        method, ...(method === "DELETE" ? {} : { body: "{}" }),
+      }), { params: Promise.resolve({ id: "bad" }) });
+      expect(response.status).toBe(403);
+      expectNoDataAccess();
+    });
+
+    it("runs DELETE answers 403 for a malformed ID, with no deletion", async () => {
+      const response = await deleteRun(new Request("http://localhost/api/runs/bad", { method: "DELETE" }), {
+        params: Promise.resolve({ runId: "bad" }),
+      });
+      expect(response.status).toBe(403);
+      expectNoDataAccess();
+    });
+
+    it.each(mutations)("%s %s does not validate the body before checking permission", async (resource, method, handler) => {
+      // An unauthorised caller must not learn the schema from a 400 detail.
+      const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
+        method, ...(method === "DELETE" ? {} : { body: JSON.stringify({ name: 123, type: "nope", cronSchedule: [] }) }),
+      }), { params: Promise.resolve({ id: "bad" }) });
+      expect(response.status).toBe(403);
+    });
   });
 
   it.each(mutations)("%s %s still requires authentication", async (resource, method, handler) => {

@@ -102,6 +102,18 @@ export async function PUT(
 
   try {
     const context = await requireAuthContext();
+
+    // Check permissions before looking anything up, so a caller who may not update tests cannot tell a
+    // missing test from an existing one (and a malformed id gets the same 403 as a well-formed one).
+    const canUpdate = checkPermissionWithContext("test", "update", context);
+
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 },
+      );
+    }
+
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
 
@@ -116,16 +128,6 @@ export async function PUT(
 
     if (!existingTest) {
       return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    }
-
-    // Check permissions
-    const canUpdate = checkPermissionWithContext("test", "update", context);
-
-    if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
     }
 
     if (
