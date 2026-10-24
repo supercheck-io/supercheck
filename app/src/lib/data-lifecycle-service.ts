@@ -21,7 +21,7 @@
  * - Each organization's data is cleaned based on their subscription plan's dataRetentionDays
  * - Plus plan: 7 days raw data, 30 days aggregated/job data
  * - Pro plan: 7 days raw data, 90 days aggregated/job data
- * - Unlimited plan: 7 days raw data, 90 days aggregated/job data (self-hosted)
+ * - Unlimited plan: 7 days raw data, 90 days aggregated/job data (self-hosted seed)
  * - Cleanup is performed per-organization to respect plan limits
  *
  * PostgreSQL TTL Note:
@@ -347,7 +347,7 @@ export async function getOrganizationAggregatedRetentionSettings(
  * Supercheck values:
  * - Plus: 30 days
  * - Pro: 90 days
- * - Unlimited: 90 days (self-hosted seed)
+ * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
  */
 export async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
@@ -1320,7 +1320,7 @@ export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
  * Plan-Based Retention (industry standards):
  * - Plus: 30 days (matches CircleCI)
  * - Pro: 90 days (matches GitHub Actions default)
- * - Unlimited: 90 days (self-hosted seed)
+ * - Unlimited: 90 days (self-hosted database seed; subscription-service fallback is 180)
  *
  * Note: This strategy handles ALL runs in the database:
  * - Job runs (where jobId is not null)
@@ -1388,6 +1388,21 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     if (!this.config.retentionDays || this.config.retentionDays <= 0) {
       throw new Error("Job runs cleanup requires retentionDays > 0");
     }
+    if (!Number.isFinite(this.playgroundMaxAgeHours) || this.playgroundMaxAgeHours <= 0) {
+      throw new Error("Job runs cleanup requires playgroundMaxAgeHours > 0");
+    }
+  }
+
+  private get playgroundMaxAgeHours(): number {
+    return Number(this.config.customConfig?.playgroundMaxAgeHours ?? 24);
+  }
+
+  private playgroundCondition(cutoff: Date): SQL {
+    return and(
+      sql`${runs.jobId} IS NULL`,
+      inArray(runs.status, ["passed", "failed", "error", "blocked"]),
+      lt(sql`coalesce(${runs.completedAt}, ${runs.createdAt})`, sql`${cutoff.toISOString()}::timestamp`)
+    )!;
   }
 
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
@@ -1395,6 +1410,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       Date.now() - this.config.retentionDays! * 24 * 60 * 60 * 1000
     );
 
+    const playgroundCutoff = new Date(Date.now() - this.playgroundMaxAgeHours * 3600000);
     // Get stats for all runs (job + playground)
     const [total, old, jobRuns, playgroundRuns, oldJobRuns, oldPlaygroundRuns] =
       await Promise.all([
@@ -1404,7 +1420,10 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         db
           .select({ count: sql<number>`count(*)` })
           .from(runs)
-          .where(lt(runs.createdAt, cutoffDate)),
+          .where(or(
+            and(sql`${runs.jobId} IS NOT NULL`, lt(runs.createdAt, cutoffDate)),
+            this.playgroundCondition(playgroundCutoff)
+          )),
         // Current job runs (jobId not null)
         db
           .select({ count: sql<number>`count(*)` })
@@ -1427,7 +1446,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           .select({ count: sql<number>`count(*)` })
           .from(runs)
           .where(
-            and(lt(runs.createdAt, cutoffDate), sql`${runs.jobId} IS NULL`)
+            this.playgroundCondition(playgroundCutoff)
           ),
       ]);
 
@@ -1467,9 +1486,9 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       const orgRetentions = await getOrganizationJobRetentionSettings(this.config.retentionDays!);
       if (orgRetentions.length === 0) {
         result.details.multiTenant = false;
-        await this.cleanupRuns(lt(runs.createdAt, new Date(
+        await this.cleanupRuns(and(sql`${runs.jobId} IS NOT NULL`, lt(runs.createdAt, new Date(
           Date.now() - this.config.retentionDays! * 86400000
-        )), dryRun, maxRecords, result);
+        )))!, dryRun, maxRecords, result);
       } else {
         const orgStats: Record<string, { deleted: number; s3Deleted: number; retentionDays: number }> = {};
         for (const orgRetention of orgRetentions) {
@@ -1497,17 +1516,16 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         result.details.organizationsProcessed = Object.keys(orgStats).length;
         result.details.orgStats = orgStats;
 
-        // Standalone (playground) run rows have no plan; keep them for 30 days.
-        const before = result.recordsDeleted;
-        const remaining = maxRecords - Number(result.details.recordsProcessed || 0);
-        if (remaining > 0) {
-          await this.cleanupRuns(and(
-            sql`${runs.jobId} IS NULL`,
-            lt(runs.createdAt, new Date(Date.now() - 30 * 86400000))
-          )!, dryRun, remaining, result);
-        }
-        result.details.playgroundRunsDeleted = result.recordsDeleted - before;
       }
+      // Standalone rows follow the configured playground artifact age.
+      const before = result.recordsDeleted;
+      const remaining = maxRecords - Number(result.details.recordsProcessed || 0);
+      if (remaining > 0) {
+        await this.cleanupRuns(this.playgroundCondition(
+          new Date(Date.now() - this.playgroundMaxAgeHours * 3600000)
+        ), dryRun, remaining, result);
+      }
+      result.details.playgroundRunsDeleted = result.recordsDeleted - before;
     } catch (error) {
       result.success = false;
       result.errors.push(error instanceof Error ? error.message : String(error));
@@ -3072,6 +3090,9 @@ export function createDataLifecycleService(): DataLifecycleService {
         "0 3 * * *"
       ),
       retentionDays: 90, // Fallback if plan settings unavailable
+      customConfig: {
+        playgroundMaxAgeHours: parseInt(process.env.PLAYGROUND_CLEANUP_MAX_AGE_HOURS || "24", 10),
+      },
       batchSize: parseInt(process.env.JOB_RUNS_CLEANUP_BATCH_SIZE || "100", 10),
       maxRecordsPerRun: parseInt(
         process.env.JOB_RUNS_CLEANUP_SAFETY_LIMIT || "10000",

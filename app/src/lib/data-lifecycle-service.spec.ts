@@ -5,7 +5,6 @@
  *
  * Test Categories:
  * - Plan-Based Retention Logic
- * - Playground Cleanup (fixed 30-day retention)
  * - Multi-Tenancy Isolation
  * - Cleanup Strategy Configuration
  * - Error Handling and Fallbacks
@@ -80,38 +79,6 @@ describe("Data Lifecycle Service", () => {
   });
 
   // ==========================================================================
-  // PLAYGROUND CLEANUP TESTS
-  // ==========================================================================
-
-  describe("Playground Cleanup", () => {
-    describe("Retention Period", () => {
-      it("should use fixed 30-day retention for playground runs", () => {
-        const playgroundRetentionDays = 30;
-        expect(playgroundRetentionDays).toBe(30);
-      });
-
-      it("should not use organization-based retention for playground", () => {
-        const isOrganizationBased = false;
-        expect(isOrganizationBased).toBe(false);
-      });
-    });
-
-    describe("Cutoff Date Calculation", () => {
-      it("should calculate correct cutoff date for 30-day retention", () => {
-        const playgroundRetentionDays = 30;
-        const now = new Date("2025-12-04T12:00:00Z");
-        const expectedCutoff = new Date("2025-11-04T12:00:00Z");
-
-        const cutoffDate = new Date(
-          now.getTime() - playgroundRetentionDays * 24 * 60 * 60 * 1000
-        );
-
-        expect(cutoffDate.toISOString()).toBe(expectedCutoff.toISOString());
-      });
-    });
-  });
-
-  // ==========================================================================
   // CLEANUP STRATEGY TESTS
   // ==========================================================================
 
@@ -131,17 +98,7 @@ describe("Data Lifecycle Service", () => {
       });
     });
 
-    describe("JobRunsCleanupStrategy", () => {
-      it("should be multi-tenant aware", () => {
-        const isMultiTenantAware = true;
-        expect(isMultiTenantAware).toBe(true);
-      });
 
-      it("should exclude playground runs (jobId is null)", () => {
-        const hasJobId = true;
-        expect(hasJobId).toBe(true);
-      });
-    });
   });
 
   // ==========================================================================
