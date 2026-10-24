@@ -1,6 +1,7 @@
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
-import { isInvalidUuidError } from "@/lib/uuid";
-import { updateMonitorHandler } from "@/lib/monitor-service";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
+import { isDeepStrictEqual } from "node:util";
+import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -149,6 +150,15 @@ export async function PUT(
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
 
+    // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
+    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 },
+      );
+    }
+
     const rawData = await request.json();
     const validationResult = monitorsUpdateSchema.safeParse(rawData);
 
@@ -161,14 +171,7 @@ export async function PUT(
 
     const updateData = validationResult.data;
 
-    // Check permission via context
-    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
-    if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
-    }
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
@@ -551,9 +554,11 @@ export async function PUT(
     }
 
     // Handle frequency changes for non-paused monitors OR config changes
-    const configChanged =
-      JSON.stringify(currentMonitor.config) !==
-      JSON.stringify(updatedMonitor.config);
+    // Same comparison PATCH uses: editing alert channels or regions must not restart the cadence.
+    const configChanged = !isDeepStrictEqual(
+      executionConfig(currentMonitor.config),
+      executionConfig(updatedMonitor.config),
+    );
     const targetChanged = currentMonitor.target !== updatedMonitor.target;
     const typeChanged = currentMonitor.type !== updatedMonitor.type;
 
@@ -754,9 +759,7 @@ export async function PATCH(
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
 
-    const rawData = await request.json();
-
-    // Check permission via context
+    // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
     const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
     if (!canUpdate) {
       return NextResponse.json(
@@ -764,6 +767,10 @@ export async function PATCH(
         { status: 403 },
       );
     }
+
+    const rawData = await request.json();
+
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
@@ -919,6 +926,7 @@ export async function DELETE(
     if (!checkPermissionWithContext("monitor", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const result = await deleteMonitorWithContext(id, context);
     const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });

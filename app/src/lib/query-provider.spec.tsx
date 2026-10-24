@@ -148,6 +148,39 @@ describe("QueryProvider hydration", () => {
     ).toBeUndefined();
   });
 
+  it("removes other accounts' saved caches when the signed-in account restores its own", async () => {
+    seedCache();
+    localStorage.setItem("supercheck-cache-v2:user-old", "{}");
+    localStorage.setItem("unrelated-key", "keep");
+    mockSession = { data: { user: { id: "user-b" } }, isPending: false };
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(
+      <QueryProvider>
+        <AlertsProbe />
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+    expect(localStorage.getItem("supercheck-cache-v2:user-old")).toBeNull();
+    expect(localStorage.getItem("unrelated-key")).toBe("keep");
+  });
+
+  it("stops writing the saved cache once another tab removed it (it signed out)", async () => {
+    render(<QueryProvider><AlertsProbe /></QueryProvider>);
+    await screen.findByText("Alerts: 1; channels: 1");
+    act(() => {
+      localStorage.removeItem(CACHE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: CACHE_KEY, newValue: null, oldValue: "{}", storageArea: localStorage }));
+    });
+    jest.useFakeTimers();
+    act(() => {
+      mountedClient.setQueryData(["public"], "late-write");
+      jest.advanceTimersByTime(1000);
+    });
+    jest.useRealTimers();
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+
   it("replaces in-memory data when an authenticated identity changes", async () => {
     const view = render(
       <QueryProvider>

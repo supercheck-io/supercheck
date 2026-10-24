@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js'
 import { checkAllDependencies, formatDependencyReport, installPlaywrightBrowsers } from '../utils/deps.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { discoverRepository } from '../utils/discover.js'
-import { readConfigIdentity } from '../utils/link-config.js'
+import { LOCAL_CONFIG_FILES, readConfigBaseUrlInfo, readConfigIdentity } from '../utils/link-config.js'
 import { detectConfigRequirements } from '../utils/config-text.js'
 import { readSmallFile } from '../utils/safe-read.js'
 import { resolve } from 'node:path'
@@ -48,11 +48,27 @@ export const doctorCommand = new Command('doctor')
     // 2. Check authentication
     logger.info(pc.bold('Authentication:'))
     const hasCredentials = isAuthenticated()
-    const baseUrl = getStoredBaseUrl() ?? 'https://app.supercheck.io'
+    const storedBaseUrl = getStoredBaseUrl()
+    const baseUrl = storedBaseUrl ?? 'https://app.supercheck.io'
+    // The config is repository text, so doctor never sends a credential to the URL it names. A config that
+    // targets another API than the one in use is reported instead of producing a misleading "rejected".
+    // The loader lets supercheck.config.local.* override the main config, so read that first.
+    const localText = LOCAL_CONFIG_FILES.map((name) => readSmallFile(resolve(cwd, name))).find((text) => text !== null) ?? null
+    const declared =
+      (localText !== null ? readConfigBaseUrlInfo(localText) : null) ?? (configResult ? readConfigBaseUrlInfo(configResult.text) : null)
+    const declaredBaseUrl = declared?.url ?? null
+    const originOf = (url: string): string => { try { return new URL(url).origin } catch { return url } }
+    // The generated form `process.env.SUPERCHECK_URL ?? '<url>'` agrees with the variable by construction.
+    // A hand-written literal does not, and managed commands refuse to run when it differs from the API in use.
+    const followsEnv = declared?.followsEnv === true && !!process.env.SUPERCHECK_URL
+    const configTargetsOtherApi = declaredBaseUrl !== null && !followsEnv && originOf(declaredBaseUrl) !== originOf(baseUrl)
+    const plainUrl = (url: string): string => (/^https?:\/\/[A-Za-z0-9.:_-]{1,253}(\/[A-Za-z0-9._~/-]{0,200})?$/.test(url) ? url : '(unprintable URL)')
     // Having a token is not the same as the server accepting it: ask the server before reporting success.
     let hasAuth = false
     let credentialProblem: 'rejected' | 'unreachable' | null = null
-    if (hasCredentials) {
+    if (hasCredentials && configTargetsOtherApi && storedBaseUrl === null) {
+      logger.info(`  ${pc.yellow('○')} Credentials present, but supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))} and no API URL is set — set SUPERCHECK_URL (or run: supercheck login --url ...) to verify them there`)
+    } else if (hasCredentials) {
       try {
         await getApiClient({ token: getToken() ?? undefined, baseUrl }).request('GET', '/api/context', { retries: 0, timeout: 5_000 })
         hasAuth = true
@@ -73,6 +89,13 @@ export const doctorCommand = new Command('doctor')
     } else {
       logger.info(`  ${pc.yellow('○')} Not authenticated — run: supercheck login`)
     }
+    if (hasCredentials && configTargetsOtherApi && storedBaseUrl !== null) {
+      logger.info(`  ${pc.yellow('○')} supercheck.config.ts targets ${pc.dim(plainUrl(declaredBaseUrl))}, not ${pc.dim(baseUrl)} — commands that use the config will refuse to run until they match`)
+    }
+
+    // Managed commands refuse to run when the config targets a different API than the one in use, so this is
+    // a configuration problem (exit 3), however the credential check went.
+    const configMismatch = hasCredentials && configTargetsOtherApi
 
     logger.newline()
 
@@ -124,15 +147,20 @@ export const doctorCommand = new Command('doctor')
     }
 
     // 5. Summary
-    if (missingRequired.length === 0 && hasAuth && configResult) {
+    if (missingRequired.length === 0 && hasAuth && configResult && !configMismatch) {
       logger.success('Everything looks good! You\'re ready to use Supercheck.')
     } else {
       const issues: string[] = []
       if (missingRequired.length > 0) {
         issues.push(`${missingRequired.length} missing required dependency(s)`)
       }
-      if (!hasAuth) {
+      // With a config/API mismatch the credentials were deliberately not sent anywhere (or were checked against the
+      // other API), so "not authenticated" would be wrong; name the real problem once.
+      if (!hasAuth && !(configMismatch && credentialProblem === null)) {
         issues.push(credentialProblem === 'rejected' ? 'credentials rejected' : credentialProblem === 'unreachable' ? 'credentials unverified' : 'not authenticated')
+      }
+      if (configMismatch) {
+        issues.push('supercheck.config.ts targets a different API than the one in use')
       }
       if (!configResult) {
         issues.push('no config file')
@@ -154,11 +182,11 @@ export const doctorCommand = new Command('doctor')
       cloudCredentialsPresent: hasCredentials,
       apiUrl: baseUrl,
       configFound: Boolean(configResult),
-      ready: missingRequired.length === 0 && hasAuth && Boolean(configResult),
+      ready: missingRequired.length === 0 && hasAuth && Boolean(configResult) && !configMismatch,
     }, null, 2))
 
-    if (options.strict && !(missingRequired.length === 0 && hasAuth && configResult)) {
-      const strictCode = missingRequired.length > 0 || !configResult ? ExitCode.ConfigError
+    if (options.strict && !(missingRequired.length === 0 && hasAuth && configResult && !configMismatch)) {
+      const strictCode = missingRequired.length > 0 || !configResult || configMismatch ? ExitCode.ConfigError
         : credentialProblem === 'rejected' || !hasCredentials ? ExitCode.AuthError
         : credentialProblem === 'unreachable' ? ExitCode.ApiError
         : ExitCode.ConfigError

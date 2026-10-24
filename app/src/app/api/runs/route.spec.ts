@@ -63,4 +63,30 @@ describe("GET /api/runs lists job runs only", () => {
     expect(response.status).toBe(403);
     expect(db.select).not.toHaveBeenCalled();
   });
+
+  describe("jobId filter", () => {
+    it("answers 400 for a malformed id without querying, instead of a Postgres uuid error", async () => {
+      const response = await GET(new NextRequest("http://localhost/api/runs?jobId=not-a-uuid"));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid jobId" });
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it("treats an empty jobId like no filter", async () => {
+      const response = await GET(new NextRequest("http://localhost/api/runs?jobId="));
+      expect(response.status).toBe(200);
+      for (const condition of wheres) {
+        expect(new PgDialect().sqlToQuery(condition).sql).not.toContain('"runs"."job_id" = $');
+      }
+    });
+
+    it("filters by a well-formed id", async () => {
+      const jobId = "00000000-0000-4000-8000-0000000000b1";
+      const response = await GET(new NextRequest(`http://localhost/api/runs?jobId=${jobId}`));
+      expect(response.status).toBe(200);
+      const { sql, params } = new PgDialect().sqlToQuery(wheres[0]);
+      expect(sql).toContain('"runs"."job_id" = $');
+      expect(params).toContain(jobId);
+    });
+  });
 });
