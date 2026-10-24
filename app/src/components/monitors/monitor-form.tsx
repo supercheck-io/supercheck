@@ -118,7 +118,7 @@ const formSchema = z
     type: z.enum(
       ["http_request", "website", "ping_host", "port_check", "synthetic_test"],
       {
-        required_error: "Please select a check type",
+        error: "Please select a check type",
       }
     ),
     interval: z.string().default("1800"),

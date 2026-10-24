@@ -14,7 +14,7 @@ export type JobStatus = z.infer<typeof jobStatusEnum>;
 // Job configuration type
 export const jobConfigSchema = z.object({
   environment: z.string().optional(),
-  variables: z.record(z.string()).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
   retryStrategy: z
     .object({
       maxRetries: z.number(),

@@ -69,7 +69,7 @@ const requirementFormSchema = z.object({
         .min(10, "Description must be at least 10 characters")
         .max(2000, "Description must be less than 2000 characters"),
     priority: z.enum(["low", "medium", "high"], {
-        required_error: "Priority is required",
+        error: "Priority is required",
     }),
     tags: z.string().max(500, "Tags are too long").optional().nullable(),
     externalId: z.string().max(100, "External ID is too long").optional().nullable(),

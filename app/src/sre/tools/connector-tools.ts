@@ -116,7 +116,7 @@ const diagnosticQueryInputSchema = z.object({
     ),
   queryId: z.string().uuid(),
   parameters: z
-    .record(z.union([z.string().max(500), z.number(), z.boolean(), z.null()]))
+    .record(z.string(), z.union([z.string().max(500), z.number(), z.boolean(), z.null()]))
     .optional()
     .default({}),
   timeWindowMinutes: z

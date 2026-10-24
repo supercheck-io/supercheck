@@ -142,7 +142,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.4",
-    "drizzle-zod": "^0.7.1",
+    "drizzle-zod": "^0.8.3",
     "esbuild": "^0.28.1",
     "express": "^5.3.0",
     "ioredis": "^5.8.2",
@@ -178,7 +178,7 @@
     "unpdf": "^1.9.0",
     "uuid": "^11.1.1",
     "world-atlas": "^2.0.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -245,6 +245,7 @@
     "sharp": "0.35.5",
     "source-map-js": "1.2.2",
     "proxy-addr": "2.0.8",
-    "fast-copy@^3.0.0": "3.1.0"
+    "fast-copy@^3.0.0": "3.1.0",
+    "@azure/msal-node": "7.1.1"
   }
 }

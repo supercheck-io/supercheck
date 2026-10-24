@@ -14,7 +14,7 @@ export class ValidationService {
       return schema.parse(data);
     } catch (error) {
       if (error instanceof ZodError) {
-        const errorMessages = error.errors.map(
+        const errorMessages = error.issues.map(
           (err) => `${err.path.join('.')}: ${err.message}`,
         );
 
@@ -37,7 +37,7 @@ export class ValidationService {
       return schema.parse(data);
     } catch (error) {
       if (error instanceof ZodError) {
-        this.logger.debug('Safe validation failed:', error.errors);
+        this.logger.debug('Safe validation failed:', error.issues);
         return null;
       }
       throw error;

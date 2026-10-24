@@ -332,6 +332,7 @@ describe('K6ExecutionService', () => {
           organizationId: 'org',
           ownerToken: 'owner',
           limited: true,
+          k6MaxVus: 5,
           reservedMs: 30000,
           expiresAt,
         },

@@ -5,7 +5,7 @@ export const notificationChannelSchema = z.object({
   id: z.string(),
   name: z.string(),
   type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"]),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   isEnabled: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string().optional(),

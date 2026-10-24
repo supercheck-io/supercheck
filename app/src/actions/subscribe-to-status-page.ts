@@ -509,7 +509,7 @@ export async function subscribeToStatusPage(data: SubscribeInput): Promise<{ suc
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        message: error.errors[0]?.message || "Invalid input",
+        message: error.issues[0]?.message || "Invalid input",
       };
     }
 

@@ -13,7 +13,7 @@ export const inviteMemberSchema = z.object({
     .max(255, "Email must be 255 characters or less"),
   role: z
     .enum(["project_viewer", "project_editor", "project_admin", "org_admin"], {
-      errorMap: () => ({ message: "Please select a valid role" })
+      error: "Please select a valid role"
     }),
   selectedProjects: z
     .array(z.string())
@@ -31,7 +31,7 @@ export const inviteMemberSchema = z.object({
 export const updateMemberSchema = z.object({
   role: z
     .enum(["project_viewer", "project_editor", "project_admin", "org_admin"], {
-      errorMap: () => ({ message: "Please select a valid role" })
+      error: "Please select a valid role"
     }),
   selectedProjects: z
     .array(z.string())

@@ -324,7 +324,7 @@ export async function createIncident(data: CreateIncidentData) {
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        message: error.errors[0]?.message || "Invalid data provided",
+        message: error.issues[0]?.message || "Invalid data provided",
       };
     }
 

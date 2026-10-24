@@ -69,15 +69,16 @@ const testCaseSchema = testsInsertSchema
       ),
     script: z.string().min(1, "Test script is required"),
     priority: z.enum(["low", "medium", "high"] as const, {
-      required_error: "Priority is required",
-      invalid_type_error: "Priority must be low, medium, or high",
+      error: (issue) => issue.input === undefined
+        ? "Priority is required"
+        : "Priority must be low, medium, or high",
     }),
     type: z.enum(
       ["browser", "api", "custom", "database", "performance"] as const,
       {
-        required_error: "Test type is required",
-        invalid_type_error:
-          "Test type must be browser, api, custom, database, or performance",
+        error: (issue) => issue.input === undefined
+          ? "Test type is required"
+          : "Test type must be browser, api, custom, database, or performance",
       }
     ),
     location: z

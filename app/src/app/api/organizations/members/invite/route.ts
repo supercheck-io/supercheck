@@ -160,10 +160,10 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       if (error instanceof Error) {
-        const zodError = error as { errors?: { message: string }[] };
-        if (zodError.errors && zodError.errors.length > 0) {
+        const zodError = error as { issues?: { message: string }[] };
+        if (zodError.issues && zodError.issues.length > 0) {
           return NextResponse.json(
-            { error: zodError.errors[0].message },
+            { error: zodError.issues[0].message },
             { status: 400 },
           );
         }
