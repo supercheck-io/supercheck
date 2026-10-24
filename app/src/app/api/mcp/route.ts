@@ -2,6 +2,7 @@ import { getAllowedCorsOriginPatterns, isCorsOriginAllowed } from "@/lib/cors";
 import { requireMcpAuth } from "@better-auth/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { InitializeRequestSchema, JSONRPCRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { JWTPayload } from "jose";
 import { auth } from "@/utils/auth";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -66,6 +67,18 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
 
   try {
     if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
+    const messages = Array.isArray(parsedBody) ? parsedBody : [parsedBody];
+    for (const message of messages) {
+      const rpcRequest = JSONRPCRequestSchema.safeParse(message);
+      if (!rpcRequest.success || rpcRequest.data.method !== "initialize") continue;
+      if (messages.length > 1) return rpcError(400, "invalid_request", "Initialize must be sent as a single request", {}, -32600);
+      if (!InitializeRequestSchema.safeParse(message).success) {
+        return json({
+          jsonrpc: "2.0", id: rpcRequest.data.id,
+          error: { code: -32602, message: "Invalid initialize params", data: { code: "invalid_params" } },
+        }, 400);
+      }
+    }
 
     let context;
     try {

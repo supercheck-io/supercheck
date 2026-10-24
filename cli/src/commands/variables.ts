@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { output, outputDetail, outputMutation } from '../output/formatter.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 
 interface Variable {
@@ -73,7 +73,7 @@ varCommand
 
     const variable = variables.find((v) => v.key === key)
     if (!variable) {
-      throw new CLIError(`Variable "${key}" not found`, ExitCode.GeneralError)
+      throw new ApiRequestError(`Variable "${key}" not found`, 404)
     }
 
     const detail: Record<string, unknown> = { ...variable }

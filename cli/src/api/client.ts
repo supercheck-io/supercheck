@@ -191,7 +191,8 @@ export class ApiClient {
           try {
             responseBody = JSON.parse(text)
           } catch {
-            responseBody = text
+            // HTML/proxy diagnostics are untrusted and may contain credentials or huge documents.
+            responseBody = undefined
           }
 
           throw new ApiRequestError(

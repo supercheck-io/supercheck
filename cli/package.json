@@ -63,6 +63,7 @@
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "conf": "^16.0.0",
+    "cron-parser": "^5.10.2",
     "deepmerge-ts": "^8.0.2",
     "dotenv": "^17.2.4",
     "jiti": "^2.4.2",

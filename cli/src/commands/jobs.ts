@@ -1,8 +1,10 @@
 import { canRevealSecrets } from "../utils/redact.js"
 import { waitForRun } from '../utils/wait.js'
 import { Command } from 'commander'
+import { CronExpressionParser } from 'cron-parser'
+import { isUuid } from '../utils/paths.js'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { ApiClient } from '../api/client.js'
 import { loadConfig } from '../config/loader.js'
@@ -23,6 +25,21 @@ import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 
 const VALID_JOB_TYPES = ['playwright', 'k6'] as const
 
+function jobTestIds(values: string[]): string[] {
+  const ids = values.flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean)
+  if (ids.length === 0 || ids.some((id) => !isUuid(id.toLowerCase()))) {
+    throw new CLIError('--tests requires valid test UUIDs.', ExitCode.ConfigError)
+  }
+  return ids
+}
+
+function validateSchedule(schedule: string): void {
+  if (!schedule.trim()) return // An empty schedule disables scheduling on update.
+  try { CronExpressionParser.parse(schedule) } catch {
+    throw new CLIError('--schedule must be a valid cron expression.', ExitCode.ConfigError)
+  }
+}
+
 export const jobCommand = new Command('job')
   .description('Manage jobs')
 
@@ -38,7 +55,8 @@ function inferLocalTestType(filePath: string): 'playwright' | 'k6' {
 }
 
 function toDisplayName(cwd: string, filePath: string): string {
-  const normalized = filePath.replace(cwd, '').replace(/^\//, '')
+  const local = relative(cwd, filePath)
+  const normalized = local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local) ? filePath : local
   return normalized.startsWith('_supercheck_/') ? normalized.replace(/^_supercheck_\//, '') : normalized
 }
 
@@ -274,10 +292,7 @@ jobCommand
   .action(async (options: { name: string; tests: string[]; description: string; type?: string; schedule?: string; dryRun?: boolean }) => {
     const client = createAuthenticatedClient()
 
-    const tests = (options.tests ?? [])
-      .flatMap((value) => value.split(','))
-      .map((value) => value.trim())
-      .filter(Boolean)
+    const tests = jobTestIds(options.tests ?? [])
 
     if (tests.length === 0) {
       throw new CLIError('At least one test ID is required to create a job.', ExitCode.ConfigError)
@@ -298,7 +313,10 @@ jobCommand
       }
       body.jobType = type
     }
-    if (options.schedule) body.cronSchedule = options.schedule
+    if (options.schedule !== undefined) {
+      validateSchedule(options.schedule)
+      body.cronSchedule = options.schedule
+    }
 
     if (options.dryRun) {
       logger.header('Dry run \u2014 job create payload:')
@@ -329,10 +347,13 @@ jobCommand
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = {}
-    if (options.tests !== undefined) body.tests = options.tests.map((id) => ({ id }))
+    if (options.tests !== undefined) body.tests = jobTestIds(options.tests).map((id) => ({ id }))
     if (options.name !== undefined) body.name = options.name
     if (options.description !== undefined) body.description = options.description
-    if (options.schedule !== undefined) body.cronSchedule = options.schedule
+    if (options.schedule !== undefined) {
+      validateSchedule(options.schedule)
+      body.cronSchedule = options.schedule
+    }
     if (options.status !== undefined) {
       logger.warn('Ignoring --status: job status is runtime state and is not editable via the current API.')
     }
@@ -391,6 +412,9 @@ jobCommand
 
     if (options.offline && !options.local) throw new CLIError('--offline requires --local.', ExitCode.ConfigError)
     const useLocal = options.local === true
+    if (!useLocal && !isUuid(options.id.toLowerCase())) {
+      throw new CLIError('--id must be a valid job UUID for cloud execution.', ExitCode.ConfigError)
+    }
 
     if (useLocal) {
       const cwd = process.cwd()

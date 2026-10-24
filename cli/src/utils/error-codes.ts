@@ -42,6 +42,7 @@ export function classifyError(error: unknown, hasCredentials = true): ErrorClass
     }
     if (status === 403) return { code: 'PERMISSION_DENIED', retryable: false, nextActions: [{ command: 'supercheck whoami --json', why: 'Check the role and project of the current credential' }] }
     if (status === 409) return { code: 'CONFLICT', retryable: false, nextActions: [] }
+    if (status === 404) return { code: 'NOT_FOUND', retryable: false, nextActions: [] }
     if (status === 429) return { code: 'RATE_LIMITED', retryable: true, nextActions: [] }
     if (status === 400 || status === 422) return { code: 'VALIDATION_FAILED', retryable: false, nextActions: [] }
     if (status === 0 || status >= 500) return { code: 'SERVICE_UNAVAILABLE', retryable: true, nextActions: [] }
@@ -52,5 +53,12 @@ export function classifyError(error: unknown, hasCredentials = true): ErrorClass
   if (error instanceof CLIError && error.exitCode === ExitCode.ConfigError && /CONFIRMATION_REQUIRED/.test(error.message)) {
     return { code: 'CONFIRMATION_REQUIRED', retryable: false, nextActions: [] }
   }
-  return undefined
+  if (error instanceof CLIError) {
+    const code = error.exitCode === ExitCode.ConfigError ? 'CONFIG_INVALID'
+      : error.exitCode === ExitCode.AuthError ? 'TOKEN_INVALID'
+      : error.exitCode === ExitCode.Timeout ? 'REQUEST_TIMEOUT' : 'COMMAND_FAILED'
+    return { code, retryable: error.exitCode === ExitCode.Timeout, nextActions: [] }
+  }
+  const parserError = error && typeof error === 'object' && 'code' in error && String(error.code).startsWith('commander.')
+  return { code: parserError ? 'INVALID_ARGUMENT' : 'COMMAND_FAILED', retryable: false, nextActions: [] }
 }

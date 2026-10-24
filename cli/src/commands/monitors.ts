@@ -33,6 +33,14 @@ function normalizeHttpMethod(value: string): string {
   return normalized
 }
 
+function validateMonitorTarget(target: string, type?: string): void {
+  if (!type || ['http_request', 'website'].includes(type)) {
+    try {
+      if (!['http:', 'https:'].includes(new URL(target).protocol)) throw new Error('protocol')
+    } catch { throw new CLIError('--url must be a valid HTTP(S) URL.', ExitCode.ConfigError) }
+  }
+}
+
 function getLatestMonitorResponseTimeMs(data: Record<string, unknown>): number | undefined {
   const recentResults = data.recentResults
   if (!Array.isArray(recentResults) || recentResults.length === 0) return undefined
@@ -199,6 +207,7 @@ monitorCommand
     if (monitorType !== 'synthetic_test' && !options.url) {
       throw new CLIError('--url is required for this monitor type.', ExitCode.ConfigError)
     }
+    if (options.url) validateMonitorTarget(options.url, monitorType)
     if (monitorType === 'synthetic_test' && !z.string().uuid().safeParse(options.testId).success) {
       throw new CLIError('--test-id must be a valid test UUID for synthetic_test.', ExitCode.ConfigError)
     }
@@ -267,7 +276,11 @@ monitorCommand
 
     const body: Record<string, unknown> = {}
     if (options.name !== undefined) body.name = options.name
-    if (options.url !== undefined) body.target = options.url
+    if (options.url !== undefined) {
+      const { data: existing } = await client.get<{ type?: string }>(`/api/monitors/${id}`)
+      validateMonitorTarget(options.url, existing.type)
+      body.target = options.url
+    }
     if (options.interval !== undefined) {
       logger.warn('--interval (seconds) is deprecated. Use --interval-minutes instead.')
       const intervalSeconds = parseIntStrict(options.interval, '--interval', { min: 60, max: 86400 })

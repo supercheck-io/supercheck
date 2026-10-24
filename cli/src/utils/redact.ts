@@ -18,7 +18,7 @@ function maskUrl(raw: string): string {
 /** Free text (messages, captured output): mask CLI tokens and credentials in any embedded URL. */
 export function redactText(text: string): string {
   if (reveal) return text
-  return maskUserinfo(cliTokens(text)).replace(/https?:\/\/[^\s"'<>]+/g, maskUrl)
+  return maskUserinfo(cliTokens(text)).replace(/https?:\/\/[^\s"'<>]+/gi, maskUrl)
 }
 // Credentials embedded as scheme://user:pass@host are masked in every string, including script bodies.
 const maskUserinfo = (text: string): string => text.replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]*@/gi, '$1REDACTED@')
