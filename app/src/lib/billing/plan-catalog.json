@@ -86,6 +86,10 @@
         "answer": "Yes. Every new Cloud organization starts with a {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains and single sign-on are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
       },
       {
+        "question": "What tests can I run during the trial?",
+        "answer": "You can run Playwright and API tests against public targets without registering a domain or setting up DNS verification. Trial k6 load tests use a generated HTTPS GET workload with up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run and {k6VuMinutes} virtual-user minutes across the whole trial. Arbitrary k6 scripts are available on paid plans."
+      },
+      {
         "question": "What happens when the free trial ends?",
         "answer": "Your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Nothing is deleted: your tests, jobs, monitors, status pages, and history are kept, and normal data retention still applies to old results and artifacts. You can still sign in and look at your data, but you cannot create, run, or publish anything until you subscribe. When you subscribe to Plus or Pro, paused monitors resume and archived status pages are republished automatically."
       }
