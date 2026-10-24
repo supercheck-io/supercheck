@@ -14,6 +14,7 @@ import {
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { scheduleJob } from "@/lib/job-scheduler";
@@ -347,7 +348,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    const invalidTest = jobData.tests.find((test) => !test?.id || !isUuid(test.id));
     if (invalidTest) {
       return NextResponse.json(
         {
@@ -659,6 +660,10 @@ export async function PUT(request: Request) {
     const context = await requireAuthContext();
     const { project, organizationId } = context;
 
+    if (!isUuid(targetJobId)) {
+      return NextResponse.json({ success: false, error: "Job not found" }, { status: 404 });
+    }
+
     // Validate required fields
     if (!jobData.name || !jobData.cronSchedule || !jobData.description) {
       return NextResponse.json(
@@ -678,7 +683,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    const invalidTest = jobData.tests.find((test) => !test?.id || !isUuid(test.id));
     if (invalidTest) {
       return NextResponse.json(
         { success: false, error: "Each job test must include a valid test ID." },
