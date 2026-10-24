@@ -80,7 +80,7 @@ export default class CrxPlayer extends EventEmitter {
 
     if (pageOrContext instanceof Page) {
       page = pageOrContext;
-      context = page.context();
+      context = page.browserContext;
     } else {
       context = pageOrContext;
       page = context.pages()[0] ?? await context.newPage(serverSideCallMetadata());
