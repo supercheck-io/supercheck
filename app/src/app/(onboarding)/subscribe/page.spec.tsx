@@ -236,6 +236,71 @@ describe("signup plan selection", () => {
     );
   });
 
+  describe("when the default organization cannot be set up", () => {
+    const noOrganization = () =>
+      mockUseOrganizations.mockReturnValue({ activeOrganization: null, isPending: false, isError: false });
+    const setupCalls = () => mockFetch.mock.calls.filter(([url]) => url === "/api/auth/setup-defaults");
+
+    it.each([
+      ["a non-OK response", async () => ({ ok: false, status: 403, json: async () => ({}) })],
+      ["a network error", async () => { throw new Error("offline"); }],
+    ])("tells the user and lets them retry after %s", async (_name, failure) => {
+      noOrganization();
+      jest.spyOn(console, "warn").mockImplementation(() => {});
+      let fail = true;
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url !== "/api/auth/setup-defaults") return { ok: true, json: async () => pricing };
+        if (fail) return failure();
+        return { ok: true, json: async () => ({ success: true }) };
+      });
+      render(<SubscribePage />);
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/couldn't finish setting up your default organization/);
+      expect(screen.queryByText(/This page will update automatically/)).not.toBeInTheDocument();
+      expect(setupCalls()).toHaveLength(1);
+
+      fail = false;
+      fireEvent.click(screen.getByRole("button", { name: /Try again/ }));
+      await waitFor(() => expect(setupCalls()).toHaveLength(2));
+      await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["organizations"] }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("does not retry on its own", async () => {
+      noOrganization();
+      mockFetch.mockImplementation(async (url: string) =>
+        url === "/api/auth/setup-defaults" ? { ok: false, json: async () => ({}) } : { ok: true, json: async () => pricing },
+      );
+      render(<SubscribePage />);
+      await screen.findByRole("alert");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(setupCalls()).toHaveLength(1);
+    });
+  });
+
+  it("re-enables checkout when the page is restored from the back/forward cache", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {}); // jsdom does not implement navigation
+    mockFetch.mockImplementation(async (url: string) =>
+      url === "/api/billing/checkout"
+        ? { ok: true, json: async () => ({ url: "https://checkout.example.test/session" }) }
+        : { ok: true, json: async () => pricing },
+    );
+    const button = await openPage();
+    fireEvent.click(button);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("/api/billing/checkout", expect.anything()));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Continue with Pro/ })).toBeDisabled());
+
+    // A normal page show (not a restore) leaves the latch alone...
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: false }));
+    expect(screen.getByRole("button", { name: /Continue with Pro/ })).toBeDisabled();
+
+    // ...a restore from the cache releases it.
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Continue with Pro/ })).toBeEnabled());
+    expect(screen.getByRole("button", { name: /Continue with Plus/ })).toBeEnabled();
+  });
+
   it.each(["2020-01-01T00:00:00Z", null, "invalid"])(
     "explains expired access and allows resubscription: %s",
     async (subscriptionEndsAt) => {
