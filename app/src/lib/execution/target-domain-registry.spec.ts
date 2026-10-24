@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { verifyTargetDns, TargetDnsUnavailableError } from "./target-domain";
 import {
   TargetDomainError,
+  clearRecentTargetFailures,
   registerTargetDomain,
   requireVerifiedTarget,
   verifyRegisteredTarget,
@@ -36,6 +37,7 @@ function useTransaction(tx: Record<string, unknown>) {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  clearRecentTargetFailures();
 });
 
 describe("registerTargetDomain", () => {
@@ -142,6 +144,77 @@ describe("requireVerifiedTarget", () => {
     jest.mocked(verifyTargetDns).mockRejectedValue(new Error("no txt record"));
     await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
     expect(db.update).not.toHaveBeenCalled();
+  });
+
+  describe("repeated failures", () => {
+    const lapsed = () => ({ ...row, verifiedAt: new Date(), verifiedUntil: new Date(Date.now() - 1000) });
+
+    it("looks a failing record up once, not once per attempt", async () => {
+      findFirst.mockResolvedValue(lapsed());
+      jest.mocked(verifyTargetDns).mockRejectedValue(new Error("no txt record"));
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
+      }
+      expect(verifyTargetDns).toHaveBeenCalledTimes(1);
+    });
+
+    it("remembers a resolver outage too, as a 503 the caller retries", async () => {
+      findFirst.mockResolvedValue(lapsed());
+      jest.mocked(verifyTargetDns).mockRejectedValue(new TargetDnsUnavailableError());
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 503 });
+      }
+      expect(verifyTargetDns).toHaveBeenCalledTimes(1);
+    });
+
+    it("looks again once the remembered failure has expired", async () => {
+      findFirst.mockResolvedValue(lapsed());
+      jest.mocked(verifyTargetDns).mockRejectedValue(new Error("no txt record"));
+      const now = jest.spyOn(Date, "now");
+      const start = Date.now();
+      try {
+        await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
+        now.mockReturnValue(start + 61_000);
+        await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
+      } finally {
+        now.mockRestore();
+      }
+      expect(verifyTargetDns).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps hosts and organizations apart", async () => {
+      findFirst.mockResolvedValue(lapsed());
+      jest.mocked(verifyTargetDns).mockRejectedValue(new Error("no txt record"));
+      await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toBeInstanceOf(TargetDomainError);
+      await expect(requireVerifiedTarget("other-org", "target.example.com")).rejects.toBeInstanceOf(TargetDomainError);
+      await expect(requireVerifiedTarget("org", "second.example.com")).rejects.toBeInstanceOf(TargetDomainError);
+      expect(verifyTargetDns).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not remember a concurrent-change conflict", async () => {
+      findFirst.mockResolvedValue(lapsed());
+      jest.mocked(verifyTargetDns).mockResolvedValue(undefined as never);
+      (db.update as jest.Mock).mockReturnValue(chain([])); // the row changed under us: 409
+      await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 409 });
+      await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 409 });
+      expect(verifyTargetDns).toHaveBeenCalledTimes(2);
+    });
+
+    it("lets an explicit verification clear the remembered failure, so a fixed record works at once", async () => {
+      const stale = lapsed();
+      findFirst.mockResolvedValue(stale);
+      jest.mocked(verifyTargetDns).mockRejectedValueOnce(new Error("no txt record"));
+      await expect(requireVerifiedTarget("org", "target.example.com")).rejects.toMatchObject({ status: 400 });
+
+      jest.mocked(verifyTargetDns).mockResolvedValue(undefined as never);
+      (db.update as jest.Mock).mockReturnValue(chain([{ ...stale, verifiedUntil: new Date(Date.now() + 86_400_000) }]));
+      await verifyRegisteredTarget("org", stale.id); // the owner fixed DNS and pressed Verify
+      expect(verifyTargetDns).toHaveBeenCalledTimes(2);
+
+      findFirst.mockResolvedValue(stale);
+      await expect(requireVerifiedTarget("org", "target.example.com")).resolves.toBeDefined();
+      expect(verifyTargetDns).toHaveBeenCalledTimes(3); // looked up again, not served from the failure cache
+    });
   });
 
   it("re-verifies DNS at use time for previously verified hosts", async () => {
