@@ -97,6 +97,13 @@ export async function getActiveTrial(
  * without a second code path. The trial is never billed: no Polar customer,
  * overage or spending limit applies to it.
  */
+/** How long a trial organization's data is kept; the plan-shaped view and the retention sweeps share it. */
+export const TRIAL_RETENTION = {
+  dataRetentionDays: 7,
+  aggregatedDataRetentionDays: 30,
+  jobDataRetentionDays: 30,
+} as const;
+
 export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
   return {
     id: "trial",
@@ -119,9 +126,7 @@ export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
     // Custom domains and SSO need production DNS/TLS and identity setup; keep them paid.
     customDomains: false,
     ssoEnabled: false,
-    dataRetentionDays: 7,
-    aggregatedDataRetentionDays: 30,
-    jobDataRetentionDays: 30,
+    ...TRIAL_RETENTION,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };

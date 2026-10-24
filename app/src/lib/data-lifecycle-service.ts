@@ -33,6 +33,7 @@
  */
 
 import { db } from "@/utils/db";
+import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
   monitorResults,
   monitors,
@@ -155,13 +156,27 @@ interface OrganizationRetention {
 // ============================================================================
 
 /**
+ * Organizations on an active free trial. They have no subscription plan, so plan-based retention would give
+ * them the default; their entitlement carries the shorter trial retention instead. An organization with a
+ * plan always uses the plan, and an ended trial falls back to the default (never to a shorter period).
+ * A failed lookup throws, so the caller skips cleanup rather than guessing.
+ */
+async function getActiveTrialOrganizationIds(): Promise<Set<string>> {
+  const rows = await db
+    .select({ organizationId: executionEntitlements.organizationId })
+    .from(executionEntitlements)
+    .where(gt(executionEntitlements.expiresAt, new Date()));
+  return new Set(rows.map((row) => row.organizationId));
+}
+
+/**
  * Get retention settings for all organizations based on their subscription plans
  * Seeded raw retention is 7 days on all plans; deployments can change plan_limits.
  *
  * @param fallbackRetentionDays - Default retention for missing plan settings
  * @returns Array of organization retention settings
  */
-async function getOrganizationRetentionSettings(
+export async function getOrganizationRetentionSettings(
   fallbackRetentionDays: number
 ): Promise<OrganizationRetention[]> {
   try {
@@ -201,11 +216,15 @@ async function getOrganizationRetentionSettings(
       plans.map((p) => [p.plan, p.dataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       retentionDays: org.subscriptionPlan
         ? planRetentionMap.get(org.subscriptionPlan) || fallbackRetentionDays
-        : fallbackRetentionDays,
+        : trialOrganizations.has(org.organizationId)
+          ? TRIAL_RETENTION.dataRetentionDays
+          : fallbackRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
@@ -224,7 +243,7 @@ async function getOrganizationRetentionSettings(
  * Returns a list of organization IDs with their aggregated data retention periods
  * based on subscription plans. Used by MonitorAggregatesCleanupStrategy.
  */
-async function getOrganizationAggregatedRetentionSettings(
+export async function getOrganizationAggregatedRetentionSettings(
   fallbackAggregatedRetentionDays: number
 ): Promise<
   Array<{
@@ -270,12 +289,16 @@ async function getOrganizationAggregatedRetentionSettings(
       plans.map((p) => [p.plan, p.aggregatedDataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       aggregatedRetentionDays: org.subscriptionPlan
         ? planAggregatedRetentionMap.get(org.subscriptionPlan) ||
           fallbackAggregatedRetentionDays
-        : fallbackAggregatedRetentionDays,
+        : trialOrganizations.has(org.organizationId)
+          ? TRIAL_RETENTION.aggregatedDataRetentionDays
+          : fallbackAggregatedRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
@@ -304,7 +327,7 @@ async function getOrganizationAggregatedRetentionSettings(
  * - Pro: 90 days
  * - Unlimited: 90 days (self-hosted seed)
  */
-async function getOrganizationJobRetentionSettings(
+export async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
 ): Promise<
   Array<{
@@ -350,12 +373,16 @@ async function getOrganizationJobRetentionSettings(
       plans.map((p) => [p.plan, p.jobDataRetentionDays])
     );
 
+    const trialOrganizations = await getActiveTrialOrganizationIds();
+
     return orgsWithPlans.map((org) => ({
       organizationId: org.organizationId,
       jobRetentionDays: org.subscriptionPlan
         ? planJobRetentionMap.get(org.subscriptionPlan) ||
           fallbackJobRetentionDays
-        : fallbackJobRetentionDays,
+        : trialOrganizations.has(org.organizationId)
+          ? TRIAL_RETENTION.jobDataRetentionDays
+          : fallbackJobRetentionDays,
       plan: org.subscriptionPlan || "fallback",
     }));
   } catch (error) {
