@@ -1,139 +1,81 @@
-# Dependency DoS advisories — October 2026 triage
+# Dependency advisories — October 2026 triage
 
-Scope: five advisories surfaced by `npm audit` across `app/`, `worker/`, `cli/`,
-and the vendored Playwright bundles in `recorder/`. Both packages behind them
-lack an upstream patched release, so this records the evidence and the
-accept/guard decision rather than forcing a downgrade.
+Scope: the `braces` and `sprintf-js` denial-of-service advisories that
+`npm audit` and Dependabot raised in September–October 2026, and the tooling
+reduction made in response.
 
-Triage date: 2026-10-20. Review by: 2027-04-20 (or sooner if either package
-publishes a fix).
+Last verified: 2026-10-24. Review again on 2027-04-20, or sooner if either
+package is flagged again.
 
-## Summary
+## Status
 
-| Advisory | Package | Installed | Fixed in | Decision |
-|---|---|---|---|---|
-| [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) | `sprintf-js` | `1.0.3`, `1.1.3` | none published (`1.1.3` is latest) | Accept — format strings are static literals |
-| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | `braces` | `3.0.3` | none published (`3.0.3` is latest) | Accept — patterns are build-time or developer-supplied |
+Both advisories were **withdrawn by GitHub** after this triage began. They are
+kept here so the history of the decision is traceable.
 
-`npm audit` offers "fixes" that are downgrades of unrelated parents (for
-example `mammoth@0.3.29` and `shadcn@1.0.0`), not patched releases. Applying
-them would remove functionality without removing the vulnerable package.
+| Advisory | Package | Severity when published | Withdrawn |
+|---|---|---|---|
+| [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) | `sprintf-js` | medium | 2026-10-22 |
+| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | `braces` | high | 2026-10-23 |
 
-Verified with `npm view braces versions` and `npm view sprintf-js versions` on
-2026-10-20: the newest published versions are the installed `3.0.3` and
-`1.1.3`.
+No upstream patched release of either package was ever published (`braces@3.0.3`
+and `sprintf-js@1.1.3` remain the newest), so no fix, downgrade, override or
+audit suppression was applied. Nothing needs to change in the dependency tree
+because of these two advisories.
 
-## sprintf-js — unbounded precision specifier DoS
+Dependabot alerts #685 and #686 (`braces`, vendored Playwright bundle lockfiles
+under `recorder/playwright/packages/playwright/bundles/`) were still open at the
+time of writing. They point at the withdrawn advisory and should close or be
+dismissed as withdrawn; do not treat them as live exposure.
 
-The advisory affects `sprintf-js <= 1.1.3`. A format string containing an
-unbounded precision specifier (for example `%.2147483647f`) makes `sprintf`
-allocate and format an enormous string. Exploitation requires control of the
-**format string**; values passed as arguments cannot add specifiers.
+## Where the packages are present
 
-### Dependency paths
+Verified with `npm ls braces sprintf-js` on 2026-10-24:
 
-| Package | Version | Path |
-|---|---|---|
-| app | `1.0.3` | `mammoth@1.11.0` → `argparse@1.0.10` → `sprintf-js` |
-| app | `1.1.3` | `@types/mssql` (dev) → `tedious@18.6.1` → `sprintf-js` |
-| worker | `1.1.3` | `mssql@11.0.1` → `tedious@18.6.1` → `sprintf-js` |
-| cli | `1.0.3` | `@istanbuljs/load-nyc-config` (dev/test) → `argparse` → `sprintf-js` |
+| Package | `braces` | `sprintf-js` | Path (all dev or build tooling) |
+|---|---|---|---|
+| `app` | `3.0.3` | `1.1.3`, `1.0.3` | `braces`: `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch`; Jest → `micromatch`. `sprintf-js`: `@types/mssql` → `tedious` (`1.1.3`); `mammoth` and Jest → `argparse` (`1.0.3`) |
+| `worker` | not present | not present | none |
+| `cli` | not present | `1.0.3` lockfile entry (Jest → `js-yaml` → `argparse`); `npm ls` reports nothing installed | none |
+| `recorder` | `3.0.3` | not checked | vendored Playwright bundle lockfiles (`chokidar`, `jest-message-util`); build and test tooling |
 
-### Reachability evidence
+No application, worker or CLI source imports `braces`, `micromatch`,
+`fast-glob` or `sprintf-js` directly.
 
-- `mammoth` requires `argparse` only for its CLI (`bin/mammoth`). Its library
-  code under `lib/` does not import `argparse`, and the app imports the library.
-  `argparse` calls `sprintf` with fixed literals
-  (`sprintf('ignored explicit argument %r', explicitArg)`), passing the document
-  content as an argument, never as the format string.
-- `tedious` calls `sprintf` in `lib/login7-payload.js`, `lib/packet.js`,
-  `lib/prelogin-payload.js`, `lib/metadata-parser.js`, and
-  `lib/value-parser.js`. Every call site passes a string literal as the format;
-  packet and column values are arguments.
-- No application code calls `sprintf-js` directly (`grep -rn "sprintf" app/src
-  worker/src cli/src` returns nothing).
-
-Conclusion: not reachable from attacker-controlled input in any shipped path.
-No guard added: the only inputs an attacker controls (docx contents, TDS packet
-fields, SQL values) cannot become a format string.
-
-Residual risk: a future dependency upgrade or new direct use of `sprintf-js`
-with a user-derived format string would reintroduce the issue. Review this file
-when adding such a dependency.
-
-## braces — stack exhaustion from deeply nested patterns
-
-The advisory affects `braces <= 3.0.3`. Expanding a pattern with deeply nested
-brace groups (for example thousands of nested `{}`) exhausts the stack.
-Exploitation requires control of the **pattern** passed to `braces` /
-`micromatch`.
-
-### Dependency paths
-
-| Package | Version | Path |
-|---|---|---|
-| app | `3.0.3` | `micromatch@4.0.8` → `braces` (`@jest/*`, `fast-glob` via `shadcn`/`ts-morph` — all devDependencies) |
-| worker | `3.0.3` | `micromatch@4.0.8` → `braces` (`@jest/*`, `ts-loader` — all devDependencies) |
-| cli | `3.0.3` | `micromatch@4.0.8` → `braces` (`@jest/*` — devDependencies) |
-| recorder | `3.0.3` | vendored Playwright bundle locks: `playwright/packages/playwright/bundles/utils` (`chokidar` → `braces`) and `.../bundles/expect` (`jest-message-util` → `micromatch` → `braces`) |
-
-### Reachability evidence
-
-- `npm ls braces` in `app/`, `worker/`, and `cli/` resolves only into Jest,
-  ESLint/`fast-glob`, and `ts-loader` build tooling. No app, worker, or CLI
-  source file imports `braces`, `micromatch`, or `fast-glob`
-  (`grep -rn "micromatch\|from 'braces'" {app,worker,cli}/src` returns nothing).
-  Patterns come from developer-authored configuration, not from requests.
-- The recorder bundle locks are consumed by `npm run ci:pw:*` while building the
-  vendored Playwright bundles (`chokidar` watches files, `expect`'s
-  `jest-message-util` matches test-name patterns). They are build-time only; the
-  extension bundle built by `vite build` does not import them, and recorder
-  source has no `micromatch`/`braces` usage.
-- These lockfiles are vendored inside the Playwright fork. Hand-editing them is
-  out of policy; the correct fix is to bump the vendored Playwright revision
-  when upstream Playwright updates its bundle locks.
-
-Conclusion: not reachable from attacker-controlled input in any shipped path.
-No guard added.
-
-Residual risk: a future feature that passes user-supplied glob patterns to
-`micromatch`/`braces` (for example path filters) would make this reachable.
-Such a change should bound pattern length and nesting before matching, or wait
-for a patched `braces`.
-
-## What would change this decision
-
-### 2026-10-23 app tooling reduction
+## Tooling reduction (this PR)
 
 The app no longer installs the unused `shadcn` generator. UI component source is
-checked in, and no app script or source import uses the CLI package. The
-`components.json` generator configuration remains available for future component
-authoring.
+checked in, and no app script or import uses the CLI package. The
+`components.json` generator configuration is kept for future component authoring.
 
-The app lockfile audit drops from eight high findings to five after removing that
-dependency and its `ts-morph` chain. The remaining findings are the Next ESLint
-plugin's `fast-glob` / `micromatch` / `braces` chain. Registry checks still report
-`braces@3.0.3` as the latest release; upgrading its parent packages does not remove
-that dependency. The CLI lockfile audit is now clean. These results do not resolve
-the remaining docs or recorder tooling findings, and no major downgrade or audit
-suppression was applied.
+This removed the `shadcn` → `ts-morph` dependency chain. It was a safe reduction
+of unused dev tooling, not a fix for either advisory. The remaining
+`braces`/`micromatch` paths in `app` come from the Next ESLint plugin and Jest.
 
-### Revisit criteria
+## Current audit findings are separate
 
-1. `braces` or `sprintf-js` publishes a version above the vulnerable range.
-   Upgrade with the package manager (`npm install <pkg>@<fixed>` plus
-   `overrides` where the transitive parent pins it) and re-run the affected
-   package tests.
-2. New application code calls either package with a user-controlled format
-   string or glob pattern.
-3. `mammoth`/`tedious`/jest drop the affected dependency.
+`npm audit` today reports different advisories in the runtime dependency trees,
+for example `zod`, `undici`, `body-parser`, `@azure/msal-node`, `multer` and
+`fast-uri`. They are unrelated to the two advisories above and are not triaged
+in this document. They are tracked in Tally under "Resolve remaining upstream
+dev-tool dependency advisories" and must be re-audited against the current
+lockfiles before any change is made.
+
+## Revisit criteria
+
+1. Either package is flagged again by a non-withdrawn advisory. Then upgrade it
+   (`npm install <pkg>@<fixed>`, plus `overrides` where a transitive parent pins
+   it) and re-run the affected package's tests.
+2. New application code passes user-controlled input as a glob pattern to
+   `micromatch`/`braces` or as a format string to `sprintf-js`.
+3. The ESLint, Jest, `mammoth` or `tedious` parents drop the dependency.
 
 ## Verification commands
 
 ```bash
-(cd app && npm audit --json | jq '.vulnerabilities["sprintf-js"], .vulnerabilities.braces')
-(cd worker && npm ls sprintf-js braces --all)
-(cd cli && npm ls sprintf-js braces --all)
+gh api /advisories/GHSA-vfj7-8cjw-p6xm --jq '{withdrawn_at}'
+gh api /advisories/GHSA-hp3w-g68c-fv3c --jq '{withdrawn_at}'
+(cd app && npm ls braces sprintf-js)
+(cd worker && npm ls braces sprintf-js)
+(cd cli && npm ls braces sprintf-js)
 (cd recorder && grep -n '"braces"' playwright/packages/playwright/bundles/*/package-lock.json)
-npm view braces version && npm view sprintf-js version
 ```
