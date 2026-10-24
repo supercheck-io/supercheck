@@ -11,6 +11,16 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Search existing issues and pull requests before starting work.
 - For anything larger than a small fix, open or comment on an issue so maintainers can confirm the approach before you invest time.
 
+## Server route tests
+
+App tests use jsdom by default. Server route suites should select Node with
+`/** @jest-environment node */` so they use native server APIs, including
+`structuredClone` and Fetch. Keep authorization assertions in the suite; changing
+the environment does not replace testing access checks.
+
+When a route imports the auth stack, check the suite with both
+`MCP_SERVER_ENABLED=true` and `MCP_SERVER_ENABLED=false`.
+
 ## Development setup
 
 Requirements:
