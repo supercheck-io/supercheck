@@ -86,8 +86,8 @@
         "answer": "Yes. Every new Cloud organization starts with a {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains and single sign-on are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
       },
       {
-        "question": "Why do I need to verify a domain during the trial?",
-        "answer": "To protect other people's sites, a trial can send load-test and browser or API test traffic only to domains your organization owns. Add the domain, publish the TXT record shown for it in your DNS, and select Verify. A verification stays valid for 24 hours, and every run confirms that the domain resolves only to public addresses. Paid plans have no domain restriction."
+        "question": "What tests can I run during the trial?",
+        "answer": "You can run Playwright and API tests against public targets without registering a domain or setting up DNS verification. Trial k6 load tests use a generated HTTPS GET workload with up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run and {k6VuMinutes} virtual-user minutes across the whole trial. Arbitrary k6 scripts are available on paid plans."
       },
       {
         "question": "What happens when the free trial ends?",

@@ -2,16 +2,13 @@ import {
   TargetDnsUnavailableError,
   normalizeTargetHostname,
   resolvePublicTargetAddresses,
-  verifyTargetDns,
 } from './execution-target-domain';
 
 const resolver = {
-  resolveTxt: jest.fn(),
   resolve4: jest.fn(),
   resolve6: jest.fn(),
 };
 beforeEach(() => {
-  resolver.resolveTxt.mockResolvedValue([['supercheck-load-test=org-token']]);
   resolver.resolve4.mockResolvedValue(['93.184.216.34']);
   resolver.resolve6.mockRejectedValue(new Error('no AAAA'));
 });
@@ -39,18 +36,6 @@ it.each([
 ])('rejects invalid execution target %s', (hostname) => {
   expect(() => normalizeTargetHostname(hostname)).toThrow();
 });
-it("requires this organization's exact TXT proof and public addresses", async () => {
-  expect(
-    await verifyTargetDns('target.example.com', 'org-token', resolver),
-  ).toEqual(['93.184.216.34']);
-  expect(resolver.resolveTxt).toHaveBeenCalledWith(
-    '_supercheck-load-test.target.example.com',
-  );
-  resolver.resolveTxt.mockResolvedValue([['supercheck-load-test=another-org']]);
-  await expect(
-    verifyTargetDns('target.example.com', 'org-token', resolver),
-  ).rejects.toThrow('ownership');
-});
 it.each([
   '127.0.0.1',
   '169.254.169.254',
@@ -63,38 +48,23 @@ it.each([
   async (address) => {
     resolver.resolve4.mockResolvedValue(['93.184.216.34', address]);
     await expect(
-      verifyTargetDns('target.example.com', 'org-token', resolver),
+      resolvePublicTargetAddresses('target.example.com', resolver),
     ).rejects.toThrow('public');
   },
 );
-it('re-resolves on every verification and fails closed on DNS failure or rebinding', async () => {
-  await verifyTargetDns('target.example.com', 'org-token', resolver);
+it('re-resolves on every execution and fails closed on DNS failure or rebinding', async () => {
+  await resolvePublicTargetAddresses('target.example.com', resolver);
   resolver.resolve4.mockResolvedValue(['10.0.0.1']);
   await expect(
-    verifyTargetDns('target.example.com', 'org-token', resolver),
+    resolvePublicTargetAddresses('target.example.com', resolver),
   ).rejects.toThrow();
   resolver.resolve4.mockRejectedValue(new Error('DNS unavailable'));
   await expect(
-    verifyTargetDns('target.example.com', 'org-token', resolver),
+    resolvePublicTargetAddresses('target.example.com', resolver),
   ).rejects.toThrow();
 });
 const dnsError = (code: string) => Object.assign(new Error(code), { code });
 describe('resolver outages are not proof about the target', () => {
-  it.each(['ETIMEOUT', 'ESERVFAIL', 'ECONNREFUSED'])(
-    'treats %s on the ownership lookup as temporary',
-    async (code) => {
-      resolver.resolveTxt.mockRejectedValue(dnsError(code));
-      await expect(
-        verifyTargetDns('target.example.com', 'org-token', resolver),
-      ).rejects.toBeInstanceOf(TargetDnsUnavailableError);
-    },
-  );
-  it('treats a missing TXT record as failed ownership, not an outage', async () => {
-    resolver.resolveTxt.mockRejectedValue(dnsError('ENODATA'));
-    await expect(
-      verifyTargetDns('target.example.com', 'org-token', resolver),
-    ).rejects.toThrow('ownership');
-  });
   it('treats failing address lookups as temporary only when nothing answered', async () => {
     resolver.resolve4.mockRejectedValue(dnsError('ETIMEOUT'));
     resolver.resolve6.mockRejectedValue(dnsError('ETIMEOUT'));
@@ -107,12 +77,10 @@ describe('resolver outages are not proof about the target', () => {
       resolvePublicTargetAddresses('target.example.com', resolver),
     ).rejects.toThrow('public addresses');
   });
-  it('still checks every address on its own, without the ownership proof', async () => {
-    resolver.resolveTxt.mockClear();
+  it('checks every address including IPv6', async () => {
     resolver.resolve6.mockResolvedValue(['::1']);
     await expect(
       resolvePublicTargetAddresses('target.example.com', resolver),
     ).rejects.toThrow('public addresses');
-    expect(resolver.resolveTxt).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,6 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { getExecutionPolicy, ExecutionWorkloadError } from "@/lib/execution/execution-policy";
-import { requireVerifiedTarget, TargetDomainError } from "@/lib/execution/target-domain-registry";
 import { createTrialK6Script, normalizeTrialK6Workload } from "@/lib/execution/trial-k6-workload";
 import { checkExecutionRateLimit } from "@/lib/execution-rate-limiter";
 import { buildExecutionRateLimitResponse } from "@/lib/execution-api-responses";
@@ -26,11 +25,10 @@ export async function POST(request: NextRequest) {
     }
     const limited = buildExecutionRateLimitResponse(await checkExecutionRateLimit(context.userId, context.organizationId));
     if (limited) return limited;
-    await requireVerifiedTarget(context.organizationId, new URL(workload.url).hostname);
     return NextResponse.json({ success: true, script: createTrialK6Script(workload) });
   } catch (error) {
     if (isAuthError(error)) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    if (error instanceof TargetDomainError || error instanceof ExecutionWorkloadError) {
+    if (error instanceof ExecutionWorkloadError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error("Trial workload generation failed", error);

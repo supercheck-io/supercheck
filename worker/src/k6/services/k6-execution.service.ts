@@ -1,6 +1,4 @@
-import { and, eq } from 'drizzle-orm';
 import { isIP } from 'node:net';
-import { executionTargetDomains } from '../../db/schema';
 import {
   ExecutionAdmissionService,
   ExecutionCapacityError,
@@ -14,7 +12,6 @@ import {
 import {
   TargetDnsUnavailableError,
   resolvePublicTargetAddresses,
-  verifyTargetDns,
 } from '../../common/security/execution-target-domain';
 import {
   attachBillableMs,
@@ -304,70 +301,19 @@ export class K6ExecutionService {
               'HTTP workload duration exceeds entitlement expiry',
             );
           const hostname = new URL(workload.url).hostname;
-          const target =
-            await this.dbService.db.query.executionTargetDomains.findFirst({
-              where: and(
-                eq(
-                  executionTargetDomains.organizationId,
-                  reservation.organizationId,
-                ),
-                eq(executionTargetDomains.hostname, hostname),
-              ),
-            });
-          if (!target?.verifiedAt)
-            throw new Error(
-              'Verify ownership of the HTTP workload domain before execution',
-            );
-          const targetIsFresh =
-            !!target.verifiedUntil &&
-            target.verifiedUntil.getTime() > Date.now();
           let addresses: string[];
           try {
-            // Ownership is proven once per verification window; the public-address check, which
-            // pins the address into the run, happens on every execution.
-            addresses = targetIsFresh
-              ? await resolvePublicTargetAddresses(hostname)
-              : await verifyTargetDns(hostname, target.verificationToken);
+            addresses = await resolvePublicTargetAddresses(hostname);
           } catch (error) {
-            // A resolver outage says nothing about the target: retry later rather than fail the run.
             if (error instanceof TargetDnsUnavailableError)
               throw new ExecutionCapacityError(
-                'DNS verification is temporarily unavailable',
+                'DNS lookup is temporarily unavailable',
               );
             throw error;
           }
           const address =
             addresses.find((ip) => isIP(ip) === 4) ?? addresses[0];
           if (!address) throw new Error('HTTP workload domain did not resolve');
-          const verifiedAt = new Date();
-          const refreshed = targetIsFresh
-            ? [{ id: target.id }]
-            : await this.dbService.db
-                .update(executionTargetDomains)
-                .set({
-                  verifiedAt,
-                  verifiedUntil: new Date(
-                    verifiedAt.getTime() + 24 * 60 * 60 * 1000,
-                  ),
-                })
-                .where(
-                  and(
-                    eq(executionTargetDomains.id, target.id),
-                    eq(
-                      executionTargetDomains.organizationId,
-                      reservation.organizationId,
-                    ),
-                    eq(
-                      executionTargetDomains.verificationToken,
-                      target.verificationToken,
-                    ),
-                  ),
-                )
-                .returning({ id: executionTargetDomains.id });
-          if (!refreshed.length)
-            throw new Error(
-              'HTTP workload domain verification changed; retry execution',
-            );
           if (
             reservation.expiresAt &&
             Date.now() + workload.durationSeconds * 1000 >

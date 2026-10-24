@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { executionEntitlements } from "@/db/schema";
 import { db } from "@/utils/db";
-import { decodeStoredTestScript } from "@/lib/test-script";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
@@ -74,40 +73,18 @@ async function resolveExecutionPolicy(organizationId: string): Promise<Execution
   };
 }
 
-/** Hostnames of the absolute http(s) URLs written in the given scripts. Base64-encoded scripts are decoded first. */
-export function literalHostnames(scripts: string[]): string[] {
-  const hosts = new Set<string>();
-  for (const script of scripts) {
-    const text = decodeStoredTestScript(script);
-    for (const match of text.matchAll(/https?:\/\/[^\s'"`<>)\]},\\]+/giu)) {
-      try { hosts.add(new URL(match[0]).hostname.toLowerCase()); } catch { /* not a URL */ }
-    }
-  }
-  return [...hosts];
-}
-
+/**
+ * Trials run the same Playwright workloads as paid plans, and k6 trials keep
+ * their generated HTTP workload so the VU-ms allowance can be metered exactly.
+ * Neither path asks for domain ownership: the cluster egress policy remains the
+ * network boundary.
+ */
 export async function assertExecutionWorkload(
-  organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
+  _organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
 ): Promise<void> {
   if (policy.tier !== "trial") return;
-  const { requireVerifiedTarget, TargetDomainError } = await import("./target-domain-registry");
   if (kind === "playwright") {
     if (policy.playwrightRemainingMs <= 0) throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402);
-    // A browser or API test can send as many requests as a load test, so a trial may only call hosts
-    // it has proven it owns. This reads literal URLs; the cluster egress policy is the control for
-    // addresses a script builds at run time.
-    for (const hostname of literalHostnames(scripts)) {
-      try { await requireVerifiedTarget(organizationId, hostname); }
-      catch (error) {
-        if (error instanceof TargetDomainError) {
-          throw new ExecutionWorkloadError(
-            error.status === 503 ? error.message : `Trial tests may only call domains you have verified: ${hostname}. Verify it under Admin, Load test domains.`,
-            error.status === 503 ? 503 : 400,
-          );
-        }
-        throw error;
-      }
-    }
     return;
   }
   const { parseTrialK6Workload } = await import("./trial-k6-workload");
@@ -120,11 +97,5 @@ export async function assertExecutionWorkload(
   }
   if (workload.vus * workload.durationSeconds * 1000 > policy.k6RemainingVuMs) {
     throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402);
-  }
-  try { await requireVerifiedTarget(organizationId, new URL(workload.url).hostname); }
-  catch (error) {
-    // A DNS outage is temporary: keep its 503 so callers retry instead of treating it as a bad request.
-    if (error instanceof TargetDomainError) throw new ExecutionWorkloadError(error.message, error.status === 503 ? 503 : 400);
-    throw error;
   }
 }
