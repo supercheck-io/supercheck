@@ -25,7 +25,7 @@ beforeAll(async () => {
   const url = new URL(process.env.TEST_DATABASE_URL); url.pathname = `/${name}`;
   client = postgres(url.toString(), { max: 1 });
   mockDatabase = drizzle(client, { schema });
-  await client.unsafe(`CREATE TABLE "user" (id uuid PRIMARY KEY, banned boolean);
+  await client.unsafe(`CREATE TABLE "user" (id uuid PRIMARY KEY, banned boolean, ban_expires timestamp);
     CREATE TABLE oauth_client (client_id text PRIMARY KEY, disabled boolean);
     CREATE TABLE oauth_consent (user_id uuid, client_id text, reference_id text, scopes text[]);`);
 });
@@ -36,7 +36,7 @@ afterAll(async () => {
 beforeEach(async () => {
   jest.clearAllMocks();
   await client`TRUNCATE "user", oauth_client, oauth_consent`;
-  await client`INSERT INTO "user" VALUES (${userId},false)`;
+  await client`INSERT INTO "user" (id, banned) VALUES (${userId},false)`;
   await client`INSERT INTO oauth_client VALUES ('client',false)`;
   await client`INSERT INTO oauth_consent VALUES (${userId},'client',${projectId},ARRAY['mcp:read'])`;
   mockProjectAccess.mockResolvedValue({ userId, organizationId, project: { id: projectId, userRole: "project_viewer" } });
@@ -57,3 +57,19 @@ it("still rechecks revoked consent after validating the client", async () => {
   await client`DELETE FROM oauth_consent`;
   await expect(resolveMcpCallContext(claims)).rejects.toMatchObject({ reason: "consent_revoked" });
 });
+
+describe("a ban is read from the user row on every call", () => {
+  it("rejects a banned user, and lets the same user back in once the ban has expired", async () => {
+    await client`UPDATE "user" SET banned=true, ban_expires=now() + interval '1 day' WHERE id=${userId}`;
+    await expect(resolveMcpCallContext(claims)).rejects.toMatchObject({ reason: "user_unavailable" });
+
+    await client`UPDATE "user" SET ban_expires=now() - interval '1 minute' WHERE id=${userId}`;
+    expect((await resolveMcpCallContext(claims)).projectId).toBe(projectId);
+  });
+
+  it("keeps a ban with no expiry in force", async () => {
+    await client`UPDATE "user" SET banned=true, ban_expires=NULL WHERE id=${userId}`;
+    await expect(resolveMcpCallContext(claims)).rejects.toMatchObject({ reason: "user_unavailable" });
+  });
+});
+

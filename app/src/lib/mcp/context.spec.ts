@@ -48,6 +48,25 @@ describe("resolveMcpCallContext", () => {
     selectResults.push([{ banned: true }]);
     await denied(resolveMcpCallContext(claims), "user_unavailable");
   });
+  describe("ban expiry", () => {
+    const day = 24 * 60 * 60 * 1000;
+    it("allows a user whose ban has expired", async () => {
+      selectResults.push([{ banned: true, banExpires: new Date(Date.now() - day) }], [{ disabled: false }], [{ scopes: ["mcp:read"] }]);
+      await expect(resolveMcpCallContext(claims)).resolves.toMatchObject({ projectId: "p1" });
+    });
+    it.each([
+      ["a ban that has not expired", new Date(Date.now() + day)],
+      ["a permanent ban (no expiry)", null],
+      ["an expiry that cannot be read", "not-a-date"],
+    ])("rejects %s", async (_name, banExpires) => {
+      selectResults.push([{ banned: true, banExpires }]);
+      await denied(resolveMcpCallContext(claims), "user_unavailable");
+    });
+    it("rejects a user that no longer exists", async () => {
+      selectResults.push([]);
+      await denied(resolveMcpCallContext(claims), "user_unavailable");
+    });
+  });
   it("rejects when the consent was revoked", async () => {
     selectResults.push([{ banned: false }], [{ disabled: false }], []);
     await denied(resolveMcpCallContext(claims), "consent_revoked");

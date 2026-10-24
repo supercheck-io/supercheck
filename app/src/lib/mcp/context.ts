@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { JWTPayload } from "jose";
 import { oauthClient, oauthConsent, user } from "@/db/schema";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { db } from "@/utils/db";
 import {
   checkPermissionWithContext,
@@ -41,11 +42,12 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
   }
 
   const [account] = await db
-    .select({ banned: user.banned })
+    .select({ banned: user.banned, banExpires: user.banExpires })
     .from(user)
     .where(eq(user.id, userId))
     .limit(1);
-  if (!account || account.banned) throw new McpAccessDeniedError("user_unavailable");
+  // A ban that has expired no longer blocks the account; the row is read fresh, never taken from the token.
+  if (!isCredentialOwnerActive(account)) throw new McpAccessDeniedError("user_unavailable");
 
   const [client] = await db.select({ disabled: oauthClient.disabled }).from(oauthClient)
     .where(eq(oauthClient.clientId, clientId)).limit(1);
