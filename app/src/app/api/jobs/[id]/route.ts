@@ -1,5 +1,5 @@
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
-import { isInvalidUuidError } from "@/lib/uuid";
+import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
@@ -159,6 +159,7 @@ export async function PATCH(
         { status: 403 }
       );
     }
+    if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const rawData = await request.json();
 
@@ -233,6 +234,7 @@ export async function PUT(
         { status: 403 }
       );
     }
+    if (!isUuid(params.id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     // Verify job belongs to current project before updating
     const existingJob = await db.query.jobs.findFirst({
@@ -295,6 +297,7 @@ export async function DELETE(
     if (!checkPermissionWithContext("job", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     const result = await deleteJobWithContext(id, context);
     const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });

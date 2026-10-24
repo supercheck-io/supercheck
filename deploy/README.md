@@ -30,3 +30,5 @@ See [docker/README.md](docker/README.md) for detailed configuration options, inc
 ## Documentation
 
 Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**
+
+MCP operators should follow the [request and authorization contract](mcp-request-hardening.md) when configuring proxies and browser clients.

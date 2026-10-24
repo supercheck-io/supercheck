@@ -1057,6 +1057,8 @@ The doctor command checks:
 - **Authentication** — whether a valid token is stored
 - **Configuration** — whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted)
 
+If `supercheck.config.ts` names a different API than the one in use, doctor says so and does not send your token to the URL written in a repository. Set `SUPERCHECK_URL` (or run `supercheck login --url ...`) to verify against it.
+
 Doctor verifies stored credentials against the server (`/api/context`, 5 second timeout, no retries). Offline, `authenticated` and `ready` are `false` while `cloudCredentialsPresent` stays `true`. With `--strict` the exit code is 3 for missing dependencies or config, 2 for rejected or missing credentials and 4 when the server cannot be reached.
 
 With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.

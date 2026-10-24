@@ -5,6 +5,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { isUuid } from "@/lib/uuid";
 
 // Bucket name from environment
 const BUCKET_NAME =
@@ -19,7 +20,11 @@ function extractStatusPageIdFromKey(s3Key: string): string | null {
   const segments = s3Key.split("/").filter(Boolean);
   if (segments.length < 3) return null;
   if (segments[0] !== "status-pages") return null;
-  return segments[1] || null;
+  // The key is handed to S3 verbatim; a backend that normalizes paths would let
+  // "status-pages/<own-id>/../<other-id>/x" authorize against one page and read another.
+  if (segments.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))) return null;
+  // A non-uuid id would reach the uuid column and fail with 22P02 (a 500) instead of a 404.
+  return isUuid(segments[1]) ? segments[1] : null;
 }
 
 async function isPublishedStatusPageAsset(s3Key: string): Promise<boolean> {

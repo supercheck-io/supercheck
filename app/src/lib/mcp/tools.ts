@@ -161,7 +161,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     completedAt: iso(r.completedAt),
   });
 
-  tool("list_runs", "List recent runs in the project, newest first." + UNTRUSTED, "job", page, async ({ limit, cursor }) => {
+  tool("list_runs", "List recent runs in the project, newest first." + UNTRUSTED, "run", page, async ({ limit, cursor }) => {
     const rows = await db
       .select(runColumns)
       .from(runs)
@@ -172,7 +172,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { runs: items.map(runDto), nextCursor };
   });
 
-  tool("get_run", "Get one run with a redacted, truncated error excerpt." + UNTRUSTED, "job", { id: idArg }, async ({ id }) => {
+  tool("get_run", "Get one run with a redacted, truncated error excerpt." + UNTRUSTED, "run", { id: idArg }, async ({ id }) => {
     const [r] = await db
       .select({ ...runColumns, errorDetails: runs.errorDetails })
       .from(runs)

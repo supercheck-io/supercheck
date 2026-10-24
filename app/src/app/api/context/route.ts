@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 
 /**
  * GET /api/context
@@ -35,7 +35,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

@@ -2,7 +2,8 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: [main]
+    # Any base: a PR stacked on another branch is still reviewed for dependency changes.
+    branches: ["**"]
 
 permissions:
   contents: read

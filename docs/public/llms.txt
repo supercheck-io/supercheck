@@ -6,6 +6,12 @@
 
 - [Agent quickstart](https://supercheck.io/docs/cli/agent-quickstart): Copy-paste prompt and CLI steps (`onboard`, `discover`, `login`, `deploy --verify`, `ci init`) to take a repository to a verified cloud run.
 
+## MCP server
+
+- [Supercheck MCP](https://supercheck.io/docs/mcp): Read-only MCP endpoint (`/api/mcp`) that lets AI clients inspect a project's tests, jobs, runs, monitors and incidents.
+- [Connect a client](https://supercheck.io/docs/mcp/connect): Claude Code, Cursor, VS Code and other clients.
+- [Tools reference](https://supercheck.io/docs/mcp/tools): Tool names, inputs and output limits.
+
 ## Installation
 
 - [Agent installation runbook](https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/INSTALL.md): Required inputs, ordered commands, and verification for a single Linux server.
