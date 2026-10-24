@@ -67,6 +67,8 @@ const {
   validateNotificationProviderOwnership: jest.Mock;
 };
 
+const TEST_ID = "00000000-0000-4000-8000-0000000000a1";
+
 describe("Jobs route regressions", () => {
   const authContext = {
     userId: "user-1",
@@ -135,7 +137,7 @@ describe("Jobs route regressions", () => {
         name: "Nightly Job",
         description: "Nightly",
         cronSchedule: "0 * * * *",
-        tests: [{ id: "test-1" }],
+        tests: [{ id: TEST_ID }],
         alertConfig: {
           enabled,
           notificationProviders: ["provider-unauthorized"],
@@ -170,7 +172,7 @@ describe("Jobs route regressions", () => {
         name: "Nightly Job",
         description: "Nightly",
         cronSchedule: "0 * * * *",
-        tests: [{ id: "test-1" }, { id: "test-1" }],
+        tests: [{ id: TEST_ID }, { id: TEST_ID }],
       }),
     });
 
@@ -210,7 +212,7 @@ describe("Jobs route regressions", () => {
         description: "Nightly",
         cronSchedule: "0 * * * *",
         jobType: "k6",
-        tests: [{ id: "test-1" }],
+        tests: [{ id: TEST_ID }],
       }),
     });
 
@@ -239,7 +241,7 @@ describe("Jobs route regressions", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         id: "00000000-0000-4000-8000-000000000005", name: "Nightly Job", description: "Nightly",
-        cronSchedule: "0 * * * *", tests: [{ id: "test-1" }],
+        cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }],
         alertConfig: { enabled: true, notificationProviders: ["foreign-provider"] },
       }),
     }));
@@ -249,5 +251,39 @@ describe("Jobs route regressions", () => {
       providerIds: ["foreign-provider"], organizationId: "org-1", projectId: "project-1",
     });
     expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  describe("nested test ids", () => {
+    // A string that is not a uuid would reach `inArray(tests.id, ...)` and fail in Postgres with a 500.
+    it.each(["test-1", "not-a-uuid", "12345"])("POST /api/jobs answers 400 for the test id %s", async (id) => {
+      const response = await POST(new NextRequest("http://localhost/api/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Nightly Job", description: "Nightly", cronSchedule: "0 * * * *", tests: [{ id }] }),
+      }));
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("valid test ID");
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it("PUT /api/jobs answers 400 for a test id that is not a uuid", async () => {
+      const response = await PUT(new Request("http://localhost/api/jobs", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "00000000-0000-4000-8000-000000000005",
+          name: "Nightly Job",
+          description: "Nightly",
+          cronSchedule: "0 * * * *",
+          tests: [{ id: "not-a-uuid" }],
+        }),
+      }));
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("valid test ID");
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
   });
 });

@@ -117,9 +117,10 @@ describe("malformed resource identifiers", () => {
     },
   );
 
-  it.each(["bad", "", "00000000-0000-0000-0000-00000000000g"])("rejects a malformed jobId filter (%s)", async (jobId) => {
+  // A filter is a bad request, not a missing job. (An empty ?jobId= means "no filter"; see runs/route.spec.ts.)
+  it.each(["bad", "00000000-0000-0000-0000-00000000000g"])("rejects a malformed jobId filter (%s)", async (jobId) => {
     const response = await listRuns(new NextRequest(`http://localhost/api/runs?jobId=${jobId}`));
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     expectNoDataAccess();
   });
 });

@@ -84,6 +84,19 @@ it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
   },
 );
 
+// The id and requirementId reach uuid columns; anything else is a bad request, not a database error.
+it.each([
+  { id: "not-a-uuid" },
+  { id: "12345" },
+  { requirementId: "not-a-uuid" },
+])("rejects a malformed identifier %j before touching the database", async (fields) => {
+  const result = await saveTest({ title: "Renamed", ...fields });
+  expect(result.success).toBe(false);
+  expect(result.id).toBe("");
+  expect(mockSet).not.toHaveBeenCalled();
+  expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+});
+
 it("checks the authenticated organization before a permitted save", async () => {
   expect(await update("action", {})).toBe(true);
   expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");

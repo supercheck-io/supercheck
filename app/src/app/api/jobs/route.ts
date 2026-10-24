@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    const invalidTest = jobData.tests.find((test) => !test?.id || !isUuid(test.id));
     if (invalidTest) {
       return NextResponse.json(
         {
@@ -667,7 +667,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    const invalidTest = jobData.tests.find((test) => !test?.id || typeof test.id !== "string");
+    const invalidTest = jobData.tests.find((test) => !test?.id || !isUuid(test.id));
     if (invalidTest) {
       return NextResponse.json(
         { success: false, error: "Each job test must include a valid test ID." },

@@ -299,6 +299,17 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+      // The test lookup below runs before the full configuration validation, and a malformed id would fail
+      // it with a Postgres uuid error (a 500) instead of this 400.
+      if (!isUuid(String(rawData.config.testId))) {
+        return NextResponse.json(
+          {
+            error: "Invalid monitor configuration",
+            details: "config.testId must be a valid test ID for synthetic monitors",
+          },
+          { status: 400 },
+        );
+      }
 
       // Verify test exists and user has access
       const { tests } = await import("@/db/schema");
