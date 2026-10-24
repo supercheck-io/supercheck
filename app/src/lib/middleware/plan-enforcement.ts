@@ -11,6 +11,20 @@ import { organization } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
+ * How a plan is named to the user. A trial reports `plan: "plus"` so its limits flow through the same checks,
+ * but the organization is on a free trial, not the Plus plan.
+ */
+function planLabel(plan: { id: string; plan: string }): string {
+  return plan.id === "trial" ? "free trial" : `${plan.plan} plan`;
+}
+
+/** The plan that lifts the limit: Plus for a trial (which has none yet), Pro for Plus, nothing above that. */
+function upgradeFrom(plan: { id: string; plan: string }): "plus" | "pro" | undefined {
+  if (plan.id === "trial") return "plus";
+  return plan.plan === "plus" ? "pro" : undefined;
+}
+
+/**
  * Check if organization can create additional monitors
  * Returns error if limit exceeded
  */
@@ -30,11 +44,11 @@ export async function checkMonitorLimit(
     if (currentCount >= plan.maxMonitors) {
       return {
         allowed: false,
-        error: `Monitor limit reached. Your ${plan.plan} plan allows ${plan.maxMonitors} monitors. Please upgrade to add more.`,
+        error: `Monitor limit reached. Your ${planLabel(plan)} allows ${plan.maxMonitors} monitors. Please upgrade to add more.`,
         limit: plan.maxMonitors,
         currentCount,
         currentPlan: plan.plan,
-        upgrade: plan.plan === "plus" ? "pro" : undefined,
+        upgrade: upgradeFrom(plan),
       };
     }
 
@@ -133,7 +147,7 @@ export async function checkStatusPageLimit(
     if (currentCount >= plan.maxStatusPages) {
       return {
         allowed: false,
-        error: `Status page limit reached. Your ${plan.plan} plan allows ${plan.maxStatusPages} status pages.`,
+        error: `Status page limit reached. Your ${planLabel(plan)} allows ${plan.maxStatusPages} status pages.`,
         limit: plan.maxStatusPages,
         currentCount,
       };
@@ -172,7 +186,7 @@ export async function checkTeamMemberLimit(
     if (currentCount >= plan.maxTeamMembers) {
       return {
         allowed: false,
-        error: `Team member limit reached. Your ${plan.plan} plan allows ${plan.maxTeamMembers} team members.`,
+        error: `Team member limit reached. Your ${planLabel(plan)} allows ${plan.maxTeamMembers} team members.`,
         limit: plan.maxTeamMembers,
         currentCount,
       };
@@ -211,7 +225,7 @@ export async function checkProjectLimit(
     if (currentCount >= plan.maxProjects) {
       return {
         allowed: false,
-        error: `Project limit reached. Your ${plan.plan} plan allows ${plan.maxProjects} projects.`,
+        error: `Project limit reached. Your ${planLabel(plan)} allows ${plan.maxProjects} projects.`,
         limit: plan.maxProjects,
         currentCount,
       };
@@ -252,11 +266,11 @@ export async function checkSubscriberLimit(
     if (currentSubscriberCount >= plan.maxStatusPageSubscribers) {
       return {
         allowed: false,
-        error: `Subscriber limit reached. Your ${plan.plan} plan allows ${plan.maxStatusPageSubscribers} subscribers per status page. Please upgrade to add more.`,
+        error: `Subscriber limit reached. Your ${planLabel(plan)} allows ${plan.maxStatusPageSubscribers} subscribers per status page. Please upgrade to add more.`,
         limit: plan.maxStatusPageSubscribers,
         currentCount: currentSubscriberCount,
         currentPlan: plan.plan,
-        upgrade: plan.plan === "plus" ? "pro" : undefined,
+        upgrade: upgradeFrom(plan),
       };
     }
 
@@ -288,14 +302,24 @@ export async function checkFeatureAvailability(
     return { available: true };
   }
 
-  const plan = await subscriptionService.getOrganizationPlan(organizationId);
+  let plan;
+  try {
+    plan = await subscriptionService.getOrganizationPlan(organizationId);
+  } catch (error) {
+    // No active subscription or trial (for example an ended trial): say so, instead of letting the failure
+    // surface as an unexpected error.
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : "An active subscription is required to use this feature.",
+    };
+  }
 
   const available = plan[feature];
 
   if (!available) {
     return {
       available: false,
-      error: `Custom domains are not available on your ${plan.id === "trial" ? "free trial" : `${plan.plan} plan`}. Please upgrade to use them.`,
+      error: `Custom domains are not available on your ${planLabel(plan)}. Please upgrade to use them.`,
     };
   }
 

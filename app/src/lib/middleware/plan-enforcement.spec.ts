@@ -580,3 +580,82 @@ describe("Plan Enforcement Middleware", () => {
     });
   });
 });
+
+describe("plan enforcement for an organization on a free trial", () => {
+  // A trial reports plan "plus" so its limits flow through the same checks, but it is not the Plus plan.
+  const trialPlan = {
+    id: "trial",
+    plan: "plus",
+    maxMonitors: 5,
+    maxStatusPages: 1,
+    maxTeamMembers: 3,
+    maxProjects: 1,
+    maxStatusPageSubscribers: 50,
+    customDomains: false,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isPolarEnabled as jest.Mock).mockReturnValue(true);
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue(trialPlan);
+  });
+
+  it("calls the trial a free trial in the monitor limit message, not a plus plan", async () => {
+    const result = await checkMonitorLimit("org-1", 5);
+    expect(result.error).toContain("Your free trial allows 5 monitors");
+    expect(result.error).not.toMatch(/plus plan/i);
+  });
+
+  it("tells a trial to subscribe to Plus rather than suggesting Pro", async () => {
+    const result = await checkMonitorLimit("org-1", 5);
+    expect(result.upgrade).toBe("plus");
+  });
+
+  it.each([
+    ["status pages", () => checkStatusPageLimit("org-1", 1), "Your free trial allows 1 status pages"],
+    ["team members", () => checkTeamMemberLimit("org-1", 3), "Your free trial allows 3 team members"],
+    ["projects", () => checkProjectLimit("org-1", 1), "Your free trial allows 1 projects"],
+    ["subscribers", () => checkSubscriberLimit("org-1", 50), "Your free trial allows 50 subscribers"],
+  ])("names the free trial in the %s limit message", async (_name, run, expected) => {
+    const result = await run();
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain(expected);
+  });
+
+  it("keeps naming a paid plan by its name", async () => {
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ id: "p", plan: "plus", maxMonitors: 25 });
+    const result = await checkMonitorLimit("org-1", 25);
+    expect(result.error).toContain("Your plus plan allows 25 monitors");
+    expect(result.upgrade).toBe("pro");
+  });
+
+  it("explains that custom domains are not part of the free trial", async () => {
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({
+      available: false,
+      error: "Custom domains are not available on your free trial. Please upgrade to use them.",
+    });
+  });
+});
+
+describe("checkFeatureAvailability when there is no active subscription or trial", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isPolarEnabled as jest.Mock).mockReturnValue(true);
+  });
+
+  it("answers with the reason instead of throwing, so an ended trial is not an 'unexpected error'", async () => {
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(
+      new Error("No active subscription. Please subscribe to a plan to continue."),
+    );
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({
+      available: false,
+      error: "No active subscription. Please subscribe to a plan to continue.",
+    });
+  });
+
+  it("still allows everything in self-hosted mode without asking for a plan", async () => {
+    (isPolarEnabled as jest.Mock).mockReturnValue(false);
+    await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: true });
+    expect(subscriptionService.getOrganizationPlan).not.toHaveBeenCalled();
+  });
+});
