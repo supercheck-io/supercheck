@@ -10,6 +10,13 @@ import { db } from "@/utils/db";
 import { organization } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+/** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
+const SUBSCRIPTION_STATE_ERRORS = [
+  /^No active subscription\b/,
+  /^Organization not found\b/,
+  /^Invalid subscription plan\b/,
+];
+
 /**
  * How a plan is named to the user. A trial reports `plan: "plus"` so its limits flow through the same checks,
  * but the organization is on a free trial, not the Plus plan.
@@ -307,11 +314,12 @@ export async function checkFeatureAvailability(
     plan = await subscriptionService.getOrganizationPlan(organizationId);
   } catch (error) {
     // No active subscription or trial (for example an ended trial): say so, instead of letting the failure
-    // surface as an unexpected error.
-    return {
-      available: false,
-      error: error instanceof Error ? error.message : "An active subscription is required to use this feature.",
-    };
+    // surface as an unexpected error. Only these known conditions are described to the caller; any other
+    // failure (a database or driver error can carry query text) is rethrown, as before.
+    if (error instanceof Error && SUBSCRIPTION_STATE_ERRORS.some((known) => known.test(error.message))) {
+      return { available: false, error: error.message };
+    }
+    throw error;
   }
 
   const available = plan[feature];

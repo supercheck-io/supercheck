@@ -653,6 +653,20 @@ describe("checkFeatureAvailability when there is no active subscription or trial
     });
   });
 
+  it.each(["Organization not found", "Invalid subscription plan: legacy. Only plus and pro plans are available."])(
+    "also describes the organization's own state: %s",
+    async (message) => {
+      (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(new Error(message));
+      await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: false, error: message });
+    },
+  );
+
+  it("does not turn a database failure into 'feature not available', or show its text", async () => {
+    const failure = new Error('Failed query: select "id" from "organization" where "id" = $1 params: org-1');
+    (subscriptionService.getOrganizationPlan as jest.Mock).mockRejectedValue(failure);
+    await expect(checkFeatureAvailability("org-1", "customDomains")).rejects.toBe(failure);
+  });
+
   it("still allows everything in self-hosted mode without asking for a plan", async () => {
     (isPolarEnabled as jest.Mock).mockReturnValue(false);
     await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: true });
