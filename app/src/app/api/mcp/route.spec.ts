@@ -46,6 +46,68 @@ beforeEach(() => {
 });
 
 describe("/api/mcp", () => {
+  it.each([
+    { host: "attacker.example", origin: undefined },
+    { host: "app.example.com", origin: "https://attacker.example" },
+    { host: "app.example.com", origin: "not a URL" },
+    { host: "app.example.com/evil", origin: undefined },
+  ])("rejects untrusted Host/Origin before authentication: %j", async ({ host, origin }) => {
+    const headers = new Headers(rpc("initialize").headers);
+    headers.set("host", host);
+    if (origin) headers.set("origin", origin);
+    const res = await POST(new Request(rpc("initialize"), { headers }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { data: { code: "invalid_request_origin" } } });
+    expect(requireMcpAuth).not.toHaveBeenCalled();
+  });
+
+  it("allows the configured browser origin and valid proxy Host", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const headers = new Headers(rpc("initialize").headers);
+    headers.set("host", "app.example.com"); headers.set("origin", "https://app.example.com");
+    expect((await POST(new Request(rpc("initialize"), { headers }))).status).toBe(200);
+  });
+
+  it("accepts an internal proxy URL only with the validated public Host", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const headers = new Headers(rpc("initialize").headers); headers.set("host", "app.example.com");
+    const req = new Request("http://app:3000/api/mcp", { method:"POST", headers, body:await rpc("initialize").text() });
+    expect((await POST(req)).status).toBe(200);
+  });
+
+  it("keeps Bearer challenges while shaping auth refusals as JSON-RPC", async () => {
+    requireMcpAuth.mockImplementation(() => () => Response.json({ error: "unauthorized" }, {
+      status: 401, headers: { "WWW-Authenticate": 'Bearer resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/api/mcp"' },
+    }));
+    const res = await POST(rpc("initialize"));
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain("resource_metadata");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", id: null, error: { data: { code: "unauthorized" } } });
+  });
+
+  it("does not leak an auth or limiter infrastructure failure", async () => {
+    requireMcpAuth.mockImplementation(() => () => { throw new Error("secret internal database query"); });
+    const res = await POST(rpc("initialize"));
+    expect(res.status).toBe(503);
+    expect(await res.text()).not.toContain("database query");
+  });
+
+  it("returns a parse error for invalid JSON instead of rereading the consumed body", async () => {
+    const res = await POST(new Request(rpc("initialize"), { body: "{invalid" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { code: -32700 } });
+    expect(resolveMcpCallContext).not.toHaveBeenCalled();
+  });
+
+  it("documents the Streamable HTTP Accept requirement even with JSON responses", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const headers = new Headers(rpc("initialize").headers); headers.set("accept", "application/json");
+    const res = await POST(new Request(rpc("initialize"), { headers }));
+    expect(res.status).toBe(406);
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: expect.any(Object) });
+  });
+
   it("is 404 when the flag is off", async () => {
     isMcpServerEnabled.mockReturnValue(false);
     expect((await POST(rpc("initialize"))).status).toBe(404);

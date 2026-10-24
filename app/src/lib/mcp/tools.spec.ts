@@ -1,3 +1,5 @@
+const assertCanView = jest.fn();
+jest.mock("./context", () => ({ ...jest.requireActual("./context"), assertCanView: (...args: unknown[]) => assertCanView(...args) }));
 /** @jest-environment node */
 const queue: unknown[] = [];
 const calls: unknown[] = [];
@@ -29,11 +31,18 @@ beforeAll(() => {
 beforeEach(() => {
   queue.length = 0;
   logAuditEvent.mockClear();
+  assertCanView.mockReset();
 });
 
 const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 
 describe("MCP tools", () => {
+  it.each(["list_runs", "get_run"])("authorizes %s against run permissions rather than job permissions", async name => {
+    queue.push([]);
+    await handlers.get(name)!({ id: id(1), limit: 5 });
+    expect(assertCanView).toHaveBeenCalledWith(ctx, "run");
+  });
+
   it("registers the read-only tool set", () => {
     expect([...handlers.keys()].sort()).toEqual(
       ["get_context", "get_incident", "get_run", "get_test", "list_incidents", "list_jobs", "list_monitors", "list_runs", "list_tests", "prepare_local_authoring"].sort(),

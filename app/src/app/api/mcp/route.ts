@@ -1,3 +1,4 @@
+import { getAllowedCorsOriginPatterns, isCorsOriginAllowed } from "@/lib/cors";
 import { requireMcpAuth } from "@better-auth/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -21,13 +22,15 @@ export const dynamic = "force-dynamic";
 const MAX_BODY_BYTES = 1024 * 1024;
 const NO_STORE = { "Cache-Control": "no-store" };
 
-function json(body: unknown, status: number, extra: Record<string, string> = {}): Response {
-  return Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
+function json(body: unknown, status: number, extra: HeadersInit = {}): Response {
+  const headers = new Headers(extra);
+  headers.set("Cache-Control", NO_STORE["Cache-Control"]);
+  return Response.json(body, { status, headers });
 }
 
 /** MCP clients expect a JSON-RPC error object, not an ad-hoc body, even for transport-level refusals. */
-function rpcError(status: number, code: string, message: string, extra: Record<string, string> = {}): Response {
-  return json({ jsonrpc: "2.0", id: null, error: { code: -32000, message, data: { code } } }, status, extra);
+function rpcError(status: number, code: string, message: string, extra: HeadersInit = {}, rpcCode = -32000): Response {
+  return json({ jsonrpc: "2.0", id: null, error: { code: rpcCode, message, data: { code } } }, status, extra);
 }
 
 async function handle(request: Request, claims: JWTPayload): Promise<Response> {
@@ -62,6 +65,8 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
   }
 
   try {
+    if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
+
     let context;
     try {
       context = await resolveMcpCallContext(claims);
@@ -89,26 +94,68 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
       maxRequestBodySize: MAX_BODY_BYTES,
+      enableDnsRebindingProtection: true,
+      allowedHosts: [new URL(getMcpResourceUrl()).host],
+      // The shared CORS policy has already validated this exact origin in POST.
+      allowedOrigins: [request.headers.get("origin") ?? new URL(getMcpResourceUrl()).origin],
     });
     await server.connect(transport);
-    return await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });
+    return await transport.handleRequest(request, { parsedBody });
   } finally {
     permit.release();
   }
 }
 
+function hasTrustedRequestOrigin(request: Request, resource: URL): boolean {
+  try {
+    const authority = request.headers.get("host") ?? new URL(request.url).host;
+    const host = new URL(`${resource.protocol}//${authority}`);
+    if (host.host !== resource.host || host.username || host.password || host.pathname !== "/" || host.search || host.hash) return false;
+    const origin = request.headers.get("origin");
+    return !origin || (new URL(origin).origin === origin &&
+      (origin === resource.origin || isCorsOriginAllowed(origin, getAllowedCorsOriginPatterns())));
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
-  if (!isMcpServerEnabled()) return json({ error: "not_found" }, 404);
-  const protectedHandler = requireMcpAuth(auth as never, handle, {
-    resource: getMcpResourceUrl(),
-    requiredScopes: [MCP_READ_SCOPE],
-  } as never);
-  return protectedHandler(request);
+  if (!isMcpServerEnabled()) return rpcError(404, "not_found", "Not found");
+  try {
+    const resource = new URL(getMcpResourceUrl());
+    if (!hasTrustedRequestOrigin(request, resource)) {
+      return rpcError(403, "invalid_request_origin", "Invalid request origin");
+    }
+    // Next may expose an internal request URL behind a proxy; validate the public Host, not forwarded headers.
+    const headers = new Headers(request.headers);
+    headers.set("host", resource.host);
+    const protectedHandler = requireMcpAuth(auth as never, handle, {
+      resource: resource.toString(),
+      requiredScopes: [MCP_READ_SCOPE],
+    } as never);
+    const response = await protectedHandler(new Request(request, { headers }));
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.set("Cache-Control", "no-store");
+    if (response.status >= 400) {
+      const body = await response.clone().json().catch(() => null) as { jsonrpc?: string } | null;
+      if (body?.jsonrpc !== "2.0") {
+        responseHeaders.delete("content-length");
+        responseHeaders.delete("content-type");
+        responseHeaders.delete("content-encoding");
+        const code = response.status === 401 ? "unauthorized" : response.status === 403 ? "access_denied" : "request_failed";
+        return rpcError(response.status, code, response.status === 401 ? "Authentication required" : "Request refused", responseHeaders);
+      }
+    }
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders });
+  } catch (error) {
+    console.error("mcp request failed", error);
+    return rpcError(503, "server_unavailable", "Service temporarily unavailable");
+  }
 }
 
 function notAllowed(): Response {
-  if (!isMcpServerEnabled()) return json({ error: "not_found" }, 404);
-  return json({ error: "method_not_allowed" }, 405, { Allow: "POST" });
+  if (!isMcpServerEnabled()) return rpcError(404, "not_found", "Not found");
+  return rpcError(405, "method_not_allowed", "Method not allowed", { Allow: "POST" }, -32601);
 }
 
 export const GET = notAllowed;
