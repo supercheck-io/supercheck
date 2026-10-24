@@ -1310,6 +1310,10 @@ export const sreInvestigationRuns = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
+    billingTier: varchar('billing_tier', { length: 8 })
+      .$type<'paid' | 'trial'>()
+      .notNull()
+      .default('paid'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
@@ -1329,6 +1333,10 @@ export const sreInvestigationRuns = pgTable(
       .where(sql`confidence_score < 0.5`),
     createdAtIdx: index('sre_investigation_runs_created_at_idx').on(
       table.createdAt,
+    ),
+    billingTierCheck: check(
+      'sre_investigation_runs_billing_tier_check',
+      sql`${table.billingTier} IN ('paid', 'trial')`,
     ),
   }),
 );

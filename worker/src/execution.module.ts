@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
 // Import Services and Processors
+import { ExecutionQueueFairnessService } from './execution/services/execution-queue-fairness.service';
+import { ExecutionAdmissionService } from './execution/services/execution-admission.service';
 import { ExecutionService } from './execution/services/execution.service';
 import { S3Service } from './execution/services/s3.service';
 import { DbService } from './execution/services/db.service';
@@ -49,6 +51,8 @@ const defaultJobOptions = {
   providers: [
     // Add all services and processors here
     ExecutionService,
+    ExecutionAdmissionService,
+    ExecutionQueueFairnessService,
     S3Service,
     DbService,
     RedisService,
@@ -71,6 +75,7 @@ const defaultJobOptions = {
     UsageTrackerService,
     HardStopNotificationService,
     ExecutionService,
+    ExecutionAdmissionService,
     S3Service,
     StalledJobHandlerService,
     CancellationModule, // Re-export for K6Module and other consumers

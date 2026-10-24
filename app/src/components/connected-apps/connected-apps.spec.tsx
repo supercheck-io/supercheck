@@ -75,7 +75,7 @@ describe("ConnectedApps", () => {
 
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/disconnect agent co\?/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/stop getting access to alpha/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/loses access to alpha immediately/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));

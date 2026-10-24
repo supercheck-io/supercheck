@@ -110,3 +110,37 @@ describe("Billing pricing configuration", () => {
   });
 
 });
+
+describe("trial advertising on the pricing endpoint", () => {
+  const original = process.env.TRIAL_ENABLED;
+  afterEach(() => {
+    if (original === undefined) delete process.env.TRIAL_ENABLED;
+    else process.env.TRIAL_ENABLED = original;
+  });
+
+  async function pricing() {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ plan: "plus" }, { plan: "pro" }] }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    return response.json() as Promise<{ trial?: { durationDays: number; highlights: string[] }; faqs: Array<{ question: string }> }>;
+  }
+
+  it("offers no trial and no trial questions while trials are not enabled", async () => {
+    delete process.env.TRIAL_ENABLED;
+    const body = await pricing();
+    expect(body.trial).toBeUndefined();
+    expect(body.faqs.map((faq) => faq.question).join("\n")).not.toMatch(/free trial/i);
+    expect(body.faqs.length).toBeGreaterThan(0);
+  });
+
+  it("offers the trial and its questions once trials are enabled", async () => {
+    process.env.TRIAL_ENABLED = "true";
+    const body = await pricing();
+    expect(body.trial?.durationDays).toBeGreaterThan(0);
+    expect(body.trial?.highlights.length).toBeGreaterThan(0);
+    expect(body.faqs.map((faq) => faq.question)).toContain("Is there a free trial?");
+  });
+});
+

@@ -8,6 +8,7 @@ import { organization, planLimits, type SubscriptionPlan } from "@/db/schema";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
+import { getActiveTrial, getTrialUsage, trialPlanLimits } from "@/lib/execution/trial-limits";
 
 // Constants for configuration
 export { POLAR_API_VERSION };
@@ -245,9 +246,17 @@ export class SubscriptionService {
    * Block API operations if Polar customer doesn't exist
    * Use this middleware to protect resource creation endpoints
    */
-  async requireValidPolarCustomer(organizationId: string): Promise<void> {
+  async requireValidPolarCustomer(
+    organizationId: string,
+    options: { allowTrial?: boolean } = {},
+  ): Promise<void> {
     if (!isPolarEnabled()) {
       return; // Self-hosted: no validation needed
+    }
+
+    // A trial organization has no Polar customer and is never billed.
+    if (options.allowTrial !== false && (await getActiveTrial(organizationId))) {
+      return;
     }
 
     const org = await db.query.organization.findFirst({
@@ -498,6 +507,8 @@ export class SubscriptionService {
     // This handles active, canceled (with grace period), and past_due
     const hasAccess = await this.hasActiveSubscription(organizationId);
     if (!org.subscriptionPlan || !hasAccess) {
+      const trial = await getActiveTrial(organizationId);
+      if (trial) return trialPlanLimits(trial);
       throw new Error(
         "No active subscription. Please subscribe to a plan to continue.",
       );
@@ -565,6 +576,9 @@ export class SubscriptionService {
         return this.getPlanLimits(org.subscriptionPlan);
       }
     }
+
+    const trial = await getActiveTrial(organizationId);
+    if (trial) return trialPlanLimits(trial);
 
     // Return plus plan limits for display purposes (user will see what they'd get)
     return this.getPlanLimits("plus");
@@ -785,6 +799,36 @@ export class SubscriptionService {
 
     const plan = await this.getOrganizationPlanSafe(organizationId);
 
+    // A trial's browser time and investigations are metered by the trial itself,
+    // not by the billing counters, so report those for the usage display.
+    const trial = plan.id === "trial" ? await getActiveTrial(organizationId) : undefined;
+    const trialUsage = trial ? await getTrialUsage(organizationId, trial) : undefined;
+    if (trialUsage) {
+      return {
+        playwrightMinutes: {
+          used: trialUsage.playwrightMinutesUsed,
+          included: plan.playwrightMinutesIncluded,
+          overage: 0,
+        },
+        // Load testing is metered in virtual-user milliseconds; show it as virtual-user minutes.
+        k6VuMinutes: {
+          used: Math.ceil(trial!.k6UsedVuMs / 60_000),
+          included: Math.floor(trial!.k6BudgetVuMs / 60_000),
+          overage: 0,
+        },
+        aiCredits: {
+          used: org.aiCreditsUsed || 0,
+          included: plan.aiCreditsIncluded,
+          overage: 0,
+        },
+        sreInvestigations: {
+          used: trialUsage.sreInvestigationsUsed,
+          included: Number(plan.sreInvestigationUnitsIncluded || 0),
+          overage: 0,
+        },
+      };
+    }
+
     return {
       playwrightMinutes: {
         used: org.playwrightMinutesUsed || 0,
@@ -941,12 +985,18 @@ export class SubscriptionService {
    * Block execution if subscription is required but missing
    * Used in API routes before creating resources
    */
-  async blockUntilSubscribed(organizationId: string): Promise<void> {
+  async blockUntilSubscribed(
+    organizationId: string,
+    options: { allowTrial?: boolean } = {},
+  ): Promise<void> {
     if (!isPolarEnabled()) {
       return; // Self-hosted: no blocking
     }
 
     const hasSubscription = await this.hasActiveSubscription(organizationId);
+    if (!hasSubscription && options.allowTrial !== false && (await getActiveTrial(organizationId))) {
+      return;
+    }
     if (!hasSubscription) {
       throw new SubscriptionAccessDeniedError(
         "Active subscription required. Visit /billing to subscribe to Plus or Pro.",

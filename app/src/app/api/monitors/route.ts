@@ -9,6 +9,7 @@ import {
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { isUuid } from "@/lib/uuid";
 import {
   insertMonitorRecord,
   scheduleCreatedMonitor,
@@ -21,6 +22,7 @@ import {
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
+import { trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import {
   subscriptionService,
@@ -41,6 +43,8 @@ const logger = createLogger({ module: "monitors-api" }) as {
   warn: (data: unknown, msg?: string) => void;
   error: (data: unknown, msg?: string) => void;
 };
+
+const trialFrequencyError = trialIntervalErrorResponse;
 
 export async function GET(request: Request) {
   try {
@@ -286,6 +290,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const trialIntervalError = await trialFrequencyError(organizationId, rawData.frequencyMinutes ?? 5);
+    if (trialIntervalError) return trialIntervalError;
+
     // Validate target - all monitor types require a target except heartbeat and synthetic_test
     if (rawData.type === "synthetic_test") {
       // For synthetic monitors, validate testId in config
@@ -294,6 +301,19 @@ export async function POST(req: NextRequest) {
           {
             error: "testId is required in config for synthetic monitors",
             details: "Please select a test to monitor",
+          },
+          { status: 400 },
+        );
+      }
+      // The test lookup below runs before the full configuration validation, and a malformed id would fail
+      // it with a Postgres uuid error (a 500) instead of this 400.
+      // Check the value itself, not String(value): a one-element array stringifies to a valid-looking id but
+      // would still reach the uuid column as an array.
+      if (typeof rawData.config.testId !== "string" || !isUuid(rawData.config.testId)) {
+        return NextResponse.json(
+          {
+            error: "Invalid monitor configuration",
+            details: "config.testId must be a valid test ID for synthetic monitors",
           },
           { status: 400 },
         );
@@ -662,6 +682,9 @@ export async function PUT(req: NextRequest) {
         { status: 400 },
       );
     }
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
 
     // Verify monitor belongs to current project context
     const monitorData = await db
@@ -718,6 +741,11 @@ export async function PUT(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    if (rawData.frequencyMinutes !== undefined) {
+      const trialIntervalError = await trialFrequencyError(monitorData[0].organizationId, rawData.frequencyMinutes);
+      if (trialIntervalError) return trialIntervalError;
     }
 
     const configurationValidation = validateMonitorConfiguration({

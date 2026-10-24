@@ -10,6 +10,13 @@ describe("PRICING_FAQS", () => {
     }
   });
 
+  it("carries the trial questions from the shared catalog, once, before the generic try-it question", () => {
+    const questions = PRICING_FAQS.map((faq) => faq.question);
+    expect(questions).toEqual(expect.arrayContaining(["Is there a free trial?", "What happens when the free trial ends?"]));
+    expect(questions.indexOf("Is there a free trial?")).toBeLessThan(questions.indexOf("Can I try Supercheck before subscribing?"));
+    expect(PRICING_FAQS.find((faq) => faq.question === "Can I self-host Supercheck?")?.answer).toContain("no trial or usage limits");
+  });
+
   it("states three monitoring regions and Europe-only browser and k6 execution", () => {
     const faq = PRICING_FAQS.find(
       (item) => item.question === "Where do Cloud checks run?",

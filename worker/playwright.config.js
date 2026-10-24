@@ -101,7 +101,11 @@ module.exports = defineConfig({
   },
 
   /* Suite timeout: max time for ALL tests combined to complete */
-  globalTimeout: 300000, // 5 minutes total
+  // 5 minutes total. A limited (trial) run sets PLAYWRIGHT_GLOBAL_TIMEOUT_MS to the time it reserved.
+  globalTimeout: (() => {
+    const reserved = Number.parseInt(process.env.PLAYWRIGHT_GLOBAL_TIMEOUT_MS || '', 10);
+    return Number.isSafeInteger(reserved) && reserved >= 1000 ? Math.min(reserved, 300000) : 300000;
+  })(),
 
   /* Optimized settings for Supercheck execution environment */
   use: {

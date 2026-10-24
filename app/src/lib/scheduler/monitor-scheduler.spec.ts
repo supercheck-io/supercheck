@@ -179,6 +179,14 @@ describe("monitor-scheduler", () => {
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ location: "eu-central", isUp: false }));
   });
 
+  it("retries on a database read failure without recording the monitor as down", async () => {
+    mockMonitorsFindFirst.mockRejectedValueOnce(new Error("connection pool exhausted"));
+    await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow("connection pool exhausted");
+    expect(mockUpdateSet).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(enqueueMonitorLocationJobs).not.toHaveBeenCalled();
+  });
+
   describe("missing-cycle closure", () => {
     const data = { monitorId: "monitor-1", type: "website", target: "https://example.com" };
     const job = (overrides: Record<string, unknown> = {}) =>

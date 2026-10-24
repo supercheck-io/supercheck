@@ -35,6 +35,7 @@ import {
   ensureProperTraceConfiguration,
   isWindows,
 } from './execution.service';
+import { LIMITED_RUN_OVERHEAD_MS } from './execution-admission.service';
 
 describe('ExecutionService', () => {
   beforeEach(() => {
@@ -301,6 +302,17 @@ describe('single Playwright execution outcome', () => {
           .fn()
           .mockResolvedValue({ hasFailures: false }),
       });
+      Object.assign(service, {
+        admissionService: {
+          run: (
+            _org: unknown,
+            _id: unknown,
+            _kind: unknown,
+            _timeout: unknown,
+            callback: (value: undefined) => unknown,
+          ) => callback(undefined),
+        },
+      });
       const result = await service.runSingleTest(
         { testId: 'test-1', code: "test('x', () => {})" },
         true,
@@ -315,4 +327,52 @@ describe('single Playwright execution outcome', () => {
       );
     },
   );
+
+  it('gives a limited Playwright pod time beyond its reservation to start and export reports', async () => {
+    const service = Object.create(ExecutionService.prototype) as unknown as {
+      executePlaywrightDirectly: (...args: unknown[]) => Promise<unknown>;
+    };
+    const executeCommandSafely = jest
+      .fn()
+      .mockRejectedValue(new Error('stop after capturing options'));
+    Object.assign(service, {
+      logger: {
+        log: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      },
+      containerExecutorService: {
+        resolveWorkerDir: async () => '/worker',
+        resolveBrowsersPath: async () => undefined,
+      },
+      executeCommandSafely,
+    });
+    const expiresAt = new Date(Date.now() + 3_600_000);
+    await service
+      .executePlaywrightDirectly(
+        { scriptContent: 'test()', fileName: 'a.spec.ts' },
+        '/tmp/reports',
+        false,
+        undefined,
+        'run-1',
+        undefined,
+        {
+          runId: 'run-1',
+          organizationId: 'org',
+          ownerToken: 'owner',
+          limited: true,
+          reservedMs: 60_000,
+          expiresAt,
+        },
+      )
+      .catch(() => undefined);
+    const options = executeCommandSafely.mock.calls[0]?.[2] as
+      | { timeout: number; hardDeadlineMs: number; expiresAtMs: number }
+      | undefined;
+    expect(options).toBeDefined();
+    expect(options!.timeout).toBe(60_000 + LIMITED_RUN_OVERHEAD_MS);
+    expect(options!.hardDeadlineMs).toBe(options!.timeout);
+    expect(options!.expiresAtMs).toBe(expiresAt.getTime());
+  });
 });

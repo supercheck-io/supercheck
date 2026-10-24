@@ -142,13 +142,14 @@ export async function startSreIncidentInvestigation(
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
   let run: typeof sreInvestigationRuns.$inferSelect;
   try {
-    [run] = await withSreInvestigationAdmission(input.organizationId, async (database) => database
+    [run] = await withSreInvestigationAdmission(input.organizationId, async (database, billingTier) => database
       .insert(sreInvestigationRuns)
       .values({
         organizationId: input.organizationId,
         projectId: input.projectId,
         incidentId: incident.id,
         agentType: "investigation",
+        billingTier,
         status: "running",
         modelId: initialModelId,
         promptInput: {

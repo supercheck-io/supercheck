@@ -40,7 +40,7 @@ export class CrxApplicationDispatcher extends Dispatcher<CrxApplication, channel
   private _context: BrowserContextDispatcher;
 
   constructor(scope: CrxDispatcher, crxApplication: CrxApplication) {
-    const context = new BrowserContextDispatcher(scope, crxApplication._context);
+    const context = BrowserContextDispatcher.from(scope, crxApplication._context);
     super(scope, crxApplication, 'CrxApplication', { context });
     this._context = context;
     const dispatchEvent = (this._dispatchEvent as any).bind(this);

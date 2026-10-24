@@ -22,8 +22,14 @@ import {
 } from '../monitor.constants';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { deferForCapacity } from '../../common/capacity-deferral';
+import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
+
+/** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
+const MAX_AGGREGATION_BUSY_RETRIES = 30;
 
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
@@ -340,6 +346,14 @@ export class MonitorDynamicWorkerService
     const jobLocation = job.data.executionLocation;
 
     if (jobLocation) {
+      if (
+        (job.data as { _capacityGaveUp?: boolean; _groupSkipped?: boolean })
+          ._capacityGaveUp ||
+        (job.data as { _groupSkipped?: boolean })._groupSkipped
+      ) {
+        await this.closeSkippedGroup(job);
+        return [];
+      }
       const saved =
         job.data.aggregationOnly && job.data.executionGroupId
           ? await this.dbService.db.query.monitorResults.findFirst({
@@ -370,9 +384,18 @@ export class MonitorDynamicWorkerService
             testExecutionId: saved.testExecutionId ?? undefined,
             testReportS3Url: saved.testReportS3Url ?? undefined,
           }
-        : await this.monitorService.executeMonitor(job.data, jobLocation);
+        : await this.executeOrDefer(job, () =>
+            this.monitorService.executeMonitor(job.data, jobLocation),
+          );
 
-      if (!result) return [];
+      if (!result) {
+        // null means the check was deliberately not run: the monitor is paused, billing is on hold, the
+        // authorization lookup failed (never run a paid probe on unknown authorization), or there is no
+        // entitlement or allowance. None says anything about the target, so close the group or cycle instead
+        // of letting its deadline record this region as down.
+        await this.closeSkippedGroup(job);
+        return [];
+      }
 
       try {
         await this.monitorService.saveDistributedMonitorResult(result, {
@@ -395,7 +418,121 @@ export class MonitorDynamicWorkerService
 
     // Legacy/single queue mode: the job runs from this worker's own location.
     await this.assertBrowserCapability(job.data, this.workerLocation);
-    return this.monitorService.executeMonitorWithLocations(job.data);
+    return (
+      (await this.executeOrDefer(job, () =>
+        this.monitorService.executeMonitorWithLocations(job.data),
+      )) ?? []
+    );
+  }
+
+  /**
+   * Persists the flags that tell the final-failure handler this check was skipped, not failed. They are already
+   * set on the in-memory job, so a failed write (typically a lost job lock) is only logged: failing here would
+   * abandon the closure after capacity was forfeited, and a retry could then record downtime.
+   */
+  private async rememberFlags(job: Job<MonitorJobDataDto>): Promise<void> {
+    await job.updateData(job.data).catch((error: unknown) => {
+      this.logger.warn(
+        `Could not persist skip flags for monitor ${job.data.monitorId}: ${getErrorMessage(error)}`,
+      );
+    });
+  }
+
+  /** Jobs whose skipped group was already closed in this attempt, so it is not closed twice. */
+  private readonly closedSkippedGroups = new WeakSet<object>();
+
+  /** A check that never ran must not leave its cycle to be closed with a false failure. */
+  private async abortCycleOf(job: Job<MonitorJobDataDto>): Promise<void> {
+    if (!job.data.monitorCycle || !job.data.executionGroupId) return;
+    await this.monitorService
+      .abortMonitorCycle(job.data.executionGroupId)
+      .catch((error) =>
+        this.logger.error(
+          `Could not abort cycle ${job.data.executionGroupId}: ${getErrorMessage(error)}`,
+        ),
+      );
+  }
+
+  /**
+   * Runs the check, or re-queues it when the organization's execution slot is
+   * occupied so the wait is never recorded as a monitor failure.
+   */
+  private async executeOrDefer<T>(
+    job: Job<MonitorJobDataDto>,
+    execute: () => Promise<T>,
+  ): Promise<T | null> {
+    try {
+      return await execute();
+    } catch (error) {
+      if (!(error instanceof ExecutionCapacityError)) throw error;
+      if (
+        job.data.monitorCycle &&
+        job.data.executionGroupId &&
+        job.data.executionLocation
+      ) {
+        await this.closeSkippedGroup(job);
+        return null;
+      }
+      return deferForCapacity(job, async (reason) => {
+        this.logger.error(
+          `Monitor ${job.data.monitorId} check dropped: ${reason}`,
+        );
+        // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
+        job.data = { ...job.data, _capacityGaveUp: true } as never;
+        await this.rememberFlags(job);
+        await this.closeSkippedGroup(job);
+      });
+    }
+  }
+
+  private async closeSkippedGroup(job: Job<MonitorJobDataDto>): Promise<void> {
+    const { monitorId, executionGroupId, monitorCycle } = job.data;
+    if (!executionGroupId) return;
+    // The capacity path closes the group and then reports "skipped" to processJob, which closes it again.
+    if (this.closedSkippedGroups.has(job)) return;
+    const flags = job.data as {
+      _capacityGaveUp?: boolean;
+      _groupSkipped?: boolean;
+    };
+    if (!flags._capacityGaveUp && !flags._groupSkipped) {
+      job.data = { ...job.data, _groupSkipped: true } as never;
+      await this.rememberFlags(job);
+    }
+    try {
+      await this.monitorService.skipDistributedMonitorGroup(
+        monitorId,
+        executionGroupId,
+        !!monitorCycle,
+      );
+      this.closedSkippedGroups.add(job);
+    } catch (error) {
+      // A busy lease or an outage of the database or Redis: wait it out, but not forever. A plain failure here
+      // would use up the job's few attempts in seconds, leave the cycle open, and let its deadline record a
+      // false down for a region that was only skipped. Past the cap the job fails
+      // for good, and its final-failure handler (the group is marked skipped) aborts the cycle without
+      // recording downtime.
+      const retries =
+        ((job.data as { _aggregationBusyRetries?: number })
+          ._aggregationBusyRetries ?? 0) + 1;
+      if (retries > MAX_AGGREGATION_BUSY_RETRIES) {
+        throw new UnrecoverableError(
+          `Monitor aggregation stayed busy for ${MAX_AGGREGATION_BUSY_RETRIES} attempts; giving up on closing the skipped group`,
+        );
+      }
+      job.data = { ...job.data, _aggregationBusyRetries: retries } as never;
+      await job.updateData(job.data);
+      const delayMs =
+        error instanceof MonitorAggregationBusyError
+          ? error.retryAfterMs
+          : 60_000;
+      if (!(error instanceof MonitorAggregationBusyError)) {
+        this.logger.warn(
+          `Closing skipped group for monitor ${monitorId} failed (attempt ${retries}): ${getErrorMessage(error)}`,
+        );
+      }
+      await job.moveToDelayed(Date.now() + delayMs, job.token);
+      throw new DelayedError();
+    }
   }
 
   /**
@@ -442,6 +579,19 @@ export class MonitorDynamicWorkerService
     } = job.data;
 
     if (!executionGroupId || !executionLocation) return;
+
+    // The check never ran because the organization's slot stayed busy. That says nothing about the
+    // monitored service, so it must not be recorded as a failed check.
+    if (
+      (job.data as { _capacityGaveUp?: boolean })._capacityGaveUp ||
+      (job.data as { _groupSkipped?: boolean })._groupSkipped
+    ) {
+      this.logger.warn(
+        `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
+      );
+      await this.abortCycleOf(job);
+      return;
+    }
 
     // Stalled recovery and unrecoverable errors can fail permanently before
     // attemptsMade reaches attempts. Never synthesize an error for a retry.

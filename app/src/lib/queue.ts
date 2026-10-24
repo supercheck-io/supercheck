@@ -1,3 +1,4 @@
+import { getExecutionPolicy, assertExecutionWorkload } from "./execution/execution-policy";
 import crypto from "crypto";
 import { FlowProducer, Queue, QueueEvents, type JobsOptions } from "bullmq";
 import Redis, { RedisOptions } from "ioredis";
@@ -976,7 +977,9 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
   const jobId = task.runId ?? task.testId;
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
-  const safeTask = omitExecutionSecrets(task);
+  const policy = await getExecutionPolicy(orgId);
+  await assertExecutionWorkload(orgId, policy, "playwright", [task.code]);
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
@@ -1008,7 +1011,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
             ...safeTask,
             _capacityStatus: "immediate",
           },
-          { jobId }
+          { jobId, priority: policy.priority }
         );
 
         return { runId: jobId, status: "running" };
@@ -1059,7 +1062,9 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
   const runId = task.runId;
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
-  const safeTask = omitExecutionSecrets(task);
+  const policy = await getExecutionPolicy(orgId);
+  await assertExecutionWorkload(orgId, policy, "playwright", task.testScripts.map(test => test.script));
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
     const { getCapacityManager } = await import("./capacity-manager");
@@ -1088,7 +1093,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
             ...safeTask,
             _capacityStatus: "immediate",
           },
-          { jobId: runId }
+          { jobId: runId, priority: policy.priority }
         );
 
         return { runId, status: "running" };
@@ -1142,7 +1147,9 @@ export async function addK6TestToQueue(
   const runId = task.runId;
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
-  const safeTask = omitExecutionSecrets(task);
+  const policy = await getExecutionPolicy(orgId);
+  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
   const k6TestLocation = task.location || await getFirstDefaultLocationCode();
@@ -1177,7 +1184,7 @@ export async function addK6TestToQueue(
             location: k6TestLocation,
             _capacityStatus: "immediate",
           },
-          { jobId: runId }
+          { jobId: runId, priority: policy.priority }
         );
 
         return { runId, status: "running" };
@@ -1238,7 +1245,9 @@ export async function addK6JobToQueue(
   const runId = task.runId;
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
-  const safeTask = omitExecutionSecrets(task);
+  const policy = await getExecutionPolicy(orgId);
+  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);
   // fall back to the instance default only when no location was specified.
@@ -1274,7 +1283,7 @@ export async function addK6JobToQueue(
             location: k6JobLocation,
             _capacityStatus: "immediate",
           },
-          { jobId: runId }
+          { jobId: runId, priority: policy.priority }
         );
 
         return { runId, status: "running" };

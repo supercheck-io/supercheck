@@ -5,6 +5,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { countTrialInvestigations, countTrialTriageRuns, getActiveTrial, TRIAL_TRIAGE_RUNS } from "@/lib/execution/trial-limits";
 import { db } from "@/utils/db";
 
 const SRE_INVESTIGATION_UNITS_PER_RUN = "1.0000";
@@ -49,7 +50,7 @@ export async function failStuckSreInvestigationRuns(options?: {
 }
 
 export class SreInvestigationBillingError extends Error {
-  constructor(message: string, readonly code: "spending_limit" | "subscription_required" | "organization_not_found") {
+  constructor(message: string, readonly code: "spending_limit" | "subscription_required" | "organization_not_found" | "trial_limit") {
     super(message);
     this.name = "SreInvestigationBillingError";
   }
@@ -59,6 +60,34 @@ function defaultPeriodEnd(now: Date) {
   return new Date(now.getFullYear(), now.getMonth() + 1, 1);
 }
 
+/**
+ * Admission for an AI triage run, with the run created inside the same decision. A subscriber is not
+ * restricted here (its own limits apply elsewhere). A trial gets a fixed number of triage runs, counted
+ * and inserted under the organization lock so concurrent triggers cannot exceed it. An organization with
+ * neither a subscription nor an active trial is refused.
+ */
+export async function withSreTriageAdmission<T>(
+  organizationId: string,
+  createRun: (database: Pick<typeof db, "insert">, billingTier: "paid" | "trial") => Promise<T>,
+): Promise<T> {
+  if (!isPolarEnabled()) return createRun(db, "paid");
+  if (await subscriptionService.hasActiveSubscription(organizationId)) return createRun(db, "paid");
+  return db.transaction(async (tx) => {
+    await tx.select({ id: organization.id }).from(organization)
+      .where(eq(organization.id, organizationId)).for("update");
+    const trial = await getActiveTrial(organizationId, tx);
+    // No subscription and no active trial: an ended trial or a lapsed plan must not keep using triage.
+    if (!trial) throw new SreInvestigationBillingError("Active subscription required to run AI triage", "subscription_required");
+    if ((await countTrialTriageRuns(organizationId, trial.expiresAt, tx, trial.trialStartedAt)) >= TRIAL_TRIAGE_RUNS) {
+      throw new SreInvestigationBillingError(
+        `Your trial includes ${TRIAL_TRIAGE_RUNS} AI triage runs and they are used. Subscribe to continue.`,
+        "trial_limit",
+      );
+    }
+    return createRun(tx, "trial");
+  });
+}
+
 export async function assertCanStartSreInvestigation(organizationId: string) {
   if (!isPolarEnabled()) {
     return { billable: false as const };
@@ -66,7 +95,17 @@ export async function assertCanStartSreInvestigation(organizationId: string) {
 
   const hasSubscription = await subscriptionService.hasActiveSubscription(organizationId);
   if (!hasSubscription) {
-    throw new SreInvestigationBillingError("Active subscription required to run SRE investigations", "subscription_required");
+    const trial = await getActiveTrial(organizationId);
+    if (!trial) {
+      throw new SreInvestigationBillingError("Active subscription required to run SRE investigations", "subscription_required");
+    }
+    if ((await countTrialInvestigations(organizationId, trial.expiresAt, undefined, trial.trialStartedAt)) >= trial.sreInvestigationUnits) {
+      throw new SreInvestigationBillingError(
+        `Your trial includes ${trial.sreInvestigationUnits} AI SRE investigations and they are used. Subscribe to continue.`,
+        "trial_limit",
+      );
+    }
+    return { billable: false as const };
   }
 
   const spending = await polarUsageService.shouldBlockUsage(organizationId);
@@ -86,6 +125,11 @@ export async function consumeSreInvestigationCredit(input: {
   useLiveConnectors: boolean;
 }) {
   if (!isPolarEnabled()) {
+    return { billed: false as const };
+  }
+
+  // A trial is never billed: there is no Polar customer, meter or overage.
+  if (!(await subscriptionService.hasActiveSubscription(input.organizationId)) && (await getActiveTrial(input.organizationId))) {
     return { billed: false as const };
   }
 
@@ -177,13 +221,24 @@ export async function consumeSreInvestigationCredit(input: {
  * Reservations carry across renewal and settle in the ledger-write billing period.
  */
 export async function withSreInvestigationAdmission<T>(organizationId: string,
-  createRun: (database: Pick<typeof db, "insert">) => Promise<T>): Promise<T> {
-  if (!isPolarEnabled()) return createRun(db);
+  createRun: (database: Pick<typeof db, "insert">, billingTier: "paid" | "trial") => Promise<T>): Promise<T> {
+  if (!isPolarEnabled()) return createRun(db, "paid");
   await assertCanStartSreInvestigation(organizationId);
   return db.transaction(async (tx) => {
     const [org] = await tx.select().from(organization)
       .where(eq(organization.id, organizationId)).for("update");
     if (!org) throw new SreInvestigationBillingError("Organization not found", "organization_not_found");
+    if (!(await subscriptionService.hasActiveSubscription(organizationId))) {
+      // Trial: enforce the allowance under the organization lock so concurrent
+      // starts cannot exceed it. Nothing is billed.
+      const trial = await getActiveTrial(organizationId, tx);
+      if (trial) {
+        if ((await countTrialInvestigations(organizationId, trial.expiresAt, tx, trial.trialStartedAt)) >= trial.sreInvestigationUnits) {
+          throw new SreInvestigationBillingError("Your trial AI SRE investigations are used. Subscribe to continue.", "trial_limit");
+        }
+        return createRun(tx, "trial");
+      }
+    }
     if (!["plus", "pro"].includes(org.subscriptionPlan ?? "") || !["active", "past_due", "canceled"].includes(org.subscriptionStatus ?? "") ||
       (org.subscriptionStatus === "canceled" && (!org.subscriptionEndsAt || org.subscriptionEndsAt <= new Date()))) {
       throw new SreInvestigationBillingError("Active subscription required", "subscription_required");
@@ -195,6 +250,7 @@ export async function withSreInvestigationAdmission<T>(organizationId: string,
         sql`${usageEvents.metadata}->>'investigationRunId' = CAST(${sreInvestigationRuns.id} AS text)`))
       .where(and(eq(sreInvestigationRuns.organizationId, organizationId),
         eq(sreInvestigationRuns.agentType, "investigation"),
+        eq(sreInvestigationRuns.billingTier, "paid"),
         or(eq(sreInvestigationRuns.status, "running"), eq(sreInvestigationRuns.status, "completed")),
         isNull(usageEvents.id)));
     const spending = await polarUsageService.getSpendingStatus(organizationId, {
@@ -204,7 +260,7 @@ export async function withSreInvestigationAdmission<T>(organizationId: string,
       (spending.limitCents === null || !Number.isFinite(spending.currentSpendingCents) || spending.currentSpendingCents > spending.limitCents)) {
       throw new SreInvestigationBillingError("This investigation and reserved runs would exceed the spending limit", "spending_limit");
     }
-    return createRun(tx);
+    return createRun(tx, "paid");
   });
 }
 
@@ -219,6 +275,14 @@ export async function getSreInvestigationUsage(organizationId: string) {
   }
 
   const plan = await subscriptionService.getOrganizationPlanSafe(organizationId);
+  const trial = isPolarEnabled() && !(await subscriptionService.hasActiveSubscription(organizationId))
+    ? await getActiveTrial(organizationId)
+    : undefined;
+  if (trial) {
+    // The trial is metered by investigations started, not by billing units.
+    const started = await countTrialInvestigations(organizationId, trial.expiresAt, undefined, trial.trialStartedAt);
+    return { used: started, included: trial.sreInvestigationUnits, overage: 0 };
+  }
   const used = Number(org.sreInvestigationUnitsUsed ?? 0);
   const included = Number(plan.sreInvestigationUnitsIncluded ?? 0);
 
@@ -266,6 +330,8 @@ export async function reconcileUnbilledSreInvestigations(options?: {
       and(
         eq(sreInvestigationRuns.status, "completed"),
         eq(sreInvestigationRuns.agentType, "investigation"),
+        // A run admitted under a trial was never billable, even if the organization subscribed since.
+        eq(sreInvestigationRuns.billingTier, "paid"),
         since ? gte(sreInvestigationRuns.completedAt, since) : undefined,
         isNull(usageEvents.id)
       )

@@ -155,6 +155,22 @@ describe('ContainerExecutorService', () => {
       expect(ensureClients).toHaveBeenCalled();
     });
 
+    it('keeps a reserved execution deadline free of artifact grace', () => {
+      const manifest = service['buildExecutionJob']({
+        jobName: 'sc-quota',
+        workspace: '/tmp/run',
+        workingDir: '/tmp',
+        limits: {
+          valid: true,
+          timeoutMs: 30_000,
+          memoryLimitMb: 512,
+          cpuLimit: 0.5,
+        },
+        options: { ...defaultOptions, hardDeadlineMs: 10_999 },
+      });
+      expect(manifest.spec?.activeDeadlineSeconds).toBe(10);
+    });
+
     it('bounds execution pod ephemeral storage and tmp volume size', () => {
       const manifest = (service as any).buildExecutionJob({
         jobName: 'sc-exec-test',
@@ -1254,6 +1270,65 @@ describe('ContainerExecutorService', () => {
         { name: 'timeout', value: '2' },
         { name: 'attempts', value: '3' },
       ]);
+    });
+
+    describe('aborting a run whose reservation was lost', () => {
+      const build = (isCancelled = false) => {
+        const cancellation = {
+          isCancelled: jest.fn().mockResolvedValue(isCancelled),
+          clearCancellationSignal: jest.fn(),
+        };
+        const executor = new ContainerExecutorService(
+          {
+            get: jest.fn((_key: string, fallback?: string) => fallback),
+          } as any,
+          cancellation as any,
+        );
+        (executor as any).deleteExecutionJob = jest
+          .fn()
+          .mockResolvedValue(undefined);
+        return { executor, cancellation };
+      };
+
+      afterEach(() => jest.useRealTimers());
+
+      it("stops this process's container without touching the shared cancellation key", async () => {
+        jest.useFakeTimers();
+        const { executor, cancellation } = build();
+        const onCancelled = jest.fn();
+        executor.abortRun('run-1');
+        const timer = (executor as any).startKubernetesCancellationPoller(
+          'run-1',
+          'job-1',
+          onCancelled,
+        );
+        await jest.advanceTimersByTimeAsync(1100);
+        clearInterval(timer);
+        expect(onCancelled).toHaveBeenCalledTimes(1);
+        expect((executor as any).deleteExecutionJob).toHaveBeenCalledWith(
+          'job-1',
+        );
+        // The shared per-run key is not used to carry the abort, so a replacement attempt is not cancelled by it.
+        expect(cancellation.clearCancellationSignal).not.toHaveBeenCalled();
+      });
+
+      it('is consumed once, so a later attempt of the same run is not stopped by it', async () => {
+        jest.useFakeTimers();
+        const { executor } = build();
+        executor.abortRun('run-1');
+        expect((executor as any).consumeAbort('run-1')).toBe(true);
+        expect((executor as any).consumeAbort('run-1')).toBe(false);
+      });
+
+      it('lets a stale abort expire instead of hitting a much later attempt', () => {
+        const now = jest.spyOn(Date, 'now');
+        const { executor } = build();
+        now.mockReturnValue(1_000);
+        executor.abortRun('run-1');
+        now.mockReturnValue(1_000 + 31_000);
+        expect((executor as any).consumeAbort('run-1')).toBe(false);
+        now.mockRestore();
+      });
     });
 
     it('ignores invalid custom DNS nameservers', () => {

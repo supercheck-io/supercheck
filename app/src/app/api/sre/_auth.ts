@@ -5,11 +5,18 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
-/** Call after authentication and RBAC, before starting billable SRE work. */
-export async function requireSreSubscription(organizationId: string): Promise<NextResponse | null> {
+/**
+ * Call after authentication and RBAC, before starting billable SRE work. A free trial counts its own
+ * investigations, so work that is not counted against that allowance (chat, evidence briefs) passes
+ * `allowTrial: false` and needs a plan.
+ */
+export async function requireSreSubscription(
+  organizationId: string,
+  options: { allowTrial?: boolean } = {},
+): Promise<NextResponse | null> {
   try {
-    await subscriptionService.blockUntilSubscribed(organizationId);
-    await subscriptionService.requireValidPolarCustomer(organizationId);
+    await subscriptionService.blockUntilSubscribed(organizationId, options);
+    await subscriptionService.requireValidPolarCustomer(organizationId, options);
     return null;
   } catch (error) {
     if (error instanceof SubscriptionAccessDeniedError) {

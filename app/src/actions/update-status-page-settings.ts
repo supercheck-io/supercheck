@@ -6,6 +6,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
+import { checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
 import { revalidatePath } from "next/cache";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
@@ -165,6 +166,11 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       updatePayload.customDomainFailureCount = 0;
 
       if (settings.customDomain) {
+        // Custom domains are a paid feature; a trial cannot attach one.
+        const availability = await checkFeatureAvailability(organizationId, "customDomains");
+        if (!availability.available) {
+          return { success: false, message: availability.error ?? "Custom domains are not available on your plan." };
+        }
         const customDomainConfigError =
           getStatusPageCustomDomainConfigError();
         if (customDomainConfigError) {

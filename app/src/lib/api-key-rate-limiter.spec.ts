@@ -27,6 +27,27 @@ describe("ApiKeyRateLimiter", () => {
     expect(evalMock.mock.calls[0][0]).toContain("ZADD");
   });
 
+  it("charges a weighted request in one atomic call and passes the cost to the script", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const evalMock = jest.fn().mockResolvedValue([1, 7, 950]);
+    (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock });
+    const result = await apiKeyRateLimiter.checkAndIncrement("key-1", { enabled: true, timeWindow: 60, maxRequests: 10 }, 7);
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(3);
+    expect(evalMock).toHaveBeenCalledTimes(1);
+    expect(evalMock.mock.calls[0][0]).toContain("currentCount + cost > maxRequests");
+    expect(evalMock.mock.calls[0].at(-1)).toBe(7);
+  });
+
+  it("defaults to a cost of one and never charges less than one", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const evalMock = jest.fn().mockResolvedValue([1, 1, 950]);
+    (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock });
+    await apiKeyRateLimiter.checkAndIncrement("key-1", { enabled: true, timeWindow: 60, maxRequests: 10 });
+    await apiKeyRateLimiter.checkAndIncrement("key-1", { enabled: true, timeWindow: 60, maxRequests: 10 }, 0);
+    expect(evalMock.mock.calls.map((call) => call.at(-1))).toEqual([1, 1]);
+  });
+
   it("uses the oldest request to calculate denied reset and retry headers", async () => {
     jest.spyOn(Date, "now").mockReturnValue(1_000_000);
     (getRedisConnection as jest.Mock).mockResolvedValue({

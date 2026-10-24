@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -13,6 +13,33 @@ test('the public API source and published copies intentionally exclude hosted bi
     const spec = parse(readFileSync(resolve(root, target), 'utf8'));
     assert.ok(Object.keys(spec.paths).length > 0);
     assert.ok(Object.keys(spec.paths).every((path) => !/^\/api\/billing(?:\/|$)/.test(path)), target);
+  }
+});
+
+test('the installed OpenAPI generator preserves public operation folders without touching source files', () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'supercheck-openapi-generation-'));
+  try {
+    const docsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const root = join(fixture, 'docs');
+    mkdirSync(join(root, 'scripts'), { recursive: true });
+    mkdirSync(join(root, 'public/openapi'), { recursive: true });
+    mkdirSync(join(fixture, 'app/public'), { recursive: true });
+    symlinkSync(join(docsRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+    for (const script of ['generate-docs.mts', 'sync-openapi.mjs']) {
+      copyFileSync(join(docsRoot, 'scripts', script), join(root, 'scripts', script));
+    }
+    copyFileSync(join(docsRoot, 'openapi.json'), join(root, 'openapi.json'));
+    const result = spawnSync(process.execPath, [
+      join(docsRoot, 'node_modules/tsx/dist/cli.mjs'), join(root, 'scripts/generate-docs.mts'),
+    ], { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    for (const path of ['monitors/listMonitors.mdx', 'cli-tokens/createCliToken.mdx',
+      'trigger-keys/createJobApiKey.mdx', 'status-pages/listStatusPages.mdx']) {
+      assert.match(readFileSync(join(root, 'content/docs/api', path), 'utf8'), /<OpenAPIPage/);
+    }
+    assert.equal(readdirSync(join(root, 'content/docs/api')).includes('billing'), false);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
   }
 });
 

@@ -1,4 +1,5 @@
 import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
+import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/trial-copy';
 import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
@@ -199,14 +200,17 @@ function ComparisonCell({ value }: { value: string }) {
     return <>{value}</>;
 }
 
+const trial = catalog.trial;
+
 const faqs = [
     {
         question: 'Can I try Supercheck before Cloud launches?',
         answer: 'Yes. Explore the free live demo without signing up, or self-host the open-source core today. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
     },
+    ...trialFaqs(),
     {
         question: 'Can I self-host Supercheck?',
-        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service.',
+        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service. Self-hosted deployments have no trial and no usage limits.',
     },
     {
         question: 'Does one subscription cover all my projects?',
@@ -359,6 +363,27 @@ export default function PricingPage() {
                 </div>
 
                 <CopyEmail email={WAITLIST_EMAIL} />
+
+                {/* Free trial */}
+                <section aria-labelledby="trial-heading" className="mb-8 rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
+                    <h2 id="trial-heading" className="mb-1 text-lg font-semibold">Start with a {trial.durationDays}-day free trial</h2>
+                    <p className="mb-4 text-sm text-fd-muted-foreground">
+                        Try most of the product with no card required; custom domains and single sign-on are on paid plans. Limits keep the trial safe for everyone. Cloud signups are opening soon.
+                    </p>
+                    <ul className="grid gap-2 text-sm sm:grid-cols-2">
+                        {trialHighlights().map((highlight) => (
+                            <li key={highlight} className="flex items-start gap-3 leading-6">
+                                <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>{highlight}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="mt-4 text-xs text-fd-muted-foreground">
+                        When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
+                    </p>
+                </section>
 
                 {/* Self-hosting */}
                 <aside aria-labelledby="self-host-heading" className="mb-20 flex flex-col items-start justify-between gap-4 rounded-xl border border-fd-border bg-fd-card p-6 sm:flex-row sm:items-center sm:p-8">

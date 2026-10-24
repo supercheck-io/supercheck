@@ -9,6 +9,9 @@ const EXTRA_PATTERNS: [RegExp, string][] = [
   [/\b(authorization|proxy-authorization)\s*[:=]\s*(basic|bearer|digest)\s+\S+/gi, "$1: [REDACTED]"],
   [/\b(set-cookie|cookie)\s*:\s*[^\r\n]+/gi, "$1: [REDACTED]"],
   [/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{8,}/g, "[REDACTED_KEY]"],
+  // Supercheck's own credentials: CLI and recorder keys (sck_live_, sck_test_), trigger keys (sck_trigger_), and job keys.
+  [/\bsck_(?:live|test|trigger)_[A-Za-z0-9_-]{8,}/g, "[REDACTED_KEY]"],
+  [/\bjob_[a-f0-9]{24,}/gi, "[REDACTED_KEY]"],
 ];
 
 function redactExtra(value: string): string {

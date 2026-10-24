@@ -31,8 +31,13 @@ describe("requireSreSubscription", () => {
   });
   it("passes the authenticated organization to both existing service checks", async () => {
     expect(await requireSreSubscription("org")).toBeNull();
-    expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");
-    expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org");
+    expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org", {});
+    expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org", {});
+  });
+  it("can refuse a free trial for work the trial allowance does not count", async () => {
+    await requireSreSubscription("org", { allowTrial: false });
+    expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org", { allowTrial: false });
+    expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org", { allowTrial: false });
   });
   it("fails closed without exposing unexpected provider errors", async () => {
     jest.mocked(subscriptionService.blockUntilSubscribed).mockRejectedValue(new Error("private database details"));
