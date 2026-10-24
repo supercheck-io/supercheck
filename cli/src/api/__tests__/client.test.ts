@@ -35,6 +35,11 @@ describe('ApiClient', () => {
     client = new ApiClient({ baseUrl: 'https://api.test.com', token: 'sck_live_test123' })
   })
 
+  it('does not retain an HTML error document in API diagnostics', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('<html>' + 'secret'.repeat(3000) + '</html>', { status: 404 }))
+    await expect(client.get('/api/jobs/missing')).rejects.toMatchObject({ statusCode: 404, responseBody: undefined })
+  })
+
   describe('constructor', () => {
     it('should use default base URL when not provided', () => {
       const defaultClient = new ApiClient()
@@ -358,7 +363,7 @@ describe('ApiClient', () => {
         await client.request('GET', '/api/error', { retries: 0 })
       } catch (err) {
         expect(err).toBeInstanceOf(ApiRequestError)
-        expect((err as ApiRequestError).responseBody).toBe('Bad Request')
+        expect((err as ApiRequestError).responseBody).toBeUndefined()
       }
     })
 

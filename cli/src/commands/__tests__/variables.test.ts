@@ -130,12 +130,12 @@ describe('var command', () => {
     )
   })
 
-  it('fails with a general error when the key does not exist', async () => {
+  it('reports a not-found API error when the key does not exist', async () => {
     mockGet.mockResolvedValueOnce({ data: variables })
 
     await expect(varCommand.parseAsync(['node', 'var', 'get', 'MISSING'])).rejects.toMatchObject({
-      name: 'CLIError',
-      exitCode: ExitCode.GeneralError,
+      name: 'ApiRequestError',
+      exitCode: ExitCode.ApiError,
       message: 'Variable "MISSING" not found',
     })
   })

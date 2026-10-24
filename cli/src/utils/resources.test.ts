@@ -332,3 +332,20 @@ describe('notification provider resources', () => {
     expect(change.details?.join('\n')).not.toContain('new-secret')
   })
 })
+
+
+describe('masked monitor credential safety', () => {
+  it.each(['https://REDACTED@example.com', 'https://example.com/?token=REDACTED'])('refuses to deploy a masked target: %s', (target) => {
+    expect(() => buildLocalResources({
+      schemaVersion: '1.0', project: { organization: 'org', project: 'project' },
+      monitors: [{ name: 'Masked', type: 'http_request', target }],
+    }, process.cwd())).toThrow(/redacted credentials/)
+  })
+})
+
+  it('refuses masked monitor headers rather than overwriting live credentials', () => {
+    expect(() => buildLocalResources({
+      schemaVersion: '1.0', project: { organization: 'org', project: 'project' },
+      monitors: [{ name: 'Masked header', type: 'http_request', target: 'https://example.com', config: { headers: { Authorization: '[REDACTED]' } } }],
+    }, process.cwd())).toThrow(/redacted credentials/)
+  })

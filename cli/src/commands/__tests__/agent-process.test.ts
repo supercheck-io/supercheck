@@ -11,7 +11,7 @@ let testToken: string
 // Extra environment for a single test (e.g. a sandboxed HOME so the developer's real stored login is never used).
 let extraEnv: Record<string, string> = {}
 const id = '019a1234-1234-7123-8123-123456789abc'
-type Fixture = { requests: { method: string; path: string; body?: Record<string, unknown>; usingDotenvToken?: boolean }[]; resources: Record<string, Record<string, unknown>[]>; mode?: string }
+type Fixture = { requests: { method: string; path: string; body?: Record<string, unknown>; origin?: string; usingDotenvToken?: boolean }[]; resources: Record<string, Record<string, unknown>[]>; mode?: string }
 const read = (): Fixture => JSON.parse(readFileSync(resolve(cwd, 'fixture.json'), 'utf8'))
 function fixture(mode?: string) { writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify({ requests: [], resources: {}, mode })) }
 function config(value: Record<string, unknown> = {}) {
@@ -40,15 +40,18 @@ import {join} from 'node:path';
 process.chdir(process.env.CLI_TEST_CWD);
 const path=join(process.cwd(),'fixture.json');
 if(JSON.parse(readFileSync(path,'utf8')).mode==='dotenv-token')delete process.env.SUPERCHECK_TOKEN;
+if(JSON.parse(readFileSync(path,'utf8')).mode==='config-target')delete process.env.SUPERCHECK_URL;
 globalThis.fetch=async (url,options={})=>{
  const state=JSON.parse(readFileSync(path,'utf8'));
  const route=new URL(url).pathname,method=options.method??'GET',body=options.body?JSON.parse(options.body):undefined;
- state.requests.push({path:route,method,body,usingDotenvToken:new Headers(options.headers).get('authorization')==='Bearer sck_live_from_dotenv_for_tests'});
+ state.requests.push({path:route,method,body,origin:new URL(url).origin,usingDotenvToken:new Headers(options.headers).get('authorization')==='Bearer sck_live_from_dotenv_for_tests'});
  let data={},status=200;
  const context={organization:{id:'org'},project:{id:state.mode==='wrong-context'?'other-project':'project'},user:{id:'user',role:'project_admin'}};
  if(state.mode==='script-denied'&&route==='/api/tests/${id}'){status=403;data={error:'denied'};}
  else if(state.mode==='swapped-test'&&route==='/api/tests/${id}'){data={id:'019a9999-0000-7000-8000-000000000009',title:'Other',type:'browser',script:'x'};}
  else if(route==='/api/context'){data=context;if(state.mode==='context-denied'){status=401;data={error:'expired'};}}
+ else if(route==='/api/sre/incidents')data={incidents:[{id:'${id}',incidentNumber:123}]};
+ else if(route.startsWith('/api/sre/incidents/'))data={incident:{id:'${id}'}};
  else if(route==='/api/health')data={status:'ok'};
  else if(state.mode==='provider-denied'&&route==='/api/notification-providers'){status=403;data={error:'denied',config:{discordWebhookUrl:'LEAK_TEST_DISCORD',teamsWebhookUrl:'LEAK_TEST_TEAMS',url:'LEAK_TEST_URL',headers:{'X-Custom':'LEAK_TEST_HEADERS'}}};}
  else if(state.mode==='inventory-denied'&&route==='/api/jobs'){status=403;data={error:'denied'};}
@@ -76,6 +79,80 @@ globalThis.fetch=async (url,options={})=>{
 afterEach(() => rmSync(cwd, { recursive: true, force: true }))
 
 describe('CLI agent workflows through the real entrypoint', () => {
+  it.each([
+    ['job', 'update', id, '--tests', '--dry-run'],
+    ['job', 'update', id, '--tests', 'not-a-uuid', '--dry-run'],
+    ['job', 'update', id, '--schedule', 'not-a-cron', '--dry-run'],
+    ['job', 'get', '../../etc/passwd'],
+    ['test', 'list', '--limit', '0'],
+    ['run', 'list', '--page', '0'],
+    ['audit', 'list', '--limit', '0'],
+    ['monitor', 'create', '--name', 'Bad', '--url', 'not-a-url', '--dry-run'],
+  ])('rejects invalid input before any mutation: %s', (...args) => {
+    const result = run(...args)
+    expect(result.status).not.toBe(0)
+    expect(JSON.parse(result.stderr)).toMatchObject({ code: expect.any(String), retryable: false, nextActions: expect.any(Array) })
+    expect(read().requests.filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
+  it.each(['config-parse', 'config-schema', 'missing-file', 'empty-file', 'login-token'])('emits a complete JSON error for %s', (kind) => {
+    const file = resolve(cwd, 'empty.pw.ts')
+    let args = ['test', 'validate', '--file', file]
+    if (kind === 'config-parse') { writeFileSync(resolve(cwd, 'supercheck.config.mjs'), 'export default {'); args = ['test', 'list'] }
+    if (kind === 'config-schema') { config({ unsupportedKey: true }); args = ['config', 'validate', '--offline'] }
+    if (kind === 'empty-file') writeFileSync(file, '')
+    if (kind === 'login-token') args = ['login', '--token', 'invalid-token']
+    const result = run(...args)
+    expect(result.status).not.toBe(0)
+    expect(JSON.parse(result.stderr)).toMatchObject({ error: expect.any(String), exitCode: result.status, code: expect.any(String), retryable: false, nextActions: [] })
+    expect(read().requests).toEqual([])
+  })
+
+  it('retains numeric incident identifiers', () => {
+    const result = run('incident', 'get', '123')
+    expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
+    expect(read().requests.some((request) => request.path === '/api/sre/incidents/' + id)).toBe(true)
+  })
+
+  it('retains the configured API fallback for explicit script validation', () => {
+    fixture('config-target')
+    const target = 'https://selfhost.example.com'
+    config({ api: { baseUrl: target } })
+    extraEnv = { SUPERCHECK_URL: '', HOME: resolve(cwd, 'home'), XDG_CONFIG_HOME: resolve(cwd, 'home/config') }
+    const file = resolve(cwd, 'check.pw.ts')
+    writeFileSync(file, 'export const check = 1')
+    const result = run('test', 'validate', '--file', file)
+    expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
+    expect(read().requests).toMatchObject([{ path: '/api/validate-script', origin: target }])
+  })
+
+  it('preserves an outside file path in validation output', () => {
+    const file = resolve(cwd, '../outside-' + id + '.pw.ts')
+    writeFileSync(file, 'export const check = 1')
+    try {
+      const result = run('test', 'validate', '--file', file)
+      expect(result.status).toBe(0)
+      expect(JSON.parse(result.stdout).name).toBe(file)
+    } finally { rmSync(file) }
+  })
+
+  it('validates an explicit local script against the selected server without project context', () => {
+    fixture('wrong-context')
+    config({ api: { baseUrl: 'https://other.example.com' } })
+    const file = resolve(cwd, 'check.pw.ts')
+    writeFileSync(file, 'export const check = 1')
+    const result = run('test', 'validate', '--file', file)
+    expect(result.status).toBe(0)
+    expect(read().requests.map((request) => request.path)).toEqual(['/api/validate-script'])
+  })
+
+  it('rejects --envelope without --json explicitly', () => {
+    const result = runWithOutput(false, 'test', 'list', '--envelope')
+    expect(result.status).toBe(3)
+    expect(result.stderr).toContain('--json')
+    expect(read().requests).toEqual([])
+  })
+
   it('initializes with the authenticated API target and project, declaring skipped dependencies', () => {
     rmSync(resolve(cwd, 'supercheck.config.mjs'))
     const result = run('init', '--skip-install')
@@ -340,12 +417,12 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
 
-  it('skips the project-context request for read-only commands but still guards writes', () => {
+  it('refuses reads against a different token project', () => {
     fixture('wrong-context')
-    const list = run('monitor', 'list')
-    expect(list.status).toBe(0)
-    expect(read().requests.filter((request) => request.path === '/api/context')).toHaveLength(0)
-    expect(run('monitor', 'delete', id, '--force').status).toBe(3)
+    const result = run('monitor', 'list')
+    expect(result.status).toBe(3)
+    expect(JSON.parse(result.stderr).code).toBe('CONTEXT_MISMATCH')
+    expect(read().requests.map((request) => request.path)).toEqual(['/api/context'])
   })
 
   it('keeps the declared API origin check for read-only commands', () => {

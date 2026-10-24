@@ -150,13 +150,13 @@ describe('read-only and operational commands', () => {
   describe('job update', () => {
     it('replaces the job test list using the PATCH schema', async () => {
       mockPatch.mockResolvedValueOnce({ data: { id: 'job-1' } })
-      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', 'test-1', 'test-2'])
-      expect(mockPatch).toHaveBeenCalledWith('/api/jobs/job-1', { tests: [{ id: 'test-1' }, { id: 'test-2' }] })
+      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', '019a0000-0000-7000-8000-000000000001', '019a0000-0000-7000-8000-000000000002'])
+      expect(mockPatch).toHaveBeenCalledWith('/api/jobs/job-1', { tests: [{ id: '019a0000-0000-7000-8000-000000000001' }, { id: '019a0000-0000-7000-8000-000000000002' }] })
     })
     it('shows test replacements without mutating on dry run', async () => {
-      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', 'test-1', '--dry-run'])
+      await jobCommand.parseAsync(['node', 'job', 'update', 'job-1', '--tests', '019a0000-0000-7000-8000-000000000001', '--dry-run'])
       expect(mockPatch).not.toHaveBeenCalled()
-      expect(mockOutputDetail).toHaveBeenCalledWith({ dryRun: true, payload: { tests: [{ id: 'test-1' }] } })
+      expect(mockOutputDetail).toHaveBeenCalledWith({ dryRun: true, payload: { tests: [{ id: '019a0000-0000-7000-8000-000000000001' }] } })
     })
   })
 
