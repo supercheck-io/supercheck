@@ -7,6 +7,13 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
 import { registerMcpTools } from "@/lib/mcp/tools";
+import {
+  McpBodyTooLargeError,
+  admitMcpCall,
+  countMcpMessages,
+  isMcpRefusal,
+  readMcpBody,
+} from "@/lib/mcp/call-limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,42 +25,76 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
   return Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
 }
 
+/** MCP clients expect a JSON-RPC error object, not an ad-hoc body, even for transport-level refusals. */
+function rpcError(status: number, code: string, message: string, extra: Record<string, string> = {}): Response {
+  return json({ jsonrpc: "2.0", id: null, error: { code: -32000, message, data: { code } } }, status, extra);
+}
+
 async function handle(request: Request, claims: JWTPayload): Promise<Response> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-    return json({ error: "payload_too_large" }, 413);
+    return rpcError(413, "payload_too_large", "Request body is too large");
   }
 
-  let context;
+  // Read the body once, capped even without a Content-Length, and reuse it for the transport.
+  let parsedBody: unknown;
   try {
-    context = await resolveMcpCallContext(claims);
+    parsedBody = await readMcpBody(request, MAX_BODY_BYTES);
   } catch (error) {
-    if (error instanceof McpAccessDeniedError) {
-      // The reason (ban, revoked consent, lost membership) stays in the server log, not the response.
-      console.warn("mcp access denied", error.reason);
-      await logAuditEvent({
-        userId: typeof claims.sub === "string" ? claims.sub : undefined,
-        action: "mcp_access_denied",
-        resource: "mcp",
-        metadata: { reason: error.reason, clientId: claims.azp },
-        success: false,
-      });
-      return json({ error: "access_denied" }, 403);
-    }
-    console.error("mcp context resolution failed", error);
-    return json({ error: "server_error" }, 500);
+    if (error instanceof McpBodyTooLargeError) return rpcError(413, "payload_too_large", "Request body is too large");
+    throw error;
   }
 
-  // Stateless: a fresh server and transport per request, safe across replicas.
-  const server = new McpServer({ name: "supercheck", version: "1.0.0" });
-  registerMcpTools(server, context);
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-    maxRequestBodySize: MAX_BODY_BYTES,
-  });
-  await server.connect(transport);
-  return transport.handleRequest(request);
+  // Throttle per connected app and per user before any database work, so a flood costs a Redis call, not
+  // several queries. A batch counts once per JSON-RPC message.
+  const permit = await admitMcpCall(
+    {
+      user: typeof claims.sub === "string" ? claims.sub : "unknown",
+      client: typeof claims.azp === "string" ? claims.azp : "unknown",
+    },
+    countMcpMessages(parsedBody),
+  );
+  if (isMcpRefusal(permit)) {
+    const retry: Record<string, string> = permit.retryAfter ? { "Retry-After": String(permit.retryAfter) } : {};
+    const message =
+      permit.status === 429 ? "Too many requests" : permit.status === 503 ? "Rate limiting is temporarily unavailable" : "Batch is too large";
+    return rpcError(permit.status, permit.error, message, retry);
+  }
+
+  try {
+    let context;
+    try {
+      context = await resolveMcpCallContext(claims);
+    } catch (error) {
+      if (error instanceof McpAccessDeniedError) {
+        // The reason (ban, revoked consent, lost membership) stays in the server log, not the response.
+        console.warn("mcp access denied", error.reason);
+        await logAuditEvent({
+          userId: typeof claims.sub === "string" ? claims.sub : undefined,
+          action: "mcp_access_denied",
+          resource: "mcp",
+          metadata: { reason: error.reason, clientId: claims.azp },
+          success: false,
+        });
+        return rpcError(403, "access_denied", "Access denied");
+      }
+      console.error("mcp context resolution failed", error);
+      return rpcError(500, "server_error", "Internal error");
+    }
+
+    // Stateless: a fresh server and transport per request, safe across replicas.
+    const server = new McpServer({ name: "supercheck", version: "1.0.0" });
+    registerMcpTools(server, context);
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+      maxRequestBodySize: MAX_BODY_BYTES,
+    });
+    await server.connect(transport);
+    return await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });
+  } finally {
+    permit.release();
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

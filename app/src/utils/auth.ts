@@ -19,6 +19,7 @@ import {
 import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
+import { revokeCredentialsAfterPasswordResetSafely } from "@/lib/security/password-reset-cleanup";
 import {
   checkPasswordResetRateLimit,
   checkEmailVerificationRateLimit,
@@ -89,6 +90,54 @@ function getMcpPlugins() {
     dynamicRegistration: isMcpDynamicRegistrationEnabled(),
     resolveProjectReference: resolveConsentProject,
   });
+}
+
+/**
+ * Rate-limits, renders and sends the password reset email. Runs off the request path
+ * (see `sendResetPassword`), so it throws freely and the caller logs.
+ */
+async function deliverPasswordResetEmail({
+  user,
+  url,
+  clientIP,
+}: {
+  user: { email: string };
+  url: string;
+  clientIP: string;
+}): Promise<void> {
+  const emailService = EmailService.getInstance();
+
+  // Rate limit by email address
+  const emailRateLimit = await checkPasswordResetRateLimit(user.email);
+  if (!emailRateLimit.allowed) {
+    const resetTime = emailRateLimit.resetTime ? new Date(emailRateLimit.resetTime) : new Date();
+    const remainingTime = Math.ceil((resetTime.getTime() - Date.now()) / 1000 / 60);
+    throw new Error(`Too many password reset attempts. Please try again in ${remainingTime} minutes.`);
+  }
+
+  // Rate limit by IP address as additional protection. An unknown address would put every such
+  // request in one shared bucket that anyone could fill to block other people's resets.
+  const ipRateLimit = clientIP === "unknown" ? { allowed: true } : await checkPasswordResetRateLimit(clientIP);
+  if (!ipRateLimit.allowed) {
+    const resetTime = "resetTime" in ipRateLimit && ipRateLimit.resetTime ? new Date(ipRateLimit.resetTime) : new Date();
+    const remainingTime = Math.ceil((resetTime.getTime() - Date.now()) / 1000 / 60);
+    throw new Error(
+      `Too many password reset attempts from this location. Please try again in ${remainingTime} minutes.`,
+    );
+  }
+
+  // Render email using react-email template
+  const emailContent = await renderPasswordResetEmail({ resetUrl: url, userEmail: user.email });
+  const result = await emailService.sendEmail({
+    to: user.email,
+    subject: emailContent.subject,
+    text: emailContent.text,
+    html: emailContent.html,
+  });
+  if (!result.success) {
+    throw new Error(`Failed to send password reset email: ${result.error}`);
+  }
+  console.log("Password reset email sent successfully:", result.message);
 }
 
 export const auth = betterAuth({
@@ -233,66 +282,20 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     revokeSessionsOnPasswordReset: true,
+    // Sessions are revoked above; also end API/MCP credentials and any other pending reset link.
+    onPasswordReset: async ({ user }) => {
+      await revokeCredentialsAfterPasswordResetSafely(user.id);
+    },
     // Only require email verification in cloud mode
     requireEmailVerification: isCloudHosted(),
+    // Better Auth answers an unknown address immediately, so a known one must not wait on
+    // Redis or SMTP either: the response time would reveal which addresses have accounts.
+    // Failures are logged; the caller never sees them (Better Auth swallows them anyway).
     sendResetPassword: async ({ user, url }, request) => {
-      const emailService = EmailService.getInstance();
-
-      // Extract IP from request for rate limiting
       const clientIP = request ? getClientIP(request.headers) : "unknown";
-
-      // Rate limit by email address
-      const emailRateLimit = await checkPasswordResetRateLimit(user.email);
-      if (!emailRateLimit.allowed) {
-        const resetTime = emailRateLimit.resetTime
-          ? new Date(emailRateLimit.resetTime)
-          : new Date();
-        const remainingTime = Math.ceil(
-          (resetTime.getTime() - Date.now()) / 1000 / 60,
-        );
-        throw new Error(
-          `Too many password reset attempts. Please try again in ${remainingTime} minutes.`,
-        );
-      }
-
-      // Rate limit by IP address as additional protection
-      const ipRateLimit = await checkPasswordResetRateLimit(clientIP);
-      if (!ipRateLimit.allowed) {
-        const resetTime = ipRateLimit.resetTime
-          ? new Date(ipRateLimit.resetTime)
-          : new Date();
-        const remainingTime = Math.ceil(
-          (resetTime.getTime() - Date.now()) / 1000 / 60,
-        );
-        throw new Error(
-          `Too many password reset attempts from this location. Please try again in ${remainingTime} minutes.`,
-        );
-      }
-
-      try {
-        // Render email using react-email template
-        const emailContent = await renderPasswordResetEmail({
-          resetUrl: url,
-          userEmail: user.email,
-        });
-
-        const result = await emailService.sendEmail({
-          to: user.email,
-          subject: emailContent.subject,
-          text: emailContent.text,
-          html: emailContent.html,
-        });
-
-        if (!result.success) {
-          console.error("Failed to send password reset email:", result.error);
-          throw new Error("Failed to send password reset email");
-        }
-
-        console.log("Password reset email sent successfully:", result.message);
-      } catch (error) {
+      void deliverPasswordResetEmail({ user, url, clientIP }).catch((error) => {
         console.error("Error sending password reset email:", error);
-        throw error;
-      }
+      });
     },
     resetPasswordTokenExpiresIn: 3600, // 1 hour in seconds
   },
