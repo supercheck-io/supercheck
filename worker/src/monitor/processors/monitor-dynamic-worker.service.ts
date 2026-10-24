@@ -28,6 +28,9 @@ import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 
+/** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
+const MAX_AGGREGATION_BUSY_RETRIES = 30;
+
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
  *
@@ -386,8 +389,10 @@ export class MonitorDynamicWorkerService
           );
 
       if (!result) {
-        // Skipped without a verdict (no entitlement or allowance): close the group or cycle instead of
-        // letting its deadline record this region as down.
+        // null means the check was deliberately not run: the monitor is paused, billing is on hold, the
+        // authorization lookup failed (never run a paid probe on unknown authorization), or there is no
+        // entitlement or allowance. None says anything about the target, so close the group or cycle instead
+        // of letting its deadline record this region as down.
         await this.closeSkippedGroup(job);
         return [];
       }
@@ -419,6 +424,22 @@ export class MonitorDynamicWorkerService
       )) ?? []
     );
   }
+
+  /**
+   * Persists the flags that tell the final-failure handler this check was skipped, not failed. They are already
+   * set on the in-memory job, so a failed write (typically a lost job lock) is only logged: failing here would
+   * abandon the closure after capacity was forfeited, and a retry could then record downtime.
+   */
+  private async rememberFlags(job: Job<MonitorJobDataDto>): Promise<void> {
+    await job.updateData(job.data).catch((error: unknown) => {
+      this.logger.warn(
+        `Could not persist skip flags for monitor ${job.data.monitorId}: ${getErrorMessage(error)}`,
+      );
+    });
+  }
+
+  /** Jobs whose skipped group was already closed in this attempt, so it is not closed twice. */
+  private readonly closedSkippedGroups = new WeakSet<object>();
 
   /** A check that never ran must not leave its cycle to be closed with a false failure. */
   private async abortCycleOf(job: Job<MonitorJobDataDto>): Promise<void> {
@@ -458,7 +479,7 @@ export class MonitorDynamicWorkerService
         );
         // Remember why, so the final-failure handler does not turn "never got a slot" into downtime.
         job.data = { ...job.data, _capacityGaveUp: true } as never;
-        await job.updateData(job.data);
+        await this.rememberFlags(job);
         await this.closeSkippedGroup(job);
       });
     }
@@ -467,13 +488,15 @@ export class MonitorDynamicWorkerService
   private async closeSkippedGroup(job: Job<MonitorJobDataDto>): Promise<void> {
     const { monitorId, executionGroupId, monitorCycle } = job.data;
     if (!executionGroupId) return;
+    // The capacity path closes the group and then reports "skipped" to processJob, which closes it again.
+    if (this.closedSkippedGroups.has(job)) return;
     const flags = job.data as {
       _capacityGaveUp?: boolean;
       _groupSkipped?: boolean;
     };
     if (!flags._capacityGaveUp && !flags._groupSkipped) {
       job.data = { ...job.data, _groupSkipped: true } as never;
-      await job.updateData(job.data);
+      await this.rememberFlags(job);
     }
     try {
       await this.monitorService.skipDistributedMonitorGroup(
@@ -481,8 +504,22 @@ export class MonitorDynamicWorkerService
         executionGroupId,
         !!monitorCycle,
       );
+      this.closedSkippedGroups.add(job);
     } catch (error) {
       if (!(error instanceof MonitorAggregationBusyError)) throw error;
+      // Another worker holds the aggregation lease. Wait for it, but not forever: past the cap the job fails
+      // for good, and its final-failure handler (the group is marked skipped) aborts the cycle without
+      // recording downtime.
+      const retries =
+        ((job.data as { _aggregationBusyRetries?: number })
+          ._aggregationBusyRetries ?? 0) + 1;
+      if (retries > MAX_AGGREGATION_BUSY_RETRIES) {
+        throw new UnrecoverableError(
+          `Monitor aggregation stayed busy for ${MAX_AGGREGATION_BUSY_RETRIES} attempts; giving up on closing the skipped group`,
+        );
+      }
+      job.data = { ...job.data, _aggregationBusyRetries: retries } as never;
+      await job.updateData(job.data);
       await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
       throw new DelayedError();
     }

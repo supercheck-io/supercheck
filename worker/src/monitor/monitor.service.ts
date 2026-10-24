@@ -651,7 +651,10 @@ export class MonitorService {
       this.logger.warn(
         `Unable to close skipped group ${executionGroupId}: ${getErrorMessage(error)}`,
       );
-      throw new MonitorAggregationBusyError();
+      // Only a busy lease is worth waiting for. Any other failure (a database or Redis outage) keeps its own
+      // cause, so the caller's job fails and retries within its attempts and the real reason is not lost behind
+      // an endless "busy" retry.
+      throw error;
     }
   }
 
