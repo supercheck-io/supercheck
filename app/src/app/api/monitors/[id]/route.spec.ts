@@ -42,7 +42,7 @@ jest.mock("@/lib/location-registry", () => ({
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 
 import { NextRequest } from "next/server";
-import { PATCH, PUT } from "./route";
+import { DELETE, PATCH, PUT } from "./route";
 
 const locationConfig = (locations: string[], enabled = true) => ({
   enabled,
@@ -158,3 +158,27 @@ it("PATCH applies CLI fields and refreshes the scheduler payload", async () => {
   const { scheduleMonitor } = await import("@/lib/monitor-scheduler");
   expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ frequencyMinutes: 10, jobData: expect.objectContaining({ target: changes.target, config: saved.config }) }));
 });
+
+describe("malformed monitor id versus permission", () => {
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
+    checkPermissionWithContext: jest.Mock;
+  };
+  const malformed = { params: Promise.resolve({ id: "not-a-uuid" }) };
+  const url = "http://localhost/api/monitors/not-a-uuid";
+
+  afterEach(() => checkPermissionWithContext.mockReturnValue(true));
+
+  it("answers 403 to a caller without permission, as it does for a well-formed id", async () => {
+    checkPermissionWithContext.mockReturnValue(false);
+    const response = await DELETE(new NextRequest(url, { method: "DELETE" }), malformed);
+    expect(response.status).toBe(403);
+  });
+
+  it("answers 404 to a permitted caller, without a database error", async () => {
+    checkPermissionWithContext.mockReturnValue(true);
+    const response = await DELETE(new NextRequest(url, { method: "DELETE" }), malformed);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Monitor not found" });
+  });
+});
+

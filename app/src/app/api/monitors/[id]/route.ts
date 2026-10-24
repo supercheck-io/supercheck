@@ -147,7 +147,6 @@ export async function PUT(
   try {
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
-    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     const rawData = await request.json();
     const validationResult = monitorsUpdateSchema.safeParse(rawData);
@@ -169,6 +168,7 @@ export async function PUT(
         { status: 403 },
       );
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
@@ -745,7 +745,6 @@ export async function PATCH(
   try {
     const authCtx = await requireAuthContext();
     const userId = authCtx.userId;
-    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     const rawData = await request.json();
 
@@ -757,6 +756,7 @@ export async function PATCH(
         { status: 403 },
       );
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
     const currentMonitor = await db.query.monitors.findFirst({
@@ -901,10 +901,10 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
-    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     if (!checkPermissionWithContext("monitor", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const result = await deleteMonitorWithContext(id, context);
     const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });

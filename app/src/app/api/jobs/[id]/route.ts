@@ -151,7 +151,6 @@ export async function PATCH(
   try {
     const context = await requireAuthContext();
     const { userId, project, organizationId } = context;
-    if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
@@ -160,6 +159,7 @@ export async function PATCH(
         { status: 403 }
       );
     }
+    if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const rawData = await request.json();
 
@@ -226,7 +226,6 @@ export async function PUT(
   const params = await routeContext.params;
   try {
     const context = await requireAuthContext();
-    if (!isUuid(params.id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
@@ -235,6 +234,7 @@ export async function PUT(
         { status: 403 }
       );
     }
+    if (!isUuid(params.id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
     // Verify job belongs to current project before updating
     const existingJob = await db.query.jobs.findFirst({
@@ -294,10 +294,10 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
-    if (!isUuid(id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     if (!checkPermissionWithContext("job", "delete", context)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     const result = await deleteJobWithContext(id, context);
     const status = result.success ? 200 : result.error?.includes("not found") ? 404 : result.error?.includes("active") ? 409 : 500;
     return NextResponse.json(result, { status });

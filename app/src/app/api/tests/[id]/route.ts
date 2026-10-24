@@ -228,7 +228,6 @@ export async function DELETE(
   try {
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
-    if (!isUuid(id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const { project, organizationId } = context;
 
     const canDelete = checkPermissionWithContext("test", "delete", context);
@@ -238,6 +237,7 @@ export async function DELETE(
         { status: 403 },
       );
     }
+    if (!isUuid(id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
 
     // Use a transaction to prevent race conditions between usage checks and delete
     const txResult = await db.transaction(async (tx) => {
