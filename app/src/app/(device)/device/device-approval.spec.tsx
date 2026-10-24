@@ -1,5 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DeviceApproval, type DeviceProjectOption } from "./device-approval";
+import { signOut } from "@/utils/auth-client";
+
+jest.mock("@/utils/auth-client", () => ({ signOut: jest.fn() }));
 
 const projects: DeviceProjectOption[] = [
   { id: "p-1", name: "Alpha", organizationName: "Org", isDefault: false },
@@ -11,12 +14,13 @@ const fetchMock = jest.fn();
 beforeEach(() => {
   fetchMock.mockReset();
   global.fetch = fetchMock as unknown as typeof fetch;
+  (signOut as jest.Mock).mockReset().mockResolvedValue(undefined);
 });
 
 function setup() {
   render(<DeviceApproval userCode="BCDF-GHJK" userEmail="me@example.com" projects={projects} client={client} />);
   const approve = screen.getByRole("button", { name: "Approve" });
-  const input = screen.getByLabelText(/type the code/i);
+  const input = screen.getByLabelText(/confirm the code/i);
   return { approve, input };
 }
 
@@ -40,7 +44,7 @@ describe("DeviceApproval plan step", () => {
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     expect(screen.getByRole("note")).toHaveTextContent(/no active plan/i);
     expect(screen.getByRole("note")).toHaveTextContent(/approving does not depend on it/i);
-    fireEvent.change(screen.getByLabelText(/type the code/i), { target: { value: "BCDF-GHJK" } });
+    fireEvent.change(screen.getByLabelText(/confirm the code/i), { target: { value: "BCDF-GHJK" } });
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
 
@@ -94,6 +98,7 @@ describe("DeviceApproval plan step", () => {
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
     fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
     expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /different account/i })).toBeDisabled();
     expect(screen.getByLabelText(/Alpha/)).toBeDisabled();
     release({ ok: true, json: async () => ({}) });
     await waitFor(() => expect(screen.getByLabelText(/Alpha/)).toBeEnabled());
@@ -140,13 +145,66 @@ describe("DeviceApproval", () => {
   it("shows who is asking and keeps Approve disabled until the code is retyped", () => {
     const { approve, input } = setup();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
-    expect(screen.getByText("laptop")).toBeInTheDocument();
+    expect(screen.getByText(/laptop/)).toBeInTheDocument();
     expect(screen.getByText(/not verified/i)).toBeInTheDocument();
+    expect(screen.queryByText("203.0.113.9")).not.toBeInTheDocument();
     expect(approve).toBeDisabled();
     fireEvent.change(input, { target: { value: "WRONG-CODE" } });
     expect(approve).toBeDisabled();
     fireEvent.change(input, { target: { value: "bcdf ghjk" } });
     expect(approve).toBeEnabled();
+  });
+
+  it("accepts a pasted code with a code= prefix", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "code=BCDF-GHJK" } });
+    expect(input).toHaveValue("BCDF-GHJK");
+    expect(approve).toBeEnabled();
+  });
+
+  it("accepts a pasted verification URL", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "https://app.supercheck.io/device?code=BCDF-GHJK" } });
+    expect(input).toHaveValue("BCDF-GHJK");
+    expect(approve).toBeEnabled();
+  });
+
+  it("explains an incomplete or mismatched confirmation code", () => {
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF" } });
+    expect(screen.getByText(/4 more characters/i)).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+    fireEvent.change(input, { target: { value: "ZZZZ-ZZZZ" } });
+    expect(screen.getByText(/doesn’t match/i)).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+  });
+
+  it("lets the person switch accounts and reports a failed sign-out", async () => {
+    (signOut as jest.Mock).mockRejectedValueOnce(new Error("offline"));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not sign out/i);
+  });
+
+  it("reports resolved sign-out errors and keeps the approval page available", async () => {
+    (signOut as jest.Mock).mockResolvedValueOnce({ error: { message: "Unavailable" } });
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not sign out/i);
+    expect(approve).toBeEnabled();
+  });
+
+  it("disables approval and project selection while signing out", () => {
+    (signOut as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    const { approve, input } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-GHJK" } });
+    fireEvent.click(screen.getByRole("button", { name: /different account/i }));
+    expect(approve).toBeDisabled();
+    expect(screen.getByLabelText(/Alpha/)).toBeDisabled();
+    fireEvent.submit(approve.closest("form")!);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("preselects the default project and approves exactly that project", async () => {

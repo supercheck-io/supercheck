@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { signOut } from "@/utils/auth-client";
+import { cn } from "@/lib/utils";
 
 export interface DeviceProjectOption {
   id: string;
@@ -40,6 +43,22 @@ const ERROR_COPY: Record<string, string> = {
   authentication_required: "Your session expired. Reload the page to sign in again.",
 };
 
+const CODE_LENGTH = 8;
+
+/**
+ * A person often pastes the full verification URL, `?code=...`, or a code with
+ * spaces and dashes. Accept all of those and keep only the eight code characters.
+ */
+function normalizeConfirmation(value: string): string {
+  const fromUrl = value.match(/[?&]code=([a-z0-9-]+)/i) ?? value.match(/^\s*code\s*=\s*([a-z0-9-]+)/i);
+  const raw = fromUrl ? fromUrl[1] : value;
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LENGTH);
+}
+
+function formatConfirmation(value: string): string {
+  return value.length > 4 ? `${value.slice(0, 4)}-${value.slice(4)}` : value;
+}
+
 export function DeviceApproval({ userCode, userEmail, projects, client }: Props) {
   const [projectId, setProjectId] = useState(
     (projects.find((p) => p.isDefault) ?? projects[0]).id,
@@ -48,12 +67,23 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   const [error, setError] = useState<string | null>(null);
   const [typedCode, setTypedCode] = useState("");
   const [billingState, setBillingState] = useState<"idle" | "opening" | "opened" | "blocked" | "failed">("idle");
+  const [switchingAccount, setSwitchingAccount] = useState(false);
   // The code arrives pre-filled in the URL, so a hurried click could approve a stranger's request.
   // Require the person to retype what their terminal shows.
-  const codeMatches = typedCode.toUpperCase().replace(/[^A-Z0-9]/g, "") === userCode.replace("-", "");
+  const expectedCode = userCode.replace(/[^A-Z0-9]/g, "");
+  const codeMatches = typedCode.length === CODE_LENGTH && typedCode === expectedCode;
+  const codeIncomplete = typedCode.length > 0 && typedCode.length < CODE_LENGTH;
 
   const selected = projects.find((p) => p.id === projectId) ?? projects[0];
   const needsPlan = selected.plan?.active === false;
+
+  const confirmStatus = codeMatches
+    ? "Code matches."
+    : typedCode.length === 0
+      ? "Enter the code to enable Approve."
+      : codeIncomplete
+        ? `${CODE_LENGTH - typedCode.length} more character${CODE_LENGTH - typedCode.length === 1 ? "" : "s"}.`
+        : "That code doesn’t match the one shown above.";
 
   // Opens the existing checkout in a new tab so this request (and its 15-minute code) stays intact. Checkout charges
   // the session's *active* organization, so make the selected project's organization active first; otherwise a person
@@ -87,6 +117,20 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
     }
   }
 
+  async function switchAccount() {
+    setSwitchingAccount(true);
+    setError(null);
+    try {
+      const result = await signOut();
+      if (result?.error) throw new Error("sign out failed");
+      // Keep the pending code so the next person can approve the same CLI request.
+      window.location.replace(new URL(`/device?code=${encodeURIComponent(userCode)}`, window.location.origin).toString());
+    } catch {
+      setError("Could not sign out. Reload the page and try again.");
+      setSwitchingAccount(false);
+    }
+  }
+
   async function decide(kind: "approve" | "deny") {
     setPhase("submitting");
     setError(null);
@@ -112,45 +156,80 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
 
   if (phase === "approved") {
     return (
-      <div role="status" className="space-y-2 text-center">
-        <p className="text-lg font-semibold">You&apos;re connected.</p>
-        <p className="text-sm text-muted-foreground">
-          Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
-        </p>
+      <div role="status" className="space-y-3 py-4 text-center">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <Check className="size-5" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">You&apos;re connected.</p>
+          <p className="text-sm text-muted-foreground">
+            Return to your terminal; the CLI will finish signing in automatically. You can close this tab.
+          </p>
+        </div>
       </div>
     );
   }
   if (phase === "denied") {
     return (
-      <div role="status" className="space-y-2 text-center">
-        <p className="text-lg font-semibold">Request denied.</p>
-        <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
+      <div role="status" className="space-y-3 py-4 text-center">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <X className="size-5" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">Request denied.</p>
+          <p className="text-sm text-muted-foreground">No access was granted. You can close this tab.</p>
+        </div>
       </div>
     );
   }
 
-  const busy = phase === "submitting";
+  const busy = phase === "submitting" || switchingAccount;
   return (
-    <div className="space-y-5">
-      <div className="rounded-md border bg-muted/40 p-3 text-center">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Code</p>
-        <p className="font-mono text-2xl tracking-widest" aria-label="Device code">
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (codeMatches && !busy) void decide("approve");
+      }}
+    >
+      <div className="rounded-xl border bg-muted/30 px-4 py-5 text-center">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Code from your terminal</p>
+        <p
+          className="mt-2 select-all font-mono text-3xl font-semibold tracking-[0.18em]"
+          aria-label="Device code"
+        >
           {userCode}
         </p>
       </div>
 
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Signed in as</dt>
-        <dd className="truncate">{userEmail}</dd>
-        {client.hostname ? (<><dt className="text-muted-foreground">Device</dt><dd className="truncate">{client.hostname}</dd></>) : null}
-        {client.version ? (<><dt className="text-muted-foreground">CLI version</dt><dd className="truncate">{client.version}</dd></>) : null}
-        {client.requestIp ? (<><dt className="text-muted-foreground">Requested from</dt><dd className="truncate">{client.requestIp}</dd></>) : null}
-      </dl>
-      <p className="text-xs text-muted-foreground">
-        Device details are reported by the requesting program and are not verified.
+      <div className="space-y-2.5 text-sm">
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+          <span className="text-muted-foreground">Signed in as</span>
+          <span className="min-w-0 break-all font-medium sm:truncate sm:text-right" title={userEmail}>{userEmail}</span>
+        </div>
+        {client.hostname || client.version ? (
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+            <span className="text-muted-foreground">Requested by</span>
+            <span className="min-w-0 break-all sm:truncate sm:text-right">
+              {client.hostname ?? "Unknown device"}
+              {client.version ? ` · CLI ${client.version}` : ""}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
+        Device details are self-reported and not verified.
       </p>
+      <button
+        type="button"
+        onClick={() => void switchAccount()}
+        disabled={busy || billingState === "opening"}
+        className="-mt-2 w-fit text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground disabled:opacity-50"
+      >
+        {switchingAccount ? "Signing out…" : "Use a different account"}
+      </button>
 
-      <fieldset className="space-y-2" disabled={busy || billingState === "opening"}>
+      <fieldset className="space-y-2.5" disabled={busy || billingState === "opening"}>
         <legend className="text-sm font-medium">Project the CLI can access</legend>
         <RadioGroup
           value={projectId}
@@ -159,86 +238,128 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
             setProjectId(next);
             setBillingState("idle");
           }}
-          className="space-y-1"
+          className="grid gap-2"
         >
-          {projects.map((project) => (
-            <div key={project.id} className="flex items-center gap-2 rounded-md border p-2">
-              <RadioGroupItem value={project.id} id={`project-${project.id}`} />
-              <Label htmlFor={`project-${project.id}`} className="flex-1 cursor-pointer">
-                <span className="font-medium">{project.name}</span>
-                <span className="block text-xs text-muted-foreground">{project.organizationName}</span>
+          {projects.map((project) => {
+            const selectedProject = projectId === project.id;
+            return (
+              <Label
+                key={project.id}
+                htmlFor={`project-${project.id}`}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                  selectedProject ? "border-primary/60 bg-primary/[0.04]" : "hover:bg-muted/40",
+                )}
+              >
+                <RadioGroupItem value={project.id} id={`project-${project.id}`} className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{project.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{project.organizationName}</span>
+                </span>
               </Label>
-            </div>
-          ))}
+            );
+          })}
         </RadioGroup>
       </fieldset>
 
-      <div className="space-y-1">
+      <div className="space-y-2">
         <Label htmlFor="confirm-code" className="text-sm font-medium">
-          Type the code shown in your terminal to confirm
+          Confirm the code
         </Label>
         <Input
           id="confirm-code"
-          value={typedCode}
-          onChange={(e) => setTypedCode(e.target.value)}
+          value={formatConfirmation(typedCode)}
+          onChange={(event) => setTypedCode(normalizeConfirmation(event.target.value))}
           autoComplete="off"
+          autoCapitalize="characters"
+          inputMode="text"
           spellCheck={false}
-          maxLength={12}
+          maxLength={64}
           placeholder="XXXX-XXXX"
-          className="font-mono tracking-widest"
+          className="font-mono text-base tracking-[0.18em] uppercase"
+          aria-describedby="confirm-code-status"
+          aria-invalid={typedCode.length > 0 && !codeMatches}
           disabled={busy}
         />
+        <p
+          id="confirm-code-status"
+          aria-live="polite"
+          className={cn(
+            "text-xs",
+            codeMatches
+              ? "text-emerald-600 dark:text-emerald-400"
+              : typedCode.length > 0
+                ? "text-destructive"
+                : "text-muted-foreground",
+          )}
+        >
+          {confirmStatus}
+        </p>
       </div>
 
       {needsPlan ? (
-        <div role="note" className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-          <p className="font-medium">{selected.organizationName} has no active plan</p>
-          <p className="text-muted-foreground">
-            You can connect the CLI now and run tests locally. Deploying and running tests in the cloud needs a plan.
-            Approving does not depend on it.
+        <div role="note" className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <p className="text-sm font-medium">{selected.organizationName} has no active plan</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            You can connect the CLI now and run tests locally. Cloud deploys and runs need a plan; approving does not
+            depend on it.
           </p>
           {selected.plan?.canPurchase ? (
-            <div className="space-y-1">
-              <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
+            <div className="space-y-1.5">
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto px-0 text-xs"
+                onClick={openBilling}
+                disabled={busy || billingState === "opening"}
+              >
                 {billingState === "opening" ? "Opening…" : "Choose a plan"}
               </Button>
               {billingState === "opened" ? (
                 <p className="text-xs text-muted-foreground">
-                  Billing opened in a new tab for {selected.organizationName}. Finish there; this page stays ready. Afterwards run
-                  {" "}<code>supercheck plan</code> to confirm.
+                  Billing opened in a new tab for {selected.organizationName}. Finish there; this page stays ready.
+                  Afterwards run <code className="font-mono">supercheck plan</code> to confirm.
                 </p>
               ) : null}
               {billingState === "blocked" ? (
                 <p className="text-xs text-muted-foreground">
                   Your browser blocked the new tab.{" "}
-                  <a className="underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a>.
+                  <a className="underline underline-offset-2" href="/subscribe" target="_blank" rel="noopener noreferrer">
+                    Open billing
+                  </a>
+                  .
                 </p>
               ) : null}
               {billingState === "failed" ? (
-                <p role="alert" className="text-xs text-destructive">Could not open billing. Try again, or open it from the dashboard.</p>
+                <p role="alert" className="text-xs text-destructive">
+                  Could not open billing. Try again, or open it from the dashboard.
+                </p>
               ) : null}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan. Ask an owner of {selected.organizationName}.</p>
+            <p className="text-xs text-muted-foreground">
+              Only an organization owner can choose a plan for {selected.organizationName}.
+            </p>
           )}
         </div>
       ) : null}
 
-      <p className="text-xs text-muted-foreground">
-        Approving creates a CLI key for this project that expires in 90 days. It can do what your role
-        allows in this project and can be revoked any time under CLI tokens.
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        This creates a 90-day CLI key for the selected project. It can do what your role allows in this project and can
+        be revoked under CLI tokens.
       </p>
 
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
       <div className="flex gap-2">
-        <Button className="flex-1" disabled={busy || !codeMatches} onClick={() => decide("approve")}>
+        <Button type="submit" className="flex-1" disabled={busy || !codeMatches}>
           {busy ? "Working…" : "Approve"}
         </Button>
-        <Button variant="outline" className="flex-1" disabled={busy} onClick={() => decide("deny")}>
+        <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={() => void decide("deny")}>
           Deny
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
