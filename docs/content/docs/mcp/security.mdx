@@ -38,9 +38,9 @@ Tests, logs and incidents can contain text written by someone else. Tool descrip
 
 ## Limits
 
-Each connection may send up to 300 requests a minute (a batch counts once per call), at most 4 at a time, and at most 20 calls in one batch. Over the limit, the server answers `429` with `Retry-After`.
+Each connected app may send up to 300 requests a minute, and all of your connected apps together up to 600 (every call in a batch counts as one request). An app may have at most 4 requests running at a time, and you at most 8 across your apps. A batch carries at most 20 calls. Over a limit, the server answers `429` with `Retry-After`. If the rate limiter itself is unavailable, it answers `503` with `Retry-After` and still refuses the call; an outage never lifts a limit.
 
-Resetting your password signs you out everywhere and disconnects every connected app. Reconnect the ones you still use.
+Resetting your password signs you out everywhere and disconnects every connected app, including one you reconnect before the cleanup has finished. Reconnect the ones you still use. If the cleanup cannot finish straight away it is retried automatically every hour. Job trigger keys used by pipelines are not affected.
 
 ## Audit
 
