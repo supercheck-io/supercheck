@@ -506,8 +506,9 @@ export class MonitorDynamicWorkerService
       );
       this.closedSkippedGroups.add(job);
     } catch (error) {
-      if (!(error instanceof MonitorAggregationBusyError)) throw error;
-      // Another worker holds the aggregation lease. Wait for it, but not forever: past the cap the job fails
+      // A busy lease or an outage of the database or Redis: wait it out, but not forever. A plain failure here
+      // would use up the job's few attempts in seconds, leave the cycle open, and let its deadline record a
+      // false down for a region that was only skipped. Past the cap the job fails
       // for good, and its final-failure handler (the group is marked skipped) aborts the cycle without
       // recording downtime.
       const retries =
@@ -520,7 +521,16 @@ export class MonitorDynamicWorkerService
       }
       job.data = { ...job.data, _aggregationBusyRetries: retries } as never;
       await job.updateData(job.data);
-      await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
+      const delayMs =
+        error instanceof MonitorAggregationBusyError
+          ? error.retryAfterMs
+          : 60_000;
+      if (!(error instanceof MonitorAggregationBusyError)) {
+        this.logger.warn(
+          `Closing skipped group for monitor ${monitorId} failed (attempt ${retries}): ${getErrorMessage(error)}`,
+        );
+      }
+      await job.moveToDelayed(Date.now() + delayMs, job.token);
       throw new DelayedError();
     }
   }

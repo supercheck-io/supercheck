@@ -274,27 +274,49 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     });
 
     it('still closes the group when the skip flags cannot be persisted', async () => {
-      const skipDistributedMonitorGroup = jest.fn().mockResolvedValue(undefined);
+      const skipDistributedMonitorGroup = jest
+        .fn()
+        .mockResolvedValue(undefined);
       const service = withClosure(skipDistributedMonitorGroup);
       const job = skippedJob();
       delete (job.data as Record<string, unknown>)._groupSkipped;
       job.updateData.mockRejectedValue(new Error('lock lost'));
       expect(await service['processJob'](job as never)).toEqual([]);
-      expect(skipDistributedMonitorGroup).toHaveBeenCalledWith('m1', 'g1', false);
+      expect(skipDistributedMonitorGroup).toHaveBeenCalledWith(
+        'm1',
+        'g1',
+        false,
+      );
       // The in-memory job still carries the flag the final-failure handler reads.
       expect(job.data).toMatchObject({ _groupSkipped: true });
     });
 
-    it('keeps the real cause of any other failure instead of waiting on it forever', async () => {
-      const outage = new Error('redis unavailable');
-      const service = withClosure(jest.fn().mockRejectedValue(outage));
+    it('waits out an outage of the database or Redis the same bounded way, instead of using up job attempts', async () => {
+      const service = withClosure(
+        jest.fn().mockRejectedValue(new Error('redis unavailable')),
+      );
       const job = skippedJob();
-      await expect(service['processJob'](job as never)).rejects.toBe(outage);
-      expect(job.moveToDelayed).not.toHaveBeenCalled();
+      await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+        jest.requireActual('bullmq').DelayedError,
+      );
+      expect(job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 't');
+      expect(job.data).toMatchObject({ _aggregationBusyRetries: 1 });
+    });
+
+    it('still gives up after the cap when the outage lasts', async () => {
+      const service = withClosure(
+        jest.fn().mockRejectedValue(new Error('database unavailable')),
+      );
+      const job = skippedJob({ _aggregationBusyRetries: 30 });
+      await expect(service['processJob'](job as never)).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
     });
 
     it('closes the group once when the capacity path has already closed it', async () => {
-      const skipDistributedMonitorGroup = jest.fn().mockResolvedValue(undefined);
+      const skipDistributedMonitorGroup = jest
+        .fn()
+        .mockResolvedValue(undefined);
       const { service } = setup();
       Object.assign(service['monitorService'], {
         executeMonitor: jest
@@ -302,7 +324,9 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
           .mockRejectedValue(new ExecutionCapacityError('busy')),
         skipDistributedMonitorGroup,
       });
-      jest.spyOn(service as never, 'assertBrowserCapability').mockResolvedValue(undefined as never);
+      jest
+        .spyOn(service as never, 'assertBrowserCapability')
+        .mockResolvedValue(undefined as never);
       const job = {
         ...skippedJob({
           expectedLocations: ['local', 'eu'],
