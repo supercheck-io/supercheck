@@ -1,6 +1,11 @@
 import type { createRequirement } from "@/actions/requirements";
 
 export interface ExtractedRequirementInput {
+  /**
+   * Stable per extracted row (minted once, when the rows are extracted). It is sent as the requirement id, so a
+   * create whose response was lost and is then repeated finds the existing row instead of adding a second one.
+   */
+  clientId?: string;
   title: string;
   description: string | null;
   priority: "low" | "medium" | "high" | null;
@@ -33,6 +38,7 @@ export async function createExtractedRequirements(
       // Combine AI-extracted tags with 'ai' marker, avoiding duplicates
       const allTags = new Set(["ai", ...req.tags]);
       const result = await create({
+        id: req.clientId,
         title: req.title,
         description: req.description || "Extracted from document",
         priority: req.priority || "medium",
@@ -54,7 +60,8 @@ export async function createExtractedRequirements(
 
 /**
  * What is left to review after a batch stopped partway: the first `created` selected rows were written, so they
- * leave the list, and everything else (including unselected rows) stays. Retrying then cannot duplicate rows.
+ * leave the list, and everything else (including unselected rows) stays. A write whose response was lost is not
+ * counted here; it is covered by `clientId`, which makes repeating that create return the row it already made.
  */
 export function withoutCreated<T extends { id: string }>(all: T[], selected: T[], created: number): T[] {
   const written = new Set(selected.slice(0, created).map((row) => row.id));

@@ -1,6 +1,6 @@
 import { createExtractedRequirements, withoutCreated } from "./create-extracted-requirements";
 
-const requirement = (title: string) => ({ title, description: null, priority: null, tags: ["ai", "auth"] });
+const requirement = (title: string, clientId?: string) => ({ clientId, title, description: null, priority: null, tags: ["ai", "auth"] });
 
 describe("createExtractedRequirements", () => {
   it("creates every requirement and reports progress", async () => {
@@ -14,6 +14,21 @@ describe("createExtractedRequirements", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ title: "A", sourceDocumentId: "doc-1", createdBy: "ai", priority: "medium", tags: "ai, auth" }),
     );
+  });
+
+  it("sends each row's stable client id so a repeated create is idempotent", async () => {
+    const create = jest.fn().mockResolvedValue({ id: "r", success: true });
+    const rows = [requirement("A", "11111111-1111-4111-8111-111111111111"), requirement("B", "22222222-2222-4222-8222-222222222222")];
+
+    await createExtractedRequirements(rows, "doc-1", create);
+    await createExtractedRequirements(rows, "doc-1", create);
+
+    expect(create.mock.calls.map(([input]) => input.id)).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+    ]);
   });
 
   it("stops at the first {success:false} result instead of reporting success", async () => {

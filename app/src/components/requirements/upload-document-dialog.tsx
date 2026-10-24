@@ -42,6 +42,8 @@ import { cn } from "@/lib/utils";
 
 interface ExtractedRequirement {
     id: string;
+    /** Minted once per extraction; sent as the requirement id so a repeated create cannot duplicate the row. */
+    clientId: string;
     title: string;
     description: string | null;
     priority: "low" | "medium" | "high" | null;
@@ -269,6 +271,7 @@ export function UploadDocumentDialog({
             const requirements: ExtractedRequirement[] = result.requirements.map(
                 (req: { title: string; description?: string; priority?: string; tags?: string[] }, index: number) => ({
                     id: `extracted-${index}`,
+                    clientId: crypto.randomUUID(),
                     title: req.title,
                     description: req.description || null,
                     priority: (req.priority as "low" | "medium" | "high") || null,

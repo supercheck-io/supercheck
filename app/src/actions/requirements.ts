@@ -73,14 +73,17 @@ export type RequirementListResponse = {
 // ============================================================================
 
 // Create requirement schema (omit auto-generated fields)
-const createRequirementSchema = requirementsInsertSchema.omit({
-  id: true,
-  organizationId: true,
-  projectId: true,
-  createdByUserId: true,
-  createdAt: true,
-  updatedAt: true,
-});
+const createRequirementSchema = requirementsInsertSchema
+  .omit({
+    id: true,
+    organizationId: true,
+    projectId: true,
+    createdByUserId: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  // Optional client-chosen id: retrying a create whose response was lost then finds the row instead of duplicating it.
+  .extend({ id: z.string().uuid().optional() });
 
 // Update requirement schema (optional fields except title)
 const updateRequirementSchema = z.object({
@@ -325,49 +328,72 @@ export async function createRequirement(
         };
       }
     }
-    const newId = crypto.randomUUID();
+    const newId = validatedData.id ?? crypto.randomUUID();
 
-    // Insert requirement (without tags - those go in join table)
-    await db.insert(requirements).values({
-      id: newId,
-      organizationId,
-      projectId: project.id,
-      title: validatedData.title,
-      description: validatedData.description,
-      priority: validatedData.priority as RequirementPriority,
-      sourceDocumentId: validatedData.sourceDocumentId,
-      sourceSection: validatedData.sourceSection,
-      externalId: validatedData.externalId,
-      externalUrl: validatedData.externalUrl,
-      externalProvider: validatedData.externalProvider,
-      createdBy: (validatedData.createdBy as RequirementCreatedBy) ?? "user",
-      createdByUserId: userId,
-      createdAt: new Date(),
-    });
-
-    // Sync tags if provided (parse comma-separated string for backward compatibility)
-    if (validatedData.tags) {
-      const tagNames = validatedData.tags.split(",").map((t) => t.trim()).filter(Boolean);
-      if (tagNames.length > 0) {
-        await syncRequirementTagsByName(
-          newId,
-          tagNames,
+    // The row, its tags and its initial coverage snapshot commit together: a failure part-way leaves nothing
+    // behind, so a result of {success:false} always means "not created" and the caller can safely retry.
+    const inserted = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(requirements)
+        .values({
+          id: newId,
           organizationId,
-          project.id,
-          userId
-        );
-      }
-    }
+          projectId: project.id,
+          title: validatedData.title,
+          description: validatedData.description,
+          priority: validatedData.priority as RequirementPriority,
+          sourceDocumentId: validatedData.sourceDocumentId,
+          sourceSection: validatedData.sourceSection,
+          externalId: validatedData.externalId,
+          externalUrl: validatedData.externalUrl,
+          externalProvider: validatedData.externalProvider,
+          createdBy: (validatedData.createdBy as RequirementCreatedBy) ?? "user",
+          createdByUserId: userId,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .returning({ id: requirements.id });
+      if (!row) return false;
 
-    // Create initial coverage snapshot (status: missing)
-    await db.insert(requirementCoverageSnapshots).values({
-      requirementId: newId,
-      status: "missing",
-      linkedTestCount: 0,
-      passedTestCount: 0,
-      failedTestCount: 0,
-      lastEvaluatedAt: new Date(),
+      // Sync tags if provided (parse comma-separated string for backward compatibility)
+      if (validatedData.tags) {
+        const tagNames = validatedData.tags.split(",").map((t) => t.trim()).filter(Boolean);
+        if (tagNames.length > 0) {
+          await syncRequirementTagsByName(newId, tagNames, organizationId, project.id, userId, tx);
+        }
+      }
+
+      // Create initial coverage snapshot (status: missing)
+      await tx.insert(requirementCoverageSnapshots).values({
+        requirementId: newId,
+        status: "missing",
+        linkedTestCount: 0,
+        passedTestCount: 0,
+        failedTestCount: 0,
+        lastEvaluatedAt: new Date(),
+      });
+      return true;
     });
+
+    if (!inserted) {
+      // Only a client-supplied id can collide. The same id in this project means the earlier attempt committed
+      // and only its response was lost; anywhere else it is someone else's row and must not be reported as ours.
+      const [existing] = await db
+        .select({ id: requirements.id })
+        .from(requirements)
+        .where(
+          and(
+            eq(requirements.id, newId),
+            eq(requirements.organizationId, organizationId),
+            eq(requirements.projectId, project.id),
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        return { id: "", success: false, error: "Requirement id is already in use" };
+      }
+      return { id: newId, success: true };
+    }
 
     // Log audit event
     await logAuditEvent({

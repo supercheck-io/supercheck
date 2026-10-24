@@ -7,6 +7,9 @@ import {
 } from "@/db/schema";
 import { db } from "@/utils/db";
 
+// Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
+type Executor = Pick<typeof db, "select" | "insert" | "delete">;
+
 // Internal helpers: deliberately NOT in a "use server" module. Next.js exposes
 // every export of a "use server" file as a client-callable endpoint, and these
 // take raw IDs with no auth or tenant scoping. Callers must already be guarded.
@@ -17,7 +20,8 @@ import { db } from "@/utils/db";
  */
 export async function syncRequirementTags(
   requirementId: string,
-  tagIds: string[]
+  tagIds: string[],
+  executor: Executor = db
 ): Promise<void> {
   // Enforce maximum 10 tags per requirement (consistent with API route)
   if (tagIds.length > 10) {
@@ -25,13 +29,13 @@ export async function syncRequirementTags(
   }
 
   // Delete existing tags for this requirement
-  await db
+  await executor
     .delete(requirementTags)
     .where(eq(requirementTags.requirementId, requirementId));
 
   // Insert new tags if any
   if (tagIds.length > 0) {
-    await db
+    await executor
       .insert(requirementTags)
       .values(
         tagIds.map((tagId) => ({
@@ -54,14 +58,15 @@ export async function syncRequirementTagsByName(
   tagNames: string[],
   organizationId: string,
   projectId: string,
-  userId: string | null
+  userId: string | null,
+  executor: Executor = db
 ): Promise<void> {
   if (tagNames.length === 0) return;
 
   const normalizedNames = tagNames.map((name) => name.trim().toLowerCase());
 
   // Find existing tags
-  const existingTags = await db
+  const existingTags = await executor
     .select({ id: tags.id, name: tags.name })
     .from(tags)
     .where(
@@ -82,7 +87,7 @@ export async function syncRequirementTagsByName(
       "#06B6D4", "#84CC16", "#F97316", "#EC4899", "#6B7280",
     ];
     
-    const createdTags = await db
+    const createdTags = await executor
       .insert(tags)
       .values(
         tagsToCreate.map((name, i) => ({
@@ -105,7 +110,7 @@ export async function syncRequirementTagsByName(
   ];
 
   // Sync requirement tags
-  await syncRequirementTags(requirementId, allTagIds);
+  await syncRequirementTags(requirementId, allTagIds, executor);
 }
 
 /**

@@ -17,6 +17,7 @@ jest.mock("@/utils/db", () => ({
     insert: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    transaction: jest.fn(),
   },
 }));
 
@@ -96,7 +97,10 @@ describe("Requirements Server Actions", () => {
 
   const mockWriteChains = () => {
     (mockDb.insert as jest.Mock).mockImplementation(() => ({
-      values: () => ({ onConflictDoNothing: () => Promise.resolve() }),
+      values: () => ({
+        onConflictDoNothing: () =>
+          Object.assign(Promise.resolve(), { returning: () => Promise.resolve([{ id: testRequirementId }]) }),
+      }),
     }));
     (mockDb.update as jest.Mock).mockImplementation(() => ({
       set: () => ({ where: () => Promise.resolve() }),
@@ -110,6 +114,7 @@ describe("Requirements Server Actions", () => {
     jest.clearAllMocks();
     mockRequireProjectContext.mockResolvedValue(mockProjectContext);
     mockCheckPermissionWithContext.mockReturnValue(true);
+    (mockDb.transaction as jest.Mock).mockImplementation(async (run: (tx: unknown) => unknown) => run(mockDb));
   });
 
   it("rejects an unavailable or foreign source document before creating a requirement", async () => {
@@ -235,7 +240,7 @@ describe("Requirements Server Actions", () => {
         returning: jest.fn().mockResolvedValue([{ id: testRequirementId }]),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        onConflictDoNothing: jest.fn().mockResolvedValue(undefined),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
       };
       (mockDb.insert as jest.Mock).mockReturnValue(mockChain);
       (mockDb.update as jest.Mock).mockReturnValue(mockChain);
@@ -421,6 +426,7 @@ describe("Requirements Server Actions", () => {
     it("should include organizationId in create operation", async () => {
       const mockChain = {
         values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
         returning: jest.fn().mockResolvedValue([{ id: testRequirementId }]),
       };
       (mockDb.insert as jest.Mock).mockReturnValue(mockChain);
@@ -460,6 +466,71 @@ describe("Requirements Server Actions", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Requirement not found");
+    });
+  });
+
+  // ==========================================================================
+  // ATOMIC AND IDEMPOTENT CREATE
+  // ==========================================================================
+
+  describe("createRequirement atomicity and retries", () => {
+    const clientId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    type Tx = { insert: jest.Mock };
+
+    // A distinct transaction handle, so a write that bypasses it (and would survive a rollback) is detectable.
+    const useTransaction = (insertResults: Array<() => unknown>) => {
+      const tx: Tx = { insert: jest.fn() };
+      for (const result of insertResults) {
+        tx.insert.mockImplementationOnce(() => ({
+          values: () => ({
+            onConflictDoNothing: () => ({ returning: () => result() }),
+            then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+              Promise.resolve().then(result).then(resolve, reject),
+          }),
+        }));
+      }
+      (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: Tx) => unknown) => run(tx));
+      return tx;
+    };
+
+    it("writes the row and its coverage snapshot only through the transaction", async () => {
+      const tx = useTransaction([() => Promise.resolve([{ id: clientId }]), () => Promise.resolve()]);
+
+      const result = await createRequirement({ title: "Atomic", id: clientId });
+
+      expect(result).toEqual({ id: clientId, success: true });
+      expect(tx.insert).toHaveBeenCalledTimes(2);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("reports a failure after the row insert as not created, so a retry cannot duplicate it", async () => {
+      useTransaction([() => Promise.resolve([{ id: clientId }]), () => Promise.reject(new Error("snapshot failed"))]);
+
+      const result = await createRequirement({ title: "Atomic", id: clientId });
+
+      expect(result).toMatchObject({ success: false, id: "" });
+      expect(result.error).toContain("snapshot failed");
+      expect(mockLogAuditEvent).not.toHaveBeenCalled();
+    });
+
+    it("treats a replay of the same id in this project as already created", async () => {
+      const tx = useTransaction([() => Promise.resolve([])]);
+      mockSelectResults([{ id: clientId }]);
+
+      const result = await createRequirement({ title: "Atomic", id: clientId });
+
+      expect(result).toEqual({ id: clientId, success: true });
+      expect(tx.insert).toHaveBeenCalledTimes(1); // no second snapshot, no tags re-synced
+      expect(mockLogAuditEvent).not.toHaveBeenCalled();
+    });
+
+    it("refuses an id that already belongs to another project instead of claiming it", async () => {
+      useTransaction([() => Promise.resolve([])]);
+      mockSelectResults([]);
+
+      const result = await createRequirement({ title: "Atomic", id: clientId });
+
+      expect(result).toEqual({ id: "", success: false, error: "Requirement id is already in use" });
     });
   });
 
