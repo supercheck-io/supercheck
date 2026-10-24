@@ -36,8 +36,8 @@ export const metadata: Metadata = {
 
 function Shell({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
-    <Card className="w-full max-w-lg shadow-sm">
-      <CardHeader className="space-y-2 text-center">
+    <Card className="w-full max-w-sm shadow-sm">
+      <CardHeader className="space-y-2">
         <CardTitle className="text-xl font-semibold tracking-tight">{title}</CardTitle>
         {description ? <CardDescription className="text-sm leading-relaxed">{description}</CardDescription> : null}
       </CardHeader>
@@ -182,8 +182,8 @@ export default async function DevicePage({
 
   return (
     <Shell
-      title="Authorize the Supercheck CLI"
-      description="Only continue if you started this request. Confirm the code from your terminal to connect the CLI."
+      title="Connect the CLI"
+      description="Only approve a request you started."
     >
       <DeviceApproval
         userCode={formatted}

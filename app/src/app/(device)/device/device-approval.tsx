@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { signOut } from "@/utils/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +84,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
       ? "Enter the code to enable Approve."
       : codeIncomplete
         ? `${CODE_LENGTH - typedCode.length} more character${CODE_LENGTH - typedCode.length === 1 ? "" : "s"}.`
-        : "That code doesn’t match the one shown above.";
+        : "That code doesn’t match the code in your terminal.";
 
   // Opens the existing checkout in a new tab so this request (and its 15-minute code) stays intact. Checkout charges
   // the session's *active* organization, so make the selected project's organization active first; otherwise a person
@@ -192,173 +193,91 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         if (codeMatches && !busy) void decide("approve");
       }}
     >
-      <div className="rounded-xl border bg-muted/30 px-4 py-5 text-center">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Code from your terminal</p>
-        <p
-          className="mt-2 select-all font-mono text-3xl font-semibold tracking-[0.18em]"
-          aria-label="Device code"
-        >
-          {userCode}
-        </p>
-      </div>
-
-      <div className="space-y-2.5 text-sm">
-        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-          <span className="text-muted-foreground">Signed in as</span>
-          <span className="min-w-0 break-all font-medium sm:truncate sm:text-right" title={userEmail}>{userEmail}</span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs text-muted-foreground">Account</p>
+          <p className="truncate text-sm font-medium" title={userEmail}>{userEmail}</p>
+          <button
+            type="button"
+            aria-label="Use a different account"
+            onClick={() => void switchAccount()}
+            disabled={busy || billingState === "opening"}
+            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:underline disabled:opacity-50"
+          >
+            {switchingAccount ? "Signing out…" : "Switch account"}
+          </button>
         </div>
-        {client.hostname || client.version ? (
-          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-            <span className="text-muted-foreground">Requested by</span>
-            <span className="min-w-0 break-all sm:truncate sm:text-right">
-              {client.hostname ?? "Unknown device"}
-              {client.version ? ` · CLI ${client.version}` : ""}
-            </span>
-          </div>
-        ) : null}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground" aria-label="About CLI access">
+              <Info className="size-4" aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" aria-label="About CLI access" className="space-y-3 text-sm">
+            <p>Access follows your role in the selected project. The key expires in 90 days and can be revoked in CLI tokens.</p>
+            {client.hostname || client.version ? (
+              <p className="break-words text-xs text-muted-foreground">
+                {client.hostname ?? "Unknown device"}{client.version ? ` · CLI ${client.version}` : ""}. Device details are self-reported and not verified.
+              </p>
+            ) : null}
+            {needsPlan ? (
+              <div role="note" className="space-y-2 border-t pt-3">
+                <p className="text-xs text-muted-foreground">{selected.organizationName} has no active plan. You can connect without a plan.</p>
+                {selected.plan?.canPurchase ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
+                      {billingState === "opening" ? "Opening…" : "Choose a plan"}
+                    </Button>
+                    {billingState === "opened" ? <p className="text-xs text-muted-foreground">Billing opened in a new tab for {selected.organizationName}.</p> : null}
+                    {billingState === "blocked" ? <a className="block text-xs underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a> : null}
+                    {billingState === "failed" ? <p role="alert" className="text-xs text-destructive">Could not open billing. Try again.</p> : null}
+                  </>
+                ) : <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan.</p>}
+              </div>
+            ) : null}
+          </PopoverContent>
+        </Popover>
       </div>
-      <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
-        Device details are self-reported and not verified.
-      </p>
-      <button
-        type="button"
-        onClick={() => void switchAccount()}
-        disabled={busy || billingState === "opening"}
-        className="-mt-2 w-fit text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground disabled:opacity-50"
-      >
-        {switchingAccount ? "Signing out…" : "Use a different account"}
-      </button>
-
-      <fieldset className="space-y-2.5" disabled={busy || billingState === "opening"}>
-        <legend className="text-sm font-medium">Project the CLI can access</legend>
-        <RadioGroup
-          value={projectId}
-          onValueChange={(next) => {
-            // A billing message belongs to the project it was shown for; never carry it to another organization.
-            setProjectId(next);
-            setBillingState("idle");
-          }}
-          className="grid gap-2"
-        >
-          {projects.map((project) => {
-            const selectedProject = projectId === project.id;
-            return (
-              <Label
-                key={project.id}
-                htmlFor={`project-${project.id}`}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
-                  selectedProject ? "border-primary/60 bg-primary/[0.04]" : "hover:bg-muted/40",
-                )}
-              >
-                <RadioGroupItem value={project.id} id={`project-${project.id}`} className="mt-0.5" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{project.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{project.organizationName}</span>
-                </span>
-              </Label>
-            );
-          })}
-        </RadioGroup>
-      </fieldset>
 
       <div className="space-y-2">
-        <Label htmlFor="confirm-code" className="text-sm font-medium">
-          Confirm the code
-        </Label>
+        <Label htmlFor="cli-project">Project</Label>
+        <Select value={projectId} disabled={busy || billingState === "opening"} onValueChange={(next) => { setProjectId(next); setBillingState("idle"); }}>
+          <SelectTrigger id="cli-project" className="h-10 min-w-0"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                <span className="truncate">{project.organizationName} / {project.name}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="confirm-code">Code from your terminal</Label>
         <Input
           id="confirm-code"
           value={formatConfirmation(typedCode)}
           onChange={(event) => setTypedCode(normalizeConfirmation(event.target.value))}
           autoComplete="off"
           autoCapitalize="characters"
-          inputMode="text"
           spellCheck={false}
-          maxLength={64}
+          maxLength={512}
           placeholder="XXXX-XXXX"
-          className="font-mono text-base tracking-[0.18em] uppercase"
+          className="h-11 font-mono text-base tracking-widest uppercase"
           aria-describedby="confirm-code-status"
-          aria-invalid={typedCode.length > 0 && !codeMatches}
+          aria-invalid={typedCode.length === CODE_LENGTH && !codeMatches}
           disabled={busy}
         />
-        <p
-          id="confirm-code-status"
-          aria-live="polite"
-          className={cn(
-            "text-xs",
-            codeMatches
-              ? "text-emerald-600 dark:text-emerald-400"
-              : typedCode.length > 0
-                ? "text-destructive"
-                : "text-muted-foreground",
-          )}
-        >
-          {confirmStatus}
+        <p id="confirm-code-status" aria-live="polite" className={cn("min-h-4 text-xs", codeMatches ? "text-muted-foreground" : "text-destructive")}>
+          {typedCode.length > 0 ? confirmStatus : " "}
         </p>
       </div>
 
-      {needsPlan ? (
-        <div role="note" className="space-y-2 rounded-lg border bg-muted/30 p-3">
-          <p className="text-sm font-medium">{selected.organizationName} has no active plan</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            You can connect the CLI now and run tests locally. Cloud deploys and runs need a plan; approving does not
-            depend on it.
-          </p>
-          {selected.plan?.canPurchase ? (
-            <div className="space-y-1.5">
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto px-0 text-xs"
-                onClick={openBilling}
-                disabled={busy || billingState === "opening"}
-              >
-                {billingState === "opening" ? "Opening…" : "Choose a plan"}
-              </Button>
-              {billingState === "opened" ? (
-                <p className="text-xs text-muted-foreground">
-                  Billing opened in a new tab for {selected.organizationName}. Finish there; this page stays ready.
-                  Afterwards run <code className="font-mono">supercheck plan</code> to confirm.
-                </p>
-              ) : null}
-              {billingState === "blocked" ? (
-                <p className="text-xs text-muted-foreground">
-                  Your browser blocked the new tab.{" "}
-                  <a className="underline underline-offset-2" href="/subscribe" target="_blank" rel="noopener noreferrer">
-                    Open billing
-                  </a>
-                  .
-                </p>
-              ) : null}
-              {billingState === "failed" ? (
-                <p role="alert" className="text-xs text-destructive">
-                  Could not open billing. Try again, or open it from the dashboard.
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Only an organization owner can choose a plan for {selected.organizationName}.
-            </p>
-          )}
-        </div>
-      ) : null}
-
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        This creates a 90-day CLI key for the selected project. It can do what your role allows in this project and can
-        be revoked under CLI tokens.
-      </p>
-
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-
-      <div className="flex gap-2">
-        <Button type="submit" className="flex-1" disabled={busy || !codeMatches}>
-          {busy ? "Working…" : "Approve"}
-        </Button>
-        <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={() => void decide("deny")}>
-          Deny
-        </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <Button type="button" variant="outline" disabled={busy} onClick={() => void decide("deny")}>Deny</Button>
+        <Button type="submit" disabled={!codeMatches || busy}>{phase === "submitting" ? "Connecting…" : "Approve"}</Button>
       </div>
     </form>
   );
