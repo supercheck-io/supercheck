@@ -14,7 +14,7 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...args: unknown[]) => mockDeleteReports(...args) }) }));
 jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: async () => true }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: async () => ({ userId: "user" }), isAuthError: () => false }));
-jest.mock("@/lib/queue", () => ({ getQueues: async () => ({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: mockJobProcessedOn, remove: () => mockRemoveQueuedJob() }) } }, k6Queues: {} }) }));
+jest.mock("@/lib/queue", () => ({ getCapacityQueues: async () => ({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: mockJobProcessedOn, getState: async () => "waiting", remove: () => mockRemoveQueuedJob() }) } }, k6Queues: {} }) }));
 jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cancellation requested by user", setCancellationSignal: jest.fn() }));
 jest.mock("@/lib/capacity-manager", () => ({ getCapacityManager: jest.fn() }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }) }));
