@@ -154,7 +154,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       throw new DelayedError();
     }
     if (!(await this.dbService.claimRunExecution(runId))) {
-      // Refused only because cancellation was requested; nothing is running, so end the run here
+      // Refused because cancellation was requested, or because the run already finished (a replay of a terminal run);
+        // either way nothing is running, so end the run here (finalizing is a no-op if it is already terminal).
       // instead of leaving it queued until a recovery sweep (which is off by default).
       await this.dbService.finalizeCancelledRun(runId);
       return { success: false, error: RUN_CANCELLATION_MARKER };

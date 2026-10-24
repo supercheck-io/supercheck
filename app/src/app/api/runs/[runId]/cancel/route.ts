@@ -44,9 +44,22 @@ const logger = createLogger({ module: "cancel-run-api" }) as {
  * @param params - Route params containing run ID
  * @returns JSON response with cancellation result
  */
-/** BullMQ sets processedOn once a worker has picked a job up, even if it then moved the job back to the queue. */
-function isHandedBack(job: { processedOn?: number | null }): boolean {
-  return Boolean(job.processedOn);
+/**
+ * What a BullMQ job found for the run means for cancellation:
+ * - `finished`: it already completed or failed (BullMQ keeps such records for a while). Nothing will run it
+ *   again, so it must be treated like no job at all, or the run would wait forever for a worker that is gone.
+ * - `handed-back`: a worker picked it up (BullMQ sets processedOn then, and keeps it when the job goes back to
+ *   the queue) and it may have a live execution; leave it, the worker finishes the run.
+ * - `unstarted`: no worker ever picked it up; it can be removed.
+ */
+type QueuedJobDisposition = "finished" | "handed-back" | "unstarted";
+async function classifyQueuedJob(job: {
+  processedOn?: number | null;
+  getState: () => Promise<string>;
+}): Promise<QueuedJobDisposition> {
+  const state = await job.getState();
+  if (state === "completed" || state === "failed") return "finished";
+  return job.processedOn ? "handed-back" : "unstarted";
 }
 
 export async function POST(
@@ -232,8 +245,9 @@ export async function POST(
     }
 
     // STEP 2: Try to remove from queue (works for waiting/delayed jobs)
-    // Get the BullMQ queues
-    const queues = await getQueues();
+    // If a lookup fails below, the signal and marker are already committed, so the run is being cancelled.
+    // We just cannot tell whether a live job still exists, and must not finalize the run on a guess.
+    let queueLookupFailed = false;
 
     // Determine which queue the job is in based on the run metadata
     let queueToSearch = null;
@@ -250,6 +264,7 @@ export async function POST(
     // (capacity or active-execution deferral) may still have a live execution behind it.
     let removedJobNeverStarted = false;
     try {
+      const queues = await getQueues();
       // Job IDs are the run IDs. Direct lookup is O(1) and avoids scanning all
       // active/waiting/delayed jobs for every cancellation request.
       const playwrightQueue = queues.playwrightQueues["global"];
@@ -260,7 +275,10 @@ export async function POST(
             // A job a worker already picked up and handed back (capacity or active-execution deferral)
             // may have an execution behind it. Leave it in the queue: the worker re-checks, is refused
             // by the cancellation marker and finishes the run itself.
-            if (isHandedBack(await playwrightQueue.getJob(runId) ?? playwrightJob)) {
+            const disposition = await classifyQueuedJob(await playwrightQueue.getJob(runId) ?? playwrightJob);
+            if (disposition === "finished") {
+              logger.info({ runId, jobId: playwrightJob.id }, "Job already finished in the queue; nothing will run it again");
+            } else if (disposition === "handed-back") {
               queueToSearch = "playwright-global";
               jobType = "playwright";
               logger.info({ runId, jobId: playwrightJob.id }, "Job was handed back by a worker; leaving it for the worker to finish");
@@ -302,7 +320,10 @@ export async function POST(
           const k6Job = await k6Queue.getJob(runId);
           if (k6Job) {
               try {
-                if (isHandedBack(await k6Queue.getJob(runId) ?? k6Job)) {
+                const disposition = await classifyQueuedJob(await k6Queue.getJob(runId) ?? k6Job);
+                if (disposition === "finished") {
+                  logger.info({ runId, jobId: k6Job.id }, "Job already finished in the queue; nothing will run it again");
+                } else if (disposition === "handed-back") {
                   queueToSearch = `k6-${region}`;
                   jobType = "k6";
                   logger.info({ runId, jobId: k6Job.id }, "Job was handed back by a worker; leaving it for the worker to finish");
@@ -359,6 +380,7 @@ export async function POST(
             // So we don't need to release a running slot here
           }
         } catch (queuedSetError) {
+          queueLookupFailed = true;
           logger.error(
             { error: queuedSetError, runId },
             "Failed to check Redis capacity queue"
@@ -396,6 +418,7 @@ export async function POST(
         }
       }
     } catch (queueError) {
+      queueLookupFailed = true;
       logger.error(
         { error: queueError, runId },
         "Error removing job from queue"
@@ -420,11 +443,13 @@ export async function POST(
 
       // The app marks a run running as soon as it hands it to BullMQ, so a waiting job's run is
       // usually "running" in the DB. Nothing else will ever finalize it once the job is gone.
-      // A retry after an earlier attempt removed the job but failed before finishing finds the marker
-      // already written and no job anywhere: nothing else will ever finalize the run.
-      const earlierAttemptRemovedJob =
-        run.runErrorDetails === RUN_CANCELLATION_MARKER && !queueToSearch && !removedFromCapacityQueue;
-      if (removedFromCapacityQueue || (jobWasRemoved && removedJobNeverStarted) || earlierAttemptRemovedJob) {
+      // That is also the case when there is no live job anywhere: it was removed by an earlier attempt that
+      // failed before finishing, it already finished or failed in the queue, or it never reached a queue. No
+      // worker will pick the run up, so finalize it now rather than leave it "running" until the stalled-run
+      // sweep. Only when every lookup succeeded: after a failed lookup a live job may still exist, and the
+      // marker stays so a retry (or the worker) decides.
+      const noLiveJob = !queueToSearch && !removedFromCapacityQueue && !queueLookupFailed;
+      if (removedFromCapacityQueue || (jobWasRemoved && removedJobNeverStarted) || noLiveJob) {
         const finalized = await tx.update(runs).set({ status: "error", completedAt: now }).where(and(
           eq(runs.id, runId),
           inArray(runs.status, ["queued", "running"]),

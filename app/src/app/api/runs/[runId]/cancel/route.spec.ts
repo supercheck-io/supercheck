@@ -99,7 +99,7 @@ describe("cancellation drain", () => {
     return POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
   }
   it("keeps an active worker nonterminal until its final report writes drain", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
     const response = await cancel();
     expect(response.status).toBe(200);
     expect(setCancellationSignal).toHaveBeenCalledWith("run");
@@ -107,7 +107,7 @@ describe("cancellation drain", () => {
     expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
   });
   it("finalizes a run the app already marked running when its waiting job was never picked up", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
     expect(await response.json()).toMatchObject({ message: "Run cancelled successfully", queueRemoved: true });
@@ -130,7 +130,7 @@ describe("cancellation drain", () => {
   });
   it("persists the marker before touching the queue, and refuses (without removing anything) if it cannot", async () => {
     const remove = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove }) } }, k6Queues: {} });
     markerWhere.mockRejectedValueOnce(new Error("db down"));
     const response = await cancel();
     expect(response.status).toBe(503);
@@ -140,7 +140,7 @@ describe("cancellation drain", () => {
   it("leaves a job a worker already handed back in the queue for the worker to finish", async () => {
     const remove = jest.fn();
     const releaseRunningSlot = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", processedOn: Date.now(), remove }) } }, k6Queues: {} });
     (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot });
     const response = await cancel();
     expect(remove).not.toHaveBeenCalled();
@@ -155,10 +155,66 @@ describe("cancellation drain", () => {
     expect(set).not.toHaveBeenCalled();
     expect(getQueues).not.toHaveBeenCalled();
   });
-  it("keeps unknown queue ownership nonterminal", async () => {
+  it("finalizes the first cancel of a run that no queue holds, since nothing will ever finish it", async () => {
+    // The run is "running" in the database but its job is in neither BullMQ nor the capacity queue (it was
+    // removed, finished, or never reached a queue). The stalled-run sweep would take about 80 minutes.
     (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => null } }, k6Queues: {} });
-    expect((await cancel()).status).toBe(200);
-    expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+    const response = await cancel();
+    expect(response.status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
+    expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
+  });
+  it.each(["completed", "failed"])("treats a job that already %s in the queue as no job, and finalizes the run", async state => {
+    const remove = jest.fn();
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => state, remove }) } }, k6Queues: {} });
+    const response = await cancel();
+    // BullMQ keeps finished jobs, with processedOn set. That must not read as "a worker is still on it".
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
+    expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
+    expect(remove).not.toHaveBeenCalled();
+  });
+  it("treats a finished k6 job the same way", async () => {
+    (getQueues as jest.Mock).mockResolvedValue({
+      playwrightQueues: { global: { getJob: async () => null } },
+      k6Queues: { eu: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => "failed", remove: jest.fn() }) } },
+    });
+    const response = await cancel();
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+    expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
+  });
+  it("leaves an active job to its worker", async () => {
+    const remove = jest.fn();
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => "active", remove }) } }, k6Queues: {} });
+    const response = await cancel();
+    expect(remove).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+    expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+  });
+  describe("when the queue cannot be inspected", () => {
+    // The signal and marker are committed, so the run is being cancelled; but a live job may still exist,
+    // so the run must not be finalized on a guess, and the caller must not be told the cancel failed.
+    it("does not fail the request or finalize when the queues cannot be reached", async () => {
+      (getQueues as jest.Mock).mockRejectedValue(new Error("redis down"));
+      const response = await cancel();
+      expect(response.status).toBe(200);
+      expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
+      expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+      expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+    });
+    it("does not finalize when the lookup of a job fails", async () => {
+      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => { throw new Error("timeout"); } } }, k6Queues: {} });
+      const response = await cancel();
+      expect(response.status).toBe(200);
+      expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+    });
+    it("does not finalize when the capacity queue cannot be checked", async () => {
+      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => null } }, k6Queues: {} });
+      (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockRejectedValue(new Error("redis down")), releaseRunningSlot: jest.fn() });
+      const response = await cancel();
+      expect(response.status).toBe(200);
+      expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+      expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
+    });
   });
   it("finalizes on retry when an earlier attempt removed the job and wrote the marker but did not finish", async () => {
     Object.assign(run, { runErrorDetails: "Cancellation requested by user" });
@@ -169,7 +225,7 @@ describe("cancellation drain", () => {
     expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
   });
   it("keeps a running callback protected when its unlocked queue entry was removed", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", processedOn: Date.now(), remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
@@ -178,13 +234,13 @@ describe("cancellation drain", () => {
   it("does not report completion when an execution claim wins the queued-state comparison", async () => {
     run.runStatus = "queued";
     returning.mockResolvedValue([]);
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
   });
   it("completes cancellation when the queued job was removed", async () => {
     run.runStatus = "queued";
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(response.status).toBe(200);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
