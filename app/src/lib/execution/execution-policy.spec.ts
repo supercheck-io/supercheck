@@ -2,6 +2,7 @@
 import {
   literalHostnames,
   clearExecutionPolicyCache,
+  POLICY_TTL_MS,
   getExecutionPolicy,
   assertExecutionWorkload,
   type ExecutionPolicy,
@@ -299,6 +300,27 @@ describe("trial workload admission", () => {
     jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValueOnce(undefined as never);
     await expect(getExecutionPolicy("org")).rejects.toMatchObject({ status: 402 });
     await expect(getExecutionPolicy("org")).resolves.toMatchObject({ tier: "trial" });
+  });
+  it("keeps a resolution across consecutive 5-second queue passes, so promotion does not re-resolve every tick", async () => {
+    jest.mocked(isPolarEnabled).mockReturnValue(false);
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue(trial as never);
+    const now = jest.spyOn(Date, "now");
+    const start = Date.now();
+    try {
+      await getExecutionPolicy("org");
+      for (const pass of [5_000, 10_000, 15_000, 25_000]) {
+        now.mockReturnValue(start + pass);
+        await getExecutionPolicy("org");
+      }
+      expect(db.query.executionEntitlements.findFirst).toHaveBeenCalledTimes(1);
+
+      // ...but a change is picked up once the window has passed.
+      now.mockReturnValue(start + POLICY_TTL_MS + 1);
+      await getExecutionPolicy("org");
+      expect(db.query.executionEntitlements.findFirst).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
   });
   describe("trial browser and API tests", () => {
     it("lists the hosts a script writes as absolute URLs, decoding stored scripts", () => {

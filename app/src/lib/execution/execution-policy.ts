@@ -19,8 +19,11 @@ export type ExecutionPolicy = ExecutionCapacity & (
 );
 
 // One request resolves the policy several times (route, enqueue, slot reservation, promotion), and each
-// resolution can call the billing provider. Share a result for a few seconds; failures are never cached.
-const POLICY_TTL_MS = 5_000;
+// resolution runs several queries and can call the billing provider. The queue processor promotes every
+// 5 seconds for every organization with waiting runs, so the TTL has to outlast that interval or the cache
+// is always cold on the very path it exists for. Entitlements are still checked fresh when a run reserves
+// time in the worker, so a change takes effect for admission within this window. Failures are never cached.
+export const POLICY_TTL_MS = 30_000;
 const policyCache = new Map<string, { policy: ExecutionPolicy; expires: number }>();
 
 export function clearExecutionPolicyCache(): void {
