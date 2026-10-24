@@ -11,14 +11,16 @@ const apiGet = jest.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ 
 jest.unstable_mockModule('../../api/client.js', () => ({ getApiClient: () => ({ request: apiGet }) }))
 const info = jest.fn()
 const warn = jest.fn()
-jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info, output: jest.fn(), success: jest.fn(), error: jest.fn(), warn, newline: jest.fn(), header: jest.fn() } }))
-jest.unstable_mockModule('../../output/formatter.js', () => ({ getOutputFormat: () => 'table', output: jest.fn() }))
+const output = jest.fn()
+jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info, output, success: jest.fn(), error: jest.fn(), warn, newline: jest.fn(), header: jest.fn() } }))
+let outputFormat = 'table'
+jest.unstable_mockModule('../../output/formatter.js', () => ({ getOutputFormat: () => outputFormat, output: jest.fn() }))
 const { doctorCommand } = await import('../doctor.js')
 const { detectConfigRequirements } = await import('../../utils/config-text.js')
 
 let dir: string
 let cwd: string
-beforeEach(() => { storedUrl = 'https://demo.supercheck.io'; apiGet.mockClear(); dir = mkdtempSync(join(tmpdir(), 'sc-doctor-')); cwd = process.cwd(); process.chdir(dir); checkAll.mockClear(); info.mockClear(); warn.mockClear() })
+beforeEach(() => { outputFormat = 'table'; output.mockClear(); storedUrl = 'https://demo.supercheck.io'; apiGet.mockClear(); dir = mkdtempSync(join(tmpdir(), 'sc-doctor-')); cwd = process.cwd(); process.chdir(dir); checkAll.mockClear(); info.mockClear(); warn.mockClear() })
 afterEach(() => { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }) })
 const config = (tests: string) => writeFileSync(join(dir, 'supercheck.config.ts'), `export default { project: { organization: 'o', project: 'p' }, ${tests} }\n`)
 const lastArgs = () => checkAll.mock.calls.at(-1)![1] as { requirePlaywright: boolean; requireK6: boolean; browser: string }
@@ -132,6 +134,38 @@ describe('doctor with a config that declares its own API URL', () => {
     selfHosted()
     apiGet.mockResolvedValueOnce({ data: {} })
     await expect(doctorCommand.parseAsync(['node', 'doctor', '--strict'])).rejects.toMatchObject({ exitCode: 3 })
+  })
+  it('reports ready: false in JSON when the config targets another API, even though the token verifies', async () => {
+    outputFormat = 'json'
+    selfHosted()
+    apiGet.mockResolvedValueOnce({ data: {} })
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    const report = JSON.parse(String(output.mock.calls.at(-1)![0]))
+    expect(report).toMatchObject({ authenticated: true, configFound: true, ready: false })
+
+    // The same token with a matching config is ready.
+    output.mockClear()
+    config('monitors: []')
+    apiGet.mockResolvedValueOnce({ data: {} })
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(JSON.parse(String(output.mock.calls.at(-1)![0]))).toMatchObject({ ready: true })
+  })
+  it('does not announce success or "not authenticated" when the config targets another API', async () => {
+    const { logger } = await import('../../utils/logger.js')
+    const success = jest.mocked(logger.success)
+    success.mockClear()
+    selfHosted()
+    apiGet.mockResolvedValueOnce({ data: {} })
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(success).not.toHaveBeenCalledWith(expect.stringContaining('Everything looks good'))
+    expect(warn.mock.calls.flat().join(' ')).toMatch(/Issues found: .*targets a different API/)
+    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/not authenticated/)
+
+    warn.mockClear()
+    storedUrl = null
+    await doctorCommand.parseAsync(['node', 'doctor'])
+    expect(warn.mock.calls.flat().join(' ')).toMatch(/Issues found: .*targets a different API/)
+    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/not authenticated/)
   })
   it('verifies against the active API and flags the mismatch when one is set', async () => {
     selfHosted()

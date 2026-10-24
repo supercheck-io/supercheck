@@ -147,15 +147,20 @@ export const doctorCommand = new Command('doctor')
     }
 
     // 5. Summary
-    if (missingRequired.length === 0 && hasAuth && configResult) {
+    if (missingRequired.length === 0 && hasAuth && configResult && !configMismatch) {
       logger.success('Everything looks good! You\'re ready to use Supercheck.')
     } else {
       const issues: string[] = []
       if (missingRequired.length > 0) {
         issues.push(`${missingRequired.length} missing required dependency(s)`)
       }
-      if (!hasAuth) {
+      // With a config/API mismatch the credentials were deliberately not sent anywhere (or were checked against the
+      // other API), so "not authenticated" would be wrong; name the real problem once.
+      if (!hasAuth && !(configMismatch && credentialProblem === null)) {
         issues.push(credentialProblem === 'rejected' ? 'credentials rejected' : credentialProblem === 'unreachable' ? 'credentials unverified' : 'not authenticated')
+      }
+      if (configMismatch) {
+        issues.push('supercheck.config.ts targets a different API than the one in use')
       }
       if (!configResult) {
         issues.push('no config file')
