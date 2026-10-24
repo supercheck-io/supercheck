@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { JWTPayload } from "jose";
-import { oauthConsent, user } from "@/db/schema";
+import { oauthClient, oauthConsent, user } from "@/db/schema";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { db } from "@/utils/db";
 import {
@@ -46,7 +46,12 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
     .from(user)
     .where(eq(user.id, userId))
     .limit(1);
+  // A ban that has expired no longer blocks the account; the row is read fresh, never taken from the token.
   if (!isCredentialOwnerActive(account)) throw new McpAccessDeniedError("user_unavailable");
+
+  const [client] = await db.select({ disabled: oauthClient.disabled }).from(oauthClient)
+    .where(eq(oauthClient.clientId, clientId)).limit(1);
+  if (!client || client.disabled) throw new McpAccessDeniedError("client_unavailable");
 
   const [consent] = await db
     .select({ scopes: oauthConsent.scopes })
@@ -80,7 +85,7 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
 /** Per-tool check against the live role, on top of the project-level gate above. */
 export function assertCanView(
   context: McpCallContext,
-  resource: "test" | "job" | "monitor" | "sre_incident" | "project",
+  resource: "test" | "job" | "run" | "monitor" | "sre_incident" | "project",
 ): void {
   const allowed = checkPermissionWithContext(resource, "view", {
     userId: context.userId,

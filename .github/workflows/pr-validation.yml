@@ -75,6 +75,9 @@ jobs:
             exit 1
           fi
 
+          # The journal must agree with the files even when a change only touches meta/ (no new .sql file).
+          node app/scripts/check-migration-safety.js --journal app/src/db/migrations
+
           if [ "${#migrations[@]}" -eq 0 ]; then
             echo "No new migrations."
             exit 0
