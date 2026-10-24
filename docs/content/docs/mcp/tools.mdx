@@ -16,8 +16,8 @@ Returned text (test titles, error excerpts, incident summaries) comes from your 
 | `list_tests` | tests | `limit`, `cursor` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
-| `list_runs` | jobs | `limit`, `cursor` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
-| `get_run` | jobs | `id` | One run plus a redacted, truncated `error` excerpt |
+| `list_runs` | runs | `limit`, `cursor` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
+| `get_run` | runs | `id` | One run plus a redacted, truncated `error` excerpt |
 | `list_monitors` | monitors | `limit`, `cursor` | `name`, `type`, `target` (scheme and host only), `status`, `lastCheckAt` |
 | `list_incidents` | incidents | `limit`, `cursor` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt` |
 | `get_incident` | incidents | `id` | One incident with its root-cause summary |
@@ -35,7 +35,7 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `not_found` | No such item in the connected project |
 | `internal_error` | The request failed; try again |
 
-Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead: `401` (sign in again), `403` (`access_denied` when access was removed, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted), `413` (request over 1 MB), `500` (`server_error`).
+Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `batch_too_large` over 20 calls), `401` (sign in again), `403` (`access_denied` when access was removed, `invalid_request_origin`, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 
