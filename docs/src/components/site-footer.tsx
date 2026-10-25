@@ -53,7 +53,7 @@ const sections = [
             { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
             { name: "CLI docs", href: "/docs/cli" },
             { name: "API reference", href: "/docs/api" },
-            { name: "YouTube", href: "https://www.youtube.com/@supercheck-io" },
+            { name: "YouTube", href: "https://www.youtube.com/@supercheckhq" },
             { name: "GitHub", href: "https://github.com/supercheck-io/supercheck" },
         ],
     },
@@ -69,7 +69,7 @@ const sections = [
 const socialLinks = [
     {
         icon: <YoutubeIcon className="size-5" />,
-        href: "https://www.youtube.com/@supercheck-io",
+        href: "https://www.youtube.com/@supercheckhq",
         label: "YouTube"
     },
     {

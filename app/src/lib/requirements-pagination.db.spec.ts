@@ -52,6 +52,8 @@ beforeAll(async () => {
     CREATE TABLE requirement_documents (id text PRIMARY KEY, name text, project_id text, organization_id text);
     CREATE TABLE tags (id text PRIMARY KEY, project_id text, name text, color text);
     CREATE TABLE requirement_tags (requirement_id text, tag_id text);
+    CREATE TABLE tests (id text PRIMARY KEY, project_id text, organization_id text);
+    CREATE TABLE test_requirements (requirement_id text, test_id text);
     INSERT INTO requirements (id, project_id, title, created_at) VALUES
       ('covered', 'project-1', 'Covered', '2026-01-05'),
       ('no-snapshot', 'project-1', 'No snapshot', '2026-01-04'),
@@ -130,6 +132,21 @@ describe.each(["action", "API"])(
       if (entry === "action") {
         expect((await getRequirement("covered"))?.sourceDocumentName).toBe(expectedName);
       }
+    });
+
+    it("lists linked test ids from this project only", async () => {
+      await client.unsafe(`
+        INSERT INTO tests (id, project_id, organization_id) VALUES
+          ('local-test', 'project-1', 'org-1'),
+          ('foreign-test', 'project-2', 'org-1')
+        ON CONFLICT (id) DO NOTHING;
+        DELETE FROM test_requirements WHERE requirement_id = 'failing';
+        INSERT INTO test_requirements (requirement_id, test_id) VALUES
+          ('failing', 'local-test'), ('failing', 'foreign-test');
+      `);
+      const result = await list(1, "failing");
+      if (entry === "API") expect(result.requirements[0].testIds).toEqual(["local-test"]);
+      else expect(result.requirements[0].id).toBe("failing");
     });
 
     it("preserves unfiltered pagination", async () => {

@@ -9,6 +9,8 @@ describe("trial copy", () => {
     const first = faqs[0].answer;
     const { limits, durationDays } = catalog.trial;
     expect(first).toContain(`${durationDays}-day free trial`);
+    expect(first).toContain("Eligible new Cloud accounts get one");
+    expect(first).not.toContain("Every new Cloud organization");
     expect(first).toContain(`${limits.playwrightMinutes} browser minutes`);
     expect(first).toContain(`${limits.k6VuMinutes} virtual-user minutes`);
     expect(first).toContain(`${limits.k6MaxDurationSeconds / 60} minutes per run`);

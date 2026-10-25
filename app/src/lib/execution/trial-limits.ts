@@ -101,7 +101,7 @@ export const TRIAL_RETENTION = {
 /**
  * The plan-shaped view of a trial, so every existing limit check (monitors,
  * status pages, team members, projects, SRE, AI credits) enforces trial limits
- * without a second code path. The trial is never billed: no Polar customer,
+ * without a second code path. The trial is never billed: no Polar billing,
  * overage or spending limit applies to it.
  */
 export function trialPlanLimits(entitlement: Entitlement): PlanLimits {

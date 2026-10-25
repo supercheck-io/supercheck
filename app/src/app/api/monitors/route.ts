@@ -4,7 +4,9 @@ import { db } from "@/utils/db";
 import {
   monitors,
   monitorNotificationSettings,
+  monitorTags,
   notificationProviders,
+  tags,
 } from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -45,6 +47,24 @@ const logger = createLogger({ module: "monitors-api" }) as {
 };
 
 const trialFrequencyError = trialIntervalErrorResponse;
+
+type MonitorTagSummary = { id: string; name: string; color: string | null };
+
+/** Tags of the listed monitors, so the CLI can round-trip monitor tags as code. */
+async function loadMonitorTags(monitorIds: string[]): Promise<Map<string, MonitorTagSummary[]>> {
+  const byMonitor = new Map<string, MonitorTagSummary[]>();
+  if (monitorIds.length === 0) return byMonitor;
+  const rows = await db
+    .select({ monitorId: monitorTags.monitorId, id: tags.id, name: tags.name, color: tags.color })
+    .from(monitorTags)
+    .innerJoin(tags, eq(monitorTags.tagId, tags.id))
+    .where(inArray(monitorTags.monitorId, monitorIds))
+    .orderBy(tags.name);
+  for (const { monitorId, ...tag } of rows) {
+    byMonitor.set(monitorId, [...(byMonitor.get(monitorId) ?? []), tag]);
+  }
+  return byMonitor;
+}
 
 export async function GET(request: Request) {
   try {
@@ -111,12 +131,14 @@ export async function GET(request: Request) {
       const total = Number(countResult[0]?.count || 0);
 
       const totalPages = Math.ceil(total / limit);
+      const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
 
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
           ...monitor,
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
+          tags: tagsByMonitor.get(monitor.id) ?? [],
         })),
         pagination: {
           page,
@@ -137,6 +159,7 @@ export async function GET(request: Request) {
         .where(whereCondition)
         .orderBy(desc(monitors.id))
         .limit(DEFAULT_LIMIT);
+      const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
 
       // Return standardized response format for React Query hooks
       return NextResponse.json({
@@ -144,6 +167,7 @@ export async function GET(request: Request) {
           ...monitor,
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
+          tags: tagsByMonitor.get(monitor.id) ?? [],
         })),
         pagination: {
           total: monitorsList.length,

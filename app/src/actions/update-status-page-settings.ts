@@ -2,123 +2,22 @@
 
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
-import { checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
 import { revalidatePath } from "next/cache";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
-  getStatusPageCustomDomainConfigError,
-  getEffectiveStatusPageCnameTarget,
-  getEffectiveStatusPageDomain,
-  isReservedStatusPageHostname,
-} from "@/lib/status-page-domain";
-import {
-  normalizeStatusPageSupportContact,
-  statusPageSupportContactSchema,
-} from "@/lib/status-page-support";
+  statusPageSettingsFieldsSchema,
+  updateStatusPageSettings as updateStatusPageSettingsService,
+} from "@/lib/status-pages/service";
 
-// Validation schema with strict input sanitization
-const updateSettingsSchema = z.object({
+const updateSettingsSchema = statusPageSettingsFieldsSchema.extend({
   statusPageId: z.string().uuid("Invalid status page ID"),
-  // General settings - sanitize text inputs
-  name: z
-    .string()
-    .min(1, "Name is required")
-    .max(255, "Name too long")
-    .trim()
-    .optional(),
-  headline: z.string().max(255, "Headline too long").trim().optional(),
-  pageDescription: z
-    .string()
-    .max(2000, "Description too long")
-    .trim()
-    .optional(),
-  supportUrl: statusPageSupportContactSchema.optional(),
-  timezone: z.string().max(50).optional(),
-
-  // Language for public status page (ISO 639-1 code)
-  language: z
-    .string()
-    .min(2)
-    .max(10)
-    .regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, "Invalid language code")
-    .optional(),
-
-  // Custom domain with strict validation
-  customDomain: z
-    .string()
-    .max(255)
-    .regex(
-      /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
-      "Invalid domain format"
-    )
-    .transform((val) => val?.toLowerCase().trim())
-    .optional()
-    .or(z.literal("")),
-
-  // Subscriber settings
-  allowPageSubscribers: z.boolean().optional(),
-  allowEmailSubscribers: z.boolean().optional(),
-  allowWebhookSubscribers: z.boolean().optional(),
-  allowSlackSubscribers: z.boolean().optional(),
-  allowIncidentSubscribers: z.boolean().optional(),
-  allowRssFeed: z.boolean().optional(),
-
-  // Branding colors (hex codes) - strict validation
-  cssBodyBackgroundColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssFontColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssLightFontColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssGreens: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssYellows: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssOranges: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssBlues: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssReds: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssBorderColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssGraphColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssLinkColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
-  cssNoData: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")
-    .optional(),
 });
 
-type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+type UpdateSettingsInput = z.input<typeof updateSettingsSchema>;
 
 export async function updateStatusPageSettings(data: UpdateSettingsInput) {
   try {
@@ -128,132 +27,29 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
       { organizationId, projectId: project.id }
     );
 
-    // Validate input
-    const validatedData = updateSettingsSchema.parse(data);
-    const { statusPageId, ...settings } = validatedData;
-
-    // SECURITY: Verify status page belongs to this organization AND project
-    // This prevents unauthorized access to other organizations' status pages
-    const statusPage = await db.query.statusPages.findFirst({
-      where: and(
-        eq(statusPages.id, statusPageId),
-        eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
-      ),
-    });
-
-    if (!statusPage) {
-      console.warn(
-        `[SECURITY] User ${userId} attempted to update status page ${statusPageId} without ownership`
-      );
+    // Validate the page id here so an invalid id is reported before any lookups
+    const idResult = updateSettingsSchema.shape.statusPageId.safeParse(data?.statusPageId);
+    if (!idResult.success) {
       return {
         success: false,
-        message: "Status page not found or access denied",
+        message: idResult.error.issues[0]?.message || "Invalid input data",
       };
     }
+    const { statusPageId, ...settings } = data;
 
-    // If custom domain is being changed, reset verification status
-    const updatePayload: Record<string, unknown> = {
-      ...settings,
-      updatedAt: new Date(),
-    };
+    const result = await updateStatusPageSettingsService(
+      { userId, organizationId, projectId: project.id, projectName: project.name },
+      idResult.data,
+      settings
+    );
 
-    if (
-      settings.customDomain !== undefined &&
-      settings.customDomain !== statusPage.customDomain
-    ) {
-      updatePayload.customDomainVerified = false;
-      updatePayload.customDomainFailureCount = 0;
-
-      if (settings.customDomain) {
-        // Custom domains are a paid feature; a trial cannot attach one.
-        const availability = await checkFeatureAvailability(organizationId, "customDomains");
-        if (!availability.available) {
-          return { success: false, message: availability.error ?? "Custom domains are not available on your plan." };
-        }
-        const customDomainConfigError =
-          getStatusPageCustomDomainConfigError();
-        if (customDomainConfigError) {
-          return {
-            success: false,
-            message: customDomainConfigError,
-          };
-        }
-
-        const baseDomain = getEffectiveStatusPageDomain();
-        const customDomainCnameTarget = getEffectiveStatusPageCnameTarget();
-        if (isReservedStatusPageHostname(settings.customDomain, baseDomain)) {
-          return {
-            success: false,
-            message: `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${customDomainCnameTarget}.`,
-          };
-        }
-
-        const existingDomain = await db.query.statusPages.findFirst({
-          where: and(
-            eq(statusPages.customDomain, settings.customDomain),
-            ne(statusPages.id, statusPageId)
-          ),
-          columns: { id: true },
-        });
-
-        if (existingDomain) {
-          return {
-            success: false,
-            message: "This custom domain is already in use by another status page",
-          };
-        }
-      }
+    if (!result.ok) {
+      return { success: false, message: result.message };
     }
-
-    // Normalize empty domain to null for proper DB storage (unique constraint compatibility)
-    if (updatePayload.customDomain === "") {
-      updatePayload.customDomain = null;
-    }
-
-    if (updatePayload.headline === "") {
-      updatePayload.headline = null;
-    }
-
-    if (updatePayload.pageDescription === "") {
-      updatePayload.pageDescription = null;
-    }
-
-    if (settings.supportUrl !== undefined) {
-      updatePayload.supportUrl = normalizeStatusPageSupportContact(
-        settings.supportUrl
-      );
-    }
-
-    // Update status page
-    await db
-      .update(statusPages)
-      .set(updatePayload)
-      .where(
-        and(
-          eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId),
-          eq(statusPages.projectId, project.id)
-        )
-      );
-
-    // Log audit event for security tracking
-    await logAuditEvent({
-      userId,
-      action: "status_page_settings_updated",
-      resource: "status_page",
-      resourceId: statusPageId,
-      metadata: {
-        organizationId,
-        projectId: project.id,
-        changedFields: Object.keys(settings),
-      },
-      success: true,
-    });
 
     // Revalidate paths
-    revalidatePath(`/status-pages/${statusPageId}`);
-    revalidatePath(`/status-pages/${statusPageId}/public`);
+    revalidatePath(`/status-pages/${idResult.data}`);
+    revalidatePath(`/status-pages/${idResult.data}/public`);
 
     return {
       success: true,
@@ -261,26 +57,6 @@ export async function updateStatusPageSettings(data: UpdateSettingsInput) {
     };
   } catch (error) {
     console.error("Error updating status page settings:", error);
-
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "23505"
-    ) {
-      return {
-        success: false,
-        message: "This custom domain is already in use by another status page",
-      };
-    }
-
-    if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        message: error.issues[0]?.message || "Invalid input data",
-      };
-    }
-
     return {
       success: false,
       message: "Failed to update settings. Please try again.",
