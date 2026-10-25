@@ -47,6 +47,7 @@ const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued
 const INCIDENT_STATUSES = ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
 const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
 const MAX_CHILDREN = 100;
+const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 
 type Result = { structuredContent: Record<string, unknown>; content: { type: "text"; text: string }[] };
 type ErrorResult = Result & { isError: true };
@@ -310,7 +311,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     // Allow-list of scalar settings; everything else in the config (headers, auth, body, keywords) is omitted.
     const c = m.config;
     const settings = {
-      method: typeof c?.method === "string" ? c.method : null,
+      method: typeof c?.method === "string" && HTTP_METHODS.has(c.method.toUpperCase()) ? c.method.toUpperCase() : null,
       expectedStatusCodes: safeText(typeof c?.expectedStatusCodes === "string" ? c.expectedStatusCodes : null, 100),
       port: typeof c?.port === "number" ? c.port : null,
       protocol: c?.protocol === "tcp" || c?.protocol === "udp" ? c.protocol : null,
