@@ -57,7 +57,7 @@ npm install -g @supercheck/cli
 supercheck init
 ```
 
-Create a token under **Organization Admin > CLI Tokens**, then authenticate:
+Create a token under **Organization → CLI Tokens**, then authenticate:
 
 ```bash
 supercheck login --token sck_live_...

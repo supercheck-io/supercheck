@@ -12,6 +12,7 @@ export interface SupercheckPlanCost {
   includedPlaywrightMinutes: number;
   overagePerMinute: number;
   maxMonitors: number;
+  runningCapacity: number;
 }
 
 export const SUPERCHECK_PLANS: readonly SupercheckPlanCost[] = (["plus", "pro"] as const).map(id => ({
@@ -21,6 +22,7 @@ export const SUPERCHECK_PLANS: readonly SupercheckPlanCost[] = (["plus", "pro"] 
   includedPlaywrightMinutes: catalog[id].limits.playwrightMinutesIncluded,
   overagePerMinute: catalog[id].overageCents.playwrightMinutes / 100,
   maxMonitors: catalog[id].limits.maxMonitors,
+  runningCapacity: catalog[id].limits.runningCapacity,
 }));
 
 // Supercheck's shortest interval for browser (synthetic) checks.

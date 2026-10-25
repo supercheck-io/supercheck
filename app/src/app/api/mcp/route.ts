@@ -1,4 +1,3 @@
-import { getAllowedCorsOriginPatterns, isCorsOriginAllowed } from "@/lib/cors";
 import { requireMcpAuth } from "@better-auth/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -6,7 +5,7 @@ import { InitializeRequestSchema, JSONRPCRequestSchema } from "@modelcontextprot
 import type { JWTPayload } from "jose";
 import { auth } from "@/utils/auth";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
+import { getMcpAllowedOrigins, getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
 import { registerMcpTools } from "@/lib/mcp/tools";
 import {
@@ -15,6 +14,7 @@ import {
   countMcpMessages,
   isMcpRefusal,
   readMcpBody,
+  type McpCallRefusal,
 } from "@/lib/mcp/call-limits";
 
 export const runtime = "nodejs";
@@ -34,38 +34,43 @@ function rpcError(status: number, code: string, message: string, extra: HeadersI
   return json({ jsonrpc: "2.0", id: null, error: { code: rpcCode, message, data: { code } } }, status, extra);
 }
 
+function refusalResponse(refusal: McpCallRefusal): Response {
+  const retry: Record<string, string> = refusal.retryAfter ? { "Retry-After": String(refusal.retryAfter) } : {};
+  const message =
+    refusal.status === 429 ? "Too many requests" : refusal.status === 503 ? "Rate limiting is temporarily unavailable" : "Batch is too large";
+  return rpcError(refusal.status, refusal.error, message, retry);
+}
+
 async function handle(request: Request, claims: JWTPayload): Promise<Response> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
     return rpcError(413, "payload_too_large", "Request body is too large");
   }
 
-  // Read the body once, capped even without a Content-Length, and reuse it for the transport.
-  let parsedBody: unknown;
-  try {
-    parsedBody = await readMcpBody(request, MAX_BODY_BYTES);
-  } catch (error) {
-    if (error instanceof McpBodyTooLargeError) return rpcError(413, "payload_too_large", "Request body is too large");
-    throw error;
-  }
-
-  // Throttle per connected app and per user before any database work, so a flood costs a Redis call, not
-  // several queries. A batch counts once per JSON-RPC message.
+  // Throttle per connected app and per user before reading the body or doing any database work, so a flood
+  // costs a Redis call, not a buffered payload or several queries. One message is charged up front; the rest
+  // of a batch is charged once the body is parsed, so a batch still counts once per JSON-RPC message.
   const permit = await admitMcpCall(
     {
       user: typeof claims.sub === "string" ? claims.sub : "unknown",
       client: typeof claims.azp === "string" ? claims.azp : "unknown",
     },
-    countMcpMessages(parsedBody),
+    1,
   );
-  if (isMcpRefusal(permit)) {
-    const retry: Record<string, string> = permit.retryAfter ? { "Retry-After": String(permit.retryAfter) } : {};
-    const message =
-      permit.status === 429 ? "Too many requests" : permit.status === 503 ? "Rate limiting is temporarily unavailable" : "Batch is too large";
-    return rpcError(permit.status, permit.error, message, retry);
-  }
+  if (isMcpRefusal(permit)) return refusalResponse(permit);
 
   try {
+    // Read the body once, capped even without a Content-Length, and reuse it for the transport.
+    let parsedBody: unknown;
+    try {
+      parsedBody = await readMcpBody(request, MAX_BODY_BYTES);
+    } catch (error) {
+      if (error instanceof McpBodyTooLargeError) return rpcError(413, "payload_too_large", "Request body is too large");
+      throw error;
+    }
+    const surcharge = await permit.charge(countMcpMessages(parsedBody));
+    if (surcharge) return refusalResponse(surcharge);
+
     if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
     const messages = Array.isArray(parsedBody) ? parsedBody : [parsedBody];
     for (const message of messages) {
@@ -109,8 +114,8 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
       maxRequestBodySize: MAX_BODY_BYTES,
       enableDnsRebindingProtection: true,
       allowedHosts: [new URL(getMcpResourceUrl()).host],
-      // The shared CORS policy has already validated this exact origin in POST.
-      allowedOrigins: [request.headers.get("origin") ?? new URL(getMcpResourceUrl()).origin],
+      // hasTrustedRequestOrigin in POST is the primary gate; the transport re-checks against the same list.
+      allowedOrigins: [new URL(getMcpResourceUrl()).origin, ...getMcpAllowedOrigins()],
     });
     await server.connect(transport);
     return await transport.handleRequest(request, { parsedBody });
@@ -126,7 +131,7 @@ function hasTrustedRequestOrigin(request: Request, resource: URL): boolean {
     if (host.host !== resource.host || host.username || host.password || host.pathname !== "/" || host.search || host.hash) return false;
     const origin = request.headers.get("origin");
     return !origin || (new URL(origin).origin === origin &&
-      (origin === resource.origin || isCorsOriginAllowed(origin, getAllowedCorsOriginPatterns())));
+      (origin === resource.origin || getMcpAllowedOrigins().includes(origin)));
   } catch {
     return false;
   }

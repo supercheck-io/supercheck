@@ -106,3 +106,68 @@ describe("admitMcpCall", () => {
     expect(await admit("alice", "app-1")).toMatchObject({ status: 429, error: "too_many_concurrent_requests" });
   });
 });
+
+describe("McpCallPermit.charge", () => {
+  const admitted = async (messages = 1) => {
+    const permit = await admit("alice", "app-1", messages);
+    checkAndIncrement.mockClear();
+    return permit as McpCallPermit;
+  };
+
+  it("charges only the messages not yet paid for, to the app and then the user", async () => {
+    const permit = await admitted(1);
+    expect(await permit.charge(5)).toBeNull();
+    expect(checkAndIncrement.mock.calls.map(([key, , cost]) => [key, cost])).toEqual([
+      ["mcp:call:alice:app-1", 4],
+      ["mcp:user:alice", 4],
+    ]);
+  });
+
+  it.each([0, 1])("charges nothing more for a body of %s message(s) already covered by the admission", async (total) => {
+    const permit = await admitted(1);
+    expect(await permit.charge(total)).toBeNull();
+    expect(checkAndIncrement).not.toHaveBeenCalled();
+  });
+
+  it("does not charge the same messages twice when called again", async () => {
+    const permit = await admitted(1);
+    await permit.charge(5);
+    checkAndIncrement.mockClear();
+    expect(await permit.charge(5)).toBeNull();
+    expect(checkAndIncrement).not.toHaveBeenCalled();
+  });
+
+  it("refuses a batch over the limit without touching the limiter", async () => {
+    const permit = await admitted(1);
+    expect(await permit.charge(MCP_MAX_BATCH + 1)).toEqual({ status: 400, error: "batch_too_large" });
+    expect(checkAndIncrement).not.toHaveBeenCalled();
+  });
+
+  it("accepts a batch of exactly the limit", async () => {
+    const permit = await admitted(1);
+    expect(await permit.charge(MCP_MAX_BATCH)).toBeNull();
+    expect(checkAndIncrement).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a 429 with Retry-After when the quota cannot cover the rest of the batch", async () => {
+    const permit = await admitted(1);
+    checkAndIncrement.mockResolvedValue({ ...ok, allowed: false, retryAfter: 12 });
+    expect(await permit.charge(5)).toEqual({ status: 429, error: "rate_limited", retryAfter: 12 });
+  });
+
+  it("returns a 503, not a 429, when the limiter is down", async () => {
+    const permit = await admitted(1);
+    checkAndIncrement.mockResolvedValue({ ...ok, allowed: false, unavailable: true });
+    expect(await permit.charge(5)).toEqual({ status: 503, error: "rate_limiter_unavailable", retryAfter: 5 });
+  });
+
+  it("lets the caller pay again after a refused charge", async () => {
+    const permit = await admitted(1);
+    checkAndIncrement.mockResolvedValueOnce({ ...ok, allowed: false, retryAfter: 3 });
+    expect(await permit.charge(5)).toMatchObject({ status: 429 });
+    checkAndIncrement.mockResolvedValue(ok);
+    expect(await permit.charge(5)).toBeNull();
+    expect(checkAndIncrement.mock.calls.at(-1)?.[2]).toBe(4);
+  });
+});
+

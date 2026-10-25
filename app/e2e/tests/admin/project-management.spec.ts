@@ -46,14 +46,14 @@ test.describe("Organization project administration @admin @projects @critical", 
 
     await orgOwnerPage.goto("/org-admin", { waitUntil: "domcontentloaded" });
     await expect(
-      orgOwnerPage.getByRole("heading", { name: "Organization Admin" }),
+      orgOwnerPage.getByRole("heading", { name: "Organization" }),
     ).toBeVisible();
     // Older runs can leave projects behind, so the new project may not be on
     // the first page of the paginated table. Filter to it explicitly.
     await orgOwnerPage.getByPlaceholder("Search projects...").fill(name);
     const row = orgOwnerPage.getByRole("row").filter({ hasText: name });
     await expect(row).toContainText("E2E isolated project");
-    await expect(row).toContainText("active");
+    await expect(row).toContainText(/\d+ members?/);
 
     await row.getByRole("button").last().click();
     const dialog = orgOwnerPage.getByRole("dialog", { name: "Edit Project" });

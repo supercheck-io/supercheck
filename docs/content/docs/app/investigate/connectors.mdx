@@ -4,7 +4,7 @@ description: Add read-only evidence sources for AI SRE investigations
 icon: Plug
 ---
 
-Add a connector when you want an investigation to use evidence from a tool your team already operates. Configure connectors under **Organization Admin → Integrations** with a role that can configure connectors.
+Add a connector when you want an investigation to use evidence from a tool your team already operates. Configure connectors under **Organization → Integrations** with a role that can configure connectors.
 
 A connector provides access to a provider; saved queries are optional reusable questions that run through one enabled connector. You can search a connector during an investigation without saving a query first. In Integrations, expand **Saved queries** below connector management to create one. See [AI SRE setup](/docs/app/admin/ai-sre-setup#saved-queries-optional) for details.
 
@@ -67,9 +67,9 @@ flowchart LR
 
 To register a connector:
 
-1. Navigate to **Organization Admin → Integrations** and click **Add connector**.
+1. Navigate to **Organization → Integrations** and click **Add connector**.
 2. Select your provider type and assign a recognizable name (e.g. `Production GitHub`).
-3. Choose the execution mode (**Direct** or **Private Agent**). For Private Agent mode, first register an agent under **Organization Admin → Private Agents**, then select it in the connector dialog.
+3. Choose the execution mode (**Direct** or **Private Agent**). For Private Agent mode, first register an agent under **Organization → Private Agents**, then select it in the connector dialog.
 4. Enter the API endpoint URL and configure a least-privilege read-only credential token.
 5. Define the **Service scope** to restrict which services may access this connector.
 6. Save, validate, and run one known-result query and one no-result query before relying on it during an incident.

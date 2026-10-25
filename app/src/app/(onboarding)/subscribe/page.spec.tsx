@@ -124,7 +124,7 @@ describe("signup plan selection", () => {
       screen.getAllByText("1,000 AI credits/month · fair use"),
     ).toHaveLength(2);
     expect(
-      screen.getAllByText("200 completed AI SRE reports/month"),
+      screen.getAllByText("200 completed AI SRE investigations/month"),
     ).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
     expect(
@@ -377,7 +377,10 @@ describe("signup plan selection", () => {
       });
       await openPage();
       expect(screen.getByText("Free trial · 6 days left")).toBeVisible();
-      expect(screen.getByText(/6 days left in your free trial/)).toBeVisible();
+      expect(screen.getAllByText(/6 days left/)).toHaveLength(1);
+      expect(screen.getByText("What your free trial includes")).toBeVisible();
+      expect(screen.getByText("5 monitors, checked at most every 5 minutes")).toBeVisible();
+      expect(screen.getByText(/Custom domains and single\s+sign-on are on paid plans/)).toBeVisible();
       expect(
         screen.getByRole("link", { name: /Continue with your trial/ }),
       ).toHaveAttribute("href", "/");
