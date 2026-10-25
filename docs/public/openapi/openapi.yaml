@@ -52,6 +52,8 @@ tags:
     description: Organization membership, settings, invitations, and usage stats.
       Session cookies or CLI bearer tokens are accepted. Organizations are
       created automatically at signup; POST is disabled.
+  - name: Requirements
+    description: Requirements, their tags and linked tests, and CSV export
 paths:
   /api/sre/incidents:
     get:
@@ -1549,6 +1551,15 @@ paths:
               - custom
           description: "Filter by test type. Aliases: `playwright` → `browser`, `k6` →
             `performance`"
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+          description: Filter by priority. Any other value returns 400.
       responses:
         "200":
           description: Paginated list of tests
@@ -1563,6 +1574,12 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/Test"
+        "400":
+          description: Invalid priority filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -1604,8 +1621,8 @@ paths:
                     - low
                     - medium
                     - high
-                    - critical
                   default: medium
+                  description: Defaults to `medium`. Any other value returns 400.
               required:
                 - title
       responses:
@@ -1620,6 +1637,12 @@ paths:
                     type: boolean
                   test:
                     $ref: "#/components/schemas/Test"
+        "400":
+          description: Missing title or invalid priority
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
   /api/tests/{id}:
@@ -1658,8 +1681,8 @@ paths:
     patch:
       operationId: updateTest
       summary: Update a test
-      description: Update test title, script, description, or type. Resource IDs must
-        be canonical UUIDs; malformed IDs return 404.
+      description: Update test title, script, description, type, or priority. Resource
+        IDs must be canonical UUIDs; malformed IDs return 404.
       tags:
         - Tests
       requestBody:
@@ -1683,6 +1706,13 @@ paths:
                     - performance
                     - database
                     - custom
+                priority:
+                  type: string
+                  enum:
+                    - low
+                    - medium
+                    - high
+                  description: Test priority. Any other value returns 400.
       responses:
         "200":
           description: Test updated
@@ -1690,6 +1720,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Test"
+        "400":
+          description: Invalid priority or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1728,10 +1764,10 @@ paths:
     put:
       operationId: updateTestLegacyPut
       summary: Update a test using the legacy PUT alias
-      description: Update test title, script, description, or type. PUT is retained
-        for CLI deploy and backward compatibility; interactive partial updates
-        should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs
-        return 404.
+      description: Update test title, script, description, type, or priority. PUT is
+        retained for CLI deploy and backward compatibility; interactive partial
+        updates should prefer PATCH. Resource IDs must be canonical UUIDs;
+        malformed IDs return 404.
       tags:
         - Tests
       requestBody:
@@ -1755,6 +1791,13 @@ paths:
                     - performance
                     - database
                     - custom
+                priority:
+                  type: string
+                  enum:
+                    - low
+                    - medium
+                    - high
+                  description: Test priority. Any other value returns 400.
       responses:
         "200":
           description: Test updated
@@ -1762,6 +1805,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Test"
+        "400":
+          description: Invalid priority or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1950,6 +1999,7 @@ paths:
         Request authentication credentials, request headers, and request bodies
         are omitted from config unless the caller has monitor:update permission.
         Users with update permission receive the full configuration for editing.
+        Each item also includes its `tags`.
       tags:
         - Monitors
       parameters:
@@ -1968,7 +2018,15 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/Monitor"
+                          allOf:
+                            - $ref: "#/components/schemas/Monitor"
+                            - type: object
+                              properties:
+                                tags:
+                                  type: array
+                                  items:
+                                    $ref: "#/components/schemas/Tag"
+                                  description: Tags attached to the monitor, ordered by name.
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -2812,6 +2870,75 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           description: Failed to fetch status pages
+    post:
+      operationId: createStatusPage
+      summary: Create a status page
+      tags:
+        - Status Pages
+      description: Create a status page in the current project. Requires
+        `status_page:create`. The page starts as a `draft` and its `subdomain`
+        is generated by the server; sending `subdomain` or
+        `customDomainVerified` returns 400. Unknown body fields are rejected. If
+        your account allows it, creation succeeds; otherwise a 403 explains the
+        limit that was reached. A 429 means too many concurrent create requests
+        - retry shortly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                headline:
+                  type: string
+                  maxLength: 255
+                pageDescription:
+                  type: string
+                  maxLength: 2000
+              required:
+                - name
+      responses:
+        "201":
+          description: Created status page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  statusPage:
+                    $ref: "#/components/schemas/StatusPage"
+        "400":
+          description: Invalid body, or a server-managed field was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permissions, or the number of status pages your
+            account allows has been reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many concurrent requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to create status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/status-pages/check:
     get:
       operationId: checkStatusPageSubdomain
@@ -2939,6 +3066,76 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateStatusPage
+      summary: Update a status page
+      tags:
+        - Status Pages
+      description: >-
+        Update settings and/or status of a status page. Requires
+        `status_page:update`. The body is strict: unknown fields, `subdomain`
+        and `customDomainVerified` return 400, and an empty body returns 400
+        (`No fields to update`).
+
+
+        Order of work: when `status` is `published`, publish preconditions are
+        checked first and nothing is written if they fail (the page must be
+        accessible to your account and have at least one public component,
+        otherwise 403 or 400). Then settings are saved, then the status is
+        changed. If the status change fails after settings were saved, the error
+        message says so.
+
+
+        Custom domains: setting a non-empty `customDomain` that differs from the
+        current one resets verification and requires the feature to be available
+        for your account (403 if not), a deployment configured for custom
+        domains (400), a hostname outside the platform status page domain (400)
+        and not used by another page (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageUpdateRequest"
+      responses:
+        "200":
+          description: Updated status page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  statusPage:
+                    $ref: "#/components/schemas/StatusPage"
+        "400":
+          description: Invalid body, publish precondition failed, or domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permissions, or the feature or action is not available
+            for your account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Custom domain already in use by another status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/status-pages/{id}/upload:
     parameters:
       - name: id
@@ -4380,6 +4577,653 @@ paths:
                   format: uuid
                   description: The organization being confirmed; must match the active session
                     organization.
+  /api/requirements:
+    get:
+      operationId: listRequirements
+      summary: List requirements
+      tags:
+        - Requirements
+      description: List requirements in the current project, newest first. Requires
+        `requirement:view`. Each item includes the linked test IDs (`testIds`)
+        and tag names (`tagNames`) so clients do not need a per-row detail
+        request. The response also repeats the items under `requirements` for
+        backward compatibility.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100000
+            default: 1
+          description: Page number. Out-of-range values are clamped.
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+          description: Items per page. Values outside 1..500 are clamped; the default is
+            500.
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Match against title or description (substring).
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+          description: Filter by priority.
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - covered
+              - failing
+              - missing
+          description: Filter by coverage status. Requirements with no computed coverage
+            count as `missing`.
+      responses:
+        "200":
+          description: Requirements page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RequirementListItem"
+                  requirements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RequirementListItem"
+                    description: Alias of `data`.
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          description: Failed to fetch requirements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createRequirement
+      summary: Create a requirement
+      tags:
+        - Requirements
+      description: Create a requirement, optionally with tags (by name) and linked
+        tests. Requires `requirement:create`. Unknown body fields are rejected
+        with 400. Linked tests are checked before anything is written, so a
+        failed request leaves nothing behind.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequirementCreateRequest"
+      responses:
+        "201":
+          description: Created requirement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequirementResponse"
+        "400":
+          description: Invalid request body or JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Requirement id is already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to create requirement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/requirements/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Requirement ID
+    get:
+      operationId: getRequirement
+      summary: Get a requirement
+      tags:
+        - Requirements
+      description: Fetch one requirement with tag names, linked test IDs and coverage.
+        Requires `requirement:view`. Malformed IDs return 404.
+      responses:
+        "200":
+          description: Requirement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequirementResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateRequirement
+      summary: Update a requirement
+      tags:
+        - Requirements
+      description: Partially update a requirement. Requires `requirement:update`. When
+        `tags` or `testIds` is present it replaces the whole set. Unknown body
+        fields are rejected with 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequirementUpdateRequest"
+      responses:
+        "200":
+          description: Updated requirement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequirementResponse"
+        "400":
+          description: Invalid request body or JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: Failed to update requirement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteRequirement
+      summary: Delete a requirement
+      tags:
+        - Requirements
+      description: Delete a requirement. Requires `requirement:delete`.
+      responses:
+        "200":
+          description: Requirement deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Request could not be completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requirements/{id}/tests:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Requirement ID
+    get:
+      operationId: listRequirementTests
+      summary: List tests linked to a requirement
+      tags:
+        - Requirements
+      description: List the tests linked to a requirement. Requires `requirement:view`.
+      responses:
+        "200":
+          description: Linked tests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RequirementLinkedTest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: linkRequirementTests
+      summary: Link tests to a requirement
+      tags:
+        - Requirements
+      description: Add tests to a requirement, keeping existing links. Requires
+        `requirement:update`. Tests must belong to the current project;
+        duplicates in the body are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequirementTestIdsRequest"
+      responses:
+        "200":
+          description: Requirement with its updated links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequirementResponse"
+        "400":
+          description: Invalid request body or JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: unlinkRequirementTests
+      summary: Unlink tests from a requirement
+      tags:
+        - Requirements
+      description: 'Remove links between a requirement and tests. Requires
+        `requirement:update`. Pass a single test with the `testId` query
+        parameter, or several in a JSON body `{ "testIds": [...] }`. Unlinking a
+        test that is not linked is a no-op.'
+      parameters:
+        - name: testId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Single test to unlink. When present, the request body is ignored.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequirementTestIdsRequest"
+      responses:
+        "200":
+          description: Requirement with its updated links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequirementResponse"
+        "400":
+          description: Invalid request body or JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requirements/export:
+    get:
+      operationId: exportRequirementsCsv
+      summary: Export requirements as CSV
+      tags:
+        - Requirements
+      description: "Download all requirements of the current project as
+        `requirements.csv`. Requires `requirement:view`. Columns: ID, Title,
+        Description, Priority, Status, Tags, Linked Tests, Passed Tests, Failed
+        Tests, External ID, External URL, Created At. Cells that start with `=`,
+        `+`, `-`, `@`, a tab or a carriage return are prefixed with a single
+        quote (`'`) so spreadsheets do not evaluate them as formulas."
+      responses:
+        "200":
+          description: CSV file
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: '`attachment; filename="requirements.csv"`'
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          description: Failed to export requirements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/status-pages/{id}/components:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Status page ID
+    get:
+      operationId: listStatusPageComponents
+      summary: List status page components
+      tags:
+        - Status Pages
+      description: List components of a status page ordered by position. Requires
+        `status_page:view`.
+      responses:
+        "200":
+          description: Components
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  components:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StatusPageComponentDto"
+        "400":
+          description: Invalid status page ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createStatusPageComponent
+      summary: Create a status page component
+      tags:
+        - Status Pages
+      description: Add a component to a status page. Requires `status_page:update`.
+        Unknown body fields are rejected with 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageComponentCreateRequest"
+      responses:
+        "201":
+          description: Created component
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  component:
+                    $ref: "#/components/schemas/StatusPageComponentDto"
+        "400":
+          description: Invalid body or IDs, or a monitor/service is not found in this
+            project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/status-pages/{id}/components/{componentId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Status page ID
+      - name: componentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Component ID
+    put:
+      operationId: updateStatusPageComponent
+      summary: Update a status page component
+      tags:
+        - Status Pages
+      description: Partially update a component. Requires `status_page:update`. When
+        `monitorIds` is present the monitor links are replaced atomically. If
+        `monitorIds` changes and `status` is omitted, the status is re-derived
+        from the linked monitors.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageComponentUpdateRequest"
+      responses:
+        "200":
+          description: Updated component
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  component:
+                    $ref: "#/components/schemas/StatusPageComponentDto"
+        "400":
+          description: Invalid body or IDs, or a monitor/service is not found in this
+            project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteStatusPageComponent
+      summary: Delete a status page component
+      tags:
+        - Status Pages
+      description: Delete a component. Requires `status_page:delete`.
+      responses:
+        "200":
+          description: Component deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/monitors/{id}/tags:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Monitor ID
+    get:
+      operationId: getMonitorTags
+      summary: Get monitor tags
+      tags:
+        - Monitors
+      description: List tags attached to a monitor. Requires `monitor:view`. Malformed
+        IDs return 404.
+      responses:
+        "200":
+          description: Tags attached to the monitor, ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: replaceMonitorTags
+      summary: Replace monitor tags
+      tags:
+        - Monitors
+      description: Replace all tags of a monitor with the given set (atomic; an empty
+        array removes all tags). Requires `monitor:update`. At most 10 tags per
+        monitor; tags must exist in the current project and duplicates are
+        rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tagIds:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: uuid
+              required:
+                - tagIds
+      responses:
+        "200":
+          description: Updated tag list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+        "400":
+          description: Invalid, duplicate or inaccessible tag IDs, or more than 10 tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteMonitorTag
+      summary: Remove a tag from a monitor
+      tags:
+        - Monitors
+      description: Remove one tag from a monitor. Requires `monitor:update`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tagId:
+                  type: string
+                  format: uuid
+              required:
+                - tagId
+      responses:
+        "200":
+          description: Tag removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Tag ID is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -6221,3 +7065,585 @@ components:
               type: number
         isEnabled:
           type: boolean
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          description: Validation details (flattened schema errors) when the request body
+            is rejected.
+      required:
+        - error
+    RequirementTag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+          nullable: true
+    RequirementListItem:
+      type: object
+      description: Requirement as returned by the list endpoint.
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          nullable: true
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequirementTag"
+        tagNames:
+          type: array
+          items:
+            type: string
+          description: Tag names in stored casing, sorted alphabetically.
+        testIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of the tests linked to this requirement (limited to tests in
+            the current project).
+        sourceDocumentId:
+          type: string
+          format: uuid
+          nullable: true
+        sourceDocumentName:
+          type: string
+          nullable: true
+        sourceSection:
+          type: string
+          nullable: true
+        externalId:
+          type: string
+          nullable: true
+        externalUrl:
+          type: string
+          nullable: true
+        externalProvider:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        coverageStatus:
+          type: string
+          enum:
+            - covered
+            - failing
+            - missing
+          description: "`missing` when no coverage has been computed yet."
+        linkedTestCount:
+          type: integer
+        passedTestCount:
+          type: integer
+        failedTestCount:
+          type: integer
+    RequirementCoverage:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - covered
+            - failing
+            - missing
+        linkedTestCount:
+          type: integer
+        passedTestCount:
+          type: integer
+        failedTestCount:
+          type: integer
+        lastEvaluatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    Requirement:
+      type: object
+      description: Requirement as returned by the detail, create, update and test-link
+        endpoints.
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tag names.
+        externalId:
+          type: string
+          nullable: true
+        externalUrl:
+          type: string
+          nullable: true
+        testIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        coverage:
+          allOf:
+            - $ref: "#/components/schemas/RequirementCoverage"
+          nullable: true
+          description: "`null` when no coverage has been computed yet."
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    RequirementResponse:
+      type: object
+      properties:
+        requirement:
+          $ref: "#/components/schemas/Requirement"
+    RequirementCreateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+          example: Users can reset their password
+        description:
+          type: string
+          maxLength: 10000
+          nullable: true
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        tags:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+          description: Tag names. Matched case-insensitively; missing tags are created.
+            Duplicates (ignoring case) are collapsed. On update, replaces the
+            whole tag set.
+        externalId:
+          type: string
+          maxLength: 255
+          nullable: true
+        externalUrl:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: "`http` or `https` URL. An empty string is treated as no URL."
+        testIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+          description: Tests to link. Must belong to the current project. On update,
+            replaces the whole set of linked tests.
+      required:
+        - title
+    RequirementUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: Partial update. Omitted fields are preserved; `null` clears
+        `description`, `externalId` and `externalUrl`.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 10000
+          nullable: true
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        tags:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+          description: Tag names. Matched case-insensitively; missing tags are created.
+            Duplicates (ignoring case) are collapsed. On update, replaces the
+            whole tag set.
+        externalId:
+          type: string
+          maxLength: 255
+          nullable: true
+        externalUrl:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: "`http` or `https` URL. An empty string is treated as no URL."
+        testIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+          description: Tests to link. Must belong to the current project. On update,
+            replaces the whole set of linked tests.
+    RequirementTestIdsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        testIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+      required:
+        - testIds
+    RequirementLinkedTest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        type:
+          type: string
+          description: Test type, or `unknown`.
+    StatusPageUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: Any subset of the fields below; at least one is required.
+        `subdomain` and `customDomainVerified` are managed by the server and
+        rejected with 400.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        headline:
+          type: string
+          maxLength: 255
+        pageDescription:
+          type: string
+          maxLength: 2000
+        supportUrl:
+          type: string
+          maxLength: 500
+          description: "Support contact: an email address or an `http(s)` URL. Empty
+            string clears it."
+        timezone:
+          type: string
+          maxLength: 50
+        language:
+          type: string
+          pattern: ^[a-z]{2,3}(-[A-Z]{2})?$
+          description: Public page language (ISO 639-1), for example `en` or `pt-BR`.
+        customDomain:
+          type: string
+          maxLength: 255
+          description: Hostname for the public page, lower-cased by the server. Empty
+            string removes it. Changing it resets verification
+            (`customDomainVerified` becomes false). It must not use the platform
+            status page domain or its subdomains, must not be used by another
+            status page (409), and requires custom domains to be configured on
+            the deployment (400) and available for your account (403).
+        allowPageSubscribers:
+          type: boolean
+        allowEmailSubscribers:
+          type: boolean
+        allowWebhookSubscribers:
+          type: boolean
+        allowSlackSubscribers:
+          type: boolean
+        allowIncidentSubscribers:
+          type: boolean
+        allowRssFeed:
+          type: boolean
+        cssBodyBackgroundColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssFontColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssLightFontColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssGreens:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssYellows:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssOranges:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssBlues:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssReds:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssBorderColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssGraphColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssLinkColor:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        cssNoData:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          description: Hex color such as `#1a2b3c`.
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+            - archived
+          description: Lifecycle status. `draft` and `archived` unpublish the page. See
+            the operation description for publish preconditions.
+    StatusPageComponentDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        position:
+          type: integer
+        monitorIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        status:
+          type: string
+          enum:
+            - operational
+            - degraded_performance
+            - partial_outage
+            - major_outage
+            - under_maintenance
+        showcase:
+          type: boolean
+          nullable: true
+        onlyShowIfDegraded:
+          type: boolean
+          nullable: true
+        aggregationMethod:
+          type: string
+          enum:
+            - worst_case
+            - best_case
+            - weighted_average
+            - majority_vote
+        failureThreshold:
+          type: integer
+        autoCreateIncidents:
+          type: boolean
+        serviceId:
+          type: string
+          format: uuid
+          nullable: true
+    StatusPageComponentCreateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        monitorIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+          description: Monitors of the current project to link. Duplicates are collapsed.
+            On update, replaces the whole set.
+        status:
+          type: string
+          enum:
+            - operational
+            - degraded_performance
+            - partial_outage
+            - major_outage
+            - under_maintenance
+          description: Manual status. When omitted while monitors are linked, the status
+            is derived from the monitors.
+          default: operational
+        showcase:
+          type: boolean
+          description: Show the component on the public page.
+          default: true
+        onlyShowIfDegraded:
+          type: boolean
+          default: false
+        position:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 0
+        aggregationMethod:
+          type: string
+          enum:
+            - worst_case
+            - best_case
+            - weighted_average
+            - majority_vote
+          default: worst_case
+        autoCreateIncidents:
+          type: boolean
+        serviceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: AI SRE service in the current project.
+        monitorWeights:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Weight per monitor ID (max 100 entries); default weight is 1.
+        failureThreshold:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 1
+      required:
+        - name
+    StatusPageComponentUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: Any subset of fields. Omitted fields are preserved.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        monitorIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+          description: Monitors of the current project to link. Duplicates are collapsed.
+            On update, replaces the whole set.
+        status:
+          type: string
+          enum:
+            - operational
+            - degraded_performance
+            - partial_outage
+            - major_outage
+            - under_maintenance
+          description: Manual status. When omitted while monitors are linked, the status
+            is derived from the monitors.
+        showcase:
+          type: boolean
+          description: Show the component on the public page.
+        onlyShowIfDegraded:
+          type: boolean
+        position:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        aggregationMethod:
+          type: string
+          enum:
+            - worst_case
+            - best_case
+            - weighted_average
+            - majority_vote
+        autoCreateIncidents:
+          type: boolean
+        serviceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: AI SRE service in the current project.
+        monitorWeights:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Weight per monitor ID (max 100 entries); default weight is 1.
+        failureThreshold:
+          type: integer
+          minimum: 1
+          maximum: 100

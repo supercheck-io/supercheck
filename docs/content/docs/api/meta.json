@@ -16,6 +16,7 @@
     "trigger-keys",
     "runs",
     "tests",
+    "requirements",
     "variables",
     "monitors",
     "tags",
