@@ -124,6 +124,7 @@ export async function preflightDeploy(
   client: import('../api/client.js').ApiClient,
   actionable: ResourceChange[],
   remoteMonitorIds: string[],
+  { dryRun = false }: { dryRun?: boolean } = {},
 ): Promise<void> {
   const writes = actionable.filter((c) => (c.action === 'create' || c.action === 'update') && c.local)
   const tagged = writes.filter((c) => (c.type === 'test' || c.type === 'monitor') && Array.isArray(c.local!.definition.tags) && (c.local!.definition.tags as unknown[]).length > 0)
@@ -150,8 +151,9 @@ export async function preflightDeploy(
       throw error
     }
   }
-  if (writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
-  if (writes.some((c) => c.type === 'statusPage')) {
+  // A dry run writes nothing, so it skips the probes that touch the server beyond reads (export audit, status page PUT).
+  if (!dryRun && writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
+  if (!dryRun && writes.some((c) => c.type === 'statusPage')) {
     // Older servers have no PUT on this route (405). A current one rejects an empty body (400) before touching any row.
     try {
       await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
@@ -172,7 +174,7 @@ async function applyTags(client: import('../api/client.js').ApiClient, resourceP
     if (err instanceof ApiRequestError && (err.statusCode === 404 || err.statusCode === 405) && resourcePath.startsWith('/api/monitors/')) {
       throw new CLIError('This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitor.', ExitCode.ApiError, { id })
     }
-    if (err instanceof CLIError) throw new CLIError(err.message, err.exitCode, { id })
+    if (err instanceof CLIError && !(err instanceof ApiRequestError)) throw new CLIError(err.message, err.exitCode, { id })
     throw new CLIError(`Saved, but tags were not applied: ${err instanceof Error ? err.message : String(err)}`, ExitCode.ApiError, { id })
   }
 }
@@ -259,15 +261,15 @@ async function applyChange(
       }
       case 'update': {
         const id = change.id ?? change.remote!.id
-        // A tags-only change has nothing else to send.
-        if (Object.keys(body).length > 0 || !tagRefs) await client.put(`${endpoint}/${id}`, body)
+        // Skip the PUT only when the definition carries nothing but tags.
+        if (Object.keys(body).length > 0 || !tagRefs) await client.put(`${endpoint}/${encodeURIComponent(id)}`, body)
         opts.state.record(change.type, change.name, id)
         if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
         return { success: true }
       }
       case 'delete': {
         const id = change.id ?? change.remote!.id
-        await client.delete(`${endpoint}/${id}`)
+        await client.delete(`${endpoint}/${encodeURIComponent(id)}`)
         return { success: true }
       }
       default:
@@ -370,7 +372,7 @@ export const deployCommand = new Command('deploy')
       }
 
       assertReferencesResolvable(actionable, state)
-      await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id))
+      await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id), { dryRun: options.dryRun === true })
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')
       if (deletions.length > 0) logger.warn(`${deletions.length} remote resource(s) will be deleted, including any created outside this config.`)

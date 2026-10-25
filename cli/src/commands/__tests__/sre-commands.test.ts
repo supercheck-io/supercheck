@@ -36,6 +36,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
     error: mockError,
     warn: jest.fn(),
     newline: jest.fn(),
+    header: jest.fn(),
   },
 }))
 
@@ -401,4 +402,42 @@ describe('AI SRE CLI Commands', () => {
       await expect(testCommand.parseAsync(['node', 'test', 'status', 'test-1'])).rejects.toMatchObject({ exitCode: 1 })
     })
   })
+
+  describe('test tag commands', () => {
+    const TEST_ID = '019a0000-0000-7000-8000-000000000001'
+    const projectTags = [{ id: 'tag-smoke', name: 'Smoke' }, { id: 'tag-web', name: 'web' }]
+
+    it('test tag add keeps current tags and posts the merged set to the test', async () => {
+      mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : [{ id: 'tag-web', name: 'web' }] }))
+      mockPost.mockResolvedValueOnce({ data: projectTags })
+      await testCommand.parseAsync(['node', 'test', 'tag', 'add', TEST_ID, 'smoke'])
+      expect(mockPost).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { tagIds: ['tag-web', 'tag-smoke'] })
+      expect(mockSuccess).toHaveBeenCalledWith(`Test ${TEST_ID} now has 2 tag(s)`)
+      mockGet.mockReset()
+    })
+
+    it('test tag remove posts the remaining set', async () => {
+      mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : projectTags }))
+      mockPost.mockResolvedValueOnce({ data: [projectTags[1]] })
+      await testCommand.parseAsync(['node', 'test', 'tag', 'remove', TEST_ID, 'SMOKE'])
+      expect(mockPost).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { tagIds: ['tag-web'] })
+      mockGet.mockReset()
+    })
+  })
+
+  describe('test priority flags', () => {
+    it('test list sends a lowercase priority filter and rejects an unknown one', async () => {
+      mockGet.mockResolvedValueOnce({ data: { data: [], pagination: { total: 0, page: 1, limit: 50, totalPages: 1 } } })
+      await testCommand.parseAsync(['node', 'test', 'list', '--priority', 'HIGH'])
+      expect(mockGet).toHaveBeenCalledWith('/api/tests', expect.objectContaining({ priority: 'high' }))
+      await expect(testCommand.parseAsync(['node', 'test', 'list', '--priority', 'urgent'])).rejects.toThrow('Invalid priority')
+    })
+
+    it('test update --priority --dry-run previews the payload without sending it', async () => {
+      await testCommand.parseAsync(['node', 'test', 'update', '019a0000-0000-7000-8000-000000000001', '--priority', 'Low', '--dry-run'])
+      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true, payload: expect.objectContaining({ priority: 'low' }) }))
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+  })
 })
+

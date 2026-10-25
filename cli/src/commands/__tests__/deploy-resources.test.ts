@@ -3,8 +3,13 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 const T1 = '019a0000-0000-7000-8000-000000000001'
 const M1 = '019a0000-0000-7000-8000-0000000000a1'
 const calls: Array<{ method: string; path: string; body?: unknown }> = []
+let tagPostError: Error | undefined
 const post = jest.fn(async (path: string, body?: unknown) => {
   calls.push({ method: 'POST', path, body })
+  if (path.endsWith('/tags')) {
+    if (tagPostError) throw tagPostError
+    return { data: [] }
+  }
   const id = path === '/api/status-pages' ? '019a0000-0000-7000-8000-0000000000c1' : path.includes('/components') ? 'comp' : '019a0000-0000-7000-8000-0000000000b1'
   if (path === '/api/requirements') return { data: { requirement: { id } } }
   if (path === '/api/status-pages') return { data: { statusPage: { id } } }
@@ -14,15 +19,16 @@ const post = jest.fn(async (path: string, body?: unknown) => {
 })
 const put = jest.fn(async (path: string, body?: unknown) => { calls.push({ method: 'PUT', path, body }); return { data: {} } })
 const del = jest.fn(async () => ({ data: {} }))
-const get = jest.fn(async () => ({ data: { components: [] } }))
+const get = jest.fn(async (path: string) => ({ data: path === '/api/tags' ? [{ id: 'tag-smoke', name: 'smoke' }] : { components: [] } }))
 const record = jest.fn()
 
 let local: unknown[] = []
+let remote: unknown[] = []
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({ createAuthenticatedClient: () => ({ post, put, delete: del, get, getText: async () => ({ data: '' }) }) }))
 jest.unstable_mockModule('../../config/loader.js', () => ({ loadConfig: async () => ({ config: {} }) }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({
   buildLocalResources: () => local,
-  fetchRemoteResources: async () => [],
+  fetchRemoteResources: async () => remote,
   getApiEndpoint: (type: string) => ({ requirement: '/api/requirements', statusPage: '/api/status-pages', monitor: '/api/monitors', test: '/api/tests' })[type],
 }))
 jest.unstable_mockModule('../../utils/validation.js', () => ({
@@ -50,10 +56,13 @@ jest.unstable_mockModule('../../utils/managed.js', () => ({
 const { deployCommand, preflightDeploy } = await import('../deploy.js')
 const { ApiRequestError } = await import('../../utils/errors.js')
 const { OLD_SERVER_STATUS_PAGE_MESSAGE } = await import('../../utils/status-pages.js')
+const { logger } = await import('../../utils/logger.js')
 
 beforeEach(() => {
   calls.length = 0
-  post.mockClear(); put.mockClear(); record.mockClear()
+  remote = []
+  tagPostError = undefined
+  post.mockClear(); put.mockClear(); record.mockClear(); (logger.error as jest.Mock).mockClear()
   deployCommand.setOptionValue('delete', false); deployCommand.setOptionValue('dryRun', false); deployCommand.setOptionValue('force', false)
 })
 
@@ -119,6 +128,42 @@ describe('deploy requirements and status pages', () => {
 
       const offline = { put: async () => { throw new Error('socket hang up') } } as never
       await expect(preflightDeploy(offline, [change('statusPage', 'create', 'Acme')], [])).rejects.toThrow('socket hang up')
+    })
+  })
+
+  describe('tags applied after the write', () => {
+    const monitor = { type: 'monitor', name: 'API', definition: { name: 'API', type: 'website', target: 'https://example.com', tags: ['smoke'] } }
+    const errors = () => (logger.error as jest.Mock).mock.calls.map((call) => String(call[0])).join('\n')
+
+    it('maps a missing monitor tag route to the upgrade hint and keeps the created id', async () => {
+      local = [monitor]
+      tagPostError = new ApiRequestError('Not Found', 404)
+      await expect(deployCommand.parseAsync(['node', 'deploy', '--force'])).rejects.toThrow('1 failed')
+      expect(errors()).toContain('does not support monitor tag assignment')
+      expect(record).toHaveBeenCalledWith('monitor', 'API', M1, undefined)
+    })
+
+    it('reports a saved resource whose tags failed', async () => {
+      local = [{ type: 'test', name: 'playwright/home.pw.ts', definition: { title: 'Home', testType: 'playwright', script: "test('x')", tags: ['smoke'] } }]
+      tagPostError = new ApiRequestError('Internal Server Error', 500)
+      await expect(deployCommand.parseAsync(['node', 'deploy', '--force'])).rejects.toThrow('1 failed')
+      expect(errors()).toContain('Saved, but tags were not applied')
+      expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /api/tests', `POST /api/tests/${T1}/tags`])
+    })
+
+    it('applies a tag change on update after the PUT, with the id encoded', async () => {
+      local = [{ ...monitor, id: M1 }]
+      remote = [{ id: M1, type: 'monitor', name: 'API', raw: { name: 'API', type: 'website', target: 'https://example.com', tags: [] } }]
+      await deployCommand.parseAsync(['node', 'deploy', '--force'])
+      expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`PUT /api/monitors/${M1}`, `POST /api/monitors/${M1}/tags`])
+      expect(calls[1].body).toEqual({ tagIds: ['tag-smoke'] })
+    })
+
+    it('sends no status page probe and writes nothing on --dry-run', async () => {
+      local = [{ type: 'statusPage', name: 'Acme', definition: { name: 'Acme' } }]
+      await deployCommand.parseAsync(['node', 'deploy', '--dry-run'])
+      expect(put).not.toHaveBeenCalled()
+      expect(post).not.toHaveBeenCalled()
     })
   })
 })
