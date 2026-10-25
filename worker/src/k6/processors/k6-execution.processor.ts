@@ -101,14 +101,19 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.dbService
+      const recorded = await this.dbService
         .failRunUnlessCancelled(runId, message)
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
-          ),
+        .then(
+          () => true,
+          (err: Error) => {
+            this.logger.error(
+              `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
+            );
+            return false;
+          },
         );
-      throw new UnrecoverableError(message);
+      // Nothing claimed the run yet, so a retry is safe; giving up unrecorded would leave it queued forever.
+      throw recorded ? new UnrecoverableError(message) : new Error(message);
     }
   }
 
@@ -777,7 +782,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     const metrics = summary.metrics as
-      Record<string, Record<string, number>> | undefined;
+      | Record<string, Record<string, number>>
+      | undefined;
     if (!metrics) {
       return {
         totalRequests: 0,

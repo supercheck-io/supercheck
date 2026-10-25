@@ -127,6 +127,21 @@ it('fails an uncancelled run after the capacity wait', async () => {
     },
   ]);
 });
+it.each([
+  ['a queued run', null, 'queued', 'failed', 'gave up'],
+  ['a run with unrelated details', 'retrying', 'queued', 'failed', 'gave up'],
+  ['an already cancelled queued run', marker, 'queued', 'error', marker],
+  ['an already cancelled running run', marker, 'running', 'error', marker],
+] as const)(
+  'settles %s on give-up',
+  async (_label, details, status, endStatus, endDetails) => {
+    const id = await seed(details, status);
+    await service.failRunUnlessCancelled(id, 'gave up');
+    expect(
+      await client`SELECT status, error_details FROM runs WHERE id=${id}`,
+    ).toEqual([{ status: endStatus, error_details: endDetails }]);
+  },
+);
 it('leaves a run that already finished untouched after the capacity wait', async () => {
   const id = await seed(null, 'running');
   await client`UPDATE runs SET status='passed' WHERE id=${id}`;

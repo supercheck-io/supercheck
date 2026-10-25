@@ -10,7 +10,7 @@ import {
   getFailedHttpRequestCount,
   K6ExecutionProcessor,
 } from './k6-execution.processor';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
@@ -382,9 +382,11 @@ describe('k6 container-start metering', () => {
       .mockRejectedValue(
         new Error('Unable to verify Kubernetes execution state'),
       );
-    await expect(processor.process(job())).rejects.toThrow(
+    const failure = processor.process(job());
+    await expect(failure).rejects.toThrow(
       /Unable to verify Kubernetes execution state/,
     );
+    await expect(failure).rejects.toBeInstanceOf(UnrecoverableError);
     expect(dbService.failRunUnlessCancelled).toHaveBeenCalledWith(
       'run-id',
       expect.stringContaining('Unable to verify Kubernetes execution state'),
@@ -406,7 +408,7 @@ describe('k6 container-start metering', () => {
     );
   });
 
-  it('preserves terminal uncertainty semantics when the guarded database write fails', async () => {
+  it('leaves the job retryable when the failure cannot be recorded', async () => {
     const runK6Test = jest.fn();
     const { processor, dbService, set, usage } = build(runK6Test);
     (
@@ -419,9 +421,11 @@ describe('k6 container-start metering', () => {
     dbService.failRunUnlessCancelled.mockRejectedValueOnce(
       new Error('database unavailable'),
     );
-    await expect(processor.process(job())).rejects.toThrow(
+    const failure = processor.process(job());
+    await expect(failure).rejects.toThrow(
       /Unable to verify Kubernetes execution state/,
     );
+    await expect(failure).rejects.not.toBeInstanceOf(UnrecoverableError);
     expect(runK6Test).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
     expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
