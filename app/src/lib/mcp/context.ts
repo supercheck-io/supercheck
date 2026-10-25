@@ -82,10 +82,24 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
   };
 }
 
+/** RBAC resources an MCP tool may authorise against; every one must exist in the permission tables. */
+export type McpViewResource =
+  | "test"
+  | "job"
+  | "run"
+  | "monitor"
+  | "requirement"
+  | "status_page"
+  | "variable"
+  | "sre_service"
+  | "sre_incident"
+  | "sre_investigation"
+  | "project";
+
 /** Per-tool check against the live role, on top of the project-level gate above. */
 export function assertCanView(
   context: McpCallContext,
-  resource: "test" | "job" | "run" | "monitor" | "sre_incident" | "project",
+  resource: McpViewResource,
 ): void {
   const allowed = checkPermissionWithContext(resource, "view", {
     userId: context.userId,

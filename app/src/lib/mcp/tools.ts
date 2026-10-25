@@ -1,7 +1,28 @@
-import { and, desc, eq, exists, lt, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { jobs, monitors, projects, runs, sreIncidents, tests } from "@/db/schema";
+import {
+  jobs,
+  jobTests,
+  monitors,
+  projectVariables,
+  projects,
+  requirementCoverageSnapshots,
+  requirements,
+  runs,
+  sreIncidents,
+  sreInvestigationRecommendations,
+  sreInvestigationRuns,
+  sreServiceDependencies,
+  sreServiceHealthSnapshots,
+  sreServiceOwners,
+  sreServices,
+  statusPageComponentMonitors,
+  statusPageComponents,
+  statusPages,
+  testRequirements,
+  tests,
+} from "@/db/schema";
 import { db } from "@/utils/db";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
@@ -22,6 +43,10 @@ const page = {
   cursor: z.string().uuid().optional().describe("id of the last item of the previous page"),
 };
 const idArg = z.string().uuid();
+const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
+const INCIDENT_STATUSES = ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
+const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
+const MAX_CHILDREN = 100;
 
 type Result = { structuredContent: Record<string, unknown>; content: { type: "text"; text: string }[] };
 type ErrorResult = Result & { isError: true };
@@ -38,10 +63,27 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+/** Numeric columns arrive as strings; the agent gets numbers. */
+function num(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function paged<T extends { id: string }>(rows: T[], limit: number) {
   const items = rows.slice(0, limit);
   return { items, nextCursor: rows.length > limit ? items[items.length - 1].id : null };
 }
+
+const statusPageDto = (p: { id: string; name: string; status: string; subdomain: string; customDomain: string | null; customDomainVerified: boolean | null; headline: string | null }) => ({
+  id: p.id,
+  name: safeText(p.name, 255),
+  status: p.status,
+  subdomain: p.subdomain,
+  customDomain: p.customDomain,
+  customDomainVerified: p.customDomainVerified === true,
+  headline: safeText(p.headline, 255),
+});
 
 /** Registers the read-only tools. Every query is scoped to the call's organization and project. */
 export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
@@ -161,11 +203,17 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     completedAt: iso(r.completedAt),
   });
 
-  tool("list_runs", "List recent runs in the project, newest first." + UNTRUSTED, "run", page, async ({ limit, cursor }) => {
+  tool("list_runs", "List recent runs in the project, newest first." + UNTRUSTED, "run",
+    {
+      ...page,
+      status: z.enum(RUN_STATUSES).optional(),
+      jobId: z.string().uuid().optional(),
+    },
+    async ({ limit, cursor, status, jobId }) => {
     const rows = await db
       .select(runColumns)
       .from(runs)
-      .where(runScope([cursor ? lt(runs.id, cursor) : undefined]))
+      .where(runScope([cursor ? lt(runs.id, cursor) : undefined, status ? eq(runs.status, status) : undefined, jobId ? eq(runs.jobId, jobId) : undefined]))
       .orderBy(desc(runs.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -194,11 +242,11 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { monitors: items.map((m) => ({ ...m, name: safeText(m.name, 255), target: safeTarget(m.target), lastCheckAt: iso(m.lastCheckAt) })), nextCursor };
   });
 
-  tool("list_incidents", "List incidents, newest first." + UNTRUSTED, "sre_incident", page, async ({ limit, cursor }) => {
+  tool("list_incidents", "List incidents, newest first." + UNTRUSTED, "sre_incident", { ...page, status: z.enum(INCIDENT_STATUSES).optional() }, async ({ limit, cursor, status }) => {
     const rows = await db
       .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt })
       .from(sreIncidents)
-      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined]))
+      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status ? eq(sreIncidents.status, status) : undefined]))
       .orderBy(desc(sreIncidents.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -215,8 +263,360 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { incident: { ...i, title: safeText(i.title, 500), rootCauseSummary: safeText(i.rootCauseSummary), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
   });
 
-  tool("prepare_local_authoring", "Commands for creating or editing tests. This server is read-only; writes go through the supercheck CLI.", "project", {}, async () => ({
-    commands: ["npm i -g @supercheck/cli", "supercheck login", "supercheck init", "supercheck test create", "supercheck deploy"],
+  tool("get_job", "Get one job: schedule, linked test ids and alert on/off flags (no scripts, notification providers or trigger keys)." + UNTRUSTED, "job", { id: idArg }, async ({ id }) => {
+    const [j] = await db
+      .select({ id: jobs.id, name: jobs.name, description: jobs.description, jobType: jobs.jobType, status: jobs.status, cronSchedule: jobs.cronSchedule, lastRunAt: jobs.lastRunAt, nextRunAt: jobs.nextRunAt, alertConfig: jobs.alertConfig })
+      .from(jobs)
+      .where(scope(jobs, [eq(jobs.id, id)]))
+      .limit(1);
+    if (!j) throw new NotFoundError("Job not found");
+    // Only tests of this project, so a stray cross-project link can never surface.
+    const linked = await db
+      .select({ testId: jobTests.testId })
+      .from(jobTests)
+      .innerJoin(tests, eq(tests.id, jobTests.testId))
+      .where(scope(tests, [eq(jobTests.jobId, j.id)]))
+      .orderBy(asc(jobTests.orderPosition))
+      .limit(MAX_CHILDREN);
+    const alert = j.alertConfig;
+    return {
+      job: {
+        id: j.id,
+        name: safeText(j.name, 255),
+        description: safeText(j.description),
+        jobType: j.jobType,
+        status: j.status,
+        cronSchedule: j.cronSchedule,
+        lastRunAt: iso(j.lastRunAt),
+        nextRunAt: iso(j.nextRunAt),
+        testIds: linked.map((l) => l.testId),
+        alerts: {
+          enabled: alert?.enabled === true,
+          alertOnFailure: alert?.alertOnFailure === true,
+          alertOnSuccess: alert?.alertOnSuccess === true,
+          alertOnTimeout: alert?.alertOnTimeout === true,
+        },
+      },
+    };
+  });
+
+  tool("get_monitor", "Get one monitor with non-secret check settings (headers, auth and request bodies are never returned)." + UNTRUSTED, "monitor", { id: idArg }, async ({ id }) => {
+    const [m] = await db
+      .select({ id: monitors.id, name: monitors.name, description: monitors.description, type: monitors.type, target: monitors.target, status: monitors.status, enabled: monitors.enabled, frequencyMinutes: monitors.frequencyMinutes, lastCheckAt: monitors.lastCheckAt, config: monitors.config })
+      .from(monitors)
+      .where(scope(monitors, [eq(monitors.id, id)]))
+      .limit(1);
+    if (!m) throw new NotFoundError("Monitor not found");
+    // Allow-list of scalar settings; everything else in the config (headers, auth, body, keywords) is omitted.
+    const c = m.config;
+    const settings = {
+      method: typeof c?.method === "string" ? c.method : null,
+      expectedStatusCodes: safeText(typeof c?.expectedStatusCodes === "string" ? c.expectedStatusCodes : null, 100),
+      port: typeof c?.port === "number" ? c.port : null,
+      protocol: c?.protocol === "tcp" || c?.protocol === "udp" ? c.protocol : null,
+      timeoutSeconds: typeof c?.timeoutSeconds === "number" ? c.timeoutSeconds : null,
+      enableSslCheck: typeof c?.enableSslCheck === "boolean" ? c.enableSslCheck : null,
+    };
+    const regions = Array.isArray(c?.regions)
+      ? c.regions.filter((r): r is string => typeof r === "string").slice(0, 50).map((r) => safeText(r, 50))
+      : [];
+    return {
+      monitor: {
+        id: m.id,
+        name: safeText(m.name, 255),
+        description: safeText(m.description),
+        type: m.type,
+        target: safeTarget(m.target),
+        status: m.status,
+        enabled: m.enabled,
+        frequencyMinutes: m.frequencyMinutes,
+        lastCheckAt: iso(m.lastCheckAt),
+        locations: regions,
+        settings,
+      },
+    };
+  });
+
+  const coverageStatusSql = (status: (typeof COVERAGE_STATUSES)[number]) =>
+    // A requirement without a snapshot has not been evaluated: the app reports it as "missing".
+    sql`(${requirementCoverageSnapshots.status} = ${status} OR (${requirementCoverageSnapshots.status} IS NULL AND ${status} = 'missing'))`;
+
+  tool(
+    "list_requirements",
+    "List requirements with coverage status." + UNTRUSTED,
+    "requirement",
+    { ...page, coverageStatus: z.enum(COVERAGE_STATUSES).optional() },
+    async ({ limit, cursor, coverageStatus }) => {
+      const rows = await db
+        .select({ id: requirements.id, title: requirements.title, priority: requirements.priority, coverageStatus: requirementCoverageSnapshots.status, linkedTestCount: requirementCoverageSnapshots.linkedTestCount, updatedAt: requirements.updatedAt })
+        .from(requirements)
+        .leftJoin(requirementCoverageSnapshots, eq(requirementCoverageSnapshots.requirementId, requirements.id))
+        .where(scope(requirements, [cursor ? lt(requirements.id, cursor) : undefined, coverageStatus ? coverageStatusSql(coverageStatus) : undefined]))
+        .orderBy(desc(requirements.id))
+        .limit(limit + 1);
+      const { items, nextCursor } = paged(rows, limit);
+      return {
+        requirements: items.map((r) => ({
+          id: r.id,
+          title: safeText(r.title, 500),
+          priority: r.priority,
+          coverageStatus: r.coverageStatus ?? "missing",
+          linkedTestCount: r.linkedTestCount ?? 0,
+          updatedAt: iso(r.updatedAt),
+        })),
+        nextCursor,
+      };
+    },
+  );
+
+  tool("get_requirement", "Get one requirement with its linked tests and coverage counts." + UNTRUSTED, "requirement", { id: idArg }, async ({ id }) => {
+    const [r] = await db
+      .select({ id: requirements.id, title: requirements.title, description: requirements.description, priority: requirements.priority, tags: requirements.tags, externalId: requirements.externalId, externalUrl: requirements.externalUrl, updatedAt: requirements.updatedAt, coverageStatus: requirementCoverageSnapshots.status, linkedTestCount: requirementCoverageSnapshots.linkedTestCount, passedTestCount: requirementCoverageSnapshots.passedTestCount, failedTestCount: requirementCoverageSnapshots.failedTestCount, lastEvaluatedAt: requirementCoverageSnapshots.lastEvaluatedAt })
+      .from(requirements)
+      .leftJoin(requirementCoverageSnapshots, eq(requirementCoverageSnapshots.requirementId, requirements.id))
+      .where(scope(requirements, [eq(requirements.id, id)]))
+      .limit(1);
+    if (!r) throw new NotFoundError("Requirement not found");
+    const linked = await db
+      .select({ id: tests.id, title: tests.title, type: tests.type })
+      .from(testRequirements)
+      .innerJoin(tests, eq(tests.id, testRequirements.testId))
+      .where(scope(tests, [eq(testRequirements.requirementId, r.id)]))
+      .orderBy(desc(tests.id))
+      .limit(MAX_CHILDREN);
+    return {
+      requirement: {
+        id: r.id,
+        title: safeText(r.title, 500),
+        description: safeText(r.description),
+        priority: r.priority,
+        tags: (r.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 50).map((t) => safeText(t, 100)),
+        externalId: safeText(r.externalId, 255),
+        externalUrl: r.externalUrl ? safeTarget(r.externalUrl) : null,
+        updatedAt: iso(r.updatedAt),
+        coverage: {
+          status: r.coverageStatus ?? "missing",
+          linkedTestCount: r.linkedTestCount ?? 0,
+          passedTestCount: r.passedTestCount ?? 0,
+          failedTestCount: r.failedTestCount ?? 0,
+          lastEvaluatedAt: iso(r.lastEvaluatedAt ?? null),
+        },
+        tests: linked.map((t) => ({ id: t.id, title: safeText(t.title, 255), type: t.type })),
+      },
+    };
+  });
+
+  // status_pages.project_id is nullable; like the app's own listing, match organization AND project exactly.
+  tool("list_status_pages", "List status pages (subscribers are never exposed)." + UNTRUSTED, "status_page", page, async ({ limit, cursor }) => {
+    const rows = await db
+      .select({ id: statusPages.id, name: statusPages.name, status: statusPages.status, subdomain: statusPages.subdomain, customDomain: statusPages.customDomain, customDomainVerified: statusPages.customDomainVerified, headline: statusPages.headline })
+      .from(statusPages)
+      .where(scope(statusPages, [cursor ? lt(statusPages.id, cursor) : undefined]))
+      .orderBy(desc(statusPages.id))
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    return { statusPages: items.map(statusPageDto), nextCursor };
+  });
+
+  tool("get_status_page", "Get one status page with its components and the monitors behind them (subscribers are never exposed)." + UNTRUSTED, "status_page", { id: idArg }, async ({ id }) => {
+    const [p] = await db
+      .select({ id: statusPages.id, name: statusPages.name, status: statusPages.status, subdomain: statusPages.subdomain, customDomain: statusPages.customDomain, customDomainVerified: statusPages.customDomainVerified, headline: statusPages.headline })
+      .from(statusPages)
+      .where(scope(statusPages, [eq(statusPages.id, id)]))
+      .limit(1);
+    if (!p) throw new NotFoundError("Status page not found");
+    const components = await db
+      .select({ id: statusPageComponents.id, name: statusPageComponents.name, description: statusPageComponents.description, position: statusPageComponents.position })
+      .from(statusPageComponents)
+      .where(eq(statusPageComponents.statusPageId, p.id))
+      .orderBy(asc(statusPageComponents.position), asc(statusPageComponents.id))
+      .limit(MAX_CHILDREN);
+    const links = components.length
+      ? await db
+          .select({ componentId: statusPageComponentMonitors.componentId, monitorId: statusPageComponentMonitors.monitorId })
+          .from(statusPageComponentMonitors)
+          .where(inArray(statusPageComponentMonitors.componentId, components.map((c) => c.id)))
+      : [];
+    return {
+      statusPage: {
+        ...statusPageDto(p),
+        components: components.map((c) => ({
+          id: c.id,
+          name: safeText(c.name, 255),
+          description: safeText(c.description),
+          position: c.position,
+          monitorIds: links.filter((l) => l.componentId === c.id).map((l) => l.monitorId),
+        })),
+      },
+    };
+  });
+
+  const serviceColumns = {
+    id: sreServices.id,
+    name: sreServices.name,
+    description: sreServices.description,
+    tier: sreServices.tier,
+    environment: sreServices.environment,
+    ownerTeam: sreServices.ownerTeam,
+    tags: sreServices.tags,
+    status: sreServices.status,
+  };
+  const serviceDto = (s: { id: string; name: string; description: string | null; tier: string; environment: string | null; ownerTeam: string | null; tags: string[] | null; status: string }) => ({
+    id: s.id,
+    name: safeText(s.name, 100),
+    description: safeText(s.description, 1000),
+    tier: s.tier,
+    environment: safeText(s.environment, 50),
+    ownerTeam: safeText(s.ownerTeam, 100),
+    tags: (Array.isArray(s.tags) ? s.tags : []).filter((t) => typeof t === "string").slice(0, 50).map((t) => safeText(t, 100)),
+    status: s.status,
+  });
+
+  tool("list_services", "List services in the service catalog (merged services are hidden)." + UNTRUSTED, "sre_service", page, async ({ limit, cursor }) => {
+    const rows = await db
+      .select(serviceColumns)
+      .from(sreServices)
+      .where(scope(sreServices, [ne(sreServices.status, "merged"), cursor ? lt(sreServices.id, cursor) : undefined]))
+      .orderBy(desc(sreServices.id))
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    return { services: items.map(serviceDto), nextCursor };
+  });
+
+  tool("get_service", "Get one service with dependencies, owning teams and latest health." + UNTRUSTED, "sre_service", { id: idArg }, async ({ id }) => {
+    const [s] = await db
+      .select({ ...serviceColumns, repoUrl: sreServices.repoUrl })
+      .from(sreServices)
+      .where(scope(sreServices, [eq(sreServices.id, id)]))
+      .limit(1);
+    if (!s) throw new NotFoundError("Service not found");
+    const edges = await db
+      .select({ sourceServiceId: sreServiceDependencies.sourceServiceId, targetServiceId: sreServiceDependencies.targetServiceId })
+      .from(sreServiceDependencies)
+      .where(scope(sreServiceDependencies, [eq(sreServiceDependencies.status, "active"), or(eq(sreServiceDependencies.sourceServiceId, s.id), eq(sreServiceDependencies.targetServiceId, s.id))]))
+      .limit(MAX_CHILDREN);
+    const otherIds = [...new Set(edges.map((e) => (e.sourceServiceId === s.id ? e.targetServiceId : e.sourceServiceId)))];
+    const others = otherIds.length
+      ? await db.select({ id: sreServices.id, name: sreServices.name }).from(sreServices).where(scope(sreServices, [inArray(sreServices.id, otherIds)]))
+      : [];
+    const ref = (serviceId: string) => {
+      const o = others.find((x) => x.id === serviceId);
+      return o ? { id: o.id, name: safeText(o.name, 100) } : null;
+    };
+    // Teams only: user and Slack owner references can be personal identifiers.
+    const owners = await db
+      .select({ ownerRef: sreServiceOwners.ownerRef, role: sreServiceOwners.role })
+      .from(sreServiceOwners)
+      .where(and(eq(sreServiceOwners.serviceId, s.id), eq(sreServiceOwners.ownerType, "team")))
+      .limit(MAX_CHILDREN);
+    const [health] = await db
+      .select({ health: sreServiceHealthSnapshots.health, healthScore: sreServiceHealthSnapshots.healthScore, windowEnd: sreServiceHealthSnapshots.windowEnd })
+      .from(sreServiceHealthSnapshots)
+      .where(and(eq(sreServiceHealthSnapshots.projectId, ctx.projectId), eq(sreServiceHealthSnapshots.serviceId, s.id)))
+      .orderBy(desc(sreServiceHealthSnapshots.windowEnd))
+      .limit(1);
+    return {
+      service: {
+        ...serviceDto(s),
+        repoUrl: s.repoUrl ? safeTarget(s.repoUrl) : null,
+        dependsOn: edges.filter((e) => e.sourceServiceId === s.id).map((e) => ref(e.targetServiceId)).filter(Boolean),
+        dependedOnBy: edges.filter((e) => e.targetServiceId === s.id).map((e) => ref(e.sourceServiceId)).filter(Boolean),
+        owners: owners.map((o) => ({ team: safeText(o.ownerRef, 200), role: o.role })),
+        latestHealth: health ? { health: health.health, healthScore: num(health.healthScore), windowEnd: iso(health.windowEnd) } : null,
+      },
+    };
+  });
+
+  // Variables carry no organization column: require the project to belong to this organization too.
+  tool("list_variables", "List variable names and types. Values are never returned." + UNTRUSTED, "variable", page, async ({ limit, cursor }) => {
+    const rows = await db
+      .select({ id: projectVariables.id, key: projectVariables.key, type: projectVariables.type, isSecret: projectVariables.isSecret, description: projectVariables.description, updatedAt: projectVariables.updatedAt })
+      .from(projectVariables)
+      .where(
+        and(
+          eq(projectVariables.projectId, ctx.projectId),
+          exists(
+            db
+              .select({ one: projects.id })
+              .from(projects)
+              .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId))),
+          ),
+          cursor ? lt(projectVariables.id, cursor) : undefined,
+        ),
+      )
+      .orderBy(desc(projectVariables.id))
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    return {
+      variables: items.map((v) => ({ id: v.id, key: safeText(v.key, 255), type: v.type, isSecret: v.isSecret, description: safeText(v.description, 1000), updatedAt: iso(v.updatedAt) })),
+      nextCursor,
+    };
+  });
+
+  const investigationColumns = {
+    id: sreInvestigationRuns.id,
+    incidentId: sreInvestigationRuns.incidentId,
+    agentType: sreInvestigationRuns.agentType,
+    status: sreInvestigationRuns.status,
+    startedAt: sreInvestigationRuns.startedAt,
+    completedAt: sreInvestigationRuns.completedAt,
+    durationMs: sreInvestigationRuns.durationMs,
+    confidenceScore: sreInvestigationRuns.confidenceScore,
+  };
+  const investigationDto = (r: { id: string; incidentId: string | null; agentType: string; status: string; startedAt: Date; completedAt: Date | null; durationMs: number | null; confidenceScore: string | null }) => ({
+    id: r.id,
+    incidentId: r.incidentId,
+    agentType: r.agentType,
+    status: r.status,
+    startedAt: iso(r.startedAt),
+    completedAt: iso(r.completedAt),
+    durationMs: r.durationMs,
+    confidenceScore: num(r.confidenceScore),
+  });
+
+  tool("list_investigations", "List AI SRE investigation runs, newest first (summary fields only)." + UNTRUSTED, "sre_investigation", { ...page, incidentId: z.string().uuid().optional() }, async ({ limit, cursor, incidentId }) => {
+    const rows = await db
+      .select(investigationColumns)
+      .from(sreInvestigationRuns)
+      .where(scope(sreInvestigationRuns, [cursor ? lt(sreInvestigationRuns.id, cursor) : undefined, incidentId ? eq(sreInvestigationRuns.incidentId, incidentId) : undefined]))
+      .orderBy(desc(sreInvestigationRuns.id))
+      .limit(limit + 1);
+    const { items, nextCursor } = paged(rows, limit);
+    return { investigations: items.map(investigationDto), nextCursor };
+  });
+
+  tool("get_investigation", "Get one investigation with its root-cause hypothesis and recommendations (no prompts, agent state, evidence or cost)." + UNTRUSTED, "sre_investigation", { id: idArg }, async ({ id }) => {
+    const [r] = await db
+      .select({ ...investigationColumns, rootCauseHypothesis: sreInvestigationRuns.rootCauseHypothesis })
+      .from(sreInvestigationRuns)
+      .where(scope(sreInvestigationRuns, [eq(sreInvestigationRuns.id, id)]))
+      .limit(1);
+    if (!r) throw new NotFoundError("Investigation not found");
+    // The run was just scoped to this project; recommendations hang off it.
+    const recs = await db
+      .select({ id: sreInvestigationRecommendations.id, recommendationText: sreInvestigationRecommendations.recommendationText, stepCount: sreInvestigationRecommendations.stepCount, confidenceScore: sreInvestigationRecommendations.confidenceScore, applicationStatus: sreInvestigationRecommendations.applicationStatus, createdAt: sreInvestigationRecommendations.createdAt })
+      .from(sreInvestigationRecommendations)
+      .where(eq(sreInvestigationRecommendations.investigationRunId, r.id))
+      .orderBy(desc(sreInvestigationRecommendations.id))
+      .limit(MAX_CHILDREN);
+    return {
+      investigation: {
+        ...investigationDto(r),
+        rootCauseHypothesis: safeText(r.rootCauseHypothesis),
+        recommendations: recs.map((x) => ({
+          id: x.id,
+          text: safeText(x.recommendationText, 2000),
+          stepCount: x.stepCount,
+          confidenceScore: num(x.confidenceScore),
+          applicationStatus: x.applicationStatus,
+          createdAt: iso(x.createdAt),
+        })),
+      },
+    };
+  });
+
+  tool("prepare_local_authoring", "Commands for creating or editing tests, requirements and status pages. This server is read-only; writes go through the supercheck CLI.", "project", {}, async () => ({
+    commands: ["npm i -g @supercheck/cli", "supercheck login", "supercheck init", "supercheck test create", "supercheck deploy", "supercheck requirement --help", "supercheck pull", "supercheck diff"],
   }));
 }
 

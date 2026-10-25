@@ -7,7 +7,10 @@ import { assertCanView, McpAccessDeniedError, type McpCallContext } from "./cont
 
 const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role });
 const roles = ["super_admin", "org_owner", "org_admin", "project_admin", "project_editor", "project_viewer"];
-const resources = ["test", "job", "run", "monitor", "project"] as const;
+const resources = [
+  "test", "job", "run", "monitor", "requirement", "status_page", "variable",
+  "sre_service", "sre_incident", "sre_investigation", "project",
+] as const;
 
 describe("assertCanView against the real RBAC tables", () => {
   it.each(roles.flatMap((role) => resources.map((resource) => [role, resource] as const)))(
