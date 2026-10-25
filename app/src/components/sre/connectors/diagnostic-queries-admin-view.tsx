@@ -264,6 +264,7 @@ export function DiagnosticQueriesAdminView({
             onDelete,
             isDisabling,
             globalFilterColumns: [
+              "id",
               "name",
               "queryType",
               "connectorName",
