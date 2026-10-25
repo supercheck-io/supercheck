@@ -2,21 +2,22 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "deny": [
-      "Read(**/.env)",
-      "Read(**/.env.local)",
-      "Read(**/.env.*.local)",
-      "Read(**/.env.production)",
       "Bash(git tag:*)",
       "Bash(git push --tags:*)",
       "Bash(git push --follow-tags:*)",
-      "Bash(git push origin --tags:*)",
-      "Bash(git push origin main:*)",
-      "Bash(git push origin HEAD:main:*)",
+      "Bash(git push * --tags)",
+      "Bash(git push * refs/tags/*)",
+      "Bash(git push * --delete *)",
+      "Bash(git update-ref refs/tags/*)",
+      "Bash(git push * main)",
+      "Bash(git push * HEAD:main)",
       "Bash(gh release create:*)",
       "Bash(gh release delete:*)",
       "Bash(gh release edit:*)",
       "Bash(gh release upload:*)",
-      "Bash(gh workflow run:*)"
+      "Bash(gh workflow run build-multiarch:*)",
+      "Bash(gh workflow run cli-publish:*)",
+      "Bash(gh workflow run recorder-publish:*)"
     ]
   }
 }
