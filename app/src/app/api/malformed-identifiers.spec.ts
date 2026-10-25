@@ -47,11 +47,14 @@ import { DELETE as deleteRun } from "./runs/[runId]/route";
 import { GET as listRuns } from "./runs/route";
 import { PUT as updateJobByBody } from "./jobs/route";
 import { PUT as updateMonitorByBody } from "./monitors/route";
+import { POST as updateTestTags, DELETE as deleteTestTag } from "./tests/[id]/tags/route";
 
 const mutations = [
   ["tests", "PUT", updateTest],
   ["tests", "PATCH", patchTest],
   ["tests", "DELETE", deleteTest],
+  ["tests/tags", "POST", updateTestTags],
+  ["tests/tags", "DELETE", deleteTestTag],
   ["jobs", "PUT", updateJob],
   ["jobs", "PATCH", patchJob],
   ["jobs", "DELETE", deleteJob],
@@ -94,6 +97,23 @@ describe("malformed resource identifiers", () => {
     expectNoDataAccess();
   });
 
+  it.each([["POST", updateTestTags], ["DELETE", deleteTestTag]] as const)(
+    "test tags %s checks authentication, permission and ID before malformed JSON", async (method, handler) => {
+      for (const status of [401, 403, 404]) {
+        jest.mocked(requireAuthContext).mockImplementation(async () => {
+          if (status === 401) throw new Error("unauthenticated");
+          return { userId: "user-1", organizationId: "org-1", project: { id: "project-1" } } as never;
+        });
+        jest.mocked(isAuthError).mockReturnValue(status === 401);
+        jest.mocked(checkPermissionWithContext).mockReturnValue(status !== 403);
+        const request = new NextRequest("http://localhost/api/tests/bad/tags", { method, body: "{" });
+        const response = await handler(request, { params: Promise.resolve({ id: "bad" }) });
+        expect(response.status).toBe(status);
+        expect(request.bodyUsed).toBe(false);
+        expectNoDataAccess();
+      }
+    },
+  );
   it.each([["tests", getTest], ["jobs", getJob], ["monitors", getMonitor]] as const)(
     "%s GET rejects malformed IDs before data access", async (resource, handler) => {
       const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`), { params: Promise.resolve({ id: "bad" }) });
