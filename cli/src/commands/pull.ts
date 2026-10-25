@@ -13,7 +13,7 @@ import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
 import { fetchAllPages } from '../utils/resources.js'
 import { detectPackageManager, ensurePackageJson, installDependencies } from '../utils/package-manager.js'
-import { extractUuidFromFilename } from '../utils/slug.js'
+import { extractUuidFromFilename, setScriptMetadata } from '../utils/slug.js'
 import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
 import { redact } from '../utils/redact.js'
@@ -48,6 +48,7 @@ interface RemoteMonitor {
   status?: string
   config?: Record<string, unknown>
   alertConfig?: Record<string, unknown>
+  tags?: Array<{ id: string; name: string; color?: string }>
   organizationId?: string
   projectId?: string
   createdAt?: string
@@ -314,19 +315,12 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
         continue
       }
 
-      // Inject/Update @title metadata to preserve human-readable name in local file
-      // Prefer JSDoc injection if a block exists, otherwise use single-line comment
-      const title = sanitizeTitle(test.title)
-      if (/@title\s+/.test(script)) {
-        // Update existing @title (works for both // @title and * @title)
-        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, (_match, head: string, _old: string, tail: string) => `${head}${title}${tail}`)
-      } else if (/\/\*\*([\s\S]*?)\*\//.test(script)) {
-        // Inject into existing JSDoc
-        script = script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @title ${title}`)
-      } else {
-        // No JSDoc or existing title, prepend // @title
-        script = `// @title ${title}\n\n${script}`
-      }
+      // Inject/Update @title, @priority and @tags metadata so the local file round-trips the test's fields.
+      // Prefer JSDoc injection if a block exists, otherwise use single-line comments.
+      script = setScriptMetadata(script, 'title', sanitizeTitle(test.title))
+      if (test.priority) script = setScriptMetadata(script, 'priority', test.priority)
+      const tagNames = (test.tags ?? []).map((tag) => tag.name).sort()
+      if (tagNames.length > 0) script = setScriptMetadata(script, 'tags', tagNames.join(', '))
 
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
       const existingFilename = existingByUuid.get(test.id)
@@ -379,6 +373,7 @@ function buildMonitorDefinitions(
     }
     if (m.frequencyMinutes !== undefined) def.frequencyMinutes = m.frequencyMinutes
     if (m.enabled !== undefined) def.enabled = m.enabled
+    if (m.tags && m.tags.length > 0) def.tags = m.tags.map((tag) => tag.name).sort()
 
     // Pass config through, stripping only runtime/default noise
     if (m.config && typeof m.config === 'object') {

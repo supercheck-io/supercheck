@@ -175,7 +175,6 @@ export function rejectAmbiguousCreates(local: LocalResource[], remote: RemoteRes
       if (seenIds.has(identity)) throw new CLIError(`Duplicate local resource ID: ${identity}. Define each resource only once.`, ExitCode.ConfigError)
       seenIds.add(identity)
     }
-    if ((item.type === 'monitor' || item.type === 'job') && item.definition.tags !== undefined) throw new CLIError(`Tag assignments on ${item.type}/${item.name} are not supported by the current API. Standalone tag management remains available.`, ExitCode.ConfigError)
     const key = `${item.type}:${item.name}`
     const previous = seen.get(key)
     if (previous && (!item.id || !previous.id || item.id === previous.id)) throw new CLIError(`Duplicate local resource identity: ${key}. Give each new resource a unique name.`, ExitCode.ConfigError)

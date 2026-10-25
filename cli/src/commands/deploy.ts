@@ -9,7 +9,8 @@ import {
   formatChangePlan,
   type ResourceChange,
 } from '../utils/reconcile.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { resolveTagIds, setAssignedTags } from '../utils/tag-assignment.js'
 import { buildLocalResources, fetchRemoteResources, getApiEndpoint } from '../utils/resources.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -75,6 +76,18 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
   return payload
 }
 
+async function applyTags(client: import('../api/client.js').ApiClient, resourcePath: string, refs: string[], id: string): Promise<void> {
+  try {
+    await setAssignedTags(client, resourcePath, await resolveTagIds(client, refs))
+  } catch (err) {
+    if (err instanceof ApiRequestError && (err.statusCode === 404 || err.statusCode === 405) && resourcePath.startsWith('/api/monitors/')) {
+      throw new CLIError('This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitor.', ExitCode.ApiError, { id })
+    }
+    if (err instanceof CLIError) throw new CLIError(err.message, err.exitCode, { id })
+    throw new CLIError(`Saved, but tags were not applied: ${err instanceof Error ? err.message : String(err)}`, ExitCode.ApiError, { id })
+  }
+}
+
 /**
  * Apply a single resource change via the API.
  */
@@ -89,9 +102,15 @@ async function applyChange(
     const endpoint = getApiEndpoint(change.type)
 
     let body: Record<string, unknown> = {}
+    // Tag assignments go through the entity's tags endpoint after the write, not in the create/update body.
+    let tagRefs: string[] | undefined
     if (change.action === 'create' || change.action === 'update') {
       const rawBody = { ...change.local!.definition }
       delete rawBody.id
+      if ((change.type === 'test' || change.type === 'monitor') && Array.isArray(rawBody.tags)) {
+        tagRefs = rawBody.tags.map(String)
+        delete rawBody.tags
+      }
       if (rawBody.alertConfig && typeof rawBody.alertConfig === 'object' && 'notificationProviders' in rawBody.alertConfig && Array.isArray(rawBody.alertConfig.notificationProviders)) {
         rawBody.alertConfig = { ...rawBody.alertConfig, notificationProviders: rawBody.alertConfig.notificationProviders.map((ref) => opts.state.resolve('notificationProvider', String(ref))) }
       }
@@ -122,12 +141,15 @@ async function applyChange(
         try { opts.state.record(change.type, change.name, id, change.id ?? change.local?.id) } catch {
         throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id })
         }
+        if (tagRefs) await applyTags(client, `${endpoint}/${id}`, tagRefs, id)
         return { success: true, id }
       }
       case 'update': {
         const id = change.id ?? change.remote!.id
-        await client.put(`${endpoint}/${id}`, body)
+        // A tags-only change has nothing else to send.
+        if (Object.keys(body).length > 0 || !tagRefs) await client.put(`${endpoint}/${id}`, body)
         opts.state.record(change.type, change.name, id)
+        if (tagRefs) await applyTags(client, `${endpoint}/${id}`, tagRefs, id)
         return { success: true }
       }
       case 'delete': {

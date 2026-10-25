@@ -266,8 +266,8 @@ export class ApiClient {
     return this.request<T>('PATCH', path, { body })
   }
 
-  async delete<T = unknown>(path: string): Promise<ApiResponse<T>> {
-    return this.request<T>('DELETE', path)
+  async delete<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+    return this.request<T>('DELETE', path, { body })
   }
 
   private sleep(ms: number): Promise<void> {

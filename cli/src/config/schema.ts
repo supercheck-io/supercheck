@@ -86,7 +86,6 @@ export const jobDefinitionSchema = z.object({
   cronSchedule: z.string().optional(),
   status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
-  tags: z.array(z.string()).optional(),
 }).strict()
 
 // --- Status Pages ---

@@ -68,21 +68,41 @@ export function extractUuidFromFilename(filename: string): string | undefined {
   return match ? match[1] : undefined
 }
 
+/** Local-only annotations injected by `supercheck pull`; stripped before diff and deploy. */
+const METADATA_KEYS = 'title|priority|tags'
+
 /**
- * Strip `@title` metadata from a test script.
+ * Strip `@title`, `@priority` and `@tags` metadata from a test script.
  *
- * The `@title` annotation is a local-only developer convenience injected
- * during `supercheck pull`. It should not be included in API payloads or
- * used for diff comparison — the `title` field is the canonical source.
+ * These annotations are a local-only developer convenience injected
+ * during `supercheck pull`. They should not be included in API payloads or
+ * used for diff comparison — the test's own fields are the canonical source.
  *
  * Handles:
- *   - `// @title My Title\n\n` (single-line comment prefix)
- *   - `* @title My Title` inside JSDoc blocks
+ *   - leading `// @title My Title` lines (any of the keys) followed by an optional blank line
+ *   - `* @title My Title` lines inside JSDoc blocks
  */
 export function stripTitleMetadata(script: string): string {
-  // Strip leading single-line // @title ... and optional trailing blank line
-  let result = script.replace(/^\/\/\s*@title\s+[^\n]+\n\n?/, '')
-  // Strip * @title ... line from JSDoc blocks
-  result = result.replace(/\n\s*\*\s*@title\s+[^\n]+/, '')
+  let result = script.replace(new RegExp(`^(?:\\/\\/\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+\\n)+\\n?`), '')
+  result = result.replace(new RegExp(`\\n\\s*\\*\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+`, 'g'), '')
   return result
+}
+
+/** Reads a metadata annotation's value (`// @key value` or ` * @key value`). */
+export function readScriptMetadata(script: string, key: 'title' | 'priority' | 'tags'): string | undefined {
+  const match = script.match(new RegExp(`@${key}\\s+(.+)$`, 'm'))
+  return match ? match[1].replace(/\s*\*\/\s*$/, '').trim() : undefined
+}
+
+/**
+ * Sets a metadata annotation, updating an existing one, injecting into an existing JSDoc block,
+ * appending to leading `// @key` lines, or prepending `// @key value` and a blank line.
+ */
+export function setScriptMetadata(script: string, key: 'title' | 'priority' | 'tags', value: string): string {
+  const existing = new RegExp(`(@${key}\\s+)(.+?)(\\r?\\n|\\*\\/|$)`)
+  if (existing.test(script)) return script.replace(existing, (_match, head: string, _old: string, tail: string) => `${head}${value}${tail}`)
+  if (/\/\*\*([\s\S]*?)\*\//.test(script)) return script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @${key} ${value}`)
+  const leading = script.match(new RegExp(`^(?:\\/\\/\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+\\n)+`))
+  if (leading) return `${leading[0]}// @${key} ${value}\n${script.slice(leading[0].length)}`
+  return `// @${key} ${value}\n\n${script}`
 }

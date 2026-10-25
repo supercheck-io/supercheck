@@ -2,11 +2,16 @@ import { getApiClient } from '../api/client.js'
 import { discoverFiles, readFileContent } from './discovery.js'
 import { logger } from './logger.js'
 import { ApiRequestError, CLIError, ExitCode } from './errors.js'
-import { extractUuidFromFilename, stripTitleMetadata } from './slug.js'
+import { extractUuidFromFilename, readScriptMetadata, stripTitleMetadata } from './slug.js'
 import { decodeStoredTestScript, sanitizeTestScript } from './script.js'
 import type { LocalResource, RemoteResource } from './reconcile.js'
 import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
+
+/** Tag assignments compare by name, order-insensitively. */
+export function normalizeTagNames(names: unknown[]): string[] {
+  return [...new Set(names.map((name) => String(name).trim()).filter(Boolean))].sort()
+}
 
 /**
  * Build local resource list from the loaded config + discovered files.
@@ -77,7 +82,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         id: m.id,
         type: 'monitor',
         name: m.name,
-        definition: { ...m },
+        definition: { ...m, ...(m.tags ? { tags: normalizeTagNames(m.tags) } : {}) },
       })
     }
   } else if (typeof config.monitors === 'string') {
@@ -131,6 +136,14 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
 
       const displayName = file.relativePath.replace(/^_supercheck_\//, '')
 
+      // Optional @priority / @tags annotations: absent means "leave the remote value alone".
+      const priority = readScriptMetadata(script, 'priority')
+      if (priority !== undefined && !['low', 'medium', 'high'].includes(priority)) {
+        throw new CLIError(`${displayName}: @priority must be low, medium or high (got "${priority}").`, ExitCode.ConfigError)
+      }
+      const tagsAnnotation = readScriptMetadata(script, 'tags')
+      const tags = tagsAnnotation === undefined ? undefined : normalizeTagNames(tagsAnnotation.split(','))
+
       resources.push({
         id: testId,
         type: 'test',
@@ -140,6 +153,8 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
           title,
           testType: file.type === 'playwright' ? 'playwright' : 'k6',
           script: cleanScript,
+          ...(priority !== undefined ? { priority } : {}),
+          ...(tags !== undefined ? { tags } : {}),
         },
       })
     }
@@ -287,6 +302,10 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
   delete normalized.projectId
   delete normalized.organizationId
   delete normalized.createdByUserId
+
+  if ((type === 'test' || type === 'monitor') && Array.isArray(normalized.tags)) {
+    normalized.tags = normalizeTagNames((normalized.tags as unknown[]).map((tag) => tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag))
+  }
 
   if (type === 'monitor') {
     if (normalized.config && typeof normalized.config === 'object') {

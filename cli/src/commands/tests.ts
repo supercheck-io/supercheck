@@ -18,6 +18,17 @@ import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js
 import { getSse } from '../utils/sse.js'
 import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.js'
 import type { ApiTestType } from '../utils/validation.js'
+import { addAssignedTags, getAssignedTags, removeAssignedTags } from '../utils/tag-assignment.js'
+
+const TEST_PRIORITIES = ['low', 'medium', 'high'] as const
+
+export function requireTestPriority(value: string): (typeof TEST_PRIORITIES)[number] {
+  const normalized = value.trim().toLowerCase()
+  if (!(TEST_PRIORITIES as readonly string[]).includes(normalized)) {
+    throw new CLIError(`Invalid priority "${value}". Use one of: ${TEST_PRIORITIES.join(', ')}.`, ExitCode.ConfigError)
+  }
+  return normalized as (typeof TEST_PRIORITIES)[number]
+}
 
 function normalizeTestType(input: string): string {
   return requireApiTestType(input, '--type')
@@ -170,7 +181,8 @@ testCommand
   .option('--limit <limit>', 'Items per page', '50')
   .option('--search <query>', 'Search by title')
   .option('--type <type>', 'Filter by type (browser, performance, api, database, custom)')
-  .action(async (options: { page: string; limit: string; search?: string; type?: string }) => {
+  .option('--priority <priority>', 'Filter by priority (low, medium, high)')
+  .action(async (options: { page: string; limit: string; search?: string; type?: string; priority?: string }) => {
     const client = createAuthenticatedClient()
 
     const params: Record<string, string> = {
@@ -179,6 +191,7 @@ testCommand
     }
     if (options.search) params.search = options.search
     if (options.type) params.type = normalizeTestType(options.type)
+    if (options.priority) params.priority = requireTestPriority(options.priority)
 
     const { data } = await withSpinner(
       'Fetching tests',
@@ -193,6 +206,7 @@ testCommand
         { key: 'id', header: 'ID' },
         { key: 'title', header: 'Title' },
         { key: 'type', header: 'Type' },
+        { key: 'priority', header: 'Priority' },
         { key: 'createdAt', header: 'Created' },
       ],
     })
@@ -225,8 +239,9 @@ testCommand
   .requiredOption('--file <path>', 'Path to the test script file')
   .option('--type <type>', 'Test type (browser, performance, api, database, custom)')
   .option('--description <description>', 'Test description')
+  .option('--priority <priority>', 'Test priority (low, medium, high)')
   .option('--dry-run', 'Show what would be sent without creating')
-  .action(async (options: { title: string; file: string; type?: string; description?: string; dryRun?: boolean }) => {
+  .action(async (options: { title: string; file: string; type?: string; description?: string; priority?: string; dryRun?: boolean }) => {
     const { readFileSync } = await import('node:fs')
     const { resolve } = await import('node:path')
 
@@ -255,6 +270,7 @@ testCommand
       type: normalizeTestType(typeArg),
     }
     if (options.description) body.description = options.description
+    if (options.priority !== undefined) body.priority = requireTestPriority(options.priority)
 
     if (options.dryRun) {
       const preview = { ...body, script: `<base64 ${encodedScript.length} chars>` }
@@ -283,13 +299,15 @@ testCommand
   .option('--file <path>', 'Path to updated test script')
   .option('--type <type>', 'Test type (browser, performance, api, database, custom)')
   .option('--description <description>', 'Test description')
+  .option('--priority <priority>', 'Test priority (low, medium, high)')
   .option('--dry-run', 'Show what would be sent without updating')
-  .action(async (id: string, options: { title?: string; file?: string; type?: string; description?: string; dryRun?: boolean }) => {
+  .action(async (id: string, options: { title?: string; file?: string; type?: string; description?: string; priority?: string; dryRun?: boolean }) => {
     const client = createAuthenticatedClient()
 
     const body: Record<string, unknown> = {}
     if (options.title !== undefined) body.title = options.title
     if (options.description !== undefined) body.description = options.description
+    if (options.priority !== undefined) body.priority = requireTestPriority(options.priority)
     if (options.type !== undefined) body.type = requireApiTestType(options.type, '--type')
 
     if (options.file) {
@@ -333,7 +351,7 @@ testCommand
     }
 
     if (Object.keys(body).length === 0) {
-      logger.warn('No fields to update. Use --title, --file, or --description.')
+      logger.warn('No fields to update. Use --title, --file, --description, --type, or --priority.')
       return
     }
 
@@ -442,22 +460,43 @@ testCommand
     }
   })
 
+const TAG_COLUMNS = [
+  { key: 'id', header: 'ID' },
+  { key: 'name', header: 'Name' },
+  { key: 'color', header: 'Color' },
+]
+
 testCommand
   .command('tags <id>')
   .description('Get test tags')
   .action(async (id: string) => {
     const client = createAuthenticatedClient()
-    const { data } = await withSpinner(
-      'Fetching test tags',
-      () => client.get<Record<string, unknown>[]>(`/api/tests/${id}/tags`),
-    )
-    output(data, {
-      columns: [
-        { key: 'id', header: 'ID' },
-        { key: 'name', header: 'Name' },
-        { key: 'color', header: 'Color' },
-      ],
-    })
+    const data = await withSpinner('Fetching test tags', () => getAssignedTags(client, `/api/tests/${id}`))
+    output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
+  })
+
+const testTagCommand = testCommand
+  .command('tag')
+  .description('Assign or remove tags on a test')
+
+testTagCommand
+  .command('add <id> <tags...>')
+  .description('Add tags (names or IDs) to a test, keeping its existing tags')
+  .action(async (id: string, refs: string[]) => {
+    const client = createAuthenticatedClient()
+    const data = await withSpinner('Adding test tags', () => addAssignedTags(client, `/api/tests/${id}`, refs))
+    logger.success(`Test ${id} now has ${data.length} tag(s)`)
+    output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
+  })
+
+testTagCommand
+  .command('remove <id> <tags...>')
+  .description('Remove tags (names or IDs) from a test')
+  .action(async (id: string, refs: string[]) => {
+    const client = createAuthenticatedClient()
+    const data = await withSpinner('Removing test tags', () => removeAssignedTags(client, `/api/tests/${id}`, refs))
+    logger.success(`Test ${id} now has ${data.length} tag(s)`)
+    output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
   })
 
 testCommand

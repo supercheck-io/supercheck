@@ -531,10 +531,10 @@ describe('CLI agent workflows through the real entrypoint', () => {
     const second = run('deploy', '--force'); expect(second.status).toBe(0); expect(JSON.parse(second.stdout).status).toBe('no_change')
     expect(read().requests.filter((request) => request.method === 'POST')).toHaveLength(3)
   })
-  it('refuses unsupported resource tag assignments rather than silently ignoring them', () => {
-    config({ monitors: [{ name: 'API', type: 'http_request', tags: ['prod'] }] })
+  it('refuses job tag assignments (jobs have no tags) rather than silently ignoring them', () => {
+    config({ jobs: [{ name: 'Nightly', tests: ['00000000-0000-4000-8000-000000000001'], tags: ['prod'] }] })
     const result = run('deploy', '--force'); expect(result.status).toBe(3)
-    expect(JSON.parse(result.stderr).error).toContain('not supported')
+    expect(JSON.parse(result.stderr).error).toMatch(/tags/i)
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
 
