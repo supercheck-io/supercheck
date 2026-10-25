@@ -44,6 +44,7 @@ import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
+import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { TrialLoadTesting } from "@/components/org-admin/trial-load-testing";
@@ -119,17 +120,6 @@ interface PendingInvitation {
   expiresAt: string;
   inviterName: string;
   inviterEmail: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  slug?: string;
-  description?: string;
-  isDefault: boolean;
-  status: "active" | "archived" | "deleted";
-  createdAt: string;
-  membersCount: number;
 }
 
 interface OrgDetails {
@@ -360,19 +350,14 @@ function OrgAdminDashboardContent() {
   const hasData = orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && detailsLoading);
 
-  // Note: membersCount is not available from the API currently.
-  // The Project interface requires it, but the /api/projects endpoint
-  // doesn't return per-project member counts. Setting to 0 for now.
-  // TODO: Add members count to /api/projects response if needed.
   const projects: Project[] = orgProjects.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
     description: p.description,
     isDefault: p.isDefault,
-    status: "active" as const,
     createdAt: p.createdAt,
-    membersCount: 0,
+    membersCount: p.membersCount ?? 0,
   }));
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -422,7 +407,7 @@ function OrgAdminDashboardContent() {
   useEffect(() => {
     setBreadcrumbs([
       { label: "Home", href: "/", isCurrentPage: false },
-      { label: "Organization Admin", href: "/org-admin", isCurrentPage: true },
+      { label: "Organization", href: "/org-admin", isCurrentPage: true },
     ]);
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
@@ -823,7 +808,7 @@ function OrgAdminDashboardContent() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                Organization Admin
+                Organization
               </h1>
               <p className="text-muted-foreground text-sm">
                 Manage projects, members, tokens, Private Agents, and audit
@@ -1109,7 +1094,7 @@ function OrgAdminDashboardContent() {
                   canInviteMembers={canInviteMembers(
                     normalizeRole(currentUserRole),
                   )}
-                  projects={projects.filter((p) => p.status === "active")}
+                  projects={projects}
                 />
               )}
 
@@ -1118,7 +1103,7 @@ function OrgAdminDashboardContent() {
                 open={showInviteDialog}
                 onOpenChange={setShowInviteDialog}
                 mode="invite"
-                projects={projects.filter((p) => p.status === "active")}
+                projects={projects}
                 onSubmit={async (memberData) => {
                   setInviting(true);
                   try {

@@ -9,6 +9,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { eq, sql } from "drizzle-orm";
+import { withMemberCounts } from "@/lib/project-member-counts";
 import {
   subscriptionService,
   SubscriptionAccessDeniedError,
@@ -24,6 +25,9 @@ export async function GET(request: NextRequest) {
 
     // Get organization ID from query params or use auth context organization
     const { searchParams } = new URL(request.url);
+    const includeMemberCounts = searchParams.get("includeMemberCounts") === "1";
+    const decorate = <T extends { id: string; organizationId: string }>(list: T[]) =>
+      includeMemberCounts ? withMemberCounts(list) : list;
     const organizationId = searchParams.get("organizationId");
 
     if (isCliAuth && organizationId && organizationId !== authOrgId) {
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest) {
       const [userProjects, currentProject] = await Promise.all([
         getSelectableProjects(userId), getCurrentProjectContext(),
       ]);
-      return NextResponse.json({ success: true, data: userProjects, currentProject });
+      return NextResponse.json({ success: true, data: await decorate(userProjects), currentProject });
     }
 
     let targetOrgId = organizationId;
@@ -67,13 +71,16 @@ export async function GET(request: NextRequest) {
 
     // Get user's projects in the organization
     const userProjects = await getUserProjects(userId, targetOrgId);
+    const scopedProjects = isCliAuth && tokenProjectId
+      ? userProjects.filter((project) => project.id === tokenProjectId)
+      : userProjects;
 
     // Get current project context
     const currentProject = await getCurrentProjectContext();
 
     return NextResponse.json({
       success: true,
-      data: isCliAuth && tokenProjectId ? userProjects.filter((project) => project.id === tokenProjectId) : userProjects,
+      data: await decorate(scopedProjects),
       currentProject: currentProject,
     });
   } catch (error) {

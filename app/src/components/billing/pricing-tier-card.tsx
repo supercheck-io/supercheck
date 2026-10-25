@@ -44,7 +44,7 @@ export function PricingTierCard({
       className={cn(
         "relative h-full flex flex-col shadow-none",
         highlighted
-          ? "border-[hsl(220,90%,56%)] bg-[hsl(220,90%,56%)]/5 dark:border-[hsl(220,90%,66%)] dark:bg-[hsl(220,90%,66%)]/5"
+          ? "border-primary bg-primary/5"
           : "border",
       )}
     >
@@ -54,7 +54,7 @@ export function PricingTierCard({
             className={cn(
               "rounded-full px-2.5 py-1 text-xs font-semibold",
               highlighted
-                ? "bg-[hsl(220,90%,56%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 border-0"
+                ? "bg-primary text-primary-foreground border-0"
                 : "bg-muted text-muted-foreground border-0",
             )}
           >
@@ -98,7 +98,7 @@ export function PricingTierCard({
             <li key={index} className="flex items-start gap-3">
               <Check
                 aria-hidden="true"
-                className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(220,90%,56%)] dark:text-[hsl(220,90%,66%)]"
+                className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                 strokeWidth={2}
               />
               <span className="text-sm leading-5 text-foreground/90">
@@ -111,11 +111,7 @@ export function PricingTierCard({
         {/* CTA Button */}
         {ctaHref ? (
           <Button
-            className={cn(
-              "w-full h-11 text-sm font-semibold",
-              highlighted &&
-                "bg-[hsl(220,90%,56%)] hover:bg-[hsl(220,90%,50%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]",
-            )}
+            className="w-full h-11 text-sm font-semibold"
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
             asChild
@@ -126,11 +122,7 @@ export function PricingTierCard({
           </Button>
         ) : (
           <Button
-            className={cn(
-              "w-full h-11 text-sm font-semibold",
-              highlighted &&
-                "bg-[hsl(220,90%,56%)] hover:bg-[hsl(220,90%,50%)] text-white dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]",
-            )}
+            className="w-full h-11 text-sm font-semibold"
             size="lg"
             variant={highlighted ? "default" : ctaVariant}
             onClick={onCtaClick}

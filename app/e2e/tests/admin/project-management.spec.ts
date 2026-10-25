@@ -46,7 +46,7 @@ test.describe("Organization project administration @admin @projects @critical", 
 
     await orgOwnerPage.goto("/org-admin", { waitUntil: "domcontentloaded" });
     await expect(
-      orgOwnerPage.getByRole("heading", { name: "Organization Admin" }),
+      orgOwnerPage.getByRole("heading", { name: "Organization" }),
     ).toBeVisible();
     // Older runs can leave projects behind, so the new project may not be on
     // the first page of the paginated table. Filter to it explicitly.
