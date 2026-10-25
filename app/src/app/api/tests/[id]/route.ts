@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
-import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { isTestPriority, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
@@ -117,6 +117,13 @@ export async function PUT(
 
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
+
+    if (body.priority !== undefined && !isTestPriority(body.priority)) {
+      return NextResponse.json(
+        { error: "Priority must be one of: low, medium, high" },
+        { status: 400 },
+      );
+    }
 
     // Find test scoped to current project
     const existingTest = await db.query.tests.findFirst({

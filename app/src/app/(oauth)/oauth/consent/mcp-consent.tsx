@@ -96,7 +96,11 @@ export function McpConsent({ oauthQuery, userEmail, projects, client, navigate =
         <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-sm">
           <p className="font-medium">{client.name} will be able to:</p>
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-            <li>Read tests, runs, monitors and incidents in the project you choose</li>
+            <li>
+              Read tests, jobs, runs, monitors, requirements, status pages, services, incidents and investigations
+              in the project you choose
+            </li>
+            <li>See variable names and types, never their values</li>
           </ul>
           <p className="text-muted-foreground">
             It cannot change anything, run tests, or read secrets and variable values. It sees only what you can

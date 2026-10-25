@@ -36,6 +36,12 @@ export const cronExpressionSchema = z
 /** Upper bound for user-supplied test/job scripts (characters). */
 export const MAX_SCRIPT_LENGTH = 1_000_000;
 
+export const TEST_PRIORITIES = ["low", "medium", "high"] as const;
+
+export function isTestPriority(value: unknown): value is (typeof TEST_PRIORITIES)[number] {
+  return typeof value === "string" && (TEST_PRIORITIES as readonly string[]).includes(value);
+}
+
 // Common form schemas
 export const createJobSchema = z.object({
   name: nameSchema,

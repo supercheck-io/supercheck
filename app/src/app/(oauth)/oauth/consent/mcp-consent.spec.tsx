@@ -28,7 +28,7 @@ describe("McpConsent", () => {
   it("says what the app can and cannot do", () => {
     setup();
     expect(screen.getByRole("heading", { name: /connect my agent/i })).toBeInTheDocument();
-    expect(screen.getByText(/read tests, runs, monitors and incidents/i)).toBeInTheDocument();
+    expect(screen.getByText(/read tests, jobs, runs, monitors, requirements, status pages, services, incidents and investigations/i)).toBeInTheDocument();
     expect(screen.getByText(/cannot change anything, run tests, or read secrets/i)).toBeInTheDocument();
     expect(screen.getByText(/signed in as me@example.com/i)).toBeInTheDocument();
     expect(screen.getByText(/127\.0\.0\.1:8765/)).toBeInTheDocument();
