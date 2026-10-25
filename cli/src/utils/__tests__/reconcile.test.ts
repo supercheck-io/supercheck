@@ -297,6 +297,14 @@ describe('formatChangePlan', () => {
     expect(lines.some((l) => l.includes('3 change(s) detected.'))).toBe(true)
   })
 
+  it('prints change notes with their resource', () => {
+    formatChangePlan([
+      { action: 'update', type: 'statusPage', id: 'sp-1', name: 'Acme', details: ['headline'], notes: ['subdomain is read-only'] },
+    ])
+
+    expect(outputLines().some((l) => l.includes('note: statusPage/Acme: subdomain is read-only'))).toBe(true)
+  })
+
   it('does not count no-change entries as changes', () => {
     formatChangePlan([
       { action: 'no-change', type: 'test', id: 'id-1', name: 'Same' },

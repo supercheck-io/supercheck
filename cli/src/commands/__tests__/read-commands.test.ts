@@ -584,5 +584,32 @@ describe('read-only and operational commands', () => {
       expect(mockWarn).toHaveBeenCalledWith('No local tests found to validate.')
       expect(mockValidateScripts).not.toHaveBeenCalled()
     })
+
+    it('warns about requirement test references that match no local test and accepts UUIDs and local paths', async () => {
+      mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
+      mockBuildLocalResources.mockReturnValueOnce([
+        { type: 'requirement', name: 'Login', definition: { tests: ['_supercheck_/playwright/home.pw.ts', '019a0000-0000-7000-8000-000000000001', 'gone.pw.ts'] } },
+        { type: 'test', name: 'playwright/home.pw.ts', definition: { script: 'page.goto()', testType: 'playwright' } },
+      ])
+      mockValidateScripts.mockResolvedValueOnce([{ name: 'playwright/home.pw.ts', valid: true }])
+
+      await validateCommand.parseAsync(['node', 'validate'])
+
+      expect(mockWarn).toHaveBeenCalledTimes(1)
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('requirement/Login: test reference "gone.pw.ts" matches no local test file'))
+    })
+
+    it('rejects a status page with duplicate component names before any network call', async () => {
+      mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
+      mockBuildLocalResources.mockReturnValueOnce([
+        { type: 'statusPage', name: 'Acme', definition: { components: [{ name: 'API' }, { name: 'API' }] } },
+      ])
+
+      await expect(validateCommand.parseAsync(['node', 'validate'])).rejects.toMatchObject({
+        exitCode: ExitCode.ConfigError,
+        message: expect.stringContaining('two components named "API"'),
+      })
+      expect(mockValidateScripts).not.toHaveBeenCalled()
+    })
   })
 })
