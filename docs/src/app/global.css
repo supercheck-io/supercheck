@@ -47,7 +47,10 @@ body {
   user-select: none;
 }
 
-/* Hero accent: the "as Code" phrase */
-.hero-accent {
-  color: var(--color-fd-primary);
+@media (prefers-reduced-motion: reduce) {
+  .site-nav-viewport,
+  .site-nav-viewport * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

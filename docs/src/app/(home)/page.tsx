@@ -1,17 +1,18 @@
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
 import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
+import { CheckList, Screenshot, SectionHeading, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
+import { DEMO_URL, solutionsMenu } from "../../lib/site-nav";
 
-const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev";
-
-const pillars = [
+const products = [
   {
-    title: "Test",
+    title: "Automate",
     summary: "Write, record and run end-to-end and load tests.",
     href: "/docs/app/automate",
+    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright API test" },
     items: [
       "Playwright browser, API and database tests",
       "k6 load tests with streaming logs and run comparison",
@@ -22,29 +23,43 @@ const pillars = [
   },
   {
     title: "Monitor",
-    summary: "Know when something breaks, and tell your users.",
+    summary: "Know when something breaks before your users tell you.",
     href: "/docs/app/monitor",
+    shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
     items: [
       "HTTP, website, ping and port checks",
       "Checks from locations in Europe, North America and Asia Pacific",
       "Synthetic monitors that replay Playwright journeys",
+      "Failure and recovery thresholds to cut noisy alerts",
+    ],
+  },
+  {
+    title: "Communicate",
+    summary: "Tell your team first, then tell your users.",
+    href: "/docs/app/communicate",
+    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page showing all systems operational" },
+    items: [
       "Alerts by email, Slack, Teams, Discord, Telegram and webhooks",
-      "Public status pages with email and webhook subscribers",
+      "Public status pages on your own domain",
+      "Email, Slack and webhook subscribers, plus RSS and calendar feeds",
+      "Project dashboard for runs, jobs and uptime",
     ],
   },
   {
     title: "Investigate",
     summary: "Find the cause of an incident with evidence, not guesses.",
     href: "/docs/app/investigate",
+    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for an API gateway incident" },
     items: [
       "Incidents linked to the alerts and runs that raised them",
       "AI SRE investigations that cite their evidence",
       "Read-only connectors for GitHub, Kubernetes, Prometheus, Grafana, Sentry and Datadog",
       "Private Agent for systems inside your network",
-      "Service catalog and investigation map",
     ],
   },
 ];
+
+const worksWith = ["Playwright", "k6", "GitHub Actions", "GitLab CI", "Slack", "Microsoft Teams", "Claude Code", "Cursor"];
 
 const configExample = `import { defineConfig } from '@supercheck/cli'
 
@@ -91,21 +106,6 @@ const runOptions = [
   },
 ];
 
-function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) {
-  return (
-    <div className="max-w-2xl">
-      <p className="text-sm font-medium text-fd-primary">{eyebrow}</p>
-      <h2 className="mt-2 text-balance text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h2>
-      {children && <p className="mt-3 text-fd-muted-foreground">{children}</p>}
-    </div>
-  );
-}
-
-const primaryButton =
-  "inline-flex items-center justify-center gap-2 rounded-md bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
-const secondaryButton =
-  "inline-flex items-center justify-center gap-2 rounded-md border border-fd-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
-
 export default async function HomePage() {
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
@@ -123,10 +123,7 @@ export default async function HomePage() {
             Open source under AGPLv3 · View on GitHub
           </a>
           <h1 className="mt-4 max-w-5xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
-            Open-Source Testing, Monitoring, and AI SRE{" "}
-            <span className="whitespace-nowrap">
-              — <span className="hero-accent">as Code</span>
-            </span>
+            Open-source testing, monitoring, and AI SRE, as code
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
             Test with Playwright and k6. Monitor your sites and APIs, keep users informed
@@ -154,41 +151,83 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* What it does */}
+        {/* Works with */}
+        <section aria-labelledby="works-with-heading" className="border-t border-fd-border">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:px-6 md:flex-row md:items-center md:gap-8">
+            <h2 id="works-with-heading" className="shrink-0 text-sm text-fd-muted-foreground">
+              Works with the tools you already use
+            </h2>
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
+              {worksWith.map((tool) => (
+                <li key={tool}>{tool}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* Product */}
         <section className="border-t border-fd-border">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Platform" title="One place for the work between deploy and incident">
               Most teams stitch together a test runner, an uptime service, a status page and a pile of
               dashboards. Supercheck covers all four, sharing one set of projects, alerts and history.
             </SectionHeading>
-            <div className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
-              {pillars.map((pillar) => (
-                <div key={pillar.title} className="flex flex-col border-t border-fd-border pt-6">
-                  <h3 className="text-lg font-semibold">{pillar.title}</h3>
-                  <p className="mt-1 text-sm text-fd-muted-foreground">{pillar.summary}</p>
-                  <ul className="mt-5 flex-1 space-y-2.5 text-sm">
-                    {pillar.items.map((item) => (
-                      <li key={item} className="flex gap-2.5">
-                        <Check className="mt-0.5 size-4 shrink-0 text-fd-primary" aria-hidden="true" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Link
-                    href={pillar.href}
-                    className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
-                  >
-                    {pillar.title} docs
-                    <ArrowRight className="size-3.5" aria-hidden="true" />
-                  </Link>
+            <div className="mt-16 space-y-20 md:space-y-28">
+              {products.map((product, index) => (
+                <div
+                  key={product.title}
+                  className={`grid items-center gap-8 lg:gap-14 ${index % 2 === 1 ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"}`}
+                >
+                  <div className={index % 2 === 1 ? "lg:order-2" : undefined}>
+                    <h3 className="text-2xl font-semibold tracking-tight">{product.title}</h3>
+                    <p className="mt-2 text-fd-muted-foreground">{product.summary}</p>
+                    <CheckList items={product.items} className="mt-6" />
+                    <Link href={product.href} className={`${textLink} mt-6`}>
+                      {product.title} docs
+                      <ArrowRight className="size-3.5" aria-hidden="true" />
+                    </Link>
+                  </div>
+                  <div className={index % 2 === 1 ? "lg:order-1" : undefined}>
+                    <Screenshot src={product.shot.src} alt={product.shot.alt} />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* As code */}
+        {/* Solutions */}
         <section className="border-t border-fd-border bg-fd-card/40">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
+            <SectionHeading eyebrow="Solutions" title="Built for the people who keep software working">
+              See how developers, SRE and platform teams, QA engineers and engineering managers use Supercheck.
+            </SectionHeading>
+            <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {solutionsMenu.groups[0].items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className="group flex h-full flex-col rounded-xl border border-fd-border bg-fd-background p-6 transition-colors hover:border-fd-primary/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+                    >
+                      <Icon className="size-5 text-fd-primary" aria-hidden="true" />
+                      <span className="mt-4 font-semibold">{item.title}</span>
+                      <span className="mt-1.5 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{item.description}</span>
+                      <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-fd-primary">
+                        Learn more
+                        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+
+        {/* As code */}
+        <section className="border-t border-fd-border">
           <div className="mx-auto grid max-w-6xl items-start gap-12 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div>
               <SectionHeading eyebrow="As code" title="Keep tests and monitors in your repository">
@@ -215,17 +254,11 @@ export default async function HomePage() {
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
-                <Link
-                  href="/docs/cli"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
-                >
+                <Link href="/docs/cli" className={textLink}>
                   CLI documentation
                   <ArrowRight className="size-3.5" aria-hidden="true" />
                 </Link>
-                <Link
-                  href="/docs/mcp"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
-                >
+                <Link href="/docs/mcp" className={textLink}>
                   MCP server
                   <ArrowRight className="size-3.5" aria-hidden="true" />
                 </Link>
@@ -244,10 +277,7 @@ export default async function HomePage() {
                 <div key={option.title} className="flex flex-col bg-fd-background p-6 sm:p-8">
                   <h3 className="font-semibold">{option.title}</h3>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{option.body}</p>
-                  <Link
-                    href={option.link.href}
-                    className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
-                  >
+                  <Link href={option.link.href} className={`${textLink} mt-6`}>
                     {option.link.label}
                     <ArrowRight className="size-3.5" aria-hidden="true" />
                   </Link>

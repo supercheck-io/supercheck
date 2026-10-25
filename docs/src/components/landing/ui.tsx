@@ -1,0 +1,56 @@
+import Image from "next/image";
+import { Check } from "lucide-react";
+
+export const primaryButton =
+  "inline-flex items-center justify-center gap-2 rounded-md bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
+export const secondaryButton =
+  "inline-flex items-center justify-center gap-2 rounded-md border border-fd-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
+export const textLink =
+  "inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
+
+export function SectionHeading({ eyebrow, title, children }: { eyebrow?: string; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="max-w-2xl">
+      {eyebrow && <p className="text-sm font-medium text-fd-primary">{eyebrow}</p>}
+      <h2 className="mt-2 text-balance text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h2>
+      {children && <p className="mt-3 text-pretty text-fd-muted-foreground">{children}</p>}
+    </div>
+  );
+}
+
+export function CheckList({ items, className = "" }: { items: string[]; className?: string }) {
+  return (
+    <ul className={`space-y-2.5 text-sm ${className}`}>
+      {items.map((item) => (
+        <li key={item} className="flex gap-2.5">
+          <Check className="mt-0.5 size-4 shrink-0 text-fd-primary" aria-hidden="true" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Intrinsic sizes of the 1600px WebP copies in public/screenshots/site.
+const SHOT_HEIGHTS: Record<string, number> = {
+  "status-page-public": 922,
+  "incident-workspace-overview": 1000,
+};
+
+/** Product screenshot in a framed panel. Screenshots are dark-theme captures in both site themes. */
+export function Screenshot({ src, alt, priority = false }: { src: string; alt: string; priority?: boolean }) {
+  const name = src.split("/").pop()?.replace(/\.webp$/, "") ?? "";
+  return (
+    <div className="overflow-hidden rounded-xl border border-fd-border bg-[#0a0a0a] shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.3)]">
+      <Image
+        src={src}
+        alt={alt}
+        width={1600}
+        height={SHOT_HEIGHTS[name] ?? 969}
+        sizes="(min-width: 1024px) 640px, 100vw"
+        className="h-auto w-full"
+        priority={priority}
+      />
+    </div>
+  );
+}
