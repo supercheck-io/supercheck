@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { MonitorStatusIndicator } from "./monitor-status-indicator";
 import { monitorTypes } from "./data";
+import { maskUrlPassword } from "@/lib/mask-url-password";
 import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
@@ -71,7 +72,7 @@ export const columns: ColumnDef<Monitor>[] = [
       const target = row.getValue("target") as string;
       const legacyUrl = row.original.url as string; // Fallback for legacy data
 
-      const displayValue = target || legacyUrl || "—";
+      const displayValue = maskUrlPassword(target || legacyUrl || "—");
 
       return (
         <TruncatedTextWithTooltip

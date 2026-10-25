@@ -14,7 +14,7 @@ jest.mock("recharts", () => {
   };
 });
 
-import { SreIncidentAnalytics } from "./sre-incident-analytics";
+import { SreIncidentAnalytics, formatTrendDate } from "./sre-incident-analytics";
 
 describe("SreIncidentAnalytics", () => {
   it("renders bounded incident trends and service impact", () => {
@@ -35,5 +35,11 @@ describe("SreIncidentAnalytics", () => {
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("1h 35m")).toBeInTheDocument();
     expect(screen.getByText("checkout-api")).toBeInTheDocument();
+  });
+
+  it("formats trend dates as MMM d without a timezone shift", () => {
+    expect(formatTrendDate("2026-09-27")).toBe("Sep 27");
+    expect(formatTrendDate("2026-10-01")).toBe("Oct 1");
+    expect(formatTrendDate("not-a-date")).toBe("not-a-date");
   });
 });

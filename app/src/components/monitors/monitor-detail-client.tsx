@@ -75,6 +75,7 @@ import { NavUser } from "@/components/nav-user";
 import Link from "next/link";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
+import { maskUrlPassword } from "@/lib/mask-url-password";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import {
   isMonitoringLocation,
@@ -142,15 +143,54 @@ const SimpleStatusIcon = ({ isUp }: { isUp: boolean }) => {
 const StatusHeaderIcon = ({ status }: { status: string }) => {
   switch (status) {
     case "up":
-      return <CheckCircle className="h-5 w-5 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
     case "down":
-      return <XCircle className="h-5 w-5 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-red-500" />;
     case "paused":
-      return <Pause className="h-5 w-5 text-gray-500" />;
+      return <Pause className="h-4 w-4 text-gray-500" />;
     default:
-      return <AlertCircle className="h-5 w-5 text-yellow-500" />;
+      return <AlertCircle className="h-4 w-4 text-yellow-500" />;
   }
 };
+
+const naToNull = (value: string) => (value === "N/A" ? null : value);
+
+function MetricGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-card px-4 py-3 shadow-sm">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
+      <div className="grid grid-cols-3 gap-3">{children}</div>
+    </div>
+  );
+}
+
+function MetricStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+        {icon}
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 truncate text-xl font-semibold">
+        {value ?? <span className="text-muted-foreground">—</span>}
+      </div>
+    </div>
+  );
+}
 
 export function MonitorDetailClient({
   monitor: initialMonitor,
@@ -602,8 +642,8 @@ export function MonitorDetailClient({
 
         {/* Status and Type Header */}
         <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-3">
               {!isNotificationView && (
                 <Button
                   variant="outline"
@@ -629,7 +669,7 @@ export function MonitorDetailClient({
                 <div className="flex items-center gap-2">
                   <div
                     className="text-sm text-muted-foreground truncate max-w-md"
-                    title={monitor.url}
+                    title={maskUrlPassword(monitor.url) ?? undefined}
                   >
                     {monitor.type === "synthetic_test" &&
                       monitor.config?.testId ? (
@@ -639,13 +679,14 @@ export function MonitorDetailClient({
                       </>
                     ) : monitor.type === "port_check" &&
                       monitor.config?.port ? (
-                      `${monitor.target || monitor.url}:${monitor.config.port}`
+                      `${maskUrlPassword(monitor.target || monitor.url)}:${monitor.config.port}`
                     ) : monitor.type === "http_request" &&
                       monitor.config?.method ? (
-                      `${monitor.config.method.toUpperCase()} ${monitor.url || monitor.target
-                      }`
+                      `${monitor.config.method.toUpperCase()} ${maskUrlPassword(
+                        monitor.url || monitor.target
+                      )}`
                     ) : (
-                      monitor.url || monitor.target
+                      maskUrlPassword(monitor.url || monitor.target)
                     )}
                   </div>
                   {(monitor.url ||
@@ -673,7 +714,7 @@ export function MonitorDetailClient({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {monitor.status === "paused" && (
                 <div className="flex items-center px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                   <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mr-1" />
@@ -854,7 +895,7 @@ export function MonitorDetailClient({
                     className={`flex items-center ${
                       !permissionsReady || !canDeleteMonitor
                         ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                        : "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                        : "text-red-600 dark:text-red-400 border-red-500/30 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10"
                     }`}
                     title={
                       !permissionsReady
@@ -889,205 +930,69 @@ export function MonitorDetailClient({
             </div>
           </div>
 
-          {/* Metric Cards - Single row with horizontal scroll on smaller screens */}
-          <div className="flex gap-2.5 mt-4 mx-3 overflow-x-auto pb-4">
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <StatusHeaderIcon status={currentActualStatus} />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Status
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {statusInfo?.label ??
-                    (currentActualStatus
-                      ? currentActualStatus.charAt(0).toUpperCase() +
+          {/* Metric groups: current state, last 24 hours, last 30 days */}
+          <div className="mt-4 mx-3 grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-3 pb-4">
+            <MetricGroup title="Current">
+              <MetricStat
+                icon={<StatusHeaderIcon status={currentActualStatus} />}
+                label="Status"
+                value={
+                  statusInfo?.label ??
+                  (currentActualStatus
+                    ? currentActualStatus.charAt(0).toUpperCase() +
                       currentActualStatus.slice(1)
-                      : "Pending")}
-                </div>
-              </CardContent>
-            </Card>
+                    : "Pending")
+                }
+              />
+              <MetricStat
+                icon={<Clock className="h-4 w-4 text-purple-500" />}
+                label="Interval"
+                value={
+                  monitor.frequencyMinutes ? `${monitor.frequencyMinutes}m` : null
+                }
+              />
+              <MetricStat
+                icon={<Activity className="h-4 w-4 text-blue-500" />}
+                label="Resp Time"
+                value={currentResponseTime === "N/A" ? null : currentResponseTime}
+              />
+            </MetricGroup>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5 text-purple-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Interval
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {monitor.frequencyMinutes ? (
-                    `${monitor.frequencyMinutes}m`
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <MetricGroup title="Last 24 hours">
+              <MetricStat
+                icon={<TrendingUp className="h-4 w-4 text-green-400" />}
+                label="Uptime"
+                value={naToNull(calculatedMetrics.uptime24h)}
+              />
+              <MetricStat
+                icon={<Zap className="h-4 w-4 text-sky-500" />}
+                label="Avg Resp"
+                value={naToNull(calculatedMetrics.avgResponse24h)}
+              />
+              <MetricStat
+                icon={<ChartNoAxesCombined className="h-4 w-4 text-orange-500" />}
+                label="P95 Resp"
+                value={naToNull(calculatedMetrics.p95Response24h)}
+              />
+            </MetricGroup>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-5 w-5 text-blue-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Resp Time
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {currentResponseTime === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    currentResponseTime
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-5 w-5 text-green-400" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Uptime
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  24h
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.uptime24h === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.uptime24h
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <Zap className="h-5 w-5 text-sky-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Avg Resp
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  24h
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.avgResponse24h === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.avgResponse24h
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    P95 Resp
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  24h
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.p95Response24h === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.p95Response24h
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-5 w-5 text-green-400" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Uptime
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  30d
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.uptime30d === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.uptime30d
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <Zap className="h-5 w-5 text-sky-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    Avg Resp
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  30d
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.avgResponse30d === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.avgResponse30d
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-                <div className="flex items-center space-x-2">
-                  <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
-                    P95 Resp
-                  </CardTitle>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
-                  30d
-                </span>
-              </CardHeader>
-              <CardContent className="pb-4 px-4">
-                <div className="text-xl font-semibold">
-                  {calculatedMetrics.p95Response30d === "N/A" ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    calculatedMetrics.p95Response30d
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <MetricGroup title="Last 30 days">
+              <MetricStat
+                icon={<TrendingUp className="h-4 w-4 text-green-400" />}
+                label="Uptime"
+                value={naToNull(calculatedMetrics.uptime30d)}
+              />
+              <MetricStat
+                icon={<Zap className="h-4 w-4 text-sky-500" />}
+                label="Avg Resp"
+                value={naToNull(calculatedMetrics.avgResponse30d)}
+              />
+              <MetricStat
+                icon={<ChartNoAxesCombined className="h-4 w-4 text-orange-500" />}
+                label="P95 Resp"
+                value={naToNull(calculatedMetrics.p95Response30d)}
+              />
+            </MetricGroup>
           </div>
         </div>
 
@@ -1177,7 +1082,7 @@ export function MonitorDetailClient({
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 flex-1 flex flex-col">
-              <div className="w-full overflow-hidden relative">
+              <div className="w-full overflow-x-auto relative">
                 {/* Loading overlay - shows on top of existing data for smooth transitions */}
                 {isLoadingResults && paginatedTableResults.length > 0 && (
                   <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
@@ -1190,36 +1095,43 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className="w-full divide-y divide-border">
+                  <table className="w-full min-w-[520px] table-fixed divide-y divide-border">
+                    <colgroup>
+                      <col className="w-[64px]" />
+                      <col className="w-[144px]" />
+                      <col className="w-[96px]" />
+                      <col className="w-[116px]" />
+                      <col />
+                    </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
                       <tr>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-20"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Result
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-44"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Checked At
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-40"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Location
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-60"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Response Time
                         </th>
                         <th
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-32"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap"
                         >
                           Error
                         </th>
@@ -1302,7 +1214,7 @@ export function MonitorDetailClient({
                               <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
                                 {formatDateTime(result.checkedAt)}
                               </td>
-                              <td className="px-4 py-[11.5px] whitespace-nowrap text-xs text-muted-foreground">
+                              <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-xs text-muted-foreground">
                                 {locationMetadata ? (
                                   <span className="flex items-center gap-1">
                                     {locationMetadata.flag && (
@@ -1360,8 +1272,8 @@ export function MonitorDetailClient({
                                     <TruncatedTextWithTooltip
                                       text={syntheticReportError}
                                       className="text-muted-foreground text-xs"
-                                      maxWidth="150px"
-                                      maxLength={30}
+                                      maxWidth="100%"
+                                      maxLength={12}
                                     />
                                   ) : (
                                     <span className="text-muted-foreground text-xs">
@@ -1380,8 +1292,8 @@ export function MonitorDetailClient({
                                         "Check failed"
                                       }
                                       className="text-muted-foreground text-xs"
-                                      maxWidth="150px"
-                                      maxLength={30}
+                                      maxWidth="100%"
+                                      maxLength={12}
                                     />
                                   )}
                               </td>

@@ -31,6 +31,10 @@ import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
+import { PlusIcon, Target } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
 interface DataTableProps<TData, TValue> {
@@ -81,6 +85,7 @@ export function DataTable<TData, TValue>({
     meta,
 }: DataTableProps<TData, TValue>) {
     const { canCreateRequirement } = useRequirementPermissions();
+    const router = useRouter();
     const [rowSelection, setRowSelection] = React.useState({});
     const [columnVisibility, setColumnVisibility] =
         React.useState<VisibilityState>({
@@ -210,6 +215,31 @@ export function DataTable<TData, TValue>({
         return <DataTableSkeleton columns={5} rows={3} />;
     }
 
+    if (!isLoading && data.length === 0) {
+        return (
+            <DashboardEmptyState
+                title="No requirements yet"
+                description={
+                    canCreateRequirement
+                        ? "Create a requirement to track its test coverage, or upload a document from the Documents tab to extract them."
+                        : "No requirements have been added to this project yet. Ask a project editor or administrator to add one."
+                }
+                icon={<Target className="h-12 w-12" />}
+                action={
+                    canCreateRequirement ? (
+                        <Button
+                            onClick={() => router.push("/requirements/new")}
+                            data-testid="create-requirement-button"
+                        >
+                            <PlusIcon className="mr-2 h-4 w-4" />
+                            Create Requirement
+                        </Button>
+                    ) : undefined
+                }
+            />
+        );
+    }
+
     return (
         <div className="space-y-2 -mb-2">
             <DataTableToolbar table={table} canCreateRequirement={canCreateRequirement} />
@@ -272,9 +302,9 @@ export function DataTable<TData, TValue>({
                             <TableRow>
                                 <TableCell
                                     colSpan={columns.length}
-                                    className="h-24 text-center"
+                                    className="h-24 text-center text-muted-foreground"
                                 >
-                                    No results.
+                                    No requirements match the current filters.
                                 </TableCell>
                             </TableRow>
                         )}

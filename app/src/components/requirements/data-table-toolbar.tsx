@@ -56,17 +56,8 @@ export function DataTableToolbar<TData>({
 
     return (
         <>
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center justify-between space-y-2">
-                    <div className="flex flex-col">
-                        <h2 className="text-2xl font-semibold">Requirements</h2>
-                        <p className="text-muted-foreground text-sm">
-                            Manage requirements and their test coverage
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                         <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -109,6 +100,9 @@ export function DataTableToolbar<TData>({
                         />
                     )}
                     <DataTableViewOptions table={table} />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                     <Button
                         variant="outline"
                         size="sm"
@@ -117,21 +111,21 @@ export function DataTableToolbar<TData>({
                         data-testid="export-requirements-button"
                     >
                         {isExporting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
-                            <Download className="h-4 w-4 " />
+                            <Download className="mr-2 h-4 w-4" />
                         )}
-
+                        Export
                     </Button>
                     <Button
-                        variant="secondary"
-                        className="border shadow-sm"
+                        variant="outline"
+                        size="sm"
                         onClick={() => setUploadDialogOpen(true)}
                         disabled={!canCreateRequirement}
                         data-testid="upload-document-button"
                     >
-                        <Upload className="h-4 w-4" />
-
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload
                     </Button>
                     <Button
                         onClick={() => router.push("/requirements/new")}

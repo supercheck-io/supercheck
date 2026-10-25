@@ -134,7 +134,7 @@ describe("SreIncidentsList", () => {
         loadError={null}
       />,
     );
-    const actions = within(screen.getByTestId("incident-header-actions"));
+    const actions = within(screen.getByTestId("incident-toolbar"));
     fireEvent.click(actions.getByRole("button", { name: /Status/ }));
     fireEvent.click(screen.getByRole("option", { name: "investigating" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe("SreIncidentsList", () => {
     );
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
     fireEvent.click(
-      within(screen.getByTestId("incident-header-actions")).getByRole(
+      within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
         { name: /Status/ },
       ),
@@ -193,7 +193,7 @@ describe("SreIncidentsList", () => {
     );
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
     fireEvent.click(
-      within(screen.getByTestId("incident-header-actions")).getByRole(
+      within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
         { name: "Severity" },
       ),
@@ -205,7 +205,7 @@ describe("SreIncidentsList", () => {
     fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(
-      within(screen.getByTestId("incident-header-actions")).getByRole(
+      within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
         { name: "Service" },
       ),
@@ -217,7 +217,7 @@ describe("SreIncidentsList", () => {
     ).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(
-      within(screen.getByTestId("incident-header-actions")).getByRole(
+      within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
         { name: /Status/ },
       ),
@@ -242,7 +242,7 @@ describe("SreIncidentsList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Go to next page" }));
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     fireEvent.click(
-      within(screen.getByTestId("incident-header-actions")).getByRole(
+      within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
         { name: "Severity" },
       ),
@@ -274,17 +274,18 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
 
     const headerActions = screen.getByTestId("incident-header-actions");
+    const toolbar = screen.getByTestId("incident-toolbar");
     expect(
-      within(headerActions).getByPlaceholderText("Search incidents..."),
+      within(toolbar).getByPlaceholderText("Search incidents..."),
     ).toBeInTheDocument();
     expect(
-      within(headerActions).getByRole("button", { name: "Severity" }),
+      within(toolbar).getByRole("button", { name: "Severity" }),
     ).toHaveClass("border-dashed");
     expect(
-      within(headerActions).getByRole("button", { name: "Service" }),
+      within(toolbar).getByRole("button", { name: "Service" }),
     ).toHaveClass("border-dashed");
     expect(
-      within(headerActions).getByRole("button", { name: /Status/ }),
+      within(toolbar).getByRole("button", { name: /Status/ }),
     ).toHaveClass("border-dashed");
     expect(
       within(headerActions).getByRole("link", { name: /trends/i }),

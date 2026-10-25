@@ -1,30 +1,30 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableRowActions } from "./data-table-row-actions";
 import { AlertHistory } from "./schema";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
-import { getNotificationProviderConfig } from "./data";
-import { Clock } from "lucide-react";
+import { getAlertTypeLabel, getNotificationProviderConfig } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-const statusColors = {
-  sent: "bg-green-100 text-green-800 hover:bg-green-200",
-  failed: "bg-red-100 text-red-800 hover:bg-red-200",
-  pending: "bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
-} as const;
+const statusTones: Record<string, TableBadgeTone> = {
+  sent: "success",
+  failed: "danger",
+  pending: "warning",
+};
 
-const typeColors = {
-  job_failed: "bg-red-100 text-red-800 hover:bg-red-200",
-  job_success: "bg-green-100 text-green-800 hover:bg-green-200",
-  job_timeout: "bg-orange-100 text-orange-800 hover:bg-orange-200",
-  monitor_failure: "bg-red-100 text-red-800 hover:bg-red-200",
-  monitor_recovery: "bg-green-100 text-green-800 hover:bg-green-200",
-  ssl_expiring: "bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
-} as const;
+const typeTones: Record<string, TableBadgeTone> = {
+  job_failed: "danger",
+  job_success: "success",
+  job_timeout: "warning",
+  monitor_failure: "danger",
+  monitor_recovery: "success",
+  ssl_expiring: "warning",
+};
 
 // Separate component for notification provider cell to fix React hooks issue
 // Displays provider as plain text with icon (consistent with Notification Channels tab)
@@ -62,7 +62,7 @@ const NotificationProviderCell = ({
   return (
     <div className="flex items-center space-x-2">
       <IconComponent className={`h-4 w-4 ${config.color}`} />
-      <span className="capitalize">{config.label}</span>
+      <span>{config.label}</span>
     </div>
   );
 };
@@ -95,7 +95,7 @@ export const columns: ColumnDef<AlertHistory>[] = [
   {
     accessorKey: "targetName",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Monitor or Job Name" />
+      <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => {
       const targetName = row.getValue("targetName") as string;
@@ -116,13 +116,10 @@ export const columns: ColumnDef<AlertHistory>[] = [
     ),
     cell: ({ row }) => {
       const type = row.getValue("type") as string;
-      const colorClass =
-        typeColors[type as keyof typeof typeColors] ||
-        "bg-gray-100 text-gray-800 hover:bg-gray-200";
       return (
-        <Badge className={`capitalize ${colorClass}`}>
-          {type.replace(/_/g, " ")}
-        </Badge>
+        <TableBadge tone={typeTones[type] ?? "neutral"} compact>
+          {getAlertTypeLabel(type)}
+        </TableBadge>
       );
     },
     filterFn: (row, id, value) => {
@@ -135,9 +132,11 @@ export const columns: ColumnDef<AlertHistory>[] = [
       <DataTableColumnHeader column={column} title="Status" />
     ),
     cell: ({ row }) => {
-      const status = row.getValue("status") as keyof typeof statusColors;
+      const status = row.getValue("status") as string;
       return (
-        <Badge className={`capitalize ${statusColors[status]}`}>{status}</Badge>
+        <TableBadge tone={statusTones[status] ?? "neutral"} compact className="capitalize">
+          {status}
+        </TableBadge>
       );
     },
     filterFn: (row, id, value) => {
@@ -175,31 +174,11 @@ export const columns: ColumnDef<AlertHistory>[] = [
       <DataTableColumnHeader column={column} title="Sent At" />
     ),
     cell: ({ row }) => {
-      const timestamp = row.getValue("timestamp") as string;
-      if (!timestamp) {
-        return <div className="text-muted-foreground">Never</div>;
-      }
       return (
-        <div className="flex flex-col">
-          <div className="flex items-center">
-            <Clock className="mr-2 h-4 w-4 text-muted-foreground self-center" />
-            <div className="flex items-center">
-              <span>
-                {new Date(timestamp).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-            <span className="text-muted-foreground ml-1 text-xs">
-              {new Date(timestamp).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
-        </div>
+        <DateTimeCell
+          value={row.getValue("timestamp") as string}
+          emptyLabel="Never"
+        />
       );
     },
   },
