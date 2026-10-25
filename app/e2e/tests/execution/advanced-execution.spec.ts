@@ -42,8 +42,12 @@ async function deleteRun(
   request: import('@playwright/test').APIRequestContext,
   runId: string,
 ): Promise<void> {
-  const response = await request.delete(`/api/runs/${runId}`);
-  expect([200, 404]).toContain(response.status());
+  // A cancelled run is only deletable once it is terminal; DELETE answers 409
+  // while the worker is still stopping it.
+  await expect(async () => {
+    const response = await request.delete(`/api/runs/${runId}`);
+    expect([200, 404]).toContain(response.status());
+  }).toPass({ timeout: 30_000 });
 }
 
 test.describe('Advanced execution contracts @execution', () => {
@@ -96,23 +100,32 @@ test.describe('Advanced execution contracts @execution', () => {
       headers: projectHeaders,
     });
     expect(cancelResponse.status()).toBe(200);
+    // Cancellation is acknowledged first; the run reaches a terminal state once
+    // the worker (or the queue-removal path) actually stops it.
     expect(await cancelResponse.json()).toMatchObject({
       success: true,
       runId: execution.runId,
-      message: 'Run cancelled successfully',
+      message: expect.stringMatching(/Run cancelled successfully|Cancellation requested/),
     });
 
-    const detailResponse = await request.get(`/api/runs/${execution.runId}`, {
-      headers: projectHeaders,
-    });
-    expect(detailResponse.status()).toBe(200);
-    expect(await detailResponse.json()).toMatchObject({
-      id: execution.runId,
-      status: 'error',
-      errorDetails: 'Cancellation requested by user',
-      trigger: 'manual',
-      projectId: expect.any(String),
-    });
+    await expect
+      .poll(
+        async () => {
+          const response = await request.get(`/api/runs/${execution.runId}`, {
+            headers: projectHeaders,
+          });
+          expect(response.status()).toBe(200);
+          return (await response.json()) as Record<string, unknown>;
+        },
+        { timeout: 30_000 },
+      )
+      .toMatchObject({
+        id: execution.runId,
+        status: 'error',
+        errorDetails: 'Cancellation requested by user',
+        trigger: 'manual',
+        projectId: expect.any(String),
+      });
 
     const statusResponse = await request.get(`/api/runs/${execution.runId}/status`, {
       headers: projectHeaders,
@@ -195,14 +208,27 @@ test.describe('Advanced execution contracts @execution', () => {
       headers: projectHeaders,
     });
     expect(cancelResponse.status()).toBe(200);
-    const detailResponse = await request.get(`/api/runs/${execution.runId}`, {
-      headers: projectHeaders,
+    expect(await cancelResponse.json()).toMatchObject({
+      success: true,
+      runId: execution.runId,
+      message: expect.stringMatching(/Run cancelled successfully|Cancellation requested/),
     });
-    expect(detailResponse.status()).toBe(200);
-    expect(await detailResponse.json()).toMatchObject({
-      id: execution.runId,
-      status: 'error',
-    });
+
+    await expect
+      .poll(
+        async () => {
+          const response = await request.get(`/api/runs/${execution.runId}`, {
+            headers: projectHeaders,
+          });
+          expect(response.status()).toBe(200);
+          return (await response.json()) as Record<string, unknown>;
+        },
+        { timeout: 30_000 },
+      )
+      .toMatchObject({
+        id: execution.runId,
+        status: 'error',
+      });
   });
 
   test('execution and location endpoints enforce authentication and project isolation @high @security', async ({
