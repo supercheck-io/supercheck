@@ -7,7 +7,7 @@ Manage Supercheck tests, monitors, jobs, and AI SRE from your terminal or CI, an
 [![Node.js](https://img.shields.io/node/v/@supercheck/cli)](https://nodejs.org)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE)
 
-- **Monitoring as code.** Define monitors, jobs, variables, tags, and notification providers in `supercheck.config.ts`, then `diff` and `deploy`.
+- **Monitoring as code.** Define monitors, tests, jobs, requirements, status pages, variables, tags, and notification providers in `supercheck.config.ts`, then `diff` and `deploy`.
 - **Run tests anywhere.** Execute Playwright and k6 tests locally with no account, or on Supercheck execution workers.
 - **Built for automation.** Structured JSON output, stable exit codes, and explicit confirmation rules for CI and AI agents.
 - **AI SRE.** Triage incidents, start investigations, and ask read-only reliability questions.
@@ -135,7 +135,7 @@ export default defineConfig({
 | Run tests | `test run`, `test execute <id> --wait`, `job run --id <id>`, `job trigger <id> --wait` |
 | Follow a run | `run wait <id>`, `run stream <id>`, `run status <id>`, `run cancel <id>` |
 | Inspect resources | `test list`, `monitor list`, `job list`, `run list`, `monitor results <id>` |
-| Manage resources | `test`, `monitor`, `job`, `var`, `tag`, `notification` (`create`, `update`, `delete`) |
+| Manage resources | `test` (incl. `--priority`, `tag add/remove`), `monitor`, `job`, `requirement` (`list`, `get`, `create`, `update`, `delete`, `link`, `unlink`, `coverage`, `export`), `var`, `tag`, `notification` (`create`, `update`, `delete`) |
 | AI SRE | `incident list/get/timeline/resolve`, `sre triage/investigate/ask/brief/status`, `service list/get` |
 
 Run `supercheck <command> --help` for options, or see the [command reference](https://supercheck.io/docs/cli/commands).

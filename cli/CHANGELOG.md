@@ -15,6 +15,12 @@
 - `login --wait` keeps waiting through a dropped connection or slow response once the code has been shown (it stops only on a final answer or its own `--timeout`); requests to the server now allow 30 seconds, adjustable with `SUPERCHECK_REQUEST_TIMEOUT_MS` (5000 to 120000). `whoami` with an expired or revoked key now returns the stable `TOKEN_INVALID` code and next steps in JSON mode.
 - `doctor` now reads `supercheck.config.ts` as text instead of running it (it still runs `npx playwright install` with `--fix`, so use `--fix` only in repositories you trust). `logout` now says that it removes the key from this machine only; revoke the key under CLI Tokens to invalidate it.
 
+- Add `requirement list|get|create|update|delete|link|unlink|coverage|export` (alias `requirements`) and a `requirements[]` section in `supercheck.config.ts` with `pull`, `diff`, `deploy` and `destroy` support. Omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
+- Status pages now deploy as code: settings (headline, description, support URL, language, timezone, custom domain, status), branding (12 `#RRGGBB` colors), notifications and components with monitor references. `subdomain` is read-only (pulled, never sent) and remote-only components are removed only with `deploy --delete`.
+- **Behavior change:** status page `notifications` flags have no defaults any more; an omitted flag leaves the remote value unchanged instead of resetting it.
+- **Validation change:** `tags` is no longer accepted on jobs (it was never applied), so a config containing it now fails validation. Monitors take `tags` in config, deployed and pulled.
+- Add `test create|update --priority`, `test list --priority`, `test tag add|remove <id> <tags...>`, and `@priority` / `@tags` annotations that `pull` writes into test files and `deploy` applies.
+- Requirements, status page writes and monitor tags need a Supercheck server that includes the new API; on an older server the CLI fails before writing anything.
 - Add `job update <id> --tests <ids...>` to replace the tests in an existing job, including dry-run support.
 
 - Publish deployment locks only after their owner information is written, so an interrupted lock creation cannot leave an empty lock that blocks later deploys.
