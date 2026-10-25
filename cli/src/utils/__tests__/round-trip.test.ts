@@ -13,6 +13,7 @@ import {
 import { buildLocalResources, fetchRemoteResources } from '../resources.js'
 import { reconcile } from '../reconcile.js'
 import { testRelativePath } from '../paths.js'
+import { resolveTagIds } from '../tag-assignment.js'
 import { managedState } from '../managed.js'
 
 const TEST_ID = '019a0000-0000-7000-8000-000000000001'
@@ -126,7 +127,7 @@ describe('pull -> buildLocalResources -> reconcile', () => {
     const client = fakeClient()
     const state = managedState(client, { organization: { id: 'org' }, project: { id: 'project' } }, join(dir, 'supercheck.config.ts'))
     const local = state.resolveTests(state.apply(buildLocalResources(config, dir)))
-    const changes = reconcile(local, await fetchRemoteResources(client)).filter((c) => c.action === 'update')
+    const changes = reconcile(local, await fetchRemoteResources(client), { deleteMissing: true }).filter((c) => c.action === 'update')
     const requirement = changes.find((c) => c.type === 'requirement')
     expect(requirement?.details?.join('\n')).toContain('tests')
     const statusPage = changes.find((c) => c.type === 'statusPage')
@@ -135,5 +136,27 @@ describe('pull -> buildLocalResources -> reconcile', () => {
     expect(text).toContain('notifications')
     expect(text).toContain('components: ~ "Website" (monitors)')
     expect(text).toContain('components: - "API"')
+  })
+})
+
+describe('tag casing', () => {
+  it('compares requirement, test and monitor tags case-insensitively', () => {
+    const resource = (type: 'requirement' | 'test' | 'monitor', local: string[], remote: string[]) =>
+      reconcile([{ id: 'x', type, name: 'n', definition: { tags: local } }], [{ id: 'x', type, name: 'n', raw: { tags: remote } }])[0].action
+    for (const type of ['requirement', 'test', 'monitor'] as const) {
+      expect(resource(type, ['smoke', 'API'], ['Smoke', 'api'])).toBe('no-change')
+      expect(resource(type, ['smoke'], ['Smoke', 'extra'])).toBe('update')
+    }
+  })
+
+  it('keeps the spelling written in config for requirement tags', () => {
+    const config = supercheckConfigSchema.parse({ schemaVersion: '1.0', project: { organization: 'o', project: 'p' }, requirements: [{ title: 'R', tags: ['smoke', 'Smoke', 'Core'] }] })
+    expect(buildLocalResources(config, dir)[0].definition.tags).toEqual(['Core', 'smoke'])
+  })
+
+  it('resolves tag references case-insensitively when there is no exact match', async () => {
+    const client = { get: async () => ({ data: [{ id: 'id-1', name: 'Smoke' }, { id: 'id-2', name: 'smoke2' }] }) } as unknown as ApiClient
+    await expect(resolveTagIds(client, ['smoke', 'smoke2'])).resolves.toEqual(['id-1', 'id-2'])
+    await expect(resolveTagIds(client, ['nope'])).rejects.toThrow('does not exist')
   })
 })

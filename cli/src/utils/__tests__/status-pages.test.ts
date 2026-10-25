@@ -10,6 +10,7 @@ import {
   toApiSettings,
   validateStatusPageDefinition,
 } from '../status-pages.js'
+import { reconcile } from '../reconcile.js'
 import { assertReferencesResolvable } from '../../commands/deploy.js'
 
 const PAGE = '019a0000-0000-7000-8000-0000000000c1'
@@ -190,5 +191,38 @@ describe('assertReferencesResolvable', () => {
   it('rejects unresolved requirement tests and status page monitors before any write', () => {
     expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['nope'] })], { resolve })).toThrow('requirement/R')
     expect(() => assertReferencesResolvable([change('statusPage', 'P', { components: [{ name: 'c', monitors: ['nope'] }] })], { resolve })).toThrow('statusPage/P')
+  })
+})
+
+describe('stable diffs', () => {
+  const remoteComponents = [
+    { id: 'c1', name: 'Web', description: 'Public site', position: 0, monitorIds: [] },
+    { id: 'c2', name: 'Extra', description: null, position: 1, monitorIds: [] },
+  ]
+  const remote = statusPageToDefinition({ id: PAGE, name: 'Acme', status: 'draft' }, remoteComponents)
+  const local = (components: unknown[]) => ({ id: PAGE, type: 'statusPage' as const, name: 'Acme', definition: normalizeLocalStatusPage({ name: 'Acme', components }) })
+  const remoteResource = { id: PAGE, type: 'statusPage' as const, name: 'Acme', raw: remote }
+
+  it('an omitted component description is left alone: no diff, nothing sent', async () => {
+    expect(compareComponents(local([{ name: 'Web' }]).definition.components, remote.components)).toEqual(['components: - "Extra"'])
+    const { client, calls } = fakeClient({ remoteComponents })
+    await applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition: local([{ name: 'Web' }, { name: 'Extra', monitors: [M1] }]).definition, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor })
+    expect(JSON.stringify(calls.map((c) => c.body))).not.toContain('description')
+  })
+
+  it('an explicit empty description clears the remote one', async () => {
+    const { client, calls } = fakeClient({ remoteComponents })
+    await applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition: local([{ name: 'Web', description: '' }]).definition, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor })
+    expect(calls.find((c) => c.method === 'PUT' && c.path.endsWith('/c1'))?.body).toEqual({ description: '' })
+  })
+
+  it('remote-only components are a note without --delete and a change with it', () => {
+    const [plain] = reconcile([local([{ name: 'Web' }, ])], [remoteResource])
+    expect(plain.action).toBe('no-change')
+    expect(plain.notes?.[0]).toContain('Extra')
+
+    const [purge] = reconcile([local([{ name: 'Web' }])], [remoteResource], { deleteMissing: true })
+    expect(purge.action).toBe('update')
+    expect(purge.details).toEqual(['components: - "Extra"'])
   })
 })

@@ -9,6 +9,16 @@ import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
 
+/** Trim, drop empties and de-duplicate case-insensitively (first spelling wins), keeping the user's spelling. */
+export function dedupeTagNames(names: unknown[]): string[] {
+  const seen = new Map<string, string>()
+  for (const raw of names) {
+    const name = String(raw).trim()
+    if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+  }
+  return [...seen.values()].sort()
+}
+
 /** Tag assignments compare by name, order-insensitively. */
 export function normalizeTagNames(names: unknown[]): string[] {
   return [...new Set(names.map((name) => String(name).trim()).filter(Boolean))].sort()
@@ -45,7 +55,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         name: requirement.title,
         definition: {
           ...rest,
-          ...(tags ? { tags: normalizeTagNames(tags.map((tag) => tag.toLowerCase())) } : {}),
+          ...(tags ? { tags: dedupeTagNames(tags) } : {}),
           ...(tests ? { tests: [...new Set(normalizeJobTestsToIds(tests)!)].sort() } : {}),
         },
       })
@@ -446,7 +456,7 @@ function normalizeRemoteRequirement(raw: Record<string, unknown>): Record<string
   if (typeof raw.externalId === 'string' && raw.externalId !== '') out.externalId = raw.externalId
   if (typeof raw.externalUrl === 'string' && raw.externalUrl !== '') out.externalUrl = raw.externalUrl
   const tagNames = Array.isArray(raw.tags)
-    ? normalizeTagNames((raw.tags as unknown[]).map((tag) => (tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag)).map((name) => String(name).toLowerCase()))
+    ? dedupeTagNames((raw.tags as unknown[]).map((tag) => (tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag)))
     : []
   out.tags = tagNames
   out.tests = Array.isArray(raw.testIds) ? [...new Set((raw.testIds as unknown[]).map(String))].sort() : []
@@ -474,12 +484,18 @@ export async function fetchRequirementListItems(client: ReturnType<typeof getApi
 }
 
 export async function fetchRemoteRequirements(client: ReturnType<typeof getApiClient>): Promise<RemoteRequirement[]> {
-  const ids: string[] = []
-  for (const item of await fetchRequirementListItems(client)) { const id = safeId(item.id); if (id) ids.push(id) }
-
   const requirements: RemoteRequirement[] = []
-  for (let i = 0; i < ids.length; i += REQUIREMENT_DETAIL_CONCURRENCY) {
-    const batch = await Promise.all(ids.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async (id) => {
+  const needDetail: string[] = []
+  for (const item of await fetchRequirementListItems(client)) {
+    const id = safeId(item.id)
+    if (!id) continue
+    // Newer servers return `testIds` (and tags) on list items; older ones need a per-requirement read.
+    if (Array.isArray(item.testIds) && Array.isArray(item.tags)) requirements.push(item as unknown as RemoteRequirement)
+    else needDetail.push(id)
+  }
+
+  for (let i = 0; i < needDetail.length; i += REQUIREMENT_DETAIL_CONCURRENCY) {
+    const batch = await Promise.all(needDetail.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async (id) => {
       try {
         const { data } = await client.get<{ requirement?: RemoteRequirement }>(`/api/requirements/${id}`)
         return data?.requirement

@@ -29,7 +29,7 @@ describe('requirement and status page references', () => {
     } as SupercheckConfig
 
     const built = buildLocalResources(config, dir)
-    expect(built[0].definition.tags).toEqual(['auth', 'core'])
+    expect(built[0].definition.tags).toEqual(['Auth', 'Core'])
     const resolved = state.resolveTests(state.apply(built))
     expect(resolved.find((r) => r.type === 'requirement')?.definition.tests).toEqual([TEST_A, TEST_B])
     const page = resolved.find((r) => r.type === 'statusPage')
@@ -53,5 +53,25 @@ describe('requirement and status page references', () => {
     const requirements = await fetchRemoteRequirements(client)
     expect(requirements).toHaveLength(205)
     expect(calls.filter((c) => c === '/api/requirements')).toHaveLength(2)
+  })
+
+  it('uses testIds from list items when present and reads details only for items without them', async () => {
+    const calls: string[] = []
+    const client = {
+      get: async (path: string) => {
+        calls.push(path)
+        if (path === '/api/requirements') {
+          return { data: { data: [
+            { id: 'new', title: 'N', tags: [{ id: 't', name: 'Smoke' }], testIds: [TEST_A] },
+            { id: 'old', title: 'O', tags: [{ id: 't', name: 'Smoke' }] },
+          ], total: 2, page: 1, pageSize: 200 } }
+        }
+        return { data: { requirement: { id: 'old', title: 'O', tags: ['Smoke'], testIds: [TEST_B] } } }
+      },
+    } as unknown as ApiClient
+    const requirements = await fetchRemoteRequirements(client)
+    expect(requirements.map((r) => r.id).sort()).toEqual(['new', 'old'])
+    expect(calls).toEqual(['/api/requirements', '/api/requirements/old'])
+    expect(requirements.find((r) => r.id === 'old')?.testIds).toEqual([TEST_B])
   })
 })

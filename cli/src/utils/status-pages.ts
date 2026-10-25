@@ -170,27 +170,36 @@ export function matchComponents(
 function componentChanges(local: StatusPageComponent, remote: StatusPageComponent): string[] {
   const changes: string[] = []
   if (local.name !== remote.name) changes.push('name')
-  if ((local.description ?? '') !== (remote.description ?? '')) changes.push('description')
+  // An omitted description leaves the remote one alone; an explicit "" clears it.
+  if (local.description !== undefined && local.description !== (remote.description ?? '')) changes.push('description')
   if (JSON.stringify(uniqueSorted(local.monitors)) !== JSON.stringify(uniqueSorted(remote.monitors))) changes.push('monitors')
   if (local.position !== remote.position) changes.push('position')
   return changes
 }
 
-/** Human-readable diff lines for `components`; empty when equivalent. Order-insensitive (position is explicit). */
-export function compareComponents(local: unknown, remote: unknown): string[] {
+/**
+ * Diff `components`. `changes` are creates/updates; `extras` are remote components absent from config, which are
+ * only removed by `deploy --delete` and so are reported separately.
+ */
+export function diffComponents(local: unknown, remote: unknown): { changes: string[]; extras: string[] } {
   const localComponents = (Array.isArray(local) ? local : []) as StatusPageComponent[]
   const remoteComponents = (Array.isArray(remote) ? remote : []) as StatusPageComponent[]
   const { pairs, unmatchedRemote } = matchComponents(localComponents, remoteComponents)
-  const diffs: string[] = []
+  const changes: string[] = []
   for (const { local: l, remote: r } of pairs) {
-    if (!r) diffs.push(`components: + "${l.name}"`)
+    if (!r) changes.push(`components: + "${l.name}"`)
     else {
       const changed = componentChanges(l, r)
-      if (changed.length > 0) diffs.push(`components: ~ "${l.name}" (${changed.join(', ')})`)
+      if (changed.length > 0) changes.push(`components: ~ "${l.name}" (${changed.join(', ')})`)
     }
   }
-  for (const r of unmatchedRemote) diffs.push(`components: - "${r.name}" (removed only with --delete)`)
-  return diffs
+  return { changes, extras: unmatchedRemote.map((r) => r.name) }
+}
+
+/** Human-readable diff lines for `components` including remote-only ones; empty when equivalent. */
+export function compareComponents(local: unknown, remote: unknown): string[] {
+  const { changes, extras } = diffComponents(local, remote)
+  return [...changes, ...extras.map((name) => `components: - "${name}"`)]
 }
 
 /** Validate status page definitions before any write. Throws a ConfigError describing the first problem. */
@@ -323,7 +332,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
         if (changed.length === 0) continue
         const body: Rec = {}
         if (changed.includes('name')) body.name = local.name
-        if (changed.includes('description')) body.description = local.description ?? null
+        if (changed.includes('description')) body.description = local.description
         if (changed.includes('monitors')) body.monitorIds = local.monitors
         if (changed.includes('position')) body.position = local.position
         await call(() => client.put(`/api/status-pages/${pageId}/components/${remote.id}`, body))

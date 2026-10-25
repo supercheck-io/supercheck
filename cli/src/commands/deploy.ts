@@ -294,7 +294,7 @@ export const deployCommand = new Command('deploy')
       )
 
       rejectAmbiguousCreates(localResources, remoteResources)
-      let changes = reconcile(localResources, remoteResources)
+      let changes = reconcile(localResources, remoteResources, { deleteMissing: options.delete === true })
 
       // Filter out deletes if --no-delete
       if (options.delete !== true) {

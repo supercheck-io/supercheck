@@ -38,7 +38,7 @@ export const diffCommand = new Command('diff')
 
     logger.debug(`Local: ${localResources.length} resources, Remote: ${remoteResources.length} resources`)
 
-    const changes = reconcile(localResources, remoteResources).filter((change) => options.delete === true || change.action !== 'delete')
+    const changes = reconcile(localResources, remoteResources, { deleteMissing: options.delete === true }).filter((change) => options.delete === true || change.action !== 'delete')
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'preview', context, hasChanges: changes.some((change) => change.action !== 'no-change'), summary: changes.reduce<Record<string, number>>((acc, change) => ({ ...acc, [change.action]: (acc[change.action] ?? 0) + 1 }), {}), changes: changes.map(({ action, type, id, name, details }) => ({ action, type, id, name, details })) }))
   else formatChangePlan(changes)
   })
