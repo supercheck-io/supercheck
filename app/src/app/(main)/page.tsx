@@ -661,15 +661,8 @@ function DashboardOverview({
         />
       </div>
 
-      {/* Row 2: attention + status charts */}
+      {/* Row 2: status charts + attention */}
       <div className={rowClass}>
-        <NeedsAttentionCard
-          failures={jobs.recentFailures ?? []}
-          failureCount={jobs.failedRuns30d}
-          alerts={dashboardData.alerts}
-          incidentsResult={incidentsResult}
-          incidentsLoading={incidentsLoading}
-        />
         <ChartCard
           title="Job Status"
           description="Successful vs failed (including errors) job runs, last 30 days"
@@ -719,6 +712,13 @@ function DashboardOverview({
             <ChartEmpty icon={<Globe className="h-6 w-6" />} message="No monitors configured" />
           )}
         </ChartCard>
+        <NeedsAttentionCard
+          failures={jobs.recentFailures ?? []}
+          failureCount={jobs.failedRuns30d}
+          alerts={dashboardData.alerts}
+          incidentsResult={incidentsResult}
+          incidentsLoading={incidentsLoading}
+        />
       </div>
 
       {/* Row 3: activity charts */}
