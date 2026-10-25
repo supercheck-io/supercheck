@@ -39,6 +39,7 @@ describe("dashboard hover prefetch", () => {
 
     expect(client.getQueryData<DashboardData>(getDashboardQueryKey("dash-prefetch-a"))?.stats.runs).toBe(12);
     expect(client.getQueryData<DashboardData>(getDashboardQueryKey("dash-prefetch-b"))?.stats.runs).toBe(7);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     for (const id of ["dash-prefetch-a", "dash-prefetch-b"]) {
       for (const endpoint of ["/api/dashboard", "/api/alerts/history"]) {
         expect(fetchMock).toHaveBeenCalledWith(

@@ -44,6 +44,7 @@ The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`a
 
 - Read data through the hooks in `app/src/hooks/`; render cached data directly, do not copy it into state.
 - After a mutation, invalidate the affected `*_QUERY_KEY` arrays (scoped as `[...KEY, projectId]`).
+- Prefetch and mounted queries sharing a key must use the same normalized fetcher and bind requests to that key's project. Reset project-specific analytics state when the project changes.
 - Usage or limit numbers shown in UI must use the same counting as the server; label estimates as estimates.
 
 ## Accessibility and responsiveness

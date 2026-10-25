@@ -10,7 +10,7 @@ import {
   getFailedHttpRequestCount,
   K6ExecutionProcessor,
 } from './k6-execution.processor';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
@@ -372,7 +372,7 @@ describe('k6 container-start metering', () => {
 
   it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
     const runK6Test = jest.fn();
-    const { processor, set, usage } = build(runK6Test);
+    const { processor, set, usage, dbService } = build(runK6Test);
     (
       processor as unknown as {
         k6ExecutionService: { hasActiveExecution: jest.Mock };
@@ -382,12 +382,16 @@ describe('k6 container-start metering', () => {
       .mockRejectedValue(
         new Error('Unable to verify Kubernetes execution state'),
       );
-    await expect(processor.process(job())).rejects.toThrow(
+    const failure = processor.process(job());
+    await expect(failure).rejects.toThrow(
       /Unable to verify Kubernetes execution state/,
     );
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'failed' }),
+    await expect(failure).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(dbService.failRunUnlessCancelled).toHaveBeenCalledWith(
+      'run-id',
+      expect.stringContaining('Unable to verify Kubernetes execution state'),
     );
+    expect(set).not.toHaveBeenCalled();
     expect(runK6Test).not.toHaveBeenCalled();
     expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
   });
@@ -402,6 +406,29 @@ describe('k6 container-start metering', () => {
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'failed' }),
     );
+  });
+
+  it('leaves the job retryable when the failure cannot be recorded', async () => {
+    const runK6Test = jest.fn();
+    const { processor, dbService, set, usage } = build(runK6Test);
+    (
+      processor as unknown as {
+        k6ExecutionService: { hasActiveExecution: jest.Mock };
+      }
+    ).k6ExecutionService.hasActiveExecution = jest
+      .fn()
+      .mockRejectedValue('Unable to verify Kubernetes execution state');
+    dbService.failRunUnlessCancelled.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+    const failure = processor.process(job());
+    await expect(failure).rejects.toThrow(
+      /Unable to verify Kubernetes execution state/,
+    );
+    await expect(failure).rejects.not.toBeInstanceOf(UnrecoverableError);
+    expect(runK6Test).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
   });
 
   it('charges the observed container time when a failure follows the start', async () => {

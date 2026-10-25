@@ -224,6 +224,12 @@ describe("MCP tools", () => {
     expect((inc.structuredContent.incidents as unknown[]).length).toBe(1);
     expect(lastWhere().params).toContain("resolved");
 
+    queue.push([]);
+    await handlers.get("list_incidents")!({ limit: 5, status: "open" });
+    expect(lastWhere().sql).toContain('"status" <> $');
+    expect(lastWhere().params).toContain("resolved");
+    expect(lastWhere().params).not.toContain("open");
+
     queue.push([{ id: id(1), incidentId: id(4), agentType: "triage", status: "running", startedAt: new Date(0), completedAt: null, durationMs: null, confidenceScore: null }]);
     const inv = await handlers.get("list_investigations")!({ limit: 5, incidentId: id(4) });
     expect(inv.structuredContent.investigations).toHaveLength(1);

@@ -1,24 +1,5 @@
-import { isFailedRunStatus } from "./run-outcomes";
-
-export type RecentRunLike = {
-  id: string;
-  jobId: string;
-  jobName: string;
-  status: string;
-  startedAt: string;
-  trigger: string;
-};
-
-/** Newest failed/error runs first, capped at `limit`. */
-export function selectRecentFailures<T extends RecentRunLike>(
-  runs: T[],
-  limit = 5
-): T[] {
-  return runs
-    .filter((run) => isFailedRunStatus(run.status) && !!run.startedAt)
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
-    .slice(0, limit);
-}
+/** Failed runs the dashboard lists; the server returns the newest ones, already capped. */
+export const RECENT_FAILURES_LIMIT = 5;
 
 export type IncidentLike = { status: string };
 

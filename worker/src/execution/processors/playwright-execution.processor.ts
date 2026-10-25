@@ -172,18 +172,19 @@ export class PlaywrightExecutionProcessor
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // A run the user already cancelled ends as cancelled; the failure must not replace that.
-      if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
-        throw new UnrecoverableError(message);
-      }
-      await this.dbService
-        .updateRunStatus(runId, 'failed', '0', message)
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
-          ),
+      const recorded = await this.dbService
+        .failRunUnlessCancelled(runId, message)
+        .then(
+          () => true,
+          (err: Error) => {
+            this.logger.error(
+              `[${runId}] Failed to mark run failed after unverifiable execution state: ${err.message}`,
+            );
+            return false;
+          },
         );
-      throw new UnrecoverableError(message);
+      // Nothing claimed the run yet, so retry rather than give up with the failure unrecorded.
+      throw recorded ? new UnrecoverableError(message) : new Error(message);
     }
   }
 

@@ -13,7 +13,7 @@ export const incidentCommand = new Command('incident').alias('incidents').descri
 
 incidentCommand.command('list')
   .description('List incidents')
-  .addOption(new Option('--status <status>', 'Filter by incident status').choices(['triggered', 'investigating', 'identified', 'recommendations_ready', 'user_applying_fix', 'verifying', 'resolved']))
+  .addOption(new Option('--status <status>', 'Filter by incident status (open = not resolved)').choices(['open', 'triggered', 'investigating', 'identified', 'recommendations_ready', 'user_applying_fix', 'verifying', 'resolved']))
   .addOption(new Option('--severity <severity>', 'Filter by severity').choices(['sev1', 'sev2', 'sev3', 'sev4']))
   .action(async (options: { status?: string; severity?: string }) => {
     const { data } = await withSpinner('Fetching incidents', () => createAuthenticatedClient().get<IncidentEnvelope>('/api/sre/incidents', options))

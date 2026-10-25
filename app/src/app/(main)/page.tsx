@@ -60,7 +60,6 @@ import {
   formatDayKey,
   lastDayKeys,
   uptimeAxis,
-  utcDayKey,
 } from "@/lib/dashboard/chart-data";
 // Types are now exported from useDashboard hook
 // Re-export for any components that still need them
@@ -210,26 +209,15 @@ export default function Home() {
 
     const now = new Date();
     const dayKeys = lastDayKeys(now, LOOKBACK_DAYS);
-    const recentRuns = dashboardData.jobs.recentRuns ?? [];
-
-    // Per-day trigger counts and overall success/failure in one pass (UTC days,
-    // matching the SQL DATE() buckets used for the other daily series).
-    const windowStart = dayKeys[0];
-    const triggerByDay = new Map<string, { manual: number; scheduled: number; remote: number }>();
-    // Totals come from the server (full 30 days); recentRuns is only used for per-day buckets.
     const success = dashboardData.jobs.passedRuns30d;
     const failed = dashboardData.jobs.failedRuns30d;
-    for (const run of recentRuns) {
-      const time = Date.parse(run?.startedAt ?? "");
-      if (Number.isNaN(time)) continue;
-      const key = utcDayKey(new Date(time));
-      if (key < windowStart) continue;
-      const bucket = triggerByDay.get(key) ?? { manual: 0, scheduled: 0, remote: 0 };
-      if (run.trigger === "schedule") bucket.scheduled++;
-      else if (run.trigger === "remote") bucket.remote++;
-      else bucket.manual++;
-      triggerByDay.set(key, bucket);
-    }
+    // Per-day trigger counts, bucketed server-side by SQL DATE() like the other daily series.
+    const triggerByDay = new Map(
+      (dashboardData.jobs.triggerTrend ?? []).map(({ date, manual, scheduled, remote }) => [
+        String(date).slice(0, 10),
+        { manual, scheduled, remote },
+      ])
+    );
 
     const playgroundByDay = new Map(
       (dashboardData.tests.playgroundExecutionsTrend ?? []).map((t) => [
@@ -673,14 +661,8 @@ function DashboardOverview({
         />
       </div>
 
-      {/* Row 2: attention + status charts */}
+      {/* Row 2: status charts + attention */}
       <div className={rowClass}>
-        <NeedsAttentionCard
-          runs={jobs.recentRuns}
-          alerts={dashboardData.alerts}
-          incidentsResult={incidentsResult}
-          incidentsLoading={incidentsLoading}
-        />
         <ChartCard
           title="Job Status"
           description="Successful vs failed (including errors) job runs, last 30 days"
@@ -730,6 +712,13 @@ function DashboardOverview({
             <ChartEmpty icon={<Globe className="h-6 w-6" />} message="No monitors configured" />
           )}
         </ChartCard>
+        <NeedsAttentionCard
+          failures={jobs.recentFailures ?? []}
+          failureCount={jobs.failedRuns30d}
+          alerts={dashboardData.alerts}
+          incidentsResult={incidentsResult}
+          incidentsLoading={incidentsLoading}
+        />
       </div>
 
       {/* Row 3: activity charts */}

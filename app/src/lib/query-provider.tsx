@@ -11,8 +11,9 @@ import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persist
 import { ReactNode, useEffect, useState } from "react";
 import { useSession } from "@/utils/auth-client";
 
-const CACHE_KEY = "supercheck-cache-v2";
-const LEGACY_CACHE_KEY = "supercheck-cache-v1";
+// Bump the version when a persisted query changes shape; older stores are removed on load.
+const CACHE_KEY = "supercheck-cache-v3";
+const CACHE_KEY_PREFIX = "supercheck-cache-";
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes - data is fresh for this long
 
@@ -44,14 +45,13 @@ function createClient() {
 
 // A cache is only cleared when its own tab sees the session end, so an expired session or a
 // closed browser leaves that account's data in localStorage. Anyone using the browser next could
-// read it, so keep only the identity that is signed in now.
-function pruneOtherIdentityCaches(storage: Storage, identity: string) {
-  const keep = `${CACHE_KEY}:${identity}`;
+// read it, so keep only the identity that is signed in now (and no older cache versions).
+function pruneCaches(storage: Storage, keep: string) {
   try {
     const stale: string[] = [];
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i);
-      if (key && key.startsWith(`${CACHE_KEY}:`) && key !== keep) stale.push(key);
+      if (key && key.startsWith(CACHE_KEY_PREFIX) && key !== keep) stale.push(key);
     }
     stale.forEach((key) => storage.removeItem(key));
   } catch {
@@ -65,8 +65,7 @@ function initializePersistence(
 ): Promise<void> {
   try {
     const storage = window.localStorage;
-    storage.removeItem(LEGACY_CACHE_KEY);
-    pruneOtherIdentityCaches(storage, identity);
+    pruneCaches(storage, `${CACHE_KEY}:${identity}`);
     cacheClearedByOtherTab = false;
     stopWatchingCacheKey?.();
     const ownKey = `${CACHE_KEY}:${identity}`;
@@ -149,7 +148,7 @@ export function clearQueryCache() {
   browserClient?.clear();
 
   try {
-    window.localStorage.removeItem(LEGACY_CACHE_KEY);
+    // Older versions and other accounts are pruned when the next identity restores its cache.
     if (browserIdentity)
       window.localStorage.removeItem(`${CACHE_KEY}:${browserIdentity}`);
   } catch {

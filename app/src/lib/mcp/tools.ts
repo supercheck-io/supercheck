@@ -46,7 +46,8 @@ const page = {
 };
 const idArg = z.string().uuid();
 const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
-const INCIDENT_STATUSES = ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
+// `open` is a filter, not a stored status: every incident that is not resolved.
+const INCIDENT_STATUSES = ["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
 const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
 const MAX_CHILDREN = 100;
 const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -249,7 +250,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const rows = await db
       .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt })
       .from(sreIncidents)
-      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status ? eq(sreIncidents.status, status) : undefined]))
+      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status === "open" ? ne(sreIncidents.status, "resolved") : status ? eq(sreIncidents.status, status) : undefined]))
       .orderBy(desc(sreIncidents.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);

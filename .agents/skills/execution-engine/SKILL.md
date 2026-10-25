@@ -61,6 +61,7 @@ flowchart LR
 
 - Cancellation is idempotent: mark intent, stop queued work or signal active work, terminate the execution Job when necessary, persist one terminal state, and release capacity once.
 - Runs cancelled before any worker picks them up must still be finalized, and give-up paths (for example capacity-wait timeouts) must not overwrite an existing cancellation marker. Cancellation is asynchronous to API callers and E2E tests.
+- Capacity and unverifiable-execution give-up paths use `DbService.failRunUnlessCancelled`; its single guarded write prevents a late cancellation from being overwritten and preserves terminal results.
 - Let BullMQ retry eligible failures; do not swallow processor errors after marking an intermediate state.
 - Stalled-job policy is bounded and aligned with execution duration/lock settings.
 - Worker shutdown drains or safely relinquishes work and does not orphan Jobs or reservations.

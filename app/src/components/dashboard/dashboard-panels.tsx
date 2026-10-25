@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, Bell, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -11,18 +11,55 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DashboardData } from "@/hooks/use-dashboard";
 import type { OpenIncidentsResult } from "@/hooks/use-open-incidents";
-import { selectRecentFailures } from "@/lib/dashboard/recent-failures";
 
 const MAX_ROWS = 5;
 
 function timeAgo(value: string): string {
   const time = Date.parse(value);
   if (Number.isNaN(time)) return "";
-  return formatDistanceToNow(time, { addSuffix: true });
+  return formatDistanceToNowStrict(time, { addSuffix: true });
 }
 
-const rowClass =
-  "flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50";
+// overflow-x-hidden: the list sits in a vertical scroller, so nothing may widen it.
+const panelClass = "mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden";
+const listClass = "divide-y divide-border/60";
+
+const TRIGGER_LABEL: Record<string, string> = {
+  manual: "Manual run",
+  schedule: "Scheduled run",
+  remote: "API run",
+};
+
+const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+/** Icon, a title over a muted detail line, and the time on the right. */
+function AttentionRow({
+  href,
+  lead,
+  title,
+  meta,
+  time,
+}: {
+  href: string;
+  lead: ReactNode;
+  title: string;
+  meta: string;
+  time: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-md px-1 py-2 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="flex w-9 shrink-0 justify-center">{lead}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{title}</span>
+        {meta ? <span className="block truncate text-xs text-muted-foreground">{meta}</span> : null}
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgo(time)}</span>
+    </Link>
+  );
+}
 
 const SEVERITY_LABEL: Record<string, string> = {
   sev1: "SEV1",
@@ -84,12 +121,15 @@ function ViewAll({ href, label = "View all" }: { href: string; label?: string })
  * API is unavailable (not permitted or feature disabled).
  */
 export function NeedsAttentionCard({
-  runs,
+  failures,
+  failureCount,
   alerts,
   incidentsResult,
   incidentsLoading,
 }: {
-  runs: DashboardData["jobs"]["recentRuns"];
+  failures: DashboardData["jobs"]["recentFailures"];
+  /** All failed runs in the window; `failures` holds only the newest few. */
+  failureCount: number;
   alerts: DashboardData["alerts"];
   incidentsResult: OpenIncidentsResult | undefined;
   incidentsLoading: boolean;
@@ -97,8 +137,6 @@ export function NeedsAttentionCard({
   const [selected, setSelected] = useState<AttentionTab | null>(null);
   const [latched, setLatched] = useState<AttentionTab | null>(null);
 
-  const allFailures = selectRecentFailures(runs, Number.MAX_SAFE_INTEGER);
-  const failures = allFailures.slice(0, MAX_ROWS);
   const showIncidents = incidentsLoading || (!!incidentsResult && incidentsResult.available);
   const incidentList =
     incidentsResult && incidentsResult.available ? incidentsResult.incidents : [];
@@ -106,7 +144,7 @@ export function NeedsAttentionCard({
   const alertRows = alerts.slice(0, MAX_ROWS);
 
   const fallback = pickDefaultAttentionTab({
-    failures: allFailures.length,
+    failures: failureCount,
     incidents: incidentCount,
     alerts: alerts.length,
   });
@@ -144,7 +182,7 @@ export function NeedsAttentionCard({
           <TabsList className="h-8 w-full justify-start gap-1 p-0.5">
             <TabsTrigger value="failures" className="h-7 px-2.5 text-xs">
               Failures
-              <CountBadge count={allFailures.length} tone="bad" />
+              <CountBadge count={failureCount} tone="bad" />
             </TabsTrigger>
             {showIncidents ? (
               <TabsTrigger value="incidents" className="h-7 px-2.5 text-xs">
@@ -158,26 +196,20 @@ export function NeedsAttentionCard({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent
-            value="failures"
-            data-testid="panel-recent-failures"
-            className="mt-2 min-h-0 flex-1 overflow-y-auto"
-          >
+          <TabsContent value="failures" data-testid="panel-recent-failures" className={panelClass}>
             {failures.length === 0 ? (
               <EmptyRow message="No failed runs in the last 30 days" />
             ) : (
-              <ul className="-mx-2 space-y-0.5">
-                {failures.map((run) => (
+              <ul className={listClass}>
+                {failures.slice(0, MAX_ROWS).map((run) => (
                   <li key={run.id}>
-                    <Link href={`/runs/${run.id}`} className={rowClass}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-failure" aria-hidden />
-                        <span className="truncate font-medium">{run.jobName || "Job run"}</span>
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {run.status} · {timeAgo(run.startedAt)}
-                      </span>
-                    </Link>
+                    <AttentionRow
+                      href={`/runs/${run.id}`}
+                      lead={<XCircle className="h-4 w-4 text-failure" aria-hidden />}
+                      title={run.jobName || "Job run"}
+                      meta={`${capitalize(run.status)} · ${TRIGGER_LABEL[run.trigger] ?? "Manual run"}`}
+                      time={run.startedAt}
+                    />
                   </li>
                 ))}
               </ul>
@@ -185,30 +217,28 @@ export function NeedsAttentionCard({
           </TabsContent>
 
           {showIncidents ? (
-            <TabsContent
-              value="incidents"
-              data-testid="panel-open-incidents"
-              className="mt-2 min-h-0 flex-1 overflow-y-auto"
-            >
+            <TabsContent value="incidents" data-testid="panel-open-incidents" className={panelClass}>
               {incidentsLoading ? (
                 <Skeleton className="h-full min-h-16 w-full" />
               ) : incidentList.length === 0 ? (
                 <EmptyRow message="No open incidents" />
               ) : (
-                <ul className="-mx-2 space-y-0.5">
+                <ul className={listClass}>
                   {incidentList.slice(0, MAX_ROWS).map((incident) => (
                     <li key={incident.id}>
-                      <Link href={`/incidents/${incident.id}`} className={rowClass}>
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Badge variant="outline" className="shrink-0">
-                            {SEVERITY_LABEL[incident.severity] ?? incident.severity}
-                          </Badge>
-                          <span className="truncate font-medium">{incident.title}</span>
-                        </span>
-                        <span className="shrink-0 text-xs capitalize text-muted-foreground">
-                          {incident.status.replace(/_/g, " ")}
-                        </span>
-                      </Link>
+                      <AttentionRow
+                        href={`/incidents/${incident.id}`}
+                        lead={
+                          <span className="rounded bg-failure/15 px-1 py-px text-[10px] font-semibold leading-4 text-failure">
+                            {SEVERITY_LABEL[incident.severity] ?? incident.severity.toUpperCase()}
+                          </span>
+                        }
+                        title={incident.title}
+                        meta={[capitalize(incident.status.replace(/_/g, " ")), incident.primaryServiceName]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        time={incident.updatedAt}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -216,35 +246,25 @@ export function NeedsAttentionCard({
             </TabsContent>
           ) : null}
 
-          <TabsContent
-            value="alerts"
-            data-testid="panel-recent-alerts"
-            className="mt-2 min-h-0 flex-1 overflow-y-auto"
-          >
+          <TabsContent value="alerts" data-testid="panel-recent-alerts" className={panelClass}>
             {alertRows.length === 0 ? (
               <EmptyRow message="No alerts sent yet" />
             ) : (
-              <ul className="-mx-2 space-y-0.5">
+              <ul className={listClass}>
                 {alertRows.map((alert) => (
                   <li key={alert.id}>
-                    <Link href="/alerts" className={rowClass}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            "h-2 w-2 shrink-0 rounded-full",
-                            alert.status === "sent" ? "bg-success" : "bg-failure"
-                          )}
+                    <AttentionRow
+                      href="/alerts"
+                      lead={
+                        <Bell
+                          className={cn("h-4 w-4", alert.status === "sent" ? "text-muted-foreground" : "text-failure")}
                           aria-hidden
                         />
-                        <span className="truncate">
-                          <span className="font-medium">{alert.targetName || alert.targetType}</span>
-                          <span className="text-muted-foreground"> · {alert.type.replace(/_/g, " ")}</span>
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {timeAgo(alert.timestamp)}
-                      </span>
-                    </Link>
+                      }
+                      title={alert.targetName || capitalize(alert.targetType)}
+                      meta={`${capitalize(alert.type.replace(/_/g, " "))}${alert.status === "sent" ? "" : " · not delivered"}`}
+                      time={alert.timestamp}
+                    />
                   </li>
                 ))}
               </ul>

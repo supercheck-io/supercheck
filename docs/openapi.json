@@ -119,6 +119,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "open",
                 "triggered",
                 "investigating",
                 "identified",
@@ -127,7 +128,8 @@
                 "verifying",
                 "resolved"
               ]
-            }
+            },
+            "description": "Filter by incident status. `open` returns every incident that is not `resolved`."
           },
           {
             "name": "severity",

@@ -21,10 +21,12 @@ export type OpenIncidentsResult =
  * permission- and feature-gated, so any non-OK response (401/402/403/404/5xx)
  * resolves to `available: false` and the dashboard hides the panel.
  */
-export async function fetchOpenIncidents(): Promise<OpenIncidentsResult> {
+export async function fetchOpenIncidents(projectId: string | null = null): Promise<OpenIncidentsResult> {
   try {
-    const response = await fetch("/api/sre/incidents", {
-      headers: { "Content-Type": "application/json" },
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (projectId) headers["x-project-id"] = projectId;
+    const response = await fetch("/api/sre/incidents?status=open", {
+      headers,
     });
     if (!response.ok) return { available: false };
     const body = (await response.json()) as { incidents?: OpenIncident[] };
@@ -43,7 +45,7 @@ export function useOpenIncidents() {
 
   return useQuery({
     queryKey: ["dashboard", "open-incidents", projectId],
-    queryFn: fetchOpenIncidents,
+    queryFn: () => fetchOpenIncidents(projectId),
     enabled: !!projectId,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,

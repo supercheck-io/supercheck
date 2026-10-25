@@ -17,7 +17,7 @@ jest.mock('../services/run-callback', () => ({
  * - Edge Cases (timeouts, concurrent execution)
  */
 
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { attachBillableMs } from '../../common/billable-ms';
 
@@ -306,7 +306,7 @@ describe('PlaywrightExecutionProcessor', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('ends a run the user already cancelled as cancelled when Kubernetes state cannot be verified', async () => {
+    it('delegates cancellation during unverifiable Kubernetes state to the atomic helper', async () => {
       mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
         new Error('Unable to verify Kubernetes execution state for run-456'),
       );
@@ -315,8 +315,9 @@ describe('PlaywrightExecutionProcessor', () => {
       await expect(
         processor.process(createMockJob(mockTestTask)),
       ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
-      expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
+      expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
         mockTestTask.runId,
+        expect.stringContaining('Unable to verify Kubernetes execution state'),
       );
       expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
     });
@@ -327,16 +328,35 @@ describe('PlaywrightExecutionProcessor', () => {
         new Error('Unable to verify Kubernetes execution state for run-456'),
       );
       const job = createMockJob(mockTestTask);
-      await expect(processor.process(job)).rejects.toThrow(
+      const failure = processor.process(job);
+      await expect(failure).rejects.toThrow(
         /Unable to verify Kubernetes execution state/,
       );
-      expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+      await expect(failure).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
         runId,
-        'failed',
-        '0',
         expect.stringContaining('Unable to verify Kubernetes execution state'),
       );
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('leaves the job retryable when the failure cannot be recorded', async () => {
+      mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
+        'Unable to verify Kubernetes execution state',
+      );
+      mockDbService.failRunUnlessCancelled.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
+      const failure = processor.process(createMockJob(mockTestTask));
+      await expect(failure).rejects.toThrow(
+        /Unable to verify Kubernetes execution state/,
+      );
+      await expect(failure).rejects.not.toBeInstanceOf(UnrecoverableError);
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+      expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
       expect(
         mockUsageTrackerService.completeRunWithUsage,
       ).not.toHaveBeenCalled();
