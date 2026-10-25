@@ -128,9 +128,9 @@ claude mcp add --transport http supercheck \\
     },
   },
   {
-    slug: "sre",
-    role: "For SRE and platform teams",
-    metaTitle: "Supercheck for SRE and platform teams",
+    slug: "on-call",
+    role: "For on-call and SRE teams",
+    metaTitle: "Supercheck for on-call and SRE teams",
     metaDescription:
       "Uptime and synthetic monitoring, alert routing, status pages and read-only AI incident investigation, open source and self-hostable.",
     title: "Uptime, alerts and incident evidence in one place",
@@ -207,9 +207,9 @@ claude mcp add --transport http supercheck \\
     },
   },
   {
-    slug: "qa",
-    role: "For QA engineers",
-    metaTitle: "Supercheck for QA engineers",
+    slug: "test-automation",
+    role: "For test automation teams",
+    metaTitle: "Supercheck for test automation",
     metaDescription:
       "Record, write and schedule Playwright browser, API and database tests and k6 load tests, then keep production covered with synthetic monitors.",
     title: "Record, run and schedule your Playwright and k6 suites",
@@ -285,9 +285,9 @@ claude mcp add --transport http supercheck \\
     },
   },
   {
-    slug: "engineering-managers",
-    role: "For engineering managers",
-    metaTitle: "Supercheck for engineering managers",
+    slug: "engineering-leaders",
+    role: "For engineering leaders",
+    metaTitle: "Supercheck for engineering leaders",
     metaDescription:
       "Requirement coverage, a project dashboard, role-based access and an audit log for your teams' tests, monitors and incidents.",
     title: "See what is tested, monitored and who owns it",

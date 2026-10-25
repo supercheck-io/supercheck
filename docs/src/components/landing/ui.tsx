@@ -1,5 +1,7 @@
 import Image from "next/image";
-import { Check } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check } from "lucide-react";
+import { solutionsMenu } from "../../lib/site-nav";
 
 export const primaryButton =
   "inline-flex items-center justify-center gap-2 rounded-md bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
@@ -52,5 +54,33 @@ export function Screenshot({ src, alt, priority = false }: { src: string; alt: s
         priority={priority}
       />
     </div>
+  );
+}
+
+/** Role cards linking to the solutions pages; `exclude` drops the page being viewed. */
+export function SolutionCards({ exclude, className = "" }: { exclude?: string; className?: string }) {
+  const items = solutionsMenu.groups[0].items.filter((item) => item.href !== exclude);
+  return (
+    <ul className={`grid gap-4 sm:grid-cols-2 ${items.length > 3 ? "lg:grid-cols-4" : "lg:grid-cols-3"} ${className}`}>
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              className="group flex h-full flex-col rounded-xl border border-fd-border bg-fd-background p-6 transition-colors hover:border-fd-primary/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+            >
+              <Icon className="size-5 text-fd-primary" aria-hidden="true" />
+              <span className="mt-4 font-semibold">{item.title}</span>
+              <span className="mt-1.5 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{item.description}</span>
+              <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-fd-primary">
+                Learn more
+                <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -1,4 +1,5 @@
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
+import { PlaywrightMark } from "../components/landing/tool-logos";
 import {
   ArrowLeftRight,
   BellRing,
@@ -21,7 +22,6 @@ import {
   Target,
   Terminal,
   Users,
-  Workflow,
 } from "lucide-react";
 
 export const GITHUB_URL = "https://github.com/supercheck-io/supercheck";
@@ -31,7 +31,7 @@ export interface NavItem {
   title: string;
   description: string;
   href: string;
-  icon: LucideIcon;
+  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
 }
 
 export interface NavGroup {
@@ -62,7 +62,7 @@ export const productMenu: NavMenu = {
       title: "Monitor",
       items: [
         { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port", href: "/docs/app/monitor", icon: Globe },
-        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: Workflow },
+        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: PlaywrightMark },
       ],
     },
     {
@@ -89,10 +89,10 @@ export const solutionsMenu: NavMenu = {
     {
       title: "By role",
       items: [
-        { title: "Developers", description: "Tests and monitors in your repo, deployed from CI", href: "/solutions/developers", icon: Code },
-        { title: "SRE and platform", description: "Uptime, alerting and incident evidence in one place", href: "/solutions/sre", icon: Layers },
-        { title: "QA engineers", description: "Record, run and schedule Playwright and k6 suites", href: "/solutions/qa", icon: ClipboardCheck },
-        { title: "Engineering managers", description: "Coverage, ownership and access you can review", href: "/solutions/engineering-managers", icon: Users },
+        { title: "Developers", description: "Ship tests and monitors with your code", href: "/solutions/developers", icon: Code },
+        { title: "On-call and SRE", description: "Catch outages, find the cause, update users", href: "/solutions/on-call", icon: Layers },
+        { title: "Test automation", description: "Playwright and k6 suites that run on a schedule", href: "/solutions/test-automation", icon: ClipboardCheck },
+        { title: "Engineering leaders", description: "Coverage, access and audit trail in one view", href: "/solutions/engineering-leaders", icon: Users },
       ],
     },
   ],

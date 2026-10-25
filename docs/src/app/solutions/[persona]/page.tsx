@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../../components/site-header";
 import { SiteFooter } from "../../../components/site-footer";
 import { CodeWindow } from "../../../components/landing/code-window";
-import { CheckList, Screenshot, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
+import { CheckList, Screenshot, SolutionCards, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
 import { getSolution, solutions, type SolutionStep } from "../../../lib/solutions";
 import { DEMO_URL } from "../../../lib/site-nav";
 
@@ -60,7 +60,6 @@ function StepVisual({ step }: { step: SolutionStep }) {
 export default async function SolutionPage({ params }: { params: Promise<{ persona: string }> }) {
   const solution = getSolution((await params).persona);
   if (!solution) notFound();
-  const others = solutions.filter((other) => other.slug !== solution.slug);
 
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
@@ -143,23 +142,11 @@ export default async function SolutionPage({ params }: { params: Promise<{ perso
         </section>
 
         <nav aria-labelledby="other-roles-heading" className="border-t border-fd-border">
-          <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
-            <h2 id="other-roles-heading" className="text-sm font-medium text-fd-muted-foreground">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+            <h2 id="other-roles-heading" className="text-2xl font-semibold tracking-tight">
               Supercheck for other roles
             </h2>
-            <ul className="mt-4 grid gap-3 sm:grid-cols-3">
-              {others.map((other) => (
-                <li key={other.slug}>
-                  <Link
-                    href={`/solutions/${other.slug}`}
-                    className="group flex h-full items-center justify-between gap-3 rounded-lg border border-fd-border p-4 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
-                  >
-                    {other.role.replace(/^For /, "").replace(/^./, (c) => c.toUpperCase())}
-                    <ArrowRight className="size-4 shrink-0 text-fd-muted-foreground transition-colors group-hover:text-fd-foreground" aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <SolutionCards exclude={`/solutions/${solution.slug}`} className="mt-6" />
           </div>
         </nav>
       </main>

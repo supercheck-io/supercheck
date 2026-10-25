@@ -27,9 +27,9 @@
 ## Solutions by role
 
 - [Developers](https://supercheck.io/solutions/developers): Tests and monitors as code, deployed from CI.
-- [SRE and platform teams](https://supercheck.io/solutions/sre): Uptime monitoring, alerts, status pages and AI incident investigation.
-- [QA engineers](https://supercheck.io/solutions/qa): Playwright and k6 tests, the Recorder, synthetic monitors and requirements.
-- [Engineering managers](https://supercheck.io/solutions/engineering-managers): Requirement coverage, roles and audit log.
+- [On-call and SRE teams](https://supercheck.io/solutions/on-call): Uptime monitoring, alerts, status pages and AI incident investigation.
+- [Test automation](https://supercheck.io/solutions/test-automation): Playwright and k6 tests, the Recorder, synthetic monitors and requirements.
+- [Engineering leaders](https://supercheck.io/solutions/engineering-leaders): Requirement coverage, roles and audit log.
 
 ## Full Reference
 

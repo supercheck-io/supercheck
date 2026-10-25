@@ -3,10 +3,10 @@ import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
 import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
-import { CheckList, Screenshot, SectionHeading, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
+import { CheckList, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
-import { DEMO_URL, solutionsMenu } from "../../lib/site-nav";
+import { DEMO_URL } from "../../lib/site-nav";
 
 const products = [
   {
@@ -209,29 +209,9 @@ export default async function HomePage() {
         <section className="border-t border-fd-border bg-fd-card/40">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Solutions" title="Built for the people who keep software working">
-              See how developers, SRE and platform teams, QA engineers and engineering managers use Supercheck.
+              See how developers, on-call engineers, test automation teams and engineering leaders use Supercheck.
             </SectionHeading>
-            <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {solutionsMenu.groups[0].items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className="group flex h-full flex-col rounded-xl border border-fd-border bg-fd-background p-6 transition-colors hover:border-fd-primary/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
-                    >
-                      <Icon className="size-5 text-fd-primary" aria-hidden="true" />
-                      <span className="mt-4 font-semibold">{item.title}</span>
-                      <span className="mt-1.5 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{item.description}</span>
-                      <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-fd-primary">
-                        Learn more
-                        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <SolutionCards className="mt-12" />
           </div>
         </section>
 
@@ -243,18 +223,28 @@ export default async function HomePage() {
                 Define Playwright and k6 tests, monitors and scheduled jobs in one TypeScript file.
                 Review changes in pull requests, then apply them from your terminal or CI pipeline.
               </SectionHeading>
-              <dl className="mt-8 space-y-4 text-sm">
-                {[
-                  ["supercheck pull", "Export what already exists in a project."],
-                  ["supercheck diff", "See exactly what a deploy would change."],
-                  ["supercheck deploy", "Apply the configuration to Supercheck."],
-                ].map(([cmd, desc]) => (
-                  <div key={cmd} className="flex flex-col gap-1 sm:flex-row sm:gap-4">
-                    <dt className="w-40 shrink-0 font-mono text-[13px]">{cmd}</dt>
-                    <dd className="text-fd-muted-foreground">{desc}</dd>
-                  </div>
-                ))}
-              </dl>
+              <div className="mt-8 overflow-hidden rounded-lg border border-fd-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-fd-muted/40 text-left text-xs text-fd-muted-foreground">
+                    <tr>
+                      <th scope="col" className="px-4 py-2 font-medium">Command</th>
+                      <th scope="col" className="px-4 py-2 font-medium">What it does</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["supercheck pull", "Export what already exists in a project"],
+                      ["supercheck diff", "Preview what a deploy would change"],
+                      ["supercheck deploy", "Apply the configuration"],
+                    ].map(([cmd, desc]) => (
+                      <tr key={cmd} className="border-t border-fd-border">
+                        <td className="whitespace-nowrap px-4 py-2.5 font-mono text-[13px]">{cmd}</td>
+                        <td className="px-4 py-2.5 text-fd-muted-foreground">{desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div className="mt-8 rounded-lg border border-fd-border p-4">
                 <p className="text-sm font-medium">Ask your AI tools about it</p>
                 <p className="mt-1 text-sm text-fd-muted-foreground">
