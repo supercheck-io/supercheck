@@ -91,12 +91,12 @@ export function getPolarPlugin() {
         );
         await handleOrderPaid(normalizePolarPayload(payload));
       },
-      onCustomerStateChanged: async () => {
+      onCustomerStateChanged: async (payload: any) => {
         console.log("[Polar] Webhook: customer.state_changed");
         const { handleCustomerStateChanged } = await import(
           "@/lib/webhooks/polar-webhooks"
         );
-        await handleCustomerStateChanged();
+        await handleCustomerStateChanged(normalizePolarPayload(payload));
       },
 
       onCustomerDeleted: async (payload: any) => {

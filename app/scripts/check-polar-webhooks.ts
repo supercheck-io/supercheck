@@ -26,6 +26,9 @@ const auth = betterAuth({
       onCustomerCreated: async (payload) => {
         received.push(`customer.created:${payload.data.external_id}`);
       },
+      onSubscriptionUpdated: async (payload) => {
+        received.push(`subscription.updated:${payload.data.status}:${payload.data.current_period_end}`);
+      },
     }),
   ],
 });
@@ -74,9 +77,20 @@ async function main(): Promise<void> {
     `the handler must receive the snake_case SDK fields, saw ${JSON.stringify(received)}`,
   );
 
+  for (const status of ["active", "past_due", "canceled"] as const) {
+    const body = JSON.stringify({ type: "subscription.updated", timestamp: new Date().toISOString(), data: {
+      id: "sub_check", customer_id: "cus_check", product_id: "prod_check", status,
+      current_period_start: "2026-10-01T00:00:00Z", current_period_end: "2026-11-01T00:00:00Z",
+      cancel_at_period_end: status === "canceled", metadata: {},
+    } });
+    const response = await deliver(body, SECRET);
+    expect(response.status === 200, `a signed ${status} subscription snapshot must dispatch, got ${response.status}`);
+    expect(received.at(-1) === `subscription.updated:${status}:2026-11-01T00:00:00Z`, "subscription fields must retain the pinned snake_case contract");
+  }
+
   const forged = await deliver(customerCreated(), "not-the-webhook-secret");
   expect(forged.status >= 400 && forged.status < 500, `a forged signature must be rejected, got ${forged.status}`);
-  expect(received.length === 1, "a forged webhook must never reach a handler");
+  expect(received.length === 4, "a forged webhook must never reach a handler");
 
   console.log("Polar webhook endpoint check passed");
 }

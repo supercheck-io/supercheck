@@ -1,6 +1,8 @@
 jest.mock("@/lib/billing/usage-sync-lease", () => ({
   withUsageSyncLease: jest.fn(async (run) => run(() => {})),
 }));
+jest.mock("./subscription-reconciliation", () => ({ reconcilePolarSubscriptions: jest.fn() }));
+jest.mock("@/lib/billing/reconciliation-status", () => ({ getBillingReconciliationStatus: jest.fn().mockResolvedValue({ requiresAttention: false }) }));
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
 import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
 /** @jest-environment node */
@@ -44,6 +46,7 @@ jest.mock("drizzle-orm", () => ({
   sql: jest.fn(() => ({ op: "sql" })),
   gt: jest.fn((left, right) => ({ op: "gt", left, right })),
   lte: jest.fn((left, right) => ({ op: "lte", left, right })),
+  notInArray: jest.fn((left, right) => ({ op: "notInArray", left, right })),
   ne: jest.fn((left, right) => ({ op: "ne", left, right })),
   isNull: jest.fn((value) => ({ op: "isNull", value })),
   isNotNull: jest.fn((value) => ({ op: "isNotNull", value })),

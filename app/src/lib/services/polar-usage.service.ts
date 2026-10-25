@@ -1,5 +1,7 @@
 import { ceilUsageCostCents } from "@/lib/billing/usage-cost";
 import { DEFAULT_OVERAGE_PRICING_CENTS } from "@/lib/billing/pricing-defaults";
+import { getBillingReconciliationStatus } from "@/lib/billing/reconciliation-status";
+import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
 /**
  * Polar Usage Service
  * 
@@ -24,7 +26,7 @@ import {
   overagePricing,
   planLimits,
 } from "@/db/schema";
-import { eq, and, sql, gt, lte, or, isNull, isNotNull, ne } from "drizzle-orm";
+import { eq, and, sql, gt, lte, or, isNull, isNotNull, ne, notInArray } from "drizzle-orm";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import { createLogger } from "@/lib/logger/index";
 import {
@@ -91,6 +93,7 @@ type UsageSyncResult = {
   succeeded: number;
   failed: number;
   errors: string[];
+  reconciliation?: Awaited<ReturnType<typeof getBillingReconciliationStatus>>;
 };
 const FALLBACK_OVERAGE_PRICING_CENTS = DEFAULT_OVERAGE_PRICING_CENTS;
 
@@ -523,8 +526,16 @@ class PolarUsageService {
 
   private async syncPendingEventsLocked(batchSize: number, assertOwned: () => void): Promise<UsageSyncResult> {
     const errors: string[] = [];
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
 
     try {
+      try {
+        await reconcilePolarSubscriptions(assertOwned);
+      } catch (error) {
+        logger.error({ error }, "Polar subscription reconciliation scan failed");
+      }
       // Recover successful AI SRE runs whose post-run ledger write failed.
       // consumeSreInvestigationCredit is idempotent by investigation run ID.
       try {
@@ -548,55 +559,62 @@ class PolarUsageService {
         logger.error({ error }, "SRE billing reconciliation failed");
       }
 
-      // Find events that haven't been synced yet
-      // Keep retrying through provider outages; cap backoff at five minutes.
-      // New events are selected first so persistent failures cannot starve them.
-      const pendingEvents = await db.query.usageEvents.findMany({
-        where: and(
-          eq(usageEvents.syncedToPolar, false),
-          or(isNull(usageEvents.syncError), ne(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR)),
-          // Exponential backoff: only retry after appropriate delay
-          sql`(
-            ${usageEvents.lastSyncAttempt} IS NULL
-            OR ${usageEvents.lastSyncAttempt} < NOW() - INTERVAL '1 second' * (
-              CASE ${usageEvents.syncAttempts}
-                WHEN 0 THEN 0
-                WHEN 1 THEN 1
-                WHEN 2 THEN 5
-                WHEN 3 THEN 30
-                WHEN 4 THEN 120
-                ELSE 300
-              END
-            )
-          )`
-        ),
-        limit: batchSize,
-        orderBy: (events, { asc }) => [
-          sql`${events.lastSyncAttempt} ASC NULLS FIRST`,
-          asc(events.createdAt),
-        ],
-      });
-
-      let succeeded = 0;
-      let failed = 0;
-
-      for (const event of pendingEvents) {
+      const deadline = Date.now() + 45_000;
+      const scanUntil = new Date();
+      const attemptedIds: string[] = [];
+      const batchLimit = Math.min(500, Math.max(1, Math.floor(batchSize) || 50));
+      while (processed < 500 && Date.now() < deadline) {
         assertOwned();
-        try {
-          const synced = await this.syncEventToPolar(event.id);
-          if (synced) {
-            succeeded++;
-          } else {
+        const limit = Math.min(batchLimit, 500 - processed);
+        const pendingEvents = await db.query.usageEvents.findMany({
+          where: and(
+            eq(usageEvents.syncedToPolar, false),
+            lte(usageEvents.createdAt, scanUntil),
+            ...(attemptedIds.length ? [notInArray(usageEvents.id, attemptedIds)] : []),
+            or(isNull(usageEvents.syncError), ne(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR)),
+            // Exponential backoff: only retry after appropriate delay
+            sql`(
+              ${usageEvents.lastSyncAttempt} IS NULL
+              OR ${usageEvents.lastSyncAttempt} < NOW() - INTERVAL '1 second' * (
+                CASE ${usageEvents.syncAttempts}
+                  WHEN 0 THEN 0
+                  WHEN 1 THEN 1
+                  WHEN 2 THEN 5
+                  WHEN 3 THEN 30
+                  WHEN 4 THEN 120
+                  ELSE 300
+                END
+              )
+            )`
+          ),
+          limit,
+          orderBy: (events, { asc }) => [
+            sql`${events.lastSyncAttempt} ASC NULLS FIRST`,
+            asc(events.createdAt),
+          ],
+        });
+        for (const event of pendingEvents) {
+          if (Date.now() >= deadline) break;
+          assertOwned();
+          processed++;
+          attemptedIds.push(event.id);
+          try {
+            const synced = await this.syncEventToPolar(event.id);
+            if (synced) {
+              succeeded++;
+            } else {
+              failed++;
+              const errorMsg = `Event ${event.id.substring(0, 8)}...: sync failed`;
+              errors.push(errorMsg);
+            }
+          } catch (error) {
             failed++;
-            const errorMsg = `Event ${event.id.substring(0, 8)}...: sync failed`;
+            const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
+            logger.error({ error, errorMsg }, "Polar event sync failed");
           }
-        } catch (error) {
-          failed++;
-          const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
-          errors.push(errorMsg);
-          logger.error({ error, errorMsg }, "Polar event sync failed");
         }
+        if (pendingEvents.length < limit) break;
       }
 
       assertOwned();
@@ -608,25 +626,36 @@ class PolarUsageService {
         logger.error({ error }, "Usage notification scan failed");
       }
 
-      if (pendingEvents.length > 0) {
+      if (processed > 0) {
         logger.info(
-          { succeeded, failed, processed: pendingEvents.length },
+          { succeeded, failed, processed },
           "Polar batch sync complete",
         );
       }
 
+      let reconciliation: Awaited<ReturnType<typeof getBillingReconciliationStatus>> | undefined;
+      try {
+        reconciliation = await getBillingReconciliationStatus();
+        if (reconciliation.requiresAttention) {
+          logger.error({ reconciliation }, "Billing reconciliation requires attention");
+        }
+      } catch (error) {
+        logger.error({ error }, "Billing reconciliation status unavailable");
+      }
+
       return {
-        processed: pendingEvents.length,
+        processed,
         succeeded,
         failed,
-        errors
+        errors,
+        reconciliation,
       };
     } catch (error) {
       logger.error({ error }, "Polar batch sync failed");
       return {
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
+        processed,
+        succeeded,
+        failed,
         errors: [error instanceof Error ? error.message : 'Unknown error']
       };
     }

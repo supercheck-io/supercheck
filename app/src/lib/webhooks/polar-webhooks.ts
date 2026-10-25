@@ -446,7 +446,7 @@ function getCustomerIdFromPayload(
   return undefined;
 }
 
-function getSubscriptionStatusFromPayload(
+export function getSubscriptionStatusFromPayload(
   payload: PolarWebhookPayload,
 ): "active" | "canceled" | "past_due" | "none" | undefined {
   const status = payload.data.status;
@@ -456,7 +456,7 @@ function getSubscriptionStatusFromPayload(
       (payload.data.cancelAtPeriodEnd ?? payload.data.cancel_at_period_end) === true) {
     return "canceled";
   }
-  if (["canceled", "unpaid", "incomplete", "incomplete_expired", "trialing"].includes(status ?? "")) {
+  if (["canceled", "unpaid", "incomplete", "incomplete_expired", "trialing", "paused"].includes(status ?? "")) {
     return "none";
   }
   if (
@@ -474,7 +474,7 @@ function getSubscriptionStatusFromPayload(
  * SECURITY: Only allows "plus" or "pro" plans in cloud mode
  * Never returns "unlimited" - that's reserved for self-hosted only
  */
-function getPlanFromProductId(
+export function getPlanFromProductId(
   productId: string | undefined | null,
 ): SubscriptionPlan | null {
   if (!productId) {
@@ -1743,8 +1743,11 @@ async function processSubscriptionUncanceled(payload: PolarWebhookPayload) {
  * Handle customer state changes
  * Aggregated event for any customer-related changes
  */
-export async function handleCustomerStateChanged() {
-  // Customer state changes are handled by subscription events
+export async function handleCustomerStateChanged(payload: PolarWebhookPayload) {
+  const org = await findOrganizationByCustomerId(payload.data.id);
+  if (!org) return;
+  const { reconcilePolarSubscription } = await import("@/lib/services/subscription-reconciliation");
+  await reconcilePolarSubscription(org.id);
 }
 
 /**

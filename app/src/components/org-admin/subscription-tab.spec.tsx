@@ -191,7 +191,7 @@ describe("SubscriptionTab", () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
     await screen.findByText("No active plan");
     expect(screen.getByRole("link", { name: "Resubscribe" })).toHaveAttribute("href", "/subscribe");
-    expect(screen.queryByRole("button", { name: "Manage Subscription" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
     expect(screen.queryByText("$49.00")).not.toBeInTheDocument();
   });
 
