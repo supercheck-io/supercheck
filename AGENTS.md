@@ -101,6 +101,16 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run the app and worker from sour
 - Unit tests are colocated `*.spec.ts(x)` (Jest, React Testing Library). DB-backed tests are `*.db.spec.ts` and run only via `npm run test:db`.
 - E2E (Playwright, `app/e2e/`): authentication runs once in `tests/auth.setup.ts`; reuse its storage state. Create the records a test needs in `beforeAll` (via `e2e/utils/test-data.ts`) and remove them in `afterAll`. Before interacting after navigation, call `waitForHydration(page)` (`e2e/utils/hydration.ts`) instead of fixed sleeps. Click text columns in table rows, not the first column (it may hold action buttons). Rules: `app/e2e/COVERAGE.md`.
 
+## Test coverage for new and changed behavior
+
+Whenever you add or change functionality, check its test coverage before declaring the work done:
+
+1. Run the affected package's Jest suite with coverage (`npm run test:cov` in `app/`, `worker/` or `cli/`), narrowed to the files you touched, for example `npm run test:cov -- --coverageThreshold='{}' --collectCoverageFrom='<path>' <spec>`. The `--coverageThreshold='{}'` override is required because the global thresholds in `jest.config.js` always fail a run narrowed to a few files; rule 2 is the check that counts.
+2. Read the per-file line and branch figures for every file you added or changed. Each new branch (success, failure, boundary and permission-denied paths) needs an assertion.
+3. If coverage of the new or changed code is missing, add the tests in the same change. Do not defer them to a follow-up, and never lower a threshold in `jest.config.js` to make a run pass.
+4. Start a bug fix with a test that fails on the old behavior and passes on the fix.
+5. Put the exact command and the resulting coverage of the touched files in the PR description.
+
 ## Environment
 
 - `process.env.SELF_HOSTED === "true"` gates self-hosted behavior; test both modes when behavior differs.
