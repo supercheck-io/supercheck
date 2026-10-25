@@ -28,6 +28,7 @@ jest.mock("@/utils/db", () => {
     return node;
   };
   const tx = {
+    isTx: true,
     delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
     insert: () => ({ values: (v: unknown) => { mockInsertValues(v); return Promise.resolve(); } }),
   };
@@ -119,7 +120,9 @@ describe("POST /api/monitors/[id]/tags", () => {
         resourceId: M,
         organizationId: "o",
         metadata: { tagIds: [T1, T2], projectId: "p" },
-      })
+      }),
+      expect.objectContaining({ isTx: true }),
+      { strict: true },
     );
     expect(await res.json()).toEqual({ tags: [{ id: T1, name: "a", color: null }] });
   });
@@ -152,7 +155,10 @@ describe("DELETE /api/monitors/[id]/tags", () => {
     expect(await res.json()).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalled();
     expect(mockAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "monitor_tag_removed", resourceId: M, metadata: { tagId: T1, projectId: "p" } })
+      expect.objectContaining({ action: "monitor_tag_removed", resourceId: M, metadata: { tagId: T1, projectId: "p" } }),
+      expect.objectContaining({ isTx: true }),
+      { strict: true },
     );
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 });

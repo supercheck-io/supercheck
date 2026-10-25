@@ -128,7 +128,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Replace semantics: remove existing, add the given set (atomically, so a failed insert keeps the old tags)
+    // Replace semantics: remove existing, add the given set. The audit record commits with the change or not at all.
     await db.transaction(async (tx) => {
       await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
       if (normalizedTagIds.length > 0) {
@@ -136,16 +136,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           .insert(monitorTags)
           .values(normalizedTagIds.map((tagId) => ({ monitorId, tagId })));
       }
-    });
-
-    await logAuditEvent({
-      userId: context.userId,
-      organizationId,
-      action: "monitor_tags_updated",
-      resource: "monitor",
-      resourceId: monitorId,
-      metadata: { tagIds: normalizedTagIds, projectId: project.id },
-      success: true,
+      await logAuditEvent(
+        {
+          userId: context.userId,
+          organizationId,
+          action: "monitor_tags_updated",
+          resource: "monitor",
+          resourceId: monitorId,
+          metadata: { tagIds: normalizedTagIds, projectId: project.id },
+          success: true,
+        },
+        tx,
+        { strict: true },
+      );
     });
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
@@ -184,18 +187,23 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (!(await monitorExists(monitorId, organizationId, project.id))) return notFound();
 
-    await db
-      .delete(monitorTags)
-      .where(and(eq(monitorTags.monitorId, monitorId), eq(monitorTags.tagId, tagId)));
-
-    await logAuditEvent({
-      userId: context.userId,
-      organizationId,
-      action: "monitor_tag_removed",
-      resource: "monitor",
-      resourceId: monitorId,
-      metadata: { tagId, projectId: project.id },
-      success: true,
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(monitorTags)
+        .where(and(eq(monitorTags.monitorId, monitorId), eq(monitorTags.tagId, tagId)));
+      await logAuditEvent(
+        {
+          userId: context.userId,
+          organizationId,
+          action: "monitor_tag_removed",
+          resource: "monitor",
+          resourceId: monitorId,
+          metadata: { tagId, projectId: project.id },
+          success: true,
+        },
+        tx,
+        { strict: true },
+      );
     });
 
     return NextResponse.json({ success: true });

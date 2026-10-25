@@ -51,9 +51,9 @@ export async function GET(request: NextRequest) {
     const pageParam = parseInt(searchParams.get("page") || "1", 10);
     const searchQuery = searchParams.get("search") || "";
     const typeFilter = searchParams.get("type") || "";
-    const priorityFilter = searchParams.get("priority") || "";
+    const priorityFilter = searchParams.get("priority");
 
-    if (priorityFilter && !isTestPriority(priorityFilter)) {
+    if (priorityFilter !== null && !isTestPriority(priorityFilter)) {
       return NextResponse.json(
         { error: "Priority must be one of: low, medium, high" },
         { status: 400 }

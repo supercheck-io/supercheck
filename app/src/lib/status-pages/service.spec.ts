@@ -326,6 +326,7 @@ describe("status page service", () => {
       const result = await createComponent(ctx, pageId, { name: "API", monitorIds: [monitorA] });
       expect(result).toMatchObject({ ok: true, data: { monitorIds: [monitorA] } });
       expect(insert).toHaveBeenCalledTimes(2);
+      expect(transaction).toHaveBeenCalledTimes(1); // row and monitor links commit together
       expect(updateComponentStatus).toHaveBeenCalledWith(compId);
       expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "component_created" }));
     });
@@ -341,6 +342,17 @@ describe("status page service", () => {
       componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
       const result = await createComponent(ctx, pageId, { name: "API", monitorIds: [monitorA, monitorA] });
       expect(result).toMatchObject({ ok: true, data: { monitorIds: [monitorA] } });
+    });
+
+    it("returns a failure and runs no aggregation when the monitor links cannot be written", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      chainResult.value = [{ id: monitorA }];
+      transaction.mockRejectedValueOnce(new Error("insert or update on table violates foreign key constraint"));
+      const result = await createComponent(ctx, pageId, { name: "API", monitorIds: [monitorA] });
+      expect(result).toMatchObject({ ok: false, code: "internal" });
+      expect(JSON.stringify(result)).not.toContain("foreign key");
+      expect(updateComponentStatus).not.toHaveBeenCalled();
+      expect(logAuditEvent).not.toHaveBeenCalled();
     });
 
     it("rejects more than 100 monitorIds", async () => {

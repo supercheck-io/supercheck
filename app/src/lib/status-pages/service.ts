@@ -688,37 +688,41 @@ export async function createComponent(
     const refs = await verifyComponentReferences(ctx, validatedData.monitorIds, validatedData.serviceId);
     if (!refs.ok) return refs;
 
-    const [created] = await db
-      .insert(statusPageComponents)
-      .values({
-        statusPageId,
-        name: validatedData.name,
-        description: validatedData.description || null,
-        status: validatedData.status,
-        showcase: validatedData.showcase,
-        onlyShowIfDegraded: validatedData.onlyShowIfDegraded,
-        position: validatedData.position,
-        aggregationMethod: validatedData.aggregationMethod,
-        failureThreshold: validatedData.failureThreshold,
-        autoCreateIncidents: validatedData.autoCreateIncidents ?? false,
-        serviceId: validatedData.serviceId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
-    let component = created;
-
     const monitorIds = validatedData.monitorIds ?? [];
-    if (monitorIds.length > 0) {
-      await db.insert(statusPageComponentMonitors).values(
-        monitorIds.map((monitorId) => ({
-          componentId: component.id,
-          monitorId,
-          weight: validatedData.monitorWeights?.[monitorId] ?? 1,
+    // The row and its monitor links commit together, so a failed link never leaves a component behind.
+    let component = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(statusPageComponents)
+        .values({
+          statusPageId,
+          name: validatedData.name,
+          description: validatedData.description || null,
+          status: validatedData.status,
+          showcase: validatedData.showcase,
+          onlyShowIfDegraded: validatedData.onlyShowIfDegraded,
+          position: validatedData.position,
+          aggregationMethod: validatedData.aggregationMethod,
+          failureThreshold: validatedData.failureThreshold,
+          autoCreateIncidents: validatedData.autoCreateIncidents ?? false,
+          serviceId: validatedData.serviceId,
           createdAt: new Date(),
-        }))
-      );
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (monitorIds.length > 0) {
+        await tx.insert(statusPageComponentMonitors).values(
+          monitorIds.map((monitorId) => ({
+            componentId: created.id,
+            monitorId,
+            weight: validatedData.monitorWeights?.[monitorId] ?? 1,
+            createdAt: new Date(),
+          }))
+        );
+      }
+      return created;
+    });
 
+    if (monitorIds.length > 0) {
       // If caller didn't explicitly set status, derive from linked monitor statuses
       if (input.status === undefined) {
         await statusAggregationService.updateComponentStatus(component.id);

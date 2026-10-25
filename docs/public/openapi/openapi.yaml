@@ -1681,8 +1681,9 @@ paths:
     patch:
       operationId: updateTest
       summary: Update a test
-      description: Update test title, script, description, type, or priority. Resource
-        IDs must be canonical UUIDs; malformed IDs return 404.
+      description: Update test title, script, description, type, or priority. Requires
+        `test:update`, checked before the ID; for an authorized caller, a
+        malformed ID returns 404.
       tags:
         - Tests
       requestBody:
@@ -1766,8 +1767,8 @@ paths:
       summary: Update a test using the legacy PUT alias
       description: Update test title, script, description, type, or priority. PUT is
         retained for CLI deploy and backward compatibility; interactive partial
-        updates should prefer PATCH. Resource IDs must be canonical UUIDs;
-        malformed IDs return 404.
+        updates should prefer PATCH. Requires `test:update`, checked before the
+        ID; for an authorized caller, a malformed ID returns 404.
       tags:
         - Tests
       requestBody:
@@ -5043,8 +5044,9 @@ paths:
         - Status Pages
       description: Partially update a component. Requires `status_page:update`. When
         `monitorIds` is present the monitor links are replaced atomically. If
-        `monitorIds` changes and `status` is omitted, the status is re-derived
-        from the linked monitors.
+        `monitorIds` lists at least one monitor and `status` is omitted, the
+        status is re-derived from the linked monitors; clearing all monitors
+        keeps the current status.
       requestBody:
         required: true
         content:
