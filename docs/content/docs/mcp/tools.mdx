@@ -50,7 +50,7 @@ Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) ret
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 
-Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
+Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
 
 ## AI SRE
 

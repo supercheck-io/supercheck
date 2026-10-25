@@ -906,6 +906,7 @@ The plural aliases `incidents` and `services` are also supported.
 
 ```bash
 supercheck incident list --status investigating --severity sev1
+supercheck incident list --status open   # every incident that is not resolved
 supercheck incident get <incident-number-or-uuid>
 supercheck incident timeline <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --comment "Traffic restored after rollback"

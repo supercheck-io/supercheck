@@ -46,7 +46,7 @@ function createClient() {
 // A cache is only cleared when its own tab sees the session end, so an expired session or a
 // closed browser leaves that account's data in localStorage. Anyone using the browser next could
 // read it, so keep only the identity that is signed in now (and no older cache versions).
-function pruneCaches(storage: Storage, keep?: string) {
+function pruneCaches(storage: Storage, keep: string) {
   try {
     const stale: string[] = [];
     for (let i = 0; i < storage.length; i++) {
@@ -148,7 +148,9 @@ export function clearQueryCache() {
   browserClient?.clear();
 
   try {
-    pruneCaches(window.localStorage);
+    // Older versions and other accounts are pruned when the next identity restores its cache.
+    if (browserIdentity)
+      window.localStorage.removeItem(`${CACHE_KEY}:${browserIdentity}`);
   } catch {
     /* ignore */
   }
