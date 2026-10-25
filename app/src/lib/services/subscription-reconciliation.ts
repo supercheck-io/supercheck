@@ -81,6 +81,15 @@ export async function reconcilePolarSubscription(organizationId: string): Promis
     }
     if (org.polarRetiredSubscriptionIds.includes(snapshot.id)) throw new Error("Retired Polar subscription cannot be restored");
     if (org.usagePeriodStart && periodStart < org.usagePeriodStart) return false;
+    if (org.polarWebhookTimestamp && modifiedAt < org.polarWebhookTimestamp) {
+      if (org.subscriptionId === snapshot.id && org.subscriptionStatus === status &&
+        org.subscriptionPlan === (status === "none" ? null : plan) &&
+        org.subscriptionStartedAt?.getTime() === periodStart.getTime() &&
+        org.subscriptionEndsAt?.getTime() === periodEnd.getTime() &&
+        org.usagePeriodStart?.getTime() === periodStart.getTime() &&
+        org.usagePeriodEnd?.getTime() === periodEnd.getTime()) return false;
+      throw new Error("Polar reconciliation snapshot may be stale; retry");
+    }
     const replacing = org.subscriptionId && org.subscriptionId !== snapshot.id;
     if (replacing && status === "none") throw new Error("A replacement subscription must grant paid access");
     await subscriptionService.updateSubscription(organizationId, {

@@ -52,6 +52,21 @@ describe("authoritative Polar subscription reconciliation", () => {
     await expect(reconcilePolarSubscription("org-1")).rejects.toThrow("retry");
     expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
   });
+  it("rejects a lagging active snapshot after a newer revocation", async () => {
+    locked = { ...org, subscriptionPlan: null, subscriptionStatus: "none",
+      polarWebhookTimestamp: new Date("2026-10-26T00:00:00Z") } as unknown as typeof org;
+    jest.mocked(db.query.organization.findFirst).mockResolvedValue(locked as never);
+    await expect(reconcilePolarSubscription("org-1")).rejects.toThrow("stale");
+    expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+  });
+  it("ignores an older snapshot that already matches the complete local state", async () => {
+    locked = { ...org, polarWebhookTimestamp: new Date("2026-10-26T00:00:00Z"),
+      subscriptionStartedAt: new Date(snapshot.current_period_start), subscriptionEndsAt: new Date(snapshot.current_period_end),
+      usagePeriodStart: new Date(snapshot.current_period_start), usagePeriodEnd: new Date(snapshot.current_period_end) } as typeof org;
+    jest.mocked(db.query.organization.findFirst).mockResolvedValue(locked as never);
+    await expect(reconcilePolarSubscription("org-1")).resolves.toBe(false);
+    expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+  });
   it.each([{ customer_id: "another-customer" }, { product_id: "unknown-product" }, { status: "unknown" }, { current_period_end: "invalid" }])
     ("rejects an invalid or mismatched snapshot: %p", async (override) => {
       global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ...snapshot, ...override }) });
