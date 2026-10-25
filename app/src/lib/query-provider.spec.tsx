@@ -19,7 +19,7 @@ jest.mock("@/hooks/use-project-context", () => ({
 }));
 jest.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
-const CACHE_KEY = "supercheck-cache-v2:user-a";
+const CACHE_KEY = "supercheck-cache-v3:user-a";
 const fetchMock = jest.fn();
 let mountedClient: QueryClient;
 
@@ -148,9 +148,11 @@ describe("QueryProvider hydration", () => {
     ).toBeUndefined();
   });
 
-  it("removes other accounts' saved caches when the signed-in account restores its own", async () => {
+  it("removes other accounts' saved caches and older cache versions when the signed-in account restores its own", async () => {
     seedCache();
-    localStorage.setItem("supercheck-cache-v2:user-old", "{}");
+    localStorage.setItem("supercheck-cache-v3:user-old", "{}");
+    localStorage.setItem("supercheck-cache-v2:user-b", "{}");
+    localStorage.setItem("supercheck-cache-v1", "{}");
     localStorage.setItem("unrelated-key", "keep");
     mockSession = { data: { user: { id: "user-b" } }, isPending: false };
     fetchMock.mockReturnValue(new Promise(() => {}));
@@ -161,7 +163,9 @@ describe("QueryProvider hydration", () => {
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(localStorage.getItem(CACHE_KEY)).toBeNull();
-    expect(localStorage.getItem("supercheck-cache-v2:user-old")).toBeNull();
+    expect(localStorage.getItem("supercheck-cache-v3:user-old")).toBeNull();
+    expect(localStorage.getItem("supercheck-cache-v2:user-b")).toBeNull();
+    expect(localStorage.getItem("supercheck-cache-v1")).toBeNull();
     expect(localStorage.getItem("unrelated-key")).toBe("keep");
   });
 

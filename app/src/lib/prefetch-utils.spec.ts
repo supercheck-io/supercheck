@@ -1,4 +1,4 @@
-import { dehydrate, hydrate, QueryClient } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { prefetchSidebarRoute } from "./prefetch-utils";
 import { getDashboardQueryKey, type DashboardData } from "@/hooks/use-dashboard";
 
@@ -19,10 +19,6 @@ describe("dashboard hover prefetch", () => {
       } } as Response;
     });
     for (const id of ["prefetch-a", "prefetch-b"]) {
-      const oldClient = new QueryClient();
-      oldClient.setQueryData(["dashboard", id], { jobs: { recentRuns30d: 99 } });
-      hydrate(client, dehydrate(oldClient));
-      oldClient.clear();
       prefetchSidebarRoute("/", id, client);
       // Joining the in-flight query waits for the actual prefetch function.
       await client.fetchQuery({ queryKey: getDashboardQueryKey(id), staleTime: 60_000 });

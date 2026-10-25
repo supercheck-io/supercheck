@@ -13,7 +13,7 @@ describe("pickDefaultAttentionTab", () => {
 describe("NeedsAttentionCard", () => {
   it("omits the incidents tab when the incidents API is unavailable", () => {
     render(
-      <NeedsAttentionCard runs={[]} alerts={[]} incidentsResult={{ available: false }} incidentsLoading={false} />
+      <NeedsAttentionCard failures={[]} failureCount={0} alerts={[]} incidentsResult={{ available: false }} incidentsLoading={false} />
     );
     expect(screen.getByRole("tab", { name: /Failures/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Alerts/ })).toBeTruthy();
@@ -23,7 +23,8 @@ describe("NeedsAttentionCard", () => {
   it("shows the incidents tab with a count when available", () => {
     render(
       <NeedsAttentionCard
-        runs={[]}
+        failures={[]}
+        failureCount={0}
         alerts={[]}
         incidentsResult={{
           available: true,
@@ -41,13 +42,14 @@ describe("NeedsAttentionCard", () => {
   });
 
   it("keeps the first computed default tab when data refetches", () => {
-    const run = { id: "r1", jobId: "j", jobName: "Nightly", status: "failed", startedAt: new Date().toISOString(), trigger: "manual", duration: "1s" };
+    const run = { id: "r1", jobId: "j", jobName: "Nightly", status: "failed", startedAt: new Date().toISOString(), trigger: "manual" };
     const props = { alerts: [], incidentsResult: { available: false } as const, incidentsLoading: false };
-    const { rerender } = render(<NeedsAttentionCard runs={[]} {...props} />);
+    const { rerender } = render(<NeedsAttentionCard failures={[]} failureCount={0} {...props} />);
     expect(screen.getByRole("tab", { name: /Failures/ }).getAttribute("data-state")).toBe("active");
     rerender(
       <NeedsAttentionCard
-        runs={[run]}
+        failures={[run]}
+        failureCount={1}
         alerts={[{ id: "a", status: "sent", targetName: "x", targetType: "job", type: "job_failed", timestamp: new Date().toISOString() } as never]}
         incidentsResult={{ available: false }}
         incidentsLoading={false}
@@ -57,8 +59,8 @@ describe("NeedsAttentionCard", () => {
   });
 
   it("caps badge text at 99+ with the real count in the title", () => {
-    const runs = Array.from({ length: 120 }, (_, i) => ({ id: `r${i}`, jobId: "j", jobName: "J", status: "failed", startedAt: new Date().toISOString(), trigger: "manual", duration: "1s" }));
-    render(<NeedsAttentionCard runs={runs} alerts={[]} incidentsResult={{ available: false }} incidentsLoading={false} />);
+    const failures = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, jobId: "j", jobName: "J", status: "failed", startedAt: new Date().toISOString(), trigger: "manual" }));
+    render(<NeedsAttentionCard failures={failures} failureCount={120} alerts={[]} incidentsResult={{ available: false }} incidentsLoading={false} />);
     const tab = screen.getByRole("tab", { name: /Failures/ });
     expect(tab.textContent).toContain("99+");
     expect(tab.querySelector("[title='120']")).not.toBeNull();

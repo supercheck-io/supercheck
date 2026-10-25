@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DashboardData } from "@/hooks/use-dashboard";
 import type { OpenIncidentsResult } from "@/hooks/use-open-incidents";
-import { selectRecentFailures } from "@/lib/dashboard/recent-failures";
 
 const MAX_ROWS = 5;
 
@@ -84,12 +83,15 @@ function ViewAll({ href, label = "View all" }: { href: string; label?: string })
  * API is unavailable (not permitted or feature disabled).
  */
 export function NeedsAttentionCard({
-  runs,
+  failures,
+  failureCount,
   alerts,
   incidentsResult,
   incidentsLoading,
 }: {
-  runs: DashboardData["jobs"]["recentRuns"];
+  failures: DashboardData["jobs"]["recentFailures"];
+  /** All failed runs in the window; `failures` holds only the newest few. */
+  failureCount: number;
   alerts: DashboardData["alerts"];
   incidentsResult: OpenIncidentsResult | undefined;
   incidentsLoading: boolean;
@@ -97,8 +99,6 @@ export function NeedsAttentionCard({
   const [selected, setSelected] = useState<AttentionTab | null>(null);
   const [latched, setLatched] = useState<AttentionTab | null>(null);
 
-  const allFailures = selectRecentFailures(runs, Number.MAX_SAFE_INTEGER);
-  const failures = allFailures.slice(0, MAX_ROWS);
   const showIncidents = incidentsLoading || (!!incidentsResult && incidentsResult.available);
   const incidentList =
     incidentsResult && incidentsResult.available ? incidentsResult.incidents : [];
@@ -106,7 +106,7 @@ export function NeedsAttentionCard({
   const alertRows = alerts.slice(0, MAX_ROWS);
 
   const fallback = pickDefaultAttentionTab({
-    failures: allFailures.length,
+    failures: failureCount,
     incidents: incidentCount,
     alerts: alerts.length,
   });
@@ -144,7 +144,7 @@ export function NeedsAttentionCard({
           <TabsList className="h-8 w-full justify-start gap-1 p-0.5">
             <TabsTrigger value="failures" className="h-7 px-2.5 text-xs">
               Failures
-              <CountBadge count={allFailures.length} tone="bad" />
+              <CountBadge count={failureCount} tone="bad" />
             </TabsTrigger>
             {showIncidents ? (
               <TabsTrigger value="incidents" className="h-7 px-2.5 text-xs">
@@ -167,7 +167,7 @@ export function NeedsAttentionCard({
               <EmptyRow message="No failed runs in the last 30 days" />
             ) : (
               <ul className="-mx-2 space-y-0.5">
-                {failures.map((run) => (
+                {failures.slice(0, MAX_ROWS).map((run) => (
                   <li key={run.id}>
                     <Link href={`/runs/${run.id}`} className={rowClass}>
                       <span className="flex min-w-0 items-center gap-2">

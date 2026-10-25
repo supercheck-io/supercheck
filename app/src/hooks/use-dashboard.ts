@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
+import { RECENT_FAILURES_LIMIT } from "@/lib/dashboard/recent-failures";
 
 interface ProjectStats {
   tests: number;
@@ -45,15 +46,17 @@ interface JobSummary {
   failedRuns30d: number;
   successfulRuns24h: number;
   failedRuns24h: number;
-  recentRuns: Array<{
+  /** Newest failed/error runs in the last 30 days, at most RECENT_FAILURES_LIMIT. */
+  recentFailures: Array<{
     id: string;
     jobId: string;
     jobName: string;
     status: string;
     startedAt: string;
-    duration: string;
     trigger: string;
   }>;
+  /** Job runs per UTC day (last 30 days) by trigger. */
+  triggerTrend: Array<{ date: string; manual: number; scheduled: number; remote: number }>;
   executionTime: {
     totalMs: number;
     totalSeconds: number;
@@ -115,9 +118,8 @@ export interface DashboardData {
 
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
-export const getDashboardQueryKey = (projectId: string | null) => 
-  // Previous hover prefetches persisted raw API responses under the unversioned key.
-  [...DASHBOARD_QUERY_KEY, projectId, "v2"] as const;
+export const getDashboardQueryKey = (projectId: string | null) =>
+  [...DASHBOARD_QUERY_KEY, projectId] as const;
 
 export async function fetchDashboard(projectId: string | null = null): Promise<DashboardData> {
   const controller = new AbortController();
@@ -151,7 +153,8 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
     return transformDashboardData(data, alertsData);
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
+    // fetch rejects with the abort reason (a string here), not an AbortError, so check the signal.
+    if (controller.signal.aborted) {
       throw new Error('Dashboard request timed out. Please try again.');
     }
     throw error;
@@ -248,15 +251,22 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       failedRuns30d: Math.max(0, Number(jobsData?.failedRuns30d) || 0),
       successfulRuns24h: Math.max(0, Number(jobsData?.successfulRuns24h) || 0),
       failedRuns24h: Math.max(0, Number(jobsData?.failedRuns24h) || 0),
-      recentRuns: Array.isArray(jobsData?.recentRuns)
-        ? (jobsData.recentRuns as Array<Record<string, unknown>>).map(run => ({
+      recentFailures: Array.isArray(jobsData?.recentFailures)
+        ? (jobsData.recentFailures as Array<Record<string, unknown>>).slice(0, RECENT_FAILURES_LIMIT).map(run => ({
             id: String(run.id || ''),
             jobId: String(run.jobId || ''),
             jobName: String(run.jobName || ''),
             status: String(run.status || ''),
             startedAt: String(run.startedAt || ''),
-            duration: String(run.durationMs || ''),
             trigger: String(run.trigger || ''),
+          }))
+        : [],
+      triggerTrend: Array.isArray(jobsData?.triggerTrend)
+        ? (jobsData.triggerTrend as Array<Record<string, unknown>>).slice(-LOOKBACK_DAYS).map(day => ({
+            date: String(day.date || ''),
+            manual: Math.max(0, Number(day.manual) || 0),
+            scheduled: Math.max(0, Number(day.scheduled) || 0),
+            remote: Math.max(0, Number(day.remote) || 0),
           }))
         : [],
       executionTime: {

@@ -10,13 +10,15 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, desc, gte, and, count, sql, sum } from "drizzle-orm";
+import { eq, desc, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { excludeSupersededSyntheticResults, excludeSyntheticResults } from "@/lib/monitor-result-filters";
 import { buildSystemIssues } from "@/lib/dashboard/system-health";
+import { FAILED_RUN_STATUSES } from "@/lib/dashboard/run-outcomes";
+import { RECENT_FAILURES_LIMIT } from "@/lib/dashboard/recent-failures";
 
 export async function GET() {
   try {
@@ -113,7 +115,8 @@ export async function GET() {
       recentRuns,
       runCounts24h,
       jobsByStatus,
-      recentJobRuns,
+      recentFailedRuns,
+      jobTriggerTrend,
       executionTimeData
     ] = await Promise.all([
       // OPTIMIZED: Single query for total and active job counts
@@ -162,25 +165,37 @@ export async function GET() {
         .where(jobBaseCondition)
         .groupBy(jobs.status),
       
-      // Recent job runs with details (last 30 days for chart data)
-      // Last 30 days only - already limited by time filter
+      // Newest failed runs for the Needs attention card; its count comes from failedRuns30d
       dbInstance.select({
         id: runs.id,
         jobId: runs.jobId,
         jobName: jobs.name,
         status: runs.status,
         startedAt: runs.startedAt,
-        durationMs: runs.durationMs,
         trigger: runs.trigger
       }).from(runs)
-        .leftJoin(jobs, eq(runs.jobId, jobs.id))
+        .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last30Days),
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, context.organizationId)
+          inArray(runs.status, [...FAILED_RUN_STATUSES]),
+          jobBaseCondition
         ))
-        .orderBy(desc(runs.startedAt)),
-      
+        .orderBy(desc(runs.startedAt), desc(runs.id))
+        .limit(RECENT_FAILURES_LIMIT),
+
+      // Daily job runs by trigger (last 30 days); unknown triggers count as manual
+      dbInstance.select({
+        // Text, not a DATE the driver parses into a local-midnight Date that can shift the day
+        date: sql<string>`to_char(DATE(${runs.startedAt}), 'YYYY-MM-DD')`,
+        total: count(),
+        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`,
+        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`,
+      }).from(runs)
+        .innerJoin(jobs, eq(runs.jobId, jobs.id))
+        .where(and(gte(runs.startedAt, last30Days), jobBaseCondition))
+        .groupBy(sql`DATE(${runs.startedAt})`)
+        .orderBy(sql`DATE(${runs.startedAt})`),
+
       // OPTIMIZED: Total execution time using SQL aggregation instead of fetching all rows
       // Now returns aggregated stats directly rather than raw data
       dbInstance.select({
@@ -454,15 +469,20 @@ export async function GET() {
         successfulRuns24h: runCounts24h[0].passed,
         failedRuns24h: runCounts24h[0].failed,
         byStatus: jobsByStatus,
-        recentRuns: recentJobRuns.map(run => ({
+        recentFailures: recentFailedRuns.map(run => ({
           id: run.id,
           jobId: run.jobId,
           jobName: run.jobName,
           status: run.status,
           startedAt: run.startedAt?.toISOString(),
-          durationMs: run.durationMs,
           trigger: run.trigger
         })),
+        triggerTrend: jobTriggerTrend.map(day => {
+          const total = Number(day.total) || 0;
+          const scheduled = Number(day.scheduled) || 0;
+          const remote = Number(day.remote) || 0;
+          return { date: day.date, manual: Math.max(0, total - scheduled - remote), scheduled, remote };
+        }),
         // Execution time data
         executionTime: {
           totalMs: totalExecutionTimeCalculation.totalMs,
