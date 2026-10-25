@@ -8,9 +8,6 @@ import {
   Globe,
   BellRing,
   SquarePlus,
-  DatabaseIcon,
-  ClipboardListIcon,
-  FileIcon,
   Code,
   SquareLibrary,
   BookOpenText,
@@ -60,14 +57,16 @@ const releaseVersionBadge = getReleaseVersionBadge(
 
 // Sidebar navigation data
 const data = {
-  Communicate: [
+  Dashboard: [
     {
       title: "Dashboard",
       url: "/",
       icon: ChartColumn,
       isActive: true,
     },
+  ],
 
+  Communicate: [
     {
       title: "Alerts",
       url: "/alerts",
@@ -233,7 +232,7 @@ const data = {
   ],
   OrgAdmin: [
     {
-      title: "Admin",
+      title: "Organization",
       url: "/org-admin",
       icon: UserCog,
     },
@@ -245,23 +244,6 @@ const data = {
       url: "https://supercheck.io/docs/app/welcome",
       icon: BookOpenText,
       badge: releaseVersionBadge,
-    },
-  ],
-  documents: [
-    {
-      name: "Data Library",
-      url: "#",
-      icon: DatabaseIcon,
-    },
-    {
-      name: "Reports",
-      url: "#",
-      icon: ClipboardListIcon,
-    },
-    {
-      name: "Word Assistant",
-      url: "#",
-      icon: FileIcon,
     },
   ],
 };
@@ -346,6 +328,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        <NavMain groupLabel="" items={data.Dashboard} />
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />

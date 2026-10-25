@@ -1,6 +1,6 @@
 ---
 name: supercheck-feature-implementation
-description: Implement a new or changed Supercheck feature end to end across schema, auth/RBAC, services, routes/actions, UI, queues/workers, CLI/recorder, tests, docs, and deployment contracts.
+description: Implement a new or changed Supercheck feature end to end, such as adding an API route or server action, a new test, job, or monitor capability, across schema, auth/RBAC, services, routes/actions, UI, queues/workers, CLI/recorder, tests, docs, and deployment contracts.
 ---
 
 # Supercheck feature implementation
@@ -39,7 +39,7 @@ Only add layers the behavior needs. Avoid speculative tables, CRUD, queues, abst
 ## Implementation workflow
 
 1. Define user-visible behavior, owning organization/project scope, authorization resource/action, state transitions, limits, retention, side effects, and failure behavior.
-2. Read neighboring code and tests. Reuse central auth context, RBAC, validation, security, queue, storage, billing, and logging helpers.
+2. Read neighboring code and tests. Reuse central helpers: auth context (`app/src/lib/auth-context.ts`), RBAC (`app/src/lib/rbac/`), validation (`app/src/lib/validations/`), security (`app/src/lib/security/`), queues (`app/src/lib/queue.ts`), worker utilities (`worker/src/common/utils/`), storage, and logging.
 3. Identify public and rolling-deployment contracts before changing schema, API, queue payload, statuses, CLI JSON, extension messages, or environment variables.
 4. Implement the smallest complete vertical slice, preserving cloud and self-hosted behavior.
 5. Add regression tests for happy, denied, malformed, cross-tenant, dependency-failure, retry/idempotency, cancellation, and cleanup paths as applicable.
@@ -70,7 +70,7 @@ Only add layers the behavior needs. Avoid speculative tables, CRUD, queues, abst
 
 ## Completion gate
 
-- Run focused then broad checks from affected package directories.
+- Run focused then broad checks from affected package directories (commands in `supercheck-testing-qa`, or `/check` in Claude Code).
 - Verify diff cleanliness and no generated/secret files.
 - State local evidence and outstanding browser, CI, provider, deployment, billing, or production gates separately.
 - Do not claim merge/release readiness only because implementation tests pass.

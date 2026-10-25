@@ -250,7 +250,7 @@ export default function AdminDashboard() {
                 <StatsCard
                   title="Scheduled Jobs"
                   value={stats.organizations.totalJobs}
-                  description="Active jobs"
+                  description="All jobs"
                   icon={CalendarClock}
                   variant="warning"
                   className="h-full"
@@ -268,73 +268,21 @@ export default function AdminDashboard() {
                 <StatsCard
                   title="Monitors"
                   value={stats.organizations.totalMonitors}
-                  description="Active monitors"
+                  description="All monitors"
                   icon={Globe}
                   variant="success"
                   className="h-full"
                   metaInline
                 />
                 <StatsCard
-                  title="Total Runs"
+                  title="Runs"
                   value={stats.organizations.totalRuns}
-                  description="Test executions"
+                  description="All test and job runs"
                   icon={ClipboardList}
                   variant="purple"
                   className="h-full"
                   metaInline
                 />
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="h-full">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">User Statistics</CardTitle>
-                    <CardDescription>Account overview and moderation signals</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Total Users</span>
-                      <TableBadge tone="info">{stats.users.totalUsers.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Active Users</span>
-                      <TableBadge tone="success">{stats.users.activeUsers.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Banned Users</span>
-                      <TableBadge tone="danger">{stats.users.bannedUsers.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">New This Month</span>
-                      <TableBadge tone="purple">+{stats.users.newUsersThisMonth.toLocaleString()}</TableBadge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="h-full">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Platform Activity</CardTitle>
-                    <CardDescription>Key cross-organization resource totals</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Organizations</span>
-                      <TableBadge tone="info">{stats.organizations.totalOrganizations.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Projects</span>
-                      <TableBadge tone="success">{stats.organizations.totalProjects.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Scheduled Jobs</span>
-                      <TableBadge tone="warning">{stats.organizations.totalJobs.toLocaleString()}</TableBadge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Test Executions</span>
-                      <TableBadge tone="purple">{stats.organizations.totalRuns.toLocaleString()}</TableBadge>
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             </TabsContent>
 

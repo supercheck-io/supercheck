@@ -1,7 +1,5 @@
 import type { BaseLayoutProps, LinkItemType } from 'fumadocs-ui/layouts/shared';
 import Image from 'next/image';
-import Link from 'next/link';
-import { ThemeToggle } from '../components/theme-toggle';
 
 // Custom filled GitHub icon (matches homepage style)
 export const GitHubIcon = () => (
@@ -20,62 +18,8 @@ export const NpmIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// Shared site header for standalone pages (terms, privacy, pricing)
-interface SiteHeaderProps {
-  showPricing?: boolean;
-  showDocs?: boolean;
-}
-
-export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderProps) {
-  return (
-    <header className="sticky top-0 z-50 border-b border-fd-border bg-fd-background/80 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex min-w-0 items-center gap-2">
-          <Image
-            src="/supercheck-logo.png"
-            alt="Supercheck Logo"
-            width={28}
-            height={28}
-            className="rounded-md"
-          />
-          <span className="hidden truncate text-xl font-bold min-[375px]:inline">Supercheck</span>
-        </Link>
-        <nav aria-label="Site navigation" className="flex shrink-0 items-center gap-4">
-          {showDocs && (
-            <Link href="/docs/app/welcome" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
-              Docs
-            </Link>
-          )}
-          {showPricing && (
-            <Link href="/pricing" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
-              Pricing
-            </Link>
-          )}
-          <Link
-            href="https://www.npmjs.com/package/@supercheck/cli"
-            className="text-fd-muted-foreground hover:text-fd-foreground transition-colors inline-flex items-center gap-2"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Supercheck CLI on npm"
-          >
-            <Image src="/npm.svg" alt="npm" className="size-4.5 rounded-sm" width={18} height={18} />
-            <span className="hidden md:inline">npm</span>
-          </Link>
-          <Link
-            href="https://github.com/supercheck-io/supercheck"
-            aria-label="GitHub"
-            className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <GitHubIcon />
-          </Link>
-          <ThemeToggle />
-        </nav>
-      </div>
-    </header>
-  );
-}
+// Shared site header for standalone pages (home, pricing, terms, privacy)
+export { SiteHeader } from '../components/site-header';
 
 export const linkItems: LinkItemType[] = [
   {

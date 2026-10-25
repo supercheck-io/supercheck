@@ -22,7 +22,7 @@ export function CopyEmail({ email }: { email: string }) {
   }
 
   return (
-    <p className="mb-16 text-center text-xs text-fd-muted-foreground">
+    <p className="mt-4 text-center text-xs text-fd-muted-foreground">
       Buttons open your email app. No mail app? Email{' '}
       <span className="font-medium text-fd-foreground">{email}</span>{' '}
       <button

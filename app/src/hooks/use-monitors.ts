@@ -168,7 +168,7 @@ export function useMonitorMutations() {
     onSettled: (_data, _err, variables) => {
       queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, variables.id], refetchType: 'all' });
-      // Cross-entity: Dashboard shows Active Monitors count
+      // Cross-entity: Dashboard shows the Monitors up/total count
       queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
     },
   });

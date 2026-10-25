@@ -38,6 +38,8 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
+import { notPassedCaption } from "@/lib/dashboard/run-outcomes";
+import { labelRunTrend } from "@/lib/dashboard/chart-data";
 
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -70,7 +72,8 @@ interface PlaywrightRun {
 interface PlaywrightStats {
     totalRuns: number;
     passedRuns: number;
-    failedRuns: number;
+    notPassedRuns: number;
+    inFlightRuns: number;
     passRate: number;
     avgDurationMs: number;
     p95DurationMs: number;
@@ -255,7 +258,7 @@ export function PlaywrightAnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
-                title="No Playwright Analytics Available"
+                title="No Playwright analytics yet"
                 description="Analytics require completed job runs. Run a Playwright job to start tracking test results and trends."
                 icon={<PlaywrightLogo width={64} height={64} />}
                 action={
@@ -268,14 +271,16 @@ export function PlaywrightAnalyticsTab({
     }
 
     const chartConfig = {
-        passed: { label: "Passed", color: "#22c55e" },
-        failed: { label: "Failed", color: "#ef4444" },
-        durationMs: { label: "Duration (ms)", color: "#3b82f6" },
+        passed: { label: "Passed", color: "var(--success)" },
+        failed: { label: "Not passed", color: "var(--failure)" },
+        durationMs: { label: "Duration (ms)", color: "var(--chart-1)" },
     };
 
     // Safe access to array fields with fallback to empty array
     const frequencyData = data.frequencyData ?? [];
-    const chartData = (data.chartData ?? []).filter(d => d.durationMs !== null && d.durationMs > 0);
+    const filteredChartData = (data.chartData ?? []).filter(d => d.durationMs !== null && d.durationMs > 0);
+    const trendLabels = labelRunTrend(filteredChartData);
+    const chartData = filteredChartData.map((d, i) => ({ ...d, ...trendLabels[i] }));
 
     return (
         <div className="space-y-4">
@@ -289,9 +294,7 @@ export function PlaywrightAnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.totalRuns}</div>
                                 <p className="text-xs text-muted-foreground">Last {data.period} days</p>
                             </div>
-                            <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
-                                <Activity className="h-4 w-4 text-blue-500" />
-                            </div>
+                            <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -303,9 +306,7 @@ export function PlaywrightAnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.passedRuns}</div>
                                 <p className="text-xs text-muted-foreground">{data.stats.passRate}% pass rate</p>
                             </div>
-                            <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                            </div>
+                            <CheckCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -313,13 +314,11 @@ export function PlaywrightAnalyticsTab({
                     <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                             <div className="space-y-2 min-w-0 flex-1">
-                                <p className="text-sm font-medium text-muted-foreground">Failed</p>
-                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.failedRuns}</div>
-                                <p className="text-xs text-muted-foreground">{data.stats.failedRuns > 0 ? "Needs attention" : "All passing"}</p>
+                                <p className="text-sm font-medium text-muted-foreground">Not passed</p>
+                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.notPassedRuns}</div>
+                                <p className="text-xs text-muted-foreground">{notPassedCaption(data.stats.notPassedRuns)}</p>
                             </div>
-                            <div className="rounded-lg bg-red-500/10 p-2 shrink-0">
-                                <XCircle className="h-4 w-4 text-red-500" />
-                            </div>
+                            <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -331,9 +330,7 @@ export function PlaywrightAnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{formatDuration(data.stats.avgDurationMs)}</div>
                                 <p className="text-xs text-muted-foreground">Per run average</p>
                             </div>
-                            <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                                <Timer className="h-4 w-4 text-purple-500" />
-                            </div>
+                            <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -345,9 +342,7 @@ export function PlaywrightAnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{formatDuration(data.stats.p95DurationMs)}</div>
                                 <p className="text-xs text-muted-foreground">95th percentile</p>
                             </div>
-                            <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
-                                <Clock className="h-4 w-4 text-cyan-500" />
-                            </div>
+                            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -359,9 +354,7 @@ export function PlaywrightAnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.totalDurationMinutes}m</div>
                                 <p className="text-xs text-muted-foreground">Execution time</p>
                             </div>
-                            <div className="rounded-lg bg-orange-500/10 p-2 shrink-0">
-                                <BarChart3 className="h-4 w-4 text-orange-500" />
-                            </div>
+                            <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -374,9 +367,7 @@ export function PlaywrightAnalyticsTab({
                     <Card className="relative overflow-hidden">
                         <CardHeader className="pb-2">
                             <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                                <div className="rounded-md bg-green-500/10 p-1.5">
-                                    <Calendar className="h-4 w-4 text-green-500" />
-                                </div>
+                                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                                 Run Frequency
                             </CardTitle>
                             <CardDescription>Daily test run distribution</CardDescription>
@@ -389,13 +380,15 @@ export function PlaywrightAnalyticsTab({
                                             <XAxis
                                                 dataKey="date"
                                                 tickFormatter={(val) => format(parseISO(val), "MMM d")}
-                                                tick={{ fontSize: 11, fill: '#888' }}
+                                                interval="preserveStartEnd"
+                                                minTickGap={24}
+                                                tickLine={false}
                                                 fontSize={11}
                                             />
-                                            <YAxis tick={{ fontSize: 11, fill: '#888' }} fontSize={11} />
+                                            <YAxis fontSize={11} allowDecimals={false} />
                                             <ChartTooltip content={<ChartTooltipContent />} />
-                                            <Bar dataKey="passed" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
-                                            <Bar dataKey="failed" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="passed" stackId="a" fill="var(--success)" radius={[0, 0, 0, 0]} />
+                                            <Bar dataKey="failed" stackId="a" fill="var(--failure)" radius={[4, 4, 0, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </ChartContainer>
@@ -413,9 +406,7 @@ export function PlaywrightAnalyticsTab({
                         <Card className="relative overflow-hidden">
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                                    <div className="rounded-md bg-blue-500/10 p-1.5">
-                                        <Timer className="h-4 w-4 text-blue-500" />
-                                    </div>
+                                    <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
                                     Execution Time Trend
                                 </CardTitle>
                                 <CardDescription>Test duration over time</CardDescription>
@@ -425,29 +416,32 @@ export function PlaywrightAnalyticsTab({
                                     <ChartContainer config={chartConfig} className="h-[160px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <AreaChart data={chartData}>
-                                                <defs>
-                                                    <linearGradient id="pwDurationGradient" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
-                                                    </linearGradient>
-                                                </defs>
                                                 <XAxis
-                                                    dataKey="date"
-                                                    tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
-                                                    tick={{ fontSize: 11, fill: '#888' }}
+                                                    dataKey="tickLabel"
+                                                    interval="preserveStartEnd"
+                                                    minTickGap={24}
+                                                    tickLine={false}
                                                     fontSize={11}
                                                 />
                                                 <YAxis
-                                                    tick={{ fontSize: 11, fill: '#888' }}
                                                     fontSize={11}
                                                     tickFormatter={(val) => `${Math.round(val / 1000)}s`}
                                                 />
-                                                <ChartTooltip content={<ChartTooltipContent />} />
+                                                <ChartTooltip
+                                                    content={
+                                                        <ChartTooltipContent
+                                                            labelFormatter={(_, payload) =>
+                                                                (payload?.[0]?.payload as { tooltipLabel?: string } | undefined)?.tooltipLabel ?? ""
+                                                            }
+                                                        />
+                                                    }
+                                                />
                                                 <Area
                                                     type="monotone"
                                                     dataKey="durationMs"
-                                                    stroke="#3b82f6"
-                                                    fill="url(#pwDurationGradient)"
+                                                    stroke="var(--chart-1)"
+                                                    fill="var(--chart-1)"
+                                                    fillOpacity={0.15}
                                                     strokeWidth={2}
                                                 />
                                             </AreaChart>
@@ -467,9 +461,7 @@ export function PlaywrightAnalyticsTab({
                         <Card className="border-border/50">
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                                    <div className="rounded-md bg-blue-500/10 p-1.5">
-                                        <Timer className="h-4 w-4 text-blue-500" />
-                                    </div>
+                                    <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
                                     Execution Time Trend
                                 </CardTitle>
                                 <CardDescription>Test duration over time</CardDescription>

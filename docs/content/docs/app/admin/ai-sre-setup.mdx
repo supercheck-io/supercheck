@@ -4,7 +4,7 @@ description: Configure services, read-only integrations, saved queries, and Priv
 icon: Bot
 ---
 
-Project Admins and organization-level administrators configure AI SRE from **Organization Admin**. Responders start from **Alerts** or **Investigate → Incidents**. **Copilot** and **Services** are grouped under **Investigate**; the map is an optional link from an incident or service.
+Project Admins and organization-level administrators configure AI SRE from **Organization**. Responders start from **Alerts** or **Investigate → Incidents**. **Copilot** and **Services** are grouped under **Investigate**; the map is an optional link from an incident or service.
 
 Select **Setup guide** beside **Add service**, **Add connector**, or **Add query** to review setup status.
 
@@ -34,7 +34,7 @@ Suggested relationships do not enter the Investigation Map until an authorized u
 
 ## Integrations
 
-Use **Organization Admin → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
+Use **Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits.
 
 Click **Add connector** to connect external telemetry providers like Prometheus, Grafana, Loki, or GitHub:
 
@@ -46,7 +46,7 @@ Connectors are optional. Start with stored Supercheck evidence, then add externa
 
 Saved queries are optional named templates for read-only questions your team repeats. You can investigate stored Supercheck evidence and run supported live connector searches without creating one. Save a query when you want responders to reuse the same bounded question, such as checking a service's 5xx rate over the last five minutes.
 
-In **Organization Admin → Integrations**, expand **Saved queries** below connector management and click **Add query**. Each query is tied to one enabled connector, validates its parameters and allowlist, and limits returned rows, output size, and runtime. Supported query types depend on the connector and include SQL, PromQL, LogQL, TraceQL, and HTTP GET. Disabling a saved query prevents future executions; it does not remove evidence already collected.
+In **Organization → Integrations**, expand **Saved queries** below connector management and click **Add query**. Each query is tied to one enabled connector, validates its parameters and allowlist, and limits returned rows, output size, and runtime. Supported query types depend on the connector and include SQL, PromQL, LogQL, TraceQL, and HTTP GET. Disabling a saved query prevents future executions; it does not remove evidence already collected.
 
 ![Saved queries under Integrations](/screenshots/sre-integrations-saved-queries.png)
 
@@ -54,9 +54,9 @@ In **Organization Admin → Integrations**, expand **Saved queries** below conne
 
 Use a Private Agent when a supported provider is reachable only inside your network. For Supercheck Cloud, you keep using the cloud dashboard and run only the agent locally.
 
-1. Register the agent in **Organization Admin → Private Agents**.
+1. Register the agent in **Organization → Private Agents**.
 2. [Run it with Docker Compose](/docs/app/deployment/private-agent) inside your network and confirm it shows **connected**.
-3. Add a connector in **Organization Admin → Integrations**, choose **Private Agent**, and select the registered agent.
+3. Add a connector in **Organization → Integrations**, choose **Private Agent**, and select the registered agent.
 4. Validate the connector, then enable live sources in an incident investigation when you need its evidence.
 
 Keep provider credentials in the connector's dedicated credential fields. No inbound firewall access is required.
