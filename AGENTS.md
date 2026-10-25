@@ -10,7 +10,7 @@
 
 Whenever you add or change functionality, check its test coverage before declaring the work done:
 
-1. Run the affected package's Jest suite with coverage (`npm run test:cov` in `app/`, `worker/` or `cli/`), narrowed to the files you touched, for example `npm run test:cov -- --collectCoverageFrom='<path>' <spec>`.
+1. Run the affected package's Jest suite with coverage (`npm run test:cov` in `app/`, `worker/` or `cli/`), narrowed to the files you touched, for example `npm run test:cov -- --coverageThreshold='{}' --collectCoverageFrom='<path>' <spec>`. The `--coverageThreshold='{}'` override is required because the global thresholds in `jest.config.js` always fail a run narrowed to a few files; rule 2 is the check that counts.
 2. Read the per-file line and branch figures for every file you added or changed. Each new branch (success, failure, boundary and permission-denied paths) needs an assertion.
 3. If coverage of the new or changed code is missing, add the tests in the same change. Do not defer them to a follow-up, and never lower a threshold in `jest.config.js` to make a run pass.
 4. Start a bug fix with a test that fails on the old behavior and passes on the fix.
