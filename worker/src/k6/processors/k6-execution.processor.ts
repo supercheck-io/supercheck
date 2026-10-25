@@ -112,7 +112,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
             return false;
           },
         );
-      // Nothing claimed the run yet, so a retry is safe; giving up unrecorded would leave it queued forever.
+      // Nothing claimed the run yet, so retry rather than give up with the failure unrecorded.
       throw recorded ? new UnrecoverableError(message) : new Error(message);
     }
   }
