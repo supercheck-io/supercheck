@@ -16,6 +16,16 @@ export type SystemHealthInput = {
   };
 };
 
+export const HEALTH_THRESHOLDS = {
+  failedRunsWindowHours: 24,
+  failedRunsHigh: 5,
+  monitorsDownCritical: 3,
+  monitorsDownHigh: 2,
+  queueNearCapacityRatio: 0.8,
+  queuedBacklog: 10,
+  queuedBacklogHigh: 20,
+} as const;
+
 /**
  * Single source of truth for the dashboard's system health issue list. Built
  * on the server so every issue (monitors, failed jobs, queue capacity) reaches
@@ -23,6 +33,7 @@ export type SystemHealthInput = {
  */
 export function buildSystemIssues(input: SystemHealthInput): SystemIssue[] {
   const issues: SystemIssue[] = [];
+  const t = HEALTH_THRESHOLDS;
   const { monitorsDown, downMonitors, failedRuns24h, queue } = input;
 
   if (monitorsDown > 0) {
@@ -30,7 +41,7 @@ export function buildSystemIssues(input: SystemHealthInput): SystemIssue[] {
       type: "monitor",
       message: `${monitorsDown} monitor${monitorsDown > 1 ? "s" : ""} currently down`,
       severity:
-        monitorsDown >= 3 ? "critical" : monitorsDown >= 2 ? "high" : "medium",
+        monitorsDown >= t.monitorsDownCritical ? "critical" : monitorsDown >= t.monitorsDownHigh ? "high" : "medium",
     });
     downMonitors.slice(0, 3).forEach((m) => {
       issues.push({
@@ -44,8 +55,8 @@ export function buildSystemIssues(input: SystemHealthInput): SystemIssue[] {
   if (failedRuns24h > 0) {
     issues.push({
       type: "job",
-      message: `${failedRuns24h} job run${failedRuns24h === 1 ? "" : "s"} failed in the last 24 hours`,
-      severity: failedRuns24h > 5 ? "high" : "medium",
+      message: `${failedRuns24h} job run${failedRuns24h === 1 ? "" : "s"} failed in the last ${t.failedRunsWindowHours} hours`,
+      severity: failedRuns24h > t.failedRunsHigh ? "high" : "medium",
     });
   }
 
@@ -57,7 +68,7 @@ export function buildSystemIssues(input: SystemHealthInput): SystemIssue[] {
     });
   } else if (
     queue.runningCapacity > 0 &&
-    queue.running >= queue.runningCapacity * 0.8
+    queue.running >= queue.runningCapacity * t.queueNearCapacityRatio
   ) {
     issues.push({
       type: "queue",
@@ -66,11 +77,11 @@ export function buildSystemIssues(input: SystemHealthInput): SystemIssue[] {
     });
   }
 
-  if (queue.queued > 10) {
+  if (queue.queued > t.queuedBacklog) {
     issues.push({
       type: "queue",
       message: `${queue.queued} jobs queued waiting for execution`,
-      severity: queue.queued > 20 ? "high" : "medium",
+      severity: queue.queued > t.queuedBacklogHigh ? "high" : "medium",
     });
   }
 

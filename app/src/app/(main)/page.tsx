@@ -165,7 +165,7 @@ function ChartCard({
           {icon}
           {title}
         </CardTitle>
-        <CardDescription className="line-clamp-1 text-xs" title={description}>{description}</CardDescription>
+        <CardDescription className="line-clamp-1 text-xs [@media(max-height:760px)]:hidden" title={description}>{description}</CardDescription>
       </CardHeader>
       <CardContent className="px-4 pb-4 pt-2 lg:min-h-0 lg:flex-1">{children}</CardContent>
     </Card>
@@ -406,7 +406,7 @@ export default function Home() {
   }
 
   return (
-    <div className="overflow-hidden lg:flex lg:h-[calc(100svh-var(--dashboard-chrome))] lg:min-h-[640px] lg:flex-col [--dashboard-chrome:4rem]">
+    <div data-fit-viewport className="overflow-hidden lg:flex lg:min-h-[560px] lg:flex-1 lg:flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm m-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <CardContent className="p-6 overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -687,7 +687,7 @@ function DashboardOverview({
           icon={<CalendarClock className={mutedIcon} />}
         >
           {chartData.jobRunsTotal > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.jobRunsData}>
                   <XAxis dataKey="name" fontSize={11} tickLine={false} />
@@ -712,7 +712,7 @@ function DashboardOverview({
           icon={<Globe className={mutedIcon} />}
         >
           {monitors.total > 0 && chartData.monitorStatusData.length > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.monitorStatusData}>
                   <XAxis dataKey="name" fontSize={11} tickLine={false} />
@@ -740,7 +740,7 @@ function DashboardOverview({
           icon={<Activity className={mutedIcon} />}
         >
           {tests.playgroundExecutions30d > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData.testActivityData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />
@@ -769,7 +769,7 @@ function DashboardOverview({
           icon={<Activity className={mutedIcon} />}
         >
           {hasJobActivity ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData.jobActivityData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />
@@ -792,7 +792,7 @@ function DashboardOverview({
           icon={<TrendingUp className={mutedIcon} />}
         >
           {monitors.total > 0 && chartData.hasUptimeData ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData.uptimeTrendData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />

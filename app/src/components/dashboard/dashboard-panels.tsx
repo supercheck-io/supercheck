@@ -50,12 +50,14 @@ function CountBadge({ count, tone }: { count: number | null; tone?: "bad" }) {
   return (
     <Badge
       variant="secondary"
+      title={String(count)}
+      aria-label={`${count} items`}
       className={cn(
         "ml-1.5 h-4 min-w-4 justify-center px-1 text-[10px] tabular-nums",
         tone === "bad" && count > 0 && "bg-failure/15 text-failure"
       )}
     >
-      {count}
+      {count > 99 ? "99+" : count}
     </Badge>
   );
 }
@@ -93,6 +95,7 @@ export function NeedsAttentionCard({
   incidentsLoading: boolean;
 }) {
   const [selected, setSelected] = useState<AttentionTab | null>(null);
+  const [latched, setLatched] = useState<AttentionTab | null>(null);
 
   const allFailures = selectRecentFailures(runs, Number.MAX_SAFE_INTEGER);
   const failures = allFailures.slice(0, MAX_ROWS);
@@ -107,7 +110,12 @@ export function NeedsAttentionCard({
     incidents: incidentCount,
     alerts: alerts.length,
   });
-  const active: AttentionTab = selected && (selected !== "incidents" || showIncidents) ? selected : fallback;
+  // Latch the default once incidents have settled so refetches don't move the tab.
+  const settled = !incidentsLoading;
+  if (settled && latched === null) setLatched(fallback);
+  const latchedOk = latched !== null && (latched !== "incidents" || showIncidents);
+  const base = latchedOk ? latched : fallback;
+  const active: AttentionTab = selected && (selected !== "incidents" || showIncidents) ? selected : base;
 
   const viewAll =
     active === "failures"
