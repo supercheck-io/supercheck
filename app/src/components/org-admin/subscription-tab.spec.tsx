@@ -87,7 +87,7 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText("0.0833 / 100")).toBeInTheDocument();
   });
 
-  it.each([true, false])("hides the portal for a customer without a plan (active trial: %s)", async (active) => {
+  it.each([true, false])("keeps the portal for an existing customer without a plan (active trial: %s)", async (active) => {
     fetchMock.mockImplementation(async (url: string) => ({
       ok: true, json: async () => url.endsWith("/current")
         ? { ...billing, subscription: { ...subscription, plan: null, status: "none", basePriceCents: null },
@@ -96,6 +96,14 @@ describe("SubscriptionTab", () => {
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     expect(await screen.findByRole("link", { name: active ? "Choose a plan" : "Resubscribe" })).toHaveAttribute("href", "/subscribe");
+    expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
+  });
+  it("does not offer the portal without a billing customer", async () => {
+    fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith("/current")
+      ? { ...billing, subscription: { ...subscription, plan: null, hasBillingCustomer: false } }
+      : { organizationId: "org_1", spending: { currentDollars: 0 } } }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    await screen.findByRole("link", { name: "Choose a plan" });
     expect(screen.queryByRole("button", { name: "Manage Subscription" })).not.toBeInTheDocument();
   });
   it.each(["past_due", "canceled"])("keeps the portal for an existing %s plan", async (status) => {

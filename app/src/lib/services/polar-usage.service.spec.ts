@@ -306,6 +306,30 @@ describe("PolarUsageService retry idempotency", () => {
     expect(mockPostgresClient.begin).not.toHaveBeenCalled();
   });
 
+  it("drains multiple batches while keeping one lease", async () => {
+    const sender = jest.spyOn(polarUsageService as unknown as { syncEventToPolar(id: string): Promise<boolean> }, "syncEventToPolar").mockResolvedValue(true);
+    mockDb.query.usageEvents.findMany.mockReset().mockResolvedValueOnce([{ id: "a" }, { id: "b" }]).mockResolvedValueOnce([{ id: "c" }]);
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: async () => [] }) }) });
+    try {
+      await expect(polarUsageService.syncPendingEvents(2)).resolves.toMatchObject({ processed: 3, succeeded: 3, failed: 0 });
+      expect(sender.mock.calls.map(([id]) => id)).toEqual(["a", "b", "c"]);
+      expect(withUsageSyncLease).toHaveBeenCalledTimes(1);
+    } finally { sender.mockRestore(); }
+  });
+
+  it("stops a drain at its time budget without attempting the remaining events", async () => {
+    let now = Date.now();
+    const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+    const sender = jest.spyOn(polarUsageService as unknown as { syncEventToPolar(id: string): Promise<boolean> }, "syncEventToPolar")
+      .mockImplementation(async () => { now += 60_000; return true; });
+    mockDb.query.usageEvents.findMany.mockReset().mockResolvedValue([{ id: "a" }, { id: "b" }]);
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: async () => [] }) }) });
+    try {
+      await expect(polarUsageService.syncPendingEvents(2)).resolves.toMatchObject({ processed: 1, succeeded: 1 });
+      expect(sender).toHaveBeenCalledTimes(1);
+    } finally { sender.mockRestore(); clock.mockRestore(); }
+  });
+
   it.each([
     ["inserted", { inserted: 1 }, true],
     ["duplicate", { inserted: 0, duplicates: 1 }, true],
