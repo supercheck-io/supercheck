@@ -239,26 +239,6 @@ For website monitors, enable **SSL Expiration Alerts** to receive a separate war
 A threshold of 2-3 works well for most services. Use 1 only for extremely critical services where any failure requires immediate attention.
 </Callout>
 
-## Regions That Stop Responding
-
-A monitor that checks from several regions combines the regional results using its strategy and threshold. By default it waits until every region has reported, so a region that goes silent can hold up the result, and if every regional worker is offline no alert is raised.
-
-When **missing-region detection** is enabled for your deployment, each scheduled run has a deadline. At the deadline, a region that has not reported counts as failed:
-
-- The monitor is evaluated with its normal strategy and threshold, so a monitor that tolerates one failing region stays up.
-- Each missing region appears as a failed result with no response time. Uptime reflects the outage, and response-time averages and percentiles ignore these entries.
-- If every region is silent, the monitor goes down once and you receive one alert.
-- A result that arrives after the deadline is kept for troubleshooting but does not change the closed run.
-- Paused or disabled monitors, and monitors held for billing reasons, never become downtime because a region was silent.
-
-A check that is deliberately skipped also neutrally aborts its whole expected group. It does not count as up or down and does not change status, uptime, or alerts. Results already observed from sibling regions remain available for diagnosis. A skipped regional capacity check aborts that scheduled cycle immediately instead of waiting for capacity and later appearing as missing-region downtime. This intentionally leaves a data gap: the skipped check starts no compute and creates no usage. Playwright, K6, and legacy monitor checks continue to use the shared capacity deferral behavior.
-
-Supercheck Cloud manages this for you. Self-hosted installations enable it separately; see [Multi-Server](/docs/app/deployment/multi-server#missing-region-detection-optional).
-
-<Callout type="info">
-Alerts are delivered at least once. In rare failures, such as a restart during delivery, the same alert can arrive twice.
-</Callout>
-
 ## Monitor Details Page
 
 The monitor details page provides comprehensive visibility into your monitor's health, performance, and history.
