@@ -353,7 +353,7 @@ test("tolerates model formatting of evidence, line, confidence, and severity", (
   assert.equal(select({ evidence: "far()", line: 11 }).length, 0)
   assert.equal(select({ confidence: "0.8" }).length, 1)
   assert.equal(select({ confidence: 85 }).length, 1)
-  assert.match(select({ severity: "Critical" })[0].body, /^\[blocker\] /)
+  assert.match(select({ severity: " Critical " })[0].body, /^\[blocker\] /)
   assert.match(select({ severity: "high" })[0].body, /^\[warning\] /)
   assert.match(select({ rootCause: undefined })[0].body, /supercheck-ai-cause:Null%20input/)
   assert.equal(select({ severity: "constructor" }).length, 0)

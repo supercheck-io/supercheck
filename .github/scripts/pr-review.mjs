@@ -395,7 +395,7 @@ export function selectComments(comments, index, { prior = [], evidence, stats } 
   const budget = Math.max(0, Math.min(LIMITS.maxComments, LIMITS.maxCommentsPerPr - prior.length))
   for (const comment of comments ?? []) {
     if (selected.length >= budget) { drop("budget"); continue }
-    const severity = SEVERITIES[String(comment?.severity ?? "").toLowerCase()]
+    const severity = SEVERITIES[String(comment?.severity ?? "").trim().toLowerCase()]
     if (!severity) { drop("severity"); continue }
     let confidence = typeof comment.confidence === "string" && comment.confidence.trim() ? Number(comment.confidence) : comment.confidence
     if (typeof confidence === "number" && confidence > 1 && confidence <= 100) confidence /= 100
