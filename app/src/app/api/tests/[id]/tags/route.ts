@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tests, testTags, tags } from '@/db/schema';
@@ -26,6 +27,7 @@ export async function GET(
     const { id: testId } = await params;
 
     // Verify test exists and belongs to current org/project
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)
@@ -85,6 +87,7 @@ export async function POST(
     }
 
     const { id: testId } = await params;
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
     const tagIds = body?.tagIds;
 
@@ -205,6 +208,7 @@ export async function DELETE(
     }
 
     const { id: testId } = await params;
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const { tagId } = await request.json();
 
     if (!tagId) {
@@ -247,4 +251,4 @@ export async function DELETE(
     console.error('Error removing test tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-} 
+}

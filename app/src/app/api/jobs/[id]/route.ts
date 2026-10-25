@@ -27,6 +27,7 @@ export async function GET(
     }
     
     // Find the job scoped to the current project
+    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     const jobResult = await db
       .select({
         id: jobs.id,

@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, ReportType } from "@/db/schema";
@@ -31,6 +32,7 @@ export async function GET(
 
     // Fetch run scoped to current project
     // Use leftJoin to support playground/single-test runs where jobId is null
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const runResult = await db
       .select({
         id: runs.id,

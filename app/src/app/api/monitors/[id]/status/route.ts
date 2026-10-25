@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
@@ -34,6 +35,7 @@ export async function PATCH(
     }
 
     // Get current monitor status for audit logging
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const currentMonitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
     });

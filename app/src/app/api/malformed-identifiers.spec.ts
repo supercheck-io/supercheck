@@ -38,24 +38,34 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
-import { PUT as updateTest, PATCH as patchTest, DELETE as deleteTest } from "./tests/[id]/route";
-import { PUT as updateJob, PATCH as patchJob, DELETE as deleteJob } from "./jobs/[id]/route";
-import { PUT as updateMonitor, PATCH as patchMonitor, DELETE as deleteMonitor } from "./monitors/[id]/route";
+import { GET as getTest, PUT as updateTest, PATCH as patchTest, DELETE as deleteTest } from "./tests/[id]/route";
+import { GET as getJob, PUT as updateJob, PATCH as patchJob, DELETE as deleteJob } from "./jobs/[id]/route";
+import { GET as getMonitor, PUT as updateMonitor, PATCH as patchMonitor, DELETE as deleteMonitor } from "./monitors/[id]/route";
+import { GET as getTag, PUT as updateTag, DELETE as deleteTag } from "./tags/[id]/route";
+import { GET as getVariable, PUT as updateVariable, DELETE as deleteVariable } from "./variables/[id]/route";
 import { DELETE as deleteRun } from "./runs/[runId]/route";
 import { GET as listRuns } from "./runs/route";
 import { PUT as updateJobByBody } from "./jobs/route";
 import { PUT as updateMonitorByBody } from "./monitors/route";
+import { POST as updateTestTags, DELETE as deleteTestTag } from "./tests/[id]/tags/route";
 
 const mutations = [
   ["tests", "PUT", updateTest],
   ["tests", "PATCH", patchTest],
   ["tests", "DELETE", deleteTest],
+  ["tests/tags", "POST", updateTestTags],
+  ["tests/tags", "DELETE", deleteTestTag],
   ["jobs", "PUT", updateJob],
   ["jobs", "PATCH", patchJob],
   ["jobs", "DELETE", deleteJob],
   ["monitors", "PUT", updateMonitor],
   ["monitors", "PATCH", patchMonitor],
   ["monitors", "DELETE", deleteMonitor],
+  ["tags", "GET", getTag],
+  ["tags", "PUT", updateTag],
+  ["variables", "GET", getVariable],
+  ["variables", "PUT", updateVariable],
+  ["variables", "DELETE", deleteVariable],
 ] as const;
 
 describe("malformed resource identifiers", () => {
@@ -80,10 +90,40 @@ describe("malformed resource identifiers", () => {
 
   it.each(mutations)("%s %s rejects a malformed ID before data access", async (resource, method, handler) => {
     const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
-      method, ...(method === "DELETE" ? {} : { body: "{}" }),
+      method, ...((method === "DELETE" || method === "GET") ? {} : { body: "{}" }),
     }), { params: Promise.resolve({ id: "bad" }) });
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("not found") });
+    expectNoDataAccess();
+  });
+
+  it.each([["POST", updateTestTags], ["DELETE", deleteTestTag]] as const)(
+    "test tags %s checks authentication, permission and ID before malformed JSON", async (method, handler) => {
+      for (const status of [401, 403, 404]) {
+        jest.mocked(requireAuthContext).mockImplementation(async () => {
+          if (status === 401) throw new Error("unauthenticated");
+          return { userId: "user-1", organizationId: "org-1", project: { id: "project-1" } } as never;
+        });
+        jest.mocked(isAuthError).mockReturnValue(status === 401);
+        jest.mocked(checkPermissionWithContext).mockReturnValue(status !== 403);
+        const request = new NextRequest("http://localhost/api/tests/bad/tags", { method, body: "{" });
+        const response = await handler(request, { params: Promise.resolve({ id: "bad" }) });
+        expect(response.status).toBe(status);
+        expect(request.bodyUsed).toBe(false);
+        expectNoDataAccess();
+      }
+    },
+  );
+  it.each([["tests", getTest], ["jobs", getJob], ["monitors", getMonitor]] as const)(
+    "%s GET rejects malformed IDs before data access", async (resource, handler) => {
+      const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`), { params: Promise.resolve({ id: "bad" }) });
+      expect(response.status).toBe(404);
+      expectNoDataAccess();
+    },
+  );
+
+  it("rejects a malformed tag before its creator lookup", async () => {
+    expect((await deleteTag(new NextRequest("http://localhost/api/tags/bad", { method: "DELETE" }), { params: Promise.resolve({ id: "bad" }) })).status).toBe(404);
     expectNoDataAccess();
   });
 
@@ -95,7 +135,7 @@ describe("malformed resource identifiers", () => {
 
     it.each(mutations)("%s %s answers 403 for a malformed ID, with no data access", async (resource, method, handler) => {
       const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
-        method, ...(method === "DELETE" ? {} : { body: "{}" }),
+        method, ...((method === "DELETE" || method === "GET") ? {} : { body: "{}" }),
       }), { params: Promise.resolve({ id: "bad" }) });
       expect(response.status).toBe(403);
       expectNoDataAccess();
@@ -112,7 +152,7 @@ describe("malformed resource identifiers", () => {
     it.each(mutations)("%s %s does not validate the body before checking permission", async (resource, method, handler) => {
       // An unauthorised caller must not learn the schema from a 400 detail.
       const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
-        method, ...(method === "DELETE" ? {} : { body: JSON.stringify({ name: 123, type: "nope", cronSchedule: [] }) }),
+        method, ...((method === "DELETE" || method === "GET") ? {} : { body: JSON.stringify({ name: 123, type: "nope", cronSchedule: [] }) }),
       }), { params: Promise.resolve({ id: "bad" }) });
       expect(response.status).toBe(403);
     });
@@ -122,7 +162,7 @@ describe("malformed resource identifiers", () => {
     jest.mocked(requireAuthContext).mockRejectedValue(new Error("unauthenticated"));
     jest.mocked(isAuthError).mockReturnValue(true);
     const response = await handler(new NextRequest(`http://localhost/api/${resource}/bad`, {
-      method, ...(method === "DELETE" ? {} : { body: "{}" }),
+      method, ...((method === "DELETE" || method === "GET") ? {} : { body: "{}" }),
     }), { params: Promise.resolve({ id: "bad" }) });
     expect(response.status).toBe(401);
     expectNoDataAccess();

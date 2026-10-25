@@ -57,7 +57,7 @@ it.each([false, true])("tenant membership gate respects super-admin=%s", async (
   (canCancelRunInProject as jest.Mock).mockResolvedValue(true);
   (db.query.member.findFirst as jest.Mock).mockResolvedValue(null);
   (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "passed" }] }) }) }) });
-  const response = await POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
+  const response = await POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
   expect(response.status).toBe(superAdmin ? 400 : 403);
   // A super admin reaches the ordinary terminal-run status check, without signaling it.
   expect(setCancellationSignal).not.toHaveBeenCalled();
@@ -70,13 +70,13 @@ it("denies a project-scoped CLI token for another project's run, even for a supe
   (isSuperAdmin as jest.Mock).mockResolvedValue(true);
   (canCancelRunInProject as jest.Mock).mockResolvedValue(true);
   (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" }] }) }) }) });
-  const response = await POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
+  const response = await POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
   expect(response.status).toBe(403);
   expect(setCancellationSignal).not.toHaveBeenCalled();
 });
 
 describe("cancellation drain", () => {
-  const run = { runId: "run", jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" };
+  const run = { runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "running" };
   const set = jest.fn();
   const returning = jest.fn();
   const markerSet = jest.fn();
@@ -88,7 +88,7 @@ describe("cancellation drain", () => {
     (canCancelRunInProject as jest.Mock).mockResolvedValue(true);
     (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [run] }) }) }) });
     run.runStatus = "running";
-    returning.mockResolvedValue([{ id: "run" }]);
+    returning.mockResolvedValue([{ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }]);
     set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
     (db.transaction as jest.Mock).mockImplementation(async callback => callback({ update: () => ({ set }) }));
     markerWhere.mockReset().mockResolvedValue(undefined);
@@ -96,18 +96,18 @@ describe("cancellation drain", () => {
     (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot: jest.fn() });
   });
   async function cancel() {
-    return POST(new NextRequest("http://localhost/api/runs/run/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "run" }) });
+    return POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
   }
   it("keeps an active worker nonterminal until its final report writes drain", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove: async () => { throw new Error("Job is locked"); } }) } }, k6Queues: {} });
     const response = await cancel();
     expect(response.status).toBe(200);
-    expect(setCancellationSignal).toHaveBeenCalledWith("run");
+    expect(setCancellationSignal).toHaveBeenCalledWith("4f87e7cf-200f-5ec1-8ce4-3edcb1590232");
     expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
     expect(await response.json()).toMatchObject({ queueRemoved: false, message: "Cancellation requested; waiting for execution to stop" });
   });
   it("finalizes a run the app already marked running when its waiting job was never picked up", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
     expect(await response.json()).toMatchObject({ message: "Run cancelled successfully", queueRemoved: true });
@@ -130,7 +130,7 @@ describe("cancellation drain", () => {
   });
   it("persists the marker before touching the queue, and refuses (without removing anything) if it cannot", async () => {
     const remove = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove }) } }, k6Queues: {} });
     markerWhere.mockRejectedValueOnce(new Error("db down"));
     const response = await cancel();
     expect(response.status).toBe(503);
@@ -140,7 +140,7 @@ describe("cancellation drain", () => {
   it("leaves a job a worker already handed back in the queue for the worker to finish", async () => {
     const remove = jest.fn();
     const releaseRunningSlot = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", processedOn: Date.now(), remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", processedOn: Date.now(), remove }) } }, k6Queues: {} });
     (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot });
     const response = await cancel();
     expect(remove).not.toHaveBeenCalled();
@@ -166,7 +166,7 @@ describe("cancellation drain", () => {
   });
   it.each(["completed", "failed"])("treats a job that already %s in the queue as no job, and finalizes the run", async state => {
     const remove = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => state, remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", processedOn: Date.now(), getState: async () => state, remove }) } }, k6Queues: {} });
     const response = await cancel();
     // BullMQ keeps finished jobs, with processedOn set. That must not read as "a worker is still on it".
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
@@ -176,7 +176,7 @@ describe("cancellation drain", () => {
   it("treats a finished k6 job the same way", async () => {
     (getQueues as jest.Mock).mockResolvedValue({
       playwrightQueues: { global: { getJob: async () => null } },
-      k6Queues: { eu: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => "failed", remove: jest.fn() }) } },
+      k6Queues: { eu: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", processedOn: Date.now(), getState: async () => "failed", remove: jest.fn() }) } },
     });
     const response = await cancel();
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
@@ -184,7 +184,7 @@ describe("cancellation drain", () => {
   });
   it("leaves an active job to its worker", async () => {
     const remove = jest.fn();
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => "active", remove }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", processedOn: Date.now(), getState: async () => "active", remove }) } }, k6Queues: {} });
     const response = await cancel();
     expect(remove).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
@@ -196,7 +196,7 @@ describe("cancellation drain", () => {
       const remove = jest.fn();
       (getQueues as jest.Mock).mockResolvedValue({
         playwrightQueues: { global: { getJob: async () => null } },
-        k6Queues: { "retired-eu": { getJob: async () => ({ id: "run", processedOn: Date.now(), getState: async () => "active", remove }) } },
+        k6Queues: { "retired-eu": { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", processedOn: Date.now(), getState: async () => "active", remove }) } },
       });
       const response = await cancel();
       expect(remove).not.toHaveBeenCalled();
@@ -207,7 +207,7 @@ describe("cancellation drain", () => {
 
   describe("how a found job is read", () => {
     const findJob = (job: Record<string, unknown>) =>
-      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", ...job }) } }, k6Queues: {} });
+      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", ...job }) } }, k6Queues: {} });
 
     it.each(["delayed", "prioritized", "waiting-children"])(
       "removes a %s job no worker ever picked up, and finalizes",
@@ -263,13 +263,13 @@ describe("cancellation drain", () => {
     it("releases the slot of an unstarted job it removed", async () => {
       const releaseRunningSlot = jest.fn();
       (getCapacityManager as jest.Mock).mockResolvedValue({ removeFromQueuedSet: jest.fn().mockResolvedValue(false), releaseRunningSlot });
-      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
+      (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
       await cancel();
-      expect(releaseRunningSlot).toHaveBeenCalledWith("org", "run");
+      expect(releaseRunningSlot).toHaveBeenCalledWith("org", "4f87e7cf-200f-5ec1-8ce4-3edcb1590232");
     });
 
     it.each([
-      ["a job that already finished", () => ({ id: "run", processedOn: Date.now(), getState: async () => "failed", remove: jest.fn() })],
+      ["a job that already finished", () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", processedOn: Date.now(), getState: async () => "failed", remove: jest.fn() })],
       ["no job anywhere", () => null],
     ])("does not release a slot for %s: its own completion already did, or it never held one", async (_name, job) => {
       const releaseRunningSlot = jest.fn();
@@ -316,7 +316,7 @@ describe("cancellation drain", () => {
     expect(await response.json()).toMatchObject({ message: "Run cancelled successfully" });
   });
   it("keeps a running callback protected when its unlocked queue entry was removed", async () => {
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", processedOn: Date.now(), remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", processedOn: Date.now(), remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(set).toHaveBeenCalledWith({ errorDetails: "Cancellation requested by user" });
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
@@ -325,13 +325,13 @@ describe("cancellation drain", () => {
   it("does not report completion when an execution claim wins the queued-state comparison", async () => {
     run.runStatus = "queued";
     returning.mockResolvedValue([]);
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(await response.json()).toMatchObject({ message: "Cancellation requested; waiting for execution to stop" });
   });
   it("completes cancellation when the queued job was removed", async () => {
     run.runStatus = "queued";
-    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "run", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
+    (getQueues as jest.Mock).mockResolvedValue({ playwrightQueues: { global: { getJob: async () => ({ id: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232", getState: async () => "waiting", remove: async () => undefined }) } }, k6Queues: {} });
     const response = await cancel();
     expect(response.status).toBe(200);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));

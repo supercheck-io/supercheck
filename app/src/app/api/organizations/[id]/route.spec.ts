@@ -17,7 +17,7 @@ function rows(values: unknown[]) {
   };
 }
 const request = (origin = "https://app.supercheck.io") => new NextRequest("https://app.supercheck.io/api/organizations/org-a", { method: "DELETE", headers: { origin } });
-const params = { params: Promise.resolve({ id: "org-a" }) };
+const params = { params: Promise.resolve({ id: "267cc333-3242-5fc2-821c-51a1a17b9580" }) };
 
 describe("organization deletion", () => {
   const set = jest.fn();

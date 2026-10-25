@@ -99,7 +99,7 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
     jest
       .requireMock("@/utils/db")
       .db.transaction.mockReset()
-      .mockResolvedValue({ id: "region-1" });
+      .mockResolvedValue({ id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7" });
   });
 
   it.each([
@@ -115,7 +115,7 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
     async ({ enabled, defaultLocation, body }) => {
       limit.mockResolvedValueOnce([
         {
-          id: "region-1",
+          id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7",
           code: "us-east",
           isEnabled: enabled,
           isDefault: defaultLocation,
@@ -126,7 +126,7 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
           method: "PATCH",
           body: JSON.stringify(body),
         }),
-        { params: Promise.resolve({ id: "region-1" }) },
+        { params: Promise.resolve({ id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7" }) },
       );
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
@@ -140,12 +140,12 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
 
   it("allows enabling a staged location and making it default together", async () => {
     limit.mockResolvedValueOnce([
-      { id: "region-1", code: "us-east", isEnabled: false, isDefault: false },
+      { id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7", code: "us-east", isEnabled: false, isDefault: false },
     ]);
     jest
       .requireMock("@/utils/db")
       .db.transaction.mockResolvedValueOnce({
-        id: "region-1",
+        id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7",
         isEnabled: true,
         isDefault: true,
       });
@@ -154,7 +154,7 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
         method: "PATCH",
         body: JSON.stringify({ isEnabled: true, isDefault: true }),
       }),
-      { params: Promise.resolve({ id: "region-1" }) },
+      { params: Promise.resolve({ id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7" }) },
     );
     expect(response.status).toBe(200);
   });
@@ -164,9 +164,9 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
     { body: { isDefault: true }, current: { isEnabled: false, isDefault: false } },
   ])("rechecks the locked row after a concurrent change: %j", async ({ body, current }) => {
     limit.mockResolvedValueOnce([
-      { id: "region-1", code: "us-east", isEnabled: true, isDefault: false },
+      { id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7", code: "us-east", isEnabled: true, isDefault: false },
     ]);
-    const lock = jest.fn().mockResolvedValue([{ id: "region-1", ...current }]);
+    const lock = jest.fn().mockResolvedValue([{ id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7", ...current }]);
     const update = jest.fn();
     jest.requireMock("@/utils/db").db.transaction.mockImplementationOnce(
       (fn: (tx: unknown) => unknown) => fn({
@@ -178,7 +178,7 @@ describe("PATCH /api/admin/locations/[id] default eligibility", () => {
       new NextRequest("http://localhost/api/admin/locations/region-1", {
         method: "PATCH", body: JSON.stringify(body),
       }),
-      { params: Promise.resolve({ id: "region-1" }) },
+      { params: Promise.resolve({ id: "18f23521-eddb-59a6-84a0-fb4eb98cecd7" }) },
     );
     expect(lock).toHaveBeenCalledWith("update");
     expect(response.status).toBe(409);

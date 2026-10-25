@@ -130,6 +130,42 @@ it("rejects duplicate combined rows and makes concurrent aggregation idempotent"
   ).toBe(2);
 });
 
+it.each(["hourly", "daily"] as const)("keeps entirely skipped cycles neutral in %s uptime while counting observed results", async (period) => {
+  const windowStart = new Date(day);
+  if (period === "hourly") {
+    windowStart.setTime(Date.now());
+    windowStart.setUTCMinutes(0, 0, 0);
+    windowStart.setUTCHours(windowStart.getUTCHours() - 1);
+  }
+  const aggregate = () => period === "hourly" ? monitorAggregationService.runHourlyAggregation() : monitorAggregationService.runDailyAggregation();
+  await mockDatabase.insert(schema.monitorResults).values({
+    monitorId, checkedAt: new Date(windowStart.getTime() + 60_000), location: "local", status: "up", isUp: true,
+  });
+  const metrics = () => monitorAggregationService.getAggregatedMetrics(monitorId, period, windowStart, new Date(), null);
+  expect((await aggregate()).errors).toEqual([]);
+  const before = await metrics();
+  expect(before).toMatchObject({ totalChecks: 1, uptimePercentage: 100 });
+
+  const cycleId = randomUUID();
+  await mockDatabase.insert(schema.monitorCycles).values({
+    id: cycleId, monitorId, scheduledFor: new Date(windowStart.getTime() + 120_000),
+    deadlineAt: new Date(windowStart.getTime() + 180_000), expectedLocations: ["local", "eu"],
+    strategy: "all", threshold: 1, status: "aborted", closedAt: new Date(windowStart.getTime() + 180_000),
+    observedLocations: [], missingLocations: ["local", "eu"], notifiedAt: new Date(),
+  });
+  expect((await aggregate()).errors).toEqual([]);
+  expect(await metrics()).toEqual(before);
+
+  await mockDatabase.insert(schema.monitorResults).values({
+    monitorId, executionGroupId: cycleId, checkedAt: new Date(windowStart.getTime() + 120_000),
+    location: "local", status: "down", isUp: false,
+  });
+  expect((await aggregate()).errors).toEqual([]);
+  expect(await metrics()).toMatchObject({ totalChecks: 2, uptimePercentage: 50 });
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find(row => row.location === null)).toMatchObject({ totalChecks: 2, successfulChecks: 1, failedChecks: 1 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;
