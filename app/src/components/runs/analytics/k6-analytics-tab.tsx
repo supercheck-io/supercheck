@@ -391,7 +391,7 @@ export function K6AnalyticsTab({
                 headers,
                 signal
             });
-            if (!response.ok) throw new Error("Failed to fetch K6 analytics");
+            if (!response.ok) throw new Error("Failed to fetch k6 analytics");
             const result = await response.json();
 
             // Should not happen if aborted, but good safety
@@ -560,8 +560,8 @@ export function K6AnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
-                title="No K6 Analytics Available"
-                description="Analytics require completed job runs. Run a K6 job to start tracking performance metrics and trends."
+                title="No k6 analytics yet"
+                description="Analytics require completed job runs. Run a k6 job to start tracking performance metrics and trends."
                 icon={<K6Logo size={64} />}
                 action={
                     <Button asChild>
