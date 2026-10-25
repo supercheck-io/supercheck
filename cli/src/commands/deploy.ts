@@ -20,7 +20,7 @@ import { encodeStoredTestScript } from '../utils/script.js'
 import pc from '../utils/colors.js'
 import { waitForRun } from '../utils/wait.js'
 import { parseIntStrict } from '../utils/number.js'
-import { applyStatusPage, validateStatusPageDefinition } from '../utils/status-pages.js'
+import { applyStatusPage, OLD_SERVER_STATUS_PAGE_MESSAGE, validateStatusPageDefinition } from '../utils/status-pages.js'
 import { findTag } from '../utils/tag-assignment.js'
 
 /**
@@ -112,6 +112,7 @@ export function assertReferencesResolvable(actionable: ResourceChange[], state: 
 }
 
 const UPGRADE_REQUIREMENTS = 'This Supercheck server does not support managing requirements through the API; upgrade the server or remove `requirements` from the config.'
+const STATUS_PAGE_PROBE_ID = '00000000-0000-4000-8000-000000000000'
 const UPGRADE_MONITOR_TAGS = 'This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitors.'
 
 /**
@@ -150,6 +151,15 @@ export async function preflightDeploy(
     }
   }
   if (writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
+  if (writes.some((c) => c.type === 'statusPage')) {
+    // Older servers have no PUT on this route (405). A current one rejects an empty body (400) before touching any row.
+    try {
+      await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+      if (!(error instanceof ApiRequestError)) throw error
+    }
+  }
   // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.
   if (tagged.some((c) => c.type === 'monitor') && remoteMonitorIds[0]) await probe(`/api/monitors/${encodeURIComponent(remoteMonitorIds[0])}/tags`, UPGRADE_MONITOR_TAGS)
 }

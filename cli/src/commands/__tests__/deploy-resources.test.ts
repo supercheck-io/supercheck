@@ -49,6 +49,7 @@ jest.unstable_mockModule('../../utils/managed.js', () => ({
 }))
 const { deployCommand, preflightDeploy } = await import('../deploy.js')
 const { ApiRequestError } = await import('../../utils/errors.js')
+const { OLD_SERVER_STATUS_PAGE_MESSAGE } = await import('../../utils/status-pages.js')
 
 beforeEach(() => {
   calls.length = 0
@@ -67,6 +68,7 @@ describe('deploy requirements and status pages', () => {
     await deployCommand.parseAsync(['node', 'deploy', '--force'])
 
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'PUT /api/status-pages/00000000-0000-4000-8000-000000000000', // capability probe, before any write
       'POST /api/tests',
       'POST /api/monitors',
       'POST /api/requirements',
@@ -74,11 +76,11 @@ describe('deploy requirements and status pages', () => {
       'POST /api/status-pages/019a0000-0000-7000-8000-0000000000c1/components',
       'PUT /api/status-pages/019a0000-0000-7000-8000-0000000000c1',
     ])
-    const requirementBody = calls[2].body as Record<string, unknown>
-    expect(requirementBody).toEqual({ title: 'Login', tags: ['auth'], testIds: [T1] })
-    expect(calls[3].body).toEqual({ name: 'Acme' })
-    expect(calls[4].body).toEqual({ name: 'Web', monitorIds: [M1], position: 0 })
-    expect(calls[5].body).toEqual({ status: 'published' })
+    const writes = calls.slice(1)
+    expect(writes[2].body).toEqual({ title: 'Login', tags: ['auth'], testIds: [T1] })
+    expect(writes[3].body).toEqual({ name: 'Acme' })
+    expect(writes[4].body).toEqual({ name: 'Web', monitorIds: [M1], position: 0 })
+    expect(writes[5].body).toEqual({ status: 'published' })
     expect(JSON.stringify(calls)).not.toContain('subdomain')
   })
 
@@ -102,6 +104,18 @@ describe('deploy requirements and status pages', () => {
       await expect(preflightDeploy(old, [change('requirement', 'create', 'r')], [])).rejects.toThrow('does not support managing requirements')
       const tagsOk = { get: async (path: string) => { if (path.endsWith('/tags') && path.includes('/monitors/')) throw new ApiRequestError('x', 404); return { data: [{ id: 't', name: 'a' }] } } } as never
       await expect(preflightDeploy(tagsOk, [change('monitor', 'create', 'm', { tags: ['a'] })], ['m1'])).rejects.toThrow('monitor tag assignment')
+    })
+
+    it('probes status page write support before any write: 405 means an older server, 400 means supported', async () => {
+      const put = jest.fn<(path: string, body: unknown) => Promise<never>>(async () => { throw new ApiRequestError('Method Not Allowed', 405) })
+      await expect(preflightDeploy({ put } as never, [change('statusPage', 'create', 'Acme')], [])).rejects.toThrow(OLD_SERVER_STATUS_PAGE_MESSAGE)
+      expect(put).toHaveBeenCalledWith('/api/status-pages/00000000-0000-4000-8000-000000000000', {})
+
+      const current = { put: async () => { throw new ApiRequestError('No fields to update', 400) } } as never
+      await expect(preflightDeploy(current, [change('statusPage', 'update', 'Acme')], [])).resolves.toBeUndefined()
+
+      const offline = { put: async () => { throw new Error('socket hang up') } } as never
+      await expect(preflightDeploy(offline, [change('statusPage', 'create', 'Acme')], [])).rejects.toThrow('socket hang up')
     })
   })
 })

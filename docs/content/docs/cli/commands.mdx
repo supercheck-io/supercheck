@@ -679,7 +679,7 @@ Deploy pushes notification provider config and webhook body templates too. Renam
 - **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and remote-only components are removed only with `--delete`.
 - **Tests:** `@priority` and `@tags` annotations are applied on deploy.
 - **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config; deploy checks this before any write, matching names case-insensitively. Requirement tags are created by the server.
-- **Older servers:** before the first write, deploy checks the requirements API (when requirements are being written) and the monitor tag API (when an existing monitor is available to probe), and fails with an upgrade hint. Status page create or update fails on its first request with the same kind of hint, and a monitor created in the same deploy with no existing monitor to probe reports a missing tag API right after its create.
+- **Older servers:** before the first write, deploy checks the requirements API (when requirements are being written), the status page write API (when status pages are being written) and the monitor tag API (when an existing monitor is available to probe), and fails with an upgrade hint. A tagged monitor created in a project with no existing monitor to probe reports a missing tag API right after its create.
 
 </Accordion>
 </Accordions>
