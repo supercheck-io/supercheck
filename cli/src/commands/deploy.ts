@@ -157,7 +157,8 @@ export async function preflightDeploy(
       await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
     } catch (error) {
       if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
-      if (!(error instanceof ApiRequestError)) throw error
+      // Only the expected 400 proves support; a denied, failed or rate-limited probe would fail the write too, so stop now.
+      if (!(error instanceof ApiRequestError && error.statusCode === 400)) throw error
     }
   }
   // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.

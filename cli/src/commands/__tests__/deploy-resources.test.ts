@@ -114,6 +114,9 @@ describe('deploy requirements and status pages', () => {
       const current = { put: async () => { throw new ApiRequestError('No fields to update', 400) } } as never
       await expect(preflightDeploy(current, [change('statusPage', 'update', 'Acme')], [])).resolves.toBeUndefined()
 
+      const denied = { put: async () => { throw new ApiRequestError('Insufficient permissions to update status pages', 403) } } as never
+      await expect(preflightDeploy(denied, [change('statusPage', 'update', 'Acme')], [])).rejects.toThrow('Insufficient permissions')
+
       const offline = { put: async () => { throw new Error('socket hang up') } } as never
       await expect(preflightDeploy(offline, [change('statusPage', 'create', 'Acme')], [])).rejects.toThrow('socket hang up')
     })
