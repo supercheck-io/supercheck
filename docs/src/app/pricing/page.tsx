@@ -4,12 +4,14 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
+import { SiteFooter } from '../../components/site-footer';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
 import { CopyEmail } from '../../components/pricing/copy-email';
 
 type Feature = string | { text: string; hint: string };
 
 const WAITLIST_EMAIL = 'hello@supercheck.io';
+const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || 'https://demo.supercheck.dev';
 
 function mailtoHref(subject: string, body?: string) {
     const params = [`subject=${encodeURIComponent(subject)}`];
@@ -29,6 +31,26 @@ const enterpriseHref = mailtoHref(
     'Hi, I would like to discuss Supercheck Cloud Enterprise. My team size, expected usage and locations are:\n',
 );
 
+const fmt = (value: number | string) => Number(value).toLocaleString("en-US");
+
+function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
+    const limits = catalog[id].limits;
+    return [
+        `${fmt(limits.maxMonitors)} monitors`,
+        {
+            text: `${fmt(limits.playwrightMinutesIncluded)} Playwright minutes/month`,
+            hint: `About ${fmt(limits.playwrightMinutesIncluded * 12)} five-second Playwright runs`,
+        },
+        `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
+        `${fmt(limits.aiCreditsIncluded)} AI credits/month`,
+        `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
+        `${fmt(limits.runningCapacity)} concurrent runs`,
+        `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
+        `${fmt(limits.maxStatusPages)} status pages with custom domains`,
+        support,
+    ];
+}
+
 const plans: {
     name: string;
     price?: string;
@@ -40,64 +62,37 @@ const plans: {
     highlighted: boolean;
 }[] = [
     {
-        name: 'Plus',
+        name: catalog.plus.name,
         price: `$${catalog.plus.monthlyPriceCents / 100}`,
         period: '/month',
         description: catalog.plus.description,
-        features: [
-            `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")} monitors`,
-            `${catalog.plus.limits.maxStatusPages} status pages with custom domains`,
-            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
-            { text: `${catalog.plus.limits.playwrightMinutesIncluded.toLocaleString("en-US")} Playwright minutes/month`, hint: `≈ ${(catalog.plus.limits.playwrightMinutesIncluded * 12).toLocaleString("en-US")} five-second test runs` },
-            `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")} k6 VU minutes/month`,
-            `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")} AI credits/month`,
-            `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")} completed AI SRE investigations/month`,
-            `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")} team members`,
-            `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")} projects per organization`,
-            'Email support',
-        ],
+        features: planFeatures('plus', 'Email support'),
         cta: 'Join the Plus waitlist',
         ctaLink: waitlistHref('Plus'),
         highlighted: false,
     },
     {
-        name: 'Pro',
+        name: catalog.pro.name,
         price: `$${catalog.pro.monthlyPriceCents / 100}`,
         period: '/month',
         description: catalog.pro.description,
-        features: [
-            `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")} monitors`,
-            `${catalog.pro.limits.maxStatusPages} status pages with custom domains`,
-            { text: 'Monitoring from Europe, North America and Asia Pacific', hint: 'Browser checks, Playwright and k6 run in Europe' },
-            { text: `${catalog.pro.limits.playwrightMinutesIncluded.toLocaleString("en-US")} Playwright minutes/month`, hint: `≈ ${(catalog.pro.limits.playwrightMinutesIncluded * 12).toLocaleString("en-US")} five-second test runs` },
-            `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")} k6 VU minutes/month`,
-            `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")} AI credits/month`,
-            `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")} completed AI SRE investigations/month`,
-            `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")} team members`,
-            `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")} projects per organization`,
-            'Priority email support',
-        ],
+        features: planFeatures('pro', 'Priority email support'),
         cta: 'Join the Pro waitlist',
         ctaLink: waitlistHref('Pro'),
         highlighted: true,
     },
     {
         name: 'Enterprise',
-        description: 'Get in touch to discuss your requirements',
+        description: 'For organizations with custom volume, locations or compliance needs',
         features: [
-            'Custom monitor allowance',
-            'Custom monitoring locations',
-            'Custom Playwright & k6 allowances',
-            'Custom AI credit pool or bring-your-own-provider',
-            'Custom AI SRE investigation volume',
-            'Custom connector and Private Agent limits',
-            'Custom team member & project limits',
-            'Custom data retention policies',
-            'Dedicated account manager',
-            'Custom SLA & priority support',
-            'Onboarding & training',
+            'Custom allowances for monitors, minutes and investigations',
+            'Custom monitoring and execution locations',
+            'Bring your own AI provider',
+            'Custom data retention',
+            'SLA with a dedicated account manager',
+            'Onboarding and training',
         ],
-        cta: 'Get in touch',
+        cta: 'Contact sales',
         ctaLink: enterpriseHref,
         highlighted: false,
     },
@@ -106,7 +101,7 @@ const plans: {
 const overagePricing = [
     { metric: 'Playwright minute', plus: `$${(catalog.plus.overageCents.playwrightMinutes / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.playwrightMinutes / 100).toFixed(3)}` },
     { metric: 'k6 VU-minute', plus: `$${(catalog.plus.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.plus.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)`, pro: `$${(catalog.pro.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.pro.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)` },
-    { metric: 'Completed AI SRE investigation', plus: `$${(catalog.plus.overageCents.sreInvestigationUnits / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.sreInvestigationUnits / 100).toFixed(2)}` },
+    { metric: 'AI SRE investigation (completed)', plus: `$${(catalog.plus.overageCents.sreInvestigationUnits / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.sreInvestigationUnits / 100).toFixed(2)}` },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
 ];
 
@@ -124,16 +119,16 @@ interface ComparisonItem {
 
 const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     {
-        category: 'Usage Limits', items: [
+        category: 'Usage limits', items: [
             { name: 'Monitors', plus: `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")}`, enterprise: CUSTOM },
-            { name: 'Playwright minutes/month', plus: `${Number(catalog.plus.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Playwright minutes/month', hint: 'Shared by Playwright tests and synthetic monitors', plus: `${Number(catalog.plus.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'k6 VU minutes/month', plus: `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'AI credits/month', plus: `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
-            { name: 'Completed AI SRE investigations/month', plus: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'AI SRE investigations/month', hint: 'Only completed investigation reports count', plus: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
-            { name: 'Concurrent jobs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-jobs limit.', plus: `${Number(catalog.plus.limits.runningCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.runningCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
-            { name: 'Queued jobs', plus: `${Number(catalog.plus.limits.queuedCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.queuedCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Concurrent runs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-runs limit.', plus: `${Number(catalog.plus.limits.runningCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.runningCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Queued runs', plus: `${Number(catalog.plus.limits.queuedCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.queuedCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
             { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
             { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
@@ -150,7 +145,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
         ]
     },
     {
-        category: 'Team & Projects', items: [
+        category: 'Team and projects', items: [
             { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Projects', plus: `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Status pages', plus: `${Number(catalog.plus.limits.maxStatusPages).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPages).toLocaleString("en-US")}`, enterprise: CUSTOM },
@@ -158,14 +153,14 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
         ]
     },
     {
-        category: 'Data Retention', items: [
+        category: 'Data retention', items: [
             { name: 'Raw monitor data', plus: `${Number(catalog.plus.limits.dataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.dataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
             { name: 'Aggregated metrics', plus: `${Number(catalog.plus.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
             { name: 'Job run history', plus: `${Number(catalog.plus.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
         ]
     },
     {
-        category: 'Features & Support', items: [
+        category: 'Features and support', items: [
             { name: 'Custom domains', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'CI/CD integration', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Cron job scheduling', plus: CHECK, pro: CHECK, enterprise: CHECK },
@@ -175,7 +170,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Role-based access and audit log', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Support', plus: 'Email', pro: 'Priority email', enterprise: 'Custom SLA' },
             { name: 'Dedicated account manager', plus: NONE, pro: NONE, enterprise: CHECK },
-            { name: 'Onboarding & training', plus: NONE, pro: NONE, enterprise: CHECK },
+            { name: 'Onboarding and training', plus: NONE, pro: NONE, enterprise: CHECK },
         ]
     },
 ];
@@ -272,13 +267,23 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     return (
         <details className="group border-b border-fd-border last:border-0">
             <summary className="w-full flex cursor-pointer list-none items-center justify-between px-6 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary [&::-webkit-details-marker]:hidden">
-                <span className="text-sm">{question}</span>
+                <span className="text-sm font-medium">{question}</span>
                 <ChevronDown aria-hidden="true" className="w-4 h-4 text-fd-muted-foreground transition-transform flex-shrink-0 ml-4 group-open:rotate-180" />
             </summary>
             <div className="px-6 pb-4 text-fd-muted-foreground text-sm">
                 {answer}
             </div>
         </details>
+    );
+}
+
+const sectionHeading = 'text-2xl font-semibold tracking-tight';
+
+function CheckIcon() {
+    return (
+        <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
     );
 }
 
@@ -289,208 +294,195 @@ export default function PricingPage() {
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd).replace(/</g, '\\u003c') }}
             />
-            <SiteHeader showPricing={false} />
+            <SiteHeader />
 
-            <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-                {/* Header */}
-                <div className="mx-auto mb-12 max-w-3xl text-center">
-                    <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+            <main className="mx-auto w-full max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-20">
+                <div className="mx-auto mb-12 max-w-2xl text-center">
+                    <p className="text-sm font-medium text-fd-primary">Pricing</p>
+                    <h1 className="mt-2 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
                         Supercheck Cloud is coming soon
                     </h1>
-                    <p className="text-lg text-fd-muted-foreground max-w-2xl mx-auto">
-                        Preview the plans below and join the waitlist for the plan you want. Cloud signups are not open yet.
+                    <p className="mt-4 text-lg text-fd-muted-foreground">
+                        Preview the plans and join the waitlist for the one you want. Cloud signups are not open yet.
                     </p>
-                    <p className="mt-4 text-sm text-fd-muted-foreground">
-                        Prices are in USD per month, before taxes. Usage beyond included allowances is billed separately.
+                    <p className="mt-3 text-sm text-fd-muted-foreground">
+                        Prices in USD per month, before taxes. Usage beyond the included allowance is billed at the{' '}
+                        <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                 </div>
 
-                {/* Pricing Cards */}
-                <div id="waitlist" className="mb-4 grid scroll-mt-20 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <div id="waitlist" className="grid scroll-mt-20 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative flex flex-col rounded-xl border p-6 sm:p-8 ${plan.highlighted
-                                ? 'border-fd-primary bg-fd-primary/5'
-                                : 'border-fd-border bg-fd-card'
+                            className={`flex flex-col rounded-xl border bg-fd-card p-6 sm:p-8 ${plan.highlighted
+                                ? 'border-fd-primary ring-1 ring-fd-primary'
+                                : 'border-fd-border'
                                 }`}
                         >
-                            {plan.highlighted && (
-                                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                                    <span className="bg-fd-primary text-fd-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                                        Higher capacity
-                                    </span>
-                                </div>
-                            )}
-                            <div className="mb-6 min-h-20">
-                                <h2 className="text-xl font-semibold mb-2">{plan.name}</h2>
-                                <p className="text-sm text-fd-muted-foreground">{plan.description}</p>
+                            <h2 className="text-lg font-semibold">{plan.name}</h2>
+                            <p className="mt-1 min-h-10 text-sm text-fd-muted-foreground">{plan.description}</p>
+                            <div className="mt-6 flex h-12 items-baseline gap-1">
+                                <span className="text-4xl font-semibold tracking-tight">{plan.price ?? 'Custom'}</span>
+                                {plan.period && <span className="text-sm text-fd-muted-foreground">{plan.period}</span>}
                             </div>
-                            <div className="mb-6 flex min-h-14 items-baseline gap-1">
-                                <span className="text-4xl font-bold">{plan.price ?? 'Custom'}</span>
-                                {plan.period && (
-                                    <span className="text-fd-muted-foreground">{plan.period}</span>
-                                )}
-                            </div>
-                            <ul className="mb-8 flex-1 space-y-3">
-                                {plan.features.map((feature) => {
-                                    const text = typeof feature === 'string' ? feature : feature.text;
-                                    const hint = typeof feature === 'string' ? null : feature.hint;
-                                    return (
-                                    <li key={text} className="flex items-start gap-3 text-sm leading-6">
-                                        <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        <span className="min-w-0">
-                                            {text}
-                                            {hint && <span className="block text-xs text-fd-muted-foreground">{hint}</span>}
-                                        </span>
-                                    </li>
-                                    );
-                                })}
-                            </ul>
                             <Link
                                 href={plan.ctaLink}
-                                className={`block w-full rounded-lg px-4 py-3 text-center font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary ${plan.highlighted
+                                className={`mt-6 block w-full rounded-md px-4 py-2.5 text-center text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary ${plan.highlighted
                                     ? 'bg-fd-primary text-fd-primary-foreground hover:opacity-90'
-                                    : 'bg-fd-secondary hover:bg-fd-secondary/80'
+                                    : 'border border-fd-border hover:bg-fd-accent'
                                     }`}
                             >
                                 {plan.cta}
                             </Link>
+                            <ul className="mt-8 space-y-3 border-t border-fd-border pt-6">
+                                {plan.features.map((feature) => {
+                                    const text = typeof feature === 'string' ? feature : feature.text;
+                                    const hint = typeof feature === 'string' ? null : feature.hint;
+                                    return (
+                                        <li key={text} className="flex items-start gap-3 text-sm leading-6">
+                                            <CheckIcon />
+                                            <span className="min-w-0">
+                                                {text}
+                                                {hint && <span className="block text-xs text-fd-muted-foreground">{hint}</span>}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
                         </div>
                     ))}
                 </div>
 
                 <CopyEmail email={WAITLIST_EMAIL} />
 
-                {/* Free trial */}
-                <section aria-labelledby="trial-heading" className="mb-8 rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
-                    <h2 id="trial-heading" className="mb-1 text-lg font-semibold">Start with a {trial.durationDays}-day free trial</h2>
-                    <p className="mb-4 text-sm text-fd-muted-foreground">
-                        Try most of the product with no card required; custom domains and single sign-on are on paid plans. Limits keep the trial safe for everyone. Cloud signups are opening soon.
-                    </p>
-                    <ul className="grid gap-2 text-sm sm:grid-cols-2">
-                        {trialHighlights().map((highlight) => (
-                            <li key={highlight} className="flex items-start gap-3 leading-6">
-                                <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>{highlight}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <p className="mt-4 text-xs text-fd-muted-foreground">
-                        When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
-                    </p>
+                <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                    <section aria-labelledby="trial-heading" className="rounded-xl border border-fd-border p-6 sm:p-8">
+                        <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
+                        <p className="mt-1 text-sm text-fd-muted-foreground">
+                            Most of the product, with limits that keep the trial safe for everyone. Custom domains and single sign-on are on paid plans. Trials start when Cloud signups open.
+                        </p>
+                        <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
+                            {trialHighlights().map((highlight) => (
+                                <li key={highlight} className="flex items-start gap-3 leading-6">
+                                    <CheckIcon />
+                                    <span>{highlight}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="mt-5 text-xs text-fd-muted-foreground">
+                            When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
+                        </p>
+                    </section>
+
+                    <aside aria-labelledby="self-host-heading" className="flex flex-col rounded-xl border border-fd-border p-6 sm:p-8">
+                        <h2 id="self-host-heading" className="text-lg font-semibold">Self-host for free</h2>
+                        <p className="mt-1 flex-1 text-sm text-fd-muted-foreground">
+                            Supercheck core is open source under AGPLv3. Run it on your own infrastructure with no license fee
+                            and no usage limits; you pay only for your servers and AI provider.
+                        </p>
+                        <div className="mt-6 flex flex-wrap gap-3">
+                            <Link href="/docs/app/deployment/self-hosted" className="rounded-md border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                                Self-hosting guide
+                            </Link>
+                            <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-md px-4 py-2 text-sm font-medium text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                                View on GitHub
+                            </Link>
+                        </div>
+                    </aside>
+                </div>
+
+                <section aria-labelledby="compare-heading" className="mt-24">
+                    <div className="mx-auto mb-8 max-w-2xl text-center">
+                        <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
+                    </div>
+                    <p className="mb-4 text-center text-sm text-fd-muted-foreground md:hidden">Scroll horizontally to compare all plans.</p>
+                    <div className="relative overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Plan feature comparison" tabIndex={0}>
+                        <table className="w-full min-w-[640px] text-sm" aria-label="Full plan feature comparison">
+                            <thead>
+                                <tr className="border-b border-fd-border">
+                                    <th className="w-2/5 px-6 py-4 text-left font-medium">Feature</th>
+                                    <th className="px-6 py-4 text-center font-medium">Plus</th>
+                                    <th className="px-6 py-4 text-center font-medium">Pro</th>
+                                    <th className="px-6 py-4 text-center font-medium">Enterprise</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {comparisonFeatures.map((category) => (
+                                    <React.Fragment key={category.category}>
+                                        <tr className="border-b border-fd-border bg-fd-muted/40">
+                                            <th scope="colgroup" colSpan={4} className="px-6 py-2.5 text-left text-xs font-medium text-fd-muted-foreground">
+                                                {category.category}
+                                            </th>
+                                        </tr>
+                                        {category.items.map((item) => (
+                                            <tr key={item.name} className="border-b border-fd-border last:border-0">
+                                                <th scope="row" className="px-6 py-3 text-left font-normal">
+                                                    {item.name}
+                                                    {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
+                                                </th>
+                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.plus} /></td>
+                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.pro} /></td>
+                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.enterprise} /></td>
+                                            </tr>
+                                        ))}
+                                    </React.Fragment>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
 
-                {/* Self-hosting */}
-                <aside aria-labelledby="self-host-heading" className="mb-20 flex flex-col items-start justify-between gap-4 rounded-xl border border-fd-border bg-fd-card p-6 sm:flex-row sm:items-center sm:p-8">
-                    <div className="max-w-2xl">
-                        <h2 id="self-host-heading" className="mb-1 text-lg font-semibold">Prefer to run it yourself?</h2>
-                        <p className="text-sm text-fd-muted-foreground">
-                            Supercheck core is open source under AGPLv3. Self-host it with no license fee; you pay for your own infrastructure and AI provider.
+                <section id="overage" aria-labelledby="overage-heading" className="mt-24 scroll-mt-20">
+                    <div className="mx-auto mb-8 max-w-2xl text-center">
+                        <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
+                        <p className="mt-3 text-fd-muted-foreground">
+                            Charged only for usage beyond your monthly allowance. Owners can set spending limits to cap overage.
                         </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-3">
-                        <Link href="/docs/app/deployment/self-hosted" className="rounded-lg bg-fd-secondary px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-secondary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                            Self-hosting guide
-                        </Link>
-                        <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                            View on GitHub
-                        </Link>
+                    <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>
+                        <table className="w-full text-sm" aria-label="Usage overage rates">
+                            <thead>
+                                <tr className="border-b border-fd-border">
+                                    <th className="px-6 py-4 text-left font-medium">Usage</th>
+                                    <th className="px-6 py-4 text-right font-medium">Plus</th>
+                                    <th className="px-6 py-4 text-right font-medium">Pro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {overagePricing.map((item) => (
+                                    <tr key={item.metric} className="border-b border-fd-border last:border-0">
+                                        <th scope="row" className="px-6 py-3 text-left font-normal">{item.metric}</th>
+                                        <td className="px-6 py-3 text-right tabular-nums">{item.plus}</td>
+                                        <td className="px-6 py-3 text-right tabular-nums">{item.pro}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </aside>
+                </section>
 
                 <VendorComparison />
 
-                {/* Overage Pricing */}
-                <div className="mb-20">
-                    <h2 className="text-2xl font-bold text-center mb-8">Overage Pricing</h2>
-                    <p className="text-center text-fd-muted-foreground mb-8 max-w-2xl mx-auto">
-                        Prices are in USD before applicable taxes. Usage beyond your allowance is billed at the rates below.
-                    </p>
-                    <div className="max-w-2xl mx-auto">
-                        <div className="rounded-lg border overflow-x-auto" role="region" aria-label="Usage overage pricing" tabIndex={0}>
-                            <table className="w-full" aria-label="Usage overage rates">
-                                <thead className="bg-fd-muted">
-                                    <tr>
-                                        <th className="text-left px-6 py-3 text-sm font-medium">Metric</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Plus</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Pro</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {overagePricing.map((item, idx) => (
-                                        <tr key={item.metric} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/50'}>
-                                            <td className="px-6 py-3 text-sm">{item.metric}</td>
-                                            <td className="px-6 py-3 text-sm text-center font-medium">{item.plus}</td>
-                                            <td className="px-6 py-3 text-sm text-center font-medium">{item.pro}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                <section aria-labelledby="faq-heading" className="mx-auto mt-24 max-w-3xl">
+                    <div className="mb-8 text-center">
+                        <h2 id="faq-heading" className={sectionHeading}>Frequently asked questions</h2>
+                        <p className="mt-3 text-fd-muted-foreground">
+                            Something else? Email{' '}
+                            <a href={mailtoHref('Supercheck question')} className="underline underline-offset-4 hover:text-fd-foreground">{WAITLIST_EMAIL}</a>
+                            {' '}or try the{' '}
+                            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-fd-foreground">live demo</a>.
+                        </p>
                     </div>
-                </div>
-
-                {/* Comparison Table */}
-                <div className="mb-20">
-                    <h2 className="text-2xl font-bold text-center mb-8">Full Feature Comparison</h2>
-                    <p className="text-center text-sm text-fd-muted-foreground mb-4 md:hidden">Scroll horizontally to compare all plans.</p>
-                    <div className="relative rounded-lg border overflow-x-auto" role="region" aria-label="Plan feature comparison" tabIndex={0}>
-                            <table className="w-full min-w-[640px]" aria-label="Full plan feature comparison">
-                                <thead className="bg-fd-muted">
-                                    <tr>
-                                        <th className="text-left px-6 py-3 text-sm font-medium">Feature</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Plus</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Pro</th>
-                                        <th className="text-center px-6 py-3 text-sm font-medium">Enterprise</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {comparisonFeatures.map((category) => (
-                                        <React.Fragment key={category.category}>
-                                            <tr className="bg-fd-muted/50 border-l-2 border-l-fd-primary/50">
-                                                <td colSpan={4} className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
-                                                    {category.category}
-                                                </td>
-                                            </tr>
-                                            {category.items.map((item, idx) => (
-                                                <tr key={item.name} className={idx % 2 === 0 ? 'bg-fd-card' : 'bg-fd-muted/30'}>
-                                                    <th scope="row" className="px-6 py-3 pl-10 text-left text-sm font-normal">
-                                                        {item.name}
-                                                        {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
-                                                    </th>
-                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.plus} /></td>
-                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.pro} /></td>
-                                                    <td className="px-6 py-3 text-sm text-center"><ComparisonCell value={item.enterprise} /></td>
-                                                </tr>
-                                            ))}
-                                        </React.Fragment>
-                                    ))}
-                                </tbody>
-                            </table>
-                    </div>
-                </div>
-
-                {/* FAQ with Accordion */}
-                <div className="max-w-3xl mx-auto">
-                    <h2 className="text-2xl font-bold text-center mb-8">Frequently Asked Questions</h2>
-                    <div className="rounded-lg border bg-fd-card">
+                    <div className="rounded-xl border border-fd-border">
                         {faqs.map((faq) => (
                             <FAQItem key={faq.question} question={faq.question} answer={faq.answer} />
                         ))}
                     </div>
-                </div>
-                <nav aria-label="Pricing resources" className="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm text-fd-muted-foreground">
-                    <Link href="https://demo.supercheck.dev" className="hover:underline">Try the demo</Link>
-                    <Link href="/terms" className="hover:underline">Terms of Service</Link>
-                    <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
-                    <Link href={mailtoHref('Supercheck question')} className="hover:underline">Contact us</Link>
-                </nav>
+                </section>
             </main>
+
+            <SiteFooter />
         </div>
     );
 }
