@@ -87,6 +87,7 @@ export async function POST(
     }
 
     const { id: testId } = await params;
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const body = await request.json();
     const tagIds = body?.tagIds;
 
@@ -114,7 +115,6 @@ export async function POST(
     }
 
     // Verify test exists AND belongs to current org/project to prevent IDOR
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)
@@ -208,6 +208,7 @@ export async function DELETE(
     }
 
     const { id: testId } = await params;
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const { tagId } = await request.json();
 
     if (!tagId) {
@@ -215,7 +216,6 @@ export async function DELETE(
     }
 
     // Verify test exists AND belongs to current org/project to prevent IDOR
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)
@@ -251,4 +251,4 @@ export async function DELETE(
     console.error('Error removing test tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-} 
+}
