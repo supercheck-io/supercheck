@@ -583,15 +583,16 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       };
     } catch (error) {
       if (error instanceof ExecutionCapacityError) {
-        return deferForCapacity(job, (reason) =>
-          this.dbService
-            .updateRunStatus(runId, 'failed', '0', reason)
+        return deferForCapacity(job, async (reason) => {
+          // A run the user already cancelled ends as cancelled; the capacity failure must not replace that.
+          await this.dbService
+            .failRunUnlessCancelled(runId, reason)
             .catch((err: Error) =>
               this.logger.error(
                 `[${runId}] Failed to mark run failed after waiting for capacity: ${err.message}`,
               ),
-            ),
-        );
+            );
+        });
       }
       const message = `[Job ${job.id}] Failed with error: ${
         error instanceof Error ? error.message : String(error)
