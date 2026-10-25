@@ -4,7 +4,7 @@ description: Connect private evidence sources to Cloud or your self-hosted insta
 icon: ShieldCheck
 ---
 
-Connect private services to AI SRE investigations through an outbound-only, read-only agent. For test execution workers on separate servers, see [Multi-Server Deployment](/docs/app/deployment/multi-server).
+Connect private services to AI SRE investigations through an outbound-only, read-only agent. For test execution workers on separate servers, see [Multi-Server](/docs/app/deployment/multi-server).
 
 ## Setup Workflow
 
@@ -42,29 +42,35 @@ sequenceDiagram
 </div>
 </div>
 
-## Setup
+## Prerequisites
 
-<Accordions>
-  <Accordion title="Requirements" id="requirements">
-    - Permission to configure connectors (for example, Project Admin or Org Admin).
-    - A Docker Engine host with Compose v2 that can reach Supercheck and your provider endpoints.
-    - Outbound HTTPS to the Supercheck API without interactive browser challenges; no inbound ports for remote agents. Colocated agents use the private Docker network.
+| Requirement | Details |
+|-------------|---------|
+| Permission | Able to configure connectors (Project Admin or Org Admin) |
+| Host | Docker Engine with Compose v2 that can reach Supercheck and your provider endpoints |
+| Network | Outbound HTTPS to the Supercheck API, with no browser challenge in front. No inbound ports for remote agents; colocated agents use the private Docker network |
 
-    Use the supplied Compose configuration to retain its non-root user, read-only filesystem, and restricted permissions.
-  </Accordion>
-</Accordions>
+Use the supplied Compose file: it keeps the agent non-root, read-only, and capability-free.
 
-### 1. Register the agent
+## Set up
+
+<Steps>
+<Step>
+
+### Register the agent
 
 In your Cloud or self-hosted dashboard, select the project and open **Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
 
-Copy the **Agent ID** and **Registration token**. Start the agent within **15 minutes** before the token expires.
+Copy the **Agent ID** and **Registration token**. Start the agent within **15 minutes**, before the token expires.
 
-### 2. Start the agent
+</Step>
+<Step>
+
+### Start the agent
 
 <Tabs items={['On the Supercheck host', 'Another network or Cloud']}>
   <Tab value="On the Supercheck host">
-    In your existing `deploy/docker/.env`, add the agent credentials and profile. Keep any existing profiles:
+    In your existing `deploy/docker/.env`, add the credentials and the profile, keeping any existing profiles:
 
     ```dotenv
     COMPOSE_PROFILES=https,private-agent
@@ -72,7 +78,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
     PRIVATE_AGENT_TOKEN=your-registration-token
     ```
 
-    For local HTTP evaluation, use `COMPOSE_PROFILES=private-agent`. From that directory, run:
+    For a local HTTP install use `COMPOSE_PROFILES=private-agent`. Then, from that directory:
 
     ```bash
     sudo docker compose up -d private-agent
@@ -87,7 +93,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
     curl -fsSL -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7-canary.16/deploy/docker/docker-compose-private-agent.yml
     ```
 
-    Create `.env` beside it. Use your dashboard's HTTPS origin, without `/api`:
+    Create `.env` beside it, using your dashboard's HTTPS origin without `/api`:
 
     ```dotenv
     SUPERCHECK_API_URL=https://your-supercheck-instance.example
@@ -103,12 +109,25 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
   </Tab>
 </Tabs>
 
-Preserve `private-agent-state`; avoid `down -v` during maintenance. If the registration token expires, choose **Rotate token**, replace it in `.env`, and recreate the agent within 15 minutes using the startup command above.
+</Step>
+<Step>
 
-### 3. Connect a provider
+### Connect a provider
 
 Confirm the agent shows **connected**. In the same project's **Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
 
 Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 
+</Step>
+<Step>
+
+### Investigate
+
 Link the connector's service to an incident and run an investigation with **Include live sources**, or use [Copilot](/docs/app/investigate/copilot).
+
+</Step>
+</Steps>
+
+<Callout type="warn">
+Preserve the `private-agent-state` volume; do not use `down -v` during maintenance. If the registration token expires, choose **Rotate token**, replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
+</Callout>

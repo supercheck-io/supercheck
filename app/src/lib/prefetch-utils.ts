@@ -23,11 +23,11 @@
  */
 
 import type { QueryClient } from "@tanstack/react-query";
-import { fetchDashboard, getDashboardQueryKey } from "@/hooks/use-dashboard";
 import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
 import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import { getSreIncidents } from "@/actions/sre-incidents";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
+import { fetchDashboard, getDashboardQueryKey } from "@/hooks/use-dashboard";
 import {
   getSreEvidenceGraphQueryKey,
   getSreCopilotHistoriesQueryKey,
@@ -251,6 +251,8 @@ type RouteConfig = {
 function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
   return {
     "/": {
+      // Must use the dashboard hook's key and fetcher: caching the raw payload
+      // here makes the normalized dashboard render crash.
       queryKey: getDashboardQueryKey(projectId),
       queryFn: () => fetchDashboard(projectId),
       staleTime: 60000,

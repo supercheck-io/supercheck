@@ -1,38 +1,141 @@
 ---
 title: Requirements
 description: Track requirements and the tests that cover them
-icon: ListChecks
+icon: Target
 ---
 
-Use **Requirements** to keep testable expectations alongside your tests. Each requirement has a title, description, priority, tags, and linked tests. Coverage shows which requirements have linked tests and whether those tests are passing or failing.
+Requirements keep testable expectations next to the tests that verify them, so you can see at a glance what is covered, what is failing, and what has no tests yet.
 
-## Add a requirement
+<Cards className="grid-cols-1 sm:grid-cols-3">
+<Card icon={<CheckCircle className="text-green-500" />} title="Covered">
+Every linked test that has run passed
+</Card>
+<Card icon={<XCircle className="text-red-500" />} title="Failing">
+At least one linked test failed its latest run
+</Card>
+<Card icon={<CircleDashed className="text-gray-400" />} title="Missing">
+No linked tests, or none have run yet
+</Card>
+</Cards>
 
-1. Select the project and open **Requirements**.
-2. Choose **Create Requirement** and describe one behavior you want to verify.
-3. Set its priority and save it.
-4. Link existing tests, or create a test from the requirement.
+![Requirements list with status, priority, and tags](/screenshots/requirements-list.png)
 
-Coverage updates when linked tests run in jobs. Linking a test records the relationship; run it to collect an outcome. Review the linked tests when a requirement changes.
+## Requirement Fields
 
-## Extract requirements from a document
+| Field | Required | Details |
+|---|:---:|---|
+| **Title** | Yes | One behavior to verify, up to 500 characters |
+| **Description** | No | Acceptance criteria or context |
+| **Priority** | No | **Low**, **Medium**, or **High**. Defaults to Medium |
+| **Tags** | No | Group and filter requirements. AI-extracted requirements carry an `ai` tag |
+| **Linked tests** | No | The tests whose results set the coverage status |
 
-Choose **Upload Document** to extract requirements with AI from a PRD or specification. Supported formats are PDF, DOCX, Markdown, and plain text. The upload dialog accepts documents up to 10 MB.
+## Add a Requirement
 
-Review the extracted titles, descriptions, and priorities before adding them. AI-generated requirements carry an `ai` tag. Extraction uses your instance's configured AI provider and counts toward its organization AI limits. Avoid uploading credentials or documents you are not permitted to send to that provider.
+<Steps>
+<Step>
 
-## Review coverage
+### Open Requirements
 
-Filter the list by priority, coverage status, tags, or search text. Use the linked tests to investigate failing coverage, and export requirements as CSV when you need a copy for review.
+Select the project, then open **Requirements** under **Automate** in the sidebar.
 
-Project viewers can read requirements. Creating, editing, extracting, and deleting requirements follow your project role's permissions.
+</Step>
+<Step>
 
-## Read requirements through the API
+### Create it
 
-Authenticated integrations can list the active project's requirements with `GET /api/requirements`. The endpoint supports `page`, `pageSize`, `search`, `priority`, and `status`. Use the API's project and organization context to select the intended project. Coverage status filtering is applied before pagination; `total` counts matching requirements. Requirements without a coverage snapshot are included in `missing`.
+Choose **Create Requirement**, enter a title, and set a priority.
 
-See [Tests](/docs/app/automate/tests) and [Jobs](/docs/app/automate/jobs) to create and run coverage.
+</Step>
+<Step>
 
-## Deleting stored artifacts
+### Link tests
 
-Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.
+Link existing tests, or create a new test from the requirement.
+
+</Step>
+<Step>
+
+### Run a job
+
+Add the linked tests to a [job](/docs/app/automate/jobs) and run it. Coverage updates when the job completes.
+
+</Step>
+</Steps>
+
+## How Coverage Is Calculated
+
+```mermaid
+flowchart LR
+    R[Requirement] --> L{Linked tests?}
+    L -->|None| M[Missing]
+    L -->|Yes| S{Any test run yet?}
+    S -->|No| M
+    S -->|Yes| F{Any latest run failed?}
+    F -->|Yes| X[Failing]
+    F -->|No| C[Covered]
+
+    classDef covered fill:#047857,stroke:#34d399,color:#fff
+    classDef failing fill:#b91c1c,stroke:#f87171,color:#fff
+    classDef missing fill:#4b5563,stroke:#9ca3af,color:#fff
+    class C covered
+    class X failing
+    class M missing
+```
+
+<Callout type="info">
+Coverage is recalculated only when a **job** finishes. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
+</Callout>
+
+## Extract Requirements from a Document
+
+Choose **Upload** in the requirements toolbar, or **Upload Document** on the **Documents** tab, to have AI draft requirements from a PRD or specification.
+
+| Limit | Value |
+|---|---|
+| **Formats** | PDF (`.pdf`), Word (`.docx`), Markdown (`.md`), plain text (`.txt`) |
+| **Maximum size** | 10 MB by default |
+| **Tag added** | `ai` |
+| **AI usage** | Uses your instance's AI provider and counts toward organization AI limits |
+
+Review each extracted title, description, and priority before you add it.
+
+<Callout type="warn">
+The document is sent to your configured AI provider. Do not upload credentials or documents you are not permitted to share with that provider.
+</Callout>
+
+## Review Coverage
+
+| Task | How |
+|---|---|
+| **Filter** | By priority, coverage status, tags, or search text |
+| **Investigate a failure** | Open a requirement's linked tests to see the failing run |
+| **Share** | Choose **Export** to download requirements as CSV |
+
+## Permissions
+
+| Role | View | Create and edit | Extract from document | Delete |
+|---|:---:|:---:|:---:|:---:|
+| Org Owner, Org Admin, Project Admin | ✓ | ✓ | ✓ | ✓ |
+| Project Editor | ✓ | ✓ | ✓ | — |
+| Project Viewer | ✓ | — | — | — |
+
+See [Roles & Permissions](/docs/app/admin/roles-and-permissions) for how roles are assigned.
+
+## Read Requirements Through the API
+
+`GET /api/requirements` lists the active project's requirements.
+
+| Parameter | Values | Default |
+|---|---|---|
+| `page` | 1 or more | `1` |
+| `pageSize` | 1 to 500 | `500` |
+| `search` | Text | — |
+| `priority` | `low`, `medium`, `high` | — |
+| `status` | `covered`, `failing`, `missing` | — |
+
+The status filter is applied before pagination, and `total` counts matching requirements. Requirements without a coverage snapshot count as `missing`. See the [API reference](/docs/api/requirements/listRequirements) for the response format.
+
+## Deleting Stored Artifacts
+
+Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, the resource stays available so you can retry; a partial cleanup may already have removed some artifacts.

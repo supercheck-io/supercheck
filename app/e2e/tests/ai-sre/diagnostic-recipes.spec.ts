@@ -57,6 +57,7 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
         page.getByText(connectorName, { exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
+        "Connector ID",
         "Name",
         "Type",
         "Execution",
@@ -170,6 +171,7 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
       });
       const row = page.getByRole("row").filter({ hasText: queryName });
       await expect(savedQueryTable.getByRole("columnheader")).toHaveText([
+        "Query ID",
         "Name",
         "Template",
         "Connector",

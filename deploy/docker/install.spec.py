@@ -38,7 +38,8 @@ class InstallerTests(unittest.TestCase):
         result = subprocess.run(['bash', '-c', 'source "$TEST_ROOT/functions.sh"\n'
                                  'COMPOSE_DIR="$TEST_ROOT/compose"\n'
                                  'mkdir -p "$COMPOSE_DIR"\n' + body],
-                                env={**os.environ, 'TEST_ROOT': str(self.root),
+                                # Port overrides from the caller's shell would mask the .env fixtures.
+                                env={**{k: v for k, v in os.environ.items() if k not in ('DB_HOST_PORT', 'REDIS_HOST_PORT')}, 'TEST_ROOT': str(self.root),
                                      'INSTALL_TEST_EUID': '0', 'NO_COLOR': '1', 'TMPDIR': str(self.root)},
                                 text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
@@ -59,6 +60,42 @@ check_ports
 docker() { :; }
 check_ports
 ''', 1)
+
+    def test_local_postgres_listener_is_rejected(self):
+        output = self.run_shell(r'''port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 5432', output)
+        self.assertIn('DB_HOST_PORT', output)
+
+    def test_moved_database_and_redis_ports_are_checked(self):
+        output = self.run_shell(r'''printf 'DB_HOST_PORT=15432\nREDIS_HOST_PORT=16379\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 16379 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 16379', output)
+        self.run_shell(r'''printf 'DB_HOST_PORT=15432\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''')
+
+    def test_env_port_with_carriage_return_is_checked(self):
+        output = self.run_shell(r'''printf 'DB_HOST_PORT=15432\r\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 15432 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 15432', output)
+
+    def test_exported_database_port_overrides_env_file(self):
+        self.run_shell(r'''export DB_HOST_PORT=15432
+port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''')
 
     def test_failed_migration_volume_does_not_unlock_install(self):
         output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }

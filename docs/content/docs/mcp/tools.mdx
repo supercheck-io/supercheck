@@ -34,11 +34,13 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
 | `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server never writes) |
 
-## Paging
+<Accordions>
+<Accordion title="Paging" id="paging">
 
 List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results exist the response has a `nextCursor`; pass it back as `cursor` for the next page. `id` and `cursor` values are UUIDs.
 
-## Errors
+</Accordion>
+<Accordion title="Errors" id="errors">
 
 | Code | Meaning |
 |---|---|
@@ -52,10 +54,15 @@ Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) ret
 
 Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
 
-## AI SRE
+</Accordion>
+<Accordion title="AI SRE" id="ai-sre">
 
 Investigation results that AI SRE already produced (hypotheses, confidence and recommendations) are readable, as are incidents and the service catalog. Starting an investigation, triage, a Copilot chat or an evidence brief is not available over MCP: those run AI work on your account and stream their output, so they stay in the dashboard and the CLI (`supercheck sre`).
 
-## Not available
+</Accordion>
+<Accordion title="Not available" id="not-available">
 
 Writes of any kind, starting AI SRE work, test scripts, variable values, monitor credentials and request settings, notification channels, status page subscribers, run reports and artifact files, investigation evidence and tool calls, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+
+</Accordion>
+</Accordions>

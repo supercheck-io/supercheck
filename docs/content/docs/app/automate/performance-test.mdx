@@ -15,9 +15,13 @@ Run k6 performance tests to validate your application under load.
 3. Configure load profile (VUs, duration)
 4. Run and analyze results
 
-## Worker Availability
+<Accordions>
+<Accordion title="Worker availability (503 EXECUTION_QUEUE_UNAVAILABLE)" id="worker-availability">
 
 K6 submissions require a live worker heartbeat that advertises the requested K6 queue before capacity is reserved. If the worker is offline, its heartbeat lookup fails, or its latest heartbeat does not yet advertise that queue, the API returns HTTP 503 with response code `EXECUTION_QUEUE_UNAVAILABLE`. A newly started worker can publish its first heartbeat before it registers its K6 queues; wait for the next heartbeat, then retry.
+
+</Accordion>
+</Accordions>
 
 ## Example Script
 

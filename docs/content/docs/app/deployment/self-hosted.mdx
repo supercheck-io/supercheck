@@ -4,7 +4,7 @@ description: Install Supercheck on one server with a guided command
 icon: Container
 ---
 
-Self-host Supercheck on one Linux server.
+Self-host Supercheck on one Linux server. One command installs Docker, the isolated test sandbox, and every Supercheck service, then checks that it is healthy.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Self-host Supercheck on one Linux server.
 
 ```mermaid
 flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>HTTPS profile]
     T --> App[Next.js App<br/>UI + API]
     App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
     App --> SRE[AI SRE Engine<br/>Read-only investigations]
@@ -51,174 +51,210 @@ flowchart TB
 </div>
 </div>
 
+## Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| OS | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64) |
+| Resources | 2 vCPU and 4 GB RAM minimum; 10 GB free disk minimum, 15 GB to start, 30–50 GB for regular use |
+| Access | `sudo` and outbound internet access. Docker and Compose are installed for you |
+| Public HTTPS only | A domain pointing at the server (plus a wildcard record for status pages), inbound ports 80 and 443, and an email address for certificate notices |
+
+<Callout type="warn">
+**Linux only.** The test sandbox needs the Linux kernel. macOS, Windows, WSL2, and Docker Desktop are not supported.
+</Callout>
+
 ## Install
 
-<Accordions>
-  <Accordion title="Requirements" id="requirements">
-    - Ubuntu 22.04+ or Debian 12+ server; x86_64 or ARM64.
-    - At least 2 vCPU, 4 GB RAM, and 15 GB free disk; 30–50 GB is recommended.
-    - Sudo access, `curl`, and internet access for downloads. Docker and Compose are installed automatically.
-    - Public HTTPS: point your domain at the server, open inbound ports 80/443, and have an email for certificate notices.
+<Steps>
+<Step>
 
-    macOS, Windows, WSL2, and Docker Desktop are not supported.
-  </Accordion>
-</Accordions>
-
-Run on your server to install **1.3.7-canary.16**:
+### Download the installer
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.3.7-canary.16
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
 ```
 
-Follow the prompts for local evaluation or HTTPS. Open the printed URL, create your account, and run a test.
+Read it first with `less install.sh` if you like. Add `--dry-run` in the next step to see the plan without changing anything.
 
-Sandboxed execution pods can connect to public destinations, but cannot reach private network addresses, including RFC1918, link-local, CGNAT, and tailnet ranges. Use a [Private Agent](/docs/app/deployment/private-agent) when checks need access to services inside another network.
+</Step>
+<Step>
 
-## Optional Configuration
+### Run it
 
-In your installation's `deploy/docker` directory, update `.env` and run `sudo docker compose up -d --force-recreate app worker`.
+<Tabs items={['Guided', 'Local, no prompts', 'Public HTTPS, no prompts']}>
+  <Tab value="Guided">
+    ```bash
+    sudo bash install.sh --version 1.3.7-canary.16
+    ```
 
-### CLI Browser Login
+    The installer asks only what it cannot detect:
 
-`supercheck login` can sign users in through the browser instead of asking them to paste a token. It is off by default. To enable it, set `DEVICE_AUTH_ENABLED=true` in `.env` and recreate the app. The server must be reachable over HTTPS (or localhost); the app applies database migration 0032 when it starts. Users enter their terminal code on `/device`, choose the project and approve; the info icon shows the request code and requester address for comparison. Then the CLI receives a project-scoped key that expires after 90 days and can be revoked under **CLI Tokens**. Token login (`supercheck login --token`) and `SUPERCHECK_TOKEN` always keep working.
+    | Prompt | Default | Notes |
+    |--------|---------|-------|
+    | `Choose` | `1` | `1` = try it on this server (HTTP on localhost); `2` = public server (HTTPS) |
+    | `Domain for Supercheck` | none | Public only. A hostname such as `app.example.com`, not an IP address or URL |
+    | `Email for Let's Encrypt notices` | none | Public only |
+    | `Continue?` | Yes | Last confirmation before anything is installed |
+  </Tab>
+  <Tab value="Local, no prompts">
+    ```bash
+    sudo bash install.sh --version 1.3.7-canary.16 --local --yes
+    ```
+  </Tab>
+  <Tab value="Public HTTPS, no prompts">
+    ```bash
+    sudo bash install.sh --version 1.3.7-canary.16 --domain app.example.com --email you@example.com --yes
+    ```
+  </Tab>
+</Tabs>
 
-### Connecting AI Tools (MCP, off by default)
+Allow about 10 minutes, mostly image downloads. Re-running is safe: it keeps your existing `.env` and secrets and skips finished steps.
 
-Supercheck can let AI tools such as Claude, Cursor and VS Code read one project you choose, using OAuth 2.1 with read-only access. See [Supercheck MCP](/docs/mcp) for what users get.
+</Step>
+<Step>
 
-1. Set `MCP_SERVER_ENABLED=true` in `.env` and recreate the app: `sudo docker compose up -d --force-recreate app`. The app applies database migration 0036 when it starts.
-2. Make sure `BETTER_AUTH_URL` is the public HTTPS URL of your server (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN`. The app refuses to start with MCP enabled otherwise, because issued tokens are bound to `<BETTER_AUTH_URL>/api/mcp`.
-3. Confirm: `curl -s https://your-host/api/config/app` reports `mcp.enabled: true`, and `curl -si -X POST https://your-host/api/mcp` returns `401` with a `WWW-Authenticate` header.
+### Open Supercheck
 
-Users approve each connection and pick the project on the connect screen, and can disconnect any app under **Connected apps** in the user menu. Access is re-checked on every call, so a disconnect, removal from the organization or a ban takes effect immediately (removal from only the project leaves read-only viewer access). Apps normally register themselves; set `MCP_DYNAMIC_CLIENT_REGISTRATION=false` to accept only apps that identify themselves with a Client ID Metadata Document. Browser-based clients cannot call the OAuth endpoints (no CORS headers); native and server-side clients are unaffected. Behind a CDN or extra proxy, set `TRUSTED_PROXY_HOPS` (below) so rate limits see real client addresses.
+The installer prints the URL: `https://<your-domain>` for a public install, or `http://localhost:3000` for a local one.
 
-### Client IP Behind a CDN or Extra Proxy
+Port 3000 listens on the server only. From your laptop, forward it with `ssh -L 3000:localhost:3000 <user>@<server>`. For HTTPS, the certificate is issued on first visit and can take up to a minute.
 
-Rate limits and the AI routes identify callers by client IP. By default Supercheck trusts one proxy that appends the client address, which matches the bundled Traefik setup. If another trusted hop sits in front (for example Cloudflare, then a load balancer, then Traefik), set `TRUSTED_PROXY_HOPS` in `.env` to the number of extra hops and recreate the app. Set `TRUST_CF_CONNECTING_IP=true` only when the origin is reachable exclusively through Cloudflare. A wrong value makes all users share one rate-limit bucket or lets clients spoof their address.
+Create your account, then add a test and run it.
 
-### Missing-Region Detection (Optional)
+</Step>
+</Steps>
 
-By default a multi-region monitor waits for every region before it is evaluated, so a region that stops responding blocks the result. Missing-region detection closes each run at a deadline and counts silent regions as failed. It also alerts when every regional worker is offline. It is off by default.
-
-1. Update the app and every worker to the same release. The app applies the required migration on start.
-2. Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (comma-separated, for example `https,monitor-control` on an HTTPS install) and run `sudo docker compose up -d monitor-control`. Listing the profile there makes later `pull` and `up` commands update the control plane with the rest of the stack. It uses the worker image and has no Kubernetes credentials. Run exactly one instance.
-3. Confirm it reports healthy with `sudo docker compose ps monitor-control`, then set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app: `sudo docker compose up -d --force-recreate app`.
-
-`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`) sets how long a run waits before silent regions count as failed; two check timeouts are added to it. Regions that report after the deadline are recorded but do not change the closed result. Alerts are delivered at least once, so a webhook receiver should deduplicate.
-
-To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false` and recreate the app. **Keep the control plane running until open runs have closed** (up to the deadline plus two check timeouts), then run `sudo docker compose stop monitor-control` and remove `monitor-control` from `COMPOSE_PROFILES`. Stopping it earlier leaves those runs without a result until it starts again.
-
-### Artifact Retention
-
-Artifacts are cleaned automatically. Job run retention follows the self-hosted unlimited plan, seeded at 90 days; an existing `unlimited` plan value in the database is respected. The subscription service uses a 180-day fallback if the plan row is missing; cleanup uses its own 90-day fallback. Standalone playground run rows become eligible for cleanup after their terminal result has been retained for `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` (default 24 hours). For older rows without a completion time, age is measured from creation. Queued and running playground runs are retained. Cleanup runs on a schedule and observes a per-run safety limit, so the configured age is an eligibility threshold rather than an exact deletion time. Optional `.env` controls: `MONITOR_CLEANUP_CRON`, `JOB_RUNS_CLEANUP_CRON`, and `PLAYGROUND_CLEANUP_CRON` for schedules; `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` for playground retention.
+<Callout type="warn">
+On a public server, sign-up is open to anyone who can reach the URL. Create your account first, then set `SIGNUP_ENABLED=false` in `.env` (or restrict it with `ALLOWED_EMAIL_DOMAINS`) and recreate the app. See [Optional configuration](#optional-configuration).
+</Callout>
 
 <Accordions>
-  <Accordion title="Registration Controls">
-    | Variable | Default | Description |
-    |----------|---------|-------------|
-    | `SIGNUP_ENABLED` | `true` | Set `false` to disable open registration (invited users still work) |
-    | `ALLOWED_EMAIL_DOMAINS` | *(empty)* | Comma-separated allowlist (e.g. `acme.com,acme.org`) |
+<Accordion title="Installer options and exit codes" id="installer-options">
 
-    On a public server, create your account, then disable open signup or restrict allowed domains. To grant your account Super Admin access:
+| Option | Purpose |
+|--------|---------|
+| `--local` | Evaluate on this server (HTTP on localhost, port 3000) |
+| `--domain <host>` / `--email <address>` | Public HTTPS install; both are required together |
+| `--status-domain <host>` | Domain for status pages (default: same as `--domain`) |
+| `--yes`, `-y` | Never prompt; fail with a clear message if a value is missing |
+| `--dry-run` | Run read-only checks and print the plan; change nothing |
+| `--version <x.y.z>` | Release to install (default: the version bundled with the script) |
+| `--dir <path>` | Install location (default: `/opt/supercheck`) |
+| `--no-prewarm` | Skip importing the ~3 GB worker image into the sandbox; the first test run downloads it instead |
+| `--docker-group` | Add the invoking sudo user to the `docker` group (root-equivalent access) |
 
-    ```bash
-    sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
-    ```
-  </Accordion>
+Exit codes: `0` healthy, `1` failed, `2` bad usage, `3` installed but the health check reports a problem. The log is `/var/log/supercheck/install.log`.
 
-  <Accordion title="Email (SMTP)">
-    ```bash
-    SMTP_HOST=smtp.gmail.com
-    SMTP_PORT=587
-    SMTP_FROM_EMAIL=notifications@yourdomain.com
-    SMTP_USER=your-email@gmail.com        # Optional
-    SMTP_PASSWORD=your-app-password       # Optional
-    ```
-  </Accordion>
-
-  <Accordion title="AI Provider">
-    OpenAI GPT-6 Luna is the default. Add its API key to `.env`:
-
-    ```dotenv
-    AI_PROVIDER=openai
-    AI_MODEL=gpt-6-luna
-    OPENAI_API_KEY=your-api-key
-    ```
-
-    Manual AI SRE is enabled by default. Automatic alert triage is opt-in: set `SRE_AUTOMATION_ENABLED=true` in both app and worker, and note it can incur provider charges. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) to configure services and evidence sources.
-  </Accordion>
+</Accordion>
 </Accordions>
 
-For advanced settings, see the [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#environment-variables).
+## Verify
 
-## Operations
-
-Run commands from your installation's `deploy/docker` directory (default: `/opt/supercheck/deploy/docker`).
-
-Before starting upgraded workers, make the restricted worker kubeconfig readable by the worker's `pwuser` group (GID 1001). Run this on each Docker host that runs workers, including remote worker hosts; replace the path if `KUBECONFIG_FILE` is configured differently. Do not apply this to the admin `/etc/rancher/k3s/k3s.yaml`:
+Run from `/opt/supercheck/deploy/docker` (or `<your --dir>/deploy/docker`):
 
 ```bash
-sudo chgrp 1001 /etc/rancher/k3s/supercheck-worker.kubeconfig
-sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
+sudo docker compose ps
+curl --fail --silent --show-error http://localhost:3000/api/health
 ```
 
+All services should be healthy and the health endpoint should return `{"status":"ok"...`. For HTTPS, also open `https://<your-domain>/api/health`.
+
 <Accordions>
-  <Accordion title="Updates" id="updates">
-    Back up your data first. If your installation uses MinIO, follow **Upgrading from MinIO** below before updating.
+<Accordion title="What gets installed" id="what-gets-installed">
 
-    Set `SUPERCHECK_VERSION` to the release you want in `.env`, then run:
+| Service | Purpose | Host port |
+|---------|---------|-----------|
+| `app` | Next.js UI and API | `127.0.0.1:3000` |
+| `worker` | Test execution in the gVisor sandbox | none |
+| `postgres` | Database | `127.0.0.1:5432` |
+| `redis` | Job queues | `127.0.0.1:6379` |
+| `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` |
+| `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
-    ```bash
-    sudo docker compose pull
-    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
-    ```
+Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet). Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
 
-    Migrations run automatically. Preserve data volumes. Existing HTTPS installations can keep `docker-compose-secure.yml`.
-  </Accordion>
-
-  <Accordion title="Upgrading from MinIO (breaking)" id="upgrading-from-minio-breaking">
-    MinIO and RustFS disk formats are incompatible. From your **current checkout**, with the old stack running, migrate **before updating**:
-
-    ```bash
-    sudo curl -fsSL -o migrate-minio-to-rustfs.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/migrate-minio-to-rustfs.sh
-    sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
-    ```
-
-    Stop any remote workers first. The script stops local app/worker, copies and verifies buckets, and backs up `.env` to `.env.pre-rustfs`. Failed migration leaves `.env` unchanged.
-
-    Update the checkout to `v1.3.7-canary.16` with `git fetch origin tag v1.3.7-canary.16` and `git checkout --detach v1.3.7-canary.16`. Use `sudo git` for a root-owned checkout. Set `SUPERCHECK_VERSION=1.3.7-canary.16` in `.env`, then start:
-
-    ```bash
-    sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --remove-orphans
-    curl --fail --silent --show-error http://localhost:3000/api/health
-    ```
-
-    `--remove-orphans` removes the old MinIO container and frees port 9000. Verify a status page and test report before deleting `minio-data`. To roll back, run `sudo install -m 600 .env.pre-rustfs .env` and restore the previous checkout. If already updated without migrating, restore the old checkout and migrate first.
-  </Accordion>
-
-  <Accordion title="Backups" id="backups">
-    Back up PostgreSQL, the RustFS data volume, `.env`, and the Traefik certificate volume before upgrades. To export the database:
-
-    ```bash
-    install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
-      sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
-    ```
-
-    Store backups privately. The database export does not include files, `.env`, or certificates.
-  </Accordion>
+</Accordion>
 </Accordions>
 
-## Monitor Check Availability
+## Optional configuration
 
-Checks depend on connected workers. When multiple execution targets are configured and enabled for a monitor, checks are queued only to connected targets. Overall status and alert thresholds still evaluate the full configured set. Without [missing-region detection](#missing-region-detection-optional), missing results cannot satisfy **All**; under **Any**, one successful connected result produces **Up**; and **Majority** produces **Up** when the successful results meet the configured threshold. Otherwise, the cycle is stored as **Down**. An offline target does not switch a partial cycle to per-result thresholding. If worker-registry access fails, affected monitors remain **Down** until checks resume. Review individual check results even when the overall status is **Up**.
+Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recreate app worker`.
 
-## Next Steps
+<Accordions>
+<Accordion title="Common settings" id="common-settings">
 
-- [Multi-Server](/docs/app/deployment/multi-server) — add execution workers on separate servers.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SIGNUP_ENABLED` | `true` | `false` disables open registration (invited users still work) |
+| `ALLOWED_EMAIL_DOMAINS` | empty | Comma-separated signup allowlist, for example `acme.com,acme.org` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASSWORD` | unset | Email for alerts and invitations (disabled without `SMTP_HOST`) |
+| `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#environment-variables) |
+| `SRE_AUTOMATION_ENABLED` | `false` | Automatic alert triage; can incur provider charges. Set in app and worker |
+| `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
+| `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
+| `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
 
-- [AI SRE Setup](/docs/app/admin/ai-sre-setup) — add services and read-only evidence sources.
-- [Private Agent](/docs/app/deployment/private-agent) — reach sources inside another network.
+</Accordion>
+<Accordion title="Super Admin access" id="super-admin-access">
 
-## Queue durability
+```bash
+sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
+```
 
-Bundled Redis persists execution queues in the `redis-data` named volume using append-only persistence with an every-second fsync. Ordinary container restarts preserve queued work. Use `docker compose down` to stop the stack while preserving its data. Avoid `docker compose down -v` unless you intend to permanently delete **all** Compose volumes, including `postgres-data` (database), `rustfs-data` (artifacts), and `redis-data` (queue state). Abrupt host or storage failures can lose approximately one second of writes; this single-node deployment is not a Redis backup or high-availability solution. Interrupted executions may be retried, so scripts with external side effects should tolerate retries.
+</Accordion>
+<Accordion title="Connecting AI tools (MCP)" id="connecting-ai-tools-mcp-off-by-default">
+
+Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) read one project over read-only OAuth 2.1.
+
+| Step | Action |
+|---|---|
+| **1. Enable** | Set `MCP_SERVER_ENABLED=true` and recreate the app |
+| **2. Public URL** | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` for local use). Docker derives it from `APP_DOMAIN` |
+| **3. Check** | `/api/config/app` reports `mcp.enabled: true`; `POST /api/mcp` returns `401` with `WWW-Authenticate` |
+
+Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
+
+</Accordion>
+</Accordions>
+
+## Maintenance
+
+<Accordions>
+<Accordion title="Updates" id="updates">
+
+<Callout type="warn">
+Installations from a release that bundled MinIO must migrate storage to RustFS before updating. Run `migrate-minio-to-rustfs.sh` from your current checkout; see the [deployment README](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#upgrading).
+</Callout>
+
+Back up first. From `deploy/docker`, set `SUPERCHECK_VERSION` in `.env`, then:
+
+```bash
+sudo docker compose pull
+sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
+```
+
+Migrations run automatically. Never run `docker compose down -v`; it deletes the database, artifacts, and queue. If workers cannot read their kubeconfig after an update, re-run `sudo bash setup-k3s.sh`.
+
+</Accordion>
+<Accordion title="Backups" id="backups">
+
+Back up PostgreSQL, the `rustfs-data` volume, `.env`, and (for HTTPS) the `traefik-letsencrypt` volume. Keep `.env` private and off the server: its secrets are needed to read encrypted data.
+
+```bash
+install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
+  sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
+```
+
+The SQL export does not include files, `.env`, or certificates.
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+  <Card title="Multi-Server" href="/docs/app/deployment/multi-server" description="Add execution workers on separate servers" />
+  <Card title="AI SRE Setup" href="/docs/app/admin/ai-sre-setup" description="Add services and read-only evidence sources" />
+  <Card title="Private Agent" href="/docs/app/deployment/private-agent" description="Reach sources inside another network" />
+</Cards>

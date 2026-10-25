@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
+import { UUIDField } from "@/components/ui/uuid-field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +76,16 @@ function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
 }
 
 export const columns: ColumnDef<SreConnectorListItem>[] = [
+  {
+    accessorKey: "id",
+    header: () => <span className="ml-2">Connector ID</span>,
+    cell: ({ row }) => (
+      <div className="ml-2 w-[90px]">
+        <UUIDField value={row.original.id} maxLength={8} />
+      </div>
+    ),
+    enableSorting: false,
+  },
   {
     accessorKey: "name",
     header: "Name",

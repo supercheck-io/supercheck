@@ -177,7 +177,10 @@ Variables and secrets have special permission rules to balance usability with se
 **Project Editors** can create and edit variables and reveal secret values in assigned projects. They cannot delete variables. Keep revealed values out of chat, logs, and shared documents.
 </Callout>
 
-## System Administration
+## Super Admin and Access Scope
+
+<Accordions>
+<Accordion title="System administration (Super Admin only)" id="system-administration">
 
 These permissions are exclusive to **Super Admin** users:
 
@@ -189,7 +192,8 @@ These permissions are exclusive to **Super Admin** users:
 | **Queue Monitoring** | View and manage BullMQ job queues |
 | **System Statistics** | View platform-wide metrics |
 
-## Access Scope Details
+</Accordion>
+<Accordion title="Access scope details" id="access-scope-details">
 
 ### Organization-Wide Access
 
@@ -210,6 +214,9 @@ These roles have additional permissions in **assigned projects** and read-only a
 <Callout type="tip">
 **Why is Project Viewer organization-wide?** This design enables oversight and monitoring roles to view all projects without needing individual assignments. They cannot modify anything, making it safe for read-only visibility.
 </Callout>
+
+</Accordion>
+</Accordions>
 
 ## Quick Reference
 

@@ -523,6 +523,7 @@ export function ConnectorAdminView({
             isLoadingJobResult,
             isDisabling,
             globalFilterColumns: [
+              "id",
               "name",
               "type",
               "status",

@@ -65,6 +65,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
 
       const row = page.getByRole("row").filter({ hasText: name });
       await expect(page.getByRole("columnheader")).toHaveText([
+        "Service ID",
         "Service",
         "Env",
         "Description",

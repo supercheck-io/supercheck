@@ -90,32 +90,36 @@ sequenceDiagram
 </div>
 </div>
 
-## Setup
+## Prerequisites
 
-<Accordions>
-  <Accordion title="Requirements" id="requirements">
-    - A running self-hosted instance and Super Admin access.
-    - A Linux server for each additional worker: Ubuntu 22.04+ or Debian 12+, x86_64 or ARM64, at least 2 vCPU, 4 GB RAM, and 15 GB free disk.
-    - Sudo access, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/).
-    - VPN or encrypted private connectivity to the main server's PostgreSQL, Redis, and S3 storage. Allow only worker hosts; never expose these services publicly.
-    - App, workers, Compose files, and sandbox scripts from the same release. Examples use **1.3.7-canary.16**.
+| Requirement | Details |
+|-------------|---------|
+| Main server | A running self-hosted instance and Super Admin access |
+| Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk minimum (15 GB recommended), `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
+| Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379), and S3 (9000) |
+| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.3.7-canary.16** |
 
-    macOS, Windows, WSL2, and Docker Desktop are not supported for execution workers.
-  </Accordion>
-</Accordions>
+<Callout type="warn">
+Never expose PostgreSQL, Redis, or S3 publicly. Allow only worker hosts. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
+</Callout>
 
-### 1. Configure the main server
+## Set up
 
-In [Super Admin](/docs/app/admin/super-admin#locations), add and enable execution entries such as `worker-main` and `worker-extra`. Use the matching code for each worker’s `WORKER_LOCATION`. Set the main server's `.env`:
+<Steps>
+<Step>
+
+### Configure the main server
+
+In [Super Admin](/docs/app/admin/super-admin#locations), add and enable one execution entry per worker, such as `worker-main` and `worker-extra`. Each worker's `WORKER_LOCATION` must match its entry's code.
+
+Set the main server's `.env`. `RUNNING_CAPACITY` is the total number of workers across all servers (2 in this example); the app admits at most that many concurrent runs:
 
 ```dotenv
 WORKER_LOCATION=worker-main
-RUNNING_CAPACITY=3
+RUNNING_CAPACITY=2
 ```
 
-Set `RUNNING_CAPACITY` to the total number of workers across all servers (3 in this example); the App admits at most that many concurrent runs.
-
-In its Compose file, replace the PostgreSQL, Redis, and RustFS localhost port bindings with the server's **private VPN address**:
+In `docker-compose.yml`, replace the `127.0.0.1` PostgreSQL, Redis, and RustFS port bindings with the server's **private VPN address**:
 
 ```yaml
 services:
@@ -130,15 +134,16 @@ services:
       - "10.0.0.10:9000:9000"
 ```
 
-From the installation's `deploy/docker` directory, apply the changes. Keep existing HTTPS settings and any custom `-f` option:
+From `deploy/docker`, apply the change (keep any custom `-f` option):
 
 ```bash
 sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
 ```
 
-### 2. Start an additional worker
+</Step>
+<Step>
 
-On each prepared worker server:
+### Prepare each worker server
 
 ```bash
 mkdir -p ~/supercheck-worker
@@ -148,7 +153,12 @@ curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/superc
 sudo bash setup-k3s.sh
 ```
 
-Create `.env` with the worker routing code and credentials from the main server. Use its **private** address and the same database and storage buckets:
+</Step>
+<Step>
+
+### Start the worker
+
+Create `.env` in the same directory. Use the main server's **private** address, the same database and storage, and the credentials from the main server's `.env` (`DB_PASSWORD`, `REDIS_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`):
 
 ```dotenv
 WORKER_LOCATION=worker-extra
@@ -168,17 +178,21 @@ chmod 600 .env
 sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
-### 3. Verify execution
+</Step>
+<Step>
 
-Confirm the execution entry shows **Active** and the worker is ready, then run a monitor or k6 test against that entry and inspect its results. A heartbeat alone does not verify database, Redis, and storage connections.
+### Verify execution
 
-Each worker's `WORKER_LOCATION` must match its enabled execution entry. Playwright uses a shared queue, so adding a worker does not pin browser tests to a particular server. Keep `local` for the default single-server setup; register distinct codes when configuring additional execution targets.
+Confirm the execution entry shows **Active**, then run a monitor or k6 test against that entry and inspect the result. A heartbeat alone does not prove the database, Redis, and storage connections work.
 
-### Choosing what each worker runs
+</Step>
+</Steps>
 
-Workers also read `CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`). Set it to `true` on every worker, only after all of them run the current version, to end runs that were cancelled before they started and were never picked up.
+Playwright uses a shared queue, so adding a worker does not pin browser tests to a particular server. Keep `local` for the default single-server setup; register distinct codes only for additional execution targets.
 
-By default a worker consumes every queue, which is right for single-server and most multi-server setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` for that worker. With the shipped Compose files, add it to the `.env` file next to the Compose file (or export it before `docker compose up`); the files pass it into the worker container. When running the worker another way, set it as a real environment variable, because a value that exists only in a `.env` file inside the container is read too late:
+## Choosing what each worker runs
+
+By default a worker consumes every queue, which suits most setups. To make a server lightweight (for example, monitoring only), set `WORKER_QUEUES` in that worker's `.env`:
 
 | Token | Queue consumed |
 |-------|----------------|
@@ -187,10 +201,30 @@ By default a worker consumes every queue, which is right for single-server and m
 | `global-playwright` | Shared Playwright queue (tests and CI jobs) |
 | `global-k6` | Shared k6 queue |
 
-```bash
+```dotenv
 WORKER_QUEUES=monitor
 ```
 
-An unknown token stops the worker at startup. Which workloads users may run in a location is set separately in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)), so enabling browser or k6 for a location later does not require redeploying other workers.
+An unknown token stops the worker at startup. Which workloads users may run in a location is set separately in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)).
+
+`CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
 
 For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
+
+## Missing-region detection
+
+With workers in several locations, a silent region holds up a monitor result by default. This option closes each run at a deadline and counts silent regions as failed.
+
+<Accordions>
+<Accordion title="Missing-region detection (optional)" id="missing-region-detection-optional">
+
+| Step | Action |
+|---|---|
+| **1. Start the controller** | Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (for example `https,monitor-control`), run `sudo docker compose up -d monitor-control`, and keep exactly one instance |
+| **2. Check it** | `sudo docker compose ps monitor-control` shows it healthy |
+| **3. Turn it on** | Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app |
+
+`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`, plus two check timeouts) sets how long a run waits. To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, keep `monitor-control` running until open runs close, then remove it from `COMPOSE_PROFILES`.
+
+</Accordion>
+</Accordions>

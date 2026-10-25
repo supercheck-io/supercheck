@@ -92,6 +92,32 @@ describe("SreIncidentsList", () => {
     mockProjectError = null;
   });
 
+  it("shows the incident number in its own column and no per-row evidence summary", () => {
+    render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
+    expect(screen.getByRole("columnheader", { name: /Incident ID/ })).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /Checkout incident 7/ });
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[0]).toHaveTextContent(/^#7$/);
+    expect(cells[1]).toHaveTextContent(/^Checkout incident 7$/);
+    expect(within(row).queryByText(/evidence item/)).not.toBeInTheDocument();
+  });
+
+  it("sorts by incident number from the Incident ID header", () => {
+    render(
+      <SreIncidentsList
+        incidents={[incidentFixture(2), incidentFixture(3), incidentFixture(1)]}
+        loadError={null}
+      />,
+    );
+    const firstNumber = () =>
+      within(screen.getAllByRole("row")[1]).getAllByRole("cell")[0].textContent;
+    const header = screen.getByRole("button", { name: /Incident ID/ });
+    fireEvent.click(header);
+    expect(firstNumber()).toBe("#3");
+    fireEvent.click(header);
+    expect(firstNumber()).toBe("#1");
+  });
+
   it("disables creation while permissions load and enables it when they resolve", () => {
     mockRole = "";
     mockProjectLoading = true;
@@ -138,7 +164,7 @@ describe("SreIncidentsList", () => {
     fireEvent.click(actions.getByRole("button", { name: /Status/ }));
     fireEvent.click(screen.getByRole("option", { name: "investigating" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
-    expect(screen.getByText("#2 · Checkout incident 2")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
   });
@@ -171,7 +197,7 @@ describe("SreIncidentsList", () => {
     fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
     expect(
-      screen.queryByText("#3 · Checkout incident 3"),
+      screen.queryByText("Checkout incident 3"),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
     expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
@@ -211,9 +237,9 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "No service linked" }));
-    expect(screen.getByText("#1 · Checkout incident 1")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
     expect(
-      screen.queryByText("#2 · Checkout incident 2"),
+      screen.queryByText("Checkout incident 2"),
     ).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(
@@ -224,10 +250,10 @@ describe("SreIncidentsList", () => {
     );
     fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
-    expect(screen.getByText("#3 · Checkout incident 3")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
-    expect(screen.getByText("#3 · Checkout incident 3")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
 
   it("resets pagination when a facet changes", () => {
@@ -268,7 +294,7 @@ describe("SreIncidentsList", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
     expect(
-      screen.queryByText("#14 · Checkout incident 14"),
+      screen.queryByText("Checkout incident 14"),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
@@ -296,10 +322,10 @@ describe("SreIncidentsList", () => {
 
     const table = screen.getByRole("table");
     expect(
-      within(table).queryByRole("columnheader", { name: /^ID$/ }),
-    ).not.toBeInTheDocument();
+      within(table).getByRole("columnheader", { name: /^Incident ID$/ }),
+    ).toBeInTheDocument();
     expect(
-      within(table).getByRole("columnheader", { name: /^Incident$/ }),
+      within(table).getByRole("columnheader", { name: /^Title$/ }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("columnheader", { name: /Investigation/ }),
@@ -315,9 +341,9 @@ describe("SreIncidentsList", () => {
     });
 
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
-    expect(screen.getByText("#13 · Checkout incident 13")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 13")).toBeInTheDocument();
     expect(
-      screen.queryByText("#12 · Checkout incident 12"),
+      screen.queryByText("Checkout incident 12"),
     ).not.toBeInTheDocument();
   });
 });
