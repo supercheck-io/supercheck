@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { invitation, member, organization, user as userTable } from "@/db/schema";
@@ -86,6 +87,7 @@ export async function DELETE(
     }
 
     // Find the invitation and verify it belongs to this organization
+    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
     const existingInvitation = await db
       .select({
         id: invitation.id,
@@ -211,6 +213,7 @@ export async function POST(
     }
 
     // Find the invitation and verify it belongs to this organization
+    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
     const inviteDetails = await db
       .select({
         id: invitation.id,

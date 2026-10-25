@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -29,6 +30,7 @@ export async function GET(
     }
 
     // Verify the provider belongs to this organization and project
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
     const [provider] = await db
       .select({ id: notificationProviders.id })
       .from(notificationProviders)

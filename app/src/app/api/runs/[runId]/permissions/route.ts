@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
@@ -28,6 +29,7 @@ export async function GET(
     }
     
     // Find the run and its associated job to get project and organization IDs
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await db
       .select({
         runId: runs.id,

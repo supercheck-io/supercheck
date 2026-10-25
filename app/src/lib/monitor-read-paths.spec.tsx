@@ -33,7 +33,7 @@ import MainPage from '@/app/(main)/monitors/[id]/page';
 import NotificationPage from '@/app/(notification)/notification-monitor/[id]/page';
 
 const stored = {
-  id: 'monitor-1', name: 'Example', type: 'website', target: 'https://deploy:private-pass@example.com/health?api_key=private-apikey&page=2',
+  id: '5a4ace5e-24bb-5359-8883-a64501912226', name: 'Example', type: 'website', target: 'https://deploy:private-pass@example.com/health?api_key=private-apikey&page=2',
   projectId: 'project-1', organizationId: 'org-1', status: 'up',
   createdAt: null, updatedAt: null, description: null, createdByUserId: null,
   frequencyMinutes: 5, enabled: true, alertConfig: null, lastCheckAt: null,
@@ -41,7 +41,7 @@ const stored = {
   config: { method: 'POST', auth: { type: 'bearer', token: 'private-token' }, headers: { 'X-Key': 'private-key' }, body: 'private-body' },
 } satisfies typeof monitors.$inferSelect;
 const storedResult = {
-  id: 'result-1', monitorId: 'monitor-1', checkedAt: new Date('2026-01-01T00:00:00Z'), status: 'up', isUp: true,
+  id: 'result-1', monitorId: '5a4ace5e-24bb-5359-8883-a64501912226', checkedAt: new Date('2026-01-01T00:00:00Z'), status: 'up', isUp: true,
   isStatusChange: false, responseTimeMs: 12, location: 'eu-central', testExecutionId: null, testReportS3Url: null,
   details: { statusCode: 200, responseHeaders: { 'content-type': 'text/html', 'set-cookie': 'sid=private-session' } },
 };
@@ -72,7 +72,7 @@ beforeEach(() => {
 const readers = {
   list: async () => JSON.stringify(await (await list(new Request('http://localhost/api/monitors'))).json()),
   paginatedList: async () => JSON.stringify(await (await list(new Request('http://localhost/api/monitors?page=1'))).json()),
-  detail: async () => JSON.stringify(await (await detail(new NextRequest('http://localhost/api/monitors/monitor-1'), scope)).json()),
+  detail: async () => JSON.stringify(await (await detail(new NextRequest('http://localhost/api/monitors/5a4ace5e-24bb-5359-8883-a64501912226'), scope)).json()),
   mainPage: async () => renderToStaticMarkup(await MainPage(scope)),
   notificationPage: async () => renderToStaticMarkup(await NotificationPage(scope)),
 };
@@ -101,7 +101,7 @@ it('does not serialize an inaccessible notification monitor', async () => {
 });
 
 it('redacts session headers from stored result details while keeping the response shape', async () => {
-  const body = JSON.stringify(await (await results(new NextRequest('http://localhost/api/monitors/monitor-1/results'), scope)).json());
+  const body = JSON.stringify(await (await results(new NextRequest('http://localhost/api/monitors/5a4ace5e-24bb-5359-8883-a64501912226/results'), scope)).json());
   expect(body).not.toContain('private-session');
   expect(body).toContain('[REDACTED]');
   expect(body).toContain('text/html');

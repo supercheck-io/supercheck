@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     // This prevents race conditions where multiple concurrent calls could create duplicate orgs
     const result = await db.transaction(async (tx) => {
       // Serialize signup and invitation acceptance for this user.
-      const [lockedUser] = await tx.select({ id: userTable.id }).from(userTable)
+      const [lockedUser] = await tx.select({ id: userTable.id, trialGrantedAt: userTable.trialGrantedAt }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!lockedUser) throw new Error("SESSION_CHANGED");
 
@@ -166,11 +166,12 @@ export async function POST(request: NextRequest) {
         })
         .returning();
 
-      // Cloud only: a verified user's first organization starts a free trial, so
-      // the whole product can be tried before choosing a plan. It is granted once
-      // (this branch runs only when the user has no organization) and is never billed.
-      if (!isSelfHosted && isTrialEnabled()) {
-        await tx.insert(executionEntitlements).values(buildTrialEntitlement(newOrg.id));
+      // Keep the grant on the locked user so deleting an organization cannot reset it.
+      if (!isSelfHosted && isTrialEnabled() && !lockedUser.trialGrantedAt) {
+        const trial = buildTrialEntitlement(newOrg.id);
+        await tx.insert(executionEntitlements).values(trial);
+        await tx.update(userTable).set({ trialGrantedAt: trial.trialStartedAt })
+          .where(eq(userTable.id, currentUser.id));
       }
 
       // Add user as owner of the organization

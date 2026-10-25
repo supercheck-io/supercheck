@@ -73,6 +73,7 @@ export async function GET(
     }
 
     // Find the monitor scoped to current organization and project (defense-in-depth)
+    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: and(
         eq(monitors.id, id),

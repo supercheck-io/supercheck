@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, user as userTable, projectMembers, projects } from '@/db/schema';
@@ -94,6 +95,7 @@ export async function PUT(
       role === 'project_editor' || role === 'project_admin';
 
     // Prevent changing owner role
+    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Member not found" }, { status: 404 });
     const existingMember = await db
       .select({
         id: member.userId,
@@ -373,6 +375,7 @@ export async function DELETE(
     }
 
     // Get member details for audit
+    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Member not found" }, { status: 404 });
     const existingMember = await db
       .select({
         id: member.userId,

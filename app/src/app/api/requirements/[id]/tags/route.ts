@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { requirements, requirementTags, tags } from '@/db/schema';
@@ -26,6 +27,7 @@ export async function GET(
     const { id: requirementId } = await params;
 
     // Verify requirement exists and belongs to current org/project
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Requirement not found" }, { status: 404 });
     const requirement = await db
       .select({ id: requirements.id })
       .from(requirements)
@@ -112,6 +114,7 @@ export async function POST(
     }
 
     // Verify requirement exists AND belongs to current org/project to prevent IDOR
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Requirement not found" }, { status: 404 });
     const requirement = await db
       .select({ id: requirements.id })
       .from(requirements)
