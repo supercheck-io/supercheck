@@ -501,12 +501,20 @@ export function SreIncidentsList({
               <TableHeader>
                 <TableRow>
                   <SortableHead
-                    label="Incident"
+                    label="Incident ID"
+                    sortKey="incidentNumber"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
+                  <SortableHead
+                    label="Title"
                     sortKey="title"
                     activeKey={sortKey}
                     direction={sortDirection}
                     onSort={handleSort}
-                    className="w-[420px]"
+                    className="w-[360px]"
                   />
                   <SortableHead
                     label="Severity"
@@ -554,7 +562,7 @@ export function SreIncidentsList({
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-24 text-center text-muted-foreground"
                     >
                       No incidents match the current filters.
@@ -575,18 +583,18 @@ export function SreIncidentsList({
                       }}
                       aria-label={`View incident ${incident.id}: ${incident.title}`}
                     >
-                      <TableCell className="max-w-[420px] py-2.5">
+                      <TableCell className="py-2.5">
+                        {/* Same badge style as the UUID columns in other tables. */}
+                        <code className="rounded-sm bg-muted/60 px-2 py-1 font-mono text-xs dark:bg-muted">
+                          #{incident.incidentNumber}
+                        </code>
+                      </TableCell>
+                      <TableCell className="max-w-[360px] py-2.5">
                         <span
                           className="block truncate font-medium"
                           title={incident.title}
                         >
-                          #{incident.incidentNumber} · {incident.title}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {incident.alertCount} alert
-                          {incident.alertCount === 1 ? "" : "s"} ·{" "}
-                          {incident.evidenceCount} evidence item
-                          {incident.evidenceCount === 1 ? "" : "s"}
+                          {incident.title}
                         </span>
                       </TableCell>
                       <TableCell className="py-2.5">

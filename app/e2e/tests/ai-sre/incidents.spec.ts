@@ -207,7 +207,8 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
-        "Incident",
+        "Incident ID",
+        "Title",
         "Severity",
         "Status",
         "Service",
