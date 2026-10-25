@@ -588,14 +588,16 @@ check_ports() {
   # Compose also binds PostgreSQL and Redis on loopback; their host ports can be moved in .env.
   local db_port redis_port
   # env_get fails under pipefail before .env exists (first install).
-  db_port="$(env_get DB_HOST_PORT || true)"; redis_port="$(env_get REDIS_HOST_PORT || true)"
+  db_port="${DB_HOST_PORT:-$(env_get DB_HOST_PORT || true)}"; redis_port="${REDIS_HOST_PORT:-$(env_get REDIS_HOST_PORT || true)}"
   local ports=(3000 9000 "${db_port:-5432}" "${redis_port:-6379}")
   [[ "$MODE" == "public" ]] && ports=(80 443 "${ports[@]}")
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
       # A re-run on a running install legitimately finds our own stack listening.
       if docker ps --filter "label=com.docker.compose.project=$(project_name)" --format '{{.Ports}}' 2>/dev/null | grep -Eq ":${p}->"; then note "Port $p is held by the existing Supercheck stack."
-      else fail "Port $p is already in use by another process."; note "Find it with: ss -ltnp 'sport = :$p'"; exit 1; fi
+      else fail "Port $p is already in use by another process."; note "Find it with: ss -ltnp 'sport = :$p'"
+        [[ "$p" == "${db_port:-5432}" || "$p" == "${redis_port:-6379}" ]] && note "Or move Supercheck's port with DB_HOST_PORT or REDIS_HOST_PORT in $(compose_dir)/.env."
+        exit 1; fi
     fi
   done
 }

@@ -131,8 +131,8 @@ Components are the public services on your page. A component can link to an inte
 | Field | Purpose |
 |---|---|
 | **Basics** | Name, optional description, and status. Status is manual until you link a monitor |
-| **Monitors** | Linked monitors, aggregation method, and **Failing monitors required**. Weighted vote takes a weight from 1 to 100 per monitor |
-| **Automatic incidents** | Optionally publish outage and recovery incidents from component health. Off by default |
+| **Monitors** | Linked monitors, aggregation method, and **Failing monitors required**. **Weighted average** takes a weight from 1 to 100 per monitor |
+| **Publish outage and recovery incidents automatically** | Optional, off by default |
 | **Visibility** | Show on the public page, show only while degraded, and link an internal service (never published) |
 
 ![Add Component](/screenshots/status-page-add-component.png)
@@ -149,10 +149,10 @@ flowchart LR
 
 | Aggregation | Component status |
 |---|---|
-| **Worst case** | The worst status among linked monitors |
-| **Best case** | The best status among linked monitors |
+| **Worst monitor** | The worst status among linked monitors |
+| **Best monitor** | The best status among linked monitors |
 | **Majority vote** | The status most linked monitors report |
-| **Weighted vote** | The status with the highest combined weight; ties go to the worse status |
+| **Weighted average** | The status with the highest combined weight; ties go to the worse status |
 
 <Callout type="info">
 Linked components refresh every 10 seconds. **Failing monitors required** is the minimum number of failing linked monitors, separate from a monitor's own alert threshold. If you resolve an automatic incident while its monitors still fail, it is not reopened until the component returns to **Operational**.
@@ -397,7 +397,7 @@ On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after th
 | Target shown in Settings | `cname.example.com` | A/AAAA to your app; omit if the wildcard covers it |
 | Custom status page | `status.example.net` | CNAME to `cname.example.com` |
 
-Keep custom hostnames outside the `STATUS_PAGE_DOMAIN` namespace. DNS verification does not issue a certificate on self-hosted installs: the secure Compose file routes verified hostnames through the `status-custom` Traefik router, and you supply a matching certificate in Traefik's dynamic TLS configuration or your own reverse proxy (forwarding to the app on port 3000). On Supercheck Cloud, HTTPS is automatic after verification.
+Keep custom hostnames outside the `STATUS_PAGE_DOMAIN` namespace. DNS verification does not issue a certificate on self-hosted installs: the HTTPS profile of `docker-compose.yml` routes verified hostnames through the `status-custom` Traefik router, and you supply a matching certificate in Traefik's dynamic TLS configuration or your own reverse proxy (forwarding to the app on port 3000). On Supercheck Cloud, HTTPS is automatic after verification.
 
 Local development uses `http://localhost:3000/status/[subdomain]`; custom domains need a publicly reachable `STATUS_PAGE_DOMAIN`.
 

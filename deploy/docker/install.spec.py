@@ -66,6 +66,7 @@ docker() { :; }
 check_ports
 ''', 1)
         self.assertIn('Port 5432', output)
+        self.assertIn('DB_HOST_PORT', output)
 
     def test_moved_database_and_redis_ports_are_checked(self):
         output = self.run_shell(r'''printf 'DB_HOST_PORT=15432\nREDIS_HOST_PORT=16379\n' > "$COMPOSE_DIR/.env"
@@ -75,6 +76,13 @@ check_ports
 ''', 1)
         self.assertIn('Port 16379', output)
         self.run_shell(r'''printf 'DB_HOST_PORT=15432\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''')
+
+    def test_exported_database_port_overrides_env_file(self):
+        self.run_shell(r'''export DB_HOST_PORT=15432
 port_in_use() { [[ "$1" == 5432 ]]; }
 docker() { :; }
 check_ports

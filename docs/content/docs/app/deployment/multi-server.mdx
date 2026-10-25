@@ -95,7 +95,7 @@ sequenceDiagram
 | Requirement | Details |
 |-------------|---------|
 | Main server | A running self-hosted instance and Super Admin access |
-| Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 15 GB free disk, `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
+| Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk minimum (15 GB recommended), `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
 | Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379), and S3 (9000) |
 | Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.3.7-canary.16** |
 
