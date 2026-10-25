@@ -589,6 +589,8 @@ check_ports() {
   local db_port redis_port
   # env_get fails under pipefail before .env exists (first install).
   db_port="${DB_HOST_PORT:-$(env_get DB_HOST_PORT || true)}"; redis_port="${REDIS_HOST_PORT:-$(env_get REDIS_HOST_PORT || true)}"
+  # Keep digits only, so a stray CR or space from .env cannot reach port_in_use.
+  db_port="${db_port//[^0-9]/}"; redis_port="${redis_port//[^0-9]/}"
   local ports=(3000 9000 "${db_port:-5432}" "${redis_port:-6379}")
   [[ "$MODE" == "public" ]] && ports=(80 443 "${ports[@]}")
   for p in "${ports[@]}"; do

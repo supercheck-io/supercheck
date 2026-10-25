@@ -81,6 +81,14 @@ docker() { :; }
 check_ports
 ''')
 
+    def test_env_port_with_carriage_return_is_checked(self):
+        output = self.run_shell(r'''printf 'DB_HOST_PORT=15432\r\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 15432 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 15432', output)
+
     def test_exported_database_port_overrides_env_file(self):
         self.run_shell(r'''export DB_HOST_PORT=15432
 port_in_use() { [[ "$1" == 5432 ]]; }
