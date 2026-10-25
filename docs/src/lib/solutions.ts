@@ -207,9 +207,9 @@ claude mcp add --transport http supercheck \\
     },
   },
   {
-    slug: "test-automation",
-    role: "For test automation teams",
-    metaTitle: "Supercheck for test automation",
+    slug: "qa",
+    role: "For QA engineers",
+    metaTitle: "Supercheck for QA engineers",
     metaDescription:
       "Record, write and schedule Playwright browser, API and database tests and k6 load tests, then keep production covered with synthetic monitors.",
     title: "Record, run and schedule your Playwright and k6 suites",

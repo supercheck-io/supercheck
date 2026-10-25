@@ -209,7 +209,7 @@ export default async function HomePage() {
         <section className="border-t border-fd-border bg-fd-card/40">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Solutions" title="Built for the people who keep software working">
-              See how developers, SRE and platform teams, test automation teams and engineering leaders use Supercheck.
+              See how developers, SRE and platform teams, QA engineers and engineering leaders use Supercheck.
             </SectionHeading>
             <SolutionCards className="mt-12" />
           </div>

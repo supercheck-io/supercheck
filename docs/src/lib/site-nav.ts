@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import { PlaywrightMark } from "../components/landing/tool-logos";
 import {
   ArrowLeftRight,
   BellRing,
@@ -13,6 +12,7 @@ import {
   Globe,
   History,
   Layers,
+  MonitorPlay,
   MousePointerClick,
   Plug,
   Server,
@@ -62,7 +62,7 @@ export const productMenu: NavMenu = {
       title: "Monitor",
       items: [
         { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port", href: "/docs/app/monitor", icon: Globe },
-        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: PlaywrightMark },
+        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: MonitorPlay },
       ],
     },
     {
@@ -91,7 +91,7 @@ export const solutionsMenu: NavMenu = {
       items: [
         { title: "Developers", description: "Ship tests and monitors with your code", href: "/solutions/developers", icon: Code },
         { title: "SRE and platform", description: "Catch outages, find the cause, update users", href: "/solutions/sre", icon: Layers },
-        { title: "Test automation", description: "Playwright and k6 suites that run on a schedule", href: "/solutions/test-automation", icon: ClipboardCheck },
+        { title: "QA engineers", description: "Playwright and k6 suites that run on a schedule", href: "/solutions/qa", icon: ClipboardCheck },
         { title: "Engineering leaders", description: "Coverage, access and audit trail in one view", href: "/solutions/engineering-leaders", icon: Users },
       ],
     },
