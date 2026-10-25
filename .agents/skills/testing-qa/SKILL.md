@@ -26,7 +26,7 @@ flowchart LR
 | `cli` | `npm run typecheck` | `npm run lint` | `npm test` | `npm run build`, `npm pack --dry-run` |
 | `app/e2e` | `npx tsc --noEmit -p tsconfig.json` | | | `npx playwright test --list` |
 
-- Unit tests are colocated `*.spec.ts(x)`. DB-backed suites are `*.db.spec.ts`, excluded from `npm test` and run by `npm run test:db` (`app/jest.db.config.js`: needs `TEST_DATABASE_URL`, creates and drops a throwaway database). A green `npm test` says nothing about them.
+- Unit tests are colocated `*.spec.ts(x)`. DB-backed suites are `*.db.spec.ts`, excluded from `npm test` and run by `npm run test:db` in each package (`app/jest.db.config.js` creates and drops a throwaway database; worker suites live in `worker/test/` with `worker/jest.db.config.js`; both need `TEST_DATABASE_URL`). A green `npm test` says nothing about them.
 - Start with the narrowest test proving the changed behavior, then broaden based on blast radius.
 - App/worker shared contracts require producer and consumer coverage. Schema changes require generated migration and schema-contract verification.
 - CLI changes require typecheck, lint, Jest, build, and package-content validation.

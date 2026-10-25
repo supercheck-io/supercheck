@@ -80,7 +80,7 @@ flowchart TD
 - Add indexes for real filters, joins, ordering, and uniqueness—not as a template exercise.
 - Generate and inspect migrations. New non-null columns need safe behavior for existing rows.
 - Analyze destructive changes, backfills, transaction duration, locks, rollback/recovery, and rolling app/worker compatibility.
-- Keep app and worker schema representations compatible where both packages read the same tables. `worker/src/db/schema/` is a separate copy of `app/src/db/schema/` (including `types.ts`): a schema or type change in one package must be mirrored in the other.
+- Keep app and worker schema representations compatible where both packages read the same tables. `worker/src/db/schema/` (including `types.ts`) is a separate, smaller copy: when you change a table, column, or JSON type the worker reads, update the worker copy too; app-only tables stay app-only.
 
 ## React Query and client data
 

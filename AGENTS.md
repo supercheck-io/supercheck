@@ -14,10 +14,11 @@ Run the checks for the packages you changed and fix everything they report. They
 
 ```bash
 # App (from app/)
-npx next typegen && npx tsc --noEmit   # Regenerate route types, then type check
+npx tsc --noEmit                       # if route types are stale, run `npx next typegen` first
 npm run lint                           # eslint . --max-warnings 0
 npm test                               # Jest unit tests (excludes *.db.spec.ts)
-npm run test:db                        # DB-backed suites; needs TEST_DATABASE_URL
+# When you change a *.db.spec.ts or the queries it covers (needs Postgres + TEST_DATABASE_URL):
+npm run test:db
 
 # Worker (from worker/)
 npx tsc --noEmit
@@ -31,7 +32,7 @@ npm run typecheck && npm run lint && npm test
 npx tsc --noEmit -p tsconfig.json
 ```
 
-Fix the root cause of any failure; never silence it with `eslint-disable`, `@ts-ignore`, `any`, or by skipping tests. In Claude Code, `/check` runs this gate for changed packages.
+Fix the root cause of any failure; never silence it with `eslint-disable`, `@ts-ignore`, `any`, or by skipping tests. In Claude Code, `/check` runs the always-on checks above for changed packages (not `test:db`).
 
 ### Running single tests
 
@@ -55,12 +56,12 @@ cd ../worker && npm run dev       # http://localhost:8000/health/ready
 ```
 
 - Verify connections: `curl localhost:3000/api/health` (database/redis/s3 must be `ok`) and `curl localhost:8000/health/ready`.
-- Execution still runs as Kubernetes Jobs. On OrbStack (no gVisor RuntimeClass) `worker/.env` sets `EXECUTION_RUNTIME_CLASS_NAME=none`, `EXECUTION_IMAGE_PULL_POLICY=Never`, and `WORKER_IMAGE=supercheck-worker:latest`; inspect runs with `kubectl get jobs,pods -n supercheck-execution`. Rebuild the execution image (`docker compose -f docker-compose-local.yml build worker`) after changing execution runtime code.
+- Execution still runs as Kubernetes Jobs. On OrbStack (no gVisor RuntimeClass) set `EXECUTION_RUNTIME_CLASS_NAME=none` in `worker/.env`; to run a locally built execution image, also set `EXECUTION_IMAGE_PULL_POLICY=Never` and `WORKER_IMAGE=supercheck-worker:latest`. Inspect runs with `kubectl get jobs,pods -n supercheck-execution`. Rebuild the execution image (`docker compose -f docker-compose-local.yml build worker`) after changing execution runtime code.
 - Restore the containerized stack: stop the dev servers, then `docker compose -f docker-compose-local.yml up -d app worker`.
 - Run `npm run db:migrate` in `app/` after pulling schema changes.
 - Stop dev servers you started by PID; do not kill processes you did not start.
 
-Full contributor walkthrough: CONTRIBUTING.md, "Run app and worker from source against Compose infrastructure".
+Full contributor walkthrough: CONTRIBUTING.md, "Run the app and worker from source against Compose infrastructure".
 
 ## Code style
 
@@ -71,7 +72,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run app and worker from source a
 
 ## Data and tenancy
 
-- Drizzle ORM for queries; schemas in `app/src/db/schema/`, mirrored for the worker in `worker/src/db/schema/` (keep both in sync). Create Zod schemas alongside tables. Primary keys use UUID v7.
+- Drizzle ORM for queries; schemas in `app/src/db/schema/`. The worker keeps its own subset in `worker/src/db/schema/`: keep it compatible for every table and column the worker reads. Create Zod schemas alongside tables. Primary keys use UUID v7.
 - Multi-tenant: scope every query by the owning `organizationId`/`projectId`; client-supplied ids are selectors, not proof of ownership.
 - Reject malformed UUID route params before database access (`app/src/lib/uuid.ts`).
 
@@ -87,7 +88,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run app and worker from source a
 
 - Validate input with Zod at the boundary, then authorize, then run business logic.
 - Return stable, safe error messages and correct status codes; keep internal detail in logs.
-- Server actions start with `"use server"`, validate with the shared schema, and return `{ success, data | error }`.
+- Server actions start with `"use server"`, validate with the shared schema, and return `{ success: true, <domain key> }` or `{ success: false, error }`; follow the neighboring action's key names.
 
 ## UI
 
@@ -110,7 +111,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run app and worker from source a
 
 1. **Better Auth is ESM-only**: use dynamic imports in CommonJS contexts.
 2. **Worker scaling**: `MAX_CONCURRENT_EXECUTIONS=1` is fixed in `worker/src/common/constants/memory.constants.ts`; scale with `WORKER_REPLICAS`.
-3. **S3/RustFS**: use `S3_FORCE_PATH_STYLE=true` for local object storage.
+3. **S3/RustFS**: S3 clients hardcode path-style addressing (`forcePathStyle: true`); keep it when adding a client.
 4. **Client vs server**: never import server-only modules into client components.
 5. **BullMQ QueueEvents**: never share connections; each `QueueEvents` needs its own `connection.duplicate()` (blocking XREAD). BullMQ Workers may share, since BullMQ duplicates internally.
 6. **App and worker deploy independently**: queue payloads, statuses, and schemas must tolerate version skew.

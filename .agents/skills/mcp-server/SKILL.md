@@ -9,12 +9,12 @@ The app exposes a read-only Model Context Protocol endpoint for AI clients. It i
 
 ```mermaid
 flowchart LR
-  CLIENT[MCP client] --> ROUTE[/api/mcp route]
+  CLIENT[MCP client] --> ROUTE["/api/mcp route"]
   ROUTE --> ORIGIN[Origin check]
-  ORIGIN --> BODY[Bounded body read]
-  BODY --> LIMIT[Admission: rate, batch, concurrency]
-  LIMIT --> TOKEN[OAuth access token]
-  TOKEN --> CTX[Call context: org, project, role]
+  ORIGIN --> TOKEN[OAuth access token verified]
+  TOKEN --> BODY[Bounded body read]
+  BODY --> LIMIT[Admission keyed on token claims]
+  LIMIT --> CTX[Call context: org, project, role]
   CTX --> TOOL[Read-only tool]
   TOOL --> RBAC[assertCanView resource]
   RBAC --> QUERY[Org- and project-scoped query]
@@ -40,12 +40,12 @@ User docs: `docs/content/docs/mcp/` (`tools.mdx`, `security.mdx`, `connect.mdx`)
 - Scope every query with the call's `organizationId` and `projectId` (the `scope()` helper). A connection is bound to one project.
 - Validate arguments with Zod: ids are UUIDs, lists use the shared `page` shape (`limit` capped at `MAX_LIMIT`, cursor is the last id).
 - Never return scripts, secrets, variables, headers, alert settings, or raw response bodies. Pass user-controlled text through `safeText` (bounded, redacted) and monitor targets through `safeTarget` (no credentials or query strings).
-- Tool descriptions end with the `UNTRUSTED` suffix: returned text comes from test output or incidents and is prompt-injection input for the client.
+- Tools returning stored data end their description with the `UNTRUSTED` suffix (the static `prepare_local_authoring` hint is the exception): returned text comes from test output or incidents and is prompt-injection input for the client.
 - Return `ok(...)`/`fail(code, message)`: structured content plus a JSON text copy; errors are stable codes, not stack traces.
 
 ## Transport and auth rules
 
-- Request order in `route.ts`: origin check, bounded body read (`readMcpBody`, `MAX_BODY_BYTES`), admission (`admitMcpCall`: rate, batch, concurrency), then per-call context resolution. Every new code path must stay behind the same checks, and the permit must be released on every exit.
+- Request order in `route.ts`: `POST` checks the origin (`hasTrustedRequestOrigin`), then `requireMcpAuth` verifies the token; inside `handle`, a Content-Length precheck, bounded body read (`readMcpBody`, `MAX_BODY_BYTES`), admission (`admitMcpCall`, keyed on the verified `sub`/`azp` claims: rate, batch, concurrency), then per-call context resolution. Admission cannot move ahead of token verification. Every new code path must stay behind the same checks, and the permit must be released on every exit.
 - Tokens come from the Better Auth OAuth provider; OAuth HTTP endpoints outside the supported flow are denied (`isOAuthEndpointDenied`) and pruned from discovery metadata.
 - `resolveMcpCallContext` re-checks the user on every call: banned or inactive owners are rejected (`isCredentialOwnerActive`), not only at connect time.
 

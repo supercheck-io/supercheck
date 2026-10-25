@@ -36,7 +36,7 @@ flowchart TD
 
 ## Lifecycle and retention
 
-- Retention varies by artifact/data class, plan, and legal/security purpose. Read current constants in `app/src/lib/data-lifecycle-service.ts` before changing a duration.
+- Retention varies by artifact/data class and legal/security purpose. Read current constants in `app/src/lib/data-lifecycle-service.ts` before changing a duration.
 - Keep artifact pointers until storage deletion succeeds, and keep run callbacks fenced through cleanup (`run_callback` schema in both packages, `worker/src/execution/services/run-callback.ts`), so a late upload cannot recreate an object after its row was cleaned.
 - Cleanup work is bounded, paginated, idempotent, observable, and safe under concurrent scheduler instances.
 - Coordinate metadata/object deletion so retries recover from partial failure without deleting another tenant’s object or leaving permanent billable orphans.

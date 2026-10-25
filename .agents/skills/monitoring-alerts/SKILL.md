@@ -19,9 +19,9 @@ flowchart LR
 
 | File | Why |
 |---|---|
-| `worker/src/monitor/monitor.service.ts` | Check execution per monitor type |
-| `worker/src/monitor/monitor-evaluator.ts` | Threshold, transition, and alert logic (`evaluateAndSendAlert`); uses `fetchPublicEndpoint` for SSRF-safe requests |
-| `app/src/lib/monitor-cycles.ts`, `worker/src/monitor-control/` (`cycle-policy.ts`, `monitor-cycle.processor.ts`) | Durable check cycles: missing, late, and skipped regions |
+| `worker/src/monitor/monitor.service.ts` | Check execution per monitor type; SSRF-safe probes via `requestPinnedMonitorTarget` (`common/utils/pinned-monitor-request.ts`); cycle arrival recording |
+| `worker/src/monitor/monitor-evaluator.ts` | Threshold, transition, and alert logic (`evaluateAndSendAlert`) |
+| `app/src/lib/monitor-cycles.ts`, `worker/src/monitor-control/` (`cycle-policy.ts`, `monitor-cycle.service.ts`, `monitor-cycle.processor.ts`) | Durable check cycles: regional quorum, closing, aborting |
 | `app/src/lib/monitor-aggregation-service.ts` | Regional rollup and uptime |
 | `worker/src/notification/notification.service.ts`, `app/src/db/schema/notification.ts` | Providers, delivery, alert history |
 
@@ -36,7 +36,11 @@ flowchart LR
 ## Aggregation
 
 - A regional result and aggregate monitor state are separate. Never infer global health from one region.
-- Define how missing, late, timed-out, and conflicting regional results affect aggregate status; preserve that rule across dashboards, APIs, and alert evaluation. Check cycles own that rule (`worker/src/monitor-control/cycle-policy.ts`): skipped cycles close neutrally and do not count against uptime, a cycle stays retryable through a verification outage, and a processor must ignore cycles owned by another monitor.
+- Define how missing, late, timed-out, and conflicting regional results affect aggregate status; preserve that rule across dashboards, APIs, and alert evaluation. Check cycles own that rule. Cycle status is `open`, `closed`, or `aborted` (`app/src/db/schema/monitor-cycles.ts`):
+  - `decideMonitorCycle` in `worker/src/monitor-control/cycle-policy.ts` makes the regional quorum decision.
+  - `monitor-cycle.service.ts` aborts cycles for paused or disabled monitors. An aborted cycle writes no synthetic failures, so it does not count against uptime.
+  - `monitor-cycle.processor.ts` backs off and retries closure when a dependency check is temporarily unavailable, instead of failing the cycle.
+  - `recordCycleArrival` in `worker/src/monitor/monitor.service.ts` treats a cycle owned by another monitor as absent, and a result for a closed or aborted cycle never re-evaluates it.
 - Use consistent units and boundaries for latency, uptime, thresholds, and time windows.
 - Store enough immutable evidence to explain why an alert transitioned without retaining secrets or unrestricted response bodies.
 

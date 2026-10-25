@@ -30,7 +30,7 @@ flowchart LR
 - Better Auth owns browser sessions, users, organizations, and membership. Do not add NextAuth patterns.
 - Browser routes may use session cookies. CLI and API-key routes require bearer-compatible auth context.
 - Never use a cookie-only permission helper in an API route that supports CLI bearer tokens: `hasPermission` and `requireProjectContext` read session state; use `requireAuthContext` with `hasPermissionForUser`.
-- Permission checks use the effective (impersonated) user, not the admin who started impersonation (`isImpersonatedSession` in `rbac/middleware.ts`).
+- Permission checks use the effective (impersonated) user, not the admin who started impersonation. Credential-minting and similar sensitive actions must refuse under impersonation (`isImpersonatedSession` in `rbac/middleware.ts`).
 - Credentials whose owning user is suspended or gone must be rejected (`isCredentialOwnerActive`).
 - Return `401` when identity is absent/invalid and `403` when an authenticated identity lacks permission.
 - Session cookies retain secure, HTTP-only, same-site, domain, expiration, revocation, and proxy-aware behavior.
