@@ -61,7 +61,7 @@ beforeEach(() => {
     let rows: unknown[] = [];
     const builder = {
       from: (table: unknown) => { rows = table === monitors ? [stored] : table === monitorResults ? [storedResult] : []; return builder; },
-      leftJoin: () => builder, where: () => builder, orderBy: () => builder,
+      leftJoin: () => builder, innerJoin: () => builder, where: () => builder, orderBy: () => builder,
       limit: () => builder, offset: () => builder,
       then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(resolve(selection && 'count' in (selection as object) ? [{ count: 1 }] : rows)),
     };

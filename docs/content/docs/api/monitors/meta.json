@@ -16,6 +16,9 @@
     "createMonitorNotification",
     "deleteMonitorNotification",
     "getMonitorPermissions",
-    "getMonitorLocationStats"
+    "getMonitorLocationStats",
+    "getMonitorTags",
+    "replaceMonitorTags",
+    "deleteMonitorTag"
   ]
 }

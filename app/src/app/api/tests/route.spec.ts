@@ -29,7 +29,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
 const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as {
@@ -67,5 +67,38 @@ describe("POST /api/tests", () => {
       error: "An active subscription is required",
       code: "subscription_required",
     });
+  });
+});
+
+describe("test priority validation", () => {
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as {
+    checkPermissionWithContext: jest.Mock;
+  };
+  beforeEach(() => {
+    requireAuthContext.mockResolvedValue({
+      userId: "user-1",
+      organizationId: "org-1",
+      project: { id: "project-1", name: "Project" },
+      isCliAuth: true,
+    });
+    subscriptionService.blockUntilSubscribed.mockResolvedValue(undefined);
+    checkPermissionWithContext.mockReturnValue(true);
+  });
+
+  // The database mock has no query methods, so reaching a query would fail the request with 500.
+  it.each(["", "urgent", "HIGH"])("GET rejects the priority filter %p before querying", async (priority) => {
+    const response = await GET(new NextRequest(`http://localhost/api/tests?priority=${priority}`));
+    expect(response.status).toBe(400);
+  });
+
+  it("POST rejects an unknown priority before writing", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/tests", {
+        method: "POST",
+        body: JSON.stringify({ title: "Checkout", priority: "critical" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 });

@@ -54,6 +54,7 @@ import { useQuery } from "@tanstack/react-query";
 import TestSelector from "@/components/shared/test-selector";
 import { Test } from "@/components/jobs/schema";
 import React from "react";
+import { httpUrlSchema } from "@/lib/requirements/http-url-schema";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canCreateTags, canDeleteTags } from "@/lib/rbac/client-permissions";
 import { useProjectContext } from "@/hooks/use-project-context";
@@ -73,7 +74,7 @@ const requirementFormSchema = z.object({
     }),
     tags: z.string().max(500, "Tags are too long").optional().nullable(),
     externalId: z.string().max(100, "External ID is too long").optional().nullable(),
-    externalUrl: z.string().url("Invalid URL format").max(500).optional().nullable().or(z.literal("")),
+    externalUrl: httpUrlSchema.max(500, "URL is too long").optional().nullable().or(z.literal("")),
     externalProvider: z.string().max(50).optional().nullable(),
     // Client-side only field for provider type dropdown
     providerType: z.enum(["Jira", "GitHub", "Linear", "Other"]).optional(),

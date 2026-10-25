@@ -1,0 +1,15 @@
+{
+  "title": "Requirements API",
+  "icon": "ListChecks",
+  "pages": [
+    "listRequirements",
+    "createRequirement",
+    "getRequirement",
+    "updateRequirement",
+    "deleteRequirement",
+    "listRequirementTests",
+    "linkRequirementTests",
+    "unlinkRequirementTests",
+    "exportRequirementsCsv"
+  ]
+}
