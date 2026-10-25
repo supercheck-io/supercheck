@@ -116,7 +116,8 @@ export interface DashboardData {
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
 export const getDashboardQueryKey = (projectId: string | null) => 
-  [...DASHBOARD_QUERY_KEY, projectId] as const;
+  // Previous hover prefetches persisted raw API responses under the unversioned key.
+  [...DASHBOARD_QUERY_KEY, projectId, "v2"] as const;
 
 export async function fetchDashboard(projectId: string | null = null): Promise<DashboardData> {
   const controller = new AbortController();
