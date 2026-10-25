@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 // GitHub icon (filled style matching docs site)
 function GitHubIcon({ className }: { className?: string }) {
@@ -15,9 +16,12 @@ const GITHUB_URL = "https://github.com/supercheck-io/supercheck";
 
 /**
  * Community links component for the navigation header
- * Displays the AGPL source link in the navigation header.
+ * Displays the source link in self-hosted navigation headers.
  */
 export function CommunityLinks() {
+    const { isSelfHosted } = useAppConfig();
+    if (!isSelfHosted) return null;
+
     return (
         <div className="flex items-center gap-2">
             {/* AGPL source offer */}

@@ -83,7 +83,7 @@
     "faqs": [
       {
         "question": "Is there a free trial?",
-        "answer": "Yes. Every new Cloud organization starts with a {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains and single sign-on are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
+        "answer": "Yes. Eligible new Cloud accounts get one {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains and single sign-on are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
       },
       {
         "question": "What tests can I run during the trial?",

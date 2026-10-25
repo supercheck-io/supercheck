@@ -1,29 +1,53 @@
 ---
-title: Subscription and Usage Billing
-description: Understand organization subscriptions, included usage, overages, and billing controls
+title: Subscription and Billing
+description: Review your plan, usage, invoices, and spending controls
 icon: CreditCard
 ---
 
-Supercheck Cloud subscriptions belong to an organization. The plan, included usage, and usage charges apply to that organization; they are not shared across organizations. The current plan prices, included quotas, and overage rates are listed on [Pricing](/pricing). That page is the source for current amounts and limits.
+Open **Admin → Subscription** to see your organization's plan, usage, and estimated bill. Projects in the same organization share allowances; separate organizations do not.
 
-## Included usage and overages
+<Callout type="info">
+Subscriptions apply to **Supercheck Cloud**. Self-hosted deployments have no subscription or usage limits. See [Pricing](/pricing) for current Cloud prices, allowances, and overage rates.
+</Callout>
 
-Plus and Pro include monthly allowances for Playwright minutes, K6 virtual-user minutes, AI credits, and full AI SRE investigations. Playwright, K6, and completed full AI SRE investigation usage can incur the overage rates shown on [Pricing](/pricing) after the included allowance is used. Unused allowances reset at the start of the next billing period and do not roll over.
+## What counts toward usage?
 
-K6 usage is calculated from peak allocated virtual users multiplied by execution time, rounded up per run. A full AI SRE investigation consumes one investigation unit only when its report completes successfully. Triage, Copilot chat, and evidence briefs do not use that investigation allowance.
+| Usage | How it is measured | After the allowance |
+|---|---|---|
+| **Playwright** | Execution minutes shared by tests and synthetic monitors | Billed per extra minute |
+| **k6** | Peak allocated VUs × run time in minutes, rounded up per run | Billed per extra VU-minute |
+| **Full AI SRE investigations** | One unit per successfully completed report | Billed per extra investigation |
+| **AI credits** | One credit per accepted generation, fix, or failure-analysis action, including actions that later fail | New actions pause; upgrade or wait for renewal |
+| **Monitors, projects, status pages, members** | Number of resources in the organization | Upgrade required |
 
-AI credits are a separate hard monthly quota for AI actions such as test generation, test fixes, and failure analysis. Each accepted action uses one credit before work begins, including actions that later fail. There is no paid AI credit overage; when credits run out, new AI actions pause until the next billing period or a plan change.
+Allowances reset on your monthly billing date and do not roll over. AI SRE triage, Copilot chat, and evidence briefs do not consume full-investigation units. AI credits have no paid overage.
 
-Other plan limits, such as the number of monitors, projects, status pages, and team members, require an upgrade when reached. They do not create usage overage charges.
+## Review and manage billing
 
-## Estimate and invoice
+<Steps>
+<Step>
+### Check the estimate
 
-The Subscription tab shows an estimate based on your plan price and current measured overage. The estimate can differ from the final invoice because discounts, credits, taxes, and plan-change proration affect billing. Use **Manage Subscription** to view invoices, payment details, and the amounts Polar billed.
+Review your plan price and measured overages in **Subscription**. Discounts, credits, taxes, and plan-change proration can change the final invoice.
+</Step>
+<Step>
+### Set spending controls
 
-An optional spending limit can block new billable executions after the configured amount is reached. This limit is an application admission control, not a guaranteed cap on the final invoice: work already admitted or in progress can still accrue usage, including full AI SRE investigations, and final invoice adjustments may differ from the estimate. Configure spending controls in the Subscription tab and review the current amount there.
+Configure overage alerts and an optional spending limit. Owners and organization admins can review usage and update billing settings.
+</Step>
+<Step>
+### Open the billing portal
 
-## Manage billing
+The **organization owner** selects **Manage Subscription** to view Polar invoices, update payment details, or change the subscription. Checkout and resubscription are also owner-only.
+</Step>
+</Steps>
 
-Open **Admin → Subscription** to review the selected organization's plan, usage, estimate, notifications, and spending controls. Organization owners can start checkout, resubscribe, and open the Polar customer portal. Organization admins can review subscription details and billing settings, but only the owner can access the portal or change the subscription.
+<Callout type="warn" title="Spending limits cover overages">
+The subscription fee is separate. Optional blocking stops new billable executions and full investigations after the limit is reached; basic uptime checks continue. Work already admitted or running can still accrue usage. The limit is not a guaranteed cap on your final invoice.
+</Callout>
 
-The owner can still open the customer portal after a subscription expires, provided the organization retains its Polar billing customer. The portal is where the owner can review invoices and payment information or update billing details. Access to paid product features follows the subscription status and period end; portal access does not restore an expired subscription.
+<Accordions>
+<Accordion title="Can I view invoices after the subscription expires?">
+The owner can still open the portal if the organization retains its Polar billing customer. Paid feature access follows subscription status and period end; opening the portal does not restore an expired subscription.
+</Accordion>
+</Accordions>

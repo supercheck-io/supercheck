@@ -129,9 +129,9 @@ export default async function HomePage() {
             </span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
-            Run Playwright and k6 tests, monitor your sites and APIs from multiple regions,
-            keep users informed with status pages, and investigate incidents with an AI SRE
-            that shows its evidence. Self-host it, or use Supercheck Cloud when it opens.
+            Test with Playwright and k6. Monitor your sites and APIs, keep users informed
+            with status pages, and investigate incidents with AI that shows its evidence.
+            Self-host today, or join the Supercheck Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
@@ -169,7 +169,7 @@ export default async function HomePage() {
                   <ul className="mt-5 flex-1 space-y-2.5 text-sm">
                     {pillar.items.map((item) => (
                       <li key={item} className="flex gap-2.5">
-                        <Check className="mt-0.5 size-4 shrink-0 text-fd-muted-foreground" aria-hidden="true" />
+                        <Check className="mt-0.5 size-4 shrink-0 text-fd-primary" aria-hidden="true" />
                         <span>{item}</span>
                       </li>
                     ))}
