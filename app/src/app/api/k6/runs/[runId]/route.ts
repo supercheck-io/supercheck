@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/utils/db";
@@ -36,6 +37,7 @@ export async function GET(
       );
     }
 
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await db
       .select({
         id: k6PerformanceRuns.id,

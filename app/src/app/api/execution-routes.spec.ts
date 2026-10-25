@@ -276,7 +276,7 @@ describe("Execution route regressions", () => {
     });
     mockExtractVariableNames.mockReturnValue([]);
     mockPrepareJobTestScripts.mockResolvedValue({
-      testScripts: [{ id: "test-1", name: "Test 1", script: "console.log('ok')", type: "playwright" }],
+      testScripts: [{ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244", name: "Test 1", script: "console.log('ok')", type: "playwright" }],
       variableResolution: { variables: {}, secrets: {} },
     });
 
@@ -335,7 +335,7 @@ describe("Execution route regressions", () => {
       }),
     );
     const savedTestResponse = await executeSingleTest(
-      new NextRequest("http://localhost/api/tests/test-1/execute", {
+      new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
         method: "POST",
         body: JSON.stringify({}),
         headers: {
@@ -343,7 +343,7 @@ describe("Execution route regressions", () => {
           origin: "https://attacker.example",
         },
       }),
-      { params: Promise.resolve({ id: "test-1" }) },
+      { params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }) },
     );
     const jobResponse = await executeJob(
       new NextRequest("http://localhost/api/jobs/run", {
@@ -427,7 +427,7 @@ describe("Execution route regressions", () => {
 	  it.each(["paid", "trial"] as const)("POST /api/tests/[id]/execute persists and returns queue status for %s access", async (tier) => {
     if (tier === "trial") jest.mocked(getExecutionPolicy).mockResolvedValueOnce({ tier, priority: 1, runningCapacity: 1, queuedCapacity: 10, expiresAt: new Date(Date.now() + 60_000), k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1000 });
     mockDb.query.tests.findFirst.mockResolvedValue({
-      id: "test-1",
+      id: "b6c7d749-56f1-509f-96c4-8234bc8c0244",
       type: "playwright",
       script: Buffer.from("test('smoke', async () => {})").toString("base64"),
       projectId: "project-1",
@@ -446,7 +446,7 @@ describe("Execution route regressions", () => {
 
     mockAddTestToQueue.mockResolvedValue({ runId: "run-1", status: "queued", position: 2 });
 
-    const request = new NextRequest("http://localhost/api/tests/test-1/execute", {
+    const request = new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
       method: "POST",
       body: JSON.stringify({}),
       headers: {
@@ -456,7 +456,7 @@ describe("Execution route regressions", () => {
     });
 
     const response = await executeSingleTest(request, {
-      params: Promise.resolve({ id: "test-1" }),
+      params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }),
     });
 
     const json = await response.json();
@@ -473,7 +473,7 @@ describe("Execution route regressions", () => {
   it("POST /api/tests/[id]/execute accepts CLI bearer auth without an Origin header", async () => {
     mockRequireAuthContext.mockResolvedValue({ ...authCtx, isCliAuth: true });
     mockDb.query.tests.findFirst.mockResolvedValue({
-      id: "test-1",
+      id: "b6c7d749-56f1-509f-96c4-8234bc8c0244",
       type: "playwright",
       script: Buffer.from("test('smoke', async () => {})").toString("base64"),
       projectId: "project-1",
@@ -490,12 +490,12 @@ describe("Execution route regressions", () => {
     mockAddTestToQueue.mockResolvedValue({ status: "queued", position: 1 });
 
     const response = await executeSingleTest(
-      new NextRequest("http://localhost/api/tests/test-1/execute", {
+      new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
         method: "POST",
         body: JSON.stringify({}),
         headers: { "content-type": "application/json" },
       }),
-      { params: Promise.resolve({ id: "test-1" }) },
+      { params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }) },
     );
 
     expect(response.status).toBe(200);
@@ -508,7 +508,7 @@ describe("Execution route regressions", () => {
 	      reason: "Monthly spending limit of $320.00 reached. Current spending: $320.76.",
 	    });
 
-	    const request = new NextRequest("http://localhost/api/tests/test-1/execute", {
+	    const request = new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
 	      method: "POST",
 	      body: JSON.stringify({}),
 	      headers: {
@@ -518,7 +518,7 @@ describe("Execution route regressions", () => {
 	    });
 
 	    const response = await executeSingleTest(request, {
-	      params: Promise.resolve({ id: "test-1" }),
+	      params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }),
 	    });
 
 	    const json = await response.json();
@@ -541,7 +541,7 @@ describe("Execution route regressions", () => {
     });
 
     const response = await executeSingleTest(
-      new NextRequest("http://localhost/api/tests/test-1/execute", {
+      new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
         method: "POST",
         body: JSON.stringify({}),
         headers: {
@@ -549,7 +549,7 @@ describe("Execution route regressions", () => {
           origin: "http://localhost",
         },
       }),
-      { params: Promise.resolve({ id: "test-1" }) },
+      { params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }) },
     );
 
     expect(response.status).toBe(503);
@@ -663,7 +663,7 @@ describe("Execution route regressions", () => {
 
   it("POST /api/tests/[id]/execute finalizes the run when queue admission fails", async () => {
     mockDb.query.tests.findFirst.mockResolvedValue({
-      id: "test-1",
+      id: "b6c7d749-56f1-509f-96c4-8234bc8c0244",
       type: "playwright",
       script: Buffer.from("test('smoke', async () => {})").toString("base64"),
       projectId: "project-1",
@@ -687,7 +687,7 @@ describe("Execution route regressions", () => {
     );
 
     const response = await executeSingleTest(
-      new NextRequest("http://localhost/api/tests/test-1/execute", {
+      new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
         method: "POST",
         body: JSON.stringify({}),
         headers: {
@@ -695,7 +695,7 @@ describe("Execution route regressions", () => {
           origin: "http://localhost",
         },
       }),
-      { params: Promise.resolve({ id: "test-1" }) },
+      { params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }) },
     );
 
     expect(response.status).toBe(503);

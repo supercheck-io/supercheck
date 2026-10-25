@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isUuid } from "@/lib/uuid";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { tests, runs } from "@/db/schema";
@@ -73,14 +74,14 @@ export async function GET(request: Request) {
 
   // Check if this is a saved test OR a playground run
   // Saved tests exist in the tests table
-  const test = await db.query.tests.findFirst({
+  const test = isUuid(testId) ? await db.query.tests.findFirst({
     where: and(
       eq(tests.id, testId),
       eq(tests.organizationId, projectContext.organizationId),
       eq(tests.projectId, projectContext.project.id)
     ),
     columns: { id: true }
-  });
+  }) : undefined;
 
   // If not a saved test, check if it's a playground run
   // Playground runs store testId in metadata.testId

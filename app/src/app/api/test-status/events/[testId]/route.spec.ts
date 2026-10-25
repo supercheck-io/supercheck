@@ -203,3 +203,28 @@ describe("test-status event filtering", () => {
     }
   });
 });
+
+
+describe("text playground identifiers", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRequireAuthContext.mockResolvedValue({ organizationId: "org", project: { id: "project" } });
+    mockGetQueueEventHub.mockReturnValue({ ready: async () => {} });
+  });
+
+  it("keeps a text playground identifier usable without querying a UUID column", async () => {
+    mockRunsFindFirst.mockResolvedValue({ id: "playground-run" });
+    const response = await GET(new Request("http://localhost/api/test-status/events/playground-123", { signal: AbortSignal.abort() }));
+    expect(response.status).toBe(200);
+    expect(mockTestsFindFirst).not.toHaveBeenCalled();
+    expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
+    await response.body?.cancel();
+  });
+
+  it("returns 404 for an unknown text identifier after the scoped playground lookup", async () => {
+    mockRunsFindFirst.mockResolvedValue(undefined);
+    expect((await GET(new Request("http://localhost/api/test-status/events/unknown"))).status).toBe(404);
+    expect(mockTestsFindFirst).not.toHaveBeenCalled();
+    expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
+  });
+});
