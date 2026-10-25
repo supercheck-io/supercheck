@@ -50,33 +50,33 @@ export const productMenu: NavMenu = {
     {
       title: "Automate",
       items: [
-        { title: "Browser tests", description: "Playwright end-to-end tests in a real browser", href: "/docs/app/automate/browser-test", icon: AppWindow },
-        { title: "API and database tests", description: "Check endpoints, payloads and queries", href: "/docs/app/automate/api-test", icon: Braces },
-        { title: "Load testing", description: "k6 scripts with live logs and run comparison", href: "/docs/app/automate/performance-test", icon: Gauge },
-        { title: "Recorder", description: "Record a flow in Chrome or Edge, save it as a test", href: "/docs/recorder", icon: MousePointerClick },
-        { title: "Requirements", description: "Link requirements to the tests that cover them", href: "/docs/app/automate/requirements", icon: ListChecks },
+        { title: "Browser tests", description: "Playwright end-to-end tests", href: "/docs/app/automate/browser-test", icon: AppWindow },
+        { title: "API and database tests", description: "Endpoints, payloads and queries", href: "/docs/app/automate/api-test", icon: Braces },
+        { title: "Load testing", description: "k6 with live logs and comparison", href: "/docs/app/automate/performance-test", icon: Gauge },
+        { title: "Recorder", description: "Record flows in Chrome or Edge", href: "/docs/recorder", icon: MousePointerClick },
+        { title: "Requirements", description: "Coverage for each requirement", href: "/docs/app/automate/requirements", icon: ListChecks },
       ],
     },
     {
       title: "Monitor",
       items: [
-        { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port checks", href: "/docs/app/monitor", icon: Globe },
-        { title: "Synthetic monitoring", description: "Run a Playwright test on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: Workflow },
+        { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port", href: "/docs/app/monitor", icon: Globe },
+        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: Workflow },
       ],
     },
     {
       title: "Communicate",
       items: [
-        { title: "Alerts", description: "Email, Slack, Teams, Discord, Telegram and webhooks", href: "/docs/app/communicate/alerts", icon: Bell },
-        { title: "Status pages", description: "Public pages with incidents and subscribers", href: "/docs/app/communicate/status-pages", icon: PanelsTopLeft },
+        { title: "Alerts", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: Bell },
+        { title: "Status pages", description: "Incidents and subscriber updates", href: "/docs/app/communicate/status-pages", icon: PanelsTopLeft },
       ],
     },
     {
       title: "Investigate",
       items: [
-        { title: "Incidents", description: "One workspace for an incident and its alerts", href: "/docs/app/investigate/incidents", icon: Siren },
-        { title: "AI SRE Copilot", description: "Read-only investigations that cite evidence", href: "/docs/app/investigate/copilot", icon: Bot },
-        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes, Sentry and more", href: "/docs/app/investigate/connectors", icon: Cable },
+        { title: "Incidents", description: "Alerts and runs in one place", href: "/docs/app/investigate/incidents", icon: Siren },
+        { title: "AI SRE Copilot", description: "Investigations that cite evidence", href: "/docs/app/investigate/copilot", icon: Bot },
+        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Cable },
       ],
     },
   ],

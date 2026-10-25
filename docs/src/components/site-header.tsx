@@ -97,15 +97,17 @@ function MenuItemBody({ item }: { item: NavItem }) {
   );
 }
 
-const menuItemClass = `${focusRing} group flex gap-3 rounded-lg p-2.5 transition-colors hover:bg-fd-accent`;
+const menuItemClass = `${focusRing} group flex gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-fd-accent`;
 
 function DesktopMenuPanel({ menu }: { menu: NavMenu }) {
   // Product groups flow across two columns; single-group menus lay their items out in two columns.
   const multiGroup = menu.groups.length > 1;
   return (
-    <div className={`p-5 ${multiGroup ? "w-[44rem] columns-2 gap-x-6" : "w-[36rem]"}`}>
+    <div
+      className={`p-4 ${multiGroup ? "w-[min(58rem,calc(100vw-2rem))] columns-3 gap-x-4" : "w-[min(36rem,calc(100vw-2rem))]"}`}
+    >
       {menu.groups.map((group) => (
-        <div key={group.title} className="mb-5 break-inside-avoid last:mb-0">
+        <div key={group.title} className="mb-4 break-inside-avoid last:mb-0">
           <p className="px-2.5 pb-1.5 text-xs font-medium text-fd-muted-foreground">{group.title}</p>
           <ul className={multiGroup ? "space-y-0.5" : "grid grid-cols-2 gap-0.5"}>
             {group.items.map((item) => (
@@ -137,7 +139,8 @@ function DesktopNav({ pathname }: { pathname: string | null }) {
               {menu.label}
               <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
             </NavigationMenuTrigger>
-            <NavigationMenuContent className="relative">
+            {/* Panels are sized to fit without scrolling; overflow-x-hidden keeps a scrollbar from adding a second one. */}
+            <NavigationMenuContent className="relative max-h-[calc(100svh-5rem)] w-max overflow-x-hidden">
               <DesktopMenuPanel menu={menu} />
             </NavigationMenuContent>
           </NavigationMenuItem>
@@ -158,7 +161,7 @@ function DesktopNav({ pathname }: { pathname: string | null }) {
       </NavigationMenuList>
       {/* Centred under the header; the header is the positioned ancestor. */}
       <div className="absolute inset-x-0 top-full flex justify-center px-4">
-        <NavigationMenuViewport className="site-nav-viewport mt-2 w-(--radix-navigation-menu-viewport-width) rounded-xl border border-fd-border bg-fd-popover text-fd-popover-foreground shadow-lg" />
+        <NavigationMenuViewport className="site-nav-viewport mt-2 box-content w-(--radix-navigation-menu-viewport-width) rounded-xl border border-fd-border bg-fd-popover text-fd-popover-foreground shadow-lg" />
       </div>
     </NavigationMenu>
   );

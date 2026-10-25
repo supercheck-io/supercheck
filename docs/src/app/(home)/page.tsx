@@ -5,6 +5,7 @@ import { CodeWindow } from "../../components/landing/code-window";
 import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
 import { CheckList, Screenshot, SectionHeading, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
+import { toolGroups } from "../../components/landing/tool-logos";
 import { DEMO_URL, solutionsMenu } from "../../lib/site-nav";
 
 const products = [
@@ -28,7 +29,7 @@ const products = [
     shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
     items: [
       "HTTP, website, ping and port checks",
-      "Checks from locations in Europe, North America and Asia Pacific",
+      "Checks from several regions, including Europe, North America and Asia Pacific on Cloud",
       "Synthetic monitors that replay Playwright journeys",
       "Failure and recovery thresholds to cut noisy alerts",
     ],
@@ -58,8 +59,6 @@ const products = [
     ],
   },
 ];
-
-const worksWith = ["Playwright", "k6", "GitHub Actions", "GitLab CI", "Slack", "Microsoft Teams", "Claude Code", "Cursor"];
 
 const configExample = `import { defineConfig } from '@supercheck/cli'
 
@@ -153,15 +152,25 @@ export default async function HomePage() {
 
         {/* Works with */}
         <section aria-labelledby="works-with-heading" className="border-t border-fd-border">
-          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:px-6 md:flex-row md:items-center md:gap-8">
-            <h2 id="works-with-heading" className="shrink-0 text-sm text-fd-muted-foreground">
+          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+            <h2 id="works-with-heading" className="text-sm text-fd-muted-foreground">
               Works with the tools you already use
             </h2>
-            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
-              {worksWith.map((tool) => (
-                <li key={tool}>{tool}</li>
+            <div className="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-[auto_auto_1fr_auto]">
+              {toolGroups.map((group) => (
+                <div key={group.title}>
+                  <h3 className="text-xs font-medium text-fd-muted-foreground">{group.title}</h3>
+                  <ul className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3">
+                    {group.tools.map((tool) => (
+                      <li key={tool.name} className="flex items-center gap-2 text-sm font-medium text-fd-foreground/80">
+                        {tool.mark}
+                        {tool.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </section>
 
