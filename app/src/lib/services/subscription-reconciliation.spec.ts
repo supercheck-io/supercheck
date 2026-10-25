@@ -47,9 +47,9 @@ describe("authoritative Polar subscription reconciliation", () => {
     expect(subscriptionService.updateSubscription).toHaveBeenCalledWith("org-1", expect.objectContaining({ subscriptionStatus: "canceled" }), expect.anything());
     expect(billingSettingsService.resetNotificationsForPeriod).toHaveBeenCalledTimes(1);
   });
-  it("discards a fetch if a webhook changed the cursor in flight", async () => {
+  it("requests retry if another update changed the cursor in flight", async () => {
     locked = { ...org, polarWebhookEventKey: "newer-webhook" };
-    await expect(reconcilePolarSubscription("org-1")).resolves.toBe(false);
+    await expect(reconcilePolarSubscription("org-1")).rejects.toThrow("retry");
     expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
   });
   it.each([{ customer_id: "another-customer" }, { product_id: "unknown-product" }, { status: "unknown" }, { current_period_end: "invalid" }])

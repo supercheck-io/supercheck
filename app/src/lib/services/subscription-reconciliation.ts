@@ -76,7 +76,9 @@ export async function reconcilePolarSubscription(organizationId: string): Promis
     // Never let a slow provider read overwrite a webhook or a changed tenant binding.
     if (!org || org.polarCustomerId !== before.polarCustomerId || org.subscriptionId !== before.subscriptionId ||
       org.polarWebhookEventKey !== before.polarWebhookEventKey ||
-      org.polarWebhookTimestamp?.getTime() !== before.polarWebhookTimestamp?.getTime()) return false;
+      org.polarWebhookTimestamp?.getTime() !== before.polarWebhookTimestamp?.getTime()) {
+      throw new Error("Polar subscription changed during reconciliation; retry");
+    }
     if (org.polarRetiredSubscriptionIds.includes(snapshot.id)) throw new Error("Retired Polar subscription cannot be restored");
     if (org.usagePeriodStart && periodStart < org.usagePeriodStart) return false;
     const replacing = org.subscriptionId && org.subscriptionId !== snapshot.id;

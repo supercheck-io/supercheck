@@ -33,6 +33,7 @@ import {
   handleOrderPaid,
   handleOrderCreated,
   handleCustomerCreated,
+  handleCustomerStateChanged,
   handleCustomerDeleted,
   cleanupExpiredWebhooks,
   handleSubscriptionCreated,
@@ -149,15 +150,25 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     process.env.SELF_HOSTED = "false";
     process.env.POLAR_ACCESS_TOKEN = "test";
     process.env.POLAR_WEBHOOK_SECRET = "test";
+    let injectConflict = changed;
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith("/state")) return new Response(JSON.stringify({ id: CUS, active_subscriptions: [] }));
-      if (changed) await mockDatabase.update(schema.organization).set({ polarWebhookEventKey: "concurrent-new-event" }).where(eq(schema.organization.id, orgId));
+      if (injectConflict) {
+        injectConflict = false;
+        await mockDatabase.update(schema.organization).set({ polarWebhookEventKey: "concurrent-new-event" }).where(eq(schema.organization.id, orgId));
+      }
       return new Response(JSON.stringify({ ...subscription(), status: "unpaid", created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-25T00:00:00Z" }));
     });
     try {
-      expect(await reconcilePolarSubscription(orgId)).toBe(!changed);
+      if (changed) await expect(handleCustomerStateChanged({ type: "customer.state_changed", data: { id: CUS } })).rejects.toThrow("retry");
+      else expect(await reconcilePolarSubscription(orgId)).toBe(true);
       expect((await org()).subscriptionStatus).toBe(changed ? "active" : "none");
       expect(Number((await org()).playwrightMinutesUsed)).toBe(11);
+      if (changed) {
+        await handleCustomerStateChanged({ type: "customer.state_changed", data: { id: CUS } });
+        expect((await org()).subscriptionStatus).toBe("none");
+        expect(Number((await org()).playwrightMinutesUsed)).toBe(11);
+      }
     } finally {
       global.fetch = savedFetch;
       for (const [key, value] of Object.entries(savedEnv)) {
