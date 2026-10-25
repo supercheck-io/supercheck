@@ -1,6 +1,6 @@
 ---
 name: supercheck-architecture
-description: Work on Supercheck system architecture, Next.js routes and actions, React data hooks, Drizzle schemas and migrations, app-worker boundaries, or cross-package contracts.
+description: Work on Supercheck system architecture, Next.js routes and actions, React data hooks and query keys, Drizzle schemas, tables, columns, indexes and migrations, app-worker boundaries, or cross-package contracts.
 ---
 
 # Supercheck architecture
@@ -33,10 +33,22 @@ flowchart LR
 | `app/src/lib` | Auth, RBAC, queues, schedulers, validation, security, billing, and SRE services |
 | `app/src/sre` | AI SRE agents, tools, skills, evaluation, and orchestration |
 | `worker/src` | NestJS execution, monitor, notification, and private-agent workers |
+| `worker/src/monitor-control` | Separate NestJS entrypoint (`main.ts`) for durable monitor check cycles |
+| `worker/src/queue-alerting` | Queue health alerting |
 | `cli` | `@supercheck/cli` monitoring-as-code client |
 | `recorder` | Apache-licensed Playwright CRX recorder and browser extension |
 | `docs` | Public Fumadocs site |
 | `deploy/docker` | Public Docker Compose and self-hosted assets |
+
+## Start here
+
+| File | Why |
+|---|---|
+| `app/src/db/schema/index.ts`, `app/src/db/schema/types.ts` | Schema barrel and shared JSON column types |
+| `app/src/db/migrations/`, `app/drizzle.config.ts` | Migration history and generator config |
+| `app/src/lib/queue.ts` | Queue names, payload types, and Redis connections for every BullMQ queue |
+| `app/src/lib/auth-context.ts`, `app/src/lib/rbac/` | Identity, tenant context, and permission checks (see `supercheck-security-auth`) |
+| `worker/src/app.module.ts` | Worker module wiring |
 
 ## Request and data boundaries
 
@@ -56,8 +68,9 @@ flowchart TD
 
 - Prefer Server Components until browser state, effects, or event handlers require `"use client"`.
 - Keep business rules below transport and UI layers. Routes/actions translate auth, input, status codes, and public errors.
-- Use bearer-compatible auth helpers for routes called by CLI/API keys; cookie-only helpers break those callers.
+- Use bearer-compatible auth helpers for routes called by CLI/API keys (`requireAuthContext` and `hasPermissionForUser`); cookie-only helpers such as `hasPermission` break those callers.
 - Validate request bodies, params, search params, uploads, provider events, and browser messages at their trust boundary.
+- Reject malformed UUID route params before any database access (`isUuid` in `app/src/lib/uuid.ts`; regression suite `app/src/app/api/malformed-identifiers.spec.ts`).
 - Use the owning schema to determine scope. Organization-owned resources need organization scoping; project-owned resources need verified organization and project ownership. Do not mechanically add both IDs to tables that do not own both.
 
 ## Database and migration rules
@@ -67,11 +80,11 @@ flowchart TD
 - Add indexes for real filters, joins, ordering, and uniqueness—not as a template exercise.
 - Generate and inspect migrations. New non-null columns need safe behavior for existing rows.
 - Analyze destructive changes, backfills, transaction duration, locks, rollback/recovery, and rolling app/worker compatibility.
-- Keep app and worker schema representations compatible where both packages read the same tables.
+- Keep app and worker schema representations compatible where both packages read the same tables. `worker/src/db/schema/` (including `types.ts`) is a separate, smaller copy: when you change a table, column, or JSON type the worker reads, update the worker copy too; app-only tables stay app-only.
 
 ## React Query and client data
 
-- Query keys are contracts. Prefetch, hooks, invalidation, and parameter object shapes must match exactly.
+- Query keys are contracts. Prefetch (`app/src/lib/prefetch-utils.ts`), hooks (`app/src/hooks/`), invalidation, and parameter object shapes must match exactly. Hooks export `*_QUERY_KEY` constants and append scope (`[...KEY, projectId]`); cached data must also be isolated per project and account.
 - Render cached query data directly. Do not mirror it into component state using an effect unless editing semantics require a deliberate snapshot.
 - Preserve current freshness/refetch behavior when changing hooks; do not remove `refetchOnMount` or cache settings without tracing UX impact.
 - Bound and paginate growing collections. Avoid N+1 requests and per-row database lookups.

@@ -56,7 +56,7 @@ sequenceDiagram
 
 ### 1. Register the agent
 
-In your Cloud or self-hosted dashboard, select the project and open **Organization Admin → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
+In your Cloud or self-hosted dashboard, select the project and open **Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
 
 Copy the **Agent ID** and **Registration token**. Start the agent within **15 minutes** before the token expires.
 
@@ -107,7 +107,7 @@ Preserve `private-agent-state`; avoid `down -v` during maintenance. If the regis
 
 ### 3. Connect a provider
 
-Confirm the agent shows **connected**. In the same project's **Organization Admin → Integrations**, add a connector, select **Private Agent**, and choose this agent.
+Confirm the agent shows **connected**. In the same project's **Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
 
 Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 

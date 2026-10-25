@@ -13,6 +13,8 @@ import {
 import { Job } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
+import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
+import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
 import { K6ExecutionTask } from '../services/k6-execution.service';
 import type { ExecutionUsageTransaction } from '../../execution/services/execution-usage-receipts';
 
@@ -277,19 +279,22 @@ describe('k6 container-start metering', () => {
       trackK6Execution: jest.fn().mockResolvedValue({ blocked: false }),
       completeRunWithUsage: jest.fn().mockResolvedValue(undefined),
     };
+    const dbService = {
+      db,
+      getTerminalRun: jest.fn().mockResolvedValue(undefined),
+      claimRunExecution: jest.fn().mockResolvedValue(true),
+      finalizeCancelledRun: jest.fn().mockResolvedValue(false),
+      getRunStatusesForJob: jest.fn(),
+      updateJobStatus: jest.fn(),
+      updateRunStatus: jest.fn().mockResolvedValue(undefined),
+      failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
+    };
     const processor = new K6ExecutionProcessor(
       {
         runK6Test,
         hasActiveExecution: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[0],
-      {
-        db,
-        getTerminalRun: jest.fn().mockResolvedValue(undefined),
-        claimRunExecution: jest.fn().mockResolvedValue(true),
-        finalizeCancelledRun: jest.fn().mockResolvedValue(false),
-        getRunStatusesForJob: jest.fn(),
-        updateJobStatus: jest.fn(),
-      } as unknown as Dependencies[1],
+      dbService as unknown as Dependencies[1],
       { get: () => 'eu' } as unknown as Dependencies[2],
       {} as Dependencies[3],
       usage as unknown as Dependencies[4],
@@ -298,7 +303,7 @@ describe('k6 container-start metering', () => {
         isCancelled: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[6],
     );
-    return { processor, usage, set };
+    return { processor, usage, set, dbService };
   }
 
   const job = () =>
@@ -326,6 +331,43 @@ describe('k6 container-start metering', () => {
     expect(runningMark).toBeDefined();
     // startedAt must be a coalesce() SQL expression, not a fresh Date.
     expect(runningMark![0].startedAt).not.toBeInstanceOf(Date);
+  });
+
+  describe('capacity wait give-up', () => {
+    const exhaustedJob = () => {
+      const base = job();
+      Object.assign(base.data, { _capacityDeferrals: CAPACITY_DEFERRAL_LIMIT });
+      return base;
+    };
+
+    it('fails the run that never got a slot, unless cancelled, in one guarded write', async () => {
+      const runK6Test = jest
+        .fn()
+        .mockRejectedValue(new ExecutionCapacityError('busy'));
+      const { processor, dbService } = build(runK6Test);
+
+      await expect(processor.process(exhaustedJob())).rejects.toThrow(
+        /capacity stayed occupied/,
+      );
+
+      expect(dbService.failRunUnlessCancelled).toHaveBeenCalledWith(
+        'run-id',
+        expect.stringContaining('capacity stayed occupied'),
+      );
+      expect(dbService.updateRunStatus).not.toHaveBeenCalled();
+    });
+
+    it('still gives up the job when the guarded write errors', async () => {
+      const runK6Test = jest
+        .fn()
+        .mockRejectedValue(new ExecutionCapacityError('busy'));
+      const { processor, dbService } = build(runK6Test);
+      dbService.failRunUnlessCancelled.mockRejectedValue(new Error('db down'));
+
+      await expect(processor.process(exhaustedJob())).rejects.toThrow(
+        /capacity stayed occupied/,
+      );
+    });
   });
 
   it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {

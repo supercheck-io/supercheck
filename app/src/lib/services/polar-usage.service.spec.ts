@@ -1,8 +1,12 @@
 jest.mock("@/lib/billing/usage-sync-lease", () => ({
   withUsageSyncLease: jest.fn(async (run) => run(() => {})),
 }));
+jest.mock("./subscription-reconciliation", () => ({ reconcilePolarSubscriptions: jest.fn() }));
+jest.mock("@/lib/billing/reconciliation-status", () => ({ getBillingReconciliationStatus: jest.fn().mockResolvedValue({ requiresAttention: false }) }));
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
 import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
+import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
+import { failStuckSreInvestigationRuns, reconcileUnbilledSreInvestigations } from "@/lib/sre/investigation-billing";
 /** @jest-environment node */
 
 jest.mock("@/utils/db", () => ({
@@ -44,6 +48,7 @@ jest.mock("drizzle-orm", () => ({
   sql: jest.fn(() => ({ op: "sql" })),
   gt: jest.fn((left, right) => ({ op: "gt", left, right })),
   lte: jest.fn((left, right) => ({ op: "lte", left, right })),
+  notInArray: jest.fn((left, right) => ({ op: "notInArray", left, right })),
   ne: jest.fn((left, right) => ({ op: "ne", left, right })),
   isNull: jest.fn((value) => ({ op: "isNull", value })),
   isNotNull: jest.fn((value) => ({ op: "isNotNull", value })),
@@ -304,6 +309,46 @@ describe("PolarUsageService retry idempotency", () => {
     });
     expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
     expect(mockPostgresClient.begin).not.toHaveBeenCalled();
+  });
+
+  it("aborts recovery when the subscription scan loses its lease", async () => {
+    jest.mocked(withUsageSyncLease).mockImplementationOnce(async (run) => run(() => {
+      throw new Error("Usage sync lease lost");
+    }));
+    jest.mocked(reconcilePolarSubscriptions).mockImplementationOnce(async (assertOwned) => {
+      assertOwned();
+    });
+
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({
+      processed: 0, errors: ["Usage sync lease lost"],
+    });
+    expect(failStuckSreInvestigationRuns).not.toHaveBeenCalled();
+    expect(reconcileUnbilledSreInvestigations).not.toHaveBeenCalled();
+    expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
+  });
+
+  it("drains multiple batches while keeping one lease", async () => {
+    const sender = jest.spyOn(polarUsageService as unknown as { syncEventToPolar(id: string): Promise<boolean> }, "syncEventToPolar").mockResolvedValue(true);
+    mockDb.query.usageEvents.findMany.mockReset().mockResolvedValueOnce([{ id: "a" }, { id: "b" }]).mockResolvedValueOnce([{ id: "c" }]);
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: async () => [] }) }) });
+    try {
+      await expect(polarUsageService.syncPendingEvents(2)).resolves.toMatchObject({ processed: 3, succeeded: 3, failed: 0 });
+      expect(sender.mock.calls.map(([id]) => id)).toEqual(["a", "b", "c"]);
+      expect(withUsageSyncLease).toHaveBeenCalledTimes(1);
+    } finally { sender.mockRestore(); }
+  });
+
+  it("stops a drain at its time budget without attempting the remaining events", async () => {
+    let now = Date.now();
+    const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+    const sender = jest.spyOn(polarUsageService as unknown as { syncEventToPolar(id: string): Promise<boolean> }, "syncEventToPolar")
+      .mockImplementation(async () => { now += 60_000; return true; });
+    mockDb.query.usageEvents.findMany.mockReset().mockResolvedValue([{ id: "a" }, { id: "b" }]);
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: async () => [] }) }) });
+    try {
+      await expect(polarUsageService.syncPendingEvents(2)).resolves.toMatchObject({ processed: 1, succeeded: 1 });
+      expect(sender).toHaveBeenCalledTimes(1);
+    } finally { sender.mockRestore(); clock.mockRestore(); }
   });
 
   it.each([

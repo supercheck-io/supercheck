@@ -1,0 +1,29 @@
+---
+title: Subscription and Usage Billing
+description: Understand organization subscriptions, included usage, overages, and billing controls
+icon: CreditCard
+---
+
+Supercheck Cloud subscriptions belong to an organization. The plan, included usage, and usage charges apply to that organization; they are not shared across organizations. The current plan prices, included quotas, and overage rates are listed on [Pricing](/pricing). That page is the source for current amounts and limits.
+
+## Included usage and overages
+
+Plus and Pro include monthly allowances for Playwright minutes, K6 virtual-user minutes, AI credits, and full AI SRE investigations. Playwright, K6, and completed full AI SRE investigation usage can incur the overage rates shown on [Pricing](/pricing) after the included allowance is used. Unused allowances reset at the start of the next billing period and do not roll over.
+
+K6 usage is calculated from peak allocated virtual users multiplied by execution time, rounded up per run. A full AI SRE investigation consumes one investigation unit only when its report completes successfully. Triage, Copilot chat, and evidence briefs do not use that investigation allowance.
+
+AI credits are a separate hard monthly quota for AI actions such as test generation, test fixes, and failure analysis. Each accepted action uses one credit before work begins, including actions that later fail. There is no paid AI credit overage; when credits run out, new AI actions pause until the next billing period or a plan change.
+
+Other plan limits, such as the number of monitors, projects, status pages, and team members, require an upgrade when reached. They do not create usage overage charges.
+
+## Estimate and invoice
+
+The Subscription tab shows an estimate based on your plan price and current measured overage. The estimate can differ from the final invoice because discounts, credits, taxes, and plan-change proration affect billing. Use **Manage Subscription** to view invoices, payment details, and the amounts Polar billed.
+
+An optional spending limit can block new billable executions after the configured amount is reached. This limit is an application admission control, not a guaranteed cap on the final invoice: work already admitted or in progress can still accrue usage, including full AI SRE investigations, and final invoice adjustments may differ from the estimate. Configure spending controls in the Subscription tab and review the current amount there.
+
+## Manage billing
+
+Open **Admin → Subscription** to review the selected organization's plan, usage, estimate, notifications, and spending controls. Organization owners can start checkout, resubscribe, and open the Polar customer portal. Organization admins can review subscription details and billing settings, but only the owner can access the portal or change the subscription.
+
+The owner can still open the customer portal after a subscription expires, provided the organization retains its Polar billing customer. The portal is where the owner can review invoices and payment information or update billing details. Access to paid product features follows the subscription status and period end; portal access does not restore an expired subscription.

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "ask": [
+      "Bash(*gh* pr merge*)",
+      "Bash(git -C * push*)"
+    ],
+    "deny": [
+      "Bash(git tag:*)",
+      "Bash(rtk git tag:*)",
+      "Bash(git -C * tag *)",
+      "Bash(*git* update-ref refs/tags/*)",
+      "Bash(*git* push*--tags*)",
+      "Bash(*git* push*--follow-tags*)",
+      "Bash(*git* push* refs/tags/*)",
+      "Bash(*git* push*:refs/tags/*)",
+      "Bash(*git* push* v*)",
+      "Bash(*git* push*--delete*)",
+      "Bash(*git* push* -d *)",
+      "Bash(*git* push* main)",
+      "Bash(*git* push* main *)",
+      "Bash(*git* push*:main)",
+      "Bash(*git* push*:main *)",
+      "Bash(*gh* release create*)",
+      "Bash(*gh* release delete*)",
+      "Bash(*gh* release edit*)",
+      "Bash(*gh* release upload*)",
+      "Bash(*gh* workflow run*build-multiarch*)",
+      "Bash(*gh* workflow run*cli-publish*)",
+      "Bash(*gh* workflow run*recorder-publish*)",
+      "Bash(*git* push*:refs/heads/main)",
+      "Bash(*git* push*:refs/heads/main *)",
+      "Bash(*git* push* refs/heads/main)",
+      "Bash(*git* push* refs/heads/main *)",
+      "Bash(*git* push* +main)",
+      "Bash(*git* push* +main *)",
+      "Bash(*git* push* --mirror)",
+      "Bash(*git* push* --mirror *)",
+      "Bash(*git* push* --all)",
+      "Bash(*git* push* --all *)",
+      "Bash(*gh* api*/releases*)",
+      "Bash(*gh* api*/git/refs*)",
+      "Bash(*gh* api*/git/tags*)"
+    ]
+  }
+}

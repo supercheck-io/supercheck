@@ -1,6 +1,6 @@
 ---
 name: supercheck-security-auth
-description: Work on Supercheck authentication, RBAC, tenant isolation, sessions, API and trigger keys, invitations, project membership, project variables, OAuth, super-admin behavior, SSRF, or security-sensitive routes.
+description: Work on Supercheck authentication, RBAC and permission checks, tenant isolation and cross-organization or cross-project leaks, sessions, API, CLI and trigger keys, CLI device login, invitations, project membership, project variables, OAuth, super-admin and impersonation behavior, SSRF, or security-sensitive routes.
 ---
 
 # Supercheck security and authentication
@@ -15,18 +15,30 @@ flowchart LR
   RBAC -->|deny| DENY[401 or 403]
 ```
 
+## Start here
+
+| File | Why |
+|---|---|
+| `app/src/lib/auth-context.ts` | `requireAuthContext()` resolves cookie or bearer identity plus organization/project; `AuthError`, `authErrorStatus()` give the 401/403 split |
+| `app/src/lib/rbac/middleware.ts` | `hasPermissionForUser` (bearer-safe), `hasPermission` (session-only), `requirePermission`, `withProjectPermission`, `requireSuperAdmin` |
+| `app/src/lib/rbac/permissions-client.ts` | Source of truth for resources, actions, and `Role` (`permissions.ts` mirrors it for Better Auth type inference) |
+| `app/src/lib/security/` | `api-key-hash.ts` (token types and formats), `secret-crypto.ts`, `same-origin.ts`, `credential-owner.ts` |
+| `app/src/app/api/jobs/route.ts` | Reference dual cookie/bearer route |
+
 ## Authentication
 
 - Better Auth owns browser sessions, users, organizations, and membership. Do not add NextAuth patterns.
 - Browser routes may use session cookies. CLI and API-key routes require bearer-compatible auth context.
-- Never use a cookie-only permission helper in an API route that supports CLI bearer tokens.
+- Never use a cookie-only permission helper in an API route that supports CLI bearer tokens: `hasPermission` and `requireProjectContext` read session state; use `requireAuthContext` with `hasPermissionForUser`.
+- Permission checks use the effective (impersonated) user, not the admin who started impersonation. Credential-minting and similar sensitive actions must refuse under impersonation (`isImpersonatedSession` in `rbac/middleware.ts`).
+- Credentials whose owning user is suspended or gone must be rejected (`isCredentialOwnerActive`).
 - Return `401` when identity is absent/invalid and `403` when an authenticated identity lacks permission.
 - Session cookies retain secure, HTTP-only, same-site, domain, expiration, revocation, and proxy-aware behavior.
 - OAuth redirect URLs must exactly match provider configuration. GitHub applications require access to user email; Google requires configured consent and callback URLs.
 
 ## Roles, membership, and scope
 
-- Read canonical resources, actions, and roles from `app/src/lib/rbac`; never recreate role strings or a second permission matrix.
+- Read canonical resources, actions, and roles from `app/src/lib/rbac/permissions-client.ts`; never recreate role strings or a third permission matrix. When adding a resource or action, update `permissions-client.ts` and its mirror in `permissions.ts` together.
 - Resolve tenant context before data access. IDs supplied by clients are selectors, not proof of ownership.
 - Organization resources scope to the authenticated organization. Project resources additionally verify project ownership/membership.
 - Project admins/editors require the applicable project membership relationship. Organization-wide privileges apply only through central RBAC rules.
@@ -54,7 +66,10 @@ flowchart LR
 ## Input, browser, and network security
 
 - Use shared Zod schemas and size/shape bounds for all untrusted data.
-- User-controlled outbound URLs use the shared pinned-public-fetch/SSRF policy. Validate protocol, resolution, every redirect, and final connection target; block private/reserved ranges and metadata endpoints, including IPv4/IPv6 transition forms.
+- User-controlled outbound URLs use the pinned-public-fetch/SSRF policy. Validate protocol, resolution, every redirect, and final connection target; block private/reserved ranges and metadata endpoints, including IPv4/IPv6 transition forms. There is no single helper; reuse the one for your layer:
+  - Worker probes and requests: `worker/src/common/utils/pinned-public-fetch.ts` (`fetchPublicEndpoint`), `pinned-monitor-request.ts`, `pinned-lookup.ts`.
+  - App AI SRE connectors: `app/src/lib/sre/connectors/pinned-fetch.ts`, `pinned-lookup.ts`, `endpoint-policy.ts`.
+  - App configuration-time URL checks: `app/src/lib/url-validator.ts` (shape and host only, no DNS pinning; pair it with execution-time pinning).
 - Browser messages require `event.source`, exact parsed origin, allowed protocol/hostname, and schema-valid payloads. Use exact `targetOrigin`, never `*`, for privileged communication.
 - Preserve CSRF, CSP, origin, proxy-header, upload, and response-field allowlisting protections.
 - Provider/webhook signatures are verified before parsing side effects; webhook processing is idempotent and tenant-bound.

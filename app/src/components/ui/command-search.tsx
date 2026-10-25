@@ -253,7 +253,7 @@ export function CommandSearch({
               <CommandGroup heading="Admin">
                 <CommandItem onSelect={() => handleCommand("admin")}>
                   <UserCog className="mr-2 h-4 w-4 !text-zinc-400" />
-                  <span>Organization Admin</span>
+                  <span>Organization</span>
                 </CommandItem>
                 {canConfigureSre && (
                   <>
