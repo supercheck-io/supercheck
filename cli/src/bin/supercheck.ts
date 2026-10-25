@@ -23,6 +23,7 @@ import { testCommand } from '../commands/tests.js'
 import { monitorCommand } from '../commands/monitors.js'
 import { varCommand } from '../commands/variables.js'
 import { tagCommand } from '../commands/tags.js'
+import { requirementCommand } from '../commands/requirements.js'
 import { diffCommand } from '../commands/diff.js'
 import { deployCommand } from '../commands/deploy.js'
 import { destroyCommand } from '../commands/destroy.js'
@@ -163,6 +164,7 @@ program.addCommand(testCommand)
 program.addCommand(monitorCommand)
 program.addCommand(varCommand)
 program.addCommand(tagCommand)
+program.addCommand(requirementCommand)
 
 // Register commands — monitoring-as-code
 program.addCommand(diffCommand)

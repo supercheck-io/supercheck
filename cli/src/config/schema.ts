@@ -99,28 +99,64 @@ export const statusPageComponentDefinitionSchema = z.object({
   position: z.number().int().min(0).optional(),
 }).strict()
 
+const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Expected a #RRGGBB hex color')
+
+export const statusPageBrandingSchema = z.object({
+  bodyBackgroundColor: hexColor.optional(),
+  fontColor: hexColor.optional(),
+  lightFontColor: hexColor.optional(),
+  greens: hexColor.optional(),
+  yellows: hexColor.optional(),
+  oranges: hexColor.optional(),
+  blues: hexColor.optional(),
+  reds: hexColor.optional(),
+  borderColor: hexColor.optional(),
+  graphColor: hexColor.optional(),
+  linkColor: hexColor.optional(),
+  noData: hexColor.optional(),
+}).strict()
+
+/** No defaults: an absent flag means "leave the remote value alone". */
+export const statusPageNotificationsSchema = z.object({
+  allowPageSubscribers: z.boolean().optional(),
+  allowEmailSubscribers: z.boolean().optional(),
+  allowWebhookSubscribers: z.boolean().optional(),
+  allowSlackSubscribers: z.boolean().optional(),
+  allowIncidentSubscribers: z.boolean().optional(),
+  allowRssFeed: z.boolean().optional(),
+}).strict()
+
 export const statusPageDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
   name: z.string().min(1),
+  /** Read-only: written by `pull`, never compared and never sent (the server generates it). */
   subdomain: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
   description: z.string().optional(),
   headline: z.string().optional(),
   supportUrl: z.string().optional(),
   language: z.string().min(2).max(10).optional(),
+  timezone: z.string().max(50).optional(),
+  customDomain: z.string().optional(),
   components: z.array(statusPageComponentDefinitionSchema).optional(),
-  branding: z.object({
-    bodyBackgroundColor: z.string().optional(),
-    fontColor: z.string().optional(),
-    greens: z.string().optional(),
-    reds: z.string().optional(),
-  }).strict().optional(),
-  notifications: z.object({
-    allowEmailSubscribers: z.boolean().default(true),
-    allowWebhookSubscribers: z.boolean().default(false),
-    allowRssFeed: z.boolean().default(true),
-  }).strict().optional(),
+  branding: statusPageBrandingSchema.optional(),
+  notifications: statusPageNotificationsSchema.optional(),
+}).strict()
+
+// --- Requirements ---
+
+export const requirementDefinitionSchema = z.object({
+  /** Database UUID. Present for existing resources, omitted for new ones. */
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(1).max(500),
+  description: z.string().optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+  externalId: z.string().max(255).optional(),
+  externalUrl: z.string().url().optional(),
+  /** Linked tests, referenced the same way as a job's `tests` (file path, filename or UUID). */
+  tests: z.array(z.string()).max(100).optional(),
 }).strict()
 
 // --- Project, API, Defaults ---
@@ -156,6 +192,7 @@ export const supercheckConfigSchema = z.object({
     z.array(statusPageDefinitionSchema),
   ]).optional(),
   jobs: z.array(jobDefinitionSchema).optional(),
+  requirements: z.array(requirementDefinitionSchema).optional(),
   notificationProviders: z.array(notificationProviderDefinitionSchema).optional(),
   variables: z.array(variableDefinitionSchema).optional(),
   tags: z.array(tagDefinitionSchema).optional(),
@@ -174,6 +211,7 @@ export type PlaywrightTestConfig = z.infer<typeof playwrightTestConfigSchema>
 export type K6TestConfig = z.infer<typeof k6TestConfigSchema>
 export type MonitorDefinition = z.infer<typeof monitorDefinitionSchema>
 export type JobDefinition = z.infer<typeof jobDefinitionSchema>
+export type RequirementDefinition = z.infer<typeof requirementDefinitionSchema>
 export type StatusPageDefinition = z.infer<typeof statusPageDefinitionSchema>
 export type StatusPageComponentDefinition = z.infer<typeof statusPageComponentDefinitionSchema>
 export type NotificationProviderDefinition = z.infer<typeof notificationProviderDefinitionSchema>

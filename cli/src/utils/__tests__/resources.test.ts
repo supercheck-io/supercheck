@@ -234,6 +234,10 @@ describe('fetchRemoteResources', () => {
         )
       }
 
+      if (path === '/api/requirements') {
+        return { data: { data: [], total: 0, page: 1, pageSize: 200 }, status: 200, headers: new Headers() } as unknown as MockGetResponse<Record<string, unknown>>
+      }
+
       if (path === '/api/variables' || path === '/api/tags' || path === '/api/notification-providers') {
         return {
           data: [],

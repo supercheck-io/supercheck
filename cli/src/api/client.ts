@@ -111,6 +111,8 @@ export class ApiClient {
       retries?: number
       /** Per-request timeout in ms; overrides the client default. */
       timeout?: number
+      /** Return the raw response text as `data` instead of parsing JSON (e.g. CSV exports). */
+      text?: boolean
     },
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
@@ -202,6 +204,8 @@ export class ApiClient {
           )
         }
 
+        if (options?.text) return { data: text as T, status: response.status, headers: response.headers }
+
         let data: T
         try { data = text ? JSON.parse(text) as T : {} as T } catch {
           throw new ApiRequestError(`Invalid JSON response from ${targetOrigin}: ${method} ${path}`, response.status)
@@ -248,6 +252,11 @@ export class ApiClient {
     params?: Record<string, string | number | boolean | undefined>,
   ): Promise<ApiResponse<T>> {
     return this.request<T>('GET', path, { params })
+  }
+
+  /** GET a non-JSON body (e.g. CSV) as text. */
+  async getText(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<ApiResponse<string>> {
+    return this.request<string>('GET', path, { params, text: true })
   }
 
   async post<T = unknown>(

@@ -1,6 +1,7 @@
 import { redact } from './redact.js'
 import pc from './colors.js'
 import { logger } from './logger.js'
+import { compareComponents } from './status-pages.js'
 
 /**
  * Represents a resource defined in the local config file.
@@ -8,7 +9,7 @@ import { logger } from './logger.js'
 export interface LocalResource {
   /** Database UUID if this resource already exists on the server. Absent for new resources. */
   id?: string
-  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider'
+  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider' | 'requirement'
   name: string
   definition: Record<string, unknown>
 }
@@ -18,7 +19,7 @@ export interface LocalResource {
  */
 export interface RemoteResource {
   id: string
-  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider'
+  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider' | 'requirement'
   name: string
   raw: Record<string, unknown>
 }
@@ -88,7 +89,7 @@ export function reconcile(
         local: l,
       })
     } else {
-      const diffs = diffFields(l.definition, r.raw)
+      const diffs = diffFields(l.definition, r.raw, l.type)
       if (diffs.length > 0) {
         changes.push({
           action: 'update',
@@ -149,7 +150,7 @@ function stableStringify(value: unknown): string {
  * Shallow diff between local definition fields and remote raw fields.
  * Returns a list of human-readable change descriptions.
  */
-function diffFields(local: Record<string, unknown>, remote: Record<string, unknown>): string[] {
+function diffFields(local: Record<string, unknown>, remote: Record<string, unknown>, resourceType?: string): string[] {
   const diffs: string[] = []
   const maskedFields = Array.isArray(remote.__maskedFields)
     ? (remote.__maskedFields as unknown[]).filter((field): field is string => typeof field === 'string')
@@ -159,12 +160,22 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     if (localVal === undefined) continue
     // Skip internal/metadata fields
     if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
+    // Read-only, server-generated: pulled but never compared.
+    if (resourceType === 'statusPage' && key === 'subdomain') continue
+    if (resourceType === 'statusPage' && key === 'components') {
+      diffs.push(...compareComponents(localVal, remote[key]))
+      continue
+    }
 
     // For secret variables, the remote API returns an empty/masked value for security.
     // Skip comparing secret values to prevent phantom diffs and secret leakage in stdout.
     if (key === 'value' && (local.isSecret || remote.isSecret)) continue
 
-    const remoteVal = remote[key]
+    let remoteVal = remote[key]
+    // Partially specified nested settings only compare the keys the config sets.
+    if (resourceType === 'statusPage' && (key === 'branding' || key === 'notifications') && localVal && typeof localVal === 'object' && remoteVal && typeof remoteVal === 'object') {
+      remoteVal = Object.fromEntries(Object.keys(localVal as object).filter((k) => k in (remoteVal as object)).map((k) => [k, (remoteVal as Record<string, unknown>)[k]]))
+    }
     const [comparableLocal, comparableRemote] = key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
       : [localVal, remoteVal]

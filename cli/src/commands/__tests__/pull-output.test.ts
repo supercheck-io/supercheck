@@ -18,6 +18,8 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
 jest.unstable_mockModule('../../config/loader.js', () => ({ tryLoadConfig: async () => null }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({
   fetchAllPages: async (_client: unknown, path: string) => resources[path] ?? [],
+  fetchRemoteRequirements: async () => resources['/api/requirements'] ?? [],
+  fetchStatusPagesWithComponents: async () => resources['/api/status-pages'] ?? [],
 }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({
   withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn(),

@@ -154,6 +154,16 @@ export function managedState(client: ApiClient, context: ProjectContext, configP
           definition.alertConfig = { ...definition.alertConfig, notificationProviders: definition.alertConfig.notificationProviders.map((ref) => lookup('notificationProvider', String(ref)) ?? ref) }
         }
         const item = { ...resource, definition }
+        if (item.type === 'requirement' && Array.isArray(item.definition.tests)) {
+          return { ...item, definition: { ...item.definition, tests: [...new Set(item.definition.tests.map((ref) => lookup('test', String(ref)) ?? String(ref)))].sort() } }
+        }
+        if (item.type === 'statusPage' && Array.isArray(item.definition.components)) {
+          const components = (item.definition.components as Array<Record<string, unknown>>).map((component) => ({
+            ...component,
+            monitors: Array.isArray(component.monitors) ? [...new Set((component.monitors as unknown[]).map((ref) => lookup('monitor', String(ref)) ?? String(ref)))].sort() : component.monitors,
+          }))
+          return { ...item, definition: { ...item.definition, components } }
+        }
         if (item.type === 'job' && Array.isArray(item.definition.tests)) {
           return { ...item, definition: { ...item.definition, tests: item.definition.tests.map((ref) => lookup('test', String(ref)) ?? ref) } }
         }

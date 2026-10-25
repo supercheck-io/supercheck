@@ -8,6 +8,7 @@ import { loadConfig } from '../config/loader.js'
 import { discoverFiles } from '../utils/discovery.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
+import { requirePriority } from '../utils/priority.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -20,15 +21,7 @@ import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.
 import type { ApiTestType } from '../utils/validation.js'
 import { addAssignedTags, getAssignedTags, removeAssignedTags } from '../utils/tag-assignment.js'
 
-const TEST_PRIORITIES = ['low', 'medium', 'high'] as const
-
-export function requireTestPriority(value: string): (typeof TEST_PRIORITIES)[number] {
-  const normalized = value.trim().toLowerCase()
-  if (!(TEST_PRIORITIES as readonly string[]).includes(normalized)) {
-    throw new CLIError(`Invalid priority "${value}". Use one of: ${TEST_PRIORITIES.join(', ')}.`, ExitCode.ConfigError)
-  }
-  return normalized as (typeof TEST_PRIORITIES)[number]
-}
+export const requireTestPriority = requirePriority
 
 function normalizeTestType(input: string): string {
   return requireApiTestType(input, '--type')

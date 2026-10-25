@@ -1,6 +1,7 @@
 import { managedState, verifyContext, describeTarget, deploymentLock, rejectAmbiguousCreates } from '../utils/managed.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
+import { posix } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
@@ -19,6 +20,7 @@ import { encodeStoredTestScript } from '../utils/script.js'
 import pc from '../utils/colors.js'
 import { waitForRun } from '../utils/wait.js'
 import { parseIntStrict } from '../utils/number.js'
+import { applyStatusPage, validateStatusPageDefinition } from '../utils/status-pages.js'
 
 /**
  * Prepare the body for API request by transforming local config shape
@@ -52,12 +54,10 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
     }
   }
 
-  if (type === 'statusPage') {
-    // Map description back to pageDescription
-    if (payload.description) {
-      payload.pageDescription = payload.description
-      delete payload.description
-    }
+  if (type === 'requirement') {
+    // `tests` holds resolved test ids; the API calls them `testIds`.
+    if (Array.isArray(payload.tests)) payload.testIds = payload.tests
+    delete payload.tests
   }
 
   if (type === 'notificationProvider') {
@@ -74,6 +74,40 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
   }
 
   return payload
+}
+
+const normalizeTestRef = (ref: string) => posix.normalize(ref.replace(/\\/g, '/')).replace(/^_supercheck_\//, '')
+
+/**
+ * Check every reference a create/update will resolve before the first write, so a typo cannot leave a half-applied
+ * deploy. A reference may point at a resource that this same deploy creates (it is recorded when created).
+ */
+export function assertReferencesResolvable(actionable: ResourceChange[], state: Pick<ReturnType<typeof managedState>, 'resolve'>): void {
+  const created = (type: string) => new Set(actionable.filter((c) => c.type === type && c.action === 'create').map((c) => (type === 'test' ? normalizeTestRef(c.name) : c.name)))
+  const createdTests = created('test')
+  const createdMonitors = created('monitor')
+  const check = (owner: string, type: 'test' | 'monitor', ref: string) => {
+    try { state.resolve(type, ref); return } catch (error) {
+      const pending = type === 'test' ? createdTests.has(normalizeTestRef(ref)) : createdMonitors.has(ref)
+      if (pending) return
+      throw error instanceof CLIError ? new CLIError(`${owner}: ${error.message}`, error.exitCode) : error
+    }
+  }
+  for (const change of actionable) {
+    if (change.action === 'delete' || !change.local) continue
+    const definition = change.local.definition
+    if (change.type === 'requirement' && Array.isArray(definition.tests)) {
+      for (const ref of definition.tests) check(`requirement/${change.name}`, 'test', String(ref))
+    }
+    if (change.type === 'statusPage') {
+      validateStatusPageDefinition(definition, change.name)
+      if (Array.isArray(definition.components)) {
+        for (const component of definition.components as Array<{ monitors?: unknown[] }>) {
+          for (const ref of component.monitors ?? []) check(`statusPage/${change.name}`, 'monitor', String(ref))
+        }
+      }
+    }
+  }
 }
 
 async function applyTags(client: import('../api/client.js').ApiClient, resourcePath: string, refs: string[], id: string): Promise<void> {
@@ -96,10 +130,30 @@ async function applyChange(
   change: ResourceChange,
   opts: {
     state: ReturnType<typeof managedState>
+    deleteMissing?: boolean
   },
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
     const endpoint = getApiEndpoint(change.type)
+
+    if (change.type === 'statusPage' && (change.action === 'create' || change.action === 'update')) {
+      const { id } = await applyStatusPage(client, {
+        action: change.action,
+        id: change.action === 'update' ? change.id ?? change.remote!.id : undefined,
+        name: change.name,
+        definition: change.local!.definition,
+        remote: change.remote?.raw,
+        deleteMissing: opts.deleteMissing === true,
+        resolveMonitor: (ref) => opts.state.resolve('monitor', ref),
+        onCreated: (createdId) => {
+          try { opts.state.record(change.type, change.name, createdId, change.id ?? change.local?.id) } catch {
+            throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id: createdId })
+          }
+        },
+      })
+      if (change.action === 'update') opts.state.record(change.type, change.name, id)
+      return { success: true, id }
+    }
 
     let body: Record<string, unknown> = {}
     // Tag assignments go through the entity's tags endpoint after the write, not in the create/update body.
@@ -114,7 +168,7 @@ async function applyChange(
       if (rawBody.alertConfig && typeof rawBody.alertConfig === 'object' && 'notificationProviders' in rawBody.alertConfig && Array.isArray(rawBody.alertConfig.notificationProviders)) {
         rawBody.alertConfig = { ...rawBody.alertConfig, notificationProviders: rawBody.alertConfig.notificationProviders.map((ref) => opts.state.resolve('notificationProvider', String(ref))) }
       }
-      if (change.type === 'job' && Array.isArray(rawBody.tests)) {
+      if ((change.type === 'job' || change.type === 'requirement') && Array.isArray(rawBody.tests)) {
         rawBody.tests = rawBody.tests.map((ref) => opts.state.resolve('test', String(ref)))
       }
       if (change.type === 'monitor' && rawBody.type === 'synthetic_test' && rawBody.config && typeof rawBody.config === 'object') {
@@ -249,17 +303,6 @@ export const deployCommand = new Command('deploy')
 
       const actionable = changes.filter((c) => c.action !== 'no-change')
 
-      const unsupportedStatusPageMutations = actionable.filter(
-        (c) => c.type === 'statusPage' && (c.action === 'create' || c.action === 'update'),
-      )
-
-      if (unsupportedStatusPageMutations.length > 0) {
-        throw new CLIError(
-          'Status page create/update is not supported by the current API. Remove statusPages create/update changes from config (or apply them in the dashboard) and run deploy again.',
-          ExitCode.ConfigError,
-        )
-      }
-
       if (actionable.length === 0) {
         if (!options.dryRun) for (const change of changes) if (change.id) state.record(change.type, change.name, change.id)
         emit({ status: 'no_change', changes: [] })
@@ -267,6 +310,7 @@ export const deployCommand = new Command('deploy')
         return
       }
 
+      assertReferencesResolvable(actionable, state)
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')
       if (deletions.length > 0) logger.warn(`${deletions.length} remote resource(s) will be deleted, including any created outside this config.`)
@@ -330,7 +374,7 @@ export const deployCommand = new Command('deploy')
         ...actionable.filter((c) => c.action === 'delete'),
       ]
 
-      const rank = ['notificationProvider', 'tag', 'variable', 'test', 'monitor', 'job', 'statusPage']
+      const rank = ['notificationProvider', 'tag', 'variable', 'test', 'monitor', 'job', 'requirement', 'statusPage']
       ordered.sort((a, b) => {
         if (a.action === 'delete' || b.action === 'delete') {
           return a.action === b.action ? rank.indexOf(b.type) - rank.indexOf(a.type) : a.action === 'delete' ? 1 : -1
@@ -342,7 +386,7 @@ export const deployCommand = new Command('deploy')
         const actionLabel = change.action === 'create' ? '+' : change.action === 'update' ? '~' : '-'
         const color = change.action === 'create' ? pc.green : change.action === 'update' ? pc.yellow : pc.red
 
-        const result = await applyChange(client, change, { state })
+        const result = await applyChange(client, change, { state, deleteMissing: options.delete === true })
         results.push({ action: change.action, type: change.type, name: change.name, id: result.id ?? change.id, ...result })
 
         if (result.success) {
