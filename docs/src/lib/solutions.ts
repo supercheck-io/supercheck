@@ -128,7 +128,7 @@ claude mcp add --transport http supercheck \\
     },
   },
   {
-    slug: "on-call",
+    slug: "sre",
     role: "For on-call and SRE teams",
     metaTitle: "Supercheck for on-call and SRE teams",
     metaDescription:
