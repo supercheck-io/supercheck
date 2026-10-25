@@ -184,60 +184,29 @@ Configure when and how you receive notifications about monitor status changes.
 
 ![Alert Settings](/screenshots/create-monitor-alerts-setting.png)
 
-### Alert Settings
-
-| Setting | Description | Recommended |
+| Setting | What it does | Recommended |
 |---------|-------------|-------------|
-| **Enable Alerts** | Turn notifications on/off for this monitor | On for production services |
-| **Alert on Failure** | Notify when monitor exceeds failure threshold | Always enable |
-| **Alert on Recovery** | Notify when monitor returns to healthy state | Enable for critical services |
-| **Failure Threshold** | Consecutive failures before alerting (1-5) | 2-3 to avoid false positives |
-| **Recovery Threshold** | Consecutive successes before recovery alert (1-5) | 2 to confirm stability |
-| **Notification Channels** | Which providers receive alerts | Multiple channels for critical services |
+| **Enable Alerts** | Turns notifications on or off for this monitor | On for production |
+| **Alert on Failure** | Alerts once the failure threshold is reached, then up to 3 times per outage at the reminder interval | On |
+| **Alert on Recovery** | One alert per outage once the recovery threshold is reached | On for critical services |
+| **Failure Threshold** | Consecutive failures before the first alert (1–5) | 2–3 |
+| **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5) | 2 |
+| **SSL Expiration Alerts** | Website monitors only. Warns when a certificate is within **SSL Expiration Warning Days**, at most once per 24 hours | On |
+| **Notification Channels** | Where alerts are sent | More than one for critical services |
 
-### Threshold Logic
+<Accordions>
+<Accordion title="Example: failure threshold 3, recovery threshold 2" id="threshold-example">
 
-Thresholds prevent alert fatigue from transient issues:
+| Check | Result | Alert |
+|-------|--------|-------|
+| 1–2 | ❌ Fail | — |
+| 3 | ❌ Fail | **Failure alert** |
+| 4 | ❌ Fail | — |
+| 5 | ✅ Pass | — |
+| 6 | ✅ Pass | **Recovery alert** |
 
-<Tabs items={['Threshold Settings', 'Example']}>
-<Tab value="Threshold Settings">
-
-**Failure Threshold**
-
-The number of consecutive failures required before sending the first failure alert. This prevents alerts from single network blips.
-
-**Recovery Threshold**
-
-The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert. One recovery alert is sent after each outage once this threshold is reached. Failure alerts can repeat up to 3 times at the configured reminder intervals.
-
-For website monitors, enable **SSL Expiration Alerts** to receive a separate warning when a certificate reaches the configured **SSL Expiration Warning Days**. These warnings are evaluated independently of the monitor's up/down result and are limited to one per 24 hours while the certificate remains within the warning window.
-
-**Alert Limiting**
-
-- Maximum **3 failure alerts** per outage
-- **One recovery alert** after the recovery threshold is reached
-- Counter resets when status changes
-
-</Tab>
-<Tab value="Example">
-
-**Configuration:** Failure Threshold = 3, Recovery Threshold = 2
-
-| Check | Result | Consecutive Count | Alert Sent |
-|-------|--------|-------------------|------------|
-| 1 | ❌ Fail | 1 failure | — |
-| 2 | ❌ Fail | 2 failures | — |
-| 3 | ❌ Fail | 3 failures ✓ | **Failure Alert** |
-| 4 | ❌ Fail | 4 failures | — |
-| 5 | ✅ Pass | 1 success | — |
-| 6 | ✅ Pass | 2 successes ✓ | **Recovery Alert** |
-
-</Tab>
-</Tabs>
-
-<Callout type="info">
-A threshold of 2-3 works well for most services. Use 1 only for extremely critical services where any failure requires immediate attention.
-</Callout>
+</Accordion>
+</Accordions>
 
 ## Monitor Details Page
 
