@@ -149,7 +149,7 @@ sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/
 sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
 ```
 
-Continue only after migration succeeds. The script stops local app/worker, copies and verifies storage, and preserves `.env.pre-rustfs` and `minio-data` for recovery. Follow the [migration guide](https://supercheck.io/docs/app/deployment/self-hosted#upgrading-from-minio-breaking), then start the new checkout with `docker compose up -d --wait --wait-timeout 300 --remove-orphans` (with `KUBECONFIG_FILE` set as below) to remove the old MinIO container and free port 9000. Verify a status page and test report before deleting the old storage volume.
+Continue only after migration succeeds. The script stops local app/worker, copies and verifies storage, and preserves `.env.pre-rustfs` and `minio-data` for recovery. Then start the new checkout with `docker compose up -d --wait --wait-timeout 300 --remove-orphans` (with `KUBECONFIG_FILE` set as below) to remove the old MinIO container and free port 9000. Verify a status page and test report before deleting the old storage volume.
 
 Update the deployment files to the target release when required by its release notes. Set `SUPERCHECK_VERSION=<new release>` in `.env` (without the Git tag's leading `v`), then run:
 

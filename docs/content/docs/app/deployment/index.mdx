@@ -4,21 +4,21 @@ description: Self-host Supercheck with Docker Compose
 icon: Server
 ---
 
-Deploy Supercheck on your own infrastructure with Docker Compose. Configure external providers only if you need AI, email, or other integrations; those features send requests to the providers you choose.
+Run Supercheck on your own infrastructure. Start with a single server; add workers or a Private Agent later. AI, email, and other integrations are optional and only send requests to the providers you configure.
 
-## Docker Compose
+## Choose a path
 
 <Cards>
   <Card
     icon={<Container className="text-sky-500" />}
     title="Self-Hosted"
-    description="All services on one server — simple and quick"
+    description="Everything on one server with one install command. Start here."
     href="/docs/app/deployment/self-hosted"
   />
   <Card
     icon={<Server className="text-emerald-500" />}
     title="Multi-Server"
-    description="Add execution workers on separate servers"
+    description="Add execution workers on separate servers to an existing install"
     href="/docs/app/deployment/multi-server"
   />
   <Card
@@ -33,35 +33,31 @@ Deploy Supercheck on your own infrastructure with Docker Compose. Configure exte
 
 | Requirement | Minimum |
 |-------------|---------|
-| Docker Engine | 20.10+ |
-| Docker Compose | v2.24.4+ (`docker compose`) |
-| OS | Linux (Ubuntu 22.04+, Debian 12+) |
+| OS | Linux: Ubuntu 22.04+ or Debian 12+ |
 | Architecture | x86_64 or arm64 |
-| CPU | 2 vCPU minimum, 4 vCPU recommended |
-| Memory | 4GB minimum, 8GB recommended |
-| Storage | 15GB free minimum, 30–50GB recommended |
-| Domain | Optional (required for HTTPS) |
+| CPU and memory | 2 vCPU and 4 GB RAM minimum; 4 vCPU and 8 GB recommended |
+| Disk | 15 GB free minimum; 30–50 GB recommended |
+| Docker and Compose | Docker Engine with Compose v2.24.4+ (the installer sets these up) |
+| Domain | Optional; required for public HTTPS |
 
 <Callout type="warn">
-**Linux only** — Supercheck's test-execution sandbox requires the Linux kernel. macOS and Windows are not supported, including Docker Desktop and WSL2.
+**Linux only.** The test sandbox needs the Linux kernel. macOS, Windows, Docker Desktop, and WSL2 are not supported.
 </Callout>
-
-The guided installer installs Docker, Compose, and other prerequisites automatically. See [Self-Hosted](/docs/app/deployment/self-hosted) to get started.
 
 ## Services
 
 | Service | Purpose |
 |---------|---------|
-| **app** | Next.js frontend and API |
-| **worker** | Test execution (Playwright/K6) |
-| **postgres** | Database |
-| **redis** | Job queues |
-| **rustfs** | Artifact storage (S3-compatible) |
-| **traefik** | HTTPS reverse proxy (production only) |
+| `app` | Next.js UI and API |
+| `worker` | Test execution (Playwright and k6) in a gVisor sandbox |
+| `postgres` | Database |
+| `redis` | Job queues |
+| `rustfs` | S3-compatible artifact storage |
+| `traefik` | HTTPS reverse proxy (HTTPS profile only) |
 
 ## Platform Architecture
 
-Interactive map of the platform — services, data stores, execution, and alerting.
+Interactive map of the platform: services, data stores, execution, and alerting.
 
 <DiagramEmbed
   src="/diagrams/supercheck-architecture.html"

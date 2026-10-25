@@ -60,6 +60,26 @@ docker() { :; }
 check_ports
 ''', 1)
 
+    def test_local_postgres_listener_is_rejected(self):
+        output = self.run_shell(r'''port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 5432', output)
+
+    def test_moved_database_and_redis_ports_are_checked(self):
+        output = self.run_shell(r'''printf 'DB_HOST_PORT=15432\nREDIS_HOST_PORT=16379\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 16379 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 16379', output)
+        self.run_shell(r'''printf 'DB_HOST_PORT=15432\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 5432 ]]; }
+docker() { :; }
+check_ports
+''')
+
     def test_failed_migration_volume_does_not_unlock_install(self):
         output = self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
 os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }

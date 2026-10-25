@@ -1,23 +1,24 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  AppWindow,
-  Bell,
+  ArrowLeftRight,
+  BellRing,
   BookOpen,
   Bot,
   Braces,
-  Cable,
+  Chrome,
   ClipboardCheck,
   Code,
   Gauge,
   Globe,
   History,
   Layers,
-  ListChecks,
   MousePointerClick,
-  PanelsTopLeft,
+  Plug,
   Server,
   Siren,
   Sparkles,
+  Tally4,
+  Target,
   Terminal,
   Users,
   Workflow,
@@ -50,11 +51,11 @@ export const productMenu: NavMenu = {
     {
       title: "Automate",
       items: [
-        { title: "Browser tests", description: "Playwright end-to-end tests", href: "/docs/app/automate/browser-test", icon: AppWindow },
-        { title: "API and database tests", description: "Endpoints, payloads and queries", href: "/docs/app/automate/api-test", icon: Braces },
+        { title: "Browser tests", description: "Playwright end-to-end tests", href: "/docs/app/automate/browser-test", icon: Chrome },
+        { title: "API and database tests", description: "Endpoints, payloads and queries", href: "/docs/app/automate/api-test", icon: ArrowLeftRight },
         { title: "Load testing", description: "k6 with live logs and comparison", href: "/docs/app/automate/performance-test", icon: Gauge },
         { title: "Recorder", description: "Record flows in Chrome or Edge", href: "/docs/recorder", icon: MousePointerClick },
-        { title: "Requirements", description: "Coverage for each requirement", href: "/docs/app/automate/requirements", icon: ListChecks },
+        { title: "Requirements", description: "Coverage for each requirement", href: "/docs/app/automate/requirements", icon: Target },
       ],
     },
     {
@@ -67,8 +68,8 @@ export const productMenu: NavMenu = {
     {
       title: "Communicate",
       items: [
-        { title: "Alerts", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: Bell },
-        { title: "Status pages", description: "Incidents and subscriber updates", href: "/docs/app/communicate/status-pages", icon: PanelsTopLeft },
+        { title: "Alerts", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: BellRing },
+        { title: "Status pages", description: "Incidents and subscriber updates", href: "/docs/app/communicate/status-pages", icon: Tally4 },
       ],
     },
     {
@@ -76,7 +77,7 @@ export const productMenu: NavMenu = {
       items: [
         { title: "Incidents", description: "Alerts and runs in one place", href: "/docs/app/investigate/incidents", icon: Siren },
         { title: "AI SRE Copilot", description: "Investigations that cite evidence", href: "/docs/app/investigate/copilot", icon: Bot },
-        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Cable },
+        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Plug },
       ],
     },
   ],

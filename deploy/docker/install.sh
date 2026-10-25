@@ -536,7 +536,7 @@ preflight() {
   disk_gb="$(df -Pk / | awk 'NR==2 {print int($4/1024/1024)}')"
   if [[ "$mem_kb" -lt 3500000 ]]; then warn "Memory is $((mem_kb / 1024)) MB; 4 GB or more is recommended. Test runs may be slow or fail."; else ok "Memory $((mem_kb / 1024)) MB"; fi
   if [[ "$cpus" -lt 2 ]]; then warn "Only ${cpus} CPU; 2 or more is recommended."; else ok "${cpus} CPUs"; fi
-  if [[ "$disk_gb" -lt 10 ]]; then fail "Only ${disk_gb} GB free on /; at least 15 GB is needed (the worker image alone is 3.2 GB)."; problems=1
+  if [[ "$disk_gb" -lt 10 ]]; then fail "Only ${disk_gb} GB free on /; at least 10 GB is needed and 15 GB is recommended (the worker image alone is 3.2 GB)."; problems=1
   elif [[ "$disk_gb" -lt 15 ]]; then warn "${disk_gb} GB free on /; 15 GB or more is recommended."
   else ok "${disk_gb} GB free disk"; fi
 
@@ -558,7 +558,7 @@ preflight() {
     proj="$(project_name)"
     if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && { [[ "$(env_get S3_ENDPOINT)" != "http://rustfs:9000" ]] || ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; }; then
       fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
-      note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading from MinIO' in the docs)."
+      note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading' in deploy/docker/README.md)."
       note "Starting fresh on purpose? Re-run with --ignore-minio."
       problems=1
     fi
@@ -585,7 +585,12 @@ preflight() {
 }
 
 check_ports() {
-  local ports=(3000 9000); [[ "$MODE" == "public" ]] && ports=(80 443 3000 9000)
+  # Compose also binds PostgreSQL and Redis on loopback; their host ports can be moved in .env.
+  local db_port redis_port
+  # env_get fails under pipefail before .env exists (first install).
+  db_port="$(env_get DB_HOST_PORT || true)"; redis_port="$(env_get REDIS_HOST_PORT || true)"
+  local ports=(3000 9000 "${db_port:-5432}" "${redis_port:-6379}")
+  [[ "$MODE" == "public" ]] && ports=(80 443 "${ports[@]}")
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
       # A re-run on a running install legitimately finds our own stack listening.
@@ -656,6 +661,10 @@ main() {
       printf '\n    1) Try it on this server   %s(HTTP on localhost, fastest)%s\n' "$DIM" "$RESET" >/dev/tty
       printf '    2) Public server           %s(HTTPS with your domain)%s\n\n' "$DIM" "$RESET" >/dev/tty
       choice="$(ask "Choose" "1")"
+      until [[ "$choice" == "1" || "$choice" == "2" ]]; do
+        warn "Enter 1 or 2."
+        choice="$(ask "Choose" "1")"
+      done
       [[ "$choice" == "2" ]] && MODE="public" || MODE="local"
     else
       die "No setup chosen and no terminal to ask on." "Pass --local, or --domain <host> --email <address>."
