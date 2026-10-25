@@ -408,7 +408,7 @@ function OptionsPage() {
           <h2>
             Supercheck Connection
             <InfoTip label='the connection' learnMore='#connect-to-supercheck'>
-              Supercheck Cloud, the demo and QA sites connect automatically once you sign in. Self-hosted
+              Supercheck Cloud and the demo connect automatically once you sign in. Self-hosted
               instances need their URL saved here once.
             </InfoTip>
           </h2>

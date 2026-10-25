@@ -75,7 +75,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - PostgreSQL connection to main server}
 
       # Redis connection (required)
-      # The worker uses REDIS_HOST/PORT/PASSWORD directly (not REDIS_URL).
+      # The worker uses REDIS_HOST/PORT/PASSWORD.
       # The main server's bundled Redis always runs with --requirepass, so an
       # empty REDIS_PASSWORD would fail with NOAUTH at runtime; fail fast here.
       REDIS_HOST: ${REDIS_HOST:?REDIS_HOST is required - Redis hostname or IP of main server}
@@ -103,7 +103,6 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
       AWS_REGION: ${AWS_REGION:-us-east-1}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
 
       # Playwright buckets (use same as main server)
       S3_TEST_BUCKET_NAME: ${S3_TEST_BUCKET_NAME:-playwright-test-artifacts}

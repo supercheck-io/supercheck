@@ -216,7 +216,7 @@ export function RecordButton({
             <div className="rounded-lg border border-dashed p-4 space-y-2">
               <p className="text-sm font-medium">Already installed, or using the demo / self-hosted?</p>
               <p className="text-xs text-muted-foreground">
-                Supercheck Cloud, the demo, and QA sites connect automatically. For any other
+                Supercheck Cloud and the demo connect automatically. For any other
                 instance, open the extension&apos;s <strong className="text-foreground">Options</strong> page,
                 paste this URL, then reload this tab:
               </p>
