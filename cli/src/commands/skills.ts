@@ -55,5 +55,5 @@ export const capabilitiesCommand = new Command('capabilities')
   .option('--online', 'Verify the current server context using credentials')
   .action(async (options: { online?: boolean }) => {
     const context = options.online ? (await createAuthenticatedClient().get('/api/context')).data : null
-    outputDetail({ version: CLI_VERSION, offlineLocalExecution: true, credentialsPresent: isAuthenticated(), contextVerified: Boolean(context), context, workflows: Object.keys(guides), statusPageMutations: false, serverFeatures: 'unknown; context verification does not establish feature availability' })
+    outputDetail({ version: CLI_VERSION, offlineLocalExecution: true, credentialsPresent: isAuthenticated(), contextVerified: Boolean(context), context, workflows: Object.keys(guides), statusPageMutations: true, serverFeatures: 'unknown; context verification does not establish feature availability' })
   })

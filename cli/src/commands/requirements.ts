@@ -82,7 +82,7 @@ interface FieldOptions {
 function addFieldOptions(command: Command): Command {
   return command
     .option('--description <text>', 'Requirement description')
-    .option('--priority <priority>', 'low, medium or high')
+    .option('--priority <priority>', 'Requirement priority (low, medium, high)')
     .option('--tag <name>', 'Tag name (repeatable or comma-separated; replaces the tag set)', collect, [] as string[])
     .option('--external-id <id>', 'ID in an external tracker')
     .option('--external-url <url>', 'URL in an external tracker')

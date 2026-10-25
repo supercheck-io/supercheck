@@ -514,7 +514,7 @@ describe('read-only and operational commands', () => {
 
       expect(mockGet).not.toHaveBeenCalled()
       expect(mockOutputDetail).toHaveBeenCalledWith(
-        expect.objectContaining({ contextVerified: false, context: null, statusPageMutations: false }),
+        expect.objectContaining({ contextVerified: false, context: null, statusPageMutations: true }),
       )
     })
 
