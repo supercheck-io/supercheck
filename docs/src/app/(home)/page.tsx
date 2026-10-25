@@ -122,7 +122,8 @@ export default async function HomePage() {
             Open source under AGPLv3 · View on GitHub
           </a>
           <h1 className="mt-4 max-w-5xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
-            Open-source testing, monitoring, and AI SRE, as code
+            Open-source testing, monitoring, and AI SRE{" "}
+            <span className="whitespace-nowrap">— as code</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
             Test with Playwright and k6. Monitor your sites and APIs, keep users informed
