@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -382,22 +383,22 @@ export function CliTokensTable() {
     <TooltipProvider>
       <div className="space-y-6">
         {/* CLI Tokens Card */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between gap-4">
+        <div className="space-y-4">
+          <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <h2 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
                   <Terminal className="h-5 w-5 text-muted-foreground" />
                   CLI Tokens
-                </CardTitle>
-                <CardDescription className="text-sm">
+                </h2>
+                <p className="text-sm text-muted-foreground">
                   Manage API tokens for CLI and CI/CD access
-                </CardDescription>
+                </p>
               </div>
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-1.5" />
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
                     Create Token
                   </Button>
                 </DialogTrigger>
@@ -621,24 +622,19 @@ export function CliTokensTable() {
                 </DialogContent>
               </Dialog>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div>
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-6">
                 <SupercheckLoading size="sm" message="Loading tokens..." />
               </div>
             ) : tokens.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-4 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
-                  <Key className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <h3 className="text-sm font-medium mb-1">
-                  No CLI tokens yet
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-sm">
-                  Create your first CLI token to get started with CLI and CI/CD access.
-                </p>
-              </div>
+              <DashboardEmptyState
+                className="min-h-[240px]"
+                title="No CLI tokens yet"
+                description="Use Create Token to start with CLI and CI/CD access."
+                icon={<Key className="h-10 w-10" />}
+              />
             ) : (
               <div
                 className={cn(
@@ -724,6 +720,7 @@ export function CliTokensTable() {
                                   ? "text-green-600 bg-green-500/10 hover:bg-green-500/20 hover:text-green-700 dark:text-green-400 dark:bg-green-500/10 dark:hover:bg-green-500/20 dark:hover:text-green-300"
                                   : "text-muted-foreground bg-muted/50 hover:bg-muted hover:text-foreground"
                               }`}
+                              aria-label={`${token.enabled ? "Disable" : "Enable"} token ${token.name}`}
                               onClick={() =>
                                 handleToggleEnabled(token.id, token.enabled)
                               }
@@ -750,6 +747,7 @@ export function CliTokensTable() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 dark:text-red-400 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:hover:text-red-300"
+                              aria-label={`Delete token ${token.name}`}
                               onClick={() => handleDelete(token.id)}
                               disabled={
                                 operationLoadingStates[token.id] === "delete"
@@ -772,12 +770,12 @@ export function CliTokensTable() {
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Usage & Security Info */}
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="bg-muted/30 border-dashed">
+          <Card className="bg-muted/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-muted-foreground" />
@@ -802,6 +800,7 @@ export function CliTokensTable() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                      aria-label={`Copy command: ${command}`}
                       onClick={() => {
                         navigator.clipboard.writeText(command);
                         toast.success("Command copied to clipboard");
@@ -815,7 +814,7 @@ export function CliTokensTable() {
             </CardContent>
           </Card>
 
-          <Card className="bg-muted/30 border-dashed">
+          <Card className="bg-muted/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Shield className="h-4 w-4 text-muted-foreground" />
