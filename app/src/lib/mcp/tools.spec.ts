@@ -159,11 +159,13 @@ describe("MCP tools", () => {
   });
 
   it("get_requirement returns tag names, linked tests and a safe external url", async () => {
-    queue.push([{ id: id(1), title: "r", description: "d", priority: "low", tags: "a, b,,", externalId: "J-1", externalUrl: "https://jira.example.com/browse/J-1?token=Z", updatedAt: null, coverageStatus: "covered", linkedTestCount: 1, passedTestCount: 1, failedTestCount: 0, lastEvaluatedAt: null }]);
+    queue.push([{ id: id(1), title: "r", description: "d", priority: "low", tags: "stale-legacy", externalId: "J-1", externalUrl: "https://jira.example.com/browse/J-1?token=Z", updatedAt: null, coverageStatus: "covered", linkedTestCount: 1, passedTestCount: 1, failedTestCount: 0, lastEvaluatedAt: null }]);
     queue.push([{ id: id(5), title: "t", type: "browser" }]);
+    queue.push([{ name: "a" }, { name: "b" }]);
     const res = await handlers.get("get_requirement")!({ id: id(1) });
     expect(res.structuredContent.requirement).toMatchObject({ tags: ["a", "b"], externalUrl: "https://jira.example.com", coverage: { status: "covered", linkedTestCount: 1 }, tests: [{ id: id(5), title: "t", type: "browser" }] });
     expect(JSON.stringify(res)).not.toContain("token=Z");
+    expect(JSON.stringify(res)).not.toContain("stale-legacy");
   });
 
   it("status pages never include subscribers and get_status_page lists component monitors", async () => {
