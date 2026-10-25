@@ -1,15 +1,11 @@
-"use client";
-
 import Link from "next/link";
-import Image from "next/image";
-import { useState } from "react";
-import { ArrowRight, Check, Copy, Play } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
+import { CodeWindow } from "../../components/landing/code-window";
+import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
 import { SiteFooter } from "../../components/site-footer";
 
-const CLI_INSTALL = "npm install -g @supercheck/cli";
 const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev";
-const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
 
 const pillars = [
   {
@@ -92,75 +88,6 @@ const runOptions = [
   },
 ];
 
-function CopyCommand() {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(CLI_INSTALL);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard may be unavailable in insecure contexts
-    }
-  };
-
-  return (
-    <div className="inline-flex max-w-full items-center gap-3 rounded-md border border-fd-border bg-fd-card py-1.5 pr-1.5 pl-3 font-mono text-[13px]">
-      <span className="select-none text-fd-muted-foreground">$</span>
-      <code className="min-w-0 truncate">{CLI_INSTALL}</code>
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="rounded p-1.5 text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-foreground focus-visible:outline-2 focus-visible:outline-fd-primary"
-        aria-label={copied ? "Copied" : "Copy install command"}
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      </button>
-    </div>
-  );
-}
-
-function DemoVideo() {
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card">
-      {isPlaying ? (
-        <iframe
-          src={`https://www.youtube-nocookie.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
-          title="Supercheck product demo"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowFullScreen
-          className="absolute inset-0 h-full w-full"
-          ref={(frame) => frame?.focus()}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setIsPlaying(true)}
-          className="group absolute inset-0 h-full w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-fd-primary focus-visible:ring-inset"
-          aria-label="Play the product demo video"
-        >
-          <Image
-            src="/supercheck-screenshot.webp"
-            alt="Supercheck monitor detail view with availability and response time charts"
-            fill
-            sizes="(min-width: 1152px) 1152px, 100vw"
-            className="object-cover object-top"
-            priority
-          />
-          <span className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
-          <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-md bg-fd-background/95 px-3 py-2 text-sm font-medium text-fd-foreground shadow-sm ring-1 ring-fd-border sm:bottom-6 sm:left-6">
-            <Play className="size-4 fill-current" aria-hidden="true" />
-            Watch the product demo
-          </span>
-        </button>
-      )}
-    </div>
-  );
-}
-
 function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) {
   return (
     <div className="max-w-2xl">
@@ -176,7 +103,7 @@ const primaryButton =
 const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-md border border-fd-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
 
-export default function HomePage() {
+export default async function HomePage() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-fd-background text-fd-foreground">
       <SiteHeader />
@@ -192,8 +119,11 @@ export default function HomePage() {
           >
             Open source under AGPLv3 · View on GitHub
           </a>
-          <h1 className="mt-4 max-w-4xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
-            Testing, monitoring and incident investigation in one platform
+          <h1 className="mt-4 max-w-5xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
+            Open-Source Testing, Monitoring, and AI SRE{" "}
+            <span className="whitespace-nowrap">
+              — <span className="hero-accent">as Code</span>
+            </span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
             Run Playwright and k6 tests, monitor your sites and APIs from multiple regions,
@@ -274,22 +204,31 @@ export default function HomePage() {
                   </div>
                 ))}
               </dl>
-              <Link
-                href="/docs/cli"
-                className="mt-8 inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
-              >
-                CLI documentation
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-            <div className="min-w-0 overflow-hidden rounded-xl border border-fd-border bg-fd-background">
-              <div className="border-b border-fd-border px-4 py-2.5 font-mono text-xs text-fd-muted-foreground">
-                supercheck.config.ts
+              <div className="mt-8 rounded-lg border border-fd-border p-4">
+                <p className="text-sm font-medium">Ask your AI tools about it</p>
+                <p className="mt-1 text-sm text-fd-muted-foreground">
+                  A read-only MCP server lets Claude, Cursor, VS Code and other MCP clients look at
+                  a project&apos;s tests, runs, monitors and incidents. Off by default when self-hosting.
+                </p>
               </div>
-              <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed">
-                <code>{configExample}</code>
-              </pre>
+              <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
+                <Link
+                  href="/docs/cli"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
+                >
+                  CLI documentation
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="/docs/mcp"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-fd-primary hover:underline"
+                >
+                  MCP server
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
+                </Link>
+              </div>
             </div>
+            <CodeWindow code={configExample} filename="supercheck.config.ts" />
           </div>
         </section>
 

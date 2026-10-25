@@ -7,8 +7,6 @@ import { useSearchContext } from "fumadocs-ui/contexts/search";
 import { Search } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
-const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev";
-
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
 
@@ -100,21 +98,13 @@ export function SiteHeader() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Supercheck on GitHub"
-            className={`${focusRing} rounded-md p-2 text-fd-muted-foreground transition-colors hover:text-fd-foreground`}
+            className={`${focusRing} inline-flex rounded-md p-2 text-fd-muted-foreground transition-colors hover:text-fd-foreground`}
           >
             <GitHubMark />
           </a>
-          <span className="px-1.5">
-            <ThemeToggle />
-          </span>
-          <a
-            href={DEMO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${focusRing} ml-1 hidden rounded-md bg-fd-foreground px-3 py-1.5 text-sm font-medium text-fd-background transition-opacity hover:opacity-90 md:inline-flex`}
-          >
-            Live demo
-          </a>
+          <ThemeToggle
+            className={`${focusRing} inline-flex rounded-md p-2 text-fd-muted-foreground transition-colors hover:text-fd-foreground`}
+          />
         </div>
       </div>
     </header>

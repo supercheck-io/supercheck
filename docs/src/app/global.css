@@ -22,3 +22,39 @@ html:has(body[data-scroll-locked]) {
 body {
   background-color: var(--color-fd-background);
 }
+
+/* Landing page code panel: line numbers via CSS counters */
+.code-window .code-window__pre {
+  margin: 0;
+  background: transparent;
+  counter-reset: line;
+}
+
+.code-window .line {
+  display: inline-block;
+  min-width: 100%;
+  padding-right: 1rem;
+}
+
+.code-window .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 2.5rem;
+  padding-right: 1rem;
+  text-align: right;
+  color: rgb(255 255 255 / 0.25);
+  user-select: none;
+}
+
+/* Hero accent: the "as Code" phrase */
+.hero-accent {
+  background-image: linear-gradient(90deg, #6366f1 0%, #8b5cf6 45%, #d946ef 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dark .hero-accent {
+  background-image: linear-gradient(90deg, #818cf8 0%, #a78bfa 45%, #e879f9 100%);
+}
