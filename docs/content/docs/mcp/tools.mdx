@@ -1,12 +1,12 @@
 ---
 title: Tools
-description: Reference for the ten read-only tools the Supercheck MCP server exposes
+description: Reference for the read-only tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
 Every tool is marked `readOnlyHint: true`, returns both `structuredContent` and a JSON text copy, and is limited to the project of the connection.
 
-Returned text (test titles, error excerpts, incident summaries) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
+Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 
 ## Tools
 
@@ -16,12 +16,23 @@ Returned text (test titles, error excerpts, incident summaries) comes from your 
 | `list_tests` | tests | `limit`, `cursor` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
-| `list_runs` | runs | `limit`, `cursor` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
+| `get_job` | jobs | `id` | One job plus its test IDs (up to 100) and which alerts are on (`enabled`, `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`). No notification channels, trigger keys or scripts |
+| `list_runs` | runs | `limit`, `cursor`, `status`, `jobId` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
 | `get_run` | runs | `id` | One run plus a redacted, truncated `error` excerpt |
 | `list_monitors` | monitors | `limit`, `cursor` | `name`, `type`, `target` (scheme and host only), `status`, `lastCheckAt` |
-| `list_incidents` | incidents | `limit`, `cursor` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt` |
+| `get_monitor` | monitors | `id` | One monitor: `target` (scheme and host only), `status`, `enabled`, `frequencyMinutes`, `locations` and non-secret check settings (`method`, `expectedStatusCodes`, `port`, `protocol`, `timeoutSeconds`, `enableSslCheck`). No headers, auth, request body or alert settings |
+| `list_requirements` | requirements | `limit`, `cursor`, `coverageStatus` | `id`, `title`, `priority`, `coverageStatus` (`covered`, `failing`, `missing`), `linkedTestCount`, `updatedAt` |
+| `get_requirement` | requirements | `id` | One requirement with description, tags, external ID and link, coverage counts and its linked tests (up to 100) |
+| `list_status_pages` | status pages | `limit`, `cursor` | `name`, `status`, `subdomain`, `customDomain`, `customDomainVerified`, `headline` |
+| `get_status_page` | status pages | `id` | One status page plus its components and their monitor IDs. Never subscribers |
+| `list_services` | services | `limit`, `cursor` | Service catalog: `name`, `description`, `tier`, `environment`, `ownerTeam`, `tags`, `status` |
+| `get_service` | services | `id` | One service plus its dependencies in both directions, owning teams, repository host and latest health |
+| `list_variables` | variables | `limit`, `cursor` | `key`, `type`, `isSecret`, `description`, `updatedAt`. Never values |
+| `list_incidents` | incidents | `limit`, `cursor`, `status` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt` |
 | `get_incident` | incidents | `id` | One incident with its root-cause summary |
-| `prepare_local_authoring` | project | none | CLI commands for creating or editing tests (this server never writes) |
+| `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
+| `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
+| `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server never writes) |
 
 ## Paging
 
@@ -39,6 +50,12 @@ Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) ret
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 
+Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
+
+## AI SRE
+
+Investigation results that AI SRE already produced (hypotheses, confidence and recommendations) are readable, as are incidents and the service catalog. Starting an investigation, triage, a Copilot chat or an evidence brief is not available over MCP: those run AI work on your account and stream their output, so they stay in the dashboard and the CLI (`supercheck sre`).
+
 ## Not available
 
-Writes of any kind, test scripts, variable values, run reports and artifact files, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+Writes of any kind, starting AI SRE work, test scripts, variable values, monitor credentials and request settings, notification channels, status page subscribers, run reports and artifact files, investigation evidence and tool calls, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
