@@ -64,6 +64,125 @@ Click **AI Analyze** on any job run to generate an AI-powered analysis report.
 For self-hosted deployments, an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) to enable AI Analyze.
 </Callout>
 
+## Job Analytics
+
+Open **Automate → Runs** and use the tabs at the top: **All runs**, **Performance (k6)**, and **Browser (Playwright)**. The selected view is kept in the URL (`/runs?view=k6` or `/runs?view=playwright`), so you can bookmark or share it.
+
+### Performance (k6)
+
+The **Performance (k6)** view provides detailed performance metrics for your load tests.
+
+![K6 Analytics](/screenshots/dashboard-k6-analytics.png)
+
+#### Filters
+
+- **Job** — Filter to a specific K6 job or view all jobs
+- **Period** — Analyze last 30, 60, or 90 days of data
+
+#### Metric Cards
+
+| Metric | Description |
+|--------|-------------|
+| **Total Runs** | Number of K6 test executions in the selected period |
+| **Passed** | Runs where all thresholds passed, with pass rate percentage |
+| **Not passed** | Finished runs that did not pass (failed, error, or blocked). Shows "All passing" only when there are none |
+| **Avg P95 Response** | Average 95th percentile response time across runs |
+| **Avg Request Rate** | Average requests per second across runs |
+| **Avg Response Time** | Mean response latency across runs |
+
+#### Charts
+
+##### Response Time Trend
+Area chart showing P95 response time across runs. Use this to identify performance regressions or improvements over time.
+
+##### Request Rate Trend
+Area chart showing requests per second across runs. Monitor throughput patterns and capacity trends.
+
+---
+
+#### Run Comparison
+
+When a specific job is selected and has 2+ runs, click **Compare Runs** to open a side-by-side comparison dialog.
+
+![Run Comparison Dialog](/screenshots/dashboard-k6-compare-dialog.png)
+
+##### Run Selection
+
+- **Baseline (Left)** — Select the reference run to compare against
+- **Compare To (Right)** — Select the run to compare with the baseline
+
+Each run in the dropdown displays:
+- Pass/fail status indicator
+- Run date and time
+- P95 response time
+- Run ID
+
+##### Comparison Metrics
+
+The comparison table shows metrics from both runs with calculated delta values:
+
+| Metric | Description | Better When |
+|--------|-------------|-------------|
+| **P95 / P99 / Avg Response** | Latency percentiles | Lower |
+| **Total / Failed Requests** | Request counts | Higher / Lower |
+| **Request Rate** | Requests per second | Higher |
+| **Peak VUs** | Maximum virtual users | Context-dependent |
+
+Delta values are color-coded:
+- **Green** — Improvement
+- **Red** — Regression
+
+#### View k6 Reports
+
+Click **View k6 Reports** to compare the detailed k6 HTML reports side-by-side.
+
+![K6 Report Comparison](/screenshots/dashboard-k6-report-comparison.png)
+
+#### AI Analyze
+
+Click **AI Analyze** to generate an AI-powered performance comparison report.
+
+![AI Performance Analysis](/screenshots/dashboard-k6-ai-report-comparison.png)
+
+**Features:**
+- **Metric Comparison** — Detailed analysis of response times and throughput
+- **Performance Insights** — What improved and what regressed
+- **Potential Causes** — AI-identified reasons for changes
+- **Recommendations** — Actionable steps for improvement
+
+<Callout type="info">
+For self-hosted deployments, an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) to enable AI Analyze.
+</Callout>
+
+### Browser (Playwright)
+
+The **Browser (Playwright)** view provides insights into your browser test execution patterns and duration trends.
+
+![Playwright Analytics](/screenshots/dashboard-playwright-analytics.png)
+
+#### Filters
+
+- **Job** — Filter to a specific Playwright job or view all jobs
+- **Period** — Analyze last 30, 60, or 90 days of data
+
+#### Metric Cards
+
+| Metric | Description |
+|--------|-------------|
+| **Total Runs** | Number of Playwright test executions in the selected period |
+| **Passed** | Successful runs with pass rate percentage |
+| **Not passed** | Finished runs that did not pass (failed, error, or blocked). Shows "All passing" only when there are none |
+| **Avg / P95 Duration** | Execution time statistics |
+| **Total Duration** | Cumulative execution time in minutes |
+
+#### Charts
+
+##### Run Frequency
+Stacked bar chart showing daily test run distribution (Passed vs Failed). Use this to identify testing patterns and failure spikes.
+
+##### Execution Time Trend
+Area chart showing test duration over time. Monitor for performance regressions, flaky tests, or infrastructure issues.
+
 ## Delete a Run
 
 Queued or running executions cannot be deleted. Stop the execution before retrying. Deletion waits for artifact storage cleanup; if storage is unavailable, the run stays available so you can retry. A partial cleanup may already have removed some artifacts.

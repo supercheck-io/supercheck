@@ -26,6 +26,10 @@ import {
   syncRequirementTagsByName,
   updateCoverageSnapshot,
 } from "@/lib/requirements-internal";
+import {
+  AT_RISK_PRIORITIES,
+  accumulateRequirementCoverage,
+} from "@/lib/dashboard/requirements-stats";
 
 // ============================================================================
 // TYPES
@@ -1097,21 +1101,10 @@ export async function getRequirementsDashboardStats(): Promise<{
       .where(eq(requirements.projectId, project.id))
       .groupBy(requirementCoverageSnapshots.status);
 
-    // Calculate totals
-    let total = 0;
-    let covered = 0;
-    let failing = 0;
-    let missing = 0;
+    const { total, covered, failing, missing } =
+      accumulateRequirementCoverage(stats);
 
-    for (const stat of stats) {
-      const count = Number(stat.count);
-      total += count;
-      if (stat.status === "covered") covered = count;
-      else if (stat.status === "failing") failing = count;
-      else missing = count; // null status also counts as missing
-    }
-
-    // Get at-risk count (P1/P2 with failing or missing coverage)
+    // At-risk = AT_RISK_PRIORITIES requirements with failing/missing/no coverage
     const atRiskResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(requirements)
@@ -1122,8 +1115,7 @@ export async function getRequirementsDashboardStats(): Promise<{
       .where(
         and(
           eq(requirements.projectId, project.id),
-          // At-risk = high priority with failing or missing coverage
-          eq(requirements.priority, "high"),
+          inArray(requirements.priority, [...AT_RISK_PRIORITIES]),
           or(
             eq(requirementCoverageSnapshots.status, "failing"),
             eq(requirementCoverageSnapshots.status, "missing"),
