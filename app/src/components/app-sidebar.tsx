@@ -57,16 +57,14 @@ const releaseVersionBadge = getReleaseVersionBadge(
 
 // Sidebar navigation data
 const data = {
-  Dashboard: [
+  Communicate: [
     {
       title: "Dashboard",
       url: "/",
       icon: ChartColumn,
       isActive: true,
     },
-  ],
 
-  Communicate: [
     {
       title: "Alerts",
       url: "/alerts",
@@ -328,7 +326,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        <NavMain groupLabel="" items={data.Dashboard} />
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />

@@ -29,13 +29,11 @@ import { AppSidebar } from "./app-sidebar";
 describe("AppSidebar", () => {
   beforeEach(() => { mockStatus = { isAdmin: false, isOrgAdmin: true, isLoading: false }; });
 
-  it("renders Dashboard as an ungrouped top-level item, not under Communicate", () => {
+  it("renders Dashboard as the first item of the first group, Communicate", () => {
     render(<AppSidebar />);
     const groups = screen.getAllByTestId(/^group-/);
-    expect(groups[0]).toHaveAttribute("data-testid", "group-ungrouped");
-    expect(within(groups[0]).getByText("Dashboard")).toBeInTheDocument();
-    expect(within(screen.getByTestId("group-Communicate")).queryByText("Dashboard")).toBeNull();
-    expect(within(screen.getByTestId("group-Communicate")).getByText("Alerts")).toBeInTheDocument();
+    expect(groups[0]).toHaveAttribute("data-testid", "group-Communicate");
+    expect(groups[0].textContent).toMatch(/^DashboardAlerts/);
   });
 
   it("labels the org settings entry Organization, with no bare Admin item", () => {
