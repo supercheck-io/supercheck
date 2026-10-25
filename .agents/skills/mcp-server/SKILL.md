@@ -37,10 +37,11 @@ User docs: `docs/content/docs/mcp/` (`tools.mdx`, `security.mdx`, `connect.mdx`)
 
 - Tools are read-only: register with the shared annotations (`readOnlyHint: true`, `destructiveHint: false`). A write tool needs its own scope, RBAC action, quota preflight, and audit design first; do not add one as a small change.
 - Register every tool through the `tool(...)` helper in `tools.ts` with an RBAC resource; it runs `assertCanView`, maps errors to `forbidden`/`not_found`/`internal_error`, and writes an `mcp_tool_call` audit event with ids and timing only (never arguments or results).
-- Scope every query with the call's `organizationId` and `projectId` (the `scope()` helper). A connection is bound to one project.
+- Scope every query with the call's `organizationId` and `projectId` (the `scope()` helper). A connection is bound to one project. Tables without an organization column (`runs`, `project_variables`) are scoped through the owning project (`exists` on `projects`), and child rows (job tests, requirement links, component monitors) through a project-scoped parent.
 - Validate arguments with Zod: ids are UUIDs, lists use the shared `page` shape (`limit` capped at `MAX_LIMIT`, cursor is the last id).
-- Never return scripts, secrets, variables, headers, alert settings, or raw response bodies. Pass user-controlled text through `safeText` (bounded, redacted) and monitor targets through `safeTarget` (no credentials or query strings).
+- Never return scripts, secrets, variable values (`list_variables` returns variable metadata without values: id, key, type, isSecret, description, updatedAt), headers, auth or request bodies (`get_monitor` uses an allow-list of scalar settings), notification channels or trigger keys, status page subscribers, investigation prompts, agent state, evidence or cost, or raw response bodies. Pass user-controlled text through `safeText` (bounded, redacted) and monitor targets through `safeTarget` (no credentials or query strings).
 - Tools returning stored data end their description with the `UNTRUSTED` suffix (the static `prepare_local_authoring` hint is the exception): returned text comes from test output or incidents and is prompt-injection input for the client.
+- Do not expose billable AI SRE actions (triage, investigate, Copilot chat, evidence briefs): they spend credits and stream output. Stored results are readable (`list_investigations`, `get_investigation`); starting work needs a separate scope, consent wording and cost guard.
 - Return `ok(...)`/`fail(code, message)`: structured content plus a JSON text copy; errors are stable codes, not stack traces.
 
 ## Transport and auth rules

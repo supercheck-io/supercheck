@@ -7,7 +7,7 @@ icon: ShieldCheck
 ## You stay in control
 
 - **You approve each connection** and choose the single project it can read.
-- **Read-only.** There is no tool that writes, triggers runs or consumes quota.
+- **Read-only.** There is no tool that writes, triggers runs, starts AI SRE work or consumes quota.
 - **Disconnect works immediately.** Remove an app under **Connected apps**.
 - **Your role applies on every call.** Access is re-checked for each request, not only when you connect, so these take effect at once:
   - you disconnect the app
@@ -27,7 +27,7 @@ icon: ShieldCheck
 
 ## What is filtered
 
-- Test scripts, variable values, alert settings and monitor configuration are never returned.
+- Test scripts, variable values, notification channels, trigger keys, monitor credentials, headers and request bodies, status page subscribers, and investigation prompts, evidence and cost are never returned. Jobs show only which alerts are on, and monitors only non-secret check settings.
 - Monitor targets are reduced to scheme and host, so URLs that hide a secret in the path or query stay hidden.
 - Text is scanned for credentials (tokens, API keys, `Authorization` and cookie headers, URL passwords) and replaced with `[REDACTED…]` markers (including Supercheck's own API keys and email addresses), and long fields are cut off with `[truncated]`.
 - Requests over 1 MB are rejected.

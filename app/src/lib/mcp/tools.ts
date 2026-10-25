@@ -8,6 +8,7 @@ import {
   projectVariables,
   projects,
   requirementCoverageSnapshots,
+  requirementTags,
   requirements,
   runs,
   sreIncidents,
@@ -20,6 +21,7 @@ import {
   statusPageComponentMonitors,
   statusPageComponents,
   statusPages,
+  tags,
   testRequirements,
   tests,
 } from "@/db/schema";
@@ -47,6 +49,7 @@ const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued
 const INCIDENT_STATUSES = ["triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
 const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
 const MAX_CHILDREN = 100;
+const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 
 type Result = { structuredContent: Record<string, unknown>; content: { type: "text"; text: string }[] };
 type ErrorResult = Result & { isError: true };
@@ -310,7 +313,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     // Allow-list of scalar settings; everything else in the config (headers, auth, body, keywords) is omitted.
     const c = m.config;
     const settings = {
-      method: typeof c?.method === "string" ? c.method : null,
+      method: typeof c?.method === "string" && HTTP_METHODS.has(c.method.toUpperCase()) ? c.method.toUpperCase() : null,
       expectedStatusCodes: safeText(typeof c?.expectedStatusCodes === "string" ? c.expectedStatusCodes : null, 100),
       port: typeof c?.port === "number" ? c.port : null,
       protocol: c?.protocol === "tcp" || c?.protocol === "udp" ? c.protocol : null,
@@ -371,7 +374,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
 
   tool("get_requirement", "Get one requirement with its linked tests and coverage counts." + UNTRUSTED, "requirement", { id: idArg }, async ({ id }) => {
     const [r] = await db
-      .select({ id: requirements.id, title: requirements.title, description: requirements.description, priority: requirements.priority, tags: requirements.tags, externalId: requirements.externalId, externalUrl: requirements.externalUrl, updatedAt: requirements.updatedAt, coverageStatus: requirementCoverageSnapshots.status, linkedTestCount: requirementCoverageSnapshots.linkedTestCount, passedTestCount: requirementCoverageSnapshots.passedTestCount, failedTestCount: requirementCoverageSnapshots.failedTestCount, lastEvaluatedAt: requirementCoverageSnapshots.lastEvaluatedAt })
+      .select({ id: requirements.id, title: requirements.title, description: requirements.description, priority: requirements.priority, externalId: requirements.externalId, externalUrl: requirements.externalUrl, updatedAt: requirements.updatedAt, coverageStatus: requirementCoverageSnapshots.status, linkedTestCount: requirementCoverageSnapshots.linkedTestCount, passedTestCount: requirementCoverageSnapshots.passedTestCount, failedTestCount: requirementCoverageSnapshots.failedTestCount, lastEvaluatedAt: requirementCoverageSnapshots.lastEvaluatedAt })
       .from(requirements)
       .leftJoin(requirementCoverageSnapshots, eq(requirementCoverageSnapshots.requirementId, requirements.id))
       .where(scope(requirements, [eq(requirements.id, id)]))
@@ -384,13 +387,21 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       .where(scope(tests, [eq(testRequirements.requirementId, r.id)]))
       .orderBy(desc(tests.id))
       .limit(MAX_CHILDREN);
+    // Tags live in requirement_tags; the legacy comma-separated column is not maintained.
+    const tagRows = await db
+      .select({ name: tags.name })
+      .from(requirementTags)
+      .innerJoin(tags, eq(tags.id, requirementTags.tagId))
+      .where(and(eq(requirementTags.requirementId, r.id), eq(tags.projectId, ctx.projectId), eq(tags.organizationId, ctx.organizationId)))
+      .orderBy(tags.name)
+      .limit(MAX_CHILDREN);
     return {
       requirement: {
         id: r.id,
         title: safeText(r.title, 500),
         description: safeText(r.description),
         priority: r.priority,
-        tags: (r.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 50).map((t) => safeText(t, 100)),
+        tags: tagRows.map((t) => safeText(t.name, 100)),
         externalId: safeText(r.externalId, 255),
         externalUrl: r.externalUrl ? safeTarget(r.externalUrl) : null,
         updatedAt: iso(r.updatedAt),
