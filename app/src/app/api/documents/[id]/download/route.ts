@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { requirementDocuments } from "@/db/schema";
@@ -43,6 +44,7 @@ export async function GET(
     }
 
     // Get document to find storage path
+    if (!isUuid((await params).id)) return Response.json({ error: "Document not found" }, { status: 404 });
     const [doc] = await db
       .select()
       .from(requirementDocuments)

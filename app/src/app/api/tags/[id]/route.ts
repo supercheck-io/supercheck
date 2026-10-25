@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags, testTags, requirementTags } from '@/db/schema';
@@ -29,6 +30,7 @@ export async function DELETE(
     }
 
     // Check if the tag exists, scoped to current org/project to prevent IDOR
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Tag not found" }, { status: 404 });
     const existingTag = await db
       .select()
       .from(tags)
@@ -137,6 +139,7 @@ export async function GET(
     }
 
     // Get the tag - SCOPED BY ORG/PROJECT to prevent IDOR
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Tag not found" }, { status: 404 });
     const tag = await db
       .select()
       .from(tags)
@@ -184,11 +187,9 @@ export async function PUT(
 
     const resolvedParams = await params;
     const tagId = resolvedParams.id;
+    if (!isUuid(tagId)) return NextResponse.json({ error: "Tag not found" }, { status: 404 });
     const { name, color } = await request.json();
 
-    if (!tagId) {
-      return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
-    }
 
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Tag name is required' }, { status: 400 });

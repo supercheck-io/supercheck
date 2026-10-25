@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/uuid";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -78,6 +79,7 @@ export async function POST(
 
     // Fetch the run with organization/project info for RBAC
     // Also fetch projectId directly from runs table for playground runs (which have no jobId)
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const runResult = await db
       .select({
         runId: runs.id,

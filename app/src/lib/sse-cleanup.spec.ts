@@ -36,7 +36,7 @@ afterEach(() => { jest.useRealTimers(); });
 describe.each(routes)("%s SSE cleanup", (_name, get) => {
   it.each(["cancel", "abort"])("releases subscriptions and timers on %s", async (mode) => {
     const abort = new AbortController();
-    const request = new NextRequest("http://localhost/api/events/id", { signal: abort.signal });
+    const request = new NextRequest("http://localhost/api/events/00000000-0000-4000-8000-000000000099", { signal: abort.signal });
     const removed = jest.spyOn(request.signal, "removeEventListener");
     const response = await get(request);
     const reader = response.body!.getReader();
@@ -57,7 +57,7 @@ describe.each(routes)("%s SSE cleanup", (_name, get) => {
     let resolve!: () => void;
     ready.mockReturnValue(new Promise<void>((done) => { resolve = done; }));
     const abort = new AbortController();
-    const response = await get(new NextRequest("http://localhost/api/events/id", { signal: abort.signal }));
+    const response = await get(new NextRequest("http://localhost/api/events/00000000-0000-4000-8000-000000000099", { signal: abort.signal }));
     abort.abort();
     resolve();
     await response.body!.getReader().read();
@@ -74,7 +74,7 @@ describe.each([["run", run], ["test", test]] as const)("%s startup query cleanup
     const query = name === "run" ? db.query.runs.findFirst : db.query.reports.findFirst;
     (query as jest.Mock).mockReturnValueOnce(pending);
     const abort = new AbortController();
-    const response = await get(new NextRequest("http://localhost/api/events/id", { signal: abort.signal }));
+    const response = await get(new NextRequest("http://localhost/api/events/00000000-0000-4000-8000-000000000099", { signal: abort.signal }));
     const reader = response.body!.getReader();
     await reader.read();
     expect(subscribe).toHaveBeenCalledTimes(1);
@@ -91,7 +91,7 @@ describe.each([["run", run], ["test", test]] as const)("%s startup query cleanup
     const pending = new Promise<never>((_done, fail) => { reject = fail; });
     const query = name === "run" ? db.query.runs.findFirst : db.query.reports.findFirst;
     (query as jest.Mock).mockReturnValueOnce(pending);
-    const response = await get(new NextRequest("http://localhost/api/events/id"));
+    const response = await get(new NextRequest("http://localhost/api/events/00000000-0000-4000-8000-000000000099"));
     const reader = response.body!.getReader();
     await reader.read();
     reject(new Error("database unavailable"));
