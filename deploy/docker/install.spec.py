@@ -38,7 +38,8 @@ class InstallerTests(unittest.TestCase):
         result = subprocess.run(['bash', '-c', 'source "$TEST_ROOT/functions.sh"\n'
                                  'COMPOSE_DIR="$TEST_ROOT/compose"\n'
                                  'mkdir -p "$COMPOSE_DIR"\n' + body],
-                                env={**os.environ, 'TEST_ROOT': str(self.root),
+                                # Port overrides from the caller's shell would mask the .env fixtures.
+                                env={**{k: v for k, v in os.environ.items() if k not in ('DB_HOST_PORT', 'REDIS_HOST_PORT')}, 'TEST_ROOT': str(self.root),
                                      'INSTALL_TEST_EUID': '0', 'NO_COLOR': '1', 'TMPDIR': str(self.root)},
                                 text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
