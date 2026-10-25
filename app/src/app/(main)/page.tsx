@@ -9,42 +9,22 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  Code,
   CalendarClock,
   Activity,
   TrendingUp,
   Home as HomeIcon,
-  Info,
   Globe,
   RefreshCw,
-  LayoutDashboard,
-  Zap,
-  TestTube,
-  ArrowRightLeft,
+  Code,
   ChevronDown,
-  FileText,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -67,204 +47,157 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PlaywrightLogo } from "@/components/logo/playwright-logo";
-import { K6Logo } from "@/components/logo/k6-logo";
-import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
-import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import {
+  OpenIncidentsPanel,
+  RecentAlertsPanel,
+  RecentFailuresPanel,
+} from "@/components/dashboard/dashboard-panels";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
-import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
+import { useDashboard } from "@/hooks/use-dashboard";
+import { useOpenIncidents } from "@/hooks/use-open-incidents";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
+import {
+  buildMonitorStatusBuckets,
+  buildUptimeSeries,
+  formatDayKey,
+  lastDayKeys,
+  uptimeAxis,
+  utcDayKey,
+} from "@/lib/dashboard/chart-data";
+import { isFailedRunStatus } from "@/lib/dashboard/run-outcomes";
 // Types are now exported from useDashboard hook
 // Re-export for any components that still need them
 export type { DashboardData } from "@/hooks/use-dashboard";
-
-interface ChartDataPoint {
-  day: string;
-  date: string;
-  [key: string]: string | number;
-}
 
 interface TooltipProps {
   active?: boolean;
   payload?: Array<{
     color: string;
     name: string;
-    value: number;
+    value: number | null;
     dataKey: string;
-    payload: ChartDataPoint;
   }>;
   label?: string;
 }
 
-interface MetricInfoButtonProps {
-  title: string;
-  description: string;
-  bullets: string[];
-  ariaLabel: string;
-  align?: "start" | "center" | "end";
-}
-
-const MetricInfoButton: React.FC<MetricInfoButtonProps> = ({
-  title,
-  description,
-  bullets,
-  ariaLabel,
-  align = "start",
-}) => (
-  <Popover>
-    <PopoverTrigger asChild>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-5 w-5 p-0 text-muted-foreground"
-        aria-label={ariaLabel}
-      >
-        <Info className="h-4 w-4" />
-      </Button>
-    </PopoverTrigger>
-    <PopoverContent
-      className="w-72 p-4 space-y-2"
-      side="bottom"
-      align={align}
-      sideOffset={12}
-    >
-      <div className="space-y-2">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {description}
-        </p>
-        <ul className="list-disc pl-4 space-y-1 text-xs text-muted-foreground">
-          {bullets.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    </PopoverContent>
-  </Popover>
-);
-
 // Custom tooltip component with theme-aware styling
 const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
-  if (!active || !payload || payload.length === 0) {
+  const entries = (payload ?? []).filter(
+    (entry) => typeof entry.value === "number"
+  );
+  if (!active || entries.length === 0) {
     return null;
   }
 
-  const data = payload[0]?.payload;
-
   return (
-    <div className="bg-background/95 backdrop-blur-sm border border-border rounded-md shadow-lg px-3 py-2 min-w-0">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs font-medium text-foreground">{label}</span>
-        {data?.date && (
-          <>
-            <span className="text-xs text-muted-foreground">•</span>
-            <span className="text-xs text-muted-foreground">{data.date}</span>
-          </>
-        )}
-      </div>
+    <div className="min-w-0 rounded-md border border-border bg-background px-3 py-2 shadow-lg">
+      <div className="mb-1 text-xs font-medium text-foreground">{label}</div>
       <div className="space-y-1">
-        {payload.map((entry, index) => {
-          const displayValue =
-            typeof entry.value === "number"
-              ? entry.dataKey === "uptime"
-                ? `${entry.value.toFixed(1)}%`
-                : entry.value.toString()
-              : entry.value;
-
-          return (
+        {entries.map((entry, index) => (
+          <div key={`${entry.dataKey}-${index}`} className="flex items-center gap-2">
             <div
-              key={`${entry.dataKey}-${index}`}
-              className="flex items-center gap-2"
-            >
-              <div
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: entry.color }}
-              />
-              <span className="text-xs text-foreground truncate">
-                {entry.name || entry.dataKey}:{" "}
-                <span className="font-medium">{displayValue}</span>
+              className="h-2 w-2 flex-shrink-0 rounded-full"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="truncate text-xs text-foreground">
+              {entry.name || entry.dataKey}:{" "}
+              <span className="font-medium">
+                {entry.dataKey === "uptime"
+                  ? `${(entry.value as number).toFixed(2)}%`
+                  : entry.value}
               </span>
-            </div>
-          );
-        })}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 const LOOKBACK_DAYS = 30;
 
-/**
- * Formats execution time for display in dashboard metric cards.
- * Shows just the number without unit suffix since units are displayed in card titles.
- * Handles edge cases and provides compact notation for large values.
- *
- * @param totalMinutes - Total execution time in minutes
- * @param totalSeconds - Total execution time in seconds (fallback for <1 minute)
- * @returns Formatted time string (number only, no unit suffix)
- */
-const formatExecutionTime = (
-  totalMinutes: number,
-  totalSeconds: number
-): string => {
-  // Validate inputs
-  if (!Number.isFinite(totalMinutes) || !Number.isFinite(totalSeconds)) {
-    return "0";
-  }
-
-  // Handle negative values
-  if (totalMinutes < 0 || totalSeconds < 0) {
-    return "0";
-  }
-
-  // Less than 1 minute: round to nearest minute (shows as 0 or 1)
-  if (totalMinutes < 1) {
-    return Math.round(totalMinutes).toString();
-  }
-
-  // 1 to 999 minutes: show rounded minutes
-  if (totalMinutes < 1000) {
-    return Math.round(totalMinutes).toString();
-  }
-
-  // 1,000 to 999,999 minutes: show in k notation with 1 decimal place
-  if (totalMinutes < 1000000) {
-    const kMinutes = totalMinutes / 1000;
-    return `${kMinutes.toFixed(1)}k`;
-  }
-
-  // 1,000,000+ minutes: show in M notation with 1 decimal place
-  const mMinutes = totalMinutes / 1000000;
-  return `${mMinutes.toFixed(1)}M`;
+/** Minutes with k/M notation for large values (number only; units are in the card title). */
+const formatExecutionTime = (totalMinutes: number): string => {
+  if (!Number.isFinite(totalMinutes) || totalMinutes < 0) return "0";
+  if (totalMinutes < 1000) return Math.round(totalMinutes).toString();
+  if (totalMinutes < 1000000) return `${(totalMinutes / 1000).toFixed(1)}k`;
+  return `${(totalMinutes / 1000000).toFixed(1)}M`;
 };
 
-/**
- * Formats a number with compact notation for better readability
- * - Shows as-is if less than 1000 (e.g., "184")
- * - Shows 'k' notation for 1,000-999,999 (e.g., "1.2k")
- * - Shows 'M' notation for 1,000,000+ (e.g., "1.5M")
- *
- * @param value - Number to format
- * @returns Formatted string with appropriate unit
- */
+/** Compact number: "184", "1.2k", "1.5M". */
 const formatCompactNumber = (value: number): string => {
-  if (!Number.isFinite(value) || value < 0) {
-    return "0";
-  }
-
-  if (value < 1000) {
-    return Math.round(value).toString();
-  }
-
+  if (!Number.isFinite(value) || value < 0) return "0";
+  if (value < 1000) return Math.round(value).toString();
   if (value < 1000000) {
     const k = value / 1000;
     return k >= 100 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
   }
-
   const m = value / 1000000;
   return m >= 100 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
 };
+
+const TEST_TYPE_COLORS: Record<string, string> = {
+  browser: "var(--chart-1)",
+  api: "var(--chart-2)",
+  database: "var(--chart-3)",
+  custom: "var(--chart-4)",
+  performance: "var(--chart-5)",
+};
+const testTypeColor = (type: string) =>
+  TEST_TYPE_COLORS[type.toLowerCase()] ?? "var(--muted-foreground)";
+
+const chartConfig = {
+  uptime: { label: "Uptime %", color: "var(--success)" },
+  executions: { label: "Executions", color: "var(--chart-1)" },
+  scheduled: { label: "Scheduled", color: "var(--chart-1)" },
+  manual: { label: "Manual", color: "var(--chart-2)" },
+  remote: { label: "Remote", color: "var(--chart-3)" },
+};
+
+const DAY_AXIS = {
+  interval: "preserveStartEnd" as const,
+  minTickGap: 24,
+  tickLine: false,
+  fontSize: 11,
+};
+
+function ChartCard({
+  title,
+  description,
+  icon,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="h-full">
+      <CardHeader className="space-y-1 px-4 pb-2 pt-4">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          {icon}
+          {title}
+        </CardTitle>
+        <CardDescription className="text-xs">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 pt-2">{children}</CardContent>
+    </Card>
+  );
+}
+
+function ChartEmpty({ icon, message }: { icon: React.ReactNode; message: string }) {
+  return (
+    <div className="flex h-44 flex-col items-center justify-center gap-2 text-muted-foreground">
+      {icon}
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+}
+
+const mutedIcon = "h-4 w-4 text-muted-foreground";
 
 export default function Home() {
   const isMounted = useSyncExternalStore(
@@ -274,6 +207,8 @@ export default function Home() {
   );
 
   const { data: dashboardData, isLoading: queryLoading, isRestoring, error: queryError } = useDashboard();
+  const { data: requirementsStats } = useRequirementsStats();
+  const { data: incidentsResult, isLoading: incidentsLoading } = useOpenIncidents();
   const hasData = dashboardData !== undefined && dashboardData !== null;
   const loading = !isMounted || isRestoring || (!hasData && queryLoading);
   const error = queryError?.message ?? null;
@@ -283,225 +218,72 @@ export default function Home() {
     { label: "Dashboard", isCurrentPage: true },
   ];
 
-
-
-  // Memoized chart data to prevent unnecessary recalculations
   const chartData = useMemo(() => {
     if (!dashboardData) return null;
 
-    // Chart data preparation - use LOOKBACK_DAYS data from recentRuns with robust validation
-    const lookbackThreshold = (() => {
-      const threshold = new Date();
-      threshold.setHours(0, 0, 0, 0);
-      threshold.setDate(threshold.getDate() - (LOOKBACK_DAYS - 1));
-      return threshold;
-    })();
+    const now = new Date();
+    const dayKeys = lastDayKeys(now, LOOKBACK_DAYS);
+    const recentRuns = dashboardData.jobs.recentRuns ?? [];
 
-    const jobRunsWindowData =
-      dashboardData.jobs.recentRuns &&
-        Array.isArray(dashboardData.jobs.recentRuns)
-        ? dashboardData.jobs.recentRuns
-          .filter((run) => {
-            if (!run?.startedAt || typeof run.startedAt !== "string")
-              return false;
-            try {
-              const runDate = new Date(run.startedAt);
-              if (isNaN(runDate.getTime())) return false;
-              return runDate >= lookbackThreshold;
-            } catch {
-              return false;
-            }
-          })
-          .reduce(
-            (acc: { success: number; failed: number }, run) => {
-              if (run?.status === "passed") acc.success++;
-              else if (run?.status === "failed") acc.failed++;
-              return acc;
-            },
-            { success: 0, failed: 0 }
-          )
-        : { success: 0, failed: 0 };
+    // Per-day trigger counts and overall success/failure in one pass (UTC days,
+    // matching the SQL DATE() buckets used for the other daily series).
+    const windowStart = dayKeys[0];
+    const triggerByDay = new Map<string, { manual: number; scheduled: number; remote: number }>();
+    let success = 0;
+    let failed = 0;
+    for (const run of recentRuns) {
+      const time = Date.parse(run?.startedAt ?? "");
+      if (Number.isNaN(time)) continue;
+      const key = utcDayKey(new Date(time));
+      if (key < windowStart) continue;
+      if (run.status === "passed") success++;
+      else if (isFailedRunStatus(run.status)) failed++;
+      const bucket = triggerByDay.get(key) ?? { manual: 0, scheduled: 0, remote: 0 };
+      if (run.trigger === "schedule") bucket.scheduled++;
+      else if (run.trigger === "remote") bucket.remote++;
+      else bucket.manual++;
+      triggerByDay.set(key, bucket);
+    }
 
-    const jobRunsData = [
-      { name: "Success", count: jobRunsWindowData.success, fill: "#22c55e" },
-      { name: "Failed", count: jobRunsWindowData.failed, fill: "#ef4444" },
-    ];
+    const playgroundByDay = new Map(
+      (dashboardData.tests.playgroundExecutionsTrend ?? []).map((t) => [
+        String(t.date).slice(0, 10),
+        Math.max(0, Number(t.count) || 0),
+      ])
+    );
 
-    const monitorStatusData = [
-      { name: "Up", count: dashboardData.monitors.up, fill: "#22c55e" },
-      { name: "Down", count: dashboardData.monitors.down, fill: "#ef4444" },
-    ];
-
-    // Test activity data - ensure full LOOKBACK_DAYS with robust validation
-    const testActivityData = (() => {
-      const today = new Date();
-      const windowDays: ChartDataPoint[] = [];
-
-      for (let i = LOOKBACK_DAYS - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-        const fullDate = date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        });
-
-        const dateStr = date.toISOString().split("T")[0];
-
-        // Find matching trend data with validation
-        const trendData = dashboardData.tests.playgroundExecutionsTrend?.find(
-          (trend: { date: string; count: number }) => {
-            return (
-              trend && typeof trend.date === "string" && trend.date === dateStr
-            );
-          }
-        );
-
-        // Validate and ensure non-negative count
-        const dayExecutions =
-          trendData && typeof trendData.count === "number"
-            ? Math.max(0, trendData.count)
-            : 0;
-
-        windowDays.push({
-          day: dayName,
-          executions: dayExecutions,
-          date: fullDate,
-        });
-      }
-      return windowDays;
-    })();
-
-    // Job activity data - ensure full LOOKBACK_DAYS with proper typing and validation
-    const jobActivityData = (() => {
-      const today = new Date();
-      const windowDays: Array<
-        ChartDataPoint & { manual: number; scheduled: number; remote: number }
-      > = [];
-
-      for (let i = LOOKBACK_DAYS - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-        const fullDate = date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        });
-
-        // Robust filtering with proper validation
-        const dayRuns =
-          dashboardData.jobs.recentRuns?.filter((run) => {
-            if (!run?.startedAt || typeof run.startedAt !== "string")
-              return false;
-            try {
-              const runDate = new Date(run.startedAt);
-              // Validate the date is not Invalid Date
-              if (isNaN(runDate.getTime())) return false;
-              return runDate.toDateString() === date.toDateString();
-            } catch {
-              return false;
-            }
-          }) || [];
-
-        // Validate trigger values and count them
-        const manual = dayRuns.filter(
-          (r) => !r.trigger || r.trigger === "manual"
-        ).length;
-        const scheduled = dayRuns.filter(
-          (r) => r.trigger === "schedule"
-        ).length;
-        const remote = dayRuns.filter((r) => r.trigger === "remote").length;
-
-        // Ensure non-negative values
-        windowDays.push({
-          day: dayName,
-          date: fullDate,
-          manual: Math.max(0, manual),
-          scheduled: Math.max(0, scheduled),
-          remote: Math.max(0, remote),
-        });
-      }
-
-      return windowDays;
-    })();
-
-    // Uptime trend data - always generate full LOOKBACK_DAYS
-    const uptimeTrendData = (() => {
-      const today = new Date();
-      const trendData = [];
-
-      // Generate data for the last LOOKBACK_DAYS (including today)
-      for (let i = LOOKBACK_DAYS - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-
-        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-        const fullDate = date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        });
-        const dateStr = date.toISOString().split("T")[0];
-
-        // Try to find real data first
-        let uptime = 0;
-        if (
-          dashboardData.monitors.availabilityTrend &&
-          dashboardData.monitors.availabilityTrend.length > 0
-        ) {
-          const realData = dashboardData.monitors.availabilityTrend.find(
-            (item) => item.date === dateStr
-          );
-          if (realData) {
-            uptime = Math.max(0, Math.min(100, realData.uptime));
-          } else {
-            // Use current overall uptime as fallback for missing days
-            uptime = dashboardData.monitors.uptime || 0;
-          }
-        } else {
-          // Use current overall uptime for all days when no trend data exists
-          uptime = dashboardData.monitors.uptime || 0;
-        }
-
-        trendData.push({
-          day: dayName,
-          uptime: Math.round(uptime * 100) / 100, // Round to 2 decimal places
-          date: fullDate,
-        });
-      }
-
-      return trendData;
-    })();
+    const uptimeTrendData = buildUptimeSeries(
+      dashboardData.monitors.availabilityTrend,
+      LOOKBACK_DAYS,
+      now
+    );
 
     return {
-      jobRunsData,
-      monitorStatusData,
-      testActivityData,
-      jobActivityData,
+      jobRunsData: [
+        { name: "Success", count: success, fill: "var(--success)" },
+        { name: "Failed", count: failed, fill: "var(--failure)" },
+      ],
+      jobRunsTotal: success + failed,
+      monitorStatusData: buildMonitorStatusBuckets(dashboardData.monitors),
+      testActivityData: dayKeys.map((key) => ({
+        date: formatDayKey(key),
+        executions: playgroundByDay.get(key) ?? 0,
+      })),
+      jobActivityData: dayKeys.map((key) => ({
+        date: formatDayKey(key),
+        ...(triggerByDay.get(key) ?? { manual: 0, scheduled: 0, remote: 0 }),
+      })),
       uptimeTrendData,
-      jobRunsWindowData,
+      uptimeAxis: uptimeAxis(uptimeTrendData.map((p) => p.uptime)),
+      hasUptimeData: uptimeTrendData.some((p) => p.uptime !== null),
     };
   }, [dashboardData]);
-
-  const chartConfig = {
-    uptime: {
-      label: "Uptime %",
-      color: "hsl(var(--chart-1))",
-    },
-    success: {
-      label: "Success",
-      color: "hsl(var(--chart-2))",
-    },
-    failed: {
-      label: "Failed",
-      color: "hsl(var(--chart-3))",
-    },
-  };
 
   if (loading) {
     return (
       <div className="overflow-hidden">
         <PageBreadcrumbs items={breadcrumbs} />
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+        <Card className="shadow-sm m-4">
           <CardContent className="p-6 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -527,7 +309,6 @@ export default function Home() {
                           <Skeleton className="h-7 w-16" />
                           <Skeleton className="h-3 w-24" />
                         </div>
-                        <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
                       </div>
                     </CardContent>
                   </Card>
@@ -537,10 +318,9 @@ export default function Home() {
               {/* Top Row Charts - 3 charts per row */}
               <div className="grid gap-4 lg:grid-cols-3 mb-4">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <Card key={i} className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                  <Card key={i} className="h-full">
                     <CardHeader className="pb-2 px-4 pt-4">
                       <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                        <Skeleton className="h-7 w-7 rounded-md" />
                         <Skeleton className="h-4 w-20" />
                       </CardTitle>
                       <div className="text-xs text-muted-foreground/80">
@@ -557,10 +337,9 @@ export default function Home() {
               {/* Bottom Row Charts - 3 charts per row */}
               <div className="grid gap-4 lg:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <Card key={i} className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                  <Card key={i} className="h-full">
                     <CardHeader className="pb-2 px-4 pt-4">
                       <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                        <Skeleton className="h-7 w-7 rounded-md" />
                         <Skeleton className="h-4 w-24" />
                       </CardTitle>
                       <div className="text-xs text-muted-foreground/80">
@@ -643,7 +422,7 @@ export default function Home() {
   return (
     <div className="overflow-hidden">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+      <Card className="shadow-sm m-4">
         <CardContent className="p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -663,24 +442,24 @@ export default function Home() {
                     "flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors duration-200",
                     "cursor-pointer",
                     dashboardData.system.healthy
-                      ? "bg-green-500/10 border-green-500/30 hover:bg-green-500/20 hover:border-green-500/50"
-                      : "bg-red-500/10 border-red-500/30 hover:bg-red-500/20 hover:border-red-500/50"
+                      ? "bg-success/10 border-success/30 hover:bg-success/20 hover:border-success/50"
+                      : "bg-failure/10 border-failure/30 hover:bg-failure/20 hover:border-failure/50"
                   )}
                 >
                   <div
                     className={cn(
                       "h-2.5 w-2.5 rounded-full",
                       dashboardData.system.healthy
-                        ? "bg-green-500"
-                        : "bg-red-500"
+                        ? "bg-success"
+                        : "bg-failure"
                     )}
                   />
                   <span
                     className={cn(
                       "text-sm font-medium",
                       dashboardData.system.healthy
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-red-600 dark:text-red-400"
+                        ? "text-success"
+                        : "text-failure"
                     )}
                   >
                     {dashboardData.system.healthy
@@ -690,8 +469,8 @@ export default function Home() {
                   <ChevronDown className={cn(
                     "h-3.5 w-3.5 transition-colors",
                     dashboardData.system.healthy
-                      ? "text-green-500"
-                      : "text-red-500"
+                      ? "text-success"
+                      : "text-failure"
                   )} />
                 </button>
               </PopoverTrigger>
@@ -702,8 +481,8 @@ export default function Home() {
                       className={cn(
                         "h-3 w-3 rounded-full",
                         dashboardData.system.healthy
-                          ? "bg-green-500"
-                          : "bg-red-500"
+                          ? "bg-success"
+                          : "bg-failure"
                       )}
                     />
                     <h4 className="font-semibold leading-none">
@@ -728,8 +507,8 @@ export default function Home() {
                               "mt-1 h-2 w-2 rounded-full flex-shrink-0",
                               issue.severity === "critical" ||
                                 issue.severity === "high"
-                                ? "bg-red-500"
-                                : "bg-yellow-500"
+                                ? "bg-failure"
+                                : "bg-warning"
                             )}
                           />
                           <span className="text-muted-foreground">
@@ -744,764 +523,368 @@ export default function Home() {
             </Popover>
           </div>
 
-          {/* Dashboard Tabs */}
-          <DashboardTabs dashboardData={dashboardData} chartData={chartData} chartConfig={chartConfig} />
+          <DashboardOverview
+            dashboardData={dashboardData}
+            chartData={chartData}
+            requirementsStats={requirementsStats}
+            incidentsResult={incidentsResult}
+            incidentsLoading={incidentsLoading}
+          />
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// Separate component for dashboard tabs to manage filter state
-interface DashboardTabsProps {
-  dashboardData: DashboardData;
-  chartData: any;
-  chartConfig: Record<string, { label: string; color?: string }>;
+interface DashboardOverviewProps {
+  dashboardData: NonNullable<ReturnType<typeof useDashboard>["data"]>;
+  chartData: ChartData;
+  requirementsStats: ReturnType<typeof useRequirementsStats>["data"];
+  incidentsResult: ReturnType<typeof useOpenIncidents>["data"];
+  incidentsLoading: boolean;
 }
 
-function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsProps) {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [k6SelectedJob, setK6SelectedJob] = useState<string | null>(null);
-  const [k6Period, setK6Period] = useState(30);
-  const [k6CompareOpen, setK6CompareOpen] = useState(false);
-  const [pwSelectedJob, setPwSelectedJob] = useState<string | null>(null);
-  const [pwPeriod, setPwPeriod] = useState(30);
-  const [k6Jobs, setK6Jobs] = useState<Array<{ id: string; name: string }>>([]);
-  const [pwJobs, setPwJobs] = useState<Array<{ id: string; name: string }>>([]);
+type ChartData = {
+  jobRunsData: Array<{ name: string; count: number; fill: string }>;
+  jobRunsTotal: number;
+  monitorStatusData: Array<{ name: string; count: number; fill: string }>;
+  testActivityData: Array<{ date: string; executions: number }>;
+  jobActivityData: Array<{ date: string; manual: number; scheduled: number; remote: number }>;
+  uptimeTrendData: Array<{ date: string; uptime: number | null }>;
+  uptimeAxis: { domain: [number, number]; ticks: number[] };
+  hasUptimeData: boolean;
+};
 
-  // Fetch requirements stats for dashboard card
-  const { data: requirementsStats } = useRequirementsStats();
+function DashboardOverview({
+  dashboardData,
+  chartData,
+  requirementsStats,
+  incidentsResult,
+  incidentsLoading,
+}: DashboardOverviewProps) {
+  const { stats, monitors, jobs, tests, k6 } = dashboardData;
 
-  // Safe defaults for dashboardData properties
-  const stats = dashboardData?.stats ?? { runs: 0, tests: 0, jobs: 0, monitors: 0 };
-  const monitors = dashboardData?.monitors ?? { total: 0, active: 0, up: 0, down: 0, uptime: 0 };
-  const jobs = dashboardData?.jobs ?? { executionTime: { totalMinutes: 0, totalSeconds: 0, processedRuns: 0 }, recentRuns: [] };
-  const tests = dashboardData?.tests ?? { playgroundExecutionsTrend: [] };
+  if (stats.runs === 0 && stats.monitors === 0 && k6.totalRuns === 0) {
+    return (
+      <DashboardEmptyState
+        title="No Project Activity"
+        description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
+        icon={<SupercheckLogo className="h-16 w-16" />}
+        action={
+          <Button asChild>
+            <Link href="/create">Quick Create</Link>
+          </Button>
+        }
+      />
+    );
+  }
 
-  // Refs to track if jobs were already loaded for each tab (prevents redundant callbacks)
-  const k6JobsLoadedRef = useRef(false);
-  const pwJobsLoadedRef = useRef(false);
-
-  // Jobs are now loaded by the child tab components and lifted up via onJobsLoaded callback
-  // This eliminates the duplicate fetches that were happening before
-
-  // Auto-select first K6 job when jobs are loaded by the child component
-  // Only fires once per tab visit to prevent cascading state updates
-  const handleK6JobsLoaded = useCallback((jobs: Array<{ id: string; name: string }>) => {
-    // Guard: Only process if jobs not already loaded
-    if (k6JobsLoadedRef.current) return;
-    k6JobsLoadedRef.current = true;
-
-    setK6Jobs(jobs);
-    if (jobs.length > 0) {
-      setK6SelectedJob(jobs[0].id);
-    }
-  }, []);
-
-  // Auto-select first Playwright job when jobs are loaded by the child component
-  // Only fires once per tab visit to prevent cascading state updates
-  const handlePwJobsLoaded = useCallback((jobs: Array<{ id: string; name: string }>) => {
-    // Guard: Only process if jobs not already loaded
-    if (pwJobsLoadedRef.current) return;
-    pwJobsLoadedRef.current = true;
-
-    setPwJobs(jobs);
-    if (jobs.length > 0) {
-      setPwSelectedJob(jobs[0].id);
-    }
-  }, []);
+  const hasRequirements = !!requirementsStats && requirementsStats.total > 0;
+  const hasJobActivity = chartData.jobActivityData.some(
+    (d) => d.manual + d.scheduled + d.remote > 0
+  );
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <TabsList>
-          <TabsTrigger value="overview" className="gap-2">
-            <LayoutDashboard className="h-4 w-4" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="k6" className="gap-2">
-            <K6Logo className="h-4 w-4" />
-            K6 Job Analytics
-          </TabsTrigger>
-          <TabsTrigger value="playwright" className="gap-2">
-            <PlaywrightLogo className="h-4 w-4" />
-            Playwright Job Analytics
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Inline Filters - only show for K6/Playwright tabs */}
-        {activeTab === "k6" && k6Jobs.length > 0 && (
-          <div className="flex items-center gap-3">
-            {k6SelectedJob && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 gap-2"
-                onClick={() => setK6CompareOpen(true)}
-              >
-                <ArrowRightLeft className="h-4 w-4 text-blue-500" />
-                Compare Runs
-              </Button>
-            )}
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-muted-foreground">Job:</span>
-              <Select value={k6SelectedJob ?? ""} onValueChange={setK6SelectedJob}>
-                <SelectTrigger className="w-56 h-9">
-                  <SelectValue placeholder="Select a job" />
-                </SelectTrigger>
-                <SelectContent>
-                  {k6Jobs.map((job) => (
-                    <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-muted-foreground">Period:</span>
-              <Select value={k6Period.toString()} onValueChange={(v) => setK6Period(parseInt(v))}>
-                <SelectTrigger className="w-28 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 days</SelectItem>
-                  <SelectItem value="60">60 days</SelectItem>
-                  <SelectItem value="90">90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-        {activeTab === "playwright" && pwJobs.length > 0 && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-muted-foreground">Job:</span>
-              <Select value={pwSelectedJob ?? ""} onValueChange={setPwSelectedJob}>
-                <SelectTrigger className="w-56 h-9">
-                  <SelectValue placeholder="Select a job" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pwJobs.map((job) => (
-                    <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-muted-foreground">Period:</span>
-              <Select value={pwPeriod.toString()} onValueChange={(v) => setPwPeriod(parseInt(v))}>
-                <SelectTrigger className="w-28 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 days</SelectItem>
-                  <SelectItem value="60">60 days</SelectItem>
-                  <SelectItem value="90">90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
+    <div className="mt-4 space-y-4">
+      {/* KPI row */}
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        <MetricCard
+          testId="metric-requirements"
+          title="Requirements coverage"
+          href="/requirements"
+          value={hasRequirements ? `${requirementsStats.coveragePercent}%` : undefined}
+          emptyMessage="No requirements"
+          caption={
+            hasRequirements && requirementsStats.atRiskCount > 0 ? (
+              <span className="text-warning">{requirementsStats.atRiskCount} high priority at risk</span>
+            ) : (
+              "Covered by passing tests"
+            )
+          }
+          info={{
+            title: "How coverage is calculated",
+            description: "Coverage is the share of requirements validated by passing tests.",
+            bullets: [
+              "Covered: all linked tests passed",
+              "Failing: at least one linked test failed",
+              "Missing: no tests linked, or none have run",
+              "At risk: high priority requirements that are failing or missing",
+              "Updates when jobs run, not playground tests",
+            ],
+            ariaLabel: "Learn how requirements coverage is calculated",
+          }}
+        />
+        <MetricCard
+          testId="metric-tests"
+          title="Tests"
+          href="/tests"
+          value={stats.tests > 0 ? formatCompactNumber(stats.tests) : undefined}
+          emptyMessage="No tests yet"
+          caption="Saved test cases"
+        />
+        <MetricCard
+          testId="metric-jobs"
+          title="Jobs"
+          href="/jobs"
+          value={jobs.total > 0 ? formatCompactNumber(jobs.scheduled) : undefined}
+          emptyMessage="No jobs configured"
+          caption={`scheduled of ${formatCompactNumber(jobs.total)} total`}
+        />
+        <MetricCard
+          testId="metric-monitors"
+          title="Monitors"
+          href="/monitors"
+          value={
+            monitors.total > 0
+              ? `${formatCompactNumber(monitors.up)}/${formatCompactNumber(monitors.total)}`
+              : undefined
+          }
+          emptyMessage="No monitors set up"
+          caption={monitors.down > 0 ? `${monitors.down} down` : "up now"}
+        />
+        <MetricCard
+          testId="metric-browser-minutes"
+          title="Browser minutes"
+          href="/runs?view=playwright"
+          value={jobs.executionTime.totalMinutes > 0 ? formatExecutionTime(jobs.executionTime.totalMinutes) : undefined}
+          emptyMessage="No browser minutes used"
+          caption={`${formatCompactNumber(jobs.executionTime.processedRuns)} executions · Last 30 days`}
+          info={{
+            title: "Browser minutes used",
+            description: "Playwright execution time in this project over the last 30 days.",
+            bullets: [
+              "Includes job runs, synthetic monitor checks (each location counted separately) and playground tests",
+              "Estimated from recorded run durations for this project",
+              "Billed usage is metered per organization and billing period, so it can differ",
+              "Running executions are added once they finish",
+            ],
+            ariaLabel: "Learn what browser minutes includes",
+          }}
+        />
+        <MetricCard
+          testId="metric-k6-vu-minutes"
+          title="k6 VU-minutes"
+          href="/runs?view=k6"
+          value={k6.totalRuns > 0 ? formatExecutionTime(k6.totalVuMinutes) : undefined}
+          emptyMessage="No k6 runs"
+          caption={`${formatCompactNumber(k6.totalRuns)} runs · Last 30 days`}
+          info={{
+            title: "k6 VU-minutes used",
+            description: "Peak virtual users multiplied by run duration in minutes, over the last 30 days.",
+            bullets: [
+              "Includes k6 job runs and playground k6 runs in this project",
+              "Completed runs only; running executions are added once they finish",
+              "Billed usage is metered per organization and billing period, so it can differ",
+            ],
+            ariaLabel: "Learn what k6 VU-minutes includes",
+          }}
+        />
       </div>
 
-      <TabsContent value="overview">
-        {stats.runs === 0 && stats.monitors === 0 && (dashboardData?.k6?.totalRuns ?? 0) === 0 ? (
-          <DashboardEmptyState
-            title="No Project Activity"
-            description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
-            icon={<SupercheckLogo className="h-16 w-16" />}
-            action={
-              <Button asChild>
-                <Link href="/create">Quick Create</Link>
-              </Button>
-            }
-          />
-        ) : (
-          <div className="space-y-4">
-            {/* Key Metrics Grid - 6 cards per row */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
-              {/* Requirements Card - First position per spec */}
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Requirements
-                        <MetricInfoButton
-                          title="How Coverage is Calculated"
-                          description="Coverage shows the percentage of requirements validated by passing tests."
-                          bullets={[
-                            "Covered: All linked tests passed",
-                            "Failing: At least one linked test failed",
-                            "Missing: No tests linked or none have run",
-                            "Coverage updates when jobs run, not playground tests",
-                          ]}
-                          ariaLabel="Learn how requirements coverage is calculated"
-                        />
-                      </p>
-                      {requirementsStats?.total && requirementsStats.total > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {requirementsStats.coveragePercent}%
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {requirementsStats.atRiskCount > 0 ? (
-                              <span className="text-orange-500">{requirementsStats.atRiskCount} at-risk</span>
-                            ) : (
-                              "Coverage"
-                            )}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No requirements
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                      <FileText className="h-4 w-4 text-purple-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Total Tests
-                      </p>
-                      {stats.tests > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(stats.tests)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Available test cases
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No tests available
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
-                      <Code className="h-4 w-4 text-blue-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Active Jobs
-                      </p>
-                      {stats.jobs > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(stats.jobs)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Scheduled jobs
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No jobs configured
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
-                      <CalendarClock className="h-4 w-4 text-amber-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Active Monitors
-                      </p>
-                      {monitors.total > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(monitors.active)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            of {formatCompactNumber(monitors.total)} total
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No monitors setup
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
-                      <Globe className="h-4 w-4 text-green-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Playwright Mins
-                        <MetricInfoButton
-                          title="How we calculate Playwright Mins"
-                          description="Aggregates execution time from all Playwright test runs in the past 30 days."
-                          bullets={[
-                            "Covers the last 30 days of execution",
-                            "Includes job runs, synthetic monitor checks, and playground tests",
-                            "Each monitor location is counted separately",
-                            "Running executions are added once they finish",
-                          ]}
-                          ariaLabel="Learn what Playwright Mins includes"
-                          align="end"
-                        />
-                      </p>
-                      {jobs.executionTime.totalMinutes > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatExecutionTime(
-                              jobs.executionTime.totalMinutes,
-                              jobs.executionTime.totalSeconds
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {formatCompactNumber(jobs.executionTime.processedRuns)}{" "}
-                            runs • Last 30 days
-                          </p>
-
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No execution time
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
-                      <PlaywrightLogo width={16} height={16} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        k6 VU x Mins
-                        <MetricInfoButton
-                          title="How we calculate k6 VU Mins"
-                          description="Execution time aggregates every k6-powered run in the past 30 days."
-                          bullets={[
-                            "Covers the last 30 days of execution",
-                            "Includes k6 job runs and playground tests",
-                            "Calculated from completed k6 test runs only",
-                            "Running executions are added once they finish",
-                          ]}
-                          ariaLabel="Learn what k6 VU Minutes includes"
-                          align="end"
-                        />
-                      </p>
-                      {dashboardData.k6.totalRuns > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatExecutionTime(
-                              dashboardData.k6.totalVuMinutes,
-                              Math.floor(dashboardData.k6.totalDurationMs / 1000)
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No k6 tests run
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
-                      <K6Logo width={16} height={16} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Top Row Charts - 3 charts per row */}
-            <div className="grid gap-4 lg:grid-cols-3 mb-4">
-              {/* Job Success Rate Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-amber-500/10 p-1.5">
-                      <CalendarClock className="h-4 w-4 text-amber-500" />
-                    </div>
-                    Job Status
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Job execution success vs failure last 30 days
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-4">
-                  {chartData.jobRunsWindowData.success +
-                    chartData.jobRunsWindowData.failed >
-                    0 ? (
-                    <ChartContainer config={chartConfig} className="h-43 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData.jobRunsData}>
-                          <XAxis dataKey="name" fontSize={11} />
-                          <YAxis fontSize={11} />
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                            {chartData.jobRunsData.map((entry: { name: string; count: number; fill: string }, index: number) => (
-                              <Cell key={`cell-${index}`} fill={entry.fill} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-43 flex items-center justify-center">
-                      <div className="text-center">
-                        <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No job runs
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Monitor Status Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-green-500/10 p-1.5">
-                      <Globe className="h-4 w-4 text-green-500" />
-                    </div>
-                    Monitor Status
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Current monitor health distribution
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-4">
-                  {monitors.total > 0 ? (
-                    <ChartContainer config={chartConfig} className="h-40 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData.monitorStatusData}>
-                          <XAxis dataKey="name" fontSize={11} />
-                          <YAxis fontSize={11} />
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                            {chartData.monitorStatusData.map((entry: { name: string; count: number; fill: string }, index: number) => (
-                              <Cell key={`cell-${index}`} fill={entry.fill} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-43 flex items-center justify-center">
-                      <div className="text-center">
-                        <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No monitors configured
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Test Types Distribution Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-blue-500/10 p-1.5">
-                      <Code className="h-4 w-4 text-blue-500" />
-                    </div>
-                    Test Types
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Distribution of test types
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  {tests.byType &&
-                    tests.byType.length > 0 ? (
-                    <div className="flex flex-col items-center">
-                      {/* Centered Chart */}
-                      <ChartContainer config={chartConfig} className="h-28 w-28">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={tests.byType?.map((item) => {
-                                const typeColorMap: Record<string, string> = {
-                                  browser: "#0ea5e9",
-                                  api: "#0d9488",
-                                  database: "#0891b2",
-                                  custom: "#2563eb",
-                                };
-                                return {
-                                  name: item.type,
-                                  value: item.count,
-                                  fill:
-                                    typeColorMap[item.type.toLowerCase()] ||
-                                    "#6b7280",
-                                };
-                              })}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={22}
-                              outerRadius={48}
-                              dataKey="value"
-                              strokeWidth={0}
-                            ></Pie>
-                            <ChartTooltip content={<ChartTooltipContent />} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </ChartContainer>
-                      {/* Legend as compact pills grid */}
-                      <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                        {tests.byType?.map((item) => {
-                          const typeColorMap: Record<string, string> = {
-                            browser: "#0ea5e9",
-                            api: "#0d9488",
-                            database: "#0891b2",
-                            custom: "#2563eb",
-                          };
-                          const color = typeColorMap[item.type.toLowerCase()] || "#6b7280";
-                          return (
-                            <div
-                              key={item.type}
-                              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-muted/50"
-                            >
-                              <div
-                                className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: color }}
-                              />
-                              <span className="text-xs text-muted-foreground capitalize">
-                                {item.type}
-                              </span>
-                              <span className="text-xs font-semibold tabular-nums">
-                                {item.count}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-43 flex items-center justify-center">
-                      <div className="text-center">
-                        <Code className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No test types data
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Bottom Row Charts - 3 charts per row */}
-            <div className="grid gap-4 lg:grid-cols-3">
-              {/* Test Activity Trend Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-blue-500/10 p-1.5">
-                      <Activity className="h-4 w-4 text-blue-500" />
-                    </div>
-                    Test Activity
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Playground test executions last 30 days
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-4">
-                  {(tests as { playgroundExecutions30d?: number }).playgroundExecutions30d && (tests as { playgroundExecutions30d?: number }).playgroundExecutions30d! > 0 ? (
-                    <ChartContainer config={chartConfig} className="h-43 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData.testActivityData}>
-                          <XAxis dataKey="day" fontSize={11} />
-                          <YAxis fontSize={11} />
-                          <ChartTooltip content={<CustomTooltip />} />
-                          <Area
-                            type="monotone"
-                            dataKey="executions"
-                            stroke="#3b82f6"
-                            fill="#3b82f6"
-                            fillOpacity={0.2}
-                            strokeWidth={2}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-43 flex items-center justify-center">
-                      <div className="text-center">
-                        <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No playground executions
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Job Activity Trend Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-purple-500/10 p-1.5">
-                      <Activity className="h-4 w-4 text-purple-500" />
-                    </div>
-                    Job Activity
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Job execution by trigger types last 30 days
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-4">
-                  {(jobs as { total?: number }).total && (jobs as { total?: number }).total! > 0 ? (
-                    <ChartContainer config={chartConfig} className="h-43 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData.jobActivityData}>
-                          <XAxis dataKey="day" fontSize={11} />
-                          <YAxis fontSize={11} />
-                          <ChartTooltip content={<CustomTooltip />} />
-                          <Area
-                            type="monotone"
-                            dataKey="scheduled"
-                            stackId="1"
-                            stroke="#3b82f6"
-                            fill="#3b82f6"
-                            fillOpacity={0.6}
-                            name="Scheduled"
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="manual"
-                            stackId="1"
-                            stroke="#10b981"
-                            fill="#10b981"
-                            fillOpacity={0.6}
-                            name="Manual"
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="remote"
-                            stackId="1"
-                            stroke="#f59e0b"
-                            fill="#f59e0b"
-                            fillOpacity={0.6}
-                            name="Remote"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-43 flex items-center justify-center">
-                      <div className="text-center">
-                        <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No job activity
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Monitor Uptime Trend Chart */}
-              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="pb-2 px-4 pt-4">
-                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="rounded-md bg-emerald-500/10 p-1.5">
-                      <TrendingUp className="h-4 w-4 text-emerald-500" />
-                    </div>
-                    Uptime Trend
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground/80">
-                    Monitor uptime percentage last 30 days
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-4">
-                  {dashboardData.monitors.total > 0 ? (
-                    <ChartContainer config={chartConfig} className="h-43 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData.uptimeTrendData}>
-                          <XAxis dataKey="day" fontSize={11} />
-                          <YAxis domain={[80, 100]} fontSize={10} />
-                          <ChartTooltip content={<CustomTooltip />} />
-                          <Line
-                            type="monotone"
-                            dataKey="uptime"
-                            stroke="#3b82f6"
-                            strokeWidth={2}
-                            dot={{ fill: "#3b82f6", strokeWidth: 0, r: 3 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-44 flex items-center justify-center">
-                      <div className="text-center">
-                        <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No uptime data
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+      {/* List panels */}
+      <div
+        className={cn(
+          "grid gap-4",
+          incidentsResult && !incidentsResult.available && !incidentsLoading
+            ? "lg:grid-cols-2"
+            : "lg:grid-cols-3"
         )}
-      </TabsContent>
+      >
+        <RecentFailuresPanel runs={jobs.recentRuns} />
+        <OpenIncidentsPanel result={incidentsResult} isLoading={incidentsLoading} />
+        <RecentAlertsPanel alerts={dashboardData.alerts} />
+      </div>
 
-      <TabsContent value="k6">
-        <K6AnalyticsTab
-          selectedJob={k6SelectedJob ?? ""}
-          onJobChange={setK6SelectedJob}
-          period={k6Period}
-          onPeriodChange={setK6Period}
-          isComparingOpen={k6CompareOpen}
-          onCompareOpenChange={setK6CompareOpen}
-          onJobsLoaded={handleK6JobsLoaded}
-        />
-      </TabsContent>
+      {/* Charts, row 1 */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ChartCard
+          title="Job Status"
+          description="Successful vs failed (including errors) job runs, last 30 days"
+          icon={<CalendarClock className={mutedIcon} />}
+        >
+          {chartData.jobRunsTotal > 0 ? (
+            <ChartContainer config={chartConfig} className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData.jobRunsData}>
+                  <XAxis dataKey="name" fontSize={11} tickLine={false} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                    {chartData.jobRunsData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty icon={<CalendarClock className="h-6 w-6" />} message="No job runs in the last 30 days" />
+          )}
+        </ChartCard>
 
-      <TabsContent value="playwright">
-        <PlaywrightAnalyticsTab
-          selectedJob={pwSelectedJob ?? ""}
-          onJobChange={setPwSelectedJob}
-          period={pwPeriod}
-          onPeriodChange={setPwPeriod}
-          onJobsLoaded={handlePwJobsLoaded}
-        />
-      </TabsContent>
-    </Tabs>
+        <ChartCard
+          title="Monitor Status"
+          description="Current monitors by status"
+          icon={<Globe className={mutedIcon} />}
+        >
+          {monitors.total > 0 && chartData.monitorStatusData.length > 0 ? (
+            <ChartContainer config={chartConfig} className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData.monitorStatusData}>
+                  <XAxis dataKey="name" fontSize={11} tickLine={false} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                    {chartData.monitorStatusData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty icon={<Globe className="h-6 w-6" />} message="No monitors configured" />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Test Types"
+          description="Distribution of test types"
+          icon={<Code className={mutedIcon} />}
+        >
+          {tests.byType && tests.byType.length > 0 ? (
+            <div className="flex h-44 flex-col items-center justify-center">
+              <ChartContainer config={chartConfig} className="h-28 w-28">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={tests.byType.map((item) => ({
+                        name: item.type,
+                        value: item.count,
+                        fill: testTypeColor(item.type),
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={22}
+                      outerRadius={48}
+                      dataKey="value"
+                      strokeWidth={0}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {tests.byType.map((item) => (
+                  <div
+                    key={item.type}
+                    className="flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-0.5"
+                  >
+                    <div
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: testTypeColor(item.type) }}
+                    />
+                    <span className="text-xs capitalize text-muted-foreground">{item.type}</span>
+                    <span className="text-xs font-semibold tabular-nums">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <ChartEmpty icon={<Code className="h-6 w-6" />} message="No tests yet" />
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Charts, row 2 */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ChartCard
+          title="Test Activity"
+          description="Playground test executions, last 30 days"
+          icon={<Activity className={mutedIcon} />}
+        >
+          {tests.playgroundExecutions30d > 0 ? (
+            <ChartContainer config={chartConfig} className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData.testActivityData}>
+                  <XAxis dataKey="date" {...DAY_AXIS} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <ChartTooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="executions"
+                    name="Executions"
+                    stroke="var(--chart-1)"
+                    fill="var(--chart-1)"
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty icon={<Activity className="h-6 w-6" />} message="No playground executions" />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Job Activity"
+          description="Job runs by trigger, last 30 days"
+          icon={<Activity className={mutedIcon} />}
+        >
+          {hasJobActivity ? (
+            <ChartContainer config={chartConfig} className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData.jobActivityData}>
+                  <XAxis dataKey="date" {...DAY_AXIS} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <ChartTooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="scheduled" name="Scheduled" stackId="1" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.5} />
+                  <Area type="monotone" dataKey="manual" name="Manual" stackId="1" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.5} />
+                  <Area type="monotone" dataKey="remote" name="Remote" stackId="1" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty icon={<CalendarClock className="h-6 w-6" />} message="No job activity" />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Uptime Trend"
+          description="Daily monitor uptime, last 30 days (days without checks are left blank)"
+          icon={<TrendingUp className={mutedIcon} />}
+        >
+          {monitors.total > 0 && chartData.hasUptimeData ? (
+            <ChartContainer config={chartConfig} className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.uptimeTrendData}>
+                  <XAxis dataKey="date" {...DAY_AXIS} />
+                  <YAxis
+                    domain={chartData.uptimeAxis.domain}
+                    ticks={chartData.uptimeAxis.ticks}
+                    tickFormatter={(v) => `${v}%`}
+                    fontSize={11}
+                    width={40}
+                  />
+                  <ChartTooltip content={<CustomTooltip />} />
+                  <Line
+                    type="monotone"
+                    dataKey="uptime"
+                    name="Uptime"
+                    stroke="var(--success)"
+                    strokeWidth={2}
+                    connectNulls={false}
+                    dot={{ fill: "var(--success)", strokeWidth: 0, r: 2.5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty icon={<TrendingUp className="h-6 w-6" />} message="No uptime data in the last 30 days" />
+          )}
+        </ChartCard>
+      </div>
+    </div>
   );
 }

@@ -63,10 +63,12 @@ import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
 import { cn } from "@/lib/utils";
+import { notPassedCaption } from "@/lib/dashboard/run-outcomes";
+import { labelRunTrend } from "@/lib/dashboard/chart-data";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ReportViewer } from "@/components/shared/report-viewer";
-import { AIK6AnalyzeButton, K6RunData } from "@/components/dashboard/ai-k6-analyze-button";
+import { AIK6AnalyzeButton, K6RunData } from "./ai-k6-analyze-button";
 
 // Types
 interface K6Job {
@@ -105,7 +107,8 @@ interface K6Run {
 interface K6Stats {
     totalRuns: number;
     passedRuns: number;
-    failedRuns: number;
+    notPassedRuns: number;
+    inFlightRuns: number;
     passRate: number;
     avgP95: number;
     avgP99: number;
@@ -198,8 +201,8 @@ function ComparisonRow({
 
     const getDeltaClass = () => {
         if (delta === null || delta === 0) return "text-muted-foreground";
-        if (lowerIsBetter) return delta < 0 ? "text-green-500" : "text-red-500";
-        return delta > 0 ? "text-green-500" : "text-red-500";
+        if (lowerIsBetter) return delta < 0 ? "text-success" : "text-failure";
+        return delta > 0 ? "text-success" : "text-failure";
     };
 
     return (
@@ -220,6 +223,94 @@ function ComparisonRow({
                 ) : "-"}
             </TableCell>
         </TableRow>
+    );
+}
+
+type K6TrendPoint = K6ChartData & { tickLabel: string; tooltipLabel: string };
+
+function K6TrendCard({
+    title,
+    description,
+    emptyMessage,
+    icon,
+    data,
+    dataKey,
+    color,
+    unit,
+    seriesLabel,
+    isMounted,
+}: {
+    title: string;
+    description: string;
+    emptyMessage: string;
+    icon: React.ReactNode;
+    data: K6TrendPoint[];
+    dataKey: "p95" | "requestRate";
+    color: string;
+    unit: string;
+    seriesLabel: string;
+    isMounted: boolean;
+}) {
+    const hasData = data.some((d) => d[dataKey] !== null && d[dataKey] !== undefined);
+    const chartConfig = { [dataKey]: { label: seriesLabel, color } };
+
+    return (
+        <Card>
+            <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    {icon}
+                    {title}
+                </CardTitle>
+                <CardDescription>{description}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-2">
+                {!hasData ? (
+                    <div className="flex h-[160px] items-center justify-center text-sm text-muted-foreground">
+                        {emptyMessage}
+                    </div>
+                ) : isMounted ? (
+                    <ChartContainer config={chartConfig} className="h-[160px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={data}>
+                                <XAxis
+                                    dataKey="tickLabel"
+                                    interval="preserveStartEnd"
+                                    minTickGap={24}
+                                    tickLine={false}
+                                    fontSize={11}
+                                />
+                                <YAxis
+                                    fontSize={11}
+                                    tickFormatter={(val) => `${val}${unit}`}
+                                    domain={[0, (dataMax: number) => (dataMax <= 0 ? 1 : Math.ceil(dataMax * 1.1))]}
+                                    allowDataOverflow={false}
+                                />
+                                <ChartTooltip
+                                    content={
+                                        <ChartTooltipContent
+                                            labelFormatter={(_, payload) =>
+                                                (payload?.[0]?.payload as K6TrendPoint | undefined)?.tooltipLabel ?? ""
+                                            }
+                                        />
+                                    }
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey={dataKey}
+                                    stroke={color}
+                                    fill={color}
+                                    fillOpacity={0.15}
+                                    strokeWidth={2}
+                                    connectNulls
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </ChartContainer>
+                ) : (
+                    <Skeleton className="h-[160px] w-full" />
+                )}
+            </CardContent>
+        </Card>
     );
 }
 
@@ -481,10 +572,11 @@ export function K6AnalyticsTab({
         );
     }
 
-    const chartConfig = {
-        p95: { label: "P95 Response Time", color: "#3b82f6" },
-        requestRate: { label: "Request Rate", color: "#22c55e" },
-    };
+    const trendLabels = labelRunTrend(data.chartData);
+    const trendData: K6TrendPoint[] = data.chartData.map((point, i) => ({
+        ...point,
+        ...trendLabels[i],
+    }));
 
     const compLeft = data.comparison?.left;
     const compRight = data.comparison?.right;
@@ -505,9 +597,7 @@ export function K6AnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.totalRuns}</div>
                                 <p className="text-xs text-muted-foreground">Last {data.period} days</p>
                             </div>
-                            <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
-                                <Activity className="h-4 w-4 text-blue-500" />
-                            </div>
+                            <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -519,9 +609,7 @@ export function K6AnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.passedRuns}</div>
                                 <p className="text-xs text-muted-foreground">{data.stats.passRate}% pass rate</p>
                             </div>
-                            <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                            </div>
+                            <CheckCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -529,13 +617,11 @@ export function K6AnalyticsTab({
                     <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                             <div className="space-y-2 min-w-0 flex-1">
-                                <p className="text-sm font-medium text-muted-foreground">Failed</p>
-                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.failedRuns}</div>
-                                <p className="text-xs text-muted-foreground">{data.stats.failedRuns > 0 ? "Needs attention" : "All passing"}</p>
+                                <p className="text-sm font-medium text-muted-foreground">Not passed</p>
+                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.notPassedRuns}</div>
+                                <p className="text-xs text-muted-foreground">{notPassedCaption(data.stats.notPassedRuns)}</p>
                             </div>
-                            <div className="rounded-lg bg-red-500/10 p-2 shrink-0">
-                                <XCircle className="h-4 w-4 text-red-500" />
-                            </div>
+                            <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -547,9 +633,7 @@ export function K6AnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.avgP95}ms</div>
                                 <p className="text-xs text-muted-foreground">95th percentile</p>
                             </div>
-                            <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                                <Zap className="h-4 w-4 text-purple-500" />
-                            </div>
+                            <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -561,9 +645,7 @@ export function K6AnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.avgRequestRate}/s</div>
                                 <p className="text-xs text-muted-foreground">Requests per second</p>
                             </div>
-                            <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
-                                <TrendingUp className="h-4 w-4 text-cyan-500" />
-                            </div>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
@@ -575,131 +657,39 @@ export function K6AnalyticsTab({
                                 <div className="text-2xl font-bold tracking-tight truncate">{data.stats.avgResponseTime ?? 0}ms</div>
                                 <p className="text-xs text-muted-foreground">Mean latency</p>
                             </div>
-                            <div className="rounded-lg bg-orange-500/10 p-2 shrink-0">
-                                <Zap className="h-4 w-4 text-orange-500" />
-                            </div>
+                            <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
             {/* Response Time Trend Chart */}
-            {data.chartData.length >= 1 && (
-                <Card className="relative overflow-hidden">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                            <div className="rounded-md bg-blue-500/10 p-1.5">
-                                <BarChart3 className="h-4 w-4 text-blue-500" />
-                            </div>
-                            Response Time Trend
-                        </CardTitle>
-                        <CardDescription>P95 response time across runs</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-2">
-                        {isMounted ? (
-                            <ChartContainer config={chartConfig} className="h-[160px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={data.chartData}>
-                                        <defs>
-                                            <linearGradient id="k6P95Gradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
-                                            </linearGradient>
-                                        </defs>
-                                        <XAxis
-                                            dataKey="date"
-                                            tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
-                                            tick={{ fontSize: 11, fill: '#888' }}
-                                            fontSize={11}
-                                        />
-                                        <YAxis
-                                            tick={{ fontSize: 11, fill: '#888' }}
-                                            fontSize={11}
-                                            tickFormatter={(val) => `${val}ms`}
-                                            domain={[0, (dataMax: number) => {
-                                                // Ensure minimum domain height for visibility when all values are zero or very small
-                                                const minDomain = 1;
-                                                return dataMax <= 0 ? minDomain : Math.ceil(dataMax * 1.1);
-                                            }]}
-                                            allowDataOverflow={false}
-                                        />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="p95"
-                                            stroke="#3b82f6"
-                                            fill="url(#k6P95Gradient)"
-                                            strokeWidth={2}
-                                            connectNulls
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </ChartContainer>
-                        ) : (
-                            <Skeleton className="h-[160px] w-full" />
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            <K6TrendCard
+                title="Response Time Trend"
+                description="P95 response time per run"
+                emptyMessage="No response time data for the selected runs"
+                icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
+                data={trendData}
+                dataKey="p95"
+                color="var(--chart-1)"
+                unit="ms"
+                seriesLabel="P95"
+                isMounted={isMounted}
+            />
 
             {/* Request Rate Trend Chart */}
-            {data.chartData.length >= 1 && data.chartData.some(d => d.requestRate !== null && d.requestRate !== undefined) && (
-                <Card className="relative overflow-hidden">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                            <div className="rounded-md bg-green-500/10 p-1.5">
-                                <TrendingUp className="h-4 w-4 text-green-500" />
-                            </div>
-                            Request Rate Trend
-                        </CardTitle>
-                        <CardDescription>Requests per second across runs</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-2">
-                        {isMounted ? (
-                            <ChartContainer config={chartConfig} className="h-[160px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={data.chartData}>
-                                        <defs>
-                                            <linearGradient id="k6RequestRateGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
-                                            </linearGradient>
-                                        </defs>
-                                        <XAxis
-                                            dataKey="date"
-                                            tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
-                                            tick={{ fontSize: 11, fill: '#888' }}
-                                            fontSize={11}
-                                        />
-                                        <YAxis
-                                            tick={{ fontSize: 11, fill: '#888' }}
-                                            fontSize={11}
-                                            tickFormatter={(val) => `${val}/s`}
-                                            domain={[0, (dataMax: number) => {
-                                                // Ensure minimum domain height for visibility when all values are zero or very small
-                                                const minDomain = 1;
-                                                return dataMax <= 0 ? minDomain : Math.ceil(dataMax * 1.1);
-                                            }]}
-                                            allowDataOverflow={false}
-                                        />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="requestRate"
-                                            stroke="#22c55e"
-                                            fill="url(#k6RequestRateGradient)"
-                                            strokeWidth={2}
-                                            connectNulls
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </ChartContainer>
-                        ) : (
-                            <Skeleton className="h-[160px] w-full" />
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            <K6TrendCard
+                title="Request Rate Trend"
+                description="Requests per second per run"
+                emptyMessage="No request rate data for the selected runs"
+                icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
+                data={trendData}
+                dataKey="requestRate"
+                color="var(--chart-2)"
+                unit="/s"
+                seriesLabel="Request rate"
+                isMounted={isMounted}
+            />
 
             {/* Run Comparison - Dialog controlled by parent */}
             {canCompare && (
@@ -708,9 +698,7 @@ export function K6AnalyticsTab({
                         <DialogHeader className="flex flex-row items-start justify-between gap-4">
                             <div>
                                 <DialogTitle className="flex items-center gap-2">
-                                    <div className="rounded-md bg-blue-500/10 p-1.5">
-                                        <ArrowRightLeft className="h-4 w-4 text-blue-500" />
-                                    </div>
+                                    <ArrowRightLeft className="h-4 w-4 text-muted-foreground shrink-0" />
                                     Run Comparison
                                 </DialogTitle>
                                 <DialogDescription>Compare metrics between two runs</DialogDescription>
@@ -780,7 +768,7 @@ export function K6AnalyticsTab({
                                                 .map((run) => (
                                                     <SelectItem key={run.runId} value={run.runId}>
                                                         <span className="flex items-center gap-2">
-                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-success" /> : <XCircle className="h-3 w-3 text-failure" />}
                                                             {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
                                                             <span className="text-muted-foreground text-xs">p95: {run.metrics?.p95ResponseTimeMs ?? "-"}ms</span>
                                                             <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
@@ -802,7 +790,7 @@ export function K6AnalyticsTab({
                                                 .map((run) => (
                                                     <SelectItem key={run.runId} value={run.runId}>
                                                         <span className="flex items-center gap-2">
-                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-success" /> : <XCircle className="h-3 w-3 text-failure" />}
                                                             {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
                                                             <span className="text-muted-foreground text-xs">p95: {run.metrics?.p95ResponseTimeMs ?? "-"}ms</span>
                                                             <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
