@@ -253,7 +253,7 @@ describe("POST /api/auth/setup-defaults", () => {
       else process.env.TRIAL_ENABLED = originalTrialFlag;
     });
 
-    function arrangeCreation() {
+    function arrangeCreation(trialGrantedAt: Date | null = null) {
       mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
         .mockReturnValueOnce(selectResult([]))
         .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
@@ -261,22 +261,23 @@ describe("POST /api/auth/setup-defaults", () => {
       const txSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "session" }]) }) });
       const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "new-id", name: "Default" }]) });
       const tx = {
-        select: jest.fn().mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue([{ id: "user-1" }]) })
+        select: jest.fn().mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue([{ id: "user-1", trialGrantedAt }]) })
           .mockReturnValueOnce(selectResult([])),
         insert: jest.fn().mockReturnValue({ values }),
         update: jest.fn().mockReturnValue({ set: txSet }),
       };
       mockDb.transaction.mockImplementation(async callback => callback(tx));
-      return values;
+      return { values, txSet };
     }
 
     it("starts a 14 day trial with the trial limits for a new cloud organization when enabled", async () => {
       process.env.TRIAL_ENABLED = "true";
-      const values = arrangeCreation();
+      const { values, txSet } = arrangeCreation();
       const before = Date.now();
       expect((await POST(request())).status).toBe(200);
       const trial = values.mock.calls.map(call => call[0]).find(row => row && "expiresAt" in row);
       expect(trial).toMatchObject({ organizationId: "new-id", maxMonitors: 5, maxStatusPages: 2, queuedCapacity: 5 });
+      expect(txSet).toHaveBeenCalledWith({ trialGrantedAt: trial.trialStartedAt });
       const days = (trial.expiresAt.getTime() - before) / 86_400_000;
       expect(days).toBeGreaterThan(13.99);
       expect(days).toBeLessThan(14.01);
@@ -284,15 +285,24 @@ describe("POST /api/auth/setup-defaults", () => {
 
     it("grants no trial unless the launch switch is on", async () => {
       delete process.env.TRIAL_ENABLED;
-      const values = arrangeCreation();
+      const { values, txSet } = arrangeCreation();
       expect((await POST(request())).status).toBe(200);
       expect(values.mock.calls.some(call => call[0] && "expiresAt" in call[0])).toBe(false);
+      expect(txSet).not.toHaveBeenCalledWith(expect.objectContaining({ trialGrantedAt: expect.anything() }));
+    });
+
+    it("does not grant another trial after the user's organization was deleted", async () => {
+      process.env.TRIAL_ENABLED = "true";
+      const { values, txSet } = arrangeCreation(new Date("2026-01-01"));
+      expect((await POST(request())).status).toBe(200);
+      expect(values.mock.calls.some(call => call[0] && "expiresAt" in call[0])).toBe(false);
+      expect(txSet).not.toHaveBeenCalledWith(expect.objectContaining({ trialGrantedAt: expect.anything() }));
     });
 
     it("never grants a trial for a self-hosted organization", async () => {
       process.env.TRIAL_ENABLED = "true";
       (isCloudHosted as jest.Mock).mockReturnValue(false);
-      const values = arrangeCreation();
+      const { values } = arrangeCreation();
       await POST(request());
       expect(values.mock.calls.some(call => call[0] && "expiresAt" in call[0])).toBe(false);
     });
