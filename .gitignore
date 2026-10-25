@@ -214,3 +214,10 @@ __pycache__/
 supercheck.state.json.lock
 .supercheck-artifacts/
 *.supercheck-backup.*
+
+# Shared Claude Code project config; personal settings.local.json and worktrees stay ignored
+!.claude/
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/skills/
