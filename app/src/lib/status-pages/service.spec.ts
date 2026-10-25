@@ -20,7 +20,7 @@ const insert = jest.fn(() => makeChain());
 const update = jest.fn(() => makeChain());
 const del = jest.fn(() => makeChain());
 const transaction = jest.fn(async (run: (tx: unknown) => unknown) =>
-  run({ insert: (...a: unknown[]) => (insert as jest.Mock)(...a), delete: (...a: unknown[]) => (del as jest.Mock)(...a) })
+  run({ update: (...a: unknown[]) => (update as jest.Mock)(...a), insert: (...a: unknown[]) => (insert as jest.Mock)(...a), delete: (...a: unknown[]) => (del as jest.Mock)(...a) })
 );
 
 jest.mock("@/utils/db", () => ({
@@ -359,7 +359,14 @@ describe("status page service", () => {
       const result = await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA], status: "operational" });
       expect(result.ok).toBe(true);
       expect(transaction).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledTimes(1); // row update is inside the same transaction
       expect(del).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a whitespace-only component name", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      expect(await createComponent(ctx, pageId, { name: "   " })).toMatchObject({ ok: false, code: "validation" });
+      expect(await updateComponent(ctx, pageId, compId, { name: " " })).toMatchObject({ ok: false, code: "validation" });
     });
 
     it("404s update of a component not on the page", async () => {

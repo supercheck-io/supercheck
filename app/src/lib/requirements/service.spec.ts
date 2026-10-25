@@ -158,6 +158,20 @@ describe("requirements service", () => {
     expect(set).not.toHaveProperty("description");
   });
 
+  it("maps the tag cap to an invalid result instead of throwing", async () => {
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("Maximum of 10 tags allowed per requirement"), { name: "TagLimitError" })
+    );
+    const created = await createRequirementWithRelations(ctx, { title: "x", tags: ["a"] });
+    expect(created).toMatchObject({ success: false, code: "invalid" });
+    (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("Maximum of 10 tags allowed per requirement"), { name: "TagLimitError" })
+    );
+    const updated = await updateRequirementWithRelations(ctx, R, { tags: ["a"] });
+    expect(updated).toMatchObject({ success: false, code: "invalid" });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
   it("update reports not_found when no row matched and does not sync or audit", async () => {
     mockUpdateRows.push([]);
     const result = await updateRequirementWithRelations(ctx, R, { title: "x", tags: ["a"] });

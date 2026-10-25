@@ -165,7 +165,7 @@ const monitorIdList = z
 const monitorWeightMap = z
   .record(z.string().uuid(), z.number().int().min(1).max(100))
   .refine((weights) => Object.keys(weights).length <= 100, "At most 100 monitor weights");
-const componentName = z.string().min(1, "Name is required").max(255, "Name is too long").trim();
+const componentName = z.string().trim().min(1, "Name is required").max(255, "Name is too long");
 
 export const createComponentFieldsSchema = z.object({
   name: componentName,
@@ -808,22 +808,20 @@ export async function updateComponent(
       updateData.autoCreateIncidents = validatedData.autoCreateIncidents;
     if (validatedData.serviceId !== undefined) updateData.serviceId = validatedData.serviceId;
 
-    const [updated] = await db
-      .update(statusPageComponents)
-      .set(updateData)
-      .where(
-        and(
-          eq(statusPageComponents.id, componentId),
-          eq(statusPageComponents.statusPageId, statusPageId)
+    // Row update and link replacement commit together, so a failed insert cannot leave a half-applied component.
+    const linkedMonitorIds = validatedData.monitorIds;
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(statusPageComponents)
+        .set(updateData)
+        .where(
+          and(
+            eq(statusPageComponents.id, componentId),
+            eq(statusPageComponents.statusPageId, statusPageId)
+          )
         )
-      )
-      .returning();
-    let component = updated;
-
-    if (validatedData.monitorIds !== undefined) {
-      const linkedMonitorIds = validatedData.monitorIds;
-      // Replace the link set atomically so a failed insert cannot leave the component with no monitors.
-      await db.transaction(async (tx) => {
+        .returning();
+      if (linkedMonitorIds !== undefined) {
         await tx
           .delete(statusPageComponentMonitors)
           .where(eq(statusPageComponentMonitors.componentId, componentId));
@@ -837,7 +835,12 @@ export async function updateComponent(
             }))
           );
         }
-      });
+      }
+      return row;
+    });
+    let component = updated;
+
+    if (linkedMonitorIds !== undefined) {
 
       if (linkedMonitorIds.length > 0) {
 

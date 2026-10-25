@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import {
   requirementCoverageSnapshots,
   testRequirements,
@@ -9,6 +9,14 @@ import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
 export type Executor = Pick<typeof db, "select" | "insert" | "delete" | "update">;
+
+/** Raised when a requirement would exceed the tag cap; services map it to a validation failure (not a 500). */
+export class TagLimitError extends Error {
+  constructor() {
+    super("Maximum of 10 tags allowed per requirement");
+    this.name = "TagLimitError";
+  }
+}
 
 // Internal helpers: deliberately NOT in a "use server" module. Next.js exposes
 // every export of a "use server" file as a client-callable endpoint, and these
@@ -25,7 +33,7 @@ export async function syncRequirementTags(
 ): Promise<void> {
   // Enforce maximum 10 tags per requirement (consistent with API route)
   if (tagIds.length > 10) {
-    throw new Error("Maximum of 10 tags allowed per requirement");
+    throw new TagLimitError();
   }
 
   // Delete existing tags for this requirement
@@ -90,9 +98,19 @@ export async function syncRequirementTagsByName(
                 requestedNames.map((name) => name.toLowerCase())
               )
             )
-          );
+          )
+          .orderBy(asc(tags.createdAt), asc(tags.id));
 
-  const existingTagNames = new Set(existingTags.map((t) => t.name.toLowerCase()));
+  // Link ONE tag per requested name (legacy projects may hold case-twins): the exact-case match if any,
+  // otherwise the oldest (rows arrive ordered by createdAt, id).
+  const linkedExisting: { id: string; name: string }[] = [];
+  for (const requested of requestedNames) {
+    const candidates = existingTags.filter((t) => t.name.toLowerCase() === requested.toLowerCase());
+    const pick = candidates.find((t) => t.name === requested) ?? candidates[0];
+    if (pick) linkedExisting.push(pick);
+  }
+
+  const existingTagNames = new Set(linkedExisting.map((t) => t.name.toLowerCase()));
   const tagsToCreate = requestedNames.filter((name) => !existingTagNames.has(name.toLowerCase()));
 
   // Create missing tags
@@ -121,7 +139,7 @@ export async function syncRequirementTagsByName(
 
   // Combine all tag IDs
   const allTagIds = [
-    ...existingTags.map((t) => t.id),
+    ...linkedExisting.map((t) => t.id),
     ...newTags.map((t) => t.id),
   ];
 

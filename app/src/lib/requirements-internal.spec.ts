@@ -1,14 +1,24 @@
 /** @jest-environment node */
 jest.mock("@/utils/db", () => ({ db: {} }));
 
-import { syncRequirementTagsByName } from "./requirements-internal";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { syncRequirementTags, syncRequirementTagsByName, TagLimitError } from "./requirements-internal";
 
 const R = "44444444-4444-4444-8444-444444444444";
 
 function makeExecutor(existing: { id: string; name: string }[]) {
   const inserted: unknown[] = [];
+  const wheres: SQL[] = [];
   const executor = {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(existing) }) }),
+    select: () => ({
+      from: () => ({
+        where: (w: SQL) => {
+          wheres.push(w);
+          return { orderBy: () => Promise.resolve(existing) };
+        },
+      }),
+    }),
     delete: () => ({ where: () => Promise.resolve() }),
     insert: () => ({
       values: (v: unknown) => {
@@ -20,16 +30,44 @@ function makeExecutor(existing: { id: string; name: string }[]) {
       },
     }),
   };
-  return { executor: executor as never, inserted };
+  return { executor: executor as never, inserted, wheres };
 }
 
 describe("syncRequirementTagsByName", () => {
+  it("looks tags up with lower(name) against lowered names, scoped to the project", async () => {
+    const { executor, wheres } = makeExecutor([]);
+    await syncRequirementTagsByName(R, ["Smoke"], "o", "p", "u", executor);
+    const { sql: text, params } = new PgDialect().sqlToQuery(wheres[0]);
+    expect(text).toContain("lower(");
+    expect(text).toContain('"project_id"');
+    expect(params).toEqual(expect.arrayContaining(["p", "smoke"]));
+    expect(params).not.toContain("Smoke");
+  });
+
   it("reuses an existing tag regardless of casing instead of creating a twin", async () => {
     const { executor, inserted } = makeExecutor([{ id: "t1", name: "Smoke" }]);
     await syncRequirementTagsByName(R, ["smoke", "SMOKE"], "o", "p", "u", executor);
     // only the requirement_tags link insert, no tags insert
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toEqual([expect.objectContaining({ requirementId: R, tagId: "t1" })]);
+  });
+
+  it("links only the exact-case tag when case-twins are stored", async () => {
+    const { executor, inserted } = makeExecutor([
+      { id: "old", name: "Smoke" },
+      { id: "new", name: "smoke" },
+    ]);
+    await syncRequirementTagsByName(R, ["smoke"], "o", "p", "u", executor);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "new" })]]);
+  });
+
+  it("links the oldest twin when no exact-case match exists", async () => {
+    const { executor, inserted } = makeExecutor([
+      { id: "old", name: "Smoke" },
+      { id: "newer", name: "SMOKE" },
+    ]);
+    await syncRequirementTagsByName(R, ["smOKE"], "o", "p", "u", executor);
+    expect(inserted).toEqual([[expect.objectContaining({ tagId: "old" })]]);
   });
 
   it("creates new tags with the first spelling given, deduped case-insensitively", async () => {
@@ -39,5 +77,14 @@ describe("syncRequirementTagsByName", () => {
       expect.objectContaining({ name: "Smoke", projectId: "p", organizationId: "o" }),
       expect.objectContaining({ name: "Auth" }),
     ]);
+  });
+});
+
+describe("syncRequirementTags", () => {
+  it("signals the 10-tag cap with a typed error the services map to a validation failure", async () => {
+    const { executor } = makeExecutor([]);
+    await expect(syncRequirementTags(R, Array.from({ length: 11 }, (_, i) => `t${i}`), executor)).rejects.toBeInstanceOf(
+      TagLimitError
+    );
   });
 });

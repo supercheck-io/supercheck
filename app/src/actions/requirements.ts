@@ -262,6 +262,12 @@ export async function getRequirements(options?: {
   };
 }
 
+/** Validation failures read as the first issue's message instead of a raw JSON dump. */
+function readableError(error: unknown): string {
+  if (error instanceof z.ZodError) return error.issues[0]?.message || "Invalid data provided";
+  return error instanceof Error ? error.message : "Unknown error occurred";
+}
+
 // ============================================================================
 // CREATE REQUIREMENT
 // ============================================================================
@@ -318,7 +324,7 @@ export async function createRequirement(
     return {
       id: "",
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      error: readableError(error),
     };
   }
 }
@@ -373,7 +379,7 @@ export async function updateRequirement(
     console.error("Error updating requirement:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      error: readableError(error),
     };
   }
 }

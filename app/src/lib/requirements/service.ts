@@ -23,6 +23,7 @@ import {
   type RequirementCreatedBy,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+import { httpUrlSchema } from "@/lib/requirements/http-url-schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   syncRequirementTags,
@@ -42,6 +43,8 @@ export type RequirementServiceContext = {
   projectName: string;
 };
 
+const isTagLimitError = (error: unknown) => error instanceof Error && error.name === "TagLimitError";
+
 export type ServiceFailureCode = "not_found" | "invalid" | "conflict";
 
 export type ServiceResult = {
@@ -49,19 +52,6 @@ export type ServiceResult = {
   error?: string;
   code?: ServiceFailureCode;
 };
-
-/** http(s) only: the URL is rendered as a link in the UI, so `javascript:` and friends must never be stored. */
-export const httpUrlSchema = z
-  .string()
-  .url()
-  .refine((value) => {
-    try {
-      const { protocol } = new URL(value);
-      return protocol === "http:" || protocol === "https:";
-    } catch {
-      return false;
-    }
-  }, "URL must use http or https");
 
 export const createRequirementSchema = requirementsInsertSchema
   .omit({
@@ -222,58 +212,66 @@ export async function createRequirementRecord(
 
   // The row, its tags and its initial coverage snapshot commit together: a failure part-way leaves nothing
   // behind, so a result of {success:false} always means "not created" and the caller can safely retry.
-  const inserted = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(requirements)
-      .values({
-        id: newId,
-        organizationId,
-        projectId,
-        title: validatedData.title,
-        description: validatedData.description,
-        priority: validatedData.priority as RequirementPriority,
-        sourceDocumentId: validatedData.sourceDocumentId,
-        sourceSection: validatedData.sourceSection,
-        externalId: validatedData.externalId,
-        externalUrl: validatedData.externalUrl,
-        externalProvider: validatedData.externalProvider,
-        createdBy: (validatedData.createdBy as RequirementCreatedBy) ?? "user",
-        createdByUserId: userId,
-        createdAt: new Date(),
-      })
-      // Only the primary key means "already created"; any other unique violation must still fail and roll back.
-      .onConflictDoNothing({ target: requirements.id })
-      .returning({ id: requirements.id });
-    if (!row) return false;
+  let inserted: boolean;
+  try {
+    inserted = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(requirements)
+        .values({
+          id: newId,
+          organizationId,
+          projectId,
+          title: validatedData.title,
+          description: validatedData.description,
+          priority: validatedData.priority as RequirementPriority,
+          sourceDocumentId: validatedData.sourceDocumentId,
+          sourceSection: validatedData.sourceSection,
+          externalId: validatedData.externalId,
+          externalUrl: validatedData.externalUrl,
+          externalProvider: validatedData.externalProvider,
+          createdBy: (validatedData.createdBy as RequirementCreatedBy) ?? "user",
+          createdByUserId: userId,
+          createdAt: new Date(),
+        })
+        // Only the primary key means "already created"; any other unique violation must still fail and roll back.
+        .onConflictDoNothing({ target: requirements.id })
+        .returning({ id: requirements.id });
+      if (!row) return false;
 
-    // Sync tags if provided (explicit names, else the comma-separated string for backward compatibility)
-    const tagNames =
-      options?.tagNames ??
-      (validatedData.tags
-        ? // The comma-separated form has always created lowercase tags; keep that for the UI path.
-          validatedData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
-        : []);
-    if (tagNames.length > 0) {
-      await syncRequirementTagsByName(newId, tagNames, organizationId, projectId, userId, tx);
-    }
+      // Sync tags if provided (explicit names, else the comma-separated string for backward compatibility)
+      const tagNames =
+        options?.tagNames ??
+        (validatedData.tags
+          ? // The comma-separated form has always created lowercase tags; keep that for the UI path.
+            validatedData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+          : []);
+      if (tagNames.length > 0) {
+        await syncRequirementTagsByName(newId, tagNames, organizationId, projectId, userId, tx);
+      }
 
-    // Create initial coverage snapshot (status: missing)
-    await tx.insert(requirementCoverageSnapshots).values({
-      requirementId: newId,
-      status: "missing",
-      linkedTestCount: 0,
-      passedTestCount: 0,
-      failedTestCount: 0,
-      lastEvaluatedAt: new Date(),
+      // Create initial coverage snapshot (status: missing)
+      await tx.insert(requirementCoverageSnapshots).values({
+        requirementId: newId,
+        status: "missing",
+        linkedTestCount: 0,
+        passedTestCount: 0,
+        failedTestCount: 0,
+        lastEvaluatedAt: new Date(),
+      });
+
+      // Linking is part of the create: a failure here rolls back the row, tags and snapshot too.
+      if (linkTestIds.length > 0) {
+        await insertTestLinks(tx, newId, linkTestIds);
+        await updateCoverageSnapshot(newId, tx);
+      }
+      return true;
     });
-
-    // Linking is part of the create: a failure here rolls back the row, tags and snapshot too.
-    if (linkTestIds.length > 0) {
-      await insertTestLinks(tx, newId, linkTestIds);
-      await updateCoverageSnapshot(newId, tx);
+  } catch (error) {
+    if (isTagLimitError(error)) {
+      return { id: "", success: false, error: (error as Error).message, code: "invalid" };
     }
-    return true;
-  });
+    throw error;
+  }
 
   if (!inserted) {
     // Only a client-supplied id can collide. The same id in this project means the earlier attempt committed
@@ -378,43 +376,51 @@ export async function updateRequirementRecord(
   const linkTestIds = options?.testIds === undefined ? undefined : Array.from(new Set(options.testIds));
 
   // Row, tags and test links commit together; a failure part-way leaves the requirement untouched.
-  const found = await db.transaction(async (tx) => {
-    const updatedRequirements = await tx
-      .update(requirements)
-      .set(changes)
-      .where(
-        and(
-          eq(requirements.id, validatedData.id),
-          eq(requirements.projectId, projectId),
-          eq(requirements.organizationId, organizationId)
+  let found: boolean;
+  try {
+    found = await db.transaction(async (tx) => {
+      const updatedRequirements = await tx
+        .update(requirements)
+        .set(changes)
+        .where(
+          and(
+            eq(requirements.id, validatedData.id),
+            eq(requirements.projectId, projectId),
+            eq(requirements.organizationId, organizationId)
+          )
         )
-      )
-      .returning({ id: requirements.id });
-    if (updatedRequirements.length === 0) return false;
+        .returning({ id: requirements.id });
+      if (updatedRequirements.length === 0) return false;
 
-    if (uniqueTagIds !== undefined) {
-      await syncRequirementTags(validatedData.id, uniqueTagIds, tx);
-    } else if (options?.tagNames !== undefined) {
-      if (options.tagNames.length === 0) {
-        await syncRequirementTags(validatedData.id, [], tx);
-      } else {
-        await syncRequirementTagsByName(
-          validatedData.id,
-          options.tagNames,
-          organizationId,
-          projectId,
-          userId,
-          tx
-        );
+      if (uniqueTagIds !== undefined) {
+        await syncRequirementTags(validatedData.id, uniqueTagIds, tx);
+      } else if (options?.tagNames !== undefined) {
+        if (options.tagNames.length === 0) {
+          await syncRequirementTags(validatedData.id, [], tx);
+        } else {
+          await syncRequirementTagsByName(
+            validatedData.id,
+            options.tagNames,
+            organizationId,
+            projectId,
+            userId,
+            tx
+          );
+        }
       }
-    }
 
-    if (linkTestIds !== undefined) {
-      await replaceTestLinks(tx, validatedData.id, linkTestIds);
-      await updateCoverageSnapshot(validatedData.id, tx);
+      if (linkTestIds !== undefined) {
+        await replaceTestLinks(tx, validatedData.id, linkTestIds);
+        await updateCoverageSnapshot(validatedData.id, tx);
+      }
+      return true;
+    });
+  } catch (error) {
+    if (isTagLimitError(error)) {
+      return { success: false, error: (error as Error).message, code: "invalid" };
     }
-    return true;
-  });
+    throw error;
+  }
 
   if (!found) {
     return {

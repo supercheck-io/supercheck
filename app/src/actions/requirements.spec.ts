@@ -564,7 +564,7 @@ describe("Requirements Server Actions", () => {
         });
       const tx = {
         insert: jest.fn(() => ({ values: () => chain(rows) })),
-        select: jest.fn(() => ({ from: () => ({ where: () => Promise.resolve([]) }) })),
+        select: jest.fn(() => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve([]) }) }) })),
         delete: jest.fn(() => ({ where: () => Promise.resolve() })),
       };
       (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: typeof tx) => unknown) => run(tx));
