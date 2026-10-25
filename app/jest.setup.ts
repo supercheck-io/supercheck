@@ -33,6 +33,16 @@ if (typeof globalThis.TransformStream === 'undefined') {
   });
 }
 
+// Radix primitives measure their triggers with ResizeObserver. jsdom does not
+// implement it, so provide a no-op observer for component tests.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // Polyfill Fetch API primitives for Next.js server utilities in Jest.
 // Tests in jsdom don't need a real fetch — they mock all network calls.
 // Tests needing real fetch use @jest-environment node where these exist natively.

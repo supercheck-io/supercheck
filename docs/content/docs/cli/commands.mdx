@@ -131,12 +131,12 @@ The token is verified against the API before being stored locally.
 
 #### Browser login
 
-When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself.
+When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address for comparison.
 
 - Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
 - Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
 - `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
-- If the organization you pick has no active plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Run `supercheck plan` afterwards to confirm.
+- If the organization you pick has neither an active trial nor a paid plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Cloud runs require an active trial or plan, as shown beside the approval controls. Run `supercheck plan` afterwards to confirm.
 - If the server does not enable browser login, the command explains how to use `--token`.
 
 ### `supercheck link`
