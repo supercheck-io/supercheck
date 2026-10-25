@@ -1,6 +1,6 @@
 ---
 name: supercheck-execution-engine
-description: Work on Supercheck BullMQ queues, schedulers, capacity management, Playwright or k6 execution, monitors, dynamic locations, cancellation, Redis, Kubernetes Jobs, gVisor, or app-worker execution contracts.
+description: Work on Supercheck BullMQ queues, schedulers, capacity management and worker admission, Playwright or k6 execution, runs stuck queued or stalled, monitors, dynamic locations, cancellation, Redis, Kubernetes Jobs, gVisor, or app-worker execution contracts.
 ---
 
 # Supercheck execution engine
@@ -16,6 +16,16 @@ flowchart LR
   RESULT --> RELEASE[Terminal state and capacity release]
 ```
 
+## Start here
+
+| File | Why |
+|---|---|
+| `app/src/lib/capacity-manager.ts` | Atomic Redis reserve/release (app-side admission) |
+| `worker/src/execution/services/execution-admission.service.ts`, `execution-queue-fairness.service.ts` | Worker-side admission and fairness, the enforcement point |
+| `app/src/lib/queue.ts`, `app/src/lib/job-scheduler.ts`, `app/src/lib/monitor-scheduler.ts` | Queues, connections, schedulers |
+| `app/src/lib/location-registry.ts`, `app/src/lib/monitor-location-routing.ts` | Location normalization and queue routing |
+| `worker/src/common/security/container-executor.service.ts` (+ `.spec.ts`) | Kubernetes Job rendering: runtime class, deadlines, TTL |
+
 ## Workload model
 
 - App routes/actions/schedulers admit and enqueue Playwright, k6, and monitor work.
@@ -26,7 +36,7 @@ flowchart LR
 
 ## Capacity and idempotency
 
-- Organization-level admission is the capacity source of truth. Running and queued reservations use atomic Redis operations and fail closed if capacity state cannot be trusted.
+- Organization-level admission is the capacity source of truth. Running and queued reservations use atomic Redis operations and fail closed if capacity state cannot be trusted. App-side checks are advisory; worker admission enforces.
 - Reserve before dispatch. Release exactly once on every terminal path: completion, terminal failure, cancellation, timeout, dispatch failure, and unrecoverable worker loss.
 - Retryable BullMQ attempts retain the reservation until the job becomes terminal.
 - Duplicate delivery, scheduler overlap, API retries, and webhook retries must not create duplicate executions or double-release capacity.
@@ -37,7 +47,7 @@ flowchart LR
 - Redis must use `maxmemory-policy noeviction`; evicting queue keys can lose or corrupt jobs.
 - General queue operations may share appropriate base connections.
 - Every `QueueEvents` consumer needs its own dedicated connection because blocking `XREAD` cannot share a normal command connection.
-- Do not set `commandTimeout` on shared options inherited by QueueEvents. Keep bounded connection establishment while allowing intentional failover reconnection.
+- Do not set `commandTimeout` on shared options inherited by QueueEvents (see the note in `app/src/lib/queue.ts`); non-blocking clients such as the stalled-job handler may set it. Keep bounded connection establishment while allowing intentional failover reconnection.
 - Monitor connection count across app replicas, workers, schedulers, dashboards, and event streams.
 
 ## Payloads, secrets, and artifacts
@@ -50,6 +60,7 @@ flowchart LR
 ## Cancellation and failures
 
 - Cancellation is idempotent: mark intent, stop queued work or signal active work, terminate the execution Job when necessary, persist one terminal state, and release capacity once.
+- Runs cancelled before any worker picks them up must still be finalized, and give-up paths (for example capacity-wait timeouts) must not overwrite an existing cancellation marker. Cancellation is asynchronous to API callers and E2E tests.
 - Let BullMQ retry eligible failures; do not swallow processor errors after marking an intermediate state.
 - Stalled-job policy is bounded and aligned with execution duration/lock settings.
 - Worker shutdown drains or safely relinquishes work and does not orphan Jobs or reservations.

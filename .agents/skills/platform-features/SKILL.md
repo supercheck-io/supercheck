@@ -1,6 +1,6 @@
 ---
 name: supercheck-platform-features
-description: Work on Supercheck CLI, AI test repair/providers, realtime SSE, web playground, requirements, status pages, tags, or their APIs and user workflows.
+description: Work on the Supercheck CLI (commands, device login, JSON output), AI test repair and AI providers, realtime SSE streams, web playground, requirements, status pages and their uptime, tags, or their APIs and user workflows. For the MCP server use supercheck-mcp-server.
 ---
 
 # Supercheck platform features
@@ -24,7 +24,10 @@ flowchart TD
 - Config is declarative monitoring-as-code. Config loading validates schema and rejects embedded live/test/trigger token patterns, including legacy trigger formats.
 - Secret variable values become environment references; file variables are excluded from generated config and use supported multipart/dashboard paths.
 - Authentication storage uses the local `conf` store (static obfuscation key—not encryption); prefer `SUPERCHECK_TOKEN` from a secret store in CI, and never print tokens.
-- Preserve interactive and non-interactive behavior for the registered command surface: login, logout, whoami, init, config, validate, diff, deploy, pull, destroy, doctor, health, audit, locations, job, run, test, monitor, var, tag, alert, notification, incident (alias incidents), service (alias services), sre, skills, schema, capabilities, and upgrade.
+- Preserve interactive and non-interactive behavior for every registered command. The source of truth is the `addCommand` list in `cli/src/bin/supercheck.ts` (commands live in `cli/src/commands/`); read it rather than relying on a copied list. Aliases include `incident`/`incidents`, `service`/`services`, `alert`/`alerts`, `notification`/`notifications`.
+- `--json` mode is enforced centrally in `cli/src/bin/supercheck.ts` (`exitOverride`, a `postAction` hook that emits a success object when a command printed nothing); new commands must not bypass it.
+- `login --json` prints the device URL and code and returns immediately; the approval UI lives in `app/src/app/(device)/device/`.
+- The CLI has no status-page create/update command; do not document or assume one.
 - AI SRE CLI contracts are `incident list/get/timeline/resolve`, `sre triage/investigate/status/ask/brief`, and read-only `service list/get/health/dependencies`. Use `/api/sre/*` routes with unified CLI-token/session authentication; never call browser-only server actions from the CLI.
 - Keep AI SRE tenant scope and RBAC server-side: incident reads need `sre_incident:view`, resolution needs `sre_incident:update`, investigations need both incident and investigation `investigate`, service reads need `sre_service:view`, and live connector tools additionally need `sre_connector:investigate`.
 - Treat deep investigation as asynchronous HTTP 202 acceptance. Do not describe it as streaming; stream Copilot chat and evidence briefs only. In JSON mode emit NDJSON for streams, enforce bounded event buffers and idle timeout, support Ctrl-C, and never retry side-effecting POST requests after uncertain completion.

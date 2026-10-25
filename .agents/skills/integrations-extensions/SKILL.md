@@ -30,10 +30,11 @@ sequenceDiagram
 | `recorder/src` | Playwright CRX library/client/server implementation |
 | `recorder/playwright` | Vendored build-required Playwright source and licenses |
 | `recorder/examples/recorder-crx` | Supercheck recorder extension |
+| `recorder/examples/recorder-crx/src/supercheck` | App origin allowlist and message validation (`message-security.ts`), API client, config |
 | `recorder/examples/todomvc-crx` | Library example |
 | `recorder/tests` | Unit, extension, and browser suites |
 | `app/src/components/recorder` | App UI and auto-connect bridge |
-| `app/src/app/api/extension` | Extension-facing API |
+| `app/src/app/api/extension` | Extension-facing API; key revocation must page past Better Auth's list cap |
 | `app/src/app/api/recordings` | Recording persistence API |
 
 ### Security contract
