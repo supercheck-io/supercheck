@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Plus, ShieldCheck, SquareLibrary } from "lucide-react";
+import { Loader2, Plus, SquareLibrary } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -225,13 +225,13 @@ export function DiagnosticQueriesAdminView({
   return (
     <div className="space-y-4">
       {availableConnectors.length === 0 ? (
-        <DashboardEmptyState
-          className="min-h-[240px]"
-          title="Enabled connector required"
-          description="Add or enable an evidence connector first. Saved queries are scoped to one connector and stay read-only."
-          icon={<ShieldCheck className="h-10 w-10" />}
-          action={<SreSetupGuideDialog status={setupStatus} />}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p>
+            Add or enable an evidence connector to create saved queries. They
+            are scoped to one connector and stay read-only.
+          </p>
+          <SreSetupGuideDialog status={setupStatus} />
+        </div>
       ) : queries.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[240px]"

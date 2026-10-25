@@ -86,7 +86,7 @@ export const logoutCommand = new Command('logout')
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ authenticated: envToken, removedStoredCredentials: hadStored, ...(hadStored ? { keyRevoked: false } : {}), ...(envToken ? { note: 'SUPERCHECK_TOKEN is still set in the environment' } : {}) }))
     logger.success(hadStored ? 'Logged out successfully. Stored credentials removed.' : 'No stored credentials were found.')
     // The key itself stays valid until it expires or is revoked: be explicit so nobody assumes otherwise.
-    if (hadStored) logger.info('The key was removed from this machine only. To invalidate it, revoke it under Organization Admin → CLI Tokens.')
+    if (hadStored) logger.info('The key was removed from this machine only. To invalidate it, revoke it under Organization → CLI Tokens.')
     if (envToken) logger.warn('SUPERCHECK_TOKEN is still set in your environment and will keep being used. Unset it to finish signing out.')
   })
 

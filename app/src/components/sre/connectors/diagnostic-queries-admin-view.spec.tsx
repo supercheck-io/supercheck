@@ -196,7 +196,7 @@ describe("DiagnosticQueriesAdminView", () => {
       />,
     );
 
-    expect(screen.getByText("Enabled connector required")).toBeInTheDocument();
+    expect(screen.getByText(/Add or enable an evidence connector/)).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Add query" }),
     ).not.toBeInTheDocument();
