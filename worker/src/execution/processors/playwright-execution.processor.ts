@@ -150,6 +150,10 @@ export class PlaywrightExecutionProcessor
     reason: string,
   ): Promise<void> {
     if (!runId) return;
+    // A run the user already cancelled ends as cancelled; the capacity failure must not replace that.
+    if (await this.dbService.finalizeCancelledRun(runId).catch(() => false)) {
+      return;
+    }
     await this.dbService
       .updateRunStatus(runId, 'failed', '0', reason)
       .catch((err: Error) =>
