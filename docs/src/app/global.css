@@ -54,3 +54,17 @@ body {
     transition: none !important;
   }
 }
+
+/* Homepage headline accent: brand blue to sky, one gradient per theme. */
+.hero-accent {
+  color: var(--color-fd-primary);
+  background-image: linear-gradient(90deg, hsl(220 90% 52%), hsl(199 89% 44%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .hero-accent {
+  background-image: linear-gradient(90deg, hsl(220 90% 68%), hsl(195 90% 62%));
+}
+
