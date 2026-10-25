@@ -7,12 +7,12 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(
 
 jest.mock("@/utils/db", () => ({ db: {} }));
 jest.mock("@/lib/requirements/service", () => {
-  const { z } = jest.requireActual("zod");
   return {
     deleteRequirementRecord: jest.fn(),
     getRequirementDto: jest.fn(),
     updateRequirementWithRelations: jest.fn(),
-    restUpdateRequirementSchema: z.object({ title: z.string().min(1).max(500).optional() }),
+    // Real schema: strictness and URL rules are part of the contract under test.
+restUpdateRequirementSchema: jest.requireActual("@/lib/requirements/service").restUpdateRequirementSchema,
     toServiceContext: (c: { userId: string; organizationId: string; project: { id: string; name: string } }) => ({
       userId: c.userId, organizationId: c.organizationId, projectId: c.project.id, projectName: c.project.name,
     }),
@@ -66,6 +66,23 @@ describe("PUT /api/requirements/[id]", () => {
   });
   it("400 on an invalid body", async () => {
     expect((await PUT(req("PUT", { title: "" }), params())).status).toBe(400);
+  });
+  it("400 on unknown keys, javascript: URLs and over-long fields", async () => {
+    expect((await PUT(req("PUT", { title: "x", bogus: 1 }), params())).status).toBe(400);
+    expect((await PUT(req("PUT", { externalUrl: "javascript:alert(1)" }), params())).status).toBe(400);
+    expect((await PUT(req("PUT", { description: "d".repeat(10001) }), params())).status).toBe(400);
+    expect((await PUT(req("PUT", { externalId: "i".repeat(256) }), params())).status).toBe(400);
+    expect((await PUT(req("PUT", { externalUrl: `https://a.test/${"p".repeat(2048)}` }), params())).status).toBe(400);
+    expect(updateRequirementWithRelations).not.toHaveBeenCalled();
+  });
+  it("accepts null to clear description, externalId and externalUrl", async () => {
+    (updateRequirementWithRelations as jest.Mock).mockResolvedValue({ success: true });
+    (getRequirementDto as jest.Mock).mockResolvedValue({ id: ID });
+    const res = await PUT(req("PUT", { description: null, externalId: null, externalUrl: null }), params());
+    expect(res.status).toBe(200);
+    expect(updateRequirementWithRelations).toHaveBeenCalledWith(expect.anything(), ID, {
+      description: null, externalId: null, externalUrl: null,
+    });
   });
   it("404 cross-project id", async () => {
     (updateRequirementWithRelations as jest.Mock).mockResolvedValue({ success: false, code: "not_found", error: "nf" });

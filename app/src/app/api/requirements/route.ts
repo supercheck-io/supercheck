@@ -4,6 +4,8 @@ import {
   requirements, 
   requirementCoverageSnapshots,
   requirementTags,
+  testRequirements,
+  tests,
   tags,
   type RequirementPriority,
   type RequirementCoverageStatus,
@@ -17,6 +19,19 @@ import {
   restCreateRequirementSchema,
   toServiceContext,
 } from '@/lib/requirements/service';
+
+// The dashboard calls this endpoint without paging and paginates client-side, so the default stays 500.
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 500;
+const MAX_PAGE_SIZE = 500;
+const MAX_PAGE = 100_000;
+
+/** Parse a query integer, falling back to `fallback` for missing/NaN values and clamping to [min, max]. */
+function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const value = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,19 +49,11 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '500', 10);
+    const page = clampInt(searchParams.get('page'), DEFAULT_PAGE, 1, MAX_PAGE);
+    const pageSize = clampInt(searchParams.get('pageSize'), DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
     const search = searchParams.get('search') || undefined;
     const priority = searchParams.get('priority') as RequirementPriority | undefined;
     const status = searchParams.get('status') as RequirementCoverageStatus | undefined;
-
-    // Validate pagination parameters
-    if (page < 1 || pageSize < 1) {
-      return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page and pageSize must be >= 1' },
-        { status: 400 }
-      );
-    }
 
     const offset = (page - 1) * pageSize;
 
@@ -146,6 +153,32 @@ export async function GET(request: NextRequest) {
             .where(inArray(requirementTags.requirementId, requirementIds))
         : [];
 
+    // Linked test ids, batch-loaded (scoped to this project's tests) so API clients avoid a per-row detail fetch
+    const linkedTestRows =
+      requirementIds.length > 0
+        ? await db
+            .select({
+              requirementId: testRequirements.requirementId,
+              testId: testRequirements.testId,
+            })
+            .from(testRequirements)
+            .innerJoin(
+              tests,
+              and(
+                eq(testRequirements.testId, tests.id),
+                eq(tests.projectId, context.project.id),
+                eq(tests.organizationId, context.organizationId)
+              )
+            )
+            .where(inArray(testRequirements.requirementId, requirementIds))
+        : [];
+    const testIdsMap = new Map<string, string[]>();
+    linkedTestRows.forEach(({ requirementId, testId }) => {
+      const ids = testIdsMap.get(requirementId) ?? [];
+      ids.push(testId);
+      testIdsMap.set(requirementId, ids);
+    });
+
     // Build a map of requirementId -> tags
     const requirementTagsMap = new Map<
       string,
@@ -169,6 +202,9 @@ export async function GET(request: NextRequest) {
       description: r.description,
       priority: r.priority,
       tags: requirementTagsMap.get(r.id) || [],
+      // Additive for API clients: stored casing, sorted
+      tagNames: (requirementTagsMap.get(r.id) || []).map((t) => t.name).sort(),
+      testIds: testIdsMap.get(r.id) || [],
       sourceDocumentId: r.sourceDocumentId,
       sourceDocumentName: r.sourceDocumentName,
       sourceSection: r.sourceSection,

@@ -7,13 +7,12 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(
 
 jest.mock("@/utils/db", () => ({ db: {} }));
 jest.mock("@/lib/requirements/service", () => {
-  const { z } = jest.requireActual("zod");
   return {
     getRequirementDto: jest.fn(),
     linkTestsRecord: jest.fn(),
     unlinkTestsRecord: jest.fn(),
     listLinkedTestsRecord: jest.fn(),
-    restTestIdsSchema: z.object({ testIds: z.array(z.string().uuid()).min(1).max(100) }),
+    restTestIdsSchema: jest.requireActual("@/lib/requirements/service").restTestIdsSchema,
     toServiceContext: (c: { userId: string; organizationId: string; project: { id: string; name: string } }) => ({
       userId: c.userId, organizationId: c.organizationId, projectId: c.project.id, projectName: c.project.name,
     }),
@@ -65,6 +64,8 @@ describe("POST /api/requirements/[id]/tests", () => {
   it("400 on an empty or invalid body", async () => {
     expect((await POST(req("POST", { testIds: [] }), params())).status).toBe(400);
     expect((await POST(req("POST", { testIds: ["x"] }), params())).status).toBe(400);
+    expect((await POST(req("POST", { testIds: [T1], extra: 1 }), params())).status).toBe(400);
+    expect(linkTestsRecord).not.toHaveBeenCalled();
   });
   it("404 when the requirement or tests are outside the project", async () => {
     (linkTestsRecord as jest.Mock).mockResolvedValue({ success: false, code: "not_found", error: "nf" });

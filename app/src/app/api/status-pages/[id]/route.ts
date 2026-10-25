@@ -21,6 +21,7 @@ import { z } from "zod";
 import {
   findServerManagedKeyError,
   httpStatusForServiceError,
+  checkPublishPreconditions,
   setStatusPagePublished,
   statusPageSettingsFieldsSchema,
   toStatusPageDto,
@@ -333,7 +334,8 @@ const updateBodySchema = statusPageSettingsFieldsSchema
 /**
  * PUT /api/status-pages/[id]
  * Updates any subset of the status page settings and, optionally, its status
- * ("draft" | "published" | "archived"). Settings are applied first, then status.
+ * ("draft" | "published" | "archived"). Publish preconditions are checked first, then settings
+ * are applied, then status.
  */
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
@@ -383,6 +385,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       projectId: authCtx.project.id,
       projectName: authCtx.project.name,
     };
+
+    // A request that would fail publishing must write nothing, so check the publish
+    // preconditions before applying settings.
+    if (status === "published") {
+      const preconditions = await checkPublishPreconditions(svcCtx, id);
+      if (!preconditions.ok) {
+        return NextResponse.json(
+          { error: preconditions.message },
+          { status: httpStatusForServiceError(preconditions.code) }
+        );
+      }
+    }
 
     let settingsApplied = false;
     if (Object.keys(settings).length > 0) {

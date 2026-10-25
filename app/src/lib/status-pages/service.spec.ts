@@ -19,6 +19,9 @@ const select = jest.fn((..._a: unknown[]) => makeChain());
 const insert = jest.fn(() => makeChain());
 const update = jest.fn(() => makeChain());
 const del = jest.fn(() => makeChain());
+const transaction = jest.fn(async (run: (tx: unknown) => unknown) =>
+  run({ insert: (...a: unknown[]) => (insert as jest.Mock)(...a), delete: (...a: unknown[]) => (del as jest.Mock)(...a) })
+);
 
 jest.mock("@/utils/db", () => ({
   db: {
@@ -34,6 +37,7 @@ jest.mock("@/utils/db", () => ({
     insert: (...a: unknown[]) => (insert as jest.Mock)(...a),
     update: (...a: unknown[]) => (update as jest.Mock)(...a),
     delete: (...a: unknown[]) => (del as jest.Mock)(...a),
+    transaction: (...a: unknown[]) => (transaction as jest.Mock)(...a),
   },
 }));
 const logAuditEvent = jest.fn();
@@ -76,6 +80,7 @@ jest.mock("@/lib/services/subscription-service", () => {
 jest.mock("@/lib/asset-proxy", () => ({ generateProxyUrl: (v: string | null) => v }));
 
 import {
+  checkPublishPreconditions,
   createComponent,
   createStatusPage,
   deleteComponent,
@@ -121,6 +126,25 @@ describe("status page service", () => {
       insertWithinPlanLimit.mockResolvedValue({ ok: false, busy: false, check: { error: "Limit reached" } });
       const result = await createStatusPage(ctx, { name: "Acme" });
       expect(result).toEqual({ ok: false, code: "forbidden", message: "Limit reached" });
+    });
+
+    it("rejects a whitespace-only name and an over-long description", async () => {
+      expect(await createStatusPage(ctx, { name: "   " })).toMatchObject({ ok: false, code: "validation" });
+      expect(await createStatusPage(ctx, { name: "ok", pageDescription: "x".repeat(2001) })).toMatchObject({
+        ok: false,
+        code: "validation",
+      });
+      expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+    });
+
+    it("returns a generic message and never the raw database error", async () => {
+      const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      insertWithinPlanLimit.mockRejectedValue(new Error('duplicate key value violates unique constraint "status_pages_subdomain_key"'));
+      const result = await createStatusPage(ctx, { name: "Acme" });
+      expect(result).toEqual({ ok: false, code: "internal", message: "Failed to create status page. Please try again." });
+      expect(JSON.stringify(result)).not.toContain("duplicate key");
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
 
     it("maps a busy lock to busy", async () => {
@@ -241,6 +265,26 @@ describe("status page service", () => {
     });
   });
 
+  describe("checkPublishPreconditions", () => {
+    it("fails without a public component and performs no write", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue(undefined);
+      expect(await checkPublishPreconditions(ctx, pageId)).toMatchObject({ ok: false, code: "validation" });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("passes with ownership, subscription and a visible component", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId });
+      expect(await checkPublishPreconditions(ctx, pageId)).toMatchObject({ ok: true });
+    });
+
+    it("blocks without subscription access", async () => {
+      blockUntilSubscribed.mockRejectedValue(new SubscriptionAccessDeniedError("Trial ended", "subscription_required"));
+      expect(await checkPublishPreconditions(ctx, pageId)).toEqual({ ok: false, code: "forbidden", message: "Trial ended" });
+    });
+  });
+
   describe("components", () => {
     it("lists components with monitorIds", async () => {
       pageFindFirst.mockResolvedValue({ id: pageId });
@@ -284,6 +328,38 @@ describe("status page service", () => {
       expect(insert).toHaveBeenCalledTimes(2);
       expect(updateComponentStatus).toHaveBeenCalledWith(compId);
       expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "component_created" }));
+    });
+
+    it("collapses duplicate monitorIds before the ownership check", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      chainResult.value = [{ id: monitorA }]; // one distinct monitor exists
+      insert.mockImplementation(() => {
+        const c = makeChain();
+        (c.returning as jest.Mock).mockImplementation(() => Promise.resolve([{ id: compId, name: "API" }]));
+        return c;
+      });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      const result = await createComponent(ctx, pageId, { name: "API", monitorIds: [monitorA, monitorA] });
+      expect(result).toMatchObject({ ok: true, data: { monitorIds: [monitorA] } });
+    });
+
+    it("rejects more than 100 monitorIds", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      const many = Array.from({ length: 101 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+      expect(await createComponent(ctx, pageId, { name: "API", monitorIds: many })).toMatchObject({
+        ok: false,
+        code: "validation",
+      });
+    });
+
+    it("replaces monitor links inside a transaction on update", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      chainResult.value = [{ id: monitorA }];
+      const result = await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA], status: "operational" });
+      expect(result.ok).toBe(true);
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(del).toHaveBeenCalledTimes(1);
     });
 
     it("404s update of a component not on the page", async () => {

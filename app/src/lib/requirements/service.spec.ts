@@ -1,5 +1,7 @@
 /** @jest-environment node */
 const mockSelectQueue: unknown[][] = [];
+const mockUpdateSet = jest.fn();
+const mockUpdateRows: unknown[][] = [];
 jest.mock("@/utils/db", () => {
   const select = jest.fn(() => {
     const node: Record<string, unknown> = {};
@@ -22,9 +24,16 @@ jest.mock("@/utils/db", () => {
     select,
     insert: jest.fn(writeChain),
     delete: jest.fn(() => ({ where: () => Promise.resolve() })),
-    update: jest.fn(),
-    transaction: jest.fn(async (run: (tx: unknown) => unknown): Promise<unknown> => run(db)),
+    update: jest.fn(() => ({
+      set: (values: unknown) => {
+        mockUpdateSet(values);
+        return { where: () => ({ returning: () => Promise.resolve(mockUpdateRows.shift() ?? [{ id: "x" }]) }) };
+      },
+    })),
+    // The transaction handle is a distinct object so specs can assert writes went through it.
+    transaction: jest.fn(async (run: (tx: unknown) => unknown): Promise<unknown> => run(mockTx)),
   };
+  const mockTx = { ...db, isTx: true };
   return { db };
 });
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
@@ -42,7 +51,12 @@ import {
 } from "@/lib/requirements-internal";
 import {
   createRequirementWithRelations,
+  escapeCSV,
   linkTestsRecord,
+  restCreateRequirementSchema,
+  restTestIdsSchema,
+  restUpdateRequirementSchema,
+  updateRequirementWithRelations,
   syncRequirementTestsRecord,
   unlinkTestsRecord,
 } from "./service";
@@ -55,6 +69,7 @@ const T2 = "77777777-7777-4777-8777-777777777777";
 beforeEach(() => {
   jest.clearAllMocks();
   mockSelectQueue.length = 0;
+  mockUpdateRows.length = 0;
 });
 
 describe("requirements service", () => {
@@ -66,11 +81,11 @@ describe("requirements service", () => {
     expect(result.success).toBe(true);
     expect(syncRequirementTagsByName).toHaveBeenCalledWith(
       result.id,
-      ["auth", "smoke"],
+      ["Auth", "Smoke"], // case-insensitive dedupe keeps the first spelling
       "o",
       "p",
       "u",
-      expect.anything()
+      expect.objectContaining({ isTx: true })
     );
     // requirement row + coverage snapshot, both inside the transaction
     expect(db.insert).toHaveBeenCalledTimes(2);
@@ -92,8 +107,63 @@ describe("requirements service", () => {
     mockSelectQueue.push([{ id: T1 }], [{ id: "req" }], [{ id: T1 }]); // areTestsInScope, link: requirement, tests
     const result = await createRequirementWithRelations(ctx, { title: "x", testIds: [T1] });
     expect(result.success).toBe(true);
-    expect(updateCoverageSnapshot).toHaveBeenCalledWith(result.id);
+    // Linked inside the create transaction, not afterwards on the shared pool.
+    expect(updateCoverageSnapshot).toHaveBeenCalledWith(result.id, expect.objectContaining({ isTx: true }));
+    expect(db.transaction).toHaveBeenCalledTimes(1);
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "requirement_tests_linked" }));
+  });
+
+  it("create rolls back (rejects, no audit) when linking tests fails", async () => {
+    mockSelectQueue.push([{ id: T1 }]); // areTestsInScope
+    // requirement row + snapshot succeed, the test-link insert fails
+    const ok = () => ({
+      values: () => ({
+        onConflictDoNothing: () => Object.assign(Promise.resolve(), { returning: () => Promise.resolve([{ id: "x" }]) }),
+        then: (r: (v: unknown) => unknown) => Promise.resolve().then(r),
+      }),
+    });
+    (db.insert as jest.Mock)
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(() => {
+        throw new Error("link failed");
+      });
+    await expect(createRequirementWithRelations(ctx, { title: "x", testIds: [T1] })).rejects.toThrow("link failed");
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("update writes only the provided columns, inside one transaction with tags and tests", async () => {
+    mockSelectQueue.push([{ id: T1 }]); // areTestsInScope
+    const result = await updateRequirementWithRelations(ctx, R, {
+      description: null,
+      tags: ["Smoke", "smoke"],
+      testIds: [T1],
+    });
+    expect(result.success).toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    const set = mockUpdateSet.mock.calls[0][0];
+    expect(Object.keys(set).sort()).toEqual(["description", "updatedAt"]);
+    expect(set.description).toBeNull();
+    expect(syncRequirementTagsByName).toHaveBeenCalledWith(R, ["Smoke"], "o", "p", "u", expect.objectContaining({ isTx: true }));
+    expect(updateCoverageSnapshot).toHaveBeenCalledWith(R, expect.objectContaining({ isTx: true }));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "requirement_updated" }));
+  });
+
+  it("update clears externalId/externalUrl with null and sets priority when given", async () => {
+    await updateRequirementWithRelations(ctx, R, { externalId: null, externalUrl: null, priority: "high" });
+    const set = mockUpdateSet.mock.calls[0][0];
+    expect(set).toMatchObject({ externalId: null, externalUrl: null, priority: "high" });
+    expect(set).not.toHaveProperty("title");
+    expect(set).not.toHaveProperty("description");
+  });
+
+  it("update reports not_found when no row matched and does not sync or audit", async () => {
+    mockUpdateRows.push([]);
+    const result = await updateRequirementWithRelations(ctx, R, { title: "x", tags: ["a"] });
+    expect(result).toMatchObject({ success: false, code: "not_found" });
+    expect(syncRequirementTagsByName).not.toHaveBeenCalled();
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
   it("link refuses cross-project tests and does not touch coverage", async () => {
@@ -109,7 +179,7 @@ describe("requirements service", () => {
     mockSelectQueue.push([{ id: R }], [{ id: T1 }]);
     const result = await linkTestsRecord(ctx, R, [T1]);
     expect(result.success).toBe(true);
-    expect(updateCoverageSnapshot).toHaveBeenCalledWith(R);
+    expect(updateCoverageSnapshot).toHaveBeenCalledWith(R, expect.objectContaining({ isTx: true }));
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "requirement_tests_linked",
@@ -154,5 +224,50 @@ describe("requirements service", () => {
     const result = await unlinkTestsRecord(ctx, R, [T1]);
     expect(result).toEqual(expect.objectContaining({ success: false, code: "not_found" }));
     expect(db.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("REST requirement schemas", () => {
+  it("are strict: unknown keys are rejected", () => {
+    expect(restCreateRequirementSchema.safeParse({ title: "x", bogus: 1 }).success).toBe(false);
+    expect(restUpdateRequirementSchema.safeParse({ bogus: 1 }).success).toBe(false);
+    expect(restTestIdsSchema.safeParse({ testIds: [T1], extra: 1 }).success).toBe(false);
+  });
+
+  it("trims the title and rejects a blank one", () => {
+    expect(restCreateRequirementSchema.parse({ title: "  hi  " }).title).toBe("hi");
+    expect(restCreateRequirementSchema.safeParse({ title: "   " }).success).toBe(false);
+  });
+
+  it("allows only http(s) external URLs, with a length cap", () => {
+    expect(restCreateRequirementSchema.safeParse({ title: "x", externalUrl: "https://a.test/p" }).success).toBe(true);
+    expect(restCreateRequirementSchema.safeParse({ title: "x", externalUrl: "javascript:alert(1)" }).success).toBe(false);
+    expect(restCreateRequirementSchema.safeParse({ title: "x", externalUrl: "ftp://a.test/p" }).success).toBe(false);
+    expect(restCreateRequirementSchema.safeParse({ title: "x", externalUrl: `https://a.test/${"p".repeat(2048)}` }).success).toBe(false);
+  });
+
+  it("enforces field length limits", () => {
+    expect(restCreateRequirementSchema.safeParse({ title: "x", description: "d".repeat(10001) }).success).toBe(false);
+    expect(restCreateRequirementSchema.safeParse({ title: "x", externalId: "i".repeat(256) }).success).toBe(false);
+  });
+});
+
+describe("escapeCSV", () => {
+  it.each(["=SUM(A1)", "+1", "-1", "@cmd", "\tx", "\rx"])("neutralises formula prefix %j", (value) => {
+    const out = escapeCSV(value);
+    expect(out.replace(/^"/, "").startsWith("'")).toBe(true);
+  });
+
+  it("quotes commas, quotes, newlines and carriage returns", () => {
+    expect(escapeCSV("a,b")).toBe('"a,b"');
+    expect(escapeCSV('say "hi"')).toBe('"say ""hi"""');
+    expect(escapeCSV("a\nb")).toBe('"a\nb"');
+    expect(escapeCSV("a\rb")).toBe('"a\rb"');
+  });
+
+  it("leaves plain values alone and maps null to empty", () => {
+    expect(escapeCSV("plain")).toBe("plain");
+    expect(escapeCSV(null)).toBe("");
+    expect(escapeCSV(undefined)).toBe("");
   });
 });

@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import {
   requirementCoverageSnapshots,
   testRequirements,
@@ -8,7 +8,7 @@ import {
 import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
-type Executor = Pick<typeof db, "select" | "insert" | "delete">;
+export type Executor = Pick<typeof db, "select" | "insert" | "delete" | "update">;
 
 // Internal helpers: deliberately NOT in a "use server" module. Next.js exposes
 // every export of a "use server" file as a client-callable endpoint, and these
@@ -63,22 +63,37 @@ export async function syncRequirementTagsByName(
 ): Promise<void> {
   if (tagNames.length === 0) return;
 
-  // "AI" and "ai" are one tag; two rows with the same (project, name) would violate the unique index.
-  const normalizedNames = [...new Set(tagNames.map((name) => name.trim().toLowerCase()))];
+  // "AI" and "ai" are one tag (two rows differing only in case would collide), so dedupe case-insensitively and
+  // keep the first spelling given for any tag that has to be created.
+  const seen = new Set<string>();
+  const requestedNames: string[] = [];
+  for (const raw of tagNames) {
+    const name = raw.trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    requestedNames.push(name);
+  }
 
-  // Find existing tags
-  const existingTags = await executor
-    .select({ id: tags.id, name: tags.name })
-    .from(tags)
-    .where(
-      and(
-        eq(tags.projectId, projectId),
-        inArray(tags.name, normalizedNames)
-      )
-    );
+  // Match existing tags case-insensitively so "Smoke" reuses the stored "smoke" (or "Smoke") instead of adding a twin.
+  const existingTags =
+    requestedNames.length === 0
+      ? []
+      : await executor
+          .select({ id: tags.id, name: tags.name })
+          .from(tags)
+          .where(
+            and(
+              eq(tags.projectId, projectId),
+              inArray(
+                sql`lower(${tags.name})`,
+                requestedNames.map((name) => name.toLowerCase())
+              )
+            )
+          );
 
   const existingTagNames = new Set(existingTags.map((t) => t.name.toLowerCase()));
-  const tagsToCreate = normalizedNames.filter((name) => !existingTagNames.has(name));
+  const tagsToCreate = requestedNames.filter((name) => !existingTagNames.has(name.toLowerCase()));
 
   // Create missing tags
   const newTags: { id: string; name: string }[] = [];
@@ -119,10 +134,11 @@ export async function syncRequirementTagsByName(
  * This is called after linking/unlinking tests and by the coverage worker after job completion
  */
 export async function updateCoverageSnapshot(
-  requirementId: string
+  requirementId: string,
+  executor: Executor = db
 ): Promise<void> {
   // Get linked tests with their latest run status
-  const linkedTests = await db
+  const linkedTests = await executor
     .select({
       testId: testRequirements.testId,
     })
@@ -133,7 +149,7 @@ export async function updateCoverageSnapshot(
 
   if (linkedTestCount === 0) {
     // No linked tests = missing coverage
-    await db
+    await executor
       .update(requirementCoverageSnapshots)
       .set({
         status: "missing",
@@ -150,7 +166,7 @@ export async function updateCoverageSnapshot(
   // Get latest run status for each linked test
   // This is a simplified version - in production, you'd query the runs table
   // For now, set status based on linked test count
-  await db
+  await executor
     .update(requirementCoverageSnapshots)
     .set({
       linkedTestCount,

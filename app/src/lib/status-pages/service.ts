@@ -87,9 +87,9 @@ export function httpStatusForServiceError(code: ServiceErrorCode): number {
 // ---------------------------------------------------------------------------
 
 export const createStatusPageSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
+  name: z.string().trim().min(1, "Name is required").max(255),
   headline: z.string().max(255).optional(),
-  pageDescription: z.string().optional(),
+  pageDescription: z.string().max(2000, "Description too long").optional(),
 });
 
 export type CreateStatusPageInput = z.infer<typeof createStatusPageSchema>;
@@ -157,12 +157,20 @@ const componentStatusEnum = z.enum([
   "under_maintenance",
 ]);
 const aggregationMethodEnum = z.enum(["worst_case", "best_case", "weighted_average", "majority_vote"]);
+/** Same monitor can be listed twice by a client; collapse before the ownership check so it is not "not found". */
+const monitorIdList = z
+  .array(z.string().uuid())
+  .max(100, "A component can link at most 100 monitors")
+  .transform((ids) => Array.from(new Set(ids)));
+const monitorWeightMap = z
+  .record(z.string().uuid(), z.number().int().min(1).max(100))
+  .refine((weights) => Object.keys(weights).length <= 100, "At most 100 monitor weights");
 const componentName = z.string().min(1, "Name is required").max(255, "Name is too long").trim();
 
 export const createComponentFieldsSchema = z.object({
   name: componentName,
   description: z.string().max(2000, "Description is too long").optional(),
-  monitorIds: z.array(z.string().uuid()).optional(),
+  monitorIds: monitorIdList.optional(),
   status: componentStatusEnum.default("operational"),
   showcase: z.boolean().default(true),
   onlyShowIfDegraded: z.boolean().default(false),
@@ -170,14 +178,14 @@ export const createComponentFieldsSchema = z.object({
   aggregationMethod: aggregationMethodEnum.default("worst_case"),
   autoCreateIncidents: z.boolean().optional(),
   serviceId: z.string().uuid().nullable().optional(),
-  monitorWeights: z.record(z.string().uuid(), z.number().int().min(1).max(100)).optional(),
+  monitorWeights: monitorWeightMap.optional(),
   failureThreshold: z.number().int().min(1).max(100).default(1),
 });
 
 export const updateComponentFieldsSchema = z.object({
   name: componentName.optional(),
   description: z.string().max(2000, "Description is too long").optional().nullable(),
-  monitorIds: z.array(z.string().uuid()).optional(),
+  monitorIds: monitorIdList.optional(),
   status: componentStatusEnum.optional(),
   showcase: z.boolean().optional(),
   onlyShowIfDegraded: z.boolean().optional(),
@@ -185,7 +193,7 @@ export const updateComponentFieldsSchema = z.object({
   aggregationMethod: aggregationMethodEnum.optional(),
   autoCreateIncidents: z.boolean().optional(),
   serviceId: z.string().uuid().nullable().optional(),
-  monitorWeights: z.record(z.string().uuid(), z.number().int().min(1).max(100)).optional(),
+  monitorWeights: monitorWeightMap.optional(),
   failureThreshold: z.number().int().min(1).max(100).optional(),
 });
 
@@ -384,11 +392,9 @@ export async function createStatusPage(
 
     return { ok: true, data: { statusPage } };
   } catch (dbError) {
-    console.error("Database error:", dbError);
-    return fail(
-      "internal",
-      `Failed to create status page: ${dbError instanceof Error ? dbError.message : String(dbError)}`
-    );
+    // Details stay in the server log; the client never sees raw database text.
+    console.error("Error creating status page:", dbError);
+    return fail("internal", "Failed to create status page. Please try again.");
   }
 }
 
@@ -510,6 +516,55 @@ export async function updateStatusPageSettings(
 export type StatusPageTargetStatus = "published" | "draft" | "archived";
 
 /**
+ * Everything that must hold before a page can go live: an active subscription, ownership and at least one
+ * public component. Read-only, so callers can run it before applying any other change.
+ */
+export async function checkPublishPreconditions(
+  ctx: StatusPageServiceContext,
+  statusPageId: string
+): Promise<ServiceResult<{ statusPage: StatusPageRow }>> {
+  const { userId, organizationId } = ctx;
+  try {
+    if (!z.string().uuid().safeParse(statusPageId).success) {
+      return fail("validation", "Invalid status page ID");
+    }
+
+    // An expired trial or lapsed subscription must not bring an archived page back online.
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (error) {
+      // SubscriptionAccessDeniedError messages are written for end users; anything else is internal.
+      if (error instanceof SubscriptionAccessDeniedError) {
+        return fail("forbidden", error.message);
+      }
+      throw error;
+    }
+
+    // SECURITY: Verify ownership
+    const statusPage = await findOwnedStatusPage(ctx, statusPageId);
+    if (!statusPage) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to publish status page ${statusPageId} without ownership`
+      );
+      return fail("not_found", "Status page not found or access denied");
+    }
+
+    const visibleComponent = await db.query.statusPageComponents.findFirst({
+      where: and(eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.showcase, true)),
+      columns: { id: true },
+    });
+    if (!visibleComponent) {
+      return fail("validation", "Add at least one public component before publishing.");
+    }
+    return { ok: true, data: { statusPage } };
+  } catch (error) {
+    console.error("Error checking publish preconditions:", error);
+    return fail("internal", "Failed to publish status page. Please try again.");
+  }
+}
+
+/**
  * Publish, unpublish (draft) or archive a status page.
  * "draft" and "archived" both go through the unpublish path.
  */
@@ -528,34 +583,16 @@ export async function setStatusPagePublished(
     }
 
     if (publishing) {
-      // An expired trial or lapsed subscription must not bring an archived page back online.
-      try {
-        await subscriptionService.blockUntilSubscribed(organizationId);
-        await subscriptionService.requireValidPolarCustomer(organizationId);
-      } catch (error) {
-        if (error instanceof SubscriptionAccessDeniedError) {
-          return fail("forbidden", error.message);
-        }
-        throw error;
-      }
-    }
-
-    // SECURITY: Verify ownership
-    const statusPage = await findOwnedStatusPage(ctx, statusPageId);
-    if (!statusPage) {
-      console.warn(
-        `[SECURITY] User ${userId} attempted to ${verb} status page ${statusPageId} without ownership`
-      );
-      return fail("not_found", "Status page not found or access denied");
-    }
-
-    if (publishing) {
-      const visibleComponent = await db.query.statusPageComponents.findFirst({
-        where: and(eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.showcase, true)),
-        columns: { id: true },
-      });
-      if (!visibleComponent) {
-        return fail("validation", "Add at least one public component before publishing.");
+      const preconditions = await checkPublishPreconditions(ctx, statusPageId);
+      if (!preconditions.ok) return preconditions;
+    } else {
+      // SECURITY: Verify ownership
+      const statusPage = await findOwnedStatusPage(ctx, statusPageId);
+      if (!statusPage) {
+        console.warn(
+          `[SECURITY] User ${userId} attempted to ${verb} status page ${statusPageId} without ownership`
+        );
+        return fail("not_found", "Status page not found or access denied");
       }
     }
 
@@ -784,19 +821,25 @@ export async function updateComponent(
     let component = updated;
 
     if (validatedData.monitorIds !== undefined) {
-      await db
-        .delete(statusPageComponentMonitors)
-        .where(eq(statusPageComponentMonitors.componentId, componentId));
+      const linkedMonitorIds = validatedData.monitorIds;
+      // Replace the link set atomically so a failed insert cannot leave the component with no monitors.
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(statusPageComponentMonitors)
+          .where(eq(statusPageComponentMonitors.componentId, componentId));
+        if (linkedMonitorIds.length > 0) {
+          await tx.insert(statusPageComponentMonitors).values(
+            linkedMonitorIds.map((monitorId) => ({
+              componentId,
+              monitorId,
+              weight: validatedData.monitorWeights?.[monitorId] ?? 1,
+              createdAt: new Date(),
+            }))
+          );
+        }
+      });
 
-      if (validatedData.monitorIds.length > 0) {
-        await db.insert(statusPageComponentMonitors).values(
-          validatedData.monitorIds.map((monitorId) => ({
-            componentId,
-            monitorId,
-            weight: validatedData.monitorWeights?.[monitorId] ?? 1,
-            createdAt: new Date(),
-          }))
-        );
+      if (linkedMonitorIds.length > 0) {
 
         // Preserve explicit manual status updates; only aggregate when status not provided
         if (validatedData.status === undefined) {

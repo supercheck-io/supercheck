@@ -20,12 +20,14 @@ jest.mock("@/lib/monitor-read-config", () => ({ monitorTargetForRead: (t: string
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const updateSettings = jest.fn();
 const setPublished = jest.fn();
+const checkPreconditions = jest.fn();
 jest.mock("@/lib/status-pages/service", () => {
   const actual = jest.requireActual("@/lib/status-pages/service");
   return {
     ...actual,
     updateStatusPageSettings: (...a: unknown[]) => updateSettings(...a),
     setStatusPagePublished: (...a: unknown[]) => setPublished(...a),
+    checkPublishPreconditions: (...a: unknown[]) => checkPreconditions(...a),
   };
 });
 
@@ -47,6 +49,7 @@ describe("PUT /api/status-pages/[id]", () => {
     checkPermissionWithContext.mockReturnValue(true);
     updateSettings.mockResolvedValue({ ok: true, data: null });
     setPublished.mockResolvedValue({ ok: true, data: { statusPage: row } });
+    checkPreconditions.mockResolvedValue({ ok: true, data: { statusPage: row } });
     findFirst.mockResolvedValue(row);
   });
 
@@ -97,6 +100,25 @@ describe("PUT /api/status-pages/[id]", () => {
     expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1" }), id, { name: "B" });
     expect(setPublished).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1" }), id, "published");
     expect(updateSettings.mock.invocationCallOrder[0]).toBeLessThan(setPublished.mock.invocationCallOrder[0]);
+    expect(checkPreconditions.mock.invocationCallOrder[0]).toBeLessThan(updateSettings.mock.invocationCallOrder[0]);
+  });
+
+  it("writes nothing when publish preconditions fail (no components)", async () => {
+    checkPreconditions.mockResolvedValue({
+      ok: false,
+      code: "validation",
+      message: "Add at least one public component before publishing.",
+    });
+    const res = await put({ name: "B", status: "published" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Add at least one public component before publishing.");
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(setPublished).not.toHaveBeenCalled();
+  });
+
+  it("does not run publish preconditions for draft/archived", async () => {
+    await put({ name: "B", status: "draft" });
+    expect(checkPreconditions).not.toHaveBeenCalled();
   });
 
   it("supports status-only archive without touching settings", async () => {

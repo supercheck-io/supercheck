@@ -28,6 +28,7 @@ import {
   syncRequirementTags,
   syncRequirementTagsByName,
   updateCoverageSnapshot,
+  type Executor,
 } from "@/lib/requirements-internal";
 
 // ============================================================================
@@ -49,6 +50,19 @@ export type ServiceResult = {
   code?: ServiceFailureCode;
 };
 
+/** http(s) only: the URL is rendered as a link in the UI, so `javascript:` and friends must never be stored. */
+export const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    try {
+      const { protocol } = new URL(value);
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "URL must use http or https");
+
 export const createRequirementSchema = requirementsInsertSchema
   .omit({
     id: true,
@@ -59,16 +73,20 @@ export const createRequirementSchema = requirementsInsertSchema
     updatedAt: true,
   })
   // Optional client-chosen id: retrying a create whose response was lost then finds the row instead of duplicating it.
-  .extend({ id: z.string().uuid().optional() });
+  .extend({
+    id: z.string().uuid().optional(),
+    externalUrl: httpUrlSchema.nullable().optional().or(z.literal("")),
+  });
 
 export const updateRequirementSchema = z.object({
   id: z.string().uuid(),
-  title: z.string().min(1).max(500),
+  // Only provided fields are written; the UI always sends a title.
+  title: z.string().min(1).max(500).optional(),
   description: z.string().optional().nullable(),
   priority: z.enum(["low", "medium", "high"]).optional().nullable(),
   tagIds: z.array(z.string().uuid()).optional(), // Array of tag IDs
   externalId: z.string().optional().nullable().or(z.literal("")),
-  externalUrl: z.string().url().optional().nullable().or(z.literal("")),
+  externalUrl: httpUrlSchema.optional().nullable().or(z.literal("")),
   externalProvider: z.string().optional().nullable().or(z.literal("")),
 });
 
@@ -173,10 +191,12 @@ export async function areTestsInScope(
 export async function createRequirementRecord(
   ctx: RequirementServiceContext,
   data: CreateRequirementInput,
-  options?: { tagNames?: string[] }
+  // `testIds` must already be scope-checked by the caller; they are linked inside the same transaction.
+  options?: { tagNames?: string[]; testIds?: string[] }
 ): Promise<{ id: string; success: boolean; error?: string; code?: ServiceFailureCode }> {
   const { userId, organizationId, projectId, projectName } = ctx;
   const validatedData = createRequirementSchema.parse(data);
+  const linkTestIds = Array.from(new Set(options?.testIds ?? []));
   if (validatedData.sourceDocumentId) {
     const [document] = await db
       .select({ id: requirementDocuments.id })
@@ -230,7 +250,8 @@ export async function createRequirementRecord(
     const tagNames =
       options?.tagNames ??
       (validatedData.tags
-        ? validatedData.tags.split(",").map((t) => t.trim()).filter(Boolean)
+        ? // The comma-separated form has always created lowercase tags; keep that for the UI path.
+          validatedData.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
         : []);
     if (tagNames.length > 0) {
       await syncRequirementTagsByName(newId, tagNames, organizationId, projectId, userId, tx);
@@ -245,6 +266,12 @@ export async function createRequirementRecord(
       failedTestCount: 0,
       lastEvaluatedAt: new Date(),
     });
+
+    // Linking is part of the create: a failure here rolls back the row, tags and snapshot too.
+    if (linkTestIds.length > 0) {
+      await insertTestLinks(tx, newId, linkTestIds);
+      await updateCoverageSnapshot(newId, tx);
+    }
     return true;
   });
 
@@ -283,6 +310,17 @@ export async function createRequirementRecord(
     success: true,
   });
 
+  if (linkTestIds.length > 0) {
+    await logAuditEvent({
+      userId,
+      action: "requirement_tests_linked",
+      resource: "requirement",
+      resourceId: newId,
+      metadata: { organizationId, testIds: linkTestIds, projectId, projectName },
+      success: true,
+    });
+  }
+
   return { id: newId, success: true };
 }
 
@@ -293,7 +331,8 @@ export async function createRequirementRecord(
 export async function updateRequirementRecord(
   ctx: RequirementServiceContext,
   data: UpdateRequirementInput,
-  options?: { tagNames?: string[] }
+  // `testIds` (when present) replaces the linked set; the caller must already have scope-checked them.
+  options?: { tagNames?: string[]; testIds?: string[] }
 ): Promise<ServiceResult> {
   const { userId, organizationId, projectId, projectName } = ctx;
   const validatedData = updateRequirementSchema.parse(data);
@@ -324,48 +363,65 @@ export async function updateRequirementRecord(
     }
   }
 
-  const updatedRequirements = await db
-    .update(requirements)
-    .set({
-      title: validatedData.title,
-      description: validatedData.description,
-      priority: validatedData.priority as RequirementPriority | null,
-      externalId: validatedData.externalId || null,
-      externalUrl: validatedData.externalUrl || null,
-      externalProvider: validatedData.externalProvider || null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(requirements.id, validatedData.id),
-        eq(requirements.projectId, projectId),
-        eq(requirements.organizationId, organizationId)
-      )
-    )
-    .returning({ id: requirements.id });
+  // Only columns present in the request are written, so concurrent edits to other fields are not clobbered.
+  const changes: Partial<typeof requirements.$inferInsert> = { updatedAt: new Date() };
+  if (validatedData.title !== undefined) changes.title = validatedData.title;
+  if (validatedData.description !== undefined) changes.description = validatedData.description;
+  if (validatedData.priority !== undefined) {
+    changes.priority = validatedData.priority as RequirementPriority | null;
+  }
+  if (validatedData.externalId !== undefined) changes.externalId = validatedData.externalId || null;
+  if (validatedData.externalUrl !== undefined) changes.externalUrl = validatedData.externalUrl || null;
+  if (validatedData.externalProvider !== undefined) {
+    changes.externalProvider = validatedData.externalProvider || null;
+  }
+  const linkTestIds = options?.testIds === undefined ? undefined : Array.from(new Set(options.testIds));
 
-  if (updatedRequirements.length === 0) {
+  // Row, tags and test links commit together; a failure part-way leaves the requirement untouched.
+  const found = await db.transaction(async (tx) => {
+    const updatedRequirements = await tx
+      .update(requirements)
+      .set(changes)
+      .where(
+        and(
+          eq(requirements.id, validatedData.id),
+          eq(requirements.projectId, projectId),
+          eq(requirements.organizationId, organizationId)
+        )
+      )
+      .returning({ id: requirements.id });
+    if (updatedRequirements.length === 0) return false;
+
+    if (uniqueTagIds !== undefined) {
+      await syncRequirementTags(validatedData.id, uniqueTagIds, tx);
+    } else if (options?.tagNames !== undefined) {
+      if (options.tagNames.length === 0) {
+        await syncRequirementTags(validatedData.id, [], tx);
+      } else {
+        await syncRequirementTagsByName(
+          validatedData.id,
+          options.tagNames,
+          organizationId,
+          projectId,
+          userId,
+          tx
+        );
+      }
+    }
+
+    if (linkTestIds !== undefined) {
+      await replaceTestLinks(tx, validatedData.id, linkTestIds);
+      await updateCoverageSnapshot(validatedData.id, tx);
+    }
+    return true;
+  });
+
+  if (!found) {
     return {
       success: false,
       error: "Requirement not found or access denied",
       code: "not_found",
     };
-  }
-
-  if (uniqueTagIds !== undefined) {
-    await syncRequirementTags(validatedData.id, uniqueTagIds);
-  } else if (options?.tagNames !== undefined) {
-    if (options.tagNames.length === 0) {
-      await syncRequirementTags(validatedData.id, []);
-    } else {
-      await syncRequirementTagsByName(
-        validatedData.id,
-        options.tagNames,
-        organizationId,
-        projectId,
-        userId
-      );
-    }
   }
 
   await logAuditEvent({
@@ -382,6 +438,23 @@ export async function updateRequirementRecord(
     },
     success: true,
   });
+
+  if (linkTestIds !== undefined) {
+    await logAuditEvent({
+      userId,
+      action: "requirement_tests_synced",
+      resource: "requirement",
+      resourceId: validatedData.id,
+      metadata: {
+        organizationId,
+        testIds: linkTestIds,
+        testCount: linkTestIds.length,
+        projectId,
+        projectName,
+      },
+      success: true,
+    });
+  }
 
   return { success: true };
 }
@@ -436,6 +509,20 @@ export async function deleteRequirementRecord(
 // TEST LINKS
 // ============================================================================
 
+/** Insert links, ignoring ones that already exist. Callers must have scope-checked the ids. */
+async function insertTestLinks(executor: Executor, requirementId: string, testIds: string[]) {
+  await executor
+    .insert(testRequirements)
+    .values(testIds.map((testId) => ({ testId, requirementId, createdAt: new Date() })))
+    .onConflictDoNothing();
+}
+
+/** Replace the whole linked set. Callers must have scope-checked the ids. */
+async function replaceTestLinks(executor: Executor, requirementId: string, testIds: string[]) {
+  await executor.delete(testRequirements).where(eq(testRequirements.requirementId, requirementId));
+  if (testIds.length > 0) await insertTestLinks(executor, requirementId, testIds);
+}
+
 export async function linkTestsRecord(
   ctx: RequirementServiceContext,
   requirementId: string,
@@ -460,18 +547,10 @@ export async function linkTestsRecord(
   }
 
   // Insert test-requirement links (ignore duplicates)
-  await db
-    .insert(testRequirements)
-    .values(
-      testIds.map((testId) => ({
-        testId,
-        requirementId,
-        createdAt: new Date(),
-      }))
-    )
-    .onConflictDoNothing();
-
-  await updateCoverageSnapshot(requirementId);
+  await db.transaction(async (tx) => {
+    await insertTestLinks(tx, requirementId, testIds);
+    await updateCoverageSnapshot(requirementId, tx);
+  });
 
   await logAuditEvent({
     userId,
@@ -551,25 +630,9 @@ export async function syncRequirementTestsRecord(
   }
 
   await db.transaction(async (tx) => {
-    await tx
-      .delete(testRequirements)
-      .where(eq(testRequirements.requirementId, requirementId));
-
-    if (normalizedTestIds.length > 0) {
-      await tx
-        .insert(testRequirements)
-        .values(
-          normalizedTestIds.map((testId) => ({
-            testId,
-            requirementId,
-            createdAt: new Date(),
-          }))
-        )
-        .onConflictDoNothing();
-    }
+    await replaceTestLinks(tx, requirementId, normalizedTestIds);
+    await updateCoverageSnapshot(requirementId, tx);
   });
-
-  await updateCoverageSnapshot(requirementId);
 
   await logAuditEvent({
     userId,
@@ -761,6 +824,18 @@ export async function listLinkedTestsRecord(
 // EXPORT CSV
 // ============================================================================
 
+/**
+ * Escape one CSV cell. Cells starting with = + - @ tab or CR are prefixed with a single quote so spreadsheets
+ * do not evaluate them as formulas; values with separators, quotes or line breaks are quoted.
+ */
+export function escapeCSV(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  let str = String(value);
+  if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
+  if (/[,"\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
 export async function exportRequirementsCsvRecord(
   ctx: RequirementServiceContext
 ): Promise<{ csv: string; filename: string; count: number }> {
@@ -785,7 +860,9 @@ export async function exportRequirementsCsvRecord(
       requirementCoverageSnapshots,
       eq(requirements.id, requirementCoverageSnapshots.requirementId)
     )
-    .where(eq(requirements.projectId, projectId))
+    .where(
+      and(eq(requirements.projectId, projectId), eq(requirements.organizationId, organizationId))
+    )
     .orderBy(desc(requirements.createdAt));
 
   const requirementIds = results.map((r) => r.id);
@@ -824,15 +901,6 @@ export async function exportRequirementsCsvRecord(
     "External URL",
     "Created At",
   ];
-
-  const escapeCSV = (value: string | null | undefined): string => {
-    if (value === null || value === undefined) return "";
-    const str = String(value);
-    if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  };
 
   const rows = results.map((r) => [
     escapeCSV(r.id),
@@ -878,32 +946,48 @@ const requirementBodyFields = {
   priority: z.enum(["low", "medium", "high"]).optional(),
   tags: z.array(tagNameSchema).max(10).optional(),
   externalId: z.string().max(255).nullable().optional(),
-  externalUrl: z.string().url().nullable().optional().or(z.literal("")),
+  externalUrl: httpUrlSchema.max(2048).nullable().optional().or(z.literal("")),
 };
 
-export const restCreateRequirementSchema = z.object({
-  title: z.string().trim().min(1).max(500),
-  ...requirementBodyFields,
-  testIds: z.array(z.string().uuid()).max(100).optional(),
-});
+// Strict: an unknown key (typo, or a field the API does not support) is a 400 rather than silently ignored.
+export const restCreateRequirementSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    ...requirementBodyFields,
+    testIds: z.array(z.string().uuid()).max(100).optional(),
+  })
+  .strict();
 
-export const restUpdateRequirementSchema = z.object({
-  title: z.string().trim().min(1).max(500).optional(),
-  ...requirementBodyFields,
-  testIds: z.array(z.string().uuid()).max(100).optional(),
-});
+export const restUpdateRequirementSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500).optional(),
+    ...requirementBodyFields,
+    testIds: z.array(z.string().uuid()).max(100).optional(),
+  })
+  .strict();
 
-export const restTestIdsSchema = z.object({
-  testIds: z.array(z.string().uuid()).min(1).max(100),
-});
+export const restTestIdsSchema = z
+  .object({
+    testIds: z.array(z.string().uuid()).min(1).max(100),
+  })
+  .strict();
 
 export type RestCreateRequirementInput = z.infer<typeof restCreateRequirementSchema>;
 export type RestUpdateRequirementInput = z.infer<typeof restUpdateRequirementSchema>;
 
-const dedupeTagNames = (names: string[] | undefined) =>
-  names === undefined
-    ? undefined
-    : Array.from(new Set(names.map((n) => n.trim().toLowerCase())));
+/** Case-insensitive dedupe that keeps the first spelling given (tag matching/creation is case-insensitive). */
+const dedupeTagNames = (names: string[] | undefined) => {
+  if (names === undefined) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of names) {
+    const name = raw.trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push(name);
+  }
+  return out;
+};
 
 /** Create a requirement with optional tag names and linked tests. Linked tests are scope-checked before any write. */
 export async function createRequirementWithRelations(
@@ -920,7 +1004,8 @@ export async function createRequirementWithRelations(
     };
   }
 
-  const created = await createRequirementRecord(
+  // Test links are created inside the requirement's transaction, so a failed link leaves nothing behind.
+  return createRequirementRecord(
     ctx,
     {
       title: input.title,
@@ -929,15 +1014,8 @@ export async function createRequirementWithRelations(
       externalId: input.externalId ?? undefined,
       externalUrl: input.externalUrl || undefined,
     } as CreateRequirementInput,
-    { tagNames: dedupeTagNames(input.tags) }
+    { tagNames: dedupeTagNames(input.tags), testIds }
   );
-  if (!created.success) return created;
-
-  if (testIds.length > 0) {
-    const linked = await linkTestsRecord(ctx, created.id, testIds);
-    if (!linked.success) return { id: created.id, ...linked };
-  }
-  return created;
 }
 
 /** Partially update a requirement. Omitted fields are preserved; `tags` / `testIds` when present replace the whole set. */
@@ -946,28 +1024,6 @@ export async function updateRequirementWithRelations(
   id: string,
   patch: RestUpdateRequirementInput
 ): Promise<ServiceResult> {
-  const [existing] = await db
-    .select({
-      title: requirements.title,
-      description: requirements.description,
-      priority: requirements.priority,
-      externalId: requirements.externalId,
-      externalUrl: requirements.externalUrl,
-      externalProvider: requirements.externalProvider,
-    })
-    .from(requirements)
-    .where(
-      and(
-        eq(requirements.id, id),
-        eq(requirements.projectId, ctx.projectId),
-        eq(requirements.organizationId, ctx.organizationId)
-      )
-    )
-    .limit(1);
-  if (!existing) {
-    return { success: false, error: "Requirement not found", code: "not_found" };
-  }
-
   const testIds = patch.testIds === undefined ? undefined : Array.from(new Set(patch.testIds));
   if (testIds && testIds.length > 0 && !(await areTestsInScope(ctx, testIds))) {
     return {
@@ -977,25 +1033,19 @@ export async function updateRequirementWithRelations(
     };
   }
 
-  const updated = await updateRequirementRecord(
+  // Only the fields present in the body are written; `null` clears description/externalId/externalUrl.
+  return updateRequirementRecord(
     ctx,
     {
       id,
-      title: patch.title ?? existing.title,
-      description: patch.description !== undefined ? patch.description : existing.description,
-      priority: patch.priority ?? existing.priority,
-      externalId: patch.externalId !== undefined ? patch.externalId : existing.externalId,
-      externalUrl: patch.externalUrl !== undefined ? patch.externalUrl : existing.externalUrl,
-      externalProvider: existing.externalProvider,
+      title: patch.title,
+      description: patch.description,
+      priority: patch.priority,
+      externalId: patch.externalId,
+      externalUrl: patch.externalUrl,
     },
-    { tagNames: dedupeTagNames(patch.tags) }
+    { tagNames: dedupeTagNames(patch.tags), testIds }
   );
-  if (!updated.success) return updated;
-
-  if (testIds !== undefined) {
-    return syncRequirementTestsRecord(ctx, id, testIds);
-  }
-  return updated;
 }
 
 /** Build the service context from an AuthContext (`requireAuthContext()`). */

@@ -5,6 +5,7 @@ import { monitors, monitorTags, tags } from "@/db/schema";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -127,13 +128,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Replace semantics: remove existing, add the given set
-    await db.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
-    if (normalizedTagIds.length > 0) {
-      await db
-        .insert(monitorTags)
-        .values(normalizedTagIds.map((tagId) => ({ monitorId, tagId })));
-    }
+    // Replace semantics: remove existing, add the given set (atomically, so a failed insert keeps the old tags)
+    await db.transaction(async (tx) => {
+      await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
+      if (normalizedTagIds.length > 0) {
+        await tx
+          .insert(monitorTags)
+          .values(normalizedTagIds.map((tagId) => ({ monitorId, tagId })));
+      }
+    });
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId,
+      action: "monitor_tags_updated",
+      resource: "monitor",
+      resourceId: monitorId,
+      metadata: { tagIds: normalizedTagIds, projectId: project.id },
+      success: true,
+    });
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
   } catch (error) {
@@ -174,6 +187,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     await db
       .delete(monitorTags)
       .where(and(eq(monitorTags.monitorId, monitorId), eq(monitorTags.tagId, tagId)));
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId,
+      action: "monitor_tag_removed",
+      resource: "monitor",
+      resourceId: monitorId,
+      metadata: { tagId, projectId: project.id },
+      success: true,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

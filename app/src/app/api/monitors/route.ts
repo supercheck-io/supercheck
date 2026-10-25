@@ -58,7 +58,8 @@ async function loadMonitorTags(monitorIds: string[]): Promise<Map<string, Monito
     .select({ monitorId: monitorTags.monitorId, id: tags.id, name: tags.name, color: tags.color })
     .from(monitorTags)
     .innerJoin(tags, eq(monitorTags.tagId, tags.id))
-    .where(inArray(monitorTags.monitorId, monitorIds));
+    .where(inArray(monitorTags.monitorId, monitorIds))
+    .orderBy(tags.name);
   for (const { monitorId, ...tag } of rows) {
     byMonitor.set(monitorId, [...(byMonitor.get(monitorId) ?? []), tag]);
   }

@@ -8,6 +8,9 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(
 const mockSelectQueue: unknown[][] = [];
 const mockDelete = jest.fn();
 const mockInsertValues = jest.fn();
+const mockTransaction = jest.fn();
+const mockAudit = jest.fn();
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/utils/db", () => {
   const chain = () => {
     const node: Record<string, unknown> = {};
@@ -24,11 +27,16 @@ jest.mock("@/utils/db", () => {
     };
     return node;
   };
+  const tx = {
+    delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
+    insert: () => ({ values: (v: unknown) => { mockInsertValues(v); return Promise.resolve(); } }),
+  };
   return {
     db: {
       select: () => chain(),
       delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
-      insert: () => ({ values: (v: unknown) => { mockInsertValues(v); return Promise.resolve(); } }),
+      insert: () => { throw new Error("tag replacement must go through the transaction"); },
+      transaction: async (run: (t: unknown) => unknown) => { mockTransaction(); return run(tx); },
     },
   };
 });
@@ -103,6 +111,16 @@ describe("POST /api/monitors/[id]/tags", () => {
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalled();
     expect(mockInsertValues).toHaveBeenCalledWith([{ monitorId: M, tagId: T1 }, { monitorId: M, tagId: T2 }]);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "monitor_tags_updated",
+        resource: "monitor",
+        resourceId: M,
+        organizationId: "o",
+        metadata: { tagIds: [T1, T2], projectId: "p" },
+      })
+    );
     expect(await res.json()).toEqual({ tags: [{ id: T1, name: "a", color: null }] });
   });
   it("200 with an empty array clears all tags", async () => {
@@ -133,5 +151,8 @@ describe("DELETE /api/monitors/[id]/tags", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "monitor_tag_removed", resourceId: M, metadata: { tagId: T1, projectId: "p" } })
+    );
   });
 });
