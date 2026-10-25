@@ -372,7 +372,7 @@ describe('k6 container-start metering', () => {
 
   it('fails the run terminally when Kubernetes stays unreachable past the bounded wait', async () => {
     const runK6Test = jest.fn();
-    const { processor, set, usage } = build(runK6Test);
+    const { processor, set, usage, dbService } = build(runK6Test);
     (
       processor as unknown as {
         k6ExecutionService: { hasActiveExecution: jest.Mock };
@@ -385,9 +385,11 @@ describe('k6 container-start metering', () => {
     await expect(processor.process(job())).rejects.toThrow(
       /Unable to verify Kubernetes execution state/,
     );
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'failed' }),
+    expect(dbService.failRunUnlessCancelled).toHaveBeenCalledWith(
+      'run-id',
+      expect.stringContaining('Unable to verify Kubernetes execution state'),
     );
+    expect(set).not.toHaveBeenCalled();
     expect(runK6Test).not.toHaveBeenCalled();
     expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
   });

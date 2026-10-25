@@ -315,8 +315,9 @@ describe('PlaywrightExecutionProcessor', () => {
       await expect(
         processor.process(createMockJob(mockTestTask)),
       ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
-      expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
+      expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
         mockTestTask.runId,
+        expect.stringContaining('Unable to verify Kubernetes execution state'),
       );
       expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
     });
@@ -330,10 +331,8 @@ describe('PlaywrightExecutionProcessor', () => {
       await expect(processor.process(job)).rejects.toThrow(
         /Unable to verify Kubernetes execution state/,
       );
-      expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+      expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
         runId,
-        'failed',
-        '0',
         expect.stringContaining('Unable to verify Kubernetes execution state'),
       );
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();

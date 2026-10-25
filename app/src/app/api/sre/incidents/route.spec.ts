@@ -40,4 +40,22 @@ describe("incident number lookup", () => {
     expect(response.status).toBe(400);
     expect(mockSelect).not.toHaveBeenCalled();
   });
+
+  it("filters unresolved incidents in SQL together with tenant scope", async () => {
+    const response = await GET(new NextRequest("https://example.com/api/sre/incidents?status=open"));
+    expect(response.status).toBe(200);
+    const query = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
+    expect(query.params).toEqual(["org-1", "project-1", "resolved"]);
+    expect(query.sql).toContain('<>');
+  });
+
+  it.each(["triggered", "resolved", "verifying"])("preserves exact status filter %s", async (status) => {
+    expect((await GET(new NextRequest(`https://example.com/api/sre/incidents?status=${status}`))).status).toBe(200);
+    expect(new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]).params).toEqual(["org-1", "project-1", status]);
+  });
+
+  it("rejects unknown statuses before querying", async () => {
+    expect((await GET(new NextRequest("https://example.com/api/sre/incidents?status=invalid"))).status).toBe(400);
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
 });
