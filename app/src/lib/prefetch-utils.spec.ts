@@ -12,7 +12,7 @@ describe("dashboard hover prefetch", () => {
 
   it("warms the normalized dashboard cache with requests bound to each project", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(async (url, init) => {
+    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
       const projectId = new Headers(init?.headers).get("x-project-id");
       return { ok: true, json: async () => String(url).includes("alerts") ? [] : {
         jobs: { recentRuns30d: projectId === "prefetch-a" ? 12 : 7 },

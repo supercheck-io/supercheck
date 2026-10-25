@@ -342,14 +342,20 @@ describe('PlaywrightExecutionProcessor', () => {
     });
 
     it('preserves terminal uncertainty semantics when the guarded database write fails', async () => {
-      mockExecutionService.hasActiveExecution.mockRejectedValueOnce('Unable to verify Kubernetes execution state');
-      mockDbService.failRunUnlessCancelled.mockRejectedValueOnce(new Error('database unavailable'));
-      await expect(processor.process(createMockJob(mockTestTask))).rejects.toThrow(
-        /Unable to verify Kubernetes execution state/,
+      mockExecutionService.hasActiveExecution.mockRejectedValueOnce(
+        'Unable to verify Kubernetes execution state',
       );
+      mockDbService.failRunUnlessCancelled.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
+      await expect(
+        processor.process(createMockJob(mockTestTask)),
+      ).rejects.toThrow(/Unable to verify Kubernetes execution state/);
       expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
       expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
-      expect(mockUsageTrackerService.completeRunWithUsage).not.toHaveBeenCalled();
+      expect(
+        mockUsageTrackerService.completeRunWithUsage,
+      ).not.toHaveBeenCalled();
     });
 
     describe('capacity wait give-up', () => {

@@ -41,7 +41,7 @@ describe("dashboard data contract", () => {
   it("aborts stalled requests and clears the timeout", async () => {
     jest.useFakeTimers();
     try {
-      jest.spyOn(global, "fetch").mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      jest.spyOn(global, "fetch").mockImplementation((_url: RequestInfo | URL, init?: RequestInit) => new Promise((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       }));
       const request = expect(fetchDashboard()).rejects.toThrow("Dashboard request timed out");
