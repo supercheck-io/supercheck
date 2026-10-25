@@ -536,6 +536,7 @@ class PolarUsageService {
       } catch (error) {
         logger.error({ error }, "Polar subscription reconciliation scan failed");
       }
+      assertOwned();
       // Recover successful AI SRE runs whose post-run ledger write failed.
       // consumeSreInvestigationCredit is idempotent by investigation run ID.
       try {

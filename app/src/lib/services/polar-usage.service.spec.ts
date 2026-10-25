@@ -5,6 +5,8 @@ jest.mock("./subscription-reconciliation", () => ({ reconcilePolarSubscriptions:
 jest.mock("@/lib/billing/reconciliation-status", () => ({ getBillingReconciliationStatus: jest.fn().mockResolvedValue({ requiresAttention: false }) }));
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
 import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
+import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
+import { failStuckSreInvestigationRuns, reconcileUnbilledSreInvestigations } from "@/lib/sre/investigation-billing";
 /** @jest-environment node */
 
 jest.mock("@/utils/db", () => ({
@@ -307,6 +309,22 @@ describe("PolarUsageService retry idempotency", () => {
     });
     expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
     expect(mockPostgresClient.begin).not.toHaveBeenCalled();
+  });
+
+  it("aborts recovery when the subscription scan loses its lease", async () => {
+    jest.mocked(withUsageSyncLease).mockImplementationOnce(async (run) => run(() => {
+      throw new Error("Usage sync lease lost");
+    }));
+    jest.mocked(reconcilePolarSubscriptions).mockImplementationOnce(async (assertOwned) => {
+      assertOwned();
+    });
+
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({
+      processed: 0, errors: ["Usage sync lease lost"],
+    });
+    expect(failStuckSreInvestigationRuns).not.toHaveBeenCalled();
+    expect(reconcileUnbilledSreInvestigations).not.toHaveBeenCalled();
+    expect(mockDb.query.usageEvents.findMany).not.toHaveBeenCalled();
   });
 
   it("drains multiple batches while keeping one lease", async () => {
