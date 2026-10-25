@@ -91,6 +91,50 @@ it('lets cancellation win an execution claim blocked behind its transaction', as
     await client`SELECT status, started_at FROM runs WHERE id=${id}`,
   ).toEqual([{ status: 'queued', started_at: null }]);
 });
+it('lets a cancellation blocked behind the capacity give-up write keep the run cancelled', async () => {
+  const id = await seed(null, 'running');
+  let fail!: Promise<void>;
+  await client.begin(async (tx) => {
+    await tx.unsafe('UPDATE runs SET error_details=$1 WHERE id=$2', [
+      marker,
+      id,
+    ]);
+    fail = service.failRunUnlessCancelled(id, 'capacity stayed occupied');
+    // Commit only once the write is really waiting on this row lock, so the recheck path runs.
+    while (
+      (
+        await maintenance`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=${name} AND wait_event_type='Lock'`
+      )[0].n === 0
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  });
+  await fail;
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${id}`,
+  ).toEqual([{ status: 'error', error_details: marker }]);
+});
+it('fails an uncancelled run after the capacity wait', async () => {
+  const id = await seed(null, 'running');
+  await service.failRunUnlessCancelled(id, 'capacity stayed occupied');
+  expect(
+    await client`SELECT status, error_details, duration_ms FROM runs WHERE id=${id}`,
+  ).toEqual([
+    {
+      status: 'failed',
+      error_details: 'capacity stayed occupied',
+      duration_ms: 0,
+    },
+  ]);
+});
+it('leaves a run that already finished untouched after the capacity wait', async () => {
+  const id = await seed(null, 'running');
+  await client`UPDATE runs SET status='passed' WHERE id=${id}`;
+  await service.failRunUnlessCancelled(id, 'capacity stayed occupied');
+  expect(
+    await client`SELECT status, error_details FROM runs WHERE id=${id}`,
+  ).toEqual([{ status: 'passed', error_details: null }]);
+});
 it('protects an admitted callback from queued cancellation recovery', async () => {
   const id = await seed(null);
   expect(await service.claimRunExecution(id)).toBe(true);

@@ -19,7 +19,6 @@ import {
   Activity,
   User,
   Calendar,
-  Hash,
   Globe,
   CheckCircle2,
   XCircle,
@@ -28,6 +27,12 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { formatAuditAction } from "./audit-action-labels";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 
 export interface AuditUser {
@@ -153,26 +158,6 @@ const formatDate = (dateString: string) => {
 
 export const auditLogColumns: ColumnDef<AuditLog>[] = [
   {
-    accessorKey: "id",
-    header: ({ column }) => (
-      <DataTableColumnHeader className="pl-1" column={column} title="Log ID" />
-    ),
-    cell: ({ row }) => {
-      const id = row.getValue("id") as string;
-      return (
-        <div className="flex items-center h-10">
-          <UUIDField
-            value={id}
-            maxLength={8}
-            onCopy={() => toast.success("Log ID copied to clipboard")}
-          />
-        </div>
-      );
-    },
-    enableSorting: false,
-    enableHiding: false,
-  },
-  {
     accessorKey: "createdAt",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Timestamp" />
@@ -226,10 +211,17 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
 
       return (
         <div className="flex items-center h-10">
-          <TableBadge tone={getActionBadgeTone(action)}>
-            <Activity className="mr-1.5 h-3 w-3" />
-            {action}
-          </TableBadge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TableBadge tone={getActionBadgeTone(action)}>
+                <Activity className="mr-1.5 h-3 w-3" />
+                {formatAuditAction(action)}
+              </TableBadge>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <span className="font-mono">{action}</span>
+            </TooltipContent>
+          </Tooltip>
         </div>
       );
     },
@@ -312,15 +304,21 @@ function ActionsCell({ log }: { log: AuditLog }) {
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground bg-muted/50 hover:bg-muted hover:text-foreground"
-        >
-          <Eye className="h-4 w-4" />
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground bg-muted/50 hover:bg-muted hover:text-foreground"
+              aria-label={`View details for ${formatAuditAction(log.action)}`}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">View details</TooltipContent>
+      </Tooltip>
       <DialogContent className="min-w-[1000px] ">
         <DialogHeader className="pb-2">
           <div className="flex items-center gap-3">
@@ -354,8 +352,11 @@ function ActionsCell({ log }: { log: AuditLog }) {
                   compact
                 >
                   <Activity className="mr-1 h-3 w-3" />
-                  {log.action}
+                  {formatAuditAction(log.action)}
                 </TableBadge>
+                <p className="mt-1.5 truncate font-mono text-xs text-muted-foreground">
+                  {log.action}
+                </p>
               </div>
 
               {/* User */}
@@ -417,8 +418,17 @@ function ActionsCell({ log }: { log: AuditLog }) {
             </div>
 
             {/* Additional Context Row */}
-            {(resource || ipAddress || log.user.email) && (
-              <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="p-3 rounded-lg border bg-muted/30">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    Log ID
+                  </p>
+                  <UUIDField
+                    value={log.id}
+                    maxLength={8}
+                    onCopy={() => toast.success("Log ID copied to clipboard")}
+                  />
+                </div>
                 {resource && (
                   <div className="p-3 rounded-lg border bg-muted/30">
                     <p className="text-xs font-medium text-muted-foreground mb-1">
@@ -449,7 +459,6 @@ function ActionsCell({ log }: { log: AuditLog }) {
                   </div>
                 )}
               </div>
-            )}
 
             {/* JSON Details */}
             {log.details && Object.keys(log.details).length > 0 && (
@@ -459,12 +468,6 @@ function ActionsCell({ log }: { log: AuditLog }) {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <h3 className="text-sm font-semibold">Event Details</h3>
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 border">
-                        <Hash className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {log.id}
-                        </span>
-                      </div>
                     </div>
                     <Button
                       variant="outline"

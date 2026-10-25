@@ -2,7 +2,13 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { TableBadge } from "@/components/ui/table-badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { Edit3, FolderOpen, Users, Calendar, MapPin } from "lucide-react";
 import { toast } from "sonner";
@@ -20,26 +26,14 @@ export interface ProjectMember {
 export interface Project {
   id: string;
   name: string;
+  slug?: string;
   description?: string;
-  status: "active" | "archived" | "deleted";
+  /** Assigned project members plus org owners/admins. */
   membersCount: number;
   members?: ProjectMember[];
   createdAt: string;
   isDefault: boolean;
 }
-
-const getStatusBadgeTone = (status: string): TableBadgeTone => {
-  switch (status) {
-    case "active":
-      return "success";
-    case "archived":
-      return "warning";
-    case "deleted":
-      return "danger";
-    default:
-      return "slate";
-  }
-};
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -128,26 +122,6 @@ export function createProjectColumns(
       },
     },
     {
-      accessorKey: "status",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Status" />
-      ),
-      cell: ({ row }) => {
-        const status = row.getValue("status") as string;
-
-        return (
-          <div className="flex items-center h-10">
-            <TableBadge tone={getStatusBadgeTone(status)} className="capitalize">
-              {status}
-            </TableBadge>
-          </div>
-        );
-      },
-      filterFn: (row, id, value) => {
-        return value.includes(row.getValue(id));
-      },
-    },
-    {
       accessorKey: "membersCount",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Members" />
@@ -162,7 +136,7 @@ export function createProjectColumns(
         const remainingCount = Math.max(0, count - displayMembers.length);
 
         return (
-          <div className="flex items-center h-10 gap-2">
+          <div className="flex items-center h-10 gap-2" title="Assigned members plus organization owners and admins">
             <div className="flex items-center">
               {displayMembers.length > 0 ? (
                 <>
@@ -187,14 +161,14 @@ export function createProjectColumns(
                     )}
                   </div>
                   <span className="ml-2 text-sm text-muted-foreground">
-                    {count} member{count !== 1 ? "s" : ""}
+                    {count.toLocaleString("en-US")} member{count !== 1 ? "s" : ""}
                   </span>
                 </>
               ) : (
                 <>
                   <Users className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="ml-1 text-sm text-muted-foreground">
-                    {count} member{count !== 1 ? "s" : ""}
+                    {count.toLocaleString("en-US")} member{count !== 1 ? "s" : ""}
                   </span>
                 </>
               )}
@@ -240,29 +214,38 @@ export function createProjectColumns(
 
         return (
           <div className="flex items-center h-10 gap-1">
-            {onManageLocations && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 hover:text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300"
-                onClick={() => onManageLocations(project)}
-                title="Location restrictions"
-              >
-                <MapPin className="h-4 w-4" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:hover:text-blue-300"
-              onClick={() => {
-                if (onEditProject) {
-                  onEditProject(project);
-                }
-              }}
-            >
-              <Edit3 className="h-4 w-4" />
-            </Button>
+            <TooltipProvider>
+              {onManageLocations && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 hover:text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300"
+                      onClick={() => onManageLocations(project)}
+                      aria-label={`Location restrictions for ${project.name}`}
+                    >
+                      <MapPin className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Location restrictions</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:hover:text-blue-300"
+                    onClick={() => onEditProject?.(project)}
+                    aria-label={`Edit ${project.name}`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Edit project</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         );
       },
