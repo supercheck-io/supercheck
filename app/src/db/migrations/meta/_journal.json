@@ -288,6 +288,20 @@
       "when": 1792770000000,
       "tag": "0040_run_callback_fencing",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792880000000,
+      "tag": "0041_user_trial_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792883600000,
+      "tag": "0042_backfill_user_trial_grants",
+      "breakpoints": true
     }
   ]
 }
