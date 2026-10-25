@@ -118,22 +118,21 @@ export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 export const getDashboardQueryKey = (projectId: string | null) => 
   [...DASHBOARD_QUERY_KEY, projectId] as const;
 
-export async function fetchDashboard(): Promise<DashboardData> {
+export async function fetchDashboard(projectId: string | null = null): Promise<DashboardData> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('Dashboard request timeout'), 30000);
 
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (projectId) headers["x-project-id"] = projectId;
     const [dashboardResponse, alertsResponse] = await Promise.all([
       fetch("/api/dashboard", {
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          // Removed manual cache busting. Browser/Proxy should respect server Cache-Control headers.
-        },
+        headers,
       }),
       fetch("/api/alerts/history", {
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers,
       }),
     ]);
 
@@ -235,7 +234,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
           : null,
       },
       availabilityTrend: Array.isArray(monitorsData?.availabilityTrend)
-        ? (monitorsData.availabilityTrend as Array<Record<string, unknown>>).slice(0, LOOKBACK_DAYS).map(item => ({
+        ? (monitorsData.availabilityTrend as Array<Record<string, unknown>>).slice(-LOOKBACK_DAYS).map(item => ({
             date: String(item.date || ''),
             uptime: Number(item.uptime) || 0,
           }))
@@ -249,7 +248,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       successfulRuns24h: Math.max(0, Number(jobsData?.successfulRuns24h) || 0),
       failedRuns24h: Math.max(0, Number(jobsData?.failedRuns24h) || 0),
       recentRuns: Array.isArray(jobsData?.recentRuns)
-        ? (jobsData.recentRuns as Array<Record<string, unknown>>).slice(0, 1000).map(run => ({
+        ? (jobsData.recentRuns as Array<Record<string, unknown>>).map(run => ({
             id: String(run.id || ''),
             jobId: String(run.jobId || ''),
             jobName: String(run.jobName || ''),
@@ -279,7 +278,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
         : [],
       playgroundExecutions30d: Math.max(0, Number(testsData?.playgroundExecutions30d) || 0),
       playgroundExecutionsTrend: Array.isArray(testsData?.playgroundExecutionsTrend)
-        ? (testsData.playgroundExecutionsTrend as Array<Record<string, unknown>>).slice(0, LOOKBACK_DAYS).map(item => ({
+        ? (testsData.playgroundExecutionsTrend as Array<Record<string, unknown>>).slice(-LOOKBACK_DAYS).map(item => ({
             date: String(item.date || ''),
             count: Number(item.count) || 0,
           }))
@@ -323,7 +322,7 @@ export function useDashboard() {
 
   const query = useQuery({
     queryKey,
-    queryFn: fetchDashboard,
+    queryFn: () => fetchDashboard(projectId),
     enabled: !!projectId,
     staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
     // gcTime uses global default (24h)

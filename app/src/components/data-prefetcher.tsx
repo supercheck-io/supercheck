@@ -50,7 +50,7 @@ export function DataPrefetcher() {
       didPrefetch.current.dashboard = true;
       queryClient.prefetchQuery({
         queryKey: getDashboardQueryKey(currentProject.id),
-        queryFn: fetchDashboard,
+        queryFn: () => fetchDashboard(currentProject.id),
         staleTime: STALE_TIME.MEDIUM,
       });
     }

@@ -41,7 +41,7 @@ export async function GET() {
     const last30Days = subDays(now, 30);
 
     // Get queue statistics
-    const queueStats = await getQueueStats();
+    const queueStats = await getQueueStats(context.organizationId);
 
     // Monitor Statistics - scoped to project
     // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause

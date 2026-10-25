@@ -9,9 +9,11 @@ import { PlaywrightAnalyticsView } from "@/components/runs/analytics/playwright-
 import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { parseRunsView, type RunsView } from "./runs-view";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 /** Runs page tabs; the active view lives in the URL as `?view=all|k6|playwright`. */
 export function RunsViewTabs() {
+  const { currentProject } = useProjectContext();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -54,10 +56,10 @@ export function RunsViewTabs() {
         <Runs />
       </TabsContent>
       <TabsContent value="k6">
-        <K6AnalyticsView />
+        <K6AnalyticsView key={currentProject?.id ?? "no-project"} />
       </TabsContent>
       <TabsContent value="playwright">
-        <PlaywrightAnalyticsView />
+        <PlaywrightAnalyticsView key={currentProject?.id ?? "no-project"} />
       </TabsContent>
     </Tabs>
   );
