@@ -217,13 +217,16 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
 export function SiteHeader() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Same-route links keep the page mounted, so return focus to the toggle instead of the hidden panel.
+  const closeMobile = () => {
+    setMobileOpen(false);
+    document.getElementById("mobile-nav-toggle")?.focus();
+  };
 
   useEffect(() => {
     if (!mobileOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setMobileOpen(false);
-      document.getElementById("mobile-nav-toggle")?.focus();
+      if (event.key === "Escape") closeMobile();
     };
     // The panel is md:hidden; close it so it does not reappear open after a resize.
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -282,7 +285,7 @@ export function SiteHeader() {
           </button>
         </div>
       </div>
-      <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <MobileNav open={mobileOpen} onClose={closeMobile} />
     </header>
   );
 }
