@@ -1,4 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+
+beforeAll(() => {
+  Element.prototype.scrollIntoView = jest.fn();
+});
 
 const mockRedirect = jest.fn((url: string) => { throw new Error(`REDIRECT:${url}`); });
 const mockGetSession = jest.fn();
@@ -116,7 +120,11 @@ describe("/device page", () => {
     expect(screen.queryByText("P")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByText("me@example.com")).toBeInTheDocument();
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    });
+    expect(screen.getByRole("option", { name: "Acme Inc / Mine" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Acme Inc / P" })).not.toBeInTheDocument();
   });
 
   it("shows the plan notice for an organization without an active plan, and lets only owners purchase", async () => {
