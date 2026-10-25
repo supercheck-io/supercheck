@@ -7,9 +7,12 @@ jest.mock("@/hooks/use-app-config", () => ({
 }));
 
 describe("CommunityLinks", () => {
+  const originalSourceUrl = process.env.NEXT_PUBLIC_SOURCE_URL;
+  beforeEach(() => { delete process.env.NEXT_PUBLIC_SOURCE_URL; });
   afterEach(() => {
     mockIsSelfHosted = false;
-    delete process.env.NEXT_PUBLIC_SOURCE_URL;
+    if (originalSourceUrl === undefined) delete process.env.NEXT_PUBLIC_SOURCE_URL;
+    else process.env.NEXT_PUBLIC_SOURCE_URL = originalSourceUrl;
   });
 
   it("hides the header source action in Cloud and while configuration is unavailable", () => {

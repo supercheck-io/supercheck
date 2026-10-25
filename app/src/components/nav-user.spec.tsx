@@ -29,7 +29,15 @@ jest.mock("@/components/ui/dropdown-menu", () => {
 import { NavUser } from "./nav-user";
 
 describe("NavUser: Connected apps", () => {
-  beforeEach(() => { mockMcpEnabled = false; });
+  const originalSourceUrl = process.env.NEXT_PUBLIC_SOURCE_URL;
+  beforeEach(() => {
+    mockMcpEnabled = false;
+    delete process.env.NEXT_PUBLIC_SOURCE_URL;
+  });
+  afterEach(() => {
+    if (originalSourceUrl === undefined) delete process.env.NEXT_PUBLIC_SOURCE_URL;
+    else process.env.NEXT_PUBLIC_SOURCE_URL = originalSourceUrl;
+  });
 
   it("links to Connected apps where the MCP server is enabled", () => {
     mockMcpEnabled = true;
@@ -59,12 +67,8 @@ describe("NavUser: Connected apps", () => {
 
   it("uses the deployment's source offer", () => {
     process.env.NEXT_PUBLIC_SOURCE_URL = "https://example.com/source";
-    try {
-      render(<NavUser />);
-      expect(screen.getByRole("link", { name: "Source code" }))
-        .toHaveAttribute("href", "https://example.com/source");
-    } finally {
-      delete process.env.NEXT_PUBLIC_SOURCE_URL;
-    }
+    render(<NavUser />);
+    expect(screen.getByRole("link", { name: "Source code" }))
+      .toHaveAttribute("href", "https://example.com/source");
   });
 });
