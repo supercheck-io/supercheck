@@ -71,7 +71,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
           <CardContent>
             <div className="p-2 mt-4">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold">Create  Monitor</h1>
+                <h1 className="text-2xl font-semibold">Create Monitor</h1>
                 <MonitorTypesPopover />
               </div>
               <p className="text-muted-foreground text-sm mb-6">Select uptime monitor type to get started</p>

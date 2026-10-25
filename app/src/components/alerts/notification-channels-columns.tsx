@@ -5,7 +5,7 @@ import { DataTableColumnHeader } from "./data-table-column-header";
 import { NotificationChannel } from "./notification-channels-schema";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
-import { Clock, Edit, Trash2, MoreHorizontal } from "lucide-react";
+import { Edit, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,7 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getNotificationProviderConfig } from "./data";
-import { formatDistance } from "date-fns";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 
 interface TableMeta {
   onEdit?: (channel: NotificationChannel) => void;
@@ -55,7 +56,12 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;
-      return <div className="font-medium max-w-[200px] truncate">{name}</div>;
+      return <TruncatedTextWithTooltip
+          text={name}
+          className="font-medium"
+          maxWidth="200px"
+          maxLength={30}
+        />;
     },
   },
   {
@@ -70,7 +76,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       return (
         <div className="flex items-center space-x-2">
           <IconComponent className={`h-4 w-4 ${config.color}`} />
-          <span className="capitalize">{type}</span>
+          <span>{config.label}</span>
         </div>
       );
     },
@@ -81,19 +87,11 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       <DataTableColumnHeader column={column} title="Created" />
     ),
     cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) {
-        return <div className="text-muted-foreground">Unknown</div>;
-      }
       return (
-        <div className="flex items-center">
-          <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>
-            {formatDistance(new Date(createdAt), new Date(), {
-              addSuffix: true,
-            })}
-          </span>
-        </div>
+        <DateTimeCell
+          value={row.getValue("createdAt") as string}
+          emptyLabel="Unknown"
+        />
       );
     },
   },
@@ -103,25 +101,16 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       <DataTableColumnHeader column={column} title="Last Used" />
     ),
     cell: ({ row }) => {
-      const lastUsed = row.getValue("lastUsed") as string;
-      if (!lastUsed) {
-        return <span className="text-muted-foreground">Never</span>;
-      }
       return (
-        <div className="flex items-center">
-          <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>
-            {formatDistance(new Date(lastUsed), new Date(), {
-              addSuffix: true,
-            })}
-          </span>
-        </div>
+        <DateTimeCell
+          value={row.getValue("lastUsed") as string}
+          emptyLabel="Never"
+        />
       );
     },
   },
   {
     id: "actions",
-    header: "Actions",
     cell: ({ row, table }) => {
       const channel = row.original;
       const meta = table.options.meta as TableMeta;
@@ -129,7 +118,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
+            <Button variant="ghost" className="flex h-8 w-8 p-0 data-[state=open]:bg-muted">
               <span className="sr-only">Open menu</span>
               <MoreHorizontal className="h-4 w-4" />
             </Button>

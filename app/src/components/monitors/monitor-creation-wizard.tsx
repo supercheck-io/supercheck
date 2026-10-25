@@ -1,5 +1,6 @@
 "use client";
 
+import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
 import { AlertSettings } from "@/components/alerts/alert-settings";
@@ -240,10 +241,10 @@ export function MonitorCreationWizard() {
   const type = validTypes.includes(urlType as MonitorType)
     ? (urlType as MonitorType)
     : "http_request";
-  const typeLabel = type
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+  // Same label as the monitor type picker and breadcrumbs (e.g. "HTTP Monitor")
+  const typeTitle =
+    monitorTypes.find((monitorType) => monitorType.value === type)?.label ??
+    "Monitor";
 
   // Don't clear monitor data when URL changes - preserve form state
   // This was causing the form to lose data when navigating between pages
@@ -416,7 +417,7 @@ export function MonitorCreationWizard() {
           hideAlerts={true}
           nextStepLabel={hasMultipleLocations ? "Next: Location Settings" : "Next: Alert Settings"}
           monitorType={type as MonitorType}
-          title={`${typeLabel} Monitor`}
+          title={typeTitle}
           description="Configure a new uptime monitor"
           // Pass monitorData to preserve state when navigating back
           initialData={monitorData}
