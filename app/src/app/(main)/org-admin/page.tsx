@@ -1100,6 +1100,8 @@ function OrgAdminDashboardContent() {
                   onMemberUpdate={() => {
                     invalidateMembers();
                     invalidateStats();
+                    // Role and project-access changes move the per-project member counts.
+                    invalidateProjects();
                   }}
                   onInviteMember={() => setShowInviteDialog(true)}
                   canInviteMembers={canInviteMembers(
