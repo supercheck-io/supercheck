@@ -44,6 +44,7 @@ import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
+import { TabSectionHeader } from "@/components/org-admin/tab-section-header";
 import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
@@ -888,6 +889,11 @@ function OrgAdminDashboardContent() {
             </TabsList>
 
             <TabsContent value="projects" className="space-y-4">
+              <TabSectionHeader
+                icon={<FolderOpen />}
+                title="Projects"
+                description="Organize tests, monitors, and runs into projects."
+              />
               {projectsLoading && projects.length === 0 ? (
                 <TabLoadingSpinner message="Loading projects..." />
               ) : (
@@ -1061,6 +1067,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="members" className="space-y-4">
+              <TabSectionHeader
+                icon={<Users />}
+                title="Members"
+                description="Invite people and manage their roles and project access."
+              />
               {membersLoading ? (
                 <TabLoadingSpinner message="Loading members..." />
               ) : (
@@ -1145,6 +1156,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-4">
+              <TabSectionHeader
+                icon={<Cable />}
+                title="Integrations"
+                description="Connect read-only evidence sources Copilot can use during investigations."
+              />
               {integrationsLoading && !integrationsLoaded ? (
                 <TabLoadingSpinner message="Loading integrations..." />
               ) : (
@@ -1161,13 +1177,13 @@ function OrgAdminDashboardContent() {
               <Collapsible
                 open={savedQueriesOpen}
                 onOpenChange={handleSavedQueriesOpenChange}
-                className="rounded-lg border"
+                className="space-y-3"
               >
                 <CollapsibleTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-auto w-full justify-between gap-3 whitespace-normal p-4 text-left"
+                    className="h-auto w-full justify-between gap-3 whitespace-normal rounded-lg border p-4 text-left"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1179,7 +1195,7 @@ function OrgAdminDashboardContent() {
                     />
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-4 border-t p-4">
+                <CollapsibleContent className="space-y-4">
                   <p className="text-sm text-muted-foreground">
                     Reuse read-only queries for common investigation questions.
                     Investigations work without them.
@@ -1212,6 +1228,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4">
+              <TabSectionHeader
+                icon={<UserSearch />}
+                title="Audit"
+                description="Review administrative and security activity in your organization."
+              />
               <AuditLogsTable />
             </TabsContent>
 
