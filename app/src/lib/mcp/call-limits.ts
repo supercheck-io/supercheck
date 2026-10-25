@@ -17,7 +17,15 @@ export const MCP_USER_MAX_CONCURRENT = 8;
 // Per process: with several replicas the effective caps are these values times the replica count.
 const inFlight = new Map<string, number>();
 
-export type McpCallPermit = { release: () => void };
+export type McpCallPermit = {
+  release: () => void;
+  /**
+   * Charges the rest of a batch once the body is parsed. The permit was admitted for `messages` (at least one);
+   * `total` is the real message count. Returns a refusal when the batch is too large or a bucket is exhausted
+   * (the caller then still releases the permit), otherwise `null`.
+   */
+  charge: (total: number) => Promise<McpCallRefusal | null>;
+};
 export type McpCallRefusal = {
   status: 400 | 429 | 503;
   error: string;
@@ -65,6 +73,9 @@ export function countMcpMessages(body: unknown): number {
  * queries and writes, so without this one token could batch a hundred of them. The caller must call
  * `release()` when the request finishes.
  *
+ * Admit with `messages = 1` before reading the body, so an unadmitted caller never makes the server buffer and
+ * parse a payload, then call `permit.charge(countMcpMessages(body))` to pay for the rest of a batch.
+ *
  * A limiter outage is its own refusal (503): Redis being down is not the caller exceeding a quota, and it
  * must not be reported as one. It still refuses, so an outage cannot lift the limit.
  */
@@ -101,27 +112,40 @@ export async function admitMcpCall(
     { key: `mcp:call:${subject.user}:${subject.client}`, maxRequests: MCP_MESSAGES_PER_MINUTE },
     { key: `mcp:user:${subject.user}`, maxRequests: MCP_USER_MESSAGES_PER_MINUTE },
   ];
-  try {
+  const chargeBuckets = async (cost: number): Promise<McpCallRefusal | null> => {
     for (const { key, maxRequests } of buckets) {
       const limit = await apiKeyRateLimiter.checkAndIncrement(
         key,
         { enabled: true, timeWindow: 60, maxRequests },
-        Math.max(1, messages),
+        cost,
       );
-      if (limit.unavailable) {
-        release();
-        return { status: 503, error: "rate_limiter_unavailable", retryAfter: 5 };
-      }
-      if (!limit.allowed) {
-        release();
-        return { status: 429, error: "rate_limited", retryAfter: limit.retryAfter ?? 60 };
-      }
+      if (limit.unavailable) return { status: 503, error: "rate_limiter_unavailable", retryAfter: 5 };
+      if (!limit.allowed) return { status: 429, error: "rate_limited", retryAfter: limit.retryAfter ?? 60 };
+    }
+    return null;
+  };
+
+  let charged = Math.max(1, messages);
+  try {
+    const refusal = await chargeBuckets(charged);
+    if (refusal) {
+      release();
+      return refusal;
     }
   } catch (error) {
     release();
     throw error;
   }
-  return { release };
+
+  const charge = async (total: number): Promise<McpCallRefusal | null> => {
+    if (total > MCP_MAX_BATCH) return { status: 400, error: "batch_too_large" };
+    const extra = total - charged;
+    if (extra <= 0) return null;
+    const refusal = await chargeBuckets(extra);
+    if (!refusal) charged = total;
+    return refusal;
+  };
+  return { release, charge };
 }
 
 export function isMcpRefusal(value: McpCallPermit | McpCallRefusal): value is McpCallRefusal {
