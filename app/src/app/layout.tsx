@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/query-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { HydrationReady } from "@/components/hydration-ready";
 import { SupportChat } from "@/components/support/support-chat";
 
 // Use system fonts instead of Google Fonts for offline builds
@@ -35,6 +36,8 @@ export default function RootLayout({
       >
         {/* PERFORMANCE: Register service worker for static asset caching */}
         <ServiceWorkerRegistration />
+        {/* TEST SUPPORT: exposes a hydration flag for the E2E suite */}
+        <HydrationReady />
         <QueryProvider>
           <ThemeProvider
             attribute="class"

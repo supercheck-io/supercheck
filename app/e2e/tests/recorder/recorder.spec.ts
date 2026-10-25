@@ -1,11 +1,13 @@
 import { expect } from '@playwright/test';
 import { test } from '../../fixtures';
+import { waitForHydration } from '../../utils/hydration';
 
 test.describe('Recorder web integration @recorder', () => {
   test('Playground gives an exact install path when the Recorder extension is absent @high @positive', async ({
     page,
   }) => {
     await page.goto('/playground?scriptType=browser', { waitUntil: 'load' });
+    await waitForHydration(page);
     const recordButton = page.getByRole('button', { name: 'Start Recording' });
     await expect(recordButton).toBeVisible();
     await recordButton.click();

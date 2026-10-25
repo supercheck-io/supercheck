@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 
 import { test } from "../../fixtures/roles.fixture";
 import { requireRbacUser } from "../../utils/env";
+import { waitForHydration } from "../../utils/hydration";
 
 test.describe("AI SRE service topology administration @aisre @topology @critical", () => {
   test.beforeAll(() => requireRbacUser("orgOwner"));
@@ -48,6 +49,7 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await createService(page, targetName);
 
       await page.goto(`/services/${sourceId}`, { waitUntil: "load" });
+      await waitForHydration(page);
       await page.getByRole("tab", {name:/Dependencies/}).click();
       await page
         .getByRole("button", { name: "Add dependency", exact: true })
@@ -79,10 +81,12 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await expect(dependency).toContainText("This service depends on it");
       await expect(dependency).toContainText("manual");
       await page.reload();
+      await waitForHydration(page);
       await page.getByRole("tab", {name:/Dependencies/}).click();
       await expect(page.getByText(targetName, { exact: true })).toBeVisible();
 
       await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
+      await waitForHydration(page);
       await expect(page.getByText(sourceName, { exact: true })).toBeVisible({
         timeout: 30_000,
       });
@@ -139,6 +143,7 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       );
       expect(viewerSwitch.status(), await viewerSwitch.text()).toBe(200);
       await viewerPage.goto(`/services/${sourceId}`, { waitUntil: "load" });
+      await waitForHydration(viewerPage);
       await expect(
         viewerPage.getByRole("heading", { name: sourceName, exact: true }),
       ).toBeVisible();
@@ -156,12 +161,14 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       ).toHaveCount(0);
 
       await page.goto(`/services/${sourceId}`, { waitUntil: "load" });
+      await waitForHydration(page);
       await page.getByRole("tab", {name:/Dependencies/}).click();
       await page
         .getByRole("button", { name: `Remove dependency with ${targetName}` })
         .click();
       await expect(page.getByText(targetName, { exact: true })).toHaveCount(0);
       await page.reload();
+      await waitForHydration(page);
       await page.getByRole("tab", {name:/Dependencies/}).click();
       await expect(page.getByText(targetName, { exact: true })).toHaveCount(0);
     } finally {
@@ -182,6 +189,7 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
 
 async function createService(page: Page, name: string): Promise<string> {
   await page.goto("/services", { waitUntil: "load" });
+  await waitForHydration(page);
   await page.getByTestId("add-service-btn").click();
   const dialog = page.getByRole("dialog", { name: "Add service" });
   await dialog.getByLabel("Service name *").fill(name);
