@@ -33,6 +33,7 @@ const mockDbService = {
   claimRunExecution: jest.fn(),
   finalizeCancelledRun: jest.fn().mockResolvedValue(true),
   updateRunStatus: jest.fn(),
+  failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
   db: {
@@ -108,6 +109,8 @@ jest.mock('../../common/utils/error-handler', () => ({
 // Import after mocks
 import { PlaywrightExecutionProcessor } from './playwright-execution.processor';
 import { ErrorHandler } from '../../common/utils/error-handler';
+import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
+import { ExecutionCapacityError } from '../services/execution-admission.service';
 
 describe('PlaywrightExecutionProcessor', () => {
   let processor: PlaywrightExecutionProcessor;
@@ -337,6 +340,44 @@ describe('PlaywrightExecutionProcessor', () => {
       expect(
         mockUsageTrackerService.completeRunWithUsage,
       ).not.toHaveBeenCalled();
+    });
+
+    describe('capacity wait give-up', () => {
+      const exhausted = <T extends object>(data: T) =>
+        createMockJob({ ...data, _capacityDeferrals: CAPACITY_DEFERRAL_LIMIT });
+
+      it.each([
+        ['test', mockTestTask, () => mockExecutionService.runSingleTest],
+        ['job', mockJobTask, () => mockExecutionService.runJob],
+      ])(
+        'fails a %s run that never got a slot, unless cancelled, in one guarded write',
+        async (_kind, task, execute) => {
+          execute().mockRejectedValueOnce(new ExecutionCapacityError('busy'));
+
+          await expect(processor.process(exhausted(task))).rejects.toThrow(
+            /capacity stayed occupied/,
+          );
+
+          expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
+            runId,
+            expect.stringContaining('capacity stayed occupied'),
+          );
+          expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
+        },
+      );
+
+      it('still gives up the job when the guarded write errors', async () => {
+        mockExecutionService.runSingleTest.mockRejectedValueOnce(
+          new ExecutionCapacityError('busy'),
+        );
+        mockDbService.failRunUnlessCancelled.mockRejectedValueOnce(
+          new Error('db down'),
+        );
+
+        await expect(
+          processor.process(exhausted(mockTestTask)),
+        ).rejects.toThrow(/capacity stayed occupied/);
+      });
     });
 
     it.each(['test', 'job'])(

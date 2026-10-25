@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { Role } from "@/lib/rbac/permissions";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 
 /**
@@ -8,13 +10,22 @@ import { polarUsageService } from "@/lib/services/polar-usage.service";
  */
 export async function GET() {
   try {
-    const { organizationId, isCliAuth } = await requireUserAuthContext();
+    const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
     if (isCliAuth) return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
 
     if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
+      );
+    }
+
+    // Subscription, spending and usage figures are for org admins and owners only.
+    const orgRole = await getUserOrgRole(userId, organizationId);
+    if (orgRole !== Role.ORG_ADMIN && orgRole !== Role.ORG_OWNER) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 },
       );
     }
 

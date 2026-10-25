@@ -140,9 +140,9 @@ export function estimateCosts(workload: Workload): EstimateResult {
   const averageConcurrency =
     (workload.checks * workload.durationSeconds) /
     (workload.intervalMinutes * 60);
-  if (supercheck && averageConcurrency > 5) {
+  if (supercheck && averageConcurrency > SUPERCHECK_PLANS[0].runningCapacity) {
     notices.push(
-      `This workload averages about ${formatCount(Math.ceil(averageConcurrency))} concurrent browser runs. Plus allows 5 concurrent jobs and Pro allows 10; contact us if you need more.`,
+      `This workload averages about ${formatCount(Math.ceil(averageConcurrency))} concurrent browser runs. ${SUPERCHECK_PLANS.map((plan) => `${plan.name} allows ${plan.runningCapacity}`).join(' and ')} concurrent runs; contact us if you need more.`,
     );
   }
   if (checkly.tier.hardCap) {
