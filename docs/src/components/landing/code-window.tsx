@@ -29,7 +29,7 @@ export async function CodeWindow({ code, filename, lang = "ts" }: { code: string
         </span>
         <span className="font-mono text-xs text-zinc-400">{filename}</span>
       </div>
-      <div className="code-window overflow-x-auto py-4 font-mono text-[13px] leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="code-window overflow-x-auto py-4 font-mono text-[13px] leading-relaxed focus-visible:outline-2 focus-visible:outline-fd-primary" role="region" aria-label={filename} tabIndex={0} dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }

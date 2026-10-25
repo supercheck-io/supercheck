@@ -306,7 +306,7 @@ export default function PricingPage() {
                         Preview the plans and join the waitlist for the one you want. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Prices in USD per month, before taxes. Usage beyond the included allowance is billed at the{' '}
+                        Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                 </div>
@@ -437,7 +437,7 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
                         <p className="mt-3 text-fd-muted-foreground">
-                            Charged only for usage beyond your monthly allowance. Owners can set spending limits to cap overage.
+                            Charged only for usage beyond your monthly allowance. Owners can set spending limits and alerts; in-flight usage can still exceed a limit.
                         </p>
                     </div>
                     <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>
