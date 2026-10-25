@@ -115,25 +115,30 @@ export interface DashboardData {
 
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
-export const getDashboardQueryKey = (projectId: string | null) => 
-  [...DASHBOARD_QUERY_KEY, projectId] as const;
+// The "v2" version abandons entries written under ["dashboard", projectId] by the
+// old hover prefetch, which stored the raw /api/dashboard payload where the
+// dashboard expects normalized DashboardData. Those entries are persisted to
+// localStorage for 24h and crashed the page on every visit.
+export const getDashboardQueryKey = (projectId: string | null) =>
+  [...DASHBOARD_QUERY_KEY, projectId, "v2"] as const;
 
-export async function fetchDashboard(): Promise<DashboardData> {
+export async function fetchDashboard(projectId: string | null = null): Promise<DashboardData> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('Dashboard request timeout'), 30000);
 
   try {
+    // The server resolves the project from this header, so prefetch and the
+    // dashboard hook must request the same project to share one cache entry.
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (projectId) headers["x-project-id"] = projectId;
     const [dashboardResponse, alertsResponse] = await Promise.all([
       fetch("/api/dashboard", {
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          // Removed manual cache busting. Browser/Proxy should respect server Cache-Control headers.
-        },
+        headers,
       }),
       fetch("/api/alerts/history", {
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers,
       }),
     ]);
 
@@ -323,7 +328,7 @@ export function useDashboard() {
 
   const query = useQuery({
     queryKey,
-    queryFn: fetchDashboard,
+    queryFn: () => fetchDashboard(projectId),
     enabled: !!projectId,
     staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
     // gcTime uses global default (24h)
