@@ -40,9 +40,28 @@ beforeEach(() => {
     organizationId: "o1",
     isCliAuth: false,
   });
+  mockRole.mockResolvedValue("org_admin");
 });
 
 describe("GET /api/billing/usage", () => {
+  it.each(["project_admin", "project_editor", "project_viewer", null])(
+    "refuses a member with role %s without reading usage",
+    async (role) => {
+      mockRole.mockResolvedValue(role);
+      const response = await usageGet();
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "Insufficient permissions" });
+      expect(mockMetrics).not.toHaveBeenCalled();
+      expect(mockSpending).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["org_admin", "org_owner"])("serves usage to an %s", async (role) => {
+    mockRole.mockResolvedValue(role);
+    mockMetrics.mockResolvedValue({ playwrightMinutes: { used: 1 } });
+    mockSpending.mockResolvedValue({ currentSpendingCents: 0, limitCents: null });
+    expect((await usageGet()).status).toBe(200);
+    expect(mockRole).toHaveBeenCalledWith("u1", "o1");
+  });
   it("rejects CLI tokens", async () => {
     mockAuth.mockResolvedValue({
       userId: "u1",

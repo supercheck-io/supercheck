@@ -3,6 +3,7 @@ const requireMcpAuth = jest.fn();
 const resolveMcpCallContext = jest.fn();
 const isMcpServerEnabled = jest.fn();
 const checkAndIncrement = jest.fn();
+const getMcpAllowedOrigins = jest.fn();
 
 jest.mock("@better-auth/mcp", () => ({ requireMcpAuth: (...a: unknown[]) => requireMcpAuth(...a) }));
 jest.mock("@/utils/auth", () => ({ auth: {} }));
@@ -10,6 +11,7 @@ jest.mock("@/lib/mcp/config", () => ({
   MCP_READ_SCOPE: "mcp:read",
   getMcpResourceUrl: () => "https://app.example.com/api/mcp",
   isMcpServerEnabled: () => isMcpServerEnabled(),
+  getMcpAllowedOrigins: () => getMcpAllowedOrigins(),
 }));
 jest.mock("@/lib/mcp/context", () => {
   class McpAccessDeniedError extends Error {
@@ -22,6 +24,17 @@ jest.mock("@/lib/mcp/context", () => {
 jest.mock("@/lib/api-key-rate-limiter", () => ({
   apiKeyRateLimiter: { checkAndIncrement: (...a: unknown[]) => checkAndIncrement(...a) },
 }));
+const mockEvents: string[] = [];
+jest.mock("@/lib/mcp/call-limits", () => {
+  const actual = jest.requireActual("@/lib/mcp/call-limits");
+  return {
+    ...actual,
+    readMcpBody: (...a: unknown[]) => {
+      mockEvents.push("read");
+      return actual.readMcpBody(...a);
+    },
+  };
+});
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/mcp/tools", () => ({ registerMcpTools: jest.fn() }));
 
@@ -39,7 +52,9 @@ const rpc = (method: string) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEvents.length = 0;
   isMcpServerEnabled.mockReturnValue(true);
+  getMcpAllowedOrigins.mockReturnValue([]);
   checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 10, limit: 300, resetAt: new Date() });
   // Run the wrapped handler with fixed claims, like a valid token would.
   requireMcpAuth.mockImplementation((_auth, handler) => (req: Request) => handler(req, { sub: "u", azp: "c" }));
@@ -66,6 +81,19 @@ describe("/api/mcp", () => {
     const headers = new Headers(rpc("initialize").headers);
     headers.set("host", "app.example.com"); headers.set("origin", "https://app.example.com");
     expect((await POST(new Request(rpc("initialize"), { headers }))).status).toBe(200);
+  });
+
+  it("allows an origin listed for MCP but not one that is only in the general CORS list", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    getMcpAllowedOrigins.mockReturnValue(["https://inspector.example.com"]);
+    const call = (origin: string) => {
+      const headers = new Headers(rpc("initialize").headers);
+      headers.set("host", "app.example.com"); headers.set("origin", origin);
+      return POST(new Request(rpc("initialize"), { headers }));
+    };
+    expect((await call("https://inspector.example.com")).status).toBe(200);
+    // A sibling site on the default CORS allow-list is not named for MCP, so it is refused.
+    expect((await call("https://docs.supercheck.io")).status).toBe(403);
   });
 
   it("accepts an internal proxy URL only with the validated public Host", async () => {
@@ -204,10 +232,50 @@ describe("/api/mcp", () => {
     it("counts every message of a batch against the token's quota", async () => {
       resolveMcpCallContext.mockResolvedValue(init.ctx);
       await POST(batch(5));
-      // One atomic call per bucket carrying the whole batch: this app, then the user's total across apps.
+      // One message is charged before the body is read, the remaining four once it is parsed; each charge is
+      // one atomic call per bucket: this app, then the user's total across apps.
+      expect(checkAndIncrement).toHaveBeenCalledTimes(4);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(1, "mcp:call:u:c", expect.objectContaining({ timeWindow: 60, maxRequests: 300 }), 1);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(2, "mcp:user:u", expect.objectContaining({ timeWindow: 60, maxRequests: 600 }), 1);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(3, "mcp:call:u:c", expect.objectContaining({ timeWindow: 60, maxRequests: 300 }), 4);
+      expect(checkAndIncrement).toHaveBeenNthCalledWith(4, "mcp:user:u", expect.objectContaining({ timeWindow: 60, maxRequests: 600 }), 4);
+    });
+
+    it("takes the slot and charges one message before the body is read", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      checkAndIncrement.mockImplementation(async () => {
+        mockEvents.push("charge");
+        return { allowed: true, remaining: 10, limit: 300, resetAt: new Date() };
+      });
+      await POST(batch(1));
+      expect(mockEvents).toEqual(["charge", "charge", "read"]);
+    });
+
+    it("does not read the body of a caller the quota refuses", async () => {
+      checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0, limit: 300, resetAt: new Date(), retryAfter: 5 });
+      expect((await POST(batch(5))).status).toBe(429);
+      expect(mockEvents).not.toContain("read");
+    });
+
+    it("charges a single message for a body that is not JSON", async () => {
+      const res = await POST(new Request(rpc("initialize"), { body: "{invalid" }));
+      expect(res.status).toBe(400);
       expect(checkAndIncrement).toHaveBeenCalledTimes(2);
-      expect(checkAndIncrement).toHaveBeenNthCalledWith(1, "mcp:call:u:c", expect.objectContaining({ timeWindow: 60, maxRequests: 300 }), 5);
-      expect(checkAndIncrement).toHaveBeenNthCalledWith(2, "mcp:user:u", expect.objectContaining({ timeWindow: 60, maxRequests: 600 }), 5);
+    });
+
+    it("refuses a batch the quota cannot cover after parsing and frees the slot", async () => {
+      resolveMcpCallContext.mockResolvedValue(init.ctx);
+      checkAndIncrement
+        .mockResolvedValueOnce({ allowed: true, remaining: 10, limit: 300, resetAt: new Date() })
+        .mockResolvedValueOnce({ allowed: true, remaining: 10, limit: 600, resetAt: new Date() })
+        .mockResolvedValueOnce({ allowed: false, remaining: 0, limit: 300, resetAt: new Date(), retryAfter: 9 });
+      const res = await POST(batch(5));
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBe("9");
+      expect(resolveMcpCallContext).not.toHaveBeenCalled();
+      // The slot was released: a full set of concurrent calls still fits afterwards.
+      checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 10, limit: 300, resetAt: new Date() });
+      for (let i = 0; i < 6; i += 1) expect((await POST(rpc("initialize"))).status).toBe(200);
     });
 
     it("refuses a chunked body over the cap even without a Content-Length", async () => {
@@ -228,7 +296,8 @@ describe("/api/mcp", () => {
         duplex: "half",
       } as RequestInit);
       expect((await POST(req)).status).toBe(413);
-      expect(checkAndIncrement).not.toHaveBeenCalled();
+      // Only the up-front single message was charged; the body never reached the batch charge.
+      expect(checkAndIncrement).toHaveBeenCalledTimes(2);
     });
 
     it("rejects an oversized batch before doing any work", async () => {
@@ -236,7 +305,8 @@ describe("/api/mcp", () => {
       const res = await POST(batch(100));
       expect(res.status).toBe(400);
       expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { data: { code: "batch_too_large" } } });
-      expect(checkAndIncrement).not.toHaveBeenCalled();
+      expect(checkAndIncrement).toHaveBeenCalledTimes(2);
+      expect(resolveMcpCallContext).not.toHaveBeenCalled();
     });
 
     it("spends no database work on a request the quota refuses", async () => {
