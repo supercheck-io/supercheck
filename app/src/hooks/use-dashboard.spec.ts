@@ -21,6 +21,35 @@ describe("dashboard data contract", () => {
     expect(data.tests.playgroundExecutionsTrend.at(-1)?.date).toBe("30");
     expect(selectRecentFailures(data.jobs.recentRuns).map((r) => r.id)).toEqual(["1000"]);
   });
+
+  it("keeps an empty alert history when the alerts endpoint is unavailable", async () => {
+    jest.spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ jobs: { recentRuns30d: 8 } }) } as Response)
+      .mockResolvedValueOnce({ ok: false, status: 403 } as Response);
+    const data = await fetchDashboard("project-a");
+    expect(data.stats.runs).toBe(8);
+    expect(data.alerts).toEqual([]);
+    expect(data.jobs.recentRuns).toEqual([]);
+    expect(data.tests.playgroundExecutionsTrend).toEqual([]);
+  });
+
+  it("rejects unavailable dashboard data instead of returning a partial dashboard", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: false, status: 503, statusText: "Unavailable" } as Response);
+    await expect(fetchDashboard()).rejects.toThrow("Dashboard API error: 503 Unavailable");
+  });
+
+  it("aborts stalled requests and clears the timeout", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.spyOn(global, "fetch").mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }));
+      const request = expect(fetchDashboard()).rejects.toThrow("Dashboard request timed out");
+      await jest.advanceTimersByTimeAsync(30_000);
+      await request;
+      expect(jest.getTimerCount()).toBe(0);
+    } finally { jest.useRealTimers(); }
+  });
 });
 
 describe("parseSystemHealth", () => {

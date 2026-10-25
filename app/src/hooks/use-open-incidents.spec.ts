@@ -6,8 +6,10 @@ describe("open incident requests", () => {
     const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => ({ incidents: [
       { id: "open", status: "investigating" }, { id: "closed", status: "resolved" },
     ] }) } as Response);
-    expect(await fetchOpenIncidents()).toEqual({ available: true, incidents: [{ id: "open", status: "investigating" }] });
-    expect(fetchMock).toHaveBeenCalledWith("/api/sre/incidents?status=open", expect.anything());
+    expect(await fetchOpenIncidents("project-a")).toEqual({ available: true, incidents: [{ id: "open", status: "investigating" }] });
+    expect(fetchMock).toHaveBeenCalledWith("/api/sre/incidents?status=open", {
+      headers: { "Content-Type": "application/json", "x-project-id": "project-a" },
+    });
   });
   it.each([401, 402, 403, 404, 500])("hides unavailable incidents on HTTP %s", async (status) => {
     jest.spyOn(global, "fetch").mockResolvedValue({ ok: false, status } as Response);

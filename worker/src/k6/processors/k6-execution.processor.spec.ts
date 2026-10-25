@@ -406,6 +406,18 @@ describe('k6 container-start metering', () => {
     );
   });
 
+  it('preserves terminal uncertainty semantics when the guarded database write fails', async () => {
+    const runK6Test = jest.fn();
+    const { processor, dbService, set, usage } = build(runK6Test);
+    (processor as unknown as { k6ExecutionService: { hasActiveExecution: jest.Mock } })
+      .k6ExecutionService.hasActiveExecution = jest.fn().mockRejectedValue('Unable to verify Kubernetes execution state');
+    dbService.failRunUnlessCancelled.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(processor.process(job())).rejects.toThrow(/Unable to verify Kubernetes execution state/);
+    expect(runK6Test).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+  });
+
   it('charges the observed container time when a failure follows the start', async () => {
     const runK6Test = jest
       .fn()
