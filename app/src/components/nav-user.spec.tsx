@@ -29,7 +29,15 @@ jest.mock("@/components/ui/dropdown-menu", () => {
 import { NavUser } from "./nav-user";
 
 describe("NavUser: Connected apps", () => {
-  beforeEach(() => { mockMcpEnabled = false; });
+  const originalSourceUrl = process.env.NEXT_PUBLIC_SOURCE_URL;
+  beforeEach(() => {
+    mockMcpEnabled = false;
+    delete process.env.NEXT_PUBLIC_SOURCE_URL;
+  });
+  afterEach(() => {
+    if (originalSourceUrl === undefined) delete process.env.NEXT_PUBLIC_SOURCE_URL;
+    else process.env.NEXT_PUBLIC_SOURCE_URL = originalSourceUrl;
+  });
 
   it("links to Connected apps where the MCP server is enabled", () => {
     mockMcpEnabled = true;
@@ -49,5 +57,18 @@ describe("NavUser: Connected apps", () => {
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByTestId("sign-out-button")).toBeInTheDocument();
     expect(screen.getByText("Theme")).toBeInTheDocument();
+  });
+
+  it("keeps corresponding source accessible from the profile menu", () => {
+    render(<NavUser />);
+    expect(screen.getByRole("link", { name: "Source code" }))
+      .toHaveAttribute("href", "https://github.com/supercheck-io/supercheck");
+  });
+
+  it("uses the deployment's source offer", () => {
+    process.env.NEXT_PUBLIC_SOURCE_URL = "https://example.com/source";
+    render(<NavUser />);
+    expect(screen.getByRole("link", { name: "Source code" }))
+      .toHaveAttribute("href", "https://example.com/source");
   });
 });

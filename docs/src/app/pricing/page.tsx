@@ -2,7 +2,7 @@ import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
 import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/trial-copy';
 import React from 'react';
 import Link from 'next/link';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
 import { SiteFooter } from '../../components/site-footer';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
@@ -179,7 +179,7 @@ function ComparisonCell({ value }: { value: string }) {
     if (value === CHECK) {
         return (
             <>
-                <span aria-hidden="true" className="text-fd-primary">{CHECK}</span>
+                <Check aria-hidden="true" className="mx-auto size-4 text-fd-primary" />
                 <span className="sr-only">Included</span>
             </>
         );
@@ -281,9 +281,7 @@ const sectionHeading = 'text-2xl font-semibold tracking-tight';
 
 function CheckIcon() {
     return (
-        <svg aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
+        <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" />
     );
 }
 
@@ -298,8 +296,7 @@ export default function PricingPage() {
 
             <main className="mx-auto w-full max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-20">
                 <div className="mx-auto mb-12 max-w-2xl text-center">
-                    <p className="text-sm font-medium text-fd-primary">Pricing</p>
-                    <h1 className="mt-2 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+                    <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
                         Supercheck Cloud is coming soon
                     </h1>
                     <p className="mt-4 text-lg text-fd-muted-foreground">
@@ -309,6 +306,11 @@ export default function PricingPage() {
                         Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
+                    <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
+                        <a href="#compare" className="underline underline-offset-4">Compare plans</a>
+                        <a href="#overage" className="underline underline-offset-4">Overage rates</a>
+                        <Link href="/docs/app/admin/subscription" className="underline underline-offset-4">How billing works</Link>
+                    </nav>
                 </div>
 
                 <div id="waitlist" className="grid scroll-mt-20 gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -392,7 +394,7 @@ export default function PricingPage() {
                     </aside>
                 </div>
 
-                <section aria-labelledby="compare-heading" className="mt-24">
+                <section id="compare" aria-labelledby="compare-heading" className="mt-24 scroll-mt-20">
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
                     </div>

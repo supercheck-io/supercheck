@@ -13,7 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
-import { Moon, Sun, User, Monitor, Plug } from "lucide-react";
+import { Moon, Sun, User, Monitor, Plug, Code } from "lucide-react";
 import Link from "next/link";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
@@ -117,6 +117,11 @@ export function NavUser() {
         )}
 
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href={process.env.NEXT_PUBLIC_SOURCE_URL || "https://github.com/supercheck-io/supercheck"} target="_blank" rel="noopener noreferrer">
+            <Code className="h-4 w-4 mr-2" />Source code
+          </a>
+        </DropdownMenuItem>
         <LeaveOrganizationDialog />
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>
