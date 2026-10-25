@@ -8,6 +8,7 @@ import type { LocalResource, RemoteResource } from './reconcile.js'
 import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
+import { PRIORITIES } from './priority.js'
 
 /** Trim, drop empties and de-duplicate case-insensitively (first spelling wins), keeping the user's spelling. */
 export function dedupeTagNames(names: unknown[]): string[] {
@@ -164,9 +165,10 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
       const displayName = file.relativePath.replace(/^_supercheck_\//, '')
 
       // Optional @priority / @tags annotations: absent means "leave the remote value alone".
-      const priority = readScriptMetadata(script, 'priority')
-      if (priority !== undefined && !['low', 'medium', 'high'].includes(priority)) {
-        throw new CLIError(`${displayName}: @priority must be low, medium or high (got "${priority}").`, ExitCode.ConfigError)
+      const priorityAnnotation = readScriptMetadata(script, 'priority')
+      const priority = priorityAnnotation === undefined ? undefined : PRIORITIES.find((p) => p === priorityAnnotation.toLowerCase())
+      if (priorityAnnotation !== undefined && priority === undefined) {
+        throw new CLIError(`${displayName}: @priority must be low, medium or high (got "${priorityAnnotation}").`, ExitCode.ConfigError)
       }
       const tagsAnnotation = readScriptMetadata(script, 'tags')
       const tags = tagsAnnotation === undefined ? undefined : normalizeTagNames(tagsAnnotation.split(','))
@@ -547,7 +549,14 @@ export async function fetchStatusPagesWithComponents(
 /**
  * Fetch remote resources from the Supercheck API.
  */
-export async function fetchRemoteResources(client: ReturnType<typeof getApiClient>): Promise<RemoteResource[]> {
+/**
+ * `requirements: false` leaves remote requirements out entirely, so a config without `requirements[]` (written before
+ * requirements were managed as code) never plans to prune requirements created in the dashboard.
+ */
+export async function fetchRemoteResources(
+  client: ReturnType<typeof getApiClient>,
+  { requirements = true }: { requirements?: boolean } = {},
+): Promise<RemoteResource[]> {
   const resources: RemoteResource[] = []
 
   try {
@@ -612,7 +621,7 @@ export async function fetchRemoteResources(client: ReturnType<typeof getApiClien
     }
   } catch (err) { logFetchError('notification providers', err) }
 
-  try {
+  if (requirements) try {
     for (const requirement of await fetchRemoteRequirements(client)) {
       const id = safeId(requirement.id)
       if (!id) { logger.debug('Skipping requirement with missing id'); continue }

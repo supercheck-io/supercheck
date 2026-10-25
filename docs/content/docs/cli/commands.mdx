@@ -675,7 +675,7 @@ Deploy pushes notification provider config and webhook body templates too. Renam
 </Accordion>
 <Accordion title="supercheck deploy: requirements, status pages and tags" id="supercheck-deploy-resources">
 
-- **Requirements:** omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
+- **Requirements:** compared and pruned only when the config has a `requirements` key. Omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
 - **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and remote-only components are removed only with `--delete`.
 - **Tests:** `@priority` and `@tags` annotations are applied on deploy.
 - **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config; deploy checks this before any write, matching names case-insensitively. Requirement tags are created by the server.

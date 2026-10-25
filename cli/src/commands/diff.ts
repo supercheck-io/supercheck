@@ -30,7 +30,7 @@ export const diffCommand = new Command('diff')
       'Comparing local and remote resources...',
       async () => {
         const local = state.resolveTests(state.apply(buildLocalResources(config, cwd)))
-        const remote = await fetchRemoteResources(client)
+        const remote = await fetchRemoteResources(client, { requirements: config.requirements !== undefined })
         return { localResources: local, remoteResources: remote }
       },
       { successText: 'Resources compared' },

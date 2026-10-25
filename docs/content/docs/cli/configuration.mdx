@@ -147,7 +147,7 @@ Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`
 
 ### Test metadata annotations
 
-`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). Annotations anywhere else in the script are ignored. They are local metadata: the CLI strips them before comparing or sending the script. `deploy` applies `@priority` and `@tags`; if an annotation is absent, the remote value is left alone.
+`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). `@priority` and `@tags` elsewhere in the script are ignored; `@title` is read from the first match anywhere. They are local metadata: the CLI strips them before comparing or sending the script. `deploy` applies `@priority` (any letter case) and `@tags`; if an annotation is absent, the remote value is left alone. To remove all tags from a test, use `supercheck test tag remove`.
 
 ```ts
 // @title Homepage Check
@@ -237,7 +237,7 @@ Jobs have no `tags` field; a config containing one fails validation.
 </Accordion>
 <Accordion title="requirements[]" id="requirements">
 
-Needs a server with the requirements API.
+Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged; clear them in the dashboard or with the API.
 
 | Field | Type | Description |
 |---|---|---|

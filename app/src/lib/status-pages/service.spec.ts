@@ -19,8 +19,14 @@ const select = jest.fn((..._a: unknown[]) => makeChain());
 const insert = jest.fn(() => makeChain());
 const update = jest.fn(() => makeChain());
 const del = jest.fn(() => makeChain());
+const txSelect = jest.fn((..._a: unknown[]) => makeChain());
 const transaction = jest.fn(async (run: (tx: unknown) => unknown) =>
-  run({ update: (...a: unknown[]) => (update as jest.Mock)(...a), insert: (...a: unknown[]) => (insert as jest.Mock)(...a), delete: (...a: unknown[]) => (del as jest.Mock)(...a) })
+  run({
+    select: (...a: unknown[]) => (txSelect as jest.Mock)(...a),
+    update: (...a: unknown[]) => (update as jest.Mock)(...a),
+    insert: (...a: unknown[]) => (insert as jest.Mock)(...a),
+    delete: (...a: unknown[]) => (del as jest.Mock)(...a),
+  })
 );
 
 jest.mock("@/utils/db", () => ({
@@ -373,6 +379,36 @@ describe("status page service", () => {
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(update).toHaveBeenCalledTimes(1); // row update is inside the same transaction
       expect(del).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps existing monitor weights when monitorIds change without monitorWeights", async () => {
+      const monitorB = "00000000-0000-4000-8000-0000000000b2";
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      chainResult.value = [{ id: monitorA }, { id: monitorB }];
+      const weights = { from: () => weights, where: () => Promise.resolve([{ monitorId: monitorA, weight: 3 }]) };
+      txSelect.mockReturnValueOnce(weights as never);
+      const insertChain = makeChain();
+      insert.mockReturnValueOnce(insertChain as never);
+
+      const result = await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA, monitorB], status: "operational" });
+      expect(result.ok).toBe(true);
+      expect(insertChain.values).toHaveBeenCalledWith([
+        expect.objectContaining({ monitorId: monitorA, weight: 3 }),
+        expect.objectContaining({ monitorId: monitorB, weight: 1 }),
+      ]);
+    });
+
+    it("uses explicit monitorWeights without reading the existing ones", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      chainResult.value = [{ id: monitorA }];
+      const insertChain = makeChain();
+      insert.mockReturnValueOnce(insertChain as never);
+
+      await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA], monitorWeights: { [monitorA]: 5 }, status: "operational" });
+      expect(txSelect).not.toHaveBeenCalled();
+      expect(insertChain.values).toHaveBeenCalledWith([expect.objectContaining({ monitorId: monitorA, weight: 5 })]);
     });
 
     it("rejects a whitespace-only component name", async () => {
