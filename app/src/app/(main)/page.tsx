@@ -67,7 +67,6 @@ import {
   uptimeAxis,
   utcDayKey,
 } from "@/lib/dashboard/chart-data";
-import { isFailedRunStatus } from "@/lib/dashboard/run-outcomes";
 // Types are now exported from useDashboard hook
 // Re-export for any components that still need them
 export type { DashboardData } from "@/hooks/use-dashboard";
@@ -207,7 +206,7 @@ export default function Home() {
   );
 
   const { data: dashboardData, isLoading: queryLoading, isRestoring, error: queryError } = useDashboard();
-  const { data: requirementsStats } = useRequirementsStats();
+  const { data: requirementsStats, isLoading: requirementsLoading } = useRequirementsStats();
   const { data: incidentsResult, isLoading: incidentsLoading } = useOpenIncidents();
   const hasData = dashboardData !== undefined && dashboardData !== null;
   const loading = !isMounted || isRestoring || (!hasData && queryLoading);
@@ -229,15 +228,14 @@ export default function Home() {
     // matching the SQL DATE() buckets used for the other daily series).
     const windowStart = dayKeys[0];
     const triggerByDay = new Map<string, { manual: number; scheduled: number; remote: number }>();
-    let success = 0;
-    let failed = 0;
+    // Totals come from the server (full 30 days); recentRuns is only used for per-day buckets.
+    const success = dashboardData.jobs.passedRuns30d;
+    const failed = dashboardData.jobs.failedRuns30d;
     for (const run of recentRuns) {
       const time = Date.parse(run?.startedAt ?? "");
       if (Number.isNaN(time)) continue;
       const key = utcDayKey(new Date(time));
       if (key < windowStart) continue;
-      if (run.status === "passed") success++;
-      else if (isFailedRunStatus(run.status)) failed++;
       const bucket = triggerByDay.get(key) ?? { manual: 0, scheduled: 0, remote: 0 };
       if (run.trigger === "schedule") bucket.scheduled++;
       else if (run.trigger === "remote") bucket.remote++;
@@ -527,6 +525,7 @@ export default function Home() {
             dashboardData={dashboardData}
             chartData={chartData}
             requirementsStats={requirementsStats}
+            requirementsLoading={requirementsLoading}
             incidentsResult={incidentsResult}
             incidentsLoading={incidentsLoading}
           />
@@ -540,6 +539,7 @@ interface DashboardOverviewProps {
   dashboardData: NonNullable<ReturnType<typeof useDashboard>["data"]>;
   chartData: ChartData;
   requirementsStats: ReturnType<typeof useRequirementsStats>["data"];
+  requirementsLoading: boolean;
   incidentsResult: ReturnType<typeof useOpenIncidents>["data"];
   incidentsLoading: boolean;
 }
@@ -559,6 +559,7 @@ function DashboardOverview({
   dashboardData,
   chartData,
   requirementsStats,
+  requirementsLoading,
   incidentsResult,
   incidentsLoading,
 }: DashboardOverviewProps) {
@@ -593,7 +594,7 @@ function DashboardOverview({
           title="Requirements coverage"
           href="/requirements"
           value={hasRequirements ? `${requirementsStats.coveragePercent}%` : undefined}
-          emptyMessage="No requirements"
+          emptyMessage={requirementsLoading ? "Loading…" : "No requirements"}
           caption={
             hasRequirements && requirementsStats.atRiskCount > 0 ? (
               <span className="text-warning">{requirementsStats.atRiskCount} high priority at risk</span>

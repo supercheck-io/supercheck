@@ -126,7 +126,11 @@ export async function GET() {
         .where(jobBaseCondition),
       
       // Recent runs (last 30 days) - only for jobs in this project
-      dbInstance.select({ count: count() })
+      dbInstance.select({
+        count: count(),
+        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`,
+        failed: sql<number>`count(*) filter (where ${runs.status} in ('failed', 'error'))`,
+      })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
@@ -445,6 +449,8 @@ export async function GET() {
         active: jobCounts[0].active,
         scheduled: jobCounts[0].scheduled,
         recentRuns30d: recentRuns[0].count,
+        passedRuns30d: Number(recentRuns[0].passed) || 0,
+        failedRuns30d: Number(recentRuns[0].failed) || 0,
         successfulRuns24h: runCounts24h[0].passed,
         failedRuns24h: runCounts24h[0].failed,
         byStatus: jobsByStatus,

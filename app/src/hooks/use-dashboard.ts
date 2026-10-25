@@ -41,6 +41,8 @@ interface JobSummary {
   total: number;
   /** Jobs with a cron schedule configured. */
   scheduled: number;
+  passedRuns30d: number;
+  failedRuns30d: number;
   successfulRuns24h: number;
   failedRuns24h: number;
   recentRuns: Array<{
@@ -242,6 +244,8 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
     jobs: {
       total: Math.max(0, Number(jobsData?.total) || 0),
       scheduled: Math.max(0, Number(jobsData?.scheduled) || 0),
+      passedRuns30d: Math.max(0, Number(jobsData?.passedRuns30d) || 0),
+      failedRuns30d: Math.max(0, Number(jobsData?.failedRuns30d) || 0),
       successfulRuns24h: Math.max(0, Number(jobsData?.successfulRuns24h) || 0),
       failedRuns24h: Math.max(0, Number(jobsData?.failedRuns24h) || 0),
       recentRuns: Array.isArray(jobsData?.recentRuns)
