@@ -265,8 +265,8 @@ supercheck job trigger <job-id> --wait --timeout 300
 supercheck --json job trigger <job-id> --wait
 
 supercheck job keys <job-id>
-supercheck job keys create <job-id> --name "CI Trigger"
-supercheck job keys create <job-id> --name "Temp Key" --expires-in 86400
+supercheck --show-secrets job keys create <job-id> --name "CI Trigger"
+supercheck --show-secrets job keys create <job-id> --name "Temp Key" --expires-in 86400
 supercheck job keys delete <job-id> <key-id>
 ```
 
