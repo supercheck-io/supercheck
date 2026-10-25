@@ -7,6 +7,7 @@ import { db } from "@/utils/db";
 import { member, organization } from "@/db/schema";
 import { getUserProjects } from "@/lib/session";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { getActiveTrial } from "@/lib/execution/trial-limits";
 import { canManageAPIKeys } from "@/lib/rbac/client-permissions";
 import {
   isDeviceAuthEnabled,
@@ -145,7 +146,10 @@ export default async function DevicePage({
       try {
         // Never let a slow billing provider hold up the consent page; unknown shows no notice.
         const access = await Promise.race([
-          subscriptionService.getSubscriptionAccessStatus(id),
+          (async () => {
+            const paid = await subscriptionService.getSubscriptionAccessStatus(id);
+            return { isActive: paid.isActive || !!(await getActiveTrial(id)) };
+          })(),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error("plan lookup timed out")), 3000)),
         ]);
         planByOrg.set(id, access.isActive);

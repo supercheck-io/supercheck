@@ -47,7 +47,6 @@ describe("DeviceApproval plan step", () => {
   ];
   const view = (list: DeviceProjectOption[]) => {
     const result = render(<DeviceApproval userCode="BCDF-GHJK" userEmail="me@example.com" projects={list} client={client} />);
-    openInfo();
     return result;
   };
 
@@ -61,8 +60,8 @@ describe("DeviceApproval plan step", () => {
 
   it("explains a missing plan without blocking approval", () => {
     view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
-    expect(screen.getByRole("note")).toHaveTextContent(/no active plan/i);
-    expect(screen.getByRole("note")).toHaveTextContent(/connect without a plan/i);
+    expect(screen.getByRole("note")).toHaveTextContent(/cloud runs need an active trial or plan/i);
+    expect(screen.getByRole("note")).toHaveTextContent(/CLI login is available/i);
     fireEvent.change(screen.getByLabelText(/code from your terminal/i), { target: { value: "BCDF-GHJK" } });
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
@@ -72,7 +71,7 @@ describe("DeviceApproval plan step", () => {
     // default project (index 1) is active, so no notice until the inactive one is chosen
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
     await chooseProject(/Alpha/);
-    expect(screen.getByRole("note")).toHaveTextContent(/no active plan/i);
+    expect(screen.getByRole("note")).toHaveTextContent(/cloud runs need an active trial or plan/i);
   });
 
   it("switches to the selected project's organization before opening checkout in a new tab", async () => {
@@ -107,6 +106,19 @@ describe("DeviceApproval plan step", () => {
     await chooseProject(/Default Project/);
     expect(screen.queryByText(/billing opened in a new tab/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose a plan" })).toBeEnabled();
+    open.mockRestore();
+  });
+
+  it("keeps billing confirmation visible after the info panel closes", async () => {
+    const tab = { location: { href: "about:blank" }, close: jest.fn() } as unknown as Window;
+    const open = jest.spyOn(window, "open").mockReturnValue(tab);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    view(withPlan({ active: false, canPurchase: true }, { active: false, canPurchase: true }));
+    openInfo();
+    fireEvent.click(screen.getByRole("button", { name: "Choose a plan" }));
+    await screen.findByText(/billing opened in a new tab/i);
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "About CLI access" }), { key: "Escape" });
+    expect(screen.getByText(/billing opened in a new tab/i)).toBeInTheDocument();
     open.mockRestore();
   });
 
@@ -169,7 +181,7 @@ describe("DeviceApproval", () => {
     expect(screen.getByText(/laptop/)).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "About CLI access" })).toBeInTheDocument();
     expect(screen.getByText(/not verified/i)).toBeInTheDocument();
-    expect(screen.queryByText("203.0.113.9")).not.toBeInTheDocument();
+    expect(screen.getByText("203.0.113.9")).toBeInTheDocument();
     expect(approve).toBeDisabled();
     fireEvent.change(input, { target: { value: "WRONG-CODE" } });
     expect(approve).toBeDisabled();
@@ -188,6 +200,31 @@ describe("DeviceApproval", () => {
     const { approve, input } = setup();
     fireEvent.change(input, { target: { value: "https://app.supercheck.io/device?code=BCDF-GHJK" } });
     expect(input).toHaveValue("BCDF-GHJK");
+    expect(approve).toBeEnabled();
+  });
+
+  it("keeps request provenance behind the info control", () => {
+    setup();
+    expect(screen.queryByText("BCDF-GHJK")).not.toBeInTheDocument();
+    expect(screen.queryByText(client.requestIp)).not.toBeInTheDocument();
+    openInfo();
+    expect(screen.getByText("BCDF-GHJK")).toBeInTheDocument();
+    expect(screen.getByText(client.requestIp)).toBeInTheDocument();
+  });
+
+  it("uses the expected code length without truncating a longer server code", () => {
+    render(<DeviceApproval userCode="BCDFGH-JKLMNP" userEmail="me@example.com" projects={projects} client={client} />);
+    fireEvent.change(screen.getByLabelText(/code from your terminal/i), { target: { value: "BCDFGH-JKLMNP" } });
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  });
+
+  it("preserves normal edits and rejects extra characters without truncating", () => {
+    const { input, approve } = setup();
+    fireEvent.change(input, { target: { value: "BCDF-XGHJK" } });
+    expect(input).toHaveValue("BCDF-XGHJK");
+    expect(approve).toBeDisabled();
+    fireEvent.change(input, { target: { value: "BCDFGHJK" } });
+    expect(input).toHaveValue("BCDFGHJK");
     expect(approve).toBeEnabled();
   });
 

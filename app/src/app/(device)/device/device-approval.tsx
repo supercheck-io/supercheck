@@ -44,20 +44,10 @@ const ERROR_COPY: Record<string, string> = {
   authentication_required: "Your session expired. Reload the page to sign in again.",
 };
 
-const CODE_LENGTH = 8;
-
-/**
- * A person often pastes the full verification URL, `?code=...`, or a code with
- * spaces and dashes. Accept all of those and keep only the eight code characters.
- */
+/** Extract a pasted URL's code without reformatting normal edits or moving the caret. */
 function normalizeConfirmation(value: string): string {
   const fromUrl = value.match(/[?&]code=([a-z0-9-]+)/i) ?? value.match(/^\s*code\s*=\s*([a-z0-9-]+)/i);
-  const raw = fromUrl ? fromUrl[1] : value;
-  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LENGTH);
-}
-
-function formatConfirmation(value: string): string {
-  return value.length > 4 ? `${value.slice(0, 4)}-${value.slice(4)}` : value;
+  return fromUrl ? fromUrl[1] : value;
 }
 
 export function DeviceApproval({ userCode, userEmail, projects, client }: Props) {
@@ -71,9 +61,10 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   const [switchingAccount, setSwitchingAccount] = useState(false);
   // The code arrives pre-filled in the URL, so a hurried click could approve a stranger's request.
   // Require the person to retype what their terminal shows.
-  const expectedCode = userCode.replace(/[^A-Z0-9]/g, "");
-  const codeMatches = typedCode.length === CODE_LENGTH && typedCode === expectedCode;
-  const codeIncomplete = typedCode.length > 0 && typedCode.length < CODE_LENGTH;
+  const expectedCode = userCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizedCode = typedCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const codeMatches = normalizedCode === expectedCode;
+  const codeIncomplete = normalizedCode.length > 0 && normalizedCode.length < expectedCode.length;
 
   const selected = projects.find((p) => p.id === projectId) ?? projects[0];
   const needsPlan = selected.plan?.active === false;
@@ -83,7 +74,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
     : typedCode.length === 0
       ? "Enter the code to enable Approve."
       : codeIncomplete
-        ? `${CODE_LENGTH - typedCode.length} more character${CODE_LENGTH - typedCode.length === 1 ? "" : "s"}.`
+        ? `${expectedCode.length - normalizedCode.length} more character${expectedCode.length - normalizedCode.length === 1 ? "" : "s"}.`
         : "That code doesn’t match the code in your terminal.";
 
   // Opens the existing checkout in a new tab so this request (and its 15-minute code) stays intact. Checkout charges
@@ -187,7 +178,7 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
   const busy = phase === "submitting" || switchingAccount;
   return (
     <form
-      className="space-y-5"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (codeMatches && !busy) void decide("approve");
@@ -214,26 +205,17 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" aria-label="About CLI access" className="space-y-3 text-sm">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Verification code</dt>
+              <dd className="break-all font-mono">{userCode}</dd>
+              <dt className="text-muted-foreground">Requested from</dt>
+              <dd className="break-all">{client.requestIp ?? "Unavailable"}</dd>
+            </dl>
             <p>Access follows your role in the selected project. The key expires in 90 days and can be revoked in CLI tokens.</p>
             {client.hostname || client.version ? (
               <p className="break-words text-xs text-muted-foreground">
                 {client.hostname ?? "Unknown device"}{client.version ? ` · CLI ${client.version}` : ""}. Device details are self-reported and not verified.
               </p>
-            ) : null}
-            {needsPlan ? (
-              <div role="note" className="space-y-2 border-t pt-3">
-                <p className="text-xs text-muted-foreground">{selected.organizationName} has no active plan. You can connect without a plan.</p>
-                {selected.plan?.canPurchase ? (
-                  <>
-                    <Button type="button" variant="outline" size="sm" onClick={openBilling} disabled={busy || billingState === "opening"}>
-                      {billingState === "opening" ? "Opening…" : "Choose a plan"}
-                    </Button>
-                    {billingState === "opened" ? <p className="text-xs text-muted-foreground">Billing opened in a new tab for {selected.organizationName}.</p> : null}
-                    {billingState === "blocked" ? <a className="block text-xs underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a> : null}
-                    {billingState === "failed" ? <p role="alert" className="text-xs text-destructive">Could not open billing. Try again.</p> : null}
-                  </>
-                ) : <p className="text-xs text-muted-foreground">Only an organization owner can choose a plan.</p>}
-              </div>
             ) : null}
           </PopoverContent>
         </Popover>
@@ -257,16 +239,16 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         <Label htmlFor="confirm-code">Code from your terminal</Label>
         <Input
           id="confirm-code"
-          value={formatConfirmation(typedCode)}
+          value={typedCode}
           onChange={(event) => setTypedCode(normalizeConfirmation(event.target.value))}
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
           maxLength={512}
-          placeholder="XXXX-XXXX"
+          placeholder={userCode.replace(/[A-Z0-9]/gi, "X")}
           className="h-11 font-mono text-base tracking-widest uppercase"
           aria-describedby="confirm-code-status"
-          aria-invalid={typedCode.length === CODE_LENGTH && !codeMatches}
+          aria-invalid={normalizedCode.length >= expectedCode.length && !codeMatches}
           disabled={busy}
         />
         <p id="confirm-code-status" aria-live="polite" className={cn("min-h-4 text-xs", codeMatches ? "text-muted-foreground" : "text-destructive")}>
@@ -274,6 +256,19 @@ export function DeviceApproval({ userCode, userEmail, projects, client }: Props)
         </p>
       </div>
 
+      {needsPlan ? (
+        <div role="note" className="space-y-1 text-xs text-muted-foreground">
+          <p>CLI login is available. Cloud runs need an active trial or plan.</p>
+          {selected.plan?.canPurchase ? (
+            <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openBilling} disabled={busy || billingState === "opening"}>
+              {billingState === "opening" ? "Opening…" : "Choose a plan"}
+            </Button>
+          ) : <p>Only an organization owner can choose a plan.</p>}
+        </div>
+      ) : null}
+      {billingState === "opened" ? <p role="status" className="text-xs text-muted-foreground">Billing opened in a new tab for {selected.organizationName}.</p> : null}
+      {billingState === "blocked" ? <a className="block text-xs underline" href="/subscribe" target="_blank" rel="noopener noreferrer">Open billing</a> : null}
+      {billingState === "failed" ? <p role="alert" className="text-xs text-destructive">Could not open billing. Try again.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <div className="grid grid-cols-2 gap-3">
         <Button type="button" variant="outline" disabled={busy} onClick={() => void decide("deny")}>Deny</Button>

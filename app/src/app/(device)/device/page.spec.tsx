@@ -8,7 +8,9 @@ const mockProjects = jest.fn();
 const mockMemberships = jest.fn();
 const mockOrgs = jest.fn();
 const mockAccess = jest.fn();
+const mockTrial = jest.fn();
 let enabled = true;
+jest.mock("@/lib/execution/trial-limits", () => ({ getActiveTrial: (...args: unknown[]) => mockTrial(...args) }));
 
 jest.mock("next/navigation", () => ({ redirect: (u: string) => mockRedirect(u), useRouter: () => ({ refresh: jest.fn() }) }));
 jest.mock("next/headers", () => ({ headers: async () => new Headers() }));
@@ -47,6 +49,7 @@ beforeEach(() => {
   mockLookup.mockResolvedValue(grant);
   mockMemberships.mockResolvedValue([{ organizationId: "o1", role: "org_owner" }]);
   mockAccess.mockResolvedValue({ isActive: true });
+  mockTrial.mockResolvedValue(undefined);
   mockOrgs.mockResolvedValue([{ id: "o1", name: "Acme Inc" }]);
   mockProjects.mockResolvedValue([project("project_admin", true)]);
 });
@@ -119,10 +122,17 @@ describe("/device page", () => {
   it("shows the plan notice for an organization without an active plan, and lets only owners purchase", async () => {
     mockAccess.mockResolvedValue({ isActive: false });
     await render_("BCDF-GHJK");
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "About CLI access" }));
-    expect(screen.getByRole("note")).toHaveTextContent(/Acme Inc has no active plan/i);
+    expect(screen.getByRole("note")).toHaveTextContent(/Cloud runs need an active trial or plan/i);
     expect(screen.getByRole("button", { name: "Choose a plan" })).toBeInTheDocument();
+  });
+
+  it("does not show a plan warning for an active trial without a paid subscription", async () => {
+    mockAccess.mockResolvedValue({ isActive: false });
+    mockTrial.mockResolvedValue({ organizationId: "o1" });
+    await render_("BCDF-GHJK");
+    expect(mockTrial).toHaveBeenCalledWith("o1");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose a plan" })).not.toBeInTheDocument();
   });
 
   it("does not offer purchase to a member who is not the organization owner", async () => {
