@@ -36,8 +36,9 @@ flowchart LR
 ## Aggregation
 
 - A regional result and aggregate monitor state are separate. Never infer global health from one region.
-- Define how missing, late, timed-out, and conflicting regional results affect aggregate status; preserve that rule across dashboards, APIs, and alert evaluation. Check cycles own that rule. Cycle status is `open`, `closed`, or `aborted` (`app/src/db/schema/monitor-cycles.ts`):
-  - `decideMonitorCycle` in `worker/src/monitor-control/cycle-policy.ts` makes the regional quorum decision.
+- Define how missing, late, timed-out, and conflicting regional results affect aggregate status; preserve that rule across dashboards, APIs, and alert evaluation. Cycle status is `open`, `closed`, or `aborted` (`app/src/db/schema/monitor-cycles.ts`), and the work is split:
+  - `decideMonitorCycle` in `worker/src/monitor-control/cycle-policy.ts` computes the regional quorum decision only.
+  - `MonitorCycleService.closeCycle` (`monitor-cycle.service.ts`) applies it: monitor status, synthetic missing-region results, and alert evaluation.
   - `monitor-cycle.service.ts` aborts cycles for paused or disabled monitors. An aborted cycle writes no synthetic failures, so it does not count against uptime.
   - `monitor-cycle.processor.ts` backs off and retries closure when a dependency check is temporarily unavailable, instead of failing the cycle.
   - `recordCycleArrival` in `worker/src/monitor/monitor.service.ts` treats a cycle owned by another monitor as absent, and a result for a closed or aborted cycle never re-evaluates it.

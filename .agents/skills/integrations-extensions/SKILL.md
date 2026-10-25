@@ -34,7 +34,7 @@ sequenceDiagram
 | `recorder/examples/todomvc-crx` | Library example |
 | `recorder/tests` | Unit, extension, and browser suites |
 | `app/src/components/recorder` | App UI and auto-connect bridge |
-| `app/src/app/api/extension` | Extension-facing API; key revocation must page past Better Auth's list cap |
+| `app/src/app/api/extension` | Extension-facing API; key lookup and revocation use a scoped direct query (`findEnabledExtensionKeys`) because Better Auth's `listApiKeys` caps unpaginated reads at 100 keys; keep it that way |
 | `app/src/app/api/recordings` | Recording persistence API |
 
 ### Security contract

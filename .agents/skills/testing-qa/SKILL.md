@@ -45,7 +45,7 @@ flowchart LR
 - Layout: `tests/<domain>/` (the configured `testDir`, including `tests/auth.setup.ts`), `fixtures/` (auth, roles, cleanup), `pages/` (page objects), `utils/` (`test-data.ts`, `api-auth.ts`, `hydration.ts`); `specs/` holds Markdown test plans, not code. Rules are in `app/e2e/COVERAGE.md`: no conditional passes or dynamic skips, dedicated identities for destructive tests, CI retries off so flakes fail visibly.
 - Authentication runs once in the setup project; reuse its storage state instead of logging in per test.
 - Most flakes are hydration races: `page.goto` resolves before React hydrates and the first click is dropped. Call `waitForHydration(page)` from `utils/hydration.ts` before interacting; do not add sleeps or retries.
-- Seed data through `utils/test-data.ts` in `beforeAll`/`afterAll`; never assume records exist.
+- Create required records in `beforeAll` through `utils/test-data.ts` and remove them in `afterAll`; never assume records exist.
 - Cancellation and other async API contracts are eventually consistent; poll for the terminal state rather than asserting immediately.
 
 ## Evidence

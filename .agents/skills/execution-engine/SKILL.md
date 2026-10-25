@@ -46,7 +46,7 @@ flowchart LR
 
 - Redis must use `maxmemory-policy noeviction`; evicting queue keys can lose or corrupt jobs.
 - General queue operations may share appropriate base connections.
-- Every `QueueEvents` consumer needs its own dedicated connection because blocking `XREAD` cannot share a normal command connection.
+- Every `QueueEvents` consumer needs its own dedicated connection because blocking `XREAD` cannot share a normal command connection. In the app, pass Redis options (`buildRedisOptions(...)`) so BullMQ creates and owns it; an external `duplicate()` gets duplicated again and leaks.
 - Do not set `commandTimeout` on shared options inherited by QueueEvents (see the note in `app/src/lib/queue.ts`); non-blocking clients such as the stalled-job handler may set it. Keep bounded connection establishment while allowing intentional failover reconnection.
 - Monitor connection count across app replicas, workers, schedulers, dashboards, and event streams.
 

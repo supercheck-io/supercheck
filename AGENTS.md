@@ -99,7 +99,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run the app and worker from sour
 ## Testing
 
 - Unit tests are colocated `*.spec.ts(x)` (Jest, React Testing Library). DB-backed tests are `*.db.spec.ts` and run only via `npm run test:db`.
-- E2E (Playwright, `app/e2e/`): authentication runs once in `tests/auth.setup.ts`; reuse its storage state. Seed data with `e2e/utils/test-data.ts` in `beforeAll`/`afterAll`. Before interacting after navigation, call `waitForHydration(page)` (`e2e/utils/hydration.ts`) instead of fixed sleeps. Click text columns in table rows, not the first column (it may hold action buttons). Rules: `app/e2e/COVERAGE.md`.
+- E2E (Playwright, `app/e2e/`): authentication runs once in `tests/auth.setup.ts`; reuse its storage state. Create the records a test needs in `beforeAll` (via `e2e/utils/test-data.ts`) and remove them in `afterAll`. Before interacting after navigation, call `waitForHydration(page)` (`e2e/utils/hydration.ts`) instead of fixed sleeps. Click text columns in table rows, not the first column (it may hold action buttons). Rules: `app/e2e/COVERAGE.md`.
 
 ## Environment
 
@@ -113,7 +113,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run the app and worker from sour
 2. **Worker scaling**: `MAX_CONCURRENT_EXECUTIONS=1` is fixed in `worker/src/common/constants/memory.constants.ts`; scale with `WORKER_REPLICAS`.
 3. **S3/RustFS**: S3 clients hardcode path-style addressing (`forcePathStyle: true`); keep it when adding a client.
 4. **Client vs server**: never import server-only modules into client components.
-5. **BullMQ QueueEvents**: never share connections; each `QueueEvents` needs its own `connection.duplicate()` (blocking XREAD). BullMQ Workers may share, since BullMQ duplicates internally.
+5. **BullMQ QueueEvents**: each `QueueEvents` needs a dedicated blocking connection (XREAD). In the app, pass Redis options (`connection: buildRedisOptions(...)` in `app/src/lib/queue.ts`) so BullMQ owns that connection; do not pass a `connection.duplicate()`, which BullMQ duplicates again and leaks. BullMQ Workers may share connections, since BullMQ duplicates internally.
 6. **App and worker deploy independently**: queue payloads, statuses, and schemas must tolerate version skew.
 
 ## Releases (human-only)
