@@ -60,7 +60,8 @@ export function SiteHeader() {
         <div className="flex min-w-0 items-center gap-8">
           <Link href="/" className={`${focusRing} flex shrink-0 items-center gap-2 rounded-md`} aria-label="Supercheck home">
             <Image src="/supercheck-logo.png" alt="" width={24} height={24} className="rounded-md" />
-            <span className="text-[17px] font-semibold tracking-tight">Supercheck</span>
+            {/* The wordmark plus the mobile links need ~410px; narrower phones keep the logo (link is aria-labelled). */}
+            <span className="hidden text-[17px] font-semibold tracking-tight min-[410px]:inline">Supercheck</span>
           </Link>
           <nav aria-label="Primary" className="hidden items-center gap-6 sm:flex">
             {navLinks.map((link) => {

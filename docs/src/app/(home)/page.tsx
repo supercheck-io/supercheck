@@ -49,6 +49,8 @@ const pillars = [
 const configExample = `import { defineConfig } from '@supercheck/cli'
 
 export default defineConfig({
+  schemaVersion: '1.0',
+  project: { organization: '<org-id>', project: '<project-id>' },
   tests: {
     playwright: { testMatch: '_supercheck_/playwright/**/*.pw.ts' },
     k6: { testMatch: '_supercheck_/k6/**/*.k6.ts' },
@@ -64,6 +66,7 @@ export default defineConfig({
   jobs: [
     {
       name: 'Nightly E2E suite',
+      tests: ['_supercheck_/playwright/checkout.pw.ts'],
       jobType: 'playwright',
       cronSchedule: '0 2 * * *',
     },
@@ -105,7 +108,7 @@ const secondaryButton =
 
 export default async function HomePage() {
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-fd-background text-fd-foreground">
+    <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
       <SiteHeader />
 
       <main>
