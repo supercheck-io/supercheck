@@ -3,13 +3,25 @@ title: CI/CD Integration
 description: Use Supercheck CLI in GitHub Actions, GitLab CI, and Docker pipelines
 ---
 
-Supercheck CLI integrates with any CI/CD platform. Trigger jobs, wait for results, and gate deployments based on test outcomes.
+Trigger jobs, wait for results, and gate deployments on test outcomes from any CI/CD platform.
 
-## GitHub Actions
+## Secrets
 
-### Reusable Workflow
+Set these in your CI/CD platform's secret store:
 
-Use the official reusable workflow to run Supercheck in your GitHub Actions pipeline:
+| Secret | Description |
+|---|---|
+| `SUPERCHECK_TRIGGER_KEY` | Job-specific trigger key (`sck_trigger_*`) for `supercheck job trigger` |
+| `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) for general API commands and `job trigger --wait` |
+
+Pass the job ID as the argument to `supercheck job trigger`; the CLI does not read a default job ID from an environment variable. Cloud users need no URL setting.
+
+## Pipelines
+
+<Tabs items={['GitHub Actions', 'GitLab CI', 'Docker']}>
+<Tab value="GitHub Actions">
+
+### Reusable workflow
 
 ```yaml title=".github/workflows/supercheck.yml"
 name: Supercheck Tests
@@ -33,7 +45,7 @@ jobs:
 
 `SUPERCHECK_TRIGGER_KEY` starts the run. `SUPERCHECK_TOKEN` is only needed here because the example uses `wait: true`.
 
-### Manual Setup
+### Manual setup
 
 ```yaml title=".github/workflows/e2e.yml"
 name: E2E Tests
@@ -68,7 +80,7 @@ jobs:
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 ```
 
-### Deployment Gating
+### Deployment gating
 
 Use the CLI exit code to stop the workflow when the run fails, is blocked, or times out:
 
@@ -81,11 +93,10 @@ Use the CLI exit code to stop the workflow when the run fails, is blocked, or ti
     SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 ```
 
----
+</Tab>
+<Tab value="GitLab CI">
 
-## GitLab CI
-
-### Basic Template
+### Basic template
 
 ```yaml title=".gitlab-ci.yml"
 stages:
@@ -107,7 +118,7 @@ supercheck:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-### With Monitoring-as-Code Deploy
+### With Monitoring-as-Code deploy
 
 Commit `supercheck.state.json` with the project so CI can map local resources to IDs created by earlier deployments. It is scoped to the API origin and actual project. Never commit the transient `supercheck.state.json.lock` file. Keep `SUPERCHECK_TOKEN` in the CI secret store. The CLI checks configured project context before syncing.
 
@@ -141,9 +152,8 @@ supercheck-deploy:
     - main
 ```
 
----
-
-## Docker
+</Tab>
+<Tab value="Docker">
 
 Set `SUPERCHECK_JOB_ID` and the required tokens in your environment. Run the CLI using the official Node.js image:
 
@@ -179,44 +189,13 @@ services:
     command: ["npm install -g @supercheck/cli && supercheck deploy --force"]
 ```
 
----
+</Tab>
+</Tabs>
 
-## Environment Setup
+## Exit Codes
 
-### Required Secrets
-
-Set these in your CI/CD platform's secret management:
-
-| Secret | Description |
-|--------|-------------|
-| `SUPERCHECK_TRIGGER_KEY` | Job-specific trigger key (`sck_trigger_*`) for `supercheck job trigger` |
-| `SUPERCHECK_TOKEN` | CLI token (`sck_live_*`) for general API commands and `job trigger --wait` |
-
-### Optional Variables
-
-| Variable | Description |
-|----------|-------------|
-| `SUPERCHECK_URL` | Self-hosted instance URL |
-
-Pass the job ID as the argument to `supercheck job trigger`; the CLI does not read a default job ID from an environment variable.
-
-### Self-Hosted
-
-```yaml
-env:
-  SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
-  SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
-  SUPERCHECK_URL: https://supercheck.yourdomain.com
-```
-
----
-
-## Exit Code Handling
-
-The CLI uses specific exit codes for CI/CD scripting:
-
-| Code | Meaning | CI/CD Action |
-|------|---------|--------------|
+| Code | Meaning | CI/CD action |
+|---|---|---|
 | `0` | Success | Continue pipeline |
 | `1` | General error (test failure, validation) | Block deployment |
 | `2` | Auth error | Check token configuration |
@@ -226,6 +205,9 @@ The CLI uses specific exit codes for CI/CD scripting:
 | `130` | Interrupted | Stream cancelled with Ctrl+C |
 
 In a non-interactive environment, an operation that requires confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the JSON plan, then explicitly pass `--force` for an authorized write. Authentication failures remain exit code `2`.
+
+<Accordions>
+<Accordion title="Handle exit codes in GitHub Actions" id="exit-code-handling">
 
 ```yaml
 # Example: Handle exit codes in GitHub Actions
@@ -242,16 +224,29 @@ In a non-interactive environment, an operation that requires confirmation refuse
   run: echo "Tests failed — check Supercheck dashboard"
 ```
 
----
+</Accordion>
+<Accordion title="Self-hosted" id="self-hosted">
+
+Set `SUPERCHECK_URL` to your instance's URL (optional variable; Supercheck Cloud needs none):
+
+```yaml
+env:
+  SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
+  SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+  SUPERCHECK_URL: https://supercheck.yourdomain.com
+```
+
+</Accordion>
+</Accordions>
 
 ## Best Practices
 
-- **Use `--json` output** for machine-readable results in pipelines
-- **Use `--envelope` with `--json`** when the workflow needs pagination metadata; default list arrays remain compatible
-- **Run `supercheck diff --json` or `supercheck deploy --dry-run --json`** to inspect a plan before a write
-- **Use `supercheck run wait <run-id>`** to resume waiting on an existing run without triggering it again
-- **Set `--timeout`** appropriate to your test suite duration
-- **Use trigger keys** (`sck_trigger_*`) for single-job CI/CD triggers (least-privilege)
-- **Cache the CLI** in your CI/CD environment to speed up builds
-- **Use `--wait`** to block the pipeline until tests complete
-- **Run `supercheck diff`** in PRs to preview config changes before merge
+| Practice | How |
+|---|---|
+| Machine-readable results | Use `--json`; add `--envelope` with `--json` for pagination metadata (default list arrays remain compatible) |
+| Inspect before writing | `supercheck diff --json` or `supercheck deploy --dry-run --json` |
+| Block until tests finish | Use `--wait`, and set `--timeout` to suit your suite |
+| Resume a wait | `supercheck run wait <run-id>` never triggers a new run |
+| Least privilege | Use trigger keys (`sck_trigger_*`) for single-job triggers |
+| Preview config changes | Run `supercheck diff` in PRs |
+| Faster builds | Cache the CLI in your CI/CD environment |

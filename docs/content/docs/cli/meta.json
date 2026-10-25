@@ -4,6 +4,7 @@
   "root": true,
   "icon": "Terminal",
   "pages": [
+    "index",
     "---Getting Started---",
     "installation",
     "authentication",

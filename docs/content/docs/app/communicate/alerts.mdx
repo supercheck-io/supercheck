@@ -1,7 +1,7 @@
 ---
 title: Alerts
 description: Multi-channel notifications for failures and recoveries
-icon: Bell
+icon: BellRing
 ---
 
 Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
@@ -155,9 +155,12 @@ To prevent notification spam during extended outages:
 <Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
 <Tab value="Email">
 
-For self-hosted deployments, an administrator configures SMTP. Cloud users select **Email** and enter recipients in the notification channel.
+Select **Email** and enter recipients in the notification channel.
 
-**Self-hosted SMTP variables:**
+<Accordions>
+<Accordion title="Self-hosted" id="self-hosted-smtp">
+
+For self-hosted deployments, an administrator configures SMTP. Set these variables:
 
 ```bash
 SMTP_HOST=smtp.resend.com
@@ -173,6 +176,9 @@ If your SMTP server does not require auth, leave `SMTP_USER` and `SMTP_PASSWORD`
 but keep `SMTP_FROM_EMAIL` set.
 
 **Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
+
+</Accordion>
+</Accordions>
 
 </Tab>
 <Tab value="Slack">
@@ -291,7 +297,8 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
 
 Use a custom body template to match the format required by third-party services. Templates must be valid JSON, and template variables use `{{variableName}}` syntax. Keep placeholders inside JSON string values such as `"summary": "{{title}}"`.
 
-**Available variables:**
+<Accordions>
+<Accordion title="Available template variables" id="template-variables">
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -319,7 +326,11 @@ Use a custom body template to match the format required by third-party services.
 | `{{splunkOnCallMessageType}}` | Alias for `victorOpsMessageType` | `CRITICAL`, `RECOVERY` |
 | `{{dedupKey}}` | Stable key for correlating related events | `monitor:uuid`, `job:uuid`, `ssl:uuid` |
 
-### PagerDuty Integration
+</Accordion>
+</Accordions>
+
+<Accordions>
+<Accordion title="PagerDuty Integration" id="pagerduty-integration">
 
 Use a webhook with a body template to send alerts to the [PagerDuty Events API v2](https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty):
 
@@ -357,7 +368,8 @@ Use a webhook with a body template to send alerts to the [PagerDuty Events API v
 PagerDuty resolves an alert only when the resolve event has the same `dedup_key` as the original trigger event. Use `{{pagerDutyEventAction}}` and `{{dedupKey}}` together so Supercheck sends `trigger` for failures and `resolve` for recoveries using the same key. PagerDuty expects `severity` to be one of `critical`, `error`, `warning`, or `info`; `{{normalizedSeverity}}` maps Supercheck `success` alerts to `info`.
 </Callout>
 
-### Splunk On-Call / VictorOps Integration
+</Accordion>
+<Accordion title="Splunk On-Call / VictorOps Integration" id="splunk-on-call-victorops-integration">
 
 Use a webhook with a body template to send alerts to the [Splunk On-Call REST endpoint](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/splunk-on-call/integrations-with-splunk-on-call/rest-endpoint-integration-for-splunk-on-call):
 
@@ -382,7 +394,8 @@ Use a webhook with a body template to send alerts to the [Splunk On-Call REST en
 Splunk On-Call only treats `CRITICAL` as an incident-opening event and `RECOVERY` as a resolve event. `{{victorOpsMessageType}}` (or its `{{splunkOnCallMessageType}}` alias) maps Supercheck trigger alerts to `CRITICAL` and recoveries to `RECOVERY`. Use `{{dedupKey}}` as `entity_id` so the resolve event closes the same incident. Do not send `trigger` or `resolve` in `message_type`; those values are treated as INFO and will not auto-resolve.
 </Callout>
 
-### OpsGenie Integration
+</Accordion>
+<Accordion title="OpsGenie Integration" id="opsgenie-integration">
 
 Use a webhook with a body template to send alerts to [OpsGenie's Alert API](https://docs.opsgenie.com/docs/alert-api):
 
@@ -413,6 +426,9 @@ Use a webhook with a body template to send alerts to [OpsGenie's Alert API](http
 <Callout type="info">
 The webhook UI supports custom JSON headers for provider API keys. Supercheck stores these headers in the encrypted provider config, masks them when the provider is loaded for editing, and never displays header values in the rendered payload preview or test diagnostics.
 </Callout>
+
+</Accordion>
+</Accordions>
 
 </Tab>
 </Tabs>

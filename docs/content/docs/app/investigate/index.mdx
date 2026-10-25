@@ -6,6 +6,18 @@ icon: Search
 
 Open an incident, run a read-only investigation, and review findings with citations. Apply fixes with your own tools, then use tests or monitors to confirm recovery.
 
+<Cards className="grid-cols-1 sm:grid-cols-3">
+<Card icon={<ShieldCheck className="text-green-500" />} title="Read-only">
+Supercheck recommends checks and fixes. It never changes your infrastructure
+</Card>
+<Card icon={<MousePointerClick className="text-blue-500" />} title="On demand">
+Opening an incident does not start an investigation. Select **Run investigation** when ready
+</Card>
+<Card icon={<Quote className="text-purple-500" />} title="Cited">
+Findings link to evidence, and gaps are stated rather than guessed
+</Card>
+</Cards>
+
 ## Investigation Workflow
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
@@ -40,38 +52,59 @@ sequenceDiagram
 </div>
 </div>
 
-## Read-Only By Design
-
-Supercheck recommends checks and fixes; it does not modify your infrastructure. Opening an incident does not start an investigation. Select **Run investigation** when you are ready.
-
 ## Native Evidence
 
-Supercheck uses stored summaries and artifact references from its tests, monitors, runs, and status pages:
+Supercheck reads stored summaries and artifact references from its own tests, monitors, runs, and status pages.
 
-- Failed monitor screenshots and Playwright videos
-- Console logs and network traces from synthetic tests
-- Historical monitor results with P50/P95/P99 latency trends
-- Run logs and step artifacts
-- Public and private status page states
+| Source | Examples |
+|---|---|
+| **Monitors** | Failed monitor screenshots, historical results with P50/P95/P99 latency trends |
+| **Synthetic tests** | Playwright videos, console logs, network traces |
+| **Runs** | Run logs and step artifacts |
+| **Status pages** | Public and private status page states |
 
-Responders can inspect available screenshots, videos, and other artifacts through their source runs and monitors. The agent reads bounded text evidence and artifact references; it does not watch videos or automatically analyze screenshot contents.
+<Callout type="info">
+The agent reads bounded text evidence and artifact references. It does not watch videos or analyze screenshot contents. Open screenshots and videos yourself from the source run or monitor.
+</Callout>
 
 ## Service Catalog
 
-Organize your system architecture by registering the systems and services you operate in the **Services** catalog. Services provide context for causal discovery, dependency tracking, and connector scoping.
+Register the systems you operate in the **Services** catalog. Services provide context for causal discovery, dependency tracking, and connector scoping. They are optional for stored-evidence investigations. See [AI SRE setup](/docs/app/admin/ai-sre-setup#services).
 
 ![Services Catalog](/screenshots/sre-services-catalog.png)
 
-## Core Navigation
+## Where to Find Things
 
 | Screen | Purpose |
 |---|---|
-| **Communicate → Alerts** | Grouped failure signals, notification history, and channels. Select **Investigate** to open an incident directly. |
-| **Investigate → [Incidents](/docs/app/investigate/incidents)** | Incident queue and detail workspaces. Run AI investigations and generate shareable evidence briefs. |
-| **Investigate → [Copilot](/docs/app/investigate/copilot)** | Interactive AI assistant for asking questions about symptoms, logs, or active incident evidence. |
-| **Investigate → Services** | Manage service metadata, ownership teams, repositories, and tier classifications. |
-| **Organization → [Integrations](/docs/app/investigate/connectors)** | Configure read-only integrations for GitHub, Kubernetes, Prometheus, Grafana, Datadog, and Loki. |
+| **Communicate → Alerts** | Grouped failure signals, notification history, and channels. Select **Investigate** to open an incident directly |
+| **Investigate → [Incidents](/docs/app/investigate/incidents)** | Incident queue and workspaces. Run investigations and generate evidence briefs |
+| **Investigate → [Copilot](/docs/app/investigate/copilot)** | Ask questions about symptoms, logs, or active incident evidence |
+| **Investigate → Services** | Service metadata, owners, repositories, and tiers |
+| **Organization → [Integrations](/docs/app/investigate/connectors)** | Read-only connectors to external tools |
 
 ## Get Started
 
-Select **Investigate** on an alert signal, or choose **Investigate → Incidents → New incident**. Follow the [incident guide](/docs/app/investigate/incidents) to investigate, save findings, and resolve. Services and live connectors are optional for stored-evidence investigations.
+<Steps>
+<Step>
+
+### Open an incident
+
+Select **Investigate** on an alert signal, or choose **Investigate → Incidents → New incident**.
+
+</Step>
+<Step>
+
+### Run the investigation
+
+Follow the [incident guide](/docs/app/investigate/incidents) to investigate, save findings, and resolve.
+
+</Step>
+<Step>
+
+### Add sources as needed
+
+[Connectors](/docs/app/investigate/connectors) are optional. Start with stored evidence.
+
+</Step>
+</Steps>
