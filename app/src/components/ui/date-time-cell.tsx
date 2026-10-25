@@ -20,10 +20,7 @@ export function DateTimeCell({ value, emptyLabel = "—", className }: DateTimeC
   }
 
   return (
-    <div
-      className={cn("flex items-center whitespace-nowrap", className)}
-      suppressHydrationWarning
-    >
+    <div className={cn("flex items-center whitespace-nowrap", className)}>
       <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
       <span suppressHydrationWarning>
         {date.toLocaleDateString("en-US", {

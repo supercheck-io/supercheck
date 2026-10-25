@@ -111,6 +111,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   },
   {
     id: "actions",
+    header: () => <span className="sr-only">Actions</span>,
     cell: ({ row, table }) => {
       const channel = row.original;
       const meta = table.options.meta as TableMeta;

@@ -264,7 +264,7 @@ function AlertsPage() {
               title="Alerts"
               description="Review alert signals, delivery history and notification channels"
               actions={
-                activeTab === "channels" ? (
+                activeTab === "channels" && (providers.length > 0 || providersLoading) ? (
                   <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Channel

@@ -36,6 +36,11 @@ describe("maskUrlPassword", () => {
     expect(maskUrlPassword(undefined)).toBeUndefined();
   });
 
+  it("handles an empty username and IPv6 hosts", () => {
+    expect(maskUrlPassword("https://:pw@example.com/")).toBe("https://:•••@example.com/");
+    expect(maskUrlPassword("http://u:pw@[::1]:8080/x")).toBe("http://u:•••@[::1]:8080/x");
+  });
+
   it("is idempotent", () => {
     const once = maskUrlPassword("https://user:pw@example.com/");
     expect(maskUrlPassword(once)).toBe(once);
