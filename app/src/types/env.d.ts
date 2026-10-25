@@ -15,7 +15,6 @@ declare namespace NodeJS {
     AWS_SECRET_ACCESS_KEY: string;
     S3_ENDPOINT: string;
     S3_JOB_BUCKET_NAME: string;
-    S3_FORCE_PATH_STYLE: string;
     S3_OPERATION_TIMEOUT: string;
     S3_MAX_RETRIES: string;
 
@@ -39,7 +38,6 @@ declare namespace NodeJS {
     REDIS_HOST: string;
     REDIS_PORT: string;
     REDIS_PASSWORD: string;
-    REDIS_URL: string;
     REDIS_SENTINELS?: string;
     REDIS_SENTINEL_MASTER?: string;
     REDIS_SENTINEL_PASSWORD?: string;

@@ -128,7 +128,6 @@ DB_USER=postgres
 DB_NAME=supercheck
 
 # Redis connection
-REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 REDIS_HOST=redis
 REDIS_PORT=6379
 # REDIS_TLS_ENABLED=false
@@ -227,7 +226,6 @@ S3_ENDPOINT=http://rustfs:9000
 # PLAYWRIGHT_VIDEO=retain-on-failure
 
 # Organization limits
-# MAX_PROJECTS_PER_ORG=10
 # MAX_DOCUMENT_SIZE_MB=10
 # MAX_DOCUMENTS_PER_PROJECT=100
 EOF

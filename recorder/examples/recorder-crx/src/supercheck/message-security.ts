@@ -26,7 +26,6 @@ export const SUPERCHECK_CLOUD_ORIGINS = [
   'https://app.supercheck.io',
   'https://supercheck.io',
   'https://demo.supercheck.dev',
-  'https://qa.supercheck.io',
 ] as const;
 
 function parseOrigin(origin: string): URL | null {
