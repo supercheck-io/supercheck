@@ -485,27 +485,33 @@ export async function fetchRequirementListItems(client: ReturnType<typeof getApi
 
 export async function fetchRemoteRequirements(client: ReturnType<typeof getApiClient>): Promise<RemoteRequirement[]> {
   const requirements: RemoteRequirement[] = []
-  const needDetail: string[] = []
+  const needDetail: Array<{ id: string; item: Record<string, unknown> }> = []
   for (const item of await fetchRequirementListItems(client)) {
     const id = safeId(item.id)
     if (!id) continue
     // Newer servers return `testIds` (and tags) on list items; older ones need a per-requirement read.
     if (Array.isArray(item.testIds) && Array.isArray(item.tags)) requirements.push(item as unknown as RemoteRequirement)
-    else needDetail.push(id)
+    else needDetail.push({ id, item })
   }
 
+  let notFound = 0
   for (let i = 0; i < needDetail.length; i += REQUIREMENT_DETAIL_CONCURRENCY) {
-    const batch = await Promise.all(needDetail.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async (id) => {
+    const batch = await Promise.all(needDetail.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async ({ id, item }) => {
       try {
         const { data } = await client.get<{ requirement?: RemoteRequirement }>(`/api/requirements/${id}`)
         return data?.requirement
       } catch (err) {
-        // Deleted between list and read.
-        if (err instanceof ApiRequestError && err.statusCode === 404) return undefined
+        if (err instanceof ApiRequestError && err.statusCode === 404) { notFound++; return { missing: item } }
         throw err
       }
     }))
-    for (const requirement of batch) if (requirement) requirements.push(requirement)
+    for (const requirement of batch) if (requirement && !('missing' in requirement)) requirements.push(requirement)
+    for (const requirement of batch) if (requirement && 'missing' in requirement) requirements.push(requirement.missing as unknown as RemoteRequirement)
+  }
+  if (notFound > 0 && notFound === needDetail.length) {
+    // Every detail read failed although the list is non-empty: this is a server without the requirement detail API,
+    // not a set of concurrent deletions. Keep the listed requirements (so none is planned for re-creation) and say so.
+    logger.warn('This server does not provide requirement details; linked tests are unknown. Upgrade the server to manage requirements as code.')
   }
   return requirements
 }

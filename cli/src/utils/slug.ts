@@ -70,39 +70,98 @@ export function extractUuidFromFilename(filename: string): string | undefined {
 
 /** Local-only annotations injected by `supercheck pull`; stripped before diff and deploy. */
 const METADATA_KEYS = 'title|priority|tags'
+type MetadataKey = 'title' | 'priority' | 'tags'
+
+const LINE_ENTRY = new RegExp(`^\\s*\\/\\/\\s*@(${METADATA_KEYS})\\s+(\\S.*?)\\s*$`)
+const DOC_ENTRY = new RegExp(`^(\\s*\\*\\s*)@(${METADATA_KEYS})\\s+(.*?)\\s*(\\*\\/)?\\s*$`)
+
+interface Header { kind: 'line' | 'jsdoc' | 'none'; first: number; last: number }
 
 /**
- * Strip `@title`, `@priority` and `@tags` metadata from a test script.
- *
- * These annotations are a local-only developer convenience injected
- * during `supercheck pull`. They should not be included in API payloads or
- * used for diff comparison — the test's own fields are the canonical source.
- *
- * Handles:
- *   - leading `// @title My Title` lines (any of the keys) followed by an optional blank line
- *   - `* @title My Title` lines inside JSDoc blocks
+ * The header is the only place annotations live: the leading run of `// @key value` lines, or a multi-line
+ * JSDoc block at the very top (after optional blank lines). Anything later in the script is never touched.
+ */
+function findHeader(lines: string[]): Header {
+  let i = 0
+  while (i < lines.length && lines[i].trim() === '') i++
+  if (i >= lines.length) return { kind: 'none', first: 0, last: -1 }
+  const top = lines[i].trimStart()
+  if (top.startsWith('/**')) {
+    if (top.includes('*/')) return { kind: 'none', first: 0, last: -1 } // single-line JSDoc: leave it alone
+    for (let j = i + 1; j < lines.length; j++) if (lines[j].includes('*/')) return { kind: 'jsdoc', first: i, last: j }
+    return { kind: 'none', first: 0, last: -1 }
+  }
+  let j = i
+  while (j < lines.length && LINE_ENTRY.test(lines[j])) j++
+  return j > i ? { kind: 'line', first: i, last: j - 1 } : { kind: 'none', first: 0, last: -1 }
+}
+
+function entryAt(header: Header, line: string, index: number): { key: string; value: string } | undefined {
+  if (header.kind === 'line') {
+    const m = LINE_ENTRY.exec(line)
+    return m ? { key: m[1], value: m[2] } : undefined
+  }
+  if (header.kind === 'jsdoc' && index > header.first && index <= header.last) {
+    const m = DOC_ENTRY.exec(line)
+    return m ? { key: m[2], value: m[3] } : undefined
+  }
+  return undefined
+}
+
+/**
+ * Strip `@title`, `@priority` and `@tags` annotations from the script header (see `findHeader`).
+ * They are a local-only convenience injected by `supercheck pull`, not part of the test.
  */
 export function stripTitleMetadata(script: string): string {
-  let result = script.replace(new RegExp(`^(?:\\/\\/\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+\\n)+\\n?`), '')
-  result = result.replace(new RegExp(`\\n\\s*\\*\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+`, 'g'), '')
-  return result
+  const lines = script.split('\n')
+  const header = findHeader(lines)
+  if (header.kind === 'none') return script
+  const out: string[] = []
+  lines.forEach((line, index) => {
+    const inHeader = index >= header.first && index <= header.last
+    if (!inHeader || !entryAt(header, line, index)) { out.push(line); return }
+    // A closing `*/` on the same line must survive.
+    if (header.kind === 'jsdoc' && line.includes('*/')) out.push(' */' + (line.endsWith('\r') ? '\r' : ''))
+  })
+  // Old pulls left one blank line after the leading `//` run; drop it with the run.
+  if (header.kind === 'line' && out[header.first]?.trim() === '') out.splice(header.first, 1)
+  return out.join('\n')
 }
 
-/** Reads a metadata annotation's value (`// @key value` or ` * @key value`). */
-export function readScriptMetadata(script: string, key: 'title' | 'priority' | 'tags'): string | undefined {
-  const match = script.match(new RegExp(`@${key}\\s+(.+)$`, 'm'))
-  return match ? match[1].replace(/\s*\*\/\s*$/, '').trim() : undefined
+/** Reads a header annotation's value, or `undefined` when the header has none. */
+export function readScriptMetadata(script: string, key: MetadataKey): string | undefined {
+  const lines = script.split('\n')
+  const header = findHeader(lines)
+  for (let index = header.first; index <= header.last; index++) {
+    const entry = entryAt(header, lines[index], index)
+    if (entry?.key === key) return entry.value.trim()
+  }
+  return undefined
 }
 
 /**
- * Sets a metadata annotation, updating an existing one, injecting into an existing JSDoc block,
- * appending to leading `// @key` lines, or prepending `// @key value` and a blank line.
+ * Sets a header annotation: updates an existing one, adds to a multi-line JSDoc header or to the leading
+ * `// @key` run, or otherwise prepends `// @key value` plus a blank line.
  */
-export function setScriptMetadata(script: string, key: 'title' | 'priority' | 'tags', value: string): string {
-  const existing = new RegExp(`(@${key}\\s+)(.+?)(\\r?\\n|\\*\\/|$)`)
-  if (existing.test(script)) return script.replace(existing, (_match, head: string, _old: string, tail: string) => `${head}${value}${tail}`)
-  if (/\/\*\*([\s\S]*?)\*\//.test(script)) return script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @${key} ${value}`)
-  const leading = script.match(new RegExp(`^(?:\\/\\/\\s*@(?:${METADATA_KEYS})\\s+[^\\n]+\\n)+`))
-  if (leading) return `${leading[0]}// @${key} ${value}\n${script.slice(leading[0].length)}`
-  return `// @${key} ${value}\n\n${script}`
+export function setScriptMetadata(script: string, key: MetadataKey, value: string): string {
+  const cr = script.includes('\r\n') ? '\r' : ''
+  const lines = script.split('\n')
+  const header = findHeader(lines)
+  for (let index = header.first; index <= header.last; index++) {
+    const entry = entryAt(header, lines[index], index)
+    if (entry?.key !== key) continue
+    lines[index] = header.kind === 'line'
+      ? `// @${key} ${value}${cr}`
+      : lines[index].replace(DOC_ENTRY, (_m, head: string, _k: string, _v: string, close?: string) => `${head}@${key} ${value}${close ? ' */' : ''}${cr}`)
+    return lines.join('\n')
+  }
+  if (header.kind === 'jsdoc') {
+    lines.splice(header.first + 1, 0, ` * @${key} ${value}${cr}`)
+    return lines.join('\n')
+  }
+  if (header.kind === 'line') {
+    lines.splice(header.last + 1, 0, `// @${key} ${value}${cr}`)
+    return lines.join('\n')
+  }
+  return `// @${key} ${value}${cr}\n${cr}\n${script}`
 }

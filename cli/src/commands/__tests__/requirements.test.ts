@@ -29,7 +29,12 @@ jest.unstable_mockModule('../../utils/spinner.js', () => ({
   withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn(),
 }))
 jest.unstable_mockModule('../../utils/prompt.js', () => ({ confirmPrompt: mockConfirmPrompt }))
-jest.unstable_mockModule('../../utils/resources.js', () => ({ fetchRequirementListItems: mockListItems }))
+jest.unstable_mockModule('../../utils/resources.js', () => ({ fetchRequirementListItems: mockListItems, dedupeTagNames: (names: string[]) => {
+    const seen = new Map<string, string>()
+    for (const n of names) if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n)
+    return [...seen.values()].sort()
+  },
+  }))
 
 const { requirementCommand } = await import('../requirements.js')
 const { CLIError } = await import('../../utils/errors.js')
@@ -92,7 +97,7 @@ describe('requirement command', () => {
     await run('create', '--title', 'Users can log in', '--priority', 'High', '--tag', 'Auth,core', '--tag', 'auth', '--external-id', 'J-1',
       '--external-url', 'https://x.test/J-1', '--description', 'd', '--test', `${T1},${T2}`, '--test', T1)
     expect(mockPost).toHaveBeenCalledWith('/api/requirements', {
-      title: 'Users can log in', description: 'd', priority: 'high', tags: ['auth', 'core'], externalId: 'J-1', externalUrl: 'https://x.test/J-1', testIds: [T1, T2],
+      title: 'Users can log in', description: 'd', priority: 'high', tags: ['Auth', 'core'], externalId: 'J-1', externalUrl: 'https://x.test/J-1', testIds: [T1, T2],
     })
     expect(mockSuccess).toHaveBeenCalled()
     expect(mockOutputMutation).toHaveBeenCalledWith(expect.objectContaining({ id: ID, action: 'created' }))

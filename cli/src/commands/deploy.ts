@@ -21,6 +21,7 @@ import pc from '../utils/colors.js'
 import { waitForRun } from '../utils/wait.js'
 import { parseIntStrict } from '../utils/number.js'
 import { applyStatusPage, validateStatusPageDefinition } from '../utils/status-pages.js'
+import { findTag } from '../utils/tag-assignment.js'
 
 /**
  * Prepare the body for API request by transforming local config shape
@@ -110,6 +111,49 @@ export function assertReferencesResolvable(actionable: ResourceChange[], state: 
   }
 }
 
+const UPGRADE_REQUIREMENTS = 'This Supercheck server does not support managing requirements through the API; upgrade the server or remove `requirements` from the config.'
+const UPGRADE_MONITOR_TAGS = 'This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitors.'
+
+/**
+ * Resolve every test/monitor tag reference (against the project's tags plus tags this deploy creates) and check
+ * the server supports the endpoints this deploy needs, all before the first write. Requirement tags are not
+ * checked: the server creates those.
+ */
+export async function preflightDeploy(
+  client: import('../api/client.js').ApiClient,
+  actionable: ResourceChange[],
+  remoteMonitorIds: string[],
+): Promise<void> {
+  const writes = actionable.filter((c) => (c.action === 'create' || c.action === 'update') && c.local)
+  const tagged = writes.filter((c) => (c.type === 'test' || c.type === 'monitor') && Array.isArray(c.local!.definition.tags) && (c.local!.definition.tags as unknown[]).length > 0)
+  if (tagged.length > 0) {
+    const declared = actionable.filter((c) => c.type === 'tag' && c.action === 'create').map((c) => c.name.toLowerCase())
+    const { data } = await client.get<Array<{ id: string; name: string }>>('/api/tags')
+    const existing = Array.isArray(data) ? data : []
+    for (const change of tagged) {
+      for (const ref of change.local!.definition.tags as unknown[]) {
+        const text = String(ref)
+        if (!findTag(existing, text) && !declared.includes(text.trim().toLowerCase())) {
+          throw new CLIError(`${change.type}/${change.name}: tag "${text}" does not exist in this project. Create it with \`supercheck tag create\` or declare it under \`tags\` in the config.`, ExitCode.ConfigError)
+        }
+      }
+    }
+  }
+
+  const probe = async (path: string, message: string, text = false) => {
+    try {
+      if (text) await (client as unknown as { getText: (p: string) => Promise<unknown> }).getText(path)
+      else await client.get(path)
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(message, ExitCode.ApiError)
+      throw error
+    }
+  }
+  if (writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
+  // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.
+  if (tagged.some((c) => c.type === 'monitor') && remoteMonitorIds[0]) await probe(`/api/monitors/${remoteMonitorIds[0]}/tags`, UPGRADE_MONITOR_TAGS)
+}
+
 async function applyTags(client: import('../api/client.js').ApiClient, resourcePath: string, refs: string[], id: string): Promise<void> {
   try {
     await setAssignedTags(client, resourcePath, await resolveTagIds(client, refs))
@@ -186,7 +230,11 @@ async function applyChange(
     }
     switch (change.action) {
       case 'create': {
-        const response = await client.post(endpoint, body)
+        let response
+        try { response = await client.post(endpoint, body) } catch (error) {
+          if (change.type === 'requirement' && error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(UPGRADE_REQUIREMENTS, ExitCode.ApiError)
+          throw error
+        }
 
         const data = response.data as Record<string, unknown>
         const entity = (data[change.type] ?? data.provider ?? data.variable ?? data.job ?? data.test ?? data) as Record<string, unknown>
@@ -311,6 +359,7 @@ export const deployCommand = new Command('deploy')
       }
 
       assertReferencesResolvable(actionable, state)
+      await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id))
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')
       if (deletions.length > 0) logger.warn(`${deletions.length} remote resource(s) will be deleted, including any created outside this config.`)

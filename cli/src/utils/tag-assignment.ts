@@ -50,6 +50,12 @@ export async function removeAssignedTags(client: ApiClient, resourcePath: string
   return setAssignedTags(client, resourcePath, current.map((t) => t.id).filter((id) => !unwanted.includes(id)))
 }
 
+/** Find a tag by id, exact name, or (as a fallback) case-insensitive name. */
+export function findTag<T extends { id: string; name: string }>(tags: T[], ref: string): T | undefined {
+  return tags.find((tag) => tag.id === ref || tag.name === ref)
+    ?? tags.find((tag) => tag.name.toLowerCase() === ref.trim().toLowerCase())
+}
+
 export function isUuid(value: string): boolean {
   return UUID.test(value)
 }

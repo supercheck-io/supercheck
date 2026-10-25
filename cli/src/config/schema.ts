@@ -86,6 +86,14 @@ export const jobDefinitionSchema = z.object({
   cronSchedule: z.string().optional(),
   status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
+}, {
+  errorMap: (issue, ctx) => {
+    if (issue.code === 'unrecognized_keys' && issue.keys.includes('tags')) {
+      const name = (ctx.data as { name?: unknown } | undefined)?.name
+      return { message: `Jobs do not support tags; remove \`tags\` from job "${typeof name === 'string' ? name : '?'}"` }
+    }
+    return { message: ctx.defaultError }
+  },
 }).strict()
 
 // --- Status Pages ---
@@ -136,7 +144,7 @@ export const statusPageDefinitionSchema = z.object({
   description: z.string().optional(),
   headline: z.string().optional(),
   supportUrl: z.string().optional(),
-  language: z.string().min(2).max(10).optional(),
+  language: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, 'Expected a language code such as "en" or "pt-BR"').optional(),
   timezone: z.string().max(50).optional(),
   customDomain: z.string().optional(),
   components: z.array(statusPageComponentDefinitionSchema).optional(),

@@ -37,7 +37,8 @@ export interface StatusPageComponent {
   id?: string
   name: string
   description?: string
-  monitors: string[]
+  /** Omitted = leave the component's monitor links unchanged; `[]` unlinks all. */
+  monitors?: string[]
   position: number
 }
 
@@ -102,9 +103,27 @@ export function statusPageToDefinition(page: Rec, components?: Rec[]): Rec {
   return def
 }
 
-/** Normalize a locally authored definition so it compares equal to `statusPageToDefinition` output. */
+/** The normalization the server applies to a support contact: an email becomes `mailto:`, a URL its canonical href. */
+export function normalizeSupportContact(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^[^\s@:]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `mailto:${trimmed}`
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol === 'mailto:' || url.protocol === 'http:' || url.protocol === 'https:') return url.toString()
+  } catch { /* the server will reject it */ }
+  return trimmed
+}
+
+/**
+ * Normalize a locally authored definition so it compares equal to `statusPageToDefinition` output, applying the
+ * same trimming/lowercasing the server does to avoid permanent diffs.
+ */
 export function normalizeLocalStatusPage(definition: Rec): Rec {
   const def: Rec = { ...definition }
+  for (const key of ['name', 'headline', 'description', 'timezone']) if (typeof def[key] === 'string') def[key] = (def[key] as string).trim()
+  if (typeof def.customDomain === 'string') def.customDomain = def.customDomain.trim().toLowerCase()
+  if (typeof def.supportUrl === 'string') def.supportUrl = normalizeSupportContact(def.supportUrl)
   if (def.branding && typeof def.branding === 'object') {
     def.branding = Object.fromEntries(
       Object.entries(def.branding as Rec).map(([key, value]) => [key, typeof value === 'string' ? value.toLowerCase() : value]),
@@ -113,7 +132,8 @@ export function normalizeLocalStatusPage(definition: Rec): Rec {
   if (Array.isArray(def.components)) {
     def.components = (def.components as Rec[]).map((component, index) => ({
       ...component,
-      monitors: uniqueSorted(Array.isArray(component.monitors) ? component.monitors : []),
+      ...(typeof component.name === 'string' ? { name: component.name.trim() } : {}),
+      ...(Array.isArray(component.monitors) ? { monitors: uniqueSorted(component.monitors) } : {}),
       position: typeof component.position === 'number' ? component.position : index,
     }))
   }
@@ -172,7 +192,7 @@ function componentChanges(local: StatusPageComponent, remote: StatusPageComponen
   if (local.name !== remote.name) changes.push('name')
   // An omitted description leaves the remote one alone; an explicit "" clears it.
   if (local.description !== undefined && local.description !== (remote.description ?? '')) changes.push('description')
-  if (JSON.stringify(uniqueSorted(local.monitors)) !== JSON.stringify(uniqueSorted(remote.monitors))) changes.push('monitors')
+  if (local.monitors !== undefined && JSON.stringify(uniqueSorted(local.monitors)) !== JSON.stringify(uniqueSorted(remote.monitors ?? []))) changes.push('monitors')
   if (local.position !== remote.position) changes.push('position')
   return changes
 }
@@ -253,20 +273,27 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
   const components: StatusPageComponent[] | undefined = Array.isArray(definition.components)
     ? (definition.components as StatusPageComponent[]).map((component) => ({
         ...component,
-        monitors: uniqueSorted((component.monitors ?? []).map((ref) => opts.resolveMonitor(ref))),
+        ...(component.monitors !== undefined ? { monitors: uniqueSorted(component.monitors.map((ref) => opts.resolveMonitor(ref))) } : {}),
       }))
     : undefined
   const settings = toApiSettings(definition)
 
+  // The first write must fail with an upgrade hint on a server without these routes, before anything is applied.
+  // 405 always means a missing route. 404 is ambiguous (missing route or deleted page): the collection POST has no
+  // page to be missing, and otherwise a probe of the page itself tells the two apart.
   let first = true
-  const call = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const call = async <T>(fn: () => Promise<T>, collection = false): Promise<T> => {
     if (!first) return fn()
     first = false
     try {
       return await fn()
     } catch (error) {
-      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) {
-        throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+      if (error instanceof ApiRequestError && error.statusCode === 405) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+      if (error instanceof ApiRequestError && error.statusCode === 404) {
+        if (collection) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+        const exists = await client.get(`/api/status-pages/${opts.id}`).then(() => true, () => false)
+        if (exists) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+        throw new CLIError(`Status page "${opts.name}" (${opts.id}) no longer exists on the server. Remove its id from the config to create it again.`, ExitCode.ApiError)
       }
       throw error
     }
@@ -288,7 +315,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
   if (opts.action === 'create') {
     const createBody: Rec = { name: settings.name }
     for (const key of ['headline', 'pageDescription']) if (settings[key] !== undefined) createBody[key] = settings[key]
-    const { data } = await call(() => client.post<Rec>('/api/status-pages', createBody))
+    const { data } = await call(() => client.post<Rec>('/api/status-pages', createBody), true)
     const created = ((data as Rec).statusPage ?? data) as Rec
     if (typeof created.id !== 'string') {
       throw new CLIError('Create succeeded but returned no ID. Inspect remote state before retrying.', ExitCode.ApiError)
@@ -323,7 +350,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
           await call(() => client.post(`/api/status-pages/${pageId}/components`, {
             name: local.name,
             ...(local.description !== undefined ? { description: local.description } : {}),
-            monitorIds: local.monitors,
+            ...(local.monitors !== undefined ? { monitorIds: local.monitors } : {}),
             position: local.position,
           }))
           continue

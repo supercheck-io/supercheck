@@ -133,10 +133,40 @@ describe('applyStatusPage', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('maps an old server on update where the first call is the components read', async () => {
-    const { client } = fakeClient({ failOn: (call) => (call.method === 'GET' ? new ApiRequestError('nope', 404) : undefined) })
-    await expect(applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition: { name: 'Acme', components: [] }, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor }))
+  it('maps a 404 on the components read to the upgrade message only when the page still exists', async () => {
+    const failOn = (call: Call) => (call.path.endsWith('/components') ? new ApiRequestError('nope', 404) : undefined)
+    const live = fakeClient({ failOn })
+    await expect(applyStatusPage(live.client, { action: 'update', id: PAGE, name: 'Acme', definition: { name: 'Acme', components: [] }, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor }))
       .rejects.toThrow(OLD_SERVER_STATUS_PAGE_MESSAGE)
+
+    const gone = fakeClient({ failOn: (call) => (call.method === 'GET' ? new ApiRequestError('nope', 404) : undefined) })
+    await expect(applyStatusPage(gone.client, { action: 'update', id: PAGE, name: 'Acme', definition: { name: 'Acme', components: [] }, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor }))
+      .rejects.toThrow('no longer exists')
+  })
+
+  it('leaves monitor links alone when a component omits monitors, and sends monitorIds only when given', async () => {
+    const remoteComponents = [{ id: 'c1', name: 'Web', description: 'x', position: 0, monitorIds: [M1] }]
+    const definition = normalizeLocalStatusPage({ name: 'Acme', components: [{ name: 'Web' }] })
+    expect((definition.components as Array<{ monitors?: string[] }>)[0].monitors).toBeUndefined()
+    const remote = statusPageToDefinition({ id: PAGE, name: 'Acme' }, remoteComponents)
+    expect(compareComponents(definition.components, remote.components)).toEqual([])
+    const { client, calls } = fakeClient({ remoteComponents })
+    await applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition, remote: { name: 'Acme' }, deleteMissing: false, resolveMonitor })
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([])
+
+    const created = fakeClient()
+    await applyStatusPage(created.client, { action: 'create', name: 'Acme', definition, deleteMissing: false, resolveMonitor })
+    expect(created.calls.find((c) => c.path.endsWith('/components'))?.body).toEqual({ name: 'Web', position: 0 })
+
+    const cleared = normalizeLocalStatusPage({ name: 'Acme', components: [{ name: 'Web', monitors: [] }] })
+    expect(compareComponents(cleared.components, remote.components)).toEqual(['components: ~ "Web" (monitors)'])
+  })
+
+  it('normalizes values the server normalizes', () => {
+    const def = normalizeLocalStatusPage({ name: ' Acme ', headline: ' Hi ', description: ' d ', customDomain: ' Status.EXAMPLE.com ', supportUrl: 'help@example.com' })
+    expect(def).toMatchObject({ name: 'Acme', headline: 'Hi', description: 'd', customDomain: 'status.example.com', supportUrl: 'mailto:help@example.com' })
+    expect(normalizeLocalStatusPage({ supportUrl: 'https://example.com' }).supportUrl).toBe('https://example.com/')
+    expect(normalizeLocalStatusPage({ supportUrl: 'mailto:a@b.co' }).supportUrl).toBe('mailto:a@b.co')
   })
 
   it('reports the created id when a later step fails', async () => {

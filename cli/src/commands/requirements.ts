@@ -8,7 +8,7 @@ import { withSpinner } from '../utils/spinner.js'
 import { requirePriority } from '../utils/priority.js'
 import { isUuid } from '../utils/tag-assignment.js'
 import { parseIntStrict } from '../utils/number.js'
-import { fetchRequirementListItems } from '../utils/resources.js'
+import { dedupeTagNames, fetchRequirementListItems } from '../utils/resources.js'
 
 interface RequirementDto {
   id: string
@@ -51,7 +51,8 @@ function requireTestIds(ids: string[]): string[] {
 }
 
 function requireTags(tags: string[]): string[] {
-  const unique = [...new Set(tags.map((tag) => tag.trim().toLowerCase()))]
+  // Keep the spelling as written; the server matches names case-insensitively.
+  const unique = dedupeTagNames(tags)
   if (unique.length > 10) throw new CLIError('A requirement can have at most 10 tags.', ExitCode.ConfigError)
   if (unique.some((tag) => tag.length > 50)) throw new CLIError('Tag names must be at most 50 characters.', ExitCode.ConfigError)
   return unique

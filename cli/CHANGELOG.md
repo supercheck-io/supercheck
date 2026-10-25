@@ -20,7 +20,7 @@
 - **Behavior change:** status page `notifications` flags have no defaults any more; an omitted flag leaves the remote value unchanged instead of resetting it.
 - **Validation change:** `tags` is no longer accepted on jobs (it was never applied), so a config containing it now fails validation. Monitors take `tags` in config, deployed and pulled.
 - Add `test create|update --priority`, `test list --priority`, `test tag add|remove <id> <tags...>`, and `@priority` / `@tags` annotations that `pull` writes into test files and `deploy` applies.
-- Requirements, status page writes and monitor tags need a Supercheck server that includes the new API; on an older server the CLI fails before writing anything.
+- Requirements, status page writes and monitor tags need a Supercheck server that includes the new API; on an older server the CLI fails with an upgrade hint before the first write (requirements, status pages and monitor tags when an existing monitor can be probed) or, for a monitor tag step with nothing to probe, right after that monitor's create. Test and monitor tags must exist or be declared under `tags` (checked before any write); requirement tags are created by the server.
 - Add `job update <id> --tests <ids...>` to replace the tests in an existing job, including dry-run support.
 
 - Publish deployment locks only after their owner information is written, so an interrupted lock creation cannot leave an empty lock that blocks later deploys.

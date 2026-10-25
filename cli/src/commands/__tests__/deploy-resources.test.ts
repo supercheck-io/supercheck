@@ -18,7 +18,7 @@ const get = jest.fn(async () => ({ data: { components: [] } }))
 const record = jest.fn()
 
 let local: unknown[] = []
-jest.unstable_mockModule('../../api/authenticated-client.js', () => ({ createAuthenticatedClient: () => ({ post, put, delete: del, get }) }))
+jest.unstable_mockModule('../../api/authenticated-client.js', () => ({ createAuthenticatedClient: () => ({ post, put, delete: del, get, getText: async () => ({ data: '' }) }) }))
 jest.unstable_mockModule('../../config/loader.js', () => ({ loadConfig: async () => ({ config: {} }) }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({
   buildLocalResources: () => local,
@@ -47,7 +47,8 @@ jest.unstable_mockModule('../../utils/managed.js', () => ({
     },
   }),
 }))
-const { deployCommand } = await import('../deploy.js')
+const { deployCommand, preflightDeploy } = await import('../deploy.js')
+const { ApiRequestError } = await import('../../utils/errors.js')
 
 beforeEach(() => {
   calls.length = 0
@@ -85,5 +86,22 @@ describe('deploy requirements and status pages', () => {
     local = [{ type: 'statusPage', name: 'Acme', definition: { name: 'Acme', components: [{ name: 'A', monitors: [] }, { name: 'A', monitors: [] }] } }]
     await expect(deployCommand.parseAsync(['node', 'deploy', '--force'])).rejects.toThrow('two components named')
     expect(post).not.toHaveBeenCalled()
+  })
+
+  describe('preflightDeploy', () => {
+    const change = (type: string, action: string, name: string, definition: Record<string, unknown> = {}) => ({ type, action, name, local: { type, name, definition } }) as never
+
+    it('fails on unknown test/monitor tags before any write, accepting case-insensitive and same-deploy tags', async () => {
+      const client = { get: async () => ({ data: [{ id: 't1', name: 'Smoke' }] }) } as never
+      await expect(preflightDeploy(client, [change('test', 'create', 'a.pw.ts', { tags: ['smoke', 'New', 'nope'] }), change('tag', 'create', 'new')], [])).rejects.toThrow('tag "nope"')
+      await expect(preflightDeploy(client, [change('monitor', 'update', 'm', { tags: ['SMOKE'] }), change('requirement', 'create', 'r', { tags: ['anything'] })], [])).resolves.toBeUndefined().catch(() => undefined)
+    })
+
+    it('reports an upgrade hint when the server lacks the requirement or monitor tag APIs', async () => {
+      const old = { get: async () => { throw new ApiRequestError('x', 404) }, getText: async () => { throw new ApiRequestError('x', 404) } } as never
+      await expect(preflightDeploy(old, [change('requirement', 'create', 'r')], [])).rejects.toThrow('does not support managing requirements')
+      const tagsOk = { get: async (path: string) => { if (path.endsWith('/tags') && path.includes('/monitors/')) throw new ApiRequestError('x', 404); return { data: [{ id: 't', name: 'a' }] } } } as never
+      await expect(preflightDeploy(tagsOk, [change('monitor', 'create', 'm', { tags: ['a'] })], ['m1'])).rejects.toThrow('monitor tag assignment')
+    })
   })
 })

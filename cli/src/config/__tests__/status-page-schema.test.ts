@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { requirementDefinitionSchema, statusPageDefinitionSchema } from '../schema.js'
+import { jobDefinitionSchema, requirementDefinitionSchema, statusPageDefinitionSchema } from '../schema.js'
 
 describe('status page schema', () => {
   it('leaves absent notification flags undefined (no defaults)', () => {
@@ -30,5 +30,19 @@ describe('requirement schema', () => {
     expect(() => requirementDefinitionSchema.parse({ title: 'R', priority: 'urgent' })).toThrow()
     expect(() => requirementDefinitionSchema.parse({ title: 'R', externalUrl: 'nope' })).toThrow()
     expect(() => requirementDefinitionSchema.parse({ title: 'R', extra: 1 })).toThrow()
+  })
+})
+
+describe('other schema rules', () => {
+  it('mirrors the server language pattern', () => {
+    expect(statusPageDefinitionSchema.parse({ name: 'A', language: 'pt-BR' })).toBeTruthy()
+    expect(() => statusPageDefinitionSchema.parse({ name: 'A', language: 'EN' })).toThrow()
+    expect(() => statusPageDefinitionSchema.parse({ name: 'A', language: 'en-us' })).toThrow()
+  })
+
+  it('rejects job tags with a clear message', () => {
+    const result = jobDefinitionSchema.safeParse({ name: 'Nightly', tests: ['a'], tags: ['x'] })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0].message).toBe('Jobs do not support tags; remove `tags` from job "Nightly"')
   })
 })

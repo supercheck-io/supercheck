@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ApiRequestError } from '../errors.js'
 import { ApiClient } from '../../api/client.js'
 import { managedState } from '../managed.js'
 import { buildLocalResources, fetchRemoteRequirements } from '../resources.js'
@@ -73,5 +74,16 @@ describe('requirement and status page references', () => {
     expect(requirements.map((r) => r.id).sort()).toEqual(['new', 'old'])
     expect(calls).toEqual(['/api/requirements', '/api/requirements/old'])
     expect(requirements.find((r) => r.id === 'old')?.testIds).toEqual([TEST_B])
+  })
+
+  it('warns and keeps listed requirements when every detail read 404s', async () => {
+    const client = {
+      get: async (path: string) => {
+        if (path === '/api/requirements') return { data: { data: [{ id: 'a', title: 'A', tags: [] }, { id: 'b', title: 'B', tags: [] }], total: 2, page: 1, pageSize: 200 } }
+        throw new ApiRequestError('missing', 404)
+      },
+    } as unknown as ApiClient
+    const requirements = await fetchRemoteRequirements(client)
+    expect(requirements.map((r) => r.id)).toEqual(['a', 'b'])
   })
 })
