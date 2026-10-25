@@ -548,6 +548,33 @@ export class DbService implements OnModuleInit {
     return true;
   }
 
+  /**
+   * Fail a run that never started, unless the user cancelled it. The marker guard sits in the same
+   * write, so a cancel landing between a separate check and the write cannot be overwritten.
+   */
+  async failRunUnlessCancelled(runId: string, reason: string): Promise<void> {
+    const [failed] = await this.db
+      .update(runs)
+      .set({
+        status: 'failed',
+        durationMs: 0,
+        completedAt: new Date(),
+        errorDetails: reason,
+      })
+      .where(
+        and(
+          eq(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+          or(
+            isNull(runs.errorDetails),
+            ne(runs.errorDetails, RUN_CANCELLATION_MARKER),
+          ),
+        ),
+      )
+      .returning({ id: runs.id });
+    if (!failed) await this.finalizeCancelledRun(runId);
+  }
+
   /** A committed terminal result makes a redelivered queue task a replay. */
   async getTerminalRun(runId: string) {
     return this.db.query.runs.findFirst({

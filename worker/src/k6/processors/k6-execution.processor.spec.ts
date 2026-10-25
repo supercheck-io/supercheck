@@ -287,6 +287,7 @@ describe('k6 container-start metering', () => {
       getRunStatusesForJob: jest.fn(),
       updateJobStatus: jest.fn(),
       updateRunStatus: jest.fn().mockResolvedValue(undefined),
+      failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
     };
     const processor = new K6ExecutionProcessor(
       {
@@ -339,7 +340,7 @@ describe('k6 container-start metering', () => {
       return base;
     };
 
-    it('fails the run that never got a slot with the capacity reason', async () => {
+    it('fails the run that never got a slot, unless cancelled, in one guarded write', async () => {
       const runK6Test = jest
         .fn()
         .mockRejectedValue(new ExecutionCapacityError('busy'));
@@ -349,45 +350,22 @@ describe('k6 container-start metering', () => {
         /capacity stayed occupied/,
       );
 
-      expect(dbService.finalizeCancelledRun).toHaveBeenCalledWith('run-id');
-      expect(dbService.updateRunStatus).toHaveBeenCalledWith(
+      expect(dbService.failRunUnlessCancelled).toHaveBeenCalledWith(
         'run-id',
-        'failed',
-        '0',
         expect.stringContaining('capacity stayed occupied'),
       );
-    });
-
-    it('keeps a run the user already cancelled as cancelled instead of failing it', async () => {
-      const runK6Test = jest
-        .fn()
-        .mockRejectedValue(new ExecutionCapacityError('busy'));
-      const { processor, dbService } = build(runK6Test);
-      dbService.finalizeCancelledRun.mockResolvedValue(true);
-
-      await expect(processor.process(exhaustedJob())).rejects.toThrow(
-        /capacity stayed occupied/,
-      );
-
       expect(dbService.updateRunStatus).not.toHaveBeenCalled();
     });
 
-    it('still fails the run when the cancellation lookup itself errors', async () => {
+    it('still gives up the job when the guarded write errors', async () => {
       const runK6Test = jest
         .fn()
         .mockRejectedValue(new ExecutionCapacityError('busy'));
       const { processor, dbService } = build(runK6Test);
-      dbService.finalizeCancelledRun.mockRejectedValue(new Error('db down'));
+      dbService.failRunUnlessCancelled.mockRejectedValue(new Error('db down'));
 
       await expect(processor.process(exhaustedJob())).rejects.toThrow(
         /capacity stayed occupied/,
-      );
-
-      expect(dbService.updateRunStatus).toHaveBeenCalledWith(
-        'run-id',
-        'failed',
-        '0',
-        expect.stringContaining('capacity stayed occupied'),
       );
     });
   });

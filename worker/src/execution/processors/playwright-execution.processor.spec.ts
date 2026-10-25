@@ -33,6 +33,7 @@ const mockDbService = {
   claimRunExecution: jest.fn(),
   finalizeCancelledRun: jest.fn().mockResolvedValue(true),
   updateRunStatus: jest.fn(),
+  failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
   updateJobStatus: jest.fn(),
   getRunStatusesForJob: jest.fn(),
   db: {
@@ -349,65 +350,33 @@ describe('PlaywrightExecutionProcessor', () => {
         ['test', mockTestTask, () => mockExecutionService.runSingleTest],
         ['job', mockJobTask, () => mockExecutionService.runJob],
       ])(
-        'fails a %s run that never got a slot with the capacity reason',
+        'fails a %s run that never got a slot, unless cancelled, in one guarded write',
         async (_kind, task, execute) => {
           execute().mockRejectedValueOnce(new ExecutionCapacityError('busy'));
-          mockDbService.finalizeCancelledRun.mockResolvedValueOnce(false);
 
           await expect(processor.process(exhausted(task))).rejects.toThrow(
             /capacity stayed occupied/,
           );
 
-          expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
+          expect(mockDbService.failRunUnlessCancelled).toHaveBeenCalledWith(
             runId,
-          );
-          expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
-            runId,
-            'failed',
-            '0',
             expect.stringContaining('capacity stayed occupied'),
-          );
-        },
-      );
-
-      it.each([
-        ['test', mockTestTask, () => mockExecutionService.runSingleTest],
-        ['job', mockJobTask, () => mockExecutionService.runJob],
-      ])(
-        'keeps a %s run the user already cancelled as cancelled instead of failing it',
-        async (_kind, task, execute) => {
-          execute().mockRejectedValueOnce(new ExecutionCapacityError('busy'));
-          mockDbService.finalizeCancelledRun.mockResolvedValueOnce(true);
-
-          await expect(processor.process(exhausted(task))).rejects.toThrow(
-            /capacity stayed occupied/,
-          );
-
-          expect(mockDbService.finalizeCancelledRun).toHaveBeenCalledWith(
-            runId,
           );
           expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
         },
       );
 
-      it('still fails the run when the cancellation lookup itself errors', async () => {
+      it('still gives up the job when the guarded write errors', async () => {
         mockExecutionService.runSingleTest.mockRejectedValueOnce(
           new ExecutionCapacityError('busy'),
         );
-        mockDbService.finalizeCancelledRun.mockRejectedValueOnce(
+        mockDbService.failRunUnlessCancelled.mockRejectedValueOnce(
           new Error('db down'),
         );
 
         await expect(
           processor.process(exhausted(mockTestTask)),
         ).rejects.toThrow(/capacity stayed occupied/);
-
-        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
-          runId,
-          'failed',
-          '0',
-          expect.stringContaining('capacity stayed occupied'),
-        );
       });
     });
 
