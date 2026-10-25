@@ -1,5 +1,6 @@
 import { expect, test } from "../../fixtures/roles.fixture";
 import { requireRbacUser } from "../../utils/env";
+import { waitForHydration } from "../../utils/hydration";
 
 type SreService = {
   id: string;
@@ -41,6 +42,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       const updatedDescription = `Updated service ${suffix}`;
 
       await page.goto("/services", { waitUntil: "load" });
+      await waitForHydration(page);
       await page.getByTestId("add-service-btn").click();
       const dialog = page.getByRole("dialog", { name: "Add service" });
       await expect(dialog).toBeVisible();
@@ -97,10 +99,13 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       await expect(page.getByRole("heading", { name })).toBeVisible();
 
       await page.goto("/services", { waitUntil: "load" });
+      await waitForHydration(page);
       const persistedRow = page.getByRole("row").filter({ hasText: name });
+      await expect(persistedRow).toBeVisible();
       await persistedRow
         .getByRole("button", { name: `Open actions for ${name}` })
         .click();
+      await expect(page.getByRole("menu")).toBeVisible();
       await page.getByRole("menuitem", { name: "Archive service" }).click();
       const archiveDialog = page.getByRole("alertdialog", {
         name: "Archive service?",

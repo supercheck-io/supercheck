@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { waitForHydration } from '../../utils/hydration';
 
 test.describe('Cross-cutting UI behavior @core', () => {
   test('key navigation remains usable at a mobile viewport @medium @accessibility', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
+    await waitForHydration(page);
     await expect(page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first().click();
     await expect(page.getByRole('link', { name: 'Tests', exact: true })).toBeVisible();
