@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
     }
 
     // Verify run exists and belongs to current project
-    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const runRecord = await db
       .select({
         id: runs.id,

@@ -38,7 +38,7 @@ export async function GET(
     const organizationId = resolvedParams.id;
     
     // Verify user is a member of this organization (implicit view permission)
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const orgData = await db
       .select({
         id: organization.id,
@@ -123,7 +123,7 @@ export async function PUT(
     const organizationId = resolvedParams.id;
     
     // Check permission using getUserOrgRole (works for both CLI tokens and session cookies)
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const orgRole = await getUserOrgRole(userId, organizationId);
     if (!orgRole) {
       return NextResponse.json(
@@ -237,7 +237,7 @@ export async function DELETE(
     
     // Check permission - only owners can delete organizations
     // Uses getUserOrgRole which works for both CLI tokens and session cookies
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const orgRole = await getUserOrgRole(userId, organizationId);
     if (!orgRole) {
       return NextResponse.json(

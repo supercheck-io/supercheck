@@ -27,7 +27,7 @@ export async function GET(
     const { id: requirementId } = await params;
 
     // Verify requirement exists and belongs to current org/project
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Requirement not found" }, { status: 404 });
     const requirement = await db
       .select({ id: requirements.id })
       .from(requirements)
@@ -114,7 +114,7 @@ export async function POST(
     }
 
     // Verify requirement exists AND belongs to current org/project to prevent IDOR
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Requirement not found" }, { status: 404 });
     const requirement = await db
       .select({ id: requirements.id })
       .from(requirements)

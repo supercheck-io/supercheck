@@ -79,7 +79,7 @@ export async function POST(
 
     // Fetch the run with organization/project info for RBAC
     // Also fetch projectId directly from runs table for playground runs (which have no jobId)
-    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const runResult = await db
       .select({
         runId: runs.id,

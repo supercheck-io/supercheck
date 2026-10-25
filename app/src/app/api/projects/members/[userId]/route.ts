@@ -33,7 +33,7 @@ export async function GET(
     }
 
     // Get project assignments for the specific user in the active organization
-    if (!isUuid((await params).userId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).userId)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const userProjectAssignments = await db
       .select({
         projectId: projectMembers.projectId,

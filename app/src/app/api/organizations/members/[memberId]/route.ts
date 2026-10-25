@@ -95,7 +95,7 @@ export async function PUT(
       role === 'project_editor' || role === 'project_admin';
 
     // Prevent changing owner role
-    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Member not found" }, { status: 404 });
     const existingMember = await db
       .select({
         id: member.userId,
@@ -375,7 +375,7 @@ export async function DELETE(
     }
 
     // Get member details for audit
-    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).memberId)) return NextResponse.json({ error: "Member not found" }, { status: 404 });
     const existingMember = await db
       .select({
         id: member.userId,

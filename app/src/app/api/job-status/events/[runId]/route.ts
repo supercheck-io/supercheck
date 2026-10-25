@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
-  if (!isUuid(runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+  if (!isUuid(runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
   const runRecord = await db
     .select({
       runId: runs.id,

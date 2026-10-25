@@ -27,7 +27,7 @@ export async function GET(
     const { id: testId } = await params;
 
     // Verify test exists and belongs to current org/project
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)
@@ -114,7 +114,7 @@ export async function POST(
     }
 
     // Verify test exists AND belongs to current org/project to prevent IDOR
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)
@@ -215,7 +215,7 @@ export async function DELETE(
     }
 
     // Verify test exists AND belongs to current org/project to prevent IDOR
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const test = await db
       .select({ id: tests.id })
       .from(tests)

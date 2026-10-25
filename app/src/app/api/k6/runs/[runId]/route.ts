@@ -37,7 +37,7 @@ export async function GET(
       );
     }
 
-    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await db
       .select({
         id: k6PerformanceRuns.id,

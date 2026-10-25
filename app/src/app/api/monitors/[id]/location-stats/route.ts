@@ -77,7 +77,7 @@ export async function GET(
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // First, find the monitor to check permissions
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
     });

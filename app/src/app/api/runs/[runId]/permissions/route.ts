@@ -29,7 +29,7 @@ export async function GET(
     }
     
     // Find the run and its associated job to get project and organization IDs
-    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await db
       .select({
         runId: runs.id,

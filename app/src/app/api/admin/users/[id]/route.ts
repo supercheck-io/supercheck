@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     await requireAdmin();
     
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const [userData] = await db
       .select()
       .from(user)
@@ -88,7 +88,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const [before] = await db
       .select({ name: user.name, email: user.email, role: user.role })
       .from(user)
@@ -147,7 +147,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }
 
     // Verify user exists before attempting deletion
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const [targetUser] = await db
       .select({ id: user.id, email: user.email })
       .from(user)
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       // Verify target user exists
-      if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+      if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
       const [targetUser] = await db
         .select()
         .from(user)

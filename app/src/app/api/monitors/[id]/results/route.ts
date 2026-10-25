@@ -102,8 +102,8 @@ export async function GET(
       );
     }
     
-    // First, find the monitor to check permissions
-    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    // Find the monitor and verify its organization and project.
+    if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
     });
@@ -115,7 +115,6 @@ export async function GET(
     if (monitor.organizationId !== authContext.organizationId || monitor.projectId !== authContext.project.id) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
-
 
 
     // Calculate offset for pagination

@@ -44,7 +44,7 @@ export async function GET(
     }
 
     // Get document to find storage path
-    if (!isUuid((await params).id)) return Response.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return Response.json({ error: "Document not found" }, { status: 404 });
     const [doc] = await db
       .select()
       .from(requirementDocuments)

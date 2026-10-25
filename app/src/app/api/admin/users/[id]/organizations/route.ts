@@ -19,7 +19,7 @@ export async function GET(
     await requireAdmin();
     
     // Get user's organization memberships with organization details
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const userOrganizations = await db
       .select({
         organizationId: member.organizationId,

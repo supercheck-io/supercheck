@@ -21,7 +21,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "API key not found" }, { status: 404 });
     const keyRecord = await db
       .select({
         id: apikey.id,
@@ -90,7 +90,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "API key not found" }, { status: 404 });
     const keyRecord = await db
       .select({
         id: apikey.id,

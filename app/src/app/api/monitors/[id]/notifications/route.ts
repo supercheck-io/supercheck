@@ -38,7 +38,7 @@ export async function GET(
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
       columns: { organizationId: true, projectId: true },
@@ -112,7 +112,7 @@ export async function POST(
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
       columns: { organizationId: true, projectId: true },
@@ -220,7 +220,7 @@ export async function DELETE(
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
 
     // Get monitor to check permissions
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
       columns: { organizationId: true, projectId: true },

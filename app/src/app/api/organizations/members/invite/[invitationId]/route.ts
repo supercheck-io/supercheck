@@ -87,7 +87,7 @@ export async function DELETE(
     }
 
     // Find the invitation and verify it belongs to this organization
-    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
     const existingInvitation = await db
       .select({
         id: invitation.id,
@@ -213,7 +213,7 @@ export async function POST(
     }
 
     // Find the invitation and verify it belongs to this organization
-    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
     const inviteDetails = await db
       .select({
         id: invitation.id,

@@ -35,7 +35,7 @@ export async function PATCH(
     }
 
     // Get current monitor status for audit logging
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const currentMonitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, id),
     });

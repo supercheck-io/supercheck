@@ -23,7 +23,7 @@ export async function GET(
     const projectId = resolvedParams.id;
 
     // Resolve permission context (2-3 DB queries total, reused for all checks)
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {
       return NextResponse.json(
@@ -107,7 +107,7 @@ export async function POST(
     const { userId } = await requireUserAuthContext((await params).id);
 
     // Resolve permission context (2-3 DB queries, replaces separate project + permission lookups)
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const permCtx = await resolveProjectPermissionContext(userId, projectId);
     if (!permCtx) {
       return NextResponse.json(

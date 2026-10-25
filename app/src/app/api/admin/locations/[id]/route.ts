@@ -77,7 +77,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check location exists
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Location not found" }, { status: 404 });
     const [existing] = await db
       .select()
       .from(locations)
@@ -217,7 +217,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
 
     // Check location exists
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Location not found" }, { status: 404 });
     const [existing] = await db
       .select()
       .from(locations)

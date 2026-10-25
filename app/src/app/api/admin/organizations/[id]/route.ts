@@ -13,7 +13,7 @@ export async function GET(
   try {
     await requireAdmin();
     
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const [orgData] = await db
       .select()
       .from(organization)
@@ -88,7 +88,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json();
     const { name, slug, logo, metadata } = body;
     
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const [updatedOrg] = await db
       .update(organization)
       .set({
@@ -126,7 +126,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     await requireAdmin();
     
     // First check if organization exists and get member count
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const [orgData] = await db
       .select()
       .from(organization)

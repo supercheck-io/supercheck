@@ -30,7 +30,7 @@ export async function GET(
     }
 
     // Verify the provider belongs to this organization and project
-    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
     const [provider] = await db
       .select({ id: notificationProviders.id })
       .from(notificationProviders)
