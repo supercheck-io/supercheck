@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ClipboardList } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Runs } from "@/components/runs";
 import { K6AnalyticsView } from "@/components/runs/analytics/k6-analytics-view";
@@ -26,9 +27,12 @@ export function RunsViewTabs() {
   };
 
   return (
-    <Tabs value={view} onValueChange={handleViewChange} className="mt-4">
+    <Tabs value={view} onValueChange={handleViewChange} className="space-y-4">
       <TabsList>
-        <TabsTrigger value="all">All runs</TabsTrigger>
+        <TabsTrigger value="all" className="gap-2">
+          <ClipboardList className="h-4 w-4" />
+          All runs
+        </TabsTrigger>
         <TabsTrigger value="k6" className="gap-2">
           <K6Logo className="h-4 w-4" />
           Performance (k6)
@@ -41,10 +45,10 @@ export function RunsViewTabs() {
       <TabsContent value="all">
         <Runs />
       </TabsContent>
-      <TabsContent value="k6" className="mt-4">
+      <TabsContent value="k6">
         <K6AnalyticsView />
       </TabsContent>
-      <TabsContent value="playwright" className="mt-4">
+      <TabsContent value="playwright">
         <PlaywrightAnalyticsView />
       </TabsContent>
     </Tabs>

@@ -20,7 +20,6 @@ import {
   Home as HomeIcon,
   Globe,
   RefreshCw,
-  Code,
   ChevronDown,
 } from "lucide-react";
 import { useMemo, useSyncExternalStore } from "react";
@@ -33,8 +32,6 @@ import {
   YAxis,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
   Cell,
   LineChart,
   Line,
@@ -48,14 +45,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { HealthInfo } from "@/components/dashboard/health-info";
 import { MetricCard } from "@/components/dashboard/metric-card";
-import {
-  OpenIncidentsPanel,
-  RecentAlertsPanel,
-  RecentFailuresPanel,
-} from "@/components/dashboard/dashboard-panels";
+import { NeedsAttentionCard } from "@/components/dashboard/dashboard-panels";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { formatTestTypeBreakdown } from "@/lib/dashboard/test-types";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useOpenIncidents } from "@/hooks/use-open-incidents";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
@@ -137,16 +132,6 @@ const formatCompactNumber = (value: number): string => {
   return m >= 100 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
 };
 
-const TEST_TYPE_COLORS: Record<string, string> = {
-  browser: "var(--chart-1)",
-  api: "var(--chart-2)",
-  database: "var(--chart-3)",
-  custom: "var(--chart-4)",
-  performance: "var(--chart-5)",
-};
-const testTypeColor = (type: string) =>
-  TEST_TYPE_COLORS[type.toLowerCase()] ?? "var(--muted-foreground)";
-
 const chartConfig = {
   uptime: { label: "Uptime %", color: "var(--success)" },
   executions: { label: "Executions", color: "var(--chart-1)" },
@@ -174,27 +159,30 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="h-full">
+    <Card className="flex h-full min-h-0 flex-col">
       <CardHeader className="space-y-1 px-4 pb-2 pt-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           {icon}
           {title}
         </CardTitle>
-        <CardDescription className="text-xs">{description}</CardDescription>
+        <CardDescription className="line-clamp-1 text-xs" title={description}>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="px-4 pb-4 pt-2">{children}</CardContent>
+      <CardContent className="px-4 pb-4 pt-2 lg:min-h-0 lg:flex-1">{children}</CardContent>
     </Card>
   );
 }
 
 function ChartEmpty({ icon, message }: { icon: React.ReactNode; message: string }) {
   return (
-    <div className="flex h-44 flex-col items-center justify-center gap-2 text-muted-foreground">
+    <div className="flex h-44 flex-col items-center justify-center gap-2 text-muted-foreground lg:h-full">
       {icon}
       <p className="text-sm">{message}</p>
     </div>
   );
 }
+
+/** Chart rows share the remaining viewport height on desktop so the page never scrolls. */
+const rowClass = "grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)]";
 
 const mutedIcon = "h-4 w-4 text-muted-foreground";
 
@@ -418,10 +406,10 @@ export default function Home() {
   }
 
   return (
-    <div className="overflow-hidden">
+    <div className="overflow-hidden lg:flex lg:h-[calc(100svh-var(--dashboard-chrome))] lg:min-h-[640px] lg:flex-col [--dashboard-chrome:4rem]">
       <PageBreadcrumbs items={breadcrumbs} />
-      <Card className="shadow-sm m-4">
-        <CardContent className="p-6 overflow-hidden">
+      <Card className="shadow-sm m-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+        <CardContent className="p-6 overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
@@ -431,6 +419,8 @@ export default function Home() {
                 Overview of project&apos;s health, and key insights.
               </p>
             </div>
+            <div className="flex items-center gap-1.5">
+            <HealthInfo />
             <Popover>
               <PopoverTrigger asChild>
                 <button
@@ -519,6 +509,7 @@ export default function Home() {
                 </div>
               </PopoverContent>
             </Popover>
+            </div>
           </div>
 
           <DashboardOverview
@@ -586,7 +577,7 @@ function DashboardOverview({
   );
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       {/* KPI row */}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <MetricCard
@@ -621,7 +612,7 @@ function DashboardOverview({
           href="/tests"
           value={stats.tests > 0 ? formatCompactNumber(stats.tests) : undefined}
           emptyMessage="No tests yet"
-          caption="Saved test cases"
+          caption={formatTestTypeBreakdown(tests.byType) || "Saved test cases"}
         />
         <MetricCard
           testId="metric-jobs"
@@ -682,29 +673,21 @@ function DashboardOverview({
         />
       </div>
 
-      {/* List panels */}
-      <div
-        className={cn(
-          "grid gap-4",
-          incidentsResult && !incidentsResult.available && !incidentsLoading
-            ? "lg:grid-cols-2"
-            : "lg:grid-cols-3"
-        )}
-      >
-        <RecentFailuresPanel runs={jobs.recentRuns} />
-        <OpenIncidentsPanel result={incidentsResult} isLoading={incidentsLoading} />
-        <RecentAlertsPanel alerts={dashboardData.alerts} />
-      </div>
-
-      {/* Charts, row 1 */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Row 2: attention + status charts */}
+      <div className={rowClass}>
+        <NeedsAttentionCard
+          runs={jobs.recentRuns}
+          alerts={dashboardData.alerts}
+          incidentsResult={incidentsResult}
+          incidentsLoading={incidentsLoading}
+        />
         <ChartCard
           title="Job Status"
           description="Successful vs failed (including errors) job runs, last 30 days"
           icon={<CalendarClock className={mutedIcon} />}
         >
           {chartData.jobRunsTotal > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.jobRunsData}>
                   <XAxis dataKey="name" fontSize={11} tickLine={false} />
@@ -729,7 +712,7 @@ function DashboardOverview({
           icon={<Globe className={mutedIcon} />}
         >
           {monitors.total > 0 && chartData.monitorStatusData.length > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.monitorStatusData}>
                   <XAxis dataKey="name" fontSize={11} tickLine={false} />
@@ -747,65 +730,17 @@ function DashboardOverview({
             <ChartEmpty icon={<Globe className="h-6 w-6" />} message="No monitors configured" />
           )}
         </ChartCard>
-
-        <ChartCard
-          title="Test Types"
-          description="Distribution of test types"
-          icon={<Code className={mutedIcon} />}
-        >
-          {tests.byType && tests.byType.length > 0 ? (
-            <div className="flex h-44 flex-col items-center justify-center">
-              <ChartContainer config={chartConfig} className="h-28 w-28">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={tests.byType.map((item) => ({
-                        name: item.type,
-                        value: item.count,
-                        fill: testTypeColor(item.type),
-                      }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={22}
-                      outerRadius={48}
-                      dataKey="value"
-                      strokeWidth={0}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                {tests.byType.map((item) => (
-                  <div
-                    key={item.type}
-                    className="flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-0.5"
-                  >
-                    <div
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: testTypeColor(item.type) }}
-                    />
-                    <span className="text-xs capitalize text-muted-foreground">{item.type}</span>
-                    <span className="text-xs font-semibold tabular-nums">{item.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <ChartEmpty icon={<Code className="h-6 w-6" />} message="No tests yet" />
-          )}
-        </ChartCard>
       </div>
 
-      {/* Charts, row 2 */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Row 3: activity charts */}
+      <div className={rowClass}>
         <ChartCard
           title="Test Activity"
           description="Playground test executions, last 30 days"
           icon={<Activity className={mutedIcon} />}
         >
           {tests.playgroundExecutions30d > 0 ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData.testActivityData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />
@@ -834,7 +769,7 @@ function DashboardOverview({
           icon={<Activity className={mutedIcon} />}
         >
           {hasJobActivity ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData.jobActivityData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />
@@ -857,7 +792,7 @@ function DashboardOverview({
           icon={<TrendingUp className={mutedIcon} />}
         >
           {monitors.total > 0 && chartData.hasUptimeData ? (
-            <ChartContainer config={chartConfig} className="h-44 w-full">
+            <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData.uptimeTrendData}>
                   <XAxis dataKey="date" {...DAY_AXIS} />

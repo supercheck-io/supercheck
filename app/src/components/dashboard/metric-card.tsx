@@ -17,12 +17,13 @@ export interface MetricInfo {
   ariaLabel: string;
 }
 
-function MetricInfoButton({
+export function MetricInfoButton({
   title,
   description,
   bullets,
   ariaLabel,
-}: MetricInfo) {
+  align = "start",
+}: MetricInfo & { align?: "start" | "center" | "end" }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -35,7 +36,7 @@ function MetricInfoButton({
           <Info className="h-3.5 w-3.5" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 space-y-2 p-4" side="bottom" align="start" sideOffset={8}>
+      <PopoverContent className="w-72 space-y-2 p-4" side="bottom" align={align} sideOffset={8}>
         <p className="text-sm font-semibold text-foreground">{title}</p>
         <p className="text-xs leading-relaxed text-muted-foreground">
           {description}
