@@ -39,9 +39,10 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 
 | Mode | Endpoint rules |
 |---|---|
-| **Supercheck Cloud, Direct** | Cannot reach private IPs or private DNS names |
-| **Self-hosted Direct, Private Agent** | Allow internal HTTP or HTTPS endpoints |
-| **All modes** | Reject loopback and cloud metadata endpoints, and credentials embedded in URLs |
+| **Supercheck Cloud, Direct** | HTTPS only. Cannot reach localhost, private, or reserved addresses, including cloud metadata |
+| **Private Agent** | Reaches internal HTTP or HTTPS endpoints, except localhost and cloud metadata endpoints |
+| **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints |
+| **All modes** | Reject credentials embedded in URLs |
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 

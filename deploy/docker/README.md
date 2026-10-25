@@ -78,7 +78,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `AI_MODEL` | AI model name | `gpt-6-luna` |
 | `OPENAI_API_KEY` | AI features (for default OpenAI provider) | - |
 | `DEEPSEEK_API_KEY` | API key required when `AI_PROVIDER=deepseek` | - |
-| `MISSING_CYCLE_CLOSURE_ENABLED` | App-side: close each multi-region monitor run at a deadline and count silent regions as failed. Run the `monitor-control` profile first; see the [self-hosting guide](https://supercheck.io/docs/app/deployment/self-hosted#missing-region-detection-optional) | `false` |
+| `MISSING_CYCLE_CLOSURE_ENABLED` | App-side: close each multi-region monitor run at a deadline and count silent regions as failed. Run the `monitor-control` profile first; see [missing-region detection](https://supercheck.io/docs/app/deployment/multi-server#missing-region-detection-optional) | `false` |
 | `MISSING_CYCLE_DEADLINE_SECONDS` | App-side: seconds a run waits before silent regions count as failed (two check timeouts are added) | `300` |
 | `COMPOSE_PROFILES` | Optional profiles started by `docker compose up`: `https`, `private-agent`, `monitor-control` | - |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |

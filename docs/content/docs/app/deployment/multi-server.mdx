@@ -112,11 +112,11 @@ Never expose PostgreSQL, Redis, or S3 publicly. Allow only worker hosts. macOS, 
 
 In [Super Admin](/docs/app/admin/super-admin#locations), add and enable one execution entry per worker, such as `worker-main` and `worker-extra`. Each worker's `WORKER_LOCATION` must match its entry's code.
 
-Set the main server's `.env`. `RUNNING_CAPACITY` is the total number of workers across all servers (3 in this example); the app admits at most that many concurrent runs:
+Set the main server's `.env`. `RUNNING_CAPACITY` is the total number of workers across all servers (2 in this example); the app admits at most that many concurrent runs:
 
 ```dotenv
 WORKER_LOCATION=worker-main
-RUNNING_CAPACITY=3
+RUNNING_CAPACITY=2
 ```
 
 In `docker-compose.yml`, replace the `127.0.0.1` PostgreSQL, Redis, and RustFS port bindings with the server's **private VPN address**:
@@ -210,3 +210,21 @@ An unknown token stops the worker at startup. Which workloads users may run in a
 `CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
 
 For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/docker-compose-worker.yml).
+
+## Missing-region detection
+
+With workers in several locations, a silent region holds up a monitor result by default. This option closes each run at a deadline and counts silent regions as failed. See [Regions That Stop Responding](/docs/app/monitor#regions-that-stop-responding).
+
+<Accordions>
+<Accordion title="Missing-region detection (optional)" id="missing-region-detection-optional">
+
+| Step | Action |
+|---|---|
+| **1. Start the controller** | Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (for example `https,monitor-control`), run `sudo docker compose up -d monitor-control`, and keep exactly one instance |
+| **2. Check it** | `sudo docker compose ps monitor-control` shows it healthy |
+| **3. Turn it on** | Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app |
+
+`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`, plus two check timeouts) sets how long a run waits. To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, keep `monitor-control` running until open runs close, then remove it from `COMPOSE_PROFILES`.
+
+</Accordion>
+</Accordions>

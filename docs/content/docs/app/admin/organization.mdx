@@ -72,11 +72,15 @@ Sign up or sign in with the invited email address, then accept the invitation to
 </Tab>
 </Tabs>
 
-## Leave an organization
+<Accordions>
+<Accordion title="Leave an organization" id="leave-an-organization">
 
 Select a project in the team you want to leave, open your profile menu, and choose **Leave organization**. Confirm the organization name before leaving. This removes your membership and project assignments in that team and clears its selected context from all your sessions. Other memberships remain available through the project selector. If you have no memberships left, the normal setup flow creates your personal organization and project.
 
 Organization owners cannot leave. Transfer ownership or delete the organization first. Leaving requires an interactive browser session; CLI tokens cannot perform this action. An administrator must invite you again to rejoin.
+
+</Accordion>
+</Accordions>
 
 ## Roles
 
@@ -138,9 +142,11 @@ Track all actions performed within your organization. View who did what and when
 
 The audit log captures events across these categories:
 
-- **Authentication** — Login, logout, password resets
-- **Authorization** — Role changes, permission grants
-- **Resource Management** — Test creation, monitor updates, job deletions
-- **Execution** — Manual test runs, job triggers
-- **Configuration** — Settings changes, integration updates
-- **Security** — Failed logins, unauthorized access attempts
+| Category | Examples |
+|---|---|
+| **Authentication** | Login, logout, password resets |
+| **Authorization** | Role changes, permission grants |
+| **Resource Management** | Test creation, monitor updates, job deletions |
+| **Execution** | Manual test runs, job triggers |
+| **Configuration** | Settings changes, integration updates |
+| **Security** | Failed logins, unauthorized access attempts |

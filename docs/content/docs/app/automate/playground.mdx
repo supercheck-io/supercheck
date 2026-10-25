@@ -110,7 +110,13 @@ Check the target URL, selectors, credentials, waits, and assertions. Run the scr
 
 After a failed run, use AI Fix to review suggested changes. Apply only changes you understand, then run the test again.
 
+<Accordions>
+<Accordion title="Access checks and AI credits" id="ai-fix-access">
+
 Keep the run's organization selected and make sure you can view its project. AI Fix checks access to the report before using an AI credit. Cloud AI Create and Fix also share an hourly organization token guard; if it is reached, wait before retrying. Closing or cancelling a generated response stops the active provider request.
+
+</Accordion>
+</Accordions>
 
 ![AI Fix Button](/screenshots/ai-fix-button.png)
 
@@ -135,7 +141,8 @@ AI Fix is effective for code-level issues that can be resolved by modifying your
 | **Assertion Failures** | Expected value mismatch | Corrects assertion or expected value |
 | **Navigation Errors** | Page not loading, wrong URL | Fixes URL or adds navigation waits |
 
-### When AI Fix Shows Guidance Instead
+<Accordions>
+<Accordion title="When AI Fix shows guidance instead" id="ai-fix-guidance">
 
 Some failures require manual investigation rather than code changes. In these cases, AI Fix displays a guidance modal with troubleshooting steps:
 
@@ -143,6 +150,9 @@ Some failures require manual investigation rather than code changes. In these ca
 - **Authentication Failures** — Invalid credentials, expired tokens, 401/403 errors
 - **Infrastructure Problems** — Database down, service unavailable
 - **Permission Errors** — Access denied, insufficient privileges
+
+</Accordion>
+</Accordions>
 
 <Callout type="info">
 Review the suggested diff before applying it, then run the test again to verify the change.

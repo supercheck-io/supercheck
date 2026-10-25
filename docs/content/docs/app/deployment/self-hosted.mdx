@@ -129,7 +129,8 @@ Create your account, then add a test and run it.
 On a public server, sign-up is open to anyone who can reach the URL. Create your account first, then set `SIGNUP_ENABLED=false` in `.env` (or restrict it with `ALLOWED_EMAIL_DOMAINS`) and recreate the app. See [Optional configuration](#optional-configuration).
 </Callout>
 
-### Installer options
+<Accordions>
+<Accordion title="Installer options and exit codes" id="installer-options">
 
 | Option | Purpose |
 |--------|---------|
@@ -145,9 +146,12 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 
 Exit codes: `0` healthy, `1` failed, `2` bad usage, `3` installed but the health check reports a problem. The log is `/var/log/supercheck/install.log`.
 
+</Accordion>
+</Accordions>
+
 ## Verify
 
-Run from `/opt/supercheck/deploy/docker` (or your `--dir`):
+Run from `/opt/supercheck/deploy/docker` (or `<your --dir>/deploy/docker`):
 
 ```bash
 sudo docker compose ps
@@ -156,7 +160,8 @@ curl --fail --silent --show-error http://localhost:3000/api/health
 
 All services should be healthy and the health endpoint should return `{"status":"ok"...`. For HTTPS, also open `https://<your-domain>/api/health`.
 
-### What gets installed
+<Accordions>
+<Accordion title="What gets installed" id="what-gets-installed">
 
 | Service | Purpose | Host port |
 |---------|---------|-----------|
@@ -167,80 +172,74 @@ All services should be healthy and the health endpoint should return `{"status":
 | `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` |
 | `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
-Sandboxed execution pods can reach public destinations, but not private network addresses (RFC1918, link-local, CGNAT, tailnet). Use a [Private Agent](/docs/app/deployment/private-agent) when checks need services inside another network.
+Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet). Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
+
+</Accordion>
+</Accordions>
 
 ## Optional configuration
 
-Edit `.env` in `deploy/docker`, then apply it:
+Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recreate app worker`.
 
-```bash
-sudo docker compose up -d --force-recreate app worker
-```
-
-### Common settings
+<Accordions>
+<Accordion title="Common settings" id="common-settings">
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SIGNUP_ENABLED` | `true` | `false` disables open registration (invited users still work) |
 | `ALLOWED_EMAIL_DOMAINS` | empty | Comma-separated signup allowlist, for example `acme.com,acme.org` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASSWORD` | unset | Email for alerts and invitations (disabled without `SMTP_HOST`) |
-| `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers are listed in the [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#environment-variables) |
-| `SRE_AUTOMATION_ENABLED` | `false` | Automatic alert triage; can incur provider charges. Set in app and worker. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) |
-| `DEVICE_AUTH_ENABLED` | `false` | Let `supercheck login` sign in through the browser. Needs HTTPS (or localhost) |
-| `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik (for example a CDN), so rate limits see real client IPs |
-| `TRUST_CF_CONNECTING_IP` | `false` | Set `true` only if the server is reachable exclusively through Cloudflare |
+| `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#environment-variables) |
+| `SRE_AUTOMATION_ENABLED` | `false` | Automatic alert triage; can incur provider charges. Set in app and worker |
+| `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
+| `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
+| `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
 
-To grant your account Super Admin access:
+</Accordion>
+<Accordion title="Super Admin access" id="super-admin-access">
 
 ```bash
 sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.com
 ```
 
-### Connecting AI Tools (MCP, off by default)
+</Accordion>
+<Accordion title="Connecting AI tools (MCP)" id="connecting-ai-tools-mcp-off-by-default">
 
-Lets AI tools such as Claude, Cursor, and VS Code read one project you choose, over OAuth 2.1 with read-only access. See [Supercheck MCP](/docs/mcp).
+Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) read one project over read-only OAuth 2.1.
 
-1. Set `MCP_SERVER_ENABLED=true` in `.env` and recreate the app: `sudo docker compose up -d --force-recreate app`.
-2. Make sure `BETTER_AUTH_URL` is the public HTTPS URL (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN`; the app refuses to start with MCP enabled otherwise.
-3. Confirm: `curl -s https://your-host/api/config/app` reports `mcp.enabled: true`, and `curl -si -X POST https://your-host/api/mcp` returns `401` with a `WWW-Authenticate` header.
+| Step | Action |
+|---|---|
+| **1. Enable** | Set `MCP_SERVER_ENABLED=true` and recreate the app |
+| **2. Public URL** | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` for local use). Docker derives it from `APP_DOMAIN` |
+| **3. Check** | `/api/config/app` reports `mcp.enabled: true`; `POST /api/mcp` returns `401` with `WWW-Authenticate` |
 
-Set `MCP_DYNAMIC_CLIENT_REGISTRATION=false` to accept only clients that identify themselves with a Client ID Metadata Document. Browser-based clients cannot call the OAuth endpoints (no CORS headers).
+Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
 
-### Missing-Region Detection (Optional)
+</Accordion>
+</Accordions>
 
-By default a multi-region monitor waits for every region, so one silent region blocks the result. This option closes each run at a deadline and counts silent regions as failed. It is off by default.
+## Maintenance
 
-1. Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (for example `https,monitor-control`) and run `sudo docker compose up -d monitor-control`. Run exactly one instance.
-2. Confirm it is healthy with `sudo docker compose ps monitor-control`.
-3. Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app.
+<Accordions>
+<Accordion title="Updates" id="updates">
 
-`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`) sets how long a run waits; two check timeouts are added. To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, keep `monitor-control` running until open runs have closed, then stop it and remove it from `COMPOSE_PROFILES`.
+<Callout type="warn">
+Installations from a release that bundled MinIO must migrate storage to RustFS before updating. Run `migrate-minio-to-rustfs.sh` from your current checkout; see the [deployment README](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#upgrading).
+</Callout>
 
-## Updates
-
-Back up first (see [Backups](#backups)). From `deploy/docker`, set `SUPERCHECK_VERSION` in `.env` to the release you want, then run:
+Back up first. From `deploy/docker`, set `SUPERCHECK_VERSION` in `.env`, then:
 
 ```bash
 sudo docker compose pull
 sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
 ```
 
-Migrations run automatically. Keep your data volumes; never run `docker compose down -v` unless you intend to delete the database, artifacts, and queue.
+Migrations run automatically. Never run `docker compose down -v`; it deletes the database, artifacts, and queue. If workers cannot read their kubeconfig after an update, re-run `sudo bash setup-k3s.sh`.
 
-If the restricted worker kubeconfig is not group-readable by the worker's `pwuser` (GID 1001), re-run `sudo bash setup-k3s.sh`, or run this on every host that runs workers. Never apply it to the admin `/etc/rancher/k3s/k3s.yaml`:
+</Accordion>
+<Accordion title="Backups" id="backups">
 
-```bash
-sudo chgrp 1001 /etc/rancher/k3s/supercheck-worker.kubeconfig
-sudo chmod 0440 /etc/rancher/k3s/supercheck-worker.kubeconfig
-```
-
-<Callout type="warn">
-Installations from a release that bundled MinIO must migrate storage to RustFS before updating. Run `migrate-minio-to-rustfs.sh` from your current checkout; see the [deployment README](https://github.com/supercheck-io/supercheck/blob/v1.3.7-canary.16/deploy/docker/README.md#upgrading).
-</Callout>
-
-## Backups
-
-Back up PostgreSQL, the `rustfs-data` volume, `.env`, and (for HTTPS) the `traefik-letsencrypt` volume before upgrades. Keep `.env` private and off the server: it holds the database password, `BETTER_AUTH_SECRET`, and `SECRET_ENCRYPTION_KEY`, which you need to read encrypted data.
+Back up PostgreSQL, the `rustfs-data` volume, `.env`, and (for HTTPS) the `traefik-letsencrypt` volume. Keep `.env` private and off the server: its secrets are needed to read encrypted data.
 
 ```bash
 install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
@@ -248,6 +247,9 @@ install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
 ```
 
 The SQL export does not include files, `.env`, or certificates.
+
+</Accordion>
+</Accordions>
 
 ## Next steps
 

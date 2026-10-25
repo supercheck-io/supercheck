@@ -3,17 +3,15 @@ title: Configuration
 description: supercheck.config.ts reference and project structure
 ---
 
-## Config File
+The CLI uses a **TypeScript configuration file** with full IntelliSense via `defineConfig()`.
 
-Supercheck CLI uses a **TypeScript configuration file** with full IntelliSense via `defineConfig()`.
-
-```
-./supercheck.config.ts            # Project configuration (checked into repo)
-./supercheck.config.local.ts      # Local overrides (gitignored, optional)
-```
+| File | Purpose |
+|---|---|
+| `./supercheck.config.ts` | Project configuration (checked into the repo) |
+| `./supercheck.config.local.ts` | Local overrides (gitignored, optional) |
 
 <Callout type="warn">
-  Config files must **never** contain tokens. The CLI scans for token patterns (`sck_live_*`, `sck_trigger_*`, `sck_test_*`) and rejects any config containing them.
+Config files must **never** contain tokens. The CLI scans for token patterns (`sck_live_*`, `sck_trigger_*`, `sck_test_*`) and rejects any config containing them.
 </Callout>
 
 The CLI rejects unknown keys in typed configuration sections so misspellings surface during `config validate` or a sync operation. Provider-specific `config` maps remain extensible.
@@ -82,58 +80,22 @@ export default defineConfig({
 })
 ```
 
-## Configuration Precedence
+## Precedence
 
-Settings are resolved in this order (highest to lowest priority):
+Settings resolve in this order, highest priority first:
 
-1. **CLI flags** — `--url`, `--config`, etc.
-2. **Environment variables** — `SUPERCHECK_URL`, `SUPERCHECK_ORG`, `SUPERCHECK_PROJECT`
-3. **`supercheck.config.local.ts`** — Local overrides (deep-merged)
-4. **`supercheck.config.ts`** — Project defaults
+| # | Source | Examples |
+|---|---|---|
+| 1 | **CLI flags** | `--url`, `--config` |
+| 2 | **Environment variables** | `SUPERCHECK_URL`, `SUPERCHECK_ORG`, `SUPERCHECK_PROJECT` |
+| 3 | **`supercheck.config.local.ts`** | Local overrides (deep-merged) |
+| 4 | **`supercheck.config.ts`** | Project defaults |
 
-## Config Path Override
-
-```bash
-# Use a specific config file
-supercheck deploy --config ./configs/staging.config.ts
-```
-
-Supported formats: `.ts`, `.js`, `.mjs`
-
-## Self-Hosted Configuration
-
-Use the HTTPS URL of your self-hosted instance. If it is not configured yet, follow the [production deployment guide](/docs/app/deployment/self-hosted).
-
-```bash
-# Self-hosted setup (that's all you need!)
-export SUPERCHECK_URL="https://supercheck.yourdomain.com"
-export SUPERCHECK_TOKEN="sck_live_..."
-
-supercheck whoami
-```
-
-<Callout type="info">
-  If using Cloudflare proxy, set SSL/TLS mode to "**Full (strict)**" in Cloudflare Dashboard.
-</Callout>
-
-### Corporate Proxy Configuration
-
-For environments behind HTTP proxies:
-
-```bash
-export HTTPS_PROXY="http://proxy.corp.com:8080"
-export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
-export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
-export SUPERCHECK_TOKEN="sck_live_..."
-
-supercheck job trigger abc123 --wait
-```
+To use a specific file (`.ts`, `.js` or `.mjs`): `supercheck deploy --config ./configs/staging.config.ts`
 
 ## Project Structure
 
-### `_supercheck_/` Folder
-
-Tests live in the `_supercheck_/` folder, grouped by runner:
+Tests live in `_supercheck_/`, grouped by runner:
 
 ```
 my-project/
@@ -147,68 +109,70 @@ my-project/
 └── package.json
 ```
 
-### File Naming Convention
-
 | Extension | Runner | Example |
-|-----------|--------|---------|
+|---|---|---|
 | `*.pw.ts` | Playwright | `_supercheck_/playwright/homepage-check.019a1234-abcd-7000-8000-000000000001.pw.ts` |
 | `*.k6.ts` | k6 | `_supercheck_/k6/load-test.019a1234-abcd-7000-8000-000000000003.k6.ts` |
 
 <Callout type="info">
-  Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
+Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
 </Callout>
 
-## Deployment state
+## Validate and Deploy
 
-Successful deploys record server-assigned IDs for created resources and the current names of updated or unchanged managed resources in `supercheck.state.json`. The mapping is scoped to the API origin and the actual organization and project returned by the server; it also tracks replacement IDs when a managed remote resource is deleted and recreated. `diff` and dry runs do not persist state. Commit and share this file with CI so later deployments manage the same resources. The temporary `supercheck.state.json.lock` coordinates deploys only on a shared local filesystem; do not commit it.
+| Command | What it does |
+|---|---|
+| `supercheck config validate` | Validate config syntax and schema |
+| `supercheck config print` | Print the resolved configuration (with env var expansion) |
+| `supercheck diff` | Preview changes between config and server state |
+| `supercheck deploy` | Create/update resources; `--dry-run` previews, `--delete` removes remote resources absent from config, `--force` skips confirmation |
+| `supercheck destroy` | Tear down all managed resources; `--dry-run` previews, `--force` confirms |
 
-Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless you deploy with `--delete`. Carry its explicit ID or pull it first to update the existing resource. Deploy resolves newly created test IDs before dependent jobs and synthetic monitors. It preserves local test file paths instead of renaming them after deployment. Monitor and job tag assignments are rejected before writes; standalone tag CRUD remains supported.
+Resources are reconciled by database `id`. Pulled resources include their `id` (UUID); new resources omit it and are created on deploy. `diff` includes notification provider settings such as webhook `bodyTemplate`, so review it before deploying and keep test scripts as editable source files.
 
-Before sync operations, the CLI verifies configured organization and project IDs or slugs against the authenticated API context. This catches configuration that would otherwise point at a different project than the token.
+`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
 
-`config validate --offline` and `config print --offline` support local-only configurations without API credentials, but still require an existing config file. By contrast, `test run --offline --file <path>` can run without a config file. During pull, managed test paths and existing browser and `testMatch` settings are preserved. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing. Backups are retained and must be removed manually when no longer needed.
+Before sync operations, the CLI verifies configured organization and project IDs or slugs against the authenticated API context, catching config that would point at a different project than the token.
 
-## Config Schema Reference
+## Schema Reference
 
-### `project`
+<Accordions>
+<Accordion title="project and api" id="project">
+
+**`project`**
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|---|---|---|---|
 | `organization` | `string` | Yes | Organization ID (UUID) |
 | `project` | `string` | Yes | Project ID (UUID) |
 
-### `api`
+**`api`**
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
+|---|---|---|---|
 | `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
 
-### `defaults`
-
-> Note: Reserved for future use. Defined in the configuration schema but not currently applied during local CLI execution.
+**`defaults`** (reserved for future use: defined in the schema but not currently applied during local CLI execution)
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `runLocation` | `string` | Default worker routing code (e.g. `local`) |
 | `timeout` | `number` | Default execution timeout in milliseconds |
 
-### `tests.playwright`
+</Accordion>
+<Accordion title="tests.playwright and tests.k6" id="tests-playwright">
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `testMatch` | `string` | Glob pattern for Playwright test files |
-| `browser` | `string` | Browser to use for local execution (`chromium`, `firefox`, or `webkit`; default: `chromium`) |
+|---|---|---|
+| `tests.playwright.testMatch` | `string` | Glob pattern for Playwright test files |
+| `tests.playwright.browser` | `string` | Browser for local execution (`chromium`, `firefox`, or `webkit`; default `chromium`) |
+| `tests.k6.testMatch` | `string` | Glob pattern for k6 test files |
 
-### `tests.k6`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `testMatch` | `string` | Glob pattern for k6 test files |
-
-### `jobs[]`
+</Accordion>
+<Accordion title="jobs[]" id="jobs">
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Job display name |
 | `jobType` | `string` | Job runner type (`playwright`, `k6`) |
@@ -216,68 +180,74 @@ Before sync operations, the CLI verifies configured organization and project IDs
 | `tests` | `string[]` | Test file paths or IDs |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. |
 
-### `monitors[]`
+</Accordion>
+<Accordion title="monitors[]" id="monitors">
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Monitor display name |
-| `type` | `string` | Monitor type (`http_request`, `website`, `ping_host`, `port_check`, `synthetic_test`) |
+| `type` | `string` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
 | `target` | `string` | URL or host to monitor |
 | `frequencyMinutes` | `number` | Check interval in minutes |
 | `enabled` | `boolean` | Whether the monitor is active |
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery` |
 
-### `statusPages[]`
+</Accordion>
+<Accordion title="statusPages[]" id="statuspages">
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Status page display name |
 | `subdomain` | `string` | Status page subdomain identifier |
-| `status` | `string` | Status page state (`draft`, `published`, `archived`) |
+| `status` | `string` | `draft`, `published`, `archived` |
 | `headline` | `string` | Public page headline |
 | `description` | `string` | Public description text |
 | `supportUrl` | `string` | External support URL |
 | `language` | `string` | ISO language code (e.g. `en`) |
-| `components` | `object[]` | List of status page components (`name`, `description`, `monitors`, `position`) |
-| `branding` | `object` | Page styling options (`bodyBackgroundColor`, `fontColor`, `greens`, `reds`) |
+| `components` | `object[]` | Status page components (`name`, `description`, `monitors`, `position`) |
+| `branding` | `object` | Page styling (`bodyBackgroundColor`, `fontColor`, `greens`, `reds`) |
 | `notifications` | `object` | Subscription toggles (`allowEmailSubscribers`, `allowWebhookSubscribers`, `allowRssFeed`) |
 
-### `variables[]`
+</Accordion>
+<Accordion title="variables[] and tags[]" id="variables">
+
+**`variables[]`**
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `key` | `string` | Variable name |
 | `value` | `string` | Variable value |
 | `isSecret` | `boolean` | Whether the value is encrypted |
 | `description` | `string` | Optional description |
 
-### `tags[]`
+**`tags[]`**
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `id` | `string` | Database UUID |
 | `name` | `string` | Tag name |
 | `color` | `string` | Hex color code |
 
-### `notificationProviders[]`
+</Accordion>
+<Accordion title="notificationProviders[]" id="notificationproviders">
 
 | Field | Type | Description |
-|-------|------|-------------|
+|---|---|---|
 | `id` | `string` | Database UUID |
 | `name` | `string` | Provider display name |
-| `type` | `string` | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
-| `config` | `object` | Provider-specific configuration, including webhook `method`, `headers`, and `bodyTemplate` |
+| `type` | `string` | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
+| `config` | `object` | Provider-specific configuration, including webhook `method`, `headers` and `bodyTemplate` |
 
 `pull` omits masked provider secrets such as webhook URLs and credentials. You can still edit non-secret settings such as `bodyTemplate`; `diff` detects those changes without exposing stored secrets.
 
-If you explicitly supply provider credentials in config, those values can still produce an update plan. Review provider changes in `diff` before deploying; do not assume a config containing secrets will always be treated as unchanged.
+If you explicitly supply provider credentials in config, those values can still produce an update plan. Review provider changes in `diff` before deploying; do not assume a config containing secrets is treated as unchanged.
 
-For webhook notification providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies those edits as provider configuration changes.
+For webhook providers, `config.bodyTemplate` is part of the managed configuration and should be kept in source control with the rest of the provider config. `supercheck pull` exports it, `supercheck diff` reports edits to it, and `supercheck deploy` applies them as provider configuration changes.
 
-When editing a pulled notification provider:
+To edit a pulled provider:
 
 1. Change non-secret settings such as `bodyTemplate` in the configuration file.
 2. Leave omitted secret fields out of the file to preserve their existing values.
@@ -285,36 +255,51 @@ When editing a pulled notification provider:
 
 To rotate a credential, enter its replacement in the dashboard or use `supercheck notification update --config` with the full replacement config. If you supply a replacement through monitoring-as-code, keep that value out of source control; `diff` redacts the secret change.
 
-## Validate & Print
+</Accordion>
+</Accordions>
+
+## Deployment State
+
+Successful deploys record server-assigned IDs for created resources, and the current names of updated or unchanged managed resources, in `supercheck.state.json`. Commit and share this file with CI so later deployments manage the same resources. Do not commit the temporary `supercheck.state.json.lock`.
+
+<Accordions>
+<Accordion title="State file and ownership details" id="state-details">
+
+The mapping is scoped to the API origin and the actual organization and project returned by the server, and tracks replacement IDs when a managed remote resource is deleted and recreated. `diff` and dry runs do not persist state. The `.lock` file coordinates deploys only on a shared local filesystem.
+
+Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless you deploy with `--delete`. Carry its explicit ID or pull it first to update the existing resource. Deploy resolves newly created test IDs before dependent jobs and synthetic monitors, and preserves local test file paths instead of renaming them after deployment. Monitor and job tag assignments are rejected before writes; standalone tag CRUD remains supported.
+
+</Accordion>
+<Accordion title="Offline validation and pull behavior" id="offline-and-pull">
+
+`config validate --offline` and `config print --offline` support local-only configurations without API credentials, but still require an existing config file. By contrast, `test run --offline --file <path>` can run without a config file.
+
+During pull, managed test paths and existing browser and `testMatch` settings are preserved. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing. Backups are retained and must be removed manually when no longer needed.
+
+</Accordion>
+<Accordion title="Self-hosted and proxy" id="self-hosted-configuration">
+
+Cloud users need no URL setting. For a self-hosted instance, use its HTTPS URL (see the [production deployment guide](/docs/app/deployment/self-hosted) if it is not configured yet):
 
 ```bash
-# Validate config syntax and schema
-supercheck config validate
+export SUPERCHECK_URL="https://supercheck.yourdomain.com"
+export SUPERCHECK_TOKEN="sck_live_..."
 
-# Print resolved configuration (with env var expansion)
-supercheck config print
+supercheck whoami
 ```
 
-## Monitoring-as-Code Commands
+If using the Cloudflare proxy, set SSL/TLS mode to "**Full (strict)**" in the Cloudflare dashboard.
+
+For environments behind HTTP proxies:
 
 ```bash
-# Preview changes between config and server state
-supercheck diff
+export HTTPS_PROXY="http://proxy.corp.com:8080"
+export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
+export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
+export SUPERCHECK_TOKEN="sck_live_..."
 
-# Deploy config to Supercheck (create/update/delete resources)
-supercheck deploy
-supercheck deploy --dry-run      # Preview without applying
-supercheck deploy --delete       # Delete remote resources absent from config
-supercheck deploy --force        # Skip confirmation
-
-# Tear down all managed resources
-supercheck destroy
-supercheck destroy --dry-run
-supercheck destroy --force
+supercheck job trigger abc123 --wait
 ```
 
-`diff` includes notification provider settings such as webhook `bodyTemplate`. Review the diff before deploying, and keep test scripts as editable source files. `--force` skips the confirmation prompt.
-
-Resources are reconciled using the database `id` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed. Resources pulled from the cloud include their `id` (UUID); new resources omit it and are created on deploy.
-
-`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
+</Accordion>
+</Accordions>

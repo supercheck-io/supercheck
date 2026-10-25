@@ -3,9 +3,28 @@ title: Command Reference
 description: Complete reference for all Supercheck CLI commands
 ---
 
+Every command is `supercheck <group> <command>`. Run `supercheck <command> --help` for options.
+
+| Group | Commands |
+|---|---|
+| [Global flags](#global-flags) | `--json`, `--quiet`, `--wide`, `--show-secrets`, … |
+| [Agent-first operation](#agent-first-operation) | `skills`, `capabilities`, `schema config` |
+| [Authentication](#authentication) | `login`, `link`, `onboard`, `discover`, `plan`, `ci init`, `agent install`, `whoami`, `logout` |
+| [Configuration](#configuration) | `init`, `config validate`, `validate`, `config print` |
+| [Jobs](#jobs) | `job list/get/create/update/delete/run/trigger/keys` |
+| [Runs](#runs) | `run list/get/permissions/status/wait/stream/cancel` |
+| [Tests](#tests) | `test list/get/create/update/delete/tags/validate/run/execute/status` |
+| [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete` |
+| [Variables](#variables), [Tags](#tags) | `var list/get/set/delete`, `tag list/create/delete` |
+| [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
+| [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
+| [AI SRE](#ai-sre) | `incident`, `sre`, `service` |
+| [Monitoring-as-Code](#monitoring-as-code) | `pull`, `diff`, `deploy`, `destroy` |
+| [Utilities](#utilities) | `health`, `locations`, `upgrade`, `doctor` |
+
 ## Global Flags
 
-These flags are available on all commands and can appear before or after the subcommand:
+Available on all commands, before or after the subcommand:
 
 ```bash
 supercheck --json job trigger <job-id> --wait
@@ -14,7 +33,7 @@ supercheck config validate --json
 ```
 
 | Flag | Description |
-|------|-------------|
+|---|---|
 | `--json` | Output in JSON format (for CI/CD scripting) |
 | `--envelope` | Include pagination metadata with JSON list results; requires `--json` |
 | `--show-secrets` | Disable redaction for sensitive fields in command output |
@@ -24,18 +43,34 @@ supercheck config validate --json
 | `--debug` | Enable debug logging |
 | `-v`, `--version` | Show version |
 
-Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) accept `--config <path>` to point at a specific config file.
+Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) also accept `--config <path>` to point at a specific config file.
 
-For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+<Accordions>
+<Accordion title="JSON output and secret redaction" id="json-output">
 
-List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata. Local test and job runs emit bounded NDJSON `local.result` records in JSON mode. Errors are emitted on stderr. Sensitive fields are redacted by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers (monitor target URLs stay visible and credential headers are masked); use `--show-secrets` only when the output can be handled securely.
+- For `sre ask`, `sre brief`, `run stream`, and `test status`, global `--json` produces newline-delimited JSON (NDJSON), one event per line.
+- List commands keep their existing JSON array shape for compatibility. Add `--envelope` to include pagination metadata.
+- Local test and job runs emit bounded NDJSON `local.result` records in JSON mode.
+- Errors are emitted on stderr. With `--json`, fatal errors are JSON on stderr with `error`, `exitCode`, and API `status` and `details` when available.
+- Sensitive fields are redacted by default, including notification provider webhook URLs, Discord and Teams webhook credentials, and provider config headers (monitor target URLs stay visible and credential headers are masked). Use `--show-secrets` only when the output can be handled securely.
+- Creating a trigger key requires `--show-secrets` to display its one-time plaintext value. The command fails before making the request when the flag is absent.
 
-Creating a trigger key requires `--show-secrets` to display its one-time plaintext value. The command fails before making the request when the flag is absent.
+</Accordion>
+<Accordion title="Terminal output details" id="investigation-status-and-terminal-output">
+
+Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners. Interactive stream connections show elapsed waiting time; GET streams retry one failed initial connection. Writes and POST streams are not replayed. Ctrl+C exits 130; stream idle timeouts exit 5.
+
+`config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source.
+
+Structured SRE output follows the same Field/Value detail-table format as monitors, tests, and jobs. Triage separates run metadata from the complete narrative summary. Copilot answers and evidence briefs have report headings; quiet mode suppresses their content. Quiet detail output resolves IDs from API envelopes, and `--json` takes precedence when combined with `--quiet`.
+
+</Accordion>
+</Accordions>
 
 ## Exit Codes
 
 | Code | Meaning | Example |
-|------|---------|---------|
+|---|---|---|
 | `0` | Success | Job completed successfully |
 | `1` | General error | Test failed, monitor down |
 | `2` | Authentication error | Invalid token, expired token |
@@ -48,9 +83,12 @@ An operation that requires confirmation exits `3` when declined or when input cl
 
 ## Agent-first operation
 
-### `supercheck skills`
-
-Print the offline workflow index or a focused guide. The guidance is bundled with the CLI version and requires no credentials.
+| Command | What it does | Key flags |
+|---|---|---|
+| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`local`, `sync`, `configure`, `execute`, `investigate`). Bundled with the CLI version; no credentials | — |
+| `supercheck skills install` | Write a small `.agents/skills/supercheck/SKILL.md` pointer. Existing skill files are preserved unless `--force` | `--path <directory>`, `--force` |
+| `supercheck capabilities` | Report CLI version, local workflow capabilities, and whether credentials are present | `--online` |
+| `supercheck schema config` | Describe the installed configuration schema without loading repository code | `--json` |
 
 ```bash
 supercheck skills
@@ -59,26 +97,12 @@ supercheck skills sync
 supercheck skills configure
 supercheck skills execute
 supercheck skills investigate
-```
-
-`supercheck skills install` writes a small `.agents/skills/supercheck/SKILL.md` pointer. Use `--path <directory>` to choose another directory. Existing skill files are preserved unless `--force` is passed.
-
-### `supercheck capabilities`
-
-Report the installed CLI version, local workflow capabilities, and whether credentials are present. Add `--online` to verify the current API context with one request; this does not prove that every server feature is available or that the token has permission for every operation. Diagnostic commands tolerate an invalid project config: an explicit, environment, or stored URL identifies the target and skips config loading. Otherwise a valid config supplies its API URL; if config loading fails, diagnostics warn in human-readable output and fall back to the default API URL.
-
-```bash
 supercheck capabilities --json
 supercheck capabilities --online --json
-```
-
-### `supercheck schema config`
-
-Describe the installed configuration schema without loading repository code. JSON is useful for generating or validating configuration.
-
-```bash
 supercheck schema config --json
 ```
+
+`--online` verifies the current API context with one request; it does not prove every server feature is available or that the token has permission for every operation. Diagnostic commands tolerate an invalid project config: an explicit, environment, or stored URL identifies the target and skips config loading. Otherwise a valid config supplies its API URL; if config loading fails, diagnostics warn in human-readable output and fall back to the default API URL.
 
 ### Machine-readable plans and writes
 
@@ -87,7 +111,7 @@ supercheck schema config --json
 JSON errors on stderr carry a stable `code` agents can branch on, with `retryable` and suggested `nextActions` where useful. Existing `error` strings and exit codes are unchanged.
 
 | Code | Meaning |
-|------|---------|
+|---|---|
 | `AUTH_REQUIRED` | No credential; run `supercheck login` |
 | `TOKEN_INVALID` | Credential expired, revoked or rejected; run `supercheck login --reauth` |
 | `PERMISSION_DENIED` | Authenticated but not allowed (role or project) |
@@ -103,539 +127,277 @@ JSON errors on stderr carry a stable `code` agents can branch on, with `retryabl
 
 In a non-interactive session, a write requiring confirmation refuses with exit code `3` and a `CONFIRMATION_REQUIRED` error. Review the preview before explicitly passing `--force`. The CLI checks that config organization/project match the authenticated API context before sync operations.
 
+<Callout type="info">
 Deploy records returned IDs in `supercheck.state.json`, keyed by API origin and actual organization/project. Share this generated mapping with CI so subsequent deploys manage the same resources. The transient `.lock` coordinates deploys only on a shared local filesystem; do not commit it. Names alone do not establish ownership; pull an existing resource or set its explicit ID. Deploy does not rename local test files.
+</Callout>
 
 ---
 
 ## Authentication
 
-### `supercheck login`
+| Command | What it does | Key flags |
+|---|---|---|
+| `supercheck login` | Sign in through your browser, or store a CLI token | `--token`, `--url`, `--reauth`, `--no-browser`, `--wait`, `--timeout` |
+| `supercheck link` | Point `supercheck.config.ts` at the org and project you are logged in to | `--dry-run`, `--force` |
+| `supercheck onboard` | Read-only status of the current directory and the single next command | — |
+| `supercheck discover` | Bounded, read-only facts about the repository | `--root <directory>` |
+| `supercheck plan` | Show whether the organization has an active subscription | — |
+| `supercheck ci init --github` | Write `.github/workflows/supercheck.yml` | `--path <file>`, `--force` |
+| `supercheck agent install` | Install the Supercheck skill for a coding agent | `--target`, `--path`, `--pointer`, `--force` |
+| `supercheck whoami` | Show the authenticated project, organization and role | — |
+| `supercheck logout` | Clear stored credentials | — |
 
-Authenticate with a CLI token.
+```bash
+supercheck login
+supercheck login --token <token>
+supercheck whoami
+supercheck logout
+```
+
+`whoami` includes token identity and expiry when your role permits viewing API keys (user, token name, API URL, expiry); read-only users can still verify their context.
+
+<Accordions>
+<Accordion title="supercheck login: flags and browser sign-in" id="supercheck-login">
 
 ```bash
 supercheck login --token <token>
 supercheck login --token <token> --url https://supercheck.yourdomain.com
 ```
 
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--token <token>` | No | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser (see below) when the server supports it. |
-| `--url <url>` | No | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
-| `--reauth` | No | Start a new browser login even if you are already signed in |
-| `--no-browser` | No | Print the login URL and code without opening a browser |
-| `--wait` | No | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
-| `--timeout <seconds>` | No | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
+| Flag | Description |
+|---|---|
+| `--token <token>` | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser when the server supports it |
+| `--url <url>` | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
+| `--reauth` | Start a new browser login even if you are already signed in |
+| `--no-browser` | Print the login URL and code without opening a browser |
+| `--wait` | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
+| `--timeout <seconds>` | With `--wait`: give up after this long (30 to 3600, default 900); the login stays resumable. A dropped connection during the wait is retried until then |
 
-The token is verified against the API before being stored locally.
+A token is verified against the API before being stored locally.
 
-#### Browser login
+**Browser login.** `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address for comparison.
 
-When the server has browser login enabled, `supercheck login` starts a device-authorization sign-in: it prints a URL and a short code, you approve the request in the browser (choosing the project the CLI may access), and the CLI stores a project-scoped key that expires in 90 days. Only approve a code you just requested yourself. Enter the code from your terminal in the confirmation field; the info icon shows the request code and requester address for comparison.
+- **Interactive terminal:** the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
+- **Agents and scripts:** `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
+- **Re-authenticating:** `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
+- **Plans:** if the organization you pick has neither an active trial nor a paid plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Cloud runs require an active trial or plan, as shown beside the approval controls. Run `supercheck plan` afterwards to confirm.
+- **Self-hosted:** if the server does not enable browser login, the command explains how to use `--token`. Point at your instance with `--url` or `SUPERCHECK_URL`.
 
-- Interactive terminal: the command waits for approval and opens your browser. Use `--no-browser` to print the URL only.
-- Agents and scripts: `supercheck login --json` prints the URL and code and **returns immediately** with `"state": "authorization_pending"`. Run the same command again after approval to finish. With `--wait` it blocks instead: it prints the pending object first (so the URL and code can be shown), then a second JSON line with the result.
-- `--reauth` starts a new login even if you are already signed in. `SUPERCHECK_TOKEN`, if set, always takes precedence over a stored login.
-- If the organization you pick has neither an active trial nor a paid plan (cloud only), the approval page says so and, if you own the organization, offers **Choose a plan**. That makes the organization active and opens billing in a new tab, so the right organization is charged and your login code stays valid. Approving never depends on a plan: you can connect and run tests locally first. Cloud runs require an active trial or plan, as shown beside the approval controls. Run `supercheck plan` afterwards to confirm.
-- If the server does not enable browser login, the command explains how to use `--token`.
-
-### `supercheck link`
+</Accordion>
+<Accordion title="supercheck link" id="supercheck-link">
 
 Points `supercheck.config.ts` at the organization and project you are logged in to. It edits only the `organization` and `project` values and the default API URL written by `supercheck init`, treating the file as text (it is never executed) and writing values as quoted strings. Identifiers returned by the server must be plain identifiers or nothing is written. If the config already targets a different project it refuses with `CONTEXT_MISMATCH`; `--dry-run` shows that conflict without failing, and `--force` replaces the existing values, so use it only after confirming the change.
 
-### `supercheck onboard`
+</Accordion>
+<Accordion title="supercheck onboard, discover and plan" id="supercheck-onboard">
 
-Read-only status for the current directory: the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
+**`onboard`** is read-only. It reports the state (`needs_init`, `needs_tests`, `needs_auth`, `needs_link`, `needs_plan`, `ready_to_deploy`, `deployed`) and the single next command. It never changes files or the cloud and is safe to run repeatedly.
 
-### `supercheck discover`
+**`discover`** prints bounded, read-only facts about the repository: package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env`, or follow symlinks.
 
-Prints bounded, read-only facts about the repository: package manager, framework, routes, existing Playwright and k6 tests, CI provider and the key names (never values) from `.env.example`. It does not run scripts, import configuration, read `.env`, or follow symlinks.
+**`plan`** shows whether the organization has an active subscription. An unknown result is never treated as free or paid; the server enforces limits on every request.
 
-### `supercheck plan`
+</Accordion>
+<Accordion title="supercheck ci init and agent install" id="supercheck-ci-init---github">
 
-Shows whether the organization has an active subscription. An unknown result is never treated as free or paid; the server enforces limits on every request.
+**`ci init --github`** writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. It refuses to overwrite an existing file without `--force`.
 
-### `supercheck ci init --github`
+**`agent install`** installs the Supercheck skill for a coding agent with `--target claude`, `cursor`, `codex`, `opencode` or `generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
 
-Writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. Refuses to overwrite an existing file without `--force`.
-
-### `supercheck agent install`
-
-Installs the Supercheck skill for a coding agent: `--target claude|cursor|codex|opencode|generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
-
-### `supercheck whoami`
-
-Display the authenticated project, organization, and role. Token identity and expiry are included when your role permits viewing API keys; read-only users can still verify their context.
-
-```bash
-supercheck whoami
-```
-
-Shows user, token name, API URL, and expiry.
-
-### `supercheck logout`
-
-Clear stored credentials.
-
-```bash
-supercheck logout
-```
+</Accordion>
+</Accordions>
 
 ---
 
 ## Configuration
 
-### `supercheck init`
-
-Initialize a new project with `supercheck.config.ts` and `_supercheck_/` folder.
+| Command | What it does | Key flags |
+|---|---|---|
+| `supercheck init` | Create `supercheck.config.ts` and the `_supercheck_/` folder | `--force`, `--skip-install`, `--skip-examples`, `--pm <manager>` |
+| `supercheck config validate` | Validate the configuration file schema | `--offline` |
+| `supercheck validate` | Validate local test scripts using the same rules as Playground | — |
+| `supercheck config print` | Print the resolved configuration with environment variable expansion | `--offline` |
 
 ```bash
 supercheck init
 supercheck init --force              # Overwrite existing config
 supercheck init --skip-install       # Skip dependency installation
 supercheck init --skip-examples      # Skip example test files
-supercheck init --pm pnpm            # Use specific package manager
-```
-
-| Flag | Description |
-|------|-------------|
-| `--force` | Overwrite existing config files |
-| `--skip-install` | Skip automatic dependency installation |
-| `--skip-examples` | Skip generating example test files |
-| `--pm <manager>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
-
-### `supercheck config validate`
-
-Validate the configuration file schema. Add `--offline` to validate a local-only config without API credentials. Both modes require an existing config file; `--offline` skips cloud project identity checks.
-
-```bash
+supercheck init --pm pnpm            # Use specific package manager (npm, pnpm, yarn, bun)
 supercheck config validate
 supercheck config validate --offline
-```
-
-### `supercheck validate`
-
-Validate local test scripts using the same rules as Playground.
-
-```bash
 supercheck validate
-```
-
-### `supercheck config print`
-
-Print the resolved configuration with environment variable expansion. Sensitive provider values, including webhook URLs and config headers, are redacted; monitor URLs remain visible and credential headers are masked. Add `--offline` to print a local-only config without API credentials; both modes require an existing config file.
-
-```bash
 supercheck config print
 supercheck config print --offline
 ```
+
+`--offline` validates or prints a local-only config without API credentials. Both modes require an existing config file; `--offline` skips cloud project identity checks. `config print` redacts sensitive provider values, including webhook URLs and config headers; monitor URLs remain visible and credential headers are masked.
 
 ---
 
 ## Jobs
 
-### `supercheck job list`
-
-List all jobs in the current project.
+| Command | What it does | Key flags |
+|---|---|---|
+| `job list` | List jobs in the current project | `--page` (1), `--limit` (50) |
+| `job get <job-id>` | Get job details | — |
+| `job create` | Create a job | `--name` (required), `--tests` (required), `--description`, `--type`, `--schedule`, `--dry-run` |
+| `job update <job-id>` | Update job configuration | `--name`, `--description`, `--schedule`, `--dry-run` |
+| `job delete <job-id>` | Delete a job with confirmation | `--force` |
+| `job run` | Run a job immediately, bypassing the cron schedule | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config` |
+| `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
+| `job keys` | List, create and revoke trigger keys | `create --name --expires-in`, `delete` |
 
 ```bash
-supercheck job list
 supercheck job list --page 2 --limit 10
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--page` | `1` | Page number |
-| `--limit` | `50` | Items per page |
-
-### `supercheck job get`
-
-Get job details.
-
-```bash
-supercheck job get <job-id>
-```
-
-### `supercheck job create`
-
-Create a new job.
-
-```bash
 supercheck job create --name "Nightly E2E" --tests <test-id> --schedule "0 2 * * *"
 supercheck job create --name "Smoke Tests" --tests id1,id2 --type k6 --dry-run
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--name` | Yes | Job name |
-| `--tests` | Yes | Test IDs (space or comma separated) |
-| `--description` | No | Job description |
-| `--type` | No | Job runner type: `playwright` or `k6` |
-| `--schedule` | No | Cron expression |
-| `--dry-run` | No | Preview what would be sent without creating |
-
-Job `--type` selects the runner. Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`.
-
-### `supercheck job update`
-
-Update job configuration.
-
-```bash
-supercheck job update <job-id> --name "Updated Name"
 supercheck job update <job-id> --schedule "0 3 * * *" --dry-run
-```
+supercheck job delete <job-id> --force
 
-| Flag | Description |
-|------|-------------|
-| `--name` | Job name |
-| `--description` | Job description |
-| `--schedule` | Cron expression |
-| `--dry-run` | Preview what would be sent without updating |
-
-Job status is runtime state, not configuration. Use `job run`, `job trigger`, or the dashboard/scheduler to affect execution state.
-
-### `supercheck job delete`
-
-Delete a job with confirmation.
-
-```bash
-supercheck job delete <job-id>
-supercheck job delete <job-id> --force    # Skip confirmation
-```
-
-### `supercheck job run`
-
-Run a job immediately, bypassing the cron schedule.
-
-```bash
 supercheck job run --id <job-id>
 supercheck job run --id <job-id> --local     # Run locally
 supercheck job run --id <job-id> --cloud     # Run in the cloud
 supercheck job run --id "Nightly E2E" --local --offline
-```
 
-`--local --offline` runs tests referenced by a job in the local configuration without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
-
-### `supercheck job trigger`
-
-Trigger a job and optionally wait for completion.
-
-```bash
 supercheck job trigger <job-id>
 supercheck job trigger <job-id> --wait --timeout 300
 supercheck --json job trigger <job-id> --wait
+
+supercheck job keys <job-id>
+supercheck job keys create <job-id> --name "CI Trigger"
+supercheck job keys create <job-id> --name "Temp Key" --expires-in 86400
+supercheck job keys delete <job-id> <key-id>
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--wait` | Wait for the run to complete |
-| `--timeout` | Maximum wait time in seconds (default: 300) |
+<Accordions>
+<Accordion title="Job types, status and local runs" id="supercheck-job-run">
 
-`supercheck job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` with access to read job details and run results in the project. The CLI reads the job before triggering, then polls the accepted run; a trigger key alone cannot wait for the result.
+- `job create --type` selects the runner (`playwright` or `k6`). `--tests` takes test IDs (space or comma separated). Test `--type` uses API types: `browser`, `performance`, `api`, `database`, `custom`.
+- Job status is runtime state, not configuration. Use `job run`, `job trigger`, or the dashboard/scheduler to affect execution state.
+- `job run --local --offline` runs tests referenced by a job in the local configuration without credentials or server-side validation. Browser jobs use the configured Playwright browser. Pass `--playwright-config <path>` to use an existing Playwright configuration.
+
+</Accordion>
+<Accordion title="job trigger: credentials and waiting" id="supercheck-job-trigger">
+
+`job trigger` requires `SUPERCHECK_TRIGGER_KEY`. If you also use `--wait`, set `SUPERCHECK_TOKEN` with access to read job details and run results in the project. The CLI reads the job before triggering, then polls the accepted run; a trigger key alone cannot wait for the result.
 
 The CLI validates the read token and job before starting a waited trigger. If waiting later fails, use the returned run ID with `supercheck run wait <run-id>` to resume observation without triggering another run.
 
-### `supercheck job keys`
-
-Manage trigger keys for a job.
-
-```bash
-# List keys for a job
-supercheck job keys <job-id>
-
-# Create a new trigger key
-supercheck job keys create <job-id> --name "CI Trigger"
-supercheck job keys create <job-id> --name "Temp Key" --expires-in 86400
-
-# Revoke a trigger key
-supercheck job keys delete <job-id> <key-id>
-```
+</Accordion>
+</Accordions>
 
 ---
 
 ## Runs
 
-### `supercheck run list`
-
-List job runs with optional filters. Runs of a test executed directly (`test execute`) are not listed; follow those with `run get <runId>` or `--wait`.
+| Command | What it does | Key flags |
+|---|---|---|
+| `run list` | List job runs. Runs of a test executed directly (`test execute`) are not listed; follow those with `run get <runId>` or `--wait` | `--page`, `--limit`, `--job <job-id>`, `--status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) |
+| `run get <run-id>` | Get run details | — |
+| `run permissions <run-id>` | Get run access permissions | — |
+| `run status <run-id>` | Quick status check | — |
+| `run wait <run-id>` | Wait for an existing run to reach a terminal state; never starts or retriggers a run | `--timeout <seconds>` (300) |
+| `run stream <run-id>` | Watch live console output | `--idle-timeout` (60, min 10) |
+| `run cancel <run-id>` | Cancel a running execution | — |
 
 ```bash
-supercheck run list
 supercheck run list --job <job-id> --status failed --limit 20
-```
-
-| Flag | Description |
-|------|-------------|
-| `--page` | Page number |
-| `--limit` | Items per page |
-| `--job` | Filter by job ID |
-| `--status` | Filter by status (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) |
-
-### `supercheck run get`
-
-Get run details.
-
-```bash
 supercheck run get <run-id>
-```
-
-### `supercheck run permissions`
-
-Get run access permissions.
-
-```bash
-supercheck run permissions <run-id>
-```
-
-### `supercheck run status`
-
-Quick status check for a run.
-
-```bash
-supercheck run status <run-id>
-```
-
-### `supercheck run wait`
-
-Wait for an existing run to reach a terminal state. This command does not start or retrigger a run.
-
-```bash
-supercheck run wait <run-id>
 supercheck run wait <run-id> --timeout 600
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout <seconds>` | `300` | Maximum time to wait |
-
-### `supercheck run stream`
-
-Watch live console output from a running execution. Failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events.
-
-```bash
-supercheck run stream <run-id>
 supercheck run stream <run-id> --idle-timeout 120
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--idle-timeout` | `60` | Seconds to wait before timing out if no data received (min: 10) |
-
-### `supercheck run cancel`
-
-Cancel a running execution.
-
-```bash
 supercheck run cancel <run-id>
 ```
+
+`run stream`: failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events. `--idle-timeout` is the number of seconds to wait with no data before timing out.
 
 ---
 
 ## Tests
 
-### `supercheck test list`
+| Command | What it does | Key flags |
+|---|---|---|
+| `test list` | List tests | `--page`, `--limit`, `--search` (title), `--type` |
+| `test get <test-id>` | Get test details | `--include-script` |
+| `test create` | Create a test from a script file | `--title`, `--file` (both required), `--type`, `--description`, `--dry-run` |
+| `test update <test-id>` | Update a test | `--title`, `--file`, `--type`, `--description`, `--dry-run` |
+| `test delete <test-id>` | Delete a test with confirmation | `--force` |
+| `test tags <test-id>` | List tags for a test | — |
+| `test validate` | Validate a script without creating it | `--file`, `--type` |
+| `test run` | Run tests locally | `--file`, `--all`, `--type` (`browser`, `performance`), `--offline`, `--playwright-config` |
+| `test execute <test-id>` | Execute one deployed test in the cloud; returns the run ID, or waits with `--wait` | `--location <code>`, `--wait`, `--timeout` (300) |
+| `test status <test-id>` | Stream live status events | `--idle-timeout` (60, min 10) |
 
-List tests with optional search and type filters.
+Test types: `browser`, `performance`, `api`, `database`, `custom`.
 
 ```bash
-supercheck test list
 supercheck test list --search "checkout" --type browser
-```
-
-| Flag | Description |
-|------|-------------|
-| `--page` | Page number |
-| `--limit` | Items per page |
-| `--search` | Search by title |
-| `--type` | Filter by type (`browser`, `performance`, `api`, `database`, `custom`) |
-
-### `supercheck test get`
-
-Get test details.
-
-```bash
-supercheck test get <test-id>
 supercheck test get <test-id> --include-script
-```
-
-### `supercheck test create`
-
-Create a new test from a script file.
-
-```bash
 supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--title` | Yes | Test title |
-| `--file` | Yes | Path to test script |
-| `--type` | No | `browser`, `performance`, `api`, `database`, `custom` |
-| `--description` | No | Test description |
-| `--dry-run` | No | Preview what would be sent without creating |
-
-### `supercheck test update`
-
-Update a test.
-
-```bash
 supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
 supercheck test update <test-id> --type api --dry-run
 supercheck test update <test-id> --description "New description" --dry-run
-```
-
-| Flag | Description |
-|------|-------------|
-| `--title` | Test title |
-| `--file` | Path to updated test script |
-| `--type` | Test type (`browser`, `performance`, `api`, `database`, `custom`) |
-| `--description` | Test description |
-| `--dry-run` | Preview what would be sent without updating |
-
-### `supercheck test delete`
-
-Delete a test with confirmation.
-
-```bash
-supercheck test delete <test-id>
 supercheck test delete <test-id> --force
-```
-
-<Callout type="warn">
-  Use `supercheck test run --file <path>` for local execution, or `supercheck job trigger <id>` for cloud execution.
-</Callout>
-
-### `supercheck test tags`
-
-List tags for a test.
-
-```bash
-supercheck test tags <test-id>
-```
-
-### `supercheck test validate`
-
-Validate a test script without creating it.
-
-```bash
 supercheck test validate --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
-```
 
-### `supercheck test run`
-
-Run tests locally.
-
-```bash
 supercheck test run --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts
 supercheck test run --all --type browser
 supercheck test run --all --type performance
 supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
 supercheck test run --all --offline --playwright-config ./playwright.config.ts
-```
 
-| Flag | Description |
-|------|-------------|
-| `--file` | Path to a local test file to run |
-| `--all` | Run all local tests |
-| `--type` | Filter by local test type (`browser`, `performance`) |
-| `--offline` | Run without credentials or server-side script validation |
-| `--playwright-config` | Use an existing Playwright config |
-
-Offline runs require local Playwright packages and browser binaries, or the k6 executable for performance tests. JSON mode emits bounded NDJSON `local.result` records containing captured output, exit code, and whether output was truncated.
-
-### `supercheck test execute`
-
-Execute one deployed test in the cloud. The command returns the accepted run ID, or waits for its result when `--wait` is supplied.
-
-```bash
 supercheck test execute <test-id>
 supercheck test execute <test-id> --wait --timeout 600
 supercheck test execute <test-id> --location us-east --wait
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--location <code>` | — | Execution location for performance tests |
-| `--wait` | — | Wait for the run to complete |
-| `--timeout <seconds>` | `300` | Maximum wait time |
-
-### `supercheck test status`
-
-Stream live status events for a test.
-
-```bash
-supercheck test status <test-id>
 supercheck test status <test-id> --idle-timeout 120
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--idle-timeout` | `60` | Seconds to wait before timing out if no data received (min: 10) |
+<Callout type="warn">
+Use `supercheck test run --file <path>` for local execution, or `supercheck job trigger <id>` for cloud execution.
+</Callout>
+
+<Accordions>
+<Accordion title="Offline runs" id="supercheck-test-run">
+
+Offline runs (`--offline`) skip credentials and server-side script validation. They require local Playwright packages and browser binaries, or the k6 executable for performance tests. JSON mode emits bounded NDJSON `local.result` records containing captured output, exit code, and whether output was truncated.
+
+</Accordion>
+</Accordions>
 
 ---
 
 ## Monitors
 
-### `supercheck monitor list`
-
-List all monitors.
+| Command | What it does | Key flags |
+|---|---|---|
+| `monitor list` | List all monitors | `--page`, `--limit` |
+| `monitor get <monitor-id>` | Get monitor details | — |
+| `monitor status <monitor-id>` | Current status (quick view) | — |
+| `monitor results <monitor-id>` | Recent check results | `--page` (1), `--limit` (20) |
+| `monitor stats <monitor-id>` | Performance statistics | — |
+| `monitor create` | Create a monitor | `--name` (required), `--url`, `--type`, `--test-id`, `--port`, `--protocol`, `--interval-minutes`, `--timeout`, `--method`, `--dry-run` |
+| `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
+| `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 
 ```bash
-supercheck monitor list
 supercheck monitor list --page 2 --limit 10
-```
-
-### `supercheck monitor get`
-
-Get monitor details.
-
-```bash
-supercheck monitor get <monitor-id>
-```
-
-### `supercheck monitor status`
-
-Get current monitor status (quick view).
-
-```bash
-supercheck monitor status <monitor-id>
-```
-
-### `supercheck monitor results`
-
-Get recent check results.
-
-```bash
-supercheck monitor results <monitor-id>
 supercheck monitor results <monitor-id> --page 2 --limit 20
-```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--page` | `1` | Page number |
-| `--limit` | `20` | Results per page |
-
-### `supercheck monitor stats`
-
-Get performance statistics.
-
-```bash
-supercheck monitor stats <monitor-id>
-```
-
-### `supercheck monitor create`
-
-Create a new monitor.
-
-```bash
 supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval-minutes 5
 supercheck monitor create --name "Website" --url https://example.com --dry-run
 supercheck monitor create --name "TLS port" --type port_check --url example.com --port 443
 supercheck monitor create --name "Browser journey" --type synthetic_test --test-id <test-uuid>
+
+supercheck monitor update <monitor-id> --interval-minutes 1 --active false
+supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
+supercheck monitor delete <monitor-id> --force
 ```
 
+<Accordions>
+<Accordion title="monitor create and update flags" id="supercheck-monitor-create">
+
 | Flag | Required | Default | Description |
-|------|----------|---------|-------------|
+|---|---|---|---|
 | `--name` | Yes | — | Monitor name |
 | `--url` | Except synthetic tests | — | HTTP(S) URL, or hostname/IP for ping and port checks |
 | `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
@@ -647,127 +409,49 @@ supercheck monitor create --name "Browser journey" --type synthetic_test --test-
 | `--method` | No | `GET` | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`) |
 | `--dry-run` | No | — | Preview what would be sent without creating |
 
-<Callout type="warn">
-  The `--interval` flag (seconds) is deprecated. Use `--interval-minutes` instead.
-</Callout>
-
-### `supercheck monitor update`
-
-Update a monitor.
-
-```bash
-supercheck monitor update <monitor-id> --interval-minutes 1 --active false
-supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
-```
-
-| Flag | Description |
-|------|-------------|
-| `--name` | Monitor name |
-| `--url` | URL to monitor |
-| `--interval-minutes` | Check interval in minutes (1–1440) |
-| `--timeout` | Request timeout in seconds (1-3600) |
-| `--method` | HTTP method |
-| `--active` | Enable or disable (`true`/`false`) |
-| `--dry-run` | Preview what would be sent without updating |
+`monitor update` accepts `--name`, `--url`, `--interval-minutes` (1–1440), `--timeout` (1-3600), `--method`, `--active` (`true` or `false` to enable or disable) and `--dry-run`.
 
 <Callout type="warn">
-  The `--interval` flag (seconds) is deprecated. Use `--interval-minutes` instead.
+The `--interval` flag (seconds) is deprecated on `monitor create` and `monitor update`. Use `--interval-minutes` instead.
 </Callout>
 
-### `supercheck monitor delete`
-
-Delete a monitor with confirmation.
-
-```bash
-supercheck monitor delete <monitor-id>
-supercheck monitor delete <monitor-id> --force
-```
+</Accordion>
+</Accordions>
 
 ---
 
 ## Variables
 
-### `supercheck var list`
-
-List project variables.
-
-```bash
-supercheck var list
-```
-
-### `supercheck var get`
-
-Get a variable by key name.
+| Command | What it does | Key flags |
+|---|---|---|
+| `var list` | List project variables | — |
+| `var get <key>` | Get a variable by key | — |
+| `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin`, `--description` |
+| `var delete <key>` | Delete a variable | `--force` |
 
 ```bash
-supercheck var get <key>
-```
-
-### `supercheck var set`
-
-Create or update a variable.
-
-```bash
-supercheck var set <key> <value>
 supercheck var set API_KEY sk-secret-value --secret
 printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
 supercheck var set DB_URL postgres://... --description "Database connection string"
-```
-
-| Flag | Description |
-|------|-------------|
-| `--secret` | Mark as secret (value will be encrypted) |
-| `--value-stdin` | Read the value from stdin instead of the command line |
-| `--description` | Variable description |
-
-Prefer `--value-stdin` for secrets so they do not end up in shell history or process arguments.
-
-### `supercheck var delete`
-
-Delete a variable by key name.
-
-```bash
-supercheck var delete <key>
 supercheck var delete <key> --force
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--force` | Skip confirmation |
+`--secret` encrypts the value. Prefer `--value-stdin` for secrets so they do not end up in shell history or process arguments.
 
 ---
 
 ## Tags
 
-### `supercheck tag list`
-
-List tags.
-
-```bash
-supercheck tag list
-```
-
-### `supercheck tag create`
-
-Create a tag.
+| Command | What it does | Key flags |
+|---|---|---|
+| `tag list` | List tags | — |
+| `tag create <name>` | Create a tag | `--color` |
+| `tag delete <id>` | Delete a tag | `--force` |
 
 ```bash
-supercheck tag create <name>
 supercheck tag create <name> --color "#3B82F6"
-```
-
-### `supercheck tag delete`
-
-Delete a tag.
-
-```bash
-supercheck tag delete <id>
 supercheck tag delete <id> --force    # Skip confirmation
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--force` | Skip confirmation prompt |
 
 ---
 
@@ -775,83 +459,35 @@ supercheck tag delete <id> --force    # Skip confirmation
 
 `notifications` is an alias for `notification`.
 
-### `supercheck notification list`
+| Command | What it does | Key flags |
+|---|---|---|
+| `notification list` | List providers | — |
+| `notification get <id>` | Get provider details | — |
+| `notification create` | Create a provider | `--type`, `--name` (both required), `--payload` |
+| `notification update <id>` | Update a provider | `--name`, `--type`, `--payload` |
+| `notification delete <id>` | Delete a provider | `--force` |
+| `notification test` | Send a test notification | `--type`, `--payload` (one payload option required) |
 
-List notification providers.
-
-```bash
-supercheck notification list
-```
-
-### `supercheck notification get`
-
-Get provider details.
-
-```bash
-supercheck notification get <id>
-```
-
-### `supercheck notification create`
-
-Create a notification provider.
+Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and the legacy `--config` are aliases.
 
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
   --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--type` | Yes | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
-| `--name` | Yes | Provider name |
-| `--payload` | No | Provider configuration as a JSON object |
-| `--data` | No | Alias for `--payload` |
-| `--config` | No | Legacy alias for `--payload` |
-
-### `supercheck notification update`
-
-Update a notification provider.
-
-```bash
 supercheck notification update <id> --name "Updated Name" --payload '{...}'
 supercheck notification update <id> --type webhook --payload '{...}'
-```
-
-| Flag | Description |
-|------|-------------|
-| `--name` | Provider name |
-| `--type` | Provider type |
-| `--payload` | JSON configuration object (replaces the entire config; include all fields) |
-| `--data` | Alias for `--payload` |
-| `--config` | Legacy alias for `--payload` |
-
-When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
-
-### `supercheck notification delete`
-
-Delete a notification provider.
-
-```bash
-supercheck notification delete <id>
 supercheck notification delete <id> --force
-```
-
-### `supercheck notification test`
-
-Send a test notification to verify configuration.
-
-```bash
 supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
 
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--type` | Yes | Provider type (`email`, `slack`, `webhook`, `telegram`, `discord`, `teams`) |
-| `--payload` | Yes* | Provider configuration as a JSON object |
-| `--data` | Yes* | Alias for `--payload` |
-| `--config` | Yes* | Legacy alias for `--payload` |
+<Accordions>
+<Accordion title="Updating providers with secret fields" id="supercheck-notification-update">
 
-*Supply exactly one payload option.
+`--payload` on update replaces the entire config, so include all fields. When a provider has secret fields (for example webhook URLs or API keys), the CLI never merges your input with masked values from the server. If you omit the payload, only `--name` and `--type` are updated and existing secrets are preserved.
+
+For `notification test`, supply exactly one of `--payload`, `--data` or `--config`.
+
+</Accordion>
+</Accordions>
 
 ---
 
@@ -859,48 +495,37 @@ supercheck notification test --type slack --payload '{"webhookUrl":"https://hook
 
 `alerts` is an alias for `alert`.
 
-### `supercheck alert history`
-
-View alert history.
+| Command | What it does | Key flags |
+|---|---|---|
+| `alert history` | View alert history | `--page` (1), `--limit` (50) |
+| `audit` | View audit logs (admin only) | `--page` (1), `--limit` (20), `--search` (by action), `--action` (filter by action type) |
 
 ```bash
-supercheck alert history
 supercheck alert history --page 2 --limit 20
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--page` | `1` | Page number |
-| `--limit` | `50` | Results per page |
-
-### `supercheck audit`
-
-View audit logs (admin only).
-
-```bash
-supercheck audit
 supercheck audit --page 2 --limit 50 --action "notification_provider_created"
 supercheck audit --search "deploy"
 ```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--page` | `1` | Page number |
-| `--limit` | `20` | Items per page |
-| `--search` | — | Search by action |
-| `--action` | — | Filter by action type |
 
 ---
 
 ## AI SRE
 
-AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard.
+AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard. Plural aliases `incidents` and `services` are also supported.
 
-Incident commands accept the number displayed by `incident list` or a UUID. Numbers resolve within the CLI token’s project; they are not row positions. For example, `supercheck sre investigate 1` and `supercheck sre ask "Summarize the strongest evidence" --incident 1`. Use `incident list --json` to see UUIDs.
+| Command | What it does | Key flags |
+|---|---|---|
+| `incident list` | List incidents | `--status`, `--severity` |
+| `incident get <ref>` | Get an incident | — |
+| `incident timeline <ref>` | Incident timeline | — |
+| `incident resolve <ref>` | Resolve with a required comment | `--comment`, `--force` |
+| `sre triage <ref>` | Classify an incident | — |
+| `sre investigate <ref>` | Start an asynchronous deep investigation | `--live-connectors` |
+| `sre brief <ref>` | Stream an evidence brief | `--idle-timeout` |
+| `sre ask "<question>"` | Ask Copilot (read-only) | `--incident <ref>`, `--live-connectors`, `--idle-timeout` |
+| `sre status <runId>` | Follow a triage or accepted investigation | — |
+| `service list/get/health/dependencies` | Read-only service catalog | needs `sre_service:view` |
 
-Manual triage and investigations are enabled by default with a configured AI provider. Existing operator opt-outs remain effective: `503 feature_disabled` identifies the setting to change. Recreate containers after changing `.env`. Automatic AI work remains opt-in.
-
-The plural aliases `incidents` and `services` are also supported.
+`<ref>` is the number shown by `incident list` or a UUID. Numbers resolve within the CLI token's project; they are not row positions. Use `incident list --json` to see UUIDs. Manual triage and investigations are enabled by default with a configured AI provider; existing operator opt-outs remain effective (`503 feature_disabled` identifies the setting to change, and you recreate containers after changing `.env`). Automatic AI work remains opt-in.
 
 ### Incidents
 
@@ -921,9 +546,10 @@ supercheck sre investigate <incident-number-or-uuid>
 supercheck sre investigate <incident-number-or-uuid> --live-connectors
 supercheck sre brief <incident-number-or-uuid>
 supercheck sre brief <incident-number-or-uuid> --idle-timeout 120
+supercheck sre status <runId>
 ```
 
-Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`. `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
+Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`, or `sre status <runId>` (requires a matching app release with the investigation-status endpoint). `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
 
 ### Copilot
 
@@ -950,9 +576,12 @@ These commands are read-only and require `sre_service:view`.
 
 ## Monitoring-as-Code
 
-### `supercheck pull`
-
-Pull remote resources into local config and files. Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing. When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed.
+| Command | What it does | Key flags |
+|---|---|---|
+| `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only` |
+| `diff` | Preview changes between local config and server state | `--delete`, `--no-delete` |
+| `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
+| `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers | `--dry-run`, `--force` |
 
 ```bash
 supercheck pull
@@ -960,102 +589,89 @@ supercheck pull --dry-run
 supercheck pull --force
 supercheck pull --tests-only
 supercheck pull --config-only
-```
 
-In JSON mode, the completed pull summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` does not write files or create backups.
-
-### `supercheck diff`
-
-Preview changes between local config and server state. Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
-
-```bash
 supercheck diff
-```
 
-### `supercheck deploy`
-
-Push configuration to the Supercheck API, including notification provider config and webhook body templates. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
-
-```bash
 supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
 supercheck deploy --delete       # Delete remote resources absent from config
 supercheck deploy --force        # Skip confirmation
 supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
-```
 
-`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
-
-`--force` skips the confirmation prompt. Keep test scripts as editable source files and review `supercheck diff` before deploying.
-
-### `supercheck destroy`
-
-Tear down all managed resources defined with IDs in the local config, including notification providers.
-
-```bash
 supercheck destroy --dry-run      # Preview resources to be deleted
 supercheck destroy --force        # Confirm and delete resources
 ```
 
-> Note: `supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
+<Callout type="warn">
+`supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
+</Callout>
+
+`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported. `--force` skips the confirmation prompt; keep test scripts as editable source files and review `supercheck diff` before deploying.
+
+<Accordions>
+<Accordion title="supercheck pull: files, backups and overwrites" id="supercheck-pull">
+
+Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
+
+When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed.
+
+In JSON mode, the completed pull summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` does not write files or create backups.
+
+</Accordion>
+<Accordion title="supercheck diff" id="supercheck-diff">
+
+Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
+
+</Accordion>
+<Accordion title="supercheck deploy: renames, --verify" id="supercheck-deploy">
+
+Deploy pushes notification provider config and webhook body templates too. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
+
+`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
+
+</Accordion>
+</Accordions>
 
 ---
 
 ## Utilities
 
-### `supercheck health`
-
-Check API health.
+| Command | What it does | Key flags |
+|---|---|---|
+| `health` | Check API health | `--url` |
+| `locations` | List available execution locations | — |
+| `upgrade` | Upgrade the CLI to the latest release | `--tag <tag>`, `--package-manager <pm>`, `-y, --yes`, `--dry-run` |
+| `doctor` | Check dependencies and configuration | `--strict`, `--fix` |
 
 ```bash
 supercheck health
 supercheck health --url https://supercheck.yourdomain.com
-```
-
-### `supercheck locations`
-
-List available execution locations.
-
-```bash
 supercheck locations
-```
 
-### `supercheck upgrade`
-
-Upgrade the CLI to the latest release.
-
-```bash
 supercheck upgrade
 supercheck upgrade --tag <version>       # Install a specific version
-supercheck upgrade --package-manager pnpm  # Use specific package manager
+supercheck upgrade --package-manager pnpm  # Use specific package manager (npm, pnpm, yarn, bun)
 supercheck upgrade --dry-run               # Preview without installing
 supercheck upgrade -y                      # Skip confirmation
-```
 
-| Flag | Description |
-|------|-------------|
-| `--tag <tag>` | Release target to install (default: `latest`, accepts explicit versions) |
-| `--package-manager <pm>` | Package manager to use (`npm`, `pnpm`, `yarn`, `bun`) |
-| `-y, --yes` | Skip confirmation prompt |
-| `--dry-run` | Preview the upgrade command without executing |
-
-### `supercheck doctor`
-
-Check that all dependencies and configuration are set up correctly.
-
-```bash
 supercheck doctor
 supercheck doctor --strict # Exit non-zero unless deps, config and server-verified credentials are in place
 supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
 ```
 
-The doctor command checks:
-- **Node.js** — runtime availability
-- **@playwright/test** — npm package for browser tests
-- **Playwright browsers** — chromium binary for local test execution
-- **k6** — binary for performance/load tests (optional)
-- **Authentication** — whether a valid token is stored
-- **Configuration** — whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted)
+`upgrade --tag` defaults to `latest` and accepts explicit versions; `--dry-run` previews the upgrade command without executing.
+
+<Accordions>
+<Accordion title="supercheck doctor: checks, --strict and --fix" id="supercheck-doctor">
+
+| Check | What it verifies |
+|---|---|
+| **Node.js** | Runtime availability |
+| **@playwright/test** | npm package for browser tests |
+| **Playwright browsers** | chromium binary for local test execution |
+| **k6** | Binary for performance/load tests (optional) |
+| **Authentication** | Whether a valid token is stored |
+| **Configuration** | Whether `supercheck.config.ts` exists (it is read as text, never executed, so only literal values are understood; computed values are noted) |
 
 If `supercheck.config.ts` names a different API than the one in use, doctor says so and does not send your token to the URL written in a repository. Set `SUPERCHECK_URL` (or run `supercheck login --url ...`) to verify against it.
 
@@ -1063,14 +679,5 @@ Doctor verifies stored credentials against the server (`/api/context`, 5 second 
 
 With `--fix`, doctor installs missing Playwright browsers automatically by running `npx playwright install` in the current directory, which uses the repository's own `node_modules`: use `--fix` only in a repository you trust. For `@playwright/test` and `k6`, it prints the install command to run manually.
 
-`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
-
-### Investigation status and terminal output
-
-Use `supercheck sre status <runId>` to follow a triage or accepted investigation. This requires a matching app release with the investigation-status endpoint.
-
-Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners. Interactive stream connections show elapsed waiting time; GET streams retry one failed initial connection. Writes and POST streams are not replayed. Ctrl+C exits 130; stream idle timeouts exit 5.
-
-With `--json`, fatal errors are JSON on stderr with `error`, `exitCode`, and API `status` and `details` when available. `config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source.
-
-Structured SRE output follows the same Field/Value detail-table format as monitors, tests, and jobs. Triage separates run metadata from the complete narrative summary. Copilot answers and evidence briefs have report headings; quiet mode suppresses their content. Quiet detail output resolves IDs from API envelopes, and `--json` takes precedence when combined with `--quiet`.
+</Accordion>
+</Accordions>
