@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { DEMO_URL, GITHUB_URL, developersMenu, solutionsMenu } from "../lib/site-nav";
 
 function GithubIcon({ className }: { className?: string }) {
     return (
@@ -34,34 +35,35 @@ interface FooterProps {
 
 const sections = [
     {
-        title: "Docs",
+        title: "Product",
         links: [
-            { name: "Overview", href: "/docs/app/welcome" },
-            { name: "Test automation", href: "/docs/app/automate" },
-            { name: "Monitoring", href: "/docs/app/monitor" },
-            { name: "AI SRE", href: "/docs/app/investigate" },
-            { name: "Status pages", href: "/docs/app/communicate/status-pages" },
-            { name: "Deployment", href: "/docs/app/deployment" },
+            { name: "Automate", href: "/docs/app/automate" },
+            { name: "Monitor", href: "/docs/app/monitor" },
+            { name: "Communicate", href: "/docs/app/communicate" },
+            { name: "Investigate", href: "/docs/app/investigate" },
+            { name: "Pricing", href: "/pricing" },
+            { name: "Live demo", href: DEMO_URL },
         ],
     },
     {
-        title: "Resources",
+        title: "Solutions",
+        links: solutionsMenu.groups[0].items.map((item) => ({ name: item.title, href: item.href })),
+    },
+    {
+        title: "Developers",
         links: [
-            { name: "Pricing", href: "/pricing" },
-            { name: "Live Demo", href: process.env.NEXT_PUBLIC_DEMO_URL || "https://demo.supercheck.dev" },
-            { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
-            { name: "Edge Extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
-            { name: "CLI docs", href: "/docs/cli" },
-            { name: "API reference", href: "/docs/api" },
-            { name: "YouTube", href: "https://www.youtube.com/@supercheckhq" },
-            { name: "GitHub", href: "https://github.com/supercheck-io/supercheck" },
+            ...developersMenu.groups[0].items.map((item) => ({ name: item.title, href: item.href })),
+            { name: "Chrome extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
+            { name: "Edge extension", href: "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem" },
         ],
     },
     {
         title: "Community",
         links: [
-            { name: "Discussions", href: "https://github.com/supercheck-io/supercheck/discussions" },
-            { name: "Issues", href: "https://github.com/supercheck-io/supercheck/issues" },
+            { name: "GitHub", href: GITHUB_URL },
+            { name: "Discussions", href: `${GITHUB_URL}/discussions` },
+            { name: "Issues", href: `${GITHUB_URL}/issues` },
+            { name: "YouTube", href: "https://www.youtube.com/@supercheckhq" },
         ],
     },
 ];
@@ -114,10 +116,10 @@ export function SiteFooter({
 
                     </div>
 
-                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-3 lg:gap-12">
+                    <div className="grid w-full grid-cols-2 gap-8 md:grid-cols-4 lg:gap-12">
                         {sections.map((section, sectionIdx) => (
                             <div key={sectionIdx}>
-                                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-fd-foreground">
+                                <h3 className="mb-4 text-sm font-semibold text-fd-foreground">
                                     {section.title}
                                 </h3>
                                 <ul className="space-y-3 text-sm text-fd-muted-foreground">

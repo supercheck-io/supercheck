@@ -1,0 +1,157 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowRight } from "lucide-react";
+import { SiteHeader } from "../../../components/site-header";
+import { SiteFooter } from "../../../components/site-footer";
+import { CodeWindow } from "../../../components/landing/code-window";
+import { CheckList, Screenshot, SolutionCards, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
+import { getSolution, solutions, type SolutionStep } from "../../../lib/solutions";
+import { DEMO_URL } from "../../../lib/site-nav";
+
+export const dynamicParams = false;
+
+export function generateStaticParams() {
+  return solutions.map((solution) => ({ persona: solution.slug }));
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ persona: string }> }): Promise<Metadata> {
+  const solution = getSolution((await params).persona);
+  if (!solution) return {};
+  const url = `/solutions/${solution.slug}`;
+  const title = `${solution.metaTitle} | Supercheck`;
+  return {
+    title: { absolute: title },
+    description: solution.metaDescription,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description: solution.metaDescription,
+      url,
+      siteName: "Supercheck",
+      type: "website",
+      images: ["/screenshots/playground-editor.png"],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: solution.metaDescription,
+      images: ["/screenshots/playground-editor.png"],
+    },
+  };
+}
+
+function StepVisual({ step }: { step: SolutionStep }) {
+  const visual = step.visual;
+  if (!visual) {
+    // Text-only steps show their details in the visual column instead.
+    return (
+      <div className="rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
+        <CheckList items={step.bullets} />
+      </div>
+    );
+  }
+  if (visual.kind === "code") {
+    return <CodeWindow code={visual.code} filename={visual.filename} lang={visual.lang} />;
+  }
+  return <Screenshot src={visual.src} alt={visual.alt} />;
+}
+
+export default async function SolutionPage({ params }: { params: Promise<{ persona: string }> }) {
+  const solution = getSolution((await params).persona);
+  if (!solution) notFound();
+
+  return (
+    <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
+      <SiteHeader />
+
+      <main>
+        <section className="mx-auto max-w-6xl px-4 pt-16 pb-16 sm:px-6 md:pt-24 md:pb-20">
+          <p className="text-sm font-medium text-fd-primary">{solution.role}</p>
+          <h1 className="mt-3 max-w-4xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:leading-[1.08]">
+            {solution.title}
+          </h1>
+          <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-fd-muted-foreground">{solution.intro}</p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+              Try the live demo
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </a>
+            <Link href={solution.guide.href} className={secondaryButton}>
+              {solution.guide.label}
+            </Link>
+          </div>
+        </section>
+
+        <section aria-labelledby="problems-heading" className="border-t border-fd-border bg-fd-card/40">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+            <h2 id="problems-heading" className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              What Supercheck fixes
+            </h2>
+            <div className="mt-10 grid gap-10 md:grid-cols-3 md:gap-8">
+              {solution.problems.map((problem) => (
+                <div key={problem.title} className="border-t border-fd-border pt-6">
+                  <h3 className="font-semibold">{problem.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-fd-muted-foreground">{problem.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="How it works" className="border-t border-fd-border">
+          <div className="mx-auto max-w-6xl space-y-20 px-4 py-20 sm:px-6 md:space-y-28 md:py-24">
+            {solution.steps.map((step, index) => (
+              <div
+                key={step.title}
+                className={`grid items-center gap-8 lg:gap-14 ${index % 2 === 1 ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"}`}
+              >
+                <div className={index % 2 === 1 ? "lg:order-2" : undefined}>
+                  <h2 className="text-balance text-2xl font-semibold tracking-tight">{step.title}</h2>
+                  <p className="mt-3 text-pretty leading-relaxed text-fd-muted-foreground">{step.body}</p>
+                  {step.visual && <CheckList items={step.bullets} className="mt-6" />}
+                  <Link href={step.href} className={`${textLink} mt-6`}>
+                    {step.linkLabel}
+                    <ArrowRight className="size-3.5" aria-hidden="true" />
+                  </Link>
+                </div>
+                <div className={index % 2 === 1 ? "lg:order-1" : undefined}>
+                  <StepVisual step={step} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-t border-fd-border bg-fd-card/40">
+          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-4 py-16 sm:px-6 md:flex-row md:items-center md:py-20">
+            <div className="max-w-xl">
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{solution.closing.title}</h2>
+              <p className="mt-3 text-fd-muted-foreground">{solution.closing.body}</p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
+                Open the live demo
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </a>
+              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
+                Self-host Supercheck
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <nav aria-labelledby="other-roles-heading" className="border-t border-fd-border">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+            <h2 id="other-roles-heading" className="text-2xl font-semibold tracking-tight">
+              Supercheck for other roles
+            </h2>
+            <SolutionCards exclude={`/solutions/${solution.slug}`} className="mt-6" />
+          </div>
+        </nav>
+      </main>
+
+      <SiteFooter />
+    </div>
+  );
+}

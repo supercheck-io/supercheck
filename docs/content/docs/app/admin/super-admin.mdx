@@ -97,7 +97,8 @@ Manage worker execution entries for self-hosted monitoring and performance testi
 | **Performance tests (k6)** | No | Allow k6 tests pinned to this location. New locations created in the dashboard start with this off. |
 | **Enabled** | No | Make the location available for new checks and runs. On by default; turn it off to stage a region (its name, coordinates and capabilities) before anyone can select it. A disabled location cannot be the default. |
 
-### Workload Capabilities
+<Accordions>
+<Accordion title="Workload capabilities" id="workload-capabilities">
 
 An enabled location always runs HTTP, SSL, ping, and port monitors. Browser (Playwright) and k6 workloads are opt-in per location:
 
@@ -108,6 +109,9 @@ An enabled location always runs HTTP, SSL, ping, and port monitors. Browser (Pla
 - Turning a capability on takes effect without an application release. For k6, the worker must already include `k6` in `WORKER_QUEUES`; otherwise, add that queue role and restart the worker before enabling **Performance tests**. An eligible consumer starts after the worker refreshes its location configuration.
 
 Existing locations, including `local` on self-hosted installs, keep both capabilities on when you upgrade. Which queues a worker consumes is a separate setting, `WORKER_QUEUES`; see [Multi-Server Deployment](/docs/app/deployment/multi-server#choosing-what-each-worker-runs).
+
+</Accordion>
+</Accordions>
 
 ### Location Status
 
@@ -194,7 +198,9 @@ Banned users see a "User is banned" message when attempting to log in.
 
 ## Security
 
-- **Single Admin** — Only one super admin email is supported per deployment
-- **Validation** — Multiple emails in `SUPER_ADMIN_EMAIL` will cause a startup error
-- **Audit Trail** — All super admin actions are logged with timestamps
-- **Session Tracking** — Impersonation sessions preserve the original admin ID for accountability
+| Control | Details |
+|---|---|
+| **Single Admin** | Only one super admin email is supported per deployment |
+| **Validation** | Multiple emails in `SUPER_ADMIN_EMAIL` will cause a startup error |
+| **Audit Trail** | All super admin actions are logged with timestamps |
+| **Session Tracking** | Impersonation sessions preserve the original admin ID for accountability |
