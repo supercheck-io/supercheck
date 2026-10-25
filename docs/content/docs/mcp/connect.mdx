@@ -69,8 +69,12 @@ Open **Connected apps** from the user menu. Each row shows the app, the project 
 
 Tool calls are recorded in the audit log with the user, app, project and duration (never arguments or results).
 
-## Request requirements
+<Accordions>
+<Accordion title="Request requirements" id="request-requirements">
 
 MCP clients must use Streamable HTTP and send `Accept: application/json, text/event-stream` on POST requests. The configured public host must match `BETTER_AUTH_URL`, including when Supercheck is behind a proxy. When a request carries an `Origin` header (browsers always send one), it must match the canonical resource origin or an origin allowed by the server's existing CORS policy, otherwise the server answers `403 invalid_request_origin`. Command-line and desktop clients usually send no `Origin` and are not affected.
 
 Supercheck checks that the OAuth client still exists and is enabled on every POST, and continues to verify consent and project access. Authentication errors use JSON-RPC responses while preserving the `WWW-Authenticate` and DPoP challenges. Responses are marked `no-store`.
+
+</Accordion>
+</Accordions>

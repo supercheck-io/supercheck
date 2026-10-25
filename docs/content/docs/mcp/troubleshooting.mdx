@@ -6,7 +6,6 @@ icon: LifeBuoy
 
 | Symptom | Cause and fix |
 |---|---|
-| `404 not_found` from `/api/mcp` | MCP is off on this server. A self-hosting admin must set `MCP_SERVER_ENABLED=true` and recreate the app |
 | The browser never opens | Run the tool's auth command (for example `/mcp` in Claude Code) and choose **supercheck**. Check the URL ends in `/api/mcp` |
 | `401` after working earlier | The token expired and could not refresh. Sign in again from the client, or reconnect |
 | `403 access_denied` | Access was removed. If the app was disconnected, reconnect and approve again. If you were removed from the organization or your account is banned, ask an admin; access returns once it is restored, with no reconnect needed |
@@ -15,8 +14,18 @@ icon: LifeBuoy
 | `400 batch_too_large` | A single request may carry at most 20 calls. Split larger batches |
 | Project missing on the approval screen | You can only share projects you can access. Ask an owner to add you |
 | `forbidden` from a tool | Your role cannot view that resource type. Ask for a role that can |
-| The server crashes on start with a `BETTER_AUTH_URL` error | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN` |
-| Calls fail behind a proxy | Make sure the proxy passes the `Authorization` header through to `/api/mcp` |
 | Stdio-only client | Bridge with `npx mcp-remote https://your-supercheck-host/api/mcp` |
 
 To inspect the server directly, run `npx @modelcontextprotocol/inspector` and connect to `https://your-supercheck-host/api/mcp` with the Streamable HTTP transport.
+
+<Accordions>
+<Accordion title="Self-hosted" id="self-hosted">
+
+| Symptom | Cause and fix |
+|---|---|
+| `404 not_found` from `/api/mcp` | MCP is off on this server. A self-hosting admin must set `MCP_SERVER_ENABLED=true` and recreate the app |
+| The server crashes on start with a `BETTER_AUTH_URL` error | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` is accepted for local use). The Docker setup derives it from `APP_DOMAIN` |
+| Calls fail behind a proxy | Make sure the proxy passes the `Authorization` header through to `/api/mcp` |
+
+</Accordion>
+</Accordions>

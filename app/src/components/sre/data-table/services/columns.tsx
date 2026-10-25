@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type SreServiceListItem } from "@/actions/sre-services";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
+import { UUIDField } from "@/components/ui/uuid-field";
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 import {
   Archive,
@@ -41,6 +42,18 @@ function formatDate(value: Date | string) {
 }
 
 export const columns: ColumnDef<SreServiceListItem>[] = [
+  {
+    accessorKey: "id",
+    header: ({ column }) => (
+      <DataTableColumnHeader className="ml-2" column={column} title="Service ID" />
+    ),
+    cell: ({ row }) => (
+      <div className="ml-2 w-[90px]">
+        <UUIDField value={row.original.id} maxLength={8} />
+      </div>
+    ),
+    enableSorting: false,
+  },
   {
     accessorKey: "name",
     header: ({ column }) => (

@@ -3,9 +3,12 @@ title: Installation
 description: Install and set up the Supercheck CLI
 ---
 
-## Install via npm
+Requires **Node.js 20** or later.
 
-[npm package](https://www.npmjs.com/package/@supercheck/cli)
+<Steps>
+<Step>
+
+### Install
 
 ```bash
 # Global install (recommended)
@@ -15,16 +18,75 @@ npm install -g @supercheck/cli
 npx @supercheck/cli health
 ```
 
-<Callout type="info">
-  Requires **Node.js 20** or later.
-</Callout>
+</Step>
+<Step>
 
-## Verify Installation
+### Verify
 
 ```bash
 supercheck --version
 supercheck health
 ```
+
+</Step>
+<Step>
+
+### Sign in
+
+```bash
+supercheck login
+```
+
+Approve the code in your browser. To use a token instead, create one under **Organization → CLI Tokens → Create Token** (shown only once) and pass it:
+
+```bash
+supercheck login --token sck_live_a1b2c3d4...
+```
+
+In CI/CD no login step is needed. Export the token and the CLI reads it at runtime:
+
+```bash
+export SUPERCHECK_TOKEN="sck_live_..."
+```
+
+</Step>
+<Step>
+
+### Initialize a project
+
+```bash
+supercheck init
+```
+
+</Step>
+</Steps>
+
+<Callout type="info">
+`supercheck job trigger` uses `SUPERCHECK_TRIGGER_KEY`, not the CLI token. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or other API commands.
+</Callout>
+
+Local test execution does not require a Supercheck account: `supercheck test run --offline --file <path>` or `supercheck job run --id <name-or-id> --local --offline` use local Playwright/k6 dependencies and skip server validation. Cloud commands still require credentials. For agent setup, see [Agent Quickstart](/docs/cli/agent-quickstart).
+
+## What `init` Creates
+
+```
+my-project/
+├── _supercheck_/
+│   ├── playwright/   # Playwright test files
+│   └── k6/           # k6 performance tests
+└── supercheck.config.ts
+```
+
+`init` also installs `@playwright/test` and `@types/k6` as dev dependencies, downloads the Playwright **chromium** browser for local execution, and warns if **k6** is not installed (needed for performance tests).
+
+## Test Dependencies
+
+| Dependency | Needed for | Install |
+|---|---|---|
+| `@playwright/test` and chromium | Browser and API tests | Handled by `supercheck init`, or `npm install --save-dev @playwright/test && npx playwright install chromium` |
+| k6 | Performance tests | macOS `brew install k6`; Linux `sudo snap install k6`; Windows `choco install k6` or `winget install k6` ([more options](https://grafana.com/docs/k6/latest/set-up/install-k6/)) |
+
+Check everything with `supercheck doctor`.
 
 ## Docker
 
@@ -38,36 +100,10 @@ docker run --rm \
 
 See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.
 
-## Authenticate
+<Accordions>
+<Accordion title="Self-hosted" id="self-hosted-setup">
 
-The CLI requires a **CLI token** for API access. Create one in the dashboard:
-
-1. Go to **Organization → CLI Tokens**
-2. Click **Create Token**
-3. Copy the token (shown only once)
-
-Then authenticate:
-
-```bash
-# CI/CD: set the token as an environment variable — the CLI reads
-# SUPERCHECK_TOKEN at runtime, so no login step is needed.
-export SUPERCHECK_TOKEN="sck_live_..."
-
-# Local machine: persist credentials via login
-supercheck login --token sck_live_a1b2c3d4...
-```
-
-<Callout type="info">
-  `supercheck job trigger` uses `SUPERCHECK_TRIGGER_KEY`, not the CLI token. Add `SUPERCHECK_TOKEN` only when you also use `--wait` or other API commands.
-</Callout>
-
-Local test execution does not require a Supercheck account. Use `supercheck test run --offline --file <path>` or `supercheck job run --id <name-or-id> --local --offline`; these commands use local Playwright/k6 dependencies and skip server validation. Cloud commands still require credentials.
-
-For agent setup, `supercheck skills` prints versioned offline workflow guidance, and `supercheck skills install` creates an agent-skill pointer. `supercheck schema config --json` describes the configuration schema.
-
-## Self-Hosted Setup
-
-Point the CLI at your self-hosted instance:
+Point the CLI at your instance's HTTPS URL. Cloud users do not need this: the default is `https://app.supercheck.io`.
 
 ```bash
 export SUPERCHECK_URL="https://supercheck.yourdomain.com"
@@ -77,11 +113,12 @@ supercheck login --token $SUPERCHECK_TOKEN --url $SUPERCHECK_URL
 supercheck health
 ```
 
-Use your instance's HTTPS URL. See the [production deployment guide](/docs/app/deployment/self-hosted) if your administrator still needs to configure HTTPS.
+See the [production deployment guide](/docs/app/deployment/self-hosted) if your administrator still needs to configure HTTPS.
 
-## Proxy Configuration
+</Accordion>
+<Accordion title="Proxy configuration" id="proxy-configuration">
 
-For corporate networks, the CLI respects standard proxy environment variables:
+The CLI respects standard proxy environment variables:
 
 ```bash
 export HTTPS_PROXY="http://proxy.corp.com:8080"
@@ -91,68 +128,20 @@ export SUPERCHECK_TOKEN="sck_live_..."
 supercheck job trigger <id> --wait
 ```
 
-## Initialize a Project
+</Accordion>
+<Accordion title="Manual Playwright and k6 setup" id="test-dependencies">
 
-Scaffold a new `supercheck.config.ts` and `_supercheck_/` folder:
-
-```bash
-supercheck init
-```
-
-This creates:
-
-```
-my-project/
-├── _supercheck_/
-│   ├── playwright/   # Playwright test files
-│   └── k6/           # k6 performance tests
-└── supercheck.config.ts
-```
-
-The `init` command automatically:
-- Installs `@playwright/test` and `@types/k6` as dev dependencies
-- Downloads the Playwright **chromium** browser binary for local test execution
-- Warns if **k6** is not installed (needed for performance tests)
-
-## Test Dependencies
-
-### Playwright (Browser Tests)
-
-`supercheck init` handles Playwright setup automatically. If you need to install manually:
+If you skip `supercheck init`:
 
 ```bash
 npm install --save-dev @playwright/test
 npx playwright install chromium
 ```
 
-### k6 (Performance Tests)
+Run `supercheck doctor` to verify dependencies.
 
-k6 is a standalone binary — install it via your system package manager:
-
-```bash
-# macOS
-brew install k6
-
-# Linux (snap)
-sudo snap install k6
-
-# Windows
-choco install k6
-# or
-winget install k6
-```
-
-See [k6 installation docs](https://grafana.com/docs/k6/latest/set-up/install-k6/) for more options.
-
-### Verify Dependencies
-
-Run the doctor command to check that everything is set up:
-
-```bash
-supercheck doctor
-```
-
-## Uninstall
+</Accordion>
+<Accordion title="Uninstall" id="uninstall">
 
 ```bash
 # Clear stored credentials first
@@ -161,3 +150,6 @@ supercheck logout
 # Remove global install
 npm uninstall -g @supercheck/cli
 ```
+
+</Accordion>
+</Accordions>

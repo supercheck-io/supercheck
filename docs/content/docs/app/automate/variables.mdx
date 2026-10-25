@@ -53,7 +53,13 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 Secret values are masked by default in the UI. Users with secret-view permission can reveal an existing value only through the audited reveal action. Changing a secret back to a regular variable requires supplying a replacement value; the update action never decrypts and converts the stored secret implicitly.
 </Callout>
 
+<Accordions>
+<Accordion title="How secrets are injected at execution time" id="secret-injection">
+
 At execution time, the worker narrows the injected secret payload when it can reliably identify direct calls such as `getSecret('API_KEY')`. Dynamic keys, aliases, or unsupported source syntax use the project secret set to preserve compatibility. This source-based optimization does not limit which project secrets a test is authorized to request.
+
+</Accordion>
+</Accordions>
 
 </Tab>
 <Tab value="Add File">
@@ -274,7 +280,10 @@ for (const user of users) {
 </Tab>
 </Tabs>
 
-## File Variable Best Practices
+## Best Practices
+
+<Accordions>
+<Accordion title="File variable best practices" id="file-variable-best-practices">
 
 - Use file variables for reusable datasets and fixtures, not secrets or credentials
 - Keep files small and text-based; split large datasets or generate them dynamically when needed
@@ -282,7 +291,8 @@ for (const user of users) {
 - Validate and parse uploaded content defensively before using it in tests
 - Avoid logging full dataset contents in CI or shared environments unless you explicitly need that output
 
-## Variable Naming Conventions
+</Accordion>
+<Accordion title="Variable naming conventions" id="variable-naming-conventions">
 
 Use clear, consistent naming for your variables:
 
@@ -303,6 +313,9 @@ Use clear, consistent naming for your variables:
 | `TEST_USER_PASSWORD` | Test account password (secret) |
 | `API_KEY` | API authentication key (secret) |
 | `DB_CONNECTION_STRING` | Database connection (secret) |
+
+</Accordion>
+</Accordions>
 
 ## Security Features
 

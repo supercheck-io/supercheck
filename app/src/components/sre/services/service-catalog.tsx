@@ -159,6 +159,7 @@ export function ServiceCatalog({
           entityLabel="services"
           meta={{
             globalFilterColumns: [
+              "id",
               "name",
               "description",
               "ownerTeam",

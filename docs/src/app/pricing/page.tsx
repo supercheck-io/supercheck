@@ -295,12 +295,13 @@ export default function PricingPage() {
             <SiteHeader />
 
             <main className="mx-auto w-full max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-20">
-                <div className="mx-auto mb-12 max-w-2xl text-center">
-                    <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Supercheck Cloud is coming soon
+                <div className="mx-auto mb-10 max-w-2xl text-center">
+                    <p className="text-sm font-medium text-fd-primary">Supercheck Cloud is coming soon</p>
+                    <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+                        Free to self-host. Simple plans for Cloud.
                     </h1>
-                    <p className="mt-4 text-lg text-fd-muted-foreground">
-                        Preview the plans and join the waitlist for the one you want. Cloud signups are not open yet.
+                    <p className="mt-4 text-pretty text-lg text-fd-muted-foreground">
+                        Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
                         Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
@@ -312,6 +313,27 @@ export default function PricingPage() {
                         <Link href="/docs/app/admin/subscription" className="underline underline-offset-4">How billing works</Link>
                     </nav>
                 </div>
+
+                <section aria-labelledby="self-host-heading" className="mb-6 flex flex-col gap-6 rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8 md:flex-row md:items-center md:justify-between">
+                    <div className="max-w-2xl">
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <h2 id="self-host-heading" className="text-lg font-semibold">Self-hosted</h2>
+                            <span className="text-2xl font-semibold tracking-tight">$0</span>
+                            <span className="text-sm text-fd-muted-foreground">open source, AGPLv3</span>
+                        </div>
+                        <p className="mt-2 text-sm text-fd-muted-foreground">
+                            Run the open-source core with no license fee and no usage limits. You pay only for your servers and AI provider.
+                        </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-3">
+                        <Link href="/docs/app/deployment/self-hosted" className="rounded-md bg-fd-primary px-4 py-2 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                            Self-hosting guide
+                        </Link>
+                        <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-md border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
+                            View on GitHub
+                        </Link>
+                    </div>
+                </section>
 
                 <div id="waitlist" className="grid scroll-mt-20 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
@@ -358,41 +380,23 @@ export default function PricingPage() {
 
                 <CopyEmail email={WAITLIST_EMAIL} />
 
-                <div className="mt-6 grid gap-6 lg:grid-cols-2">
-                    <section aria-labelledby="trial-heading" className="rounded-xl border border-fd-border p-6 sm:p-8">
-                        <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
-                        <p className="mt-1 text-sm text-fd-muted-foreground">
-                            Most of the product, with limits that keep the trial safe for everyone. Custom domains and single sign-on are on paid plans. Trials start when Cloud signups open.
-                        </p>
-                        <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
-                            {trialHighlights().map((highlight) => (
-                                <li key={highlight} className="flex items-start gap-3 leading-6">
-                                    <CheckIcon />
-                                    <span>{highlight}</span>
-                                </li>
-                            ))}
-                        </ul>
-                        <p className="mt-5 text-xs text-fd-muted-foreground">
-                            When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
-                        </p>
-                    </section>
-
-                    <aside aria-labelledby="self-host-heading" className="flex flex-col rounded-xl border border-fd-border p-6 sm:p-8">
-                        <h2 id="self-host-heading" className="text-lg font-semibold">Self-host for free</h2>
-                        <p className="mt-1 flex-1 text-sm text-fd-muted-foreground">
-                            Supercheck core is open source under AGPLv3. Run it on your own infrastructure with no license fee
-                            and no usage limits; you pay only for your servers and AI provider.
-                        </p>
-                        <div className="mt-6 flex flex-wrap gap-3">
-                            <Link href="/docs/app/deployment/self-hosted" className="rounded-md border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                                Self-hosting guide
-                            </Link>
-                            <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-md px-4 py-2 text-sm font-medium text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                                View on GitHub
-                            </Link>
-                        </div>
-                    </aside>
-                </div>
+                <section aria-labelledby="trial-heading" className="mt-6 rounded-xl border border-fd-border p-6 sm:p-8">
+                    <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
+                    <p className="mt-1 text-sm text-fd-muted-foreground">
+                        Most of the product, with limits that keep the trial safe for everyone. Custom domains and single sign-on are on paid plans. Trials start when Cloud signups open.
+                    </p>
+                    <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        {trialHighlights().map((highlight) => (
+                            <li key={highlight} className="flex items-start gap-3 leading-6">
+                                <CheckIcon />
+                                <span>{highlight}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="mt-5 text-xs text-fd-muted-foreground">
+                        When the trial ends, monitors are paused and status pages are archived. Nothing is deleted, and subscribing restores them.
+                    </p>
+                </section>
 
                 <section id="compare" aria-labelledby="compare-heading" className="mt-24 scroll-mt-20">
                     <div className="mx-auto mb-8 max-w-2xl text-center">

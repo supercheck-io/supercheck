@@ -100,11 +100,7 @@ Run multiple jobs or tests simultaneously to reduce total execution time. The pa
 
 Runs wait when execution capacity is full. Multiple jobs can run at once up to your capacity limit.
 
-**Capacity limits:**
-
-| Installation Type | Concurrent Jobs | Queued Jobs |
-|------|-----------------|-------------|
-| **Self-hosted** | Configurable | Configurable |
+**Capacity limits:** self-hosted installations have configurable concurrent and queued job limits. See [Self-Hosted](/docs/app/deployment/self-hosted).
 
 <Callout type="info">
 The parallel execution indicator appears in the top navigation bar showing **RUNNING** and **QUEUED** counts. Click it to view details and manage executions.
@@ -242,29 +238,11 @@ After a job completes:
 
 Jobs send notifications through your configured alert channels:
 
-### Failure Notifications
-
-When a job fails, notifications include:
-- Job name and project
-- Which tests failed
-- Error summary
-- Link to full report
-- Execution duration
-
-### Success Notifications (Optional)
-
-When enabled, success notifications include:
-- Job name and project
-- All tests passed confirmation
-- Execution duration
-- Link to report
-
-### Timeout Notifications
-
-If a job exceeds the maximum execution time:
-- Job is automatically stopped
-- Timeout notification is sent
-- Partial results are saved
+| Notification | When | Includes |
+|---|---|---|
+| **Failure** | A job fails | Job name and project, which tests failed, error summary, link to full report, execution duration |
+| **Success** (optional) | Enabled, and the job passes | Job name and project, all tests passed confirmation, execution duration, link to report |
+| **Timeout** | A job exceeds the maximum execution time | The job is automatically stopped, a timeout notification is sent, and partial results are saved |
 
 <Callout type="info">
 **Execution Time Limits:**
@@ -273,6 +251,10 @@ If a job exceeds the maximum execution time:
 - **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
 </Callout>
 
-## Deleting stored artifacts
+<Accordions>
+<Accordion title="Deleting jobs and stored artifacts" id="deleting-stored-artifacts">
 
 Jobs with queued or running executions cannot be deleted until those executions stop. Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.
+
+</Accordion>
+</Accordions>

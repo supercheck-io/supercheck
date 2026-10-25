@@ -4,80 +4,122 @@ description: Open-source testing, monitoring, and AI SRE — as code with the Su
 icon: Terminal
 ---
 
-The Supercheck CLI (`@supercheck/cli`) provides a first-class command-line interface for CI/CD pipelines, automation workflows, monitoring-as-code, and AI-assisted incident response. Use it to manage jobs, tests, monitors, incidents, service topology, variables, and more.
+The Supercheck CLI (`@supercheck/cli`) runs your tests, monitors, jobs and incident workflows from the terminal, CI/CD pipelines and coding agents. See the [package on npm](https://www.npmjs.com/package/@supercheck/cli). CLI releases from 0.3.1 are [Apache-2.0](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE); earlier releases retain their original licenses.
 
-[View the package on npm](https://www.npmjs.com/package/@supercheck/cli). CLI releases from 0.3.1 are [Apache-2.0](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE); earlier releases retain their original licenses.
-
-## Key Features
-
-- **Agent guidance** — Read versioned CLI workflows offline with `supercheck skills`; inspect config fields with `supercheck schema config --json`
-- **Offline local execution** — Run local Playwright and k6 tests without a Supercheck account or server validation
-- **CI/CD Integration** — Trigger jobs, wait for results, and gate deployments
-- **Monitoring-as-Code** — Define monitors, tests, jobs, notification providers, variables, tags, and status pages in `supercheck.config.ts`
-- **Resource management** — Manage supported resources from the terminal within your permissions
-- **JSON Output** — Machine-readable output for scripting with `--json`
-- **AI SRE** — Triage incidents, start investigations, stream Copilot answers, and inspect service dependencies
-- **Safe Retry & Rate Limiting** — Exponential backoff for rate limits and idempotent failures without replaying uncertain mutations
-- **Self-Hosted Support** — Works with any Supercheck deployment
+<Cards className="grid-cols-1 sm:grid-cols-2">
+<Card icon={<Bot className="text-violet-500" />} title="Agent guidance" href="/docs/cli/agent-quickstart">
+Versioned workflows offline with `supercheck skills`; config schema with `supercheck schema config --json`
+</Card>
+<Card icon={<Laptop className="text-green-500" />} title="Offline local execution" href="/docs/cli/commands">
+Run Playwright and k6 tests with no account or server validation
+</Card>
+<Card icon={<GitBranch className="text-blue-500" />} title="CI/CD" href="/docs/cli/ci-cd">
+Trigger jobs, wait for results, gate deployments
+</Card>
+<Card icon={<FileCode className="text-amber-500" />} title="Monitoring-as-Code" href="/docs/cli/configuration">
+Define monitors, tests, jobs, notification providers, variables, tags and status pages in `supercheck.config.ts`
+</Card>
+<Card icon={<Siren className="text-red-500" />} title="AI SRE" href="/docs/cli/commands#ai-sre">
+Triage incidents, start investigations, stream Copilot answers, inspect service dependencies
+</Card>
+<Card icon={<Braces className="text-sky-500" />} title="Scriptable output" href="/docs/cli/commands#global-flags">
+`--json` everywhere, safe retry with exponential backoff, and no replay of uncertain mutations
+</Card>
+</Cards>
 
 ## Quick Start
 
+<Steps>
+<Step>
+
+### Install
+
 ```bash
-# Install globally
 npm install -g @supercheck/cli
+```
 
-# Authenticate with your CLI token
-supercheck login --token sck_live_...
+</Step>
+<Step>
 
-# Verify connection
+### Sign in
+
+```bash
+supercheck login
+```
+
+Approve the code in your browser. Or pass a CLI token: `supercheck login --token sck_live_...`
+
+</Step>
+<Step>
+
+### Verify and explore
+
+```bash
 supercheck whoami
 supercheck health
-
-# List resources
 supercheck job list
 supercheck monitor list
 supercheck test list
+```
 
-# Investigate reliability incidents
+</Step>
+<Step>
+
+### Investigate incidents
+
+```bash
 supercheck incident list
 supercheck sre ask "Summarize active reliability risks"
 ```
 
+</Step>
+</Steps>
+
+## Choose Your Credential
+
+Most commands use a **CLI token** (`sck_live_*`). `supercheck job trigger` is the exception: it uses a job-specific **trigger key** (`sck_trigger_*`), plus a CLI token only when you add `--wait`.
+
+| Use case | Credential | Variable |
+|---|---|---|
+| Most commands, `deploy`, `diff`, `whoami` | CLI token | `SUPERCHECK_TOKEN` |
+| `job trigger` | Trigger key | `SUPERCHECK_TRIGGER_KEY` |
+| `job trigger --wait` | Trigger key and CLI token | both |
+| Local runs (`--offline`) | None | — |
+
 ## Agent Workflows
 
-Start with `supercheck skills` for the workflow index, then request focused guidance such as `supercheck skills local`, `supercheck skills sync`, or `supercheck skills execute`. `supercheck skills install` writes a small skill pointer for an agent; it preserves existing files unless `--force` is supplied. These commands work offline.
+| Command | Purpose |
+|---|---|
+| `supercheck skills [topic]` | Workflow index, or focused guidance: `local`, `sync`, `configure`, `execute`, `investigate` |
+| `supercheck skills install` | Write a small skill pointer for an agent (existing files kept unless `--force`) |
+| `supercheck capabilities --json` | Local CLI capabilities; add `--online` to verify the current server context (does not establish feature availability or permissions) |
+| `supercheck schema config --json` | The installed configuration schema |
 
-Use `supercheck capabilities --json` to inspect local CLI capabilities. Add `--online` to verify the current server context. This context check does not establish feature availability or permissions. `supercheck schema config --json` describes the installed configuration schema.
-
-Local runs do not require cloud credentials:
+`skills` and `schema` work offline. Local runs need no cloud credentials:
 
 ```bash
 supercheck test run --offline --file ./_supercheck_/playwright/homepage.pw.ts
 supercheck job run --id "Nightly E2E" --local --offline
 ```
 
-Offline execution runs local files and skips server-side validation. Cloud sync still requires a project-scoped CLI token. See [Agent-first operation](./commands#agent-first-operation) for JSON, confirmation, and resource ownership behavior.
-
-<Callout type="info">
-  In CI/CD, set `SUPERCHECK_TOKEN` for general CLI/API commands. For `supercheck job trigger`, set `SUPERCHECK_TRIGGER_KEY`, and add `SUPERCHECK_TOKEN` only when you also use `--wait`.
-</Callout>
-
-## Choose Your Credential
-
-Most CLI commands use **CLI tokens** (`sck_live_*`). `supercheck job trigger` is the exception: it uses a job-specific **trigger key** (`sck_trigger_*`) and optionally a CLI token when waiting for completion.
-
-```
-supercheck.config.ts          → Defines resources (monitoring-as-code)
-SUPERCHECK_TOKEN env var      → Authenticates API requests
-SUPERCHECK_TRIGGER_KEY env var → Authenticates job trigger requests
-supercheck deploy             → Pushes config to Supercheck API
-supercheck job trigger <id>   → Triggers jobs from CI/CD
-```
+Offline execution runs local files and skips server-side validation. Cloud sync still requires a project-scoped CLI token. See [Agent-first operation](./commands#agent-first-operation) for JSON, confirmation and resource ownership behavior, or start with the [Agent Quickstart](/docs/cli/agent-quickstart).
 
 ## Next Steps
 
-- [Installation](/docs/cli/installation) — Install and set up the CLI
-- [Authentication](/docs/cli/authentication) — Token types and security
-- [Configuration](/docs/cli/configuration) — `supercheck.config.ts` reference
-- [Commands](/docs/cli/commands) — Full command reference
-- [CI/CD Integration](/docs/cli/ci-cd) — GitHub Actions, GitLab CI, Docker
+<Cards className="grid-cols-1 sm:grid-cols-3">
+<Card icon={<Download className="text-blue-500" />} title="Installation" href="/docs/cli/installation">
+Install and set up the CLI
+</Card>
+<Card icon={<KeyRound className="text-amber-500" />} title="Authentication" href="/docs/cli/authentication">
+Token types and security
+</Card>
+<Card icon={<Settings className="text-gray-500" />} title="Configuration" href="/docs/cli/configuration">
+`supercheck.config.ts` reference
+</Card>
+<Card icon={<Terminal className="text-green-500" />} title="Commands" href="/docs/cli/commands">
+Full command reference
+</Card>
+<Card icon={<GitBranch className="text-violet-500" />} title="CI/CD" href="/docs/cli/ci-cd">
+GitHub Actions, GitLab CI, Docker
+</Card>
+</Cards>
