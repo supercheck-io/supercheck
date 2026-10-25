@@ -407,7 +407,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               </p>
             </div>}
             {/* Only organization owners can open the organization's billing portal. */}
-            {canManageSubscription && hasSubscription && (
+            {canManageSubscription && data.subscription.hasBillingCustomer && (
               <Button
                 variant="outline"
                 onClick={handleManageSubscription}
