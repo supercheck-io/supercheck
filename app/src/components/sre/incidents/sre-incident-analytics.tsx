@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import type { SreIncidentAnalytics as Analytics } from "@/actions/sre-incidents";
@@ -9,6 +10,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { PageHeader } from "@/components/shared/page-header";
 import { TableBadge } from "@/components/ui/table-badge";
 
 const chartConfig = {
@@ -24,26 +26,32 @@ function formatResolutionTime(minutes: number | null) {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
+/** "2026-09-27" -> "Sep 27". Parsed as a calendar date so it never shifts with the viewer's timezone. */
+export function formatTrendDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return value;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? value : format(date, "MMM d");
+}
+
 export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Incident trends</h1>
-        <p className="text-sm text-muted-foreground">
-          Response volume and resolution performance for the last {analytics.windowDays} days.
-        </p>
-      </div>
+      <PageHeader
+        title="Incident trends"
+        description={`Response volume and resolution performance for the last ${analytics.windowDays} days.`}
+      />
 
-      <div className="grid overflow-hidden rounded-lg border sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Created", analytics.summary.created],
           ["Resolved", analytics.summary.resolved],
           ["Resolution rate", `${analytics.summary.resolutionRate}%`],
           ["Average resolution", formatResolutionTime(analytics.summary.averageResolutionMinutes)],
-        ].map(([label, value], index) => (
-          <div key={label} className={index < 3 ? "border-b p-4 sm:border-r xl:border-b-0" : "p-4"}>
-            <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border bg-card p-4">
+            <p className="text-sm font-medium text-muted-foreground">{label}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
           </div>
         ))}
       </div>
@@ -56,9 +64,9 @@ export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
         <ChartContainer config={chartConfig} className="h-64 w-full">
           <LineChart data={analytics.daily} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={28} tickFormatter={(value) => value.slice(5)} />
+            <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={28} tickFormatter={(value) => formatTrendDate(String(value))} />
             <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-            <ChartTooltip content={<ChartTooltipContent />} />
+            <ChartTooltip content={<ChartTooltipContent labelFormatter={(value) => formatTrendDate(String(value))} />} />
             <Line type="monotone" dataKey="created" stroke="var(--color-created)" strokeWidth={2} dot={false} />
             <Line type="monotone" dataKey="resolved" stroke="var(--color-resolved)" strokeWidth={2} dot={false} />
           </LineChart>

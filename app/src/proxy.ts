@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllowedCorsOriginPatterns, isCorsOriginAllowed } from "@/lib/cors";
+import { getMcpAllowedOrigins, getMcpResourceUrl, MCP_RESOURCE_PATH } from "@/lib/mcp/config";
 import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
 
 /**
@@ -45,6 +46,19 @@ import { getEffectiveStatusPageDomain } from "@/lib/status-page-domain";
  * Handle CORS for API routes
  * Returns a response if CORS handling is complete, null if request should continue
  */
+/**
+ * The MCP endpoint answers only its own origin plus MCP_ALLOWED_ORIGINS, not the general CORS allow-list, so the
+ * preflight advertises exactly what the route itself will accept.
+ */
+function isMcpOriginAllowed(origin: string): boolean {
+  try {
+    return origin === new URL(getMcpResourceUrl()).origin || getMcpAllowedOrigins().includes(origin);
+  } catch {
+    // MCP is not configured (no BETTER_AUTH_URL), so there is no resource origin to allow.
+    return getMcpAllowedOrigins().includes(origin);
+  }
+}
+
 function handleCors(request: NextRequest): NextResponse | null {
   const origin = request.headers.get('origin');
   const pathname = request.nextUrl.pathname;
@@ -54,8 +68,11 @@ function handleCors(request: NextRequest): NextResponse | null {
     return null;
   }
   
-  const allowedOrigins = getAllowedCorsOriginPatterns();
-  const allowed = origin ? isCorsOriginAllowed(origin, allowedOrigins) : false;
+  const allowed = !origin
+    ? false
+    : pathname === MCP_RESOURCE_PATH
+      ? isMcpOriginAllowed(origin)
+      : isCorsOriginAllowed(origin, getAllowedCorsOriginPatterns());
   
   // Handle preflight requests (OPTIONS)
   if (request.method === 'OPTIONS') {
@@ -68,7 +85,7 @@ function handleCors(request: NextRequest): NextResponse | null {
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     response.headers.set(
       'Access-Control-Allow-Headers',
-      pathname === '/api/mcp'
+      pathname === MCP_RESOURCE_PATH
         ? 'Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id'
         : 'Authorization, Content-Type, Accept'
     );
@@ -89,7 +106,7 @@ function handleCors(request: NextRequest): NextResponse | null {
     response.headers.set('Access-Control-Allow-Credentials', 'true');
   }
   response.headers.set('Vary', 'Origin');
-  if (pathname === '/api/mcp') {
+  if (pathname === MCP_RESOURCE_PATH) {
     response.headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, Mcp-Session-Id');
   }
   

@@ -13,6 +13,10 @@ interface MonitorSummary {
   active: number;
   up: number;
   down: number;
+  paused: number;
+  pending: number;
+  maintenance: number;
+  error: number;
   uptime: number;
   criticalAlerts: Array<{
     id: string;
@@ -35,6 +39,10 @@ interface MonitorSummary {
 
 interface JobSummary {
   total: number;
+  /** Jobs with a cron schedule configured. */
+  scheduled: number;
+  passedRuns30d: number;
+  failedRuns30d: number;
   successfulRuns24h: number;
   failedRuns24h: number;
   recentRuns: Array<{
@@ -152,28 +160,33 @@ export async function fetchDashboard(): Promise<DashboardData> {
 
 const LOOKBACK_DAYS = 30;
 
-function transformDashboardData(data: Record<string, unknown>, alertsData: unknown[]): DashboardData {
-  const systemIssues: SystemHealth["issues"] = [];
+/**
+ * The server builds the full issue list (monitors, failed runs, queue
+ * capacity). Pass it through untouched; never rebuild it client-side.
+ */
+export function parseSystemHealth(raw: unknown): SystemHealth {
+  const system = (raw ?? {}) as Record<string, unknown>;
+  const issues = Array.isArray(system.issues)
+    ? (system.issues as Array<Record<string, unknown>>).map((issue) => ({
+        type: (["monitor", "job", "queue"].includes(String(issue.type))
+          ? issue.type
+          : "job") as SystemHealth["issues"][number]["type"],
+        message: String(issue.message || ""),
+        severity: (["low", "medium", "high", "critical"].includes(String(issue.severity))
+          ? issue.severity
+          : "medium") as SystemHealth["issues"][number]["severity"],
+      }))
+    : [];
+  return {
+    timestamp: String(system.timestamp || new Date().toISOString()),
+    healthy: issues.length === 0,
+    issues,
+  };
+}
 
-  const monitorsDown = Number(data.monitors && typeof data.monitors === 'object' ? (data.monitors as Record<string, unknown>).down : 0) || 0;
-  if (monitorsDown > 0) {
-    systemIssues.push({
-      type: "monitor" as const,
-      message: `${monitorsDown} monitor${monitorsDown === 1 ? "" : "s"} ${monitorsDown === 1 ? "is" : "are"} down`,
-      severity: monitorsDown > 2 ? ("critical" as const) : ("high" as const),
-    });
-  }
+function transformDashboardData(data: Record<string, unknown>, alertsData: unknown[]): DashboardData {
 
   const jobsData = data.jobs as Record<string, unknown> | undefined;
-  const failedJobs = Number(jobsData?.failedRuns24h) || 0;
-  if (failedJobs > 0) {
-    systemIssues.push({
-      type: "job" as const,
-      message: `${failedJobs} job${failedJobs === 1 ? "" : "s"} failed in the last 24 hours`,
-      severity: failedJobs > 5 ? ("high" as const) : ("medium" as const),
-    });
-  }
-
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
   const k6Data = data.k6 as Record<string, unknown> | undefined;
@@ -190,6 +203,10 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       active: Math.max(0, Number(monitorsData?.active) || 0),
       up: Math.max(0, Number(monitorsData?.up) || 0),
       down: Math.max(0, Number(monitorsData?.down) || 0),
+      paused: Math.max(0, Number(monitorsData?.paused) || 0),
+      pending: Math.max(0, Number(monitorsData?.pending) || 0),
+      maintenance: Math.max(0, Number(monitorsData?.maintenance) || 0),
+      error: Math.max(0, Number(monitorsData?.error) || 0),
       uptime: Math.max(0, Math.min(100, Number(monitorsData?.uptime) || 0)),
       criticalAlerts: Array.isArray(monitorsData?.criticalAlerts)
         ? (monitorsData.criticalAlerts as Array<Record<string, unknown>>).slice(0, 100).map(alert => ({
@@ -226,6 +243,9 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
     },
     jobs: {
       total: Math.max(0, Number(jobsData?.total) || 0),
+      scheduled: Math.max(0, Number(jobsData?.scheduled) || 0),
+      passedRuns30d: Math.max(0, Number(jobsData?.passedRuns30d) || 0),
+      failedRuns30d: Math.max(0, Number(jobsData?.failedRuns30d) || 0),
       successfulRuns24h: Math.max(0, Number(jobsData?.successfulRuns24h) || 0),
       failedRuns24h: Math.max(0, Number(jobsData?.failedRuns24h) || 0),
       recentRuns: Array.isArray(jobsData?.recentRuns)
@@ -289,11 +309,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
           };
         })
       : [],
-    system: {
-      timestamp: new Date().toISOString(),
-      healthy: systemIssues.length === 0,
-      issues: systemIssues,
-    },
+    system: parseSystemHealth(data.system),
   };
 }
 

@@ -1,6 +1,6 @@
 ---
 name: supercheck-testing-qa
-description: Test or validate Supercheck changes using package checks, Jest, Playwright UI/API E2E, recorder browser tests, contract tests, AI SRE acceptance, release evidence, and commit/merge readiness gates.
+description: Test or validate Supercheck changes, write or fix tests, or debug flaky ones, using package checks, Jest unit and DB-backed tests, Playwright UI/API E2E, recorder browser tests, contract tests, AI SRE acceptance, release evidence, and commit/merge readiness gates.
 ---
 
 # Supercheck testing and quality assurance
@@ -17,7 +17,16 @@ flowchart LR
 ## Package boundaries
 
 - Run app commands from `app`, worker commands from `worker`, CLI commands from `cli`, recorder commands from `recorder`, and docs commands from `docs`.
-- Inspect each package’s current scripts instead of assuming command names.
+- Inspect each package’s current scripts instead of assuming command names. As of this writing:
+
+| Package | Typecheck | Lint | Unit | Other |
+|---|---|---|---|---|
+| `app` | `npx tsc --noEmit` (no script) | `npm run lint` | `npm test` | `npm run test:db`, `npm run build:webpack` |
+| `worker` | `npx tsc --noEmit` | `npm run lint:check` (`lint` auto-fixes) | `npm test` | `npm run test:db` |
+| `cli` | `npm run typecheck` | `npm run lint` | `npm test` | `npm run build`, `npm pack --dry-run` |
+| `app/e2e` | `npx tsc --noEmit -p tsconfig.json` | | | `npx playwright test --list` |
+
+- Unit tests are colocated `*.spec.ts(x)`. DB-backed suites are `*.db.spec.ts`, excluded from `npm test` and run by `npm run test:db` in each package (`app/jest.db.config.js` creates and drops a throwaway database; worker suites live in `worker/test/` with `worker/jest.db.config.js`; both need `TEST_DATABASE_URL`). A green `npm test` says nothing about them.
 - Start with the narrowest test proving the changed behavior, then broaden based on blast radius.
 - App/worker shared contracts require producer and consumer coverage. Schema changes require generated migration and schema-contract verification.
 - CLI changes require typecheck, lint, Jest, build, and package-content validation.
@@ -30,6 +39,14 @@ flowchart LR
 - Use deterministic clocks/IDs/providers where useful without bypassing production logic.
 - Do not weaken assertions, add unconditional retries, inflate timeouts, or disable security controls merely to obtain green output.
 - Browser tests cover routing, auth, focus/accessibility, streaming, extension messaging, and integrated user flows that lower-level tests cannot prove.
+
+## Playwright E2E (`app/e2e`)
+
+- Layout: `tests/<domain>/` (the configured `testDir`, including `tests/auth.setup.ts`), `fixtures/` (auth, roles, cleanup), `pages/` (page objects), `utils/` (`test-data.ts`, `api-auth.ts`, `hydration.ts`); `specs/` holds Markdown test plans, not code. Rules are in `app/e2e/COVERAGE.md`: no conditional passes or dynamic skips, dedicated identities for destructive tests, CI retries off so flakes fail visibly.
+- Authentication runs once in the setup project; reuse its storage state instead of logging in per test.
+- Most flakes are hydration races: `page.goto` resolves before React hydrates and the first click is dropped. Call `waitForHydration(page)` from `utils/hydration.ts` before interacting; do not add sleeps or retries.
+- Create required records in `beforeAll` through `utils/test-data.ts` and remove them in `afterAll`; never assume records exist.
+- Cancellation and other async API contracts are eventually consistent; poll for the terminal state rather than asserting immediately.
 
 ## Evidence
 

@@ -1,7 +1,8 @@
 /** @jest-environment node */
 jest.mock("@/lib/ai/ai-security", () => ({ AISecurityService: { validateInputs: jest.fn((body) => body) }, AuthService: { validateUserAccess: jest.fn(), canAccessTestReport: jest.fn(), checkRateLimit: jest.fn() } }));
 jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: { generateStreamingResponse: jest.fn() } }));
-jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6FixPrompt: jest.fn(() => "prompt") } }));
+jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6FixPrompt: jest.fn(() => "prompt"), generateGuidanceMessage: jest.fn(() => "Retry after the report is ready") } }));
+jest.mock("@/lib/ai/ai-service", () => ({ AIFixService: { generateScriptFix: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn() } }));
@@ -20,6 +21,7 @@ import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { POST } from "./route";
+import { POST as fixTest } from "../fix-test/route";
 
 const request = () => new NextRequest("http://localhost/api/ai/fix-test-stream", { method: "POST", body: JSON.stringify({ testId: "saved-test-id", testType: "performance", failedScript: "export default function() {}" }) });
 describe("streaming AI Fix artifact access", () => {
@@ -37,6 +39,15 @@ describe("streaming AI Fix artifact access", () => {
     expect((await POST(request())).status).toBe(404);
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
     expect(db.query.runs.findFirst).not.toHaveBeenCalled();
+  });
+  it.each([["streaming", POST], ["regular", fixTest]] as const)("does not consume AI credit when the %s fix has no report", async (_name, post) => {
+    jest.mocked(db.query.runs.findFirst).mockResolvedValue(undefined);
+    const response = await post(new NextRequest("http://localhost/api/ai/fix-test", { method: "POST",
+      body: JSON.stringify({ testId: "saved-test-id", testType: "browser", failedScript: "test('example', async () => {})" }) }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "report_not_available" });
+    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+    expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
   });
   it.each([null, "job-id"])("selects the newest canonical run and worker artifact layout (job=%s)", async (jobId) => {
     jest.mocked(db.query.runs.findFirst).mockResolvedValue({ id: "latest-run-id", jobId } as never);

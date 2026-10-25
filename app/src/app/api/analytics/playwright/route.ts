@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
-import { eq, and, desc, gte, count, sql, avg } from "drizzle-orm";
+import { eq, and, desc, gte, count, sql, avg, inArray } from "drizzle-orm";
+import {
+  IN_FLIGHT_RUN_STATUSES,
+  NOT_PASSED_RUN_STATUSES,
+  passRatePercent,
+} from "@/lib/dashboard/run-outcomes";
 import { subDays } from "date-fns";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
@@ -105,7 +110,8 @@ export async function GET(request: NextRequest) {
           totalRuns: count(),
           avgDurationMs: avg(runs.durationMs),
           passedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-          failedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
+          notPassedRuns: sql<number>`SUM(CASE WHEN ${inArray(runs.status, [...NOT_PASSED_RUN_STATUSES])} THEN 1 ELSE 0 END)`,
+          inFlightRuns: sql<number>`SUM(CASE WHEN ${inArray(runs.status, [...IN_FLIGHT_RUN_STATUSES])} THEN 1 ELSE 0 END)`,
           totalDurationMs: sql<number>`SUM(COALESCE(${runs.durationMs}, 0))`,
         })
         .from(runs)
@@ -124,7 +130,8 @@ export async function GET(request: NextRequest) {
           date: sql<string>`DATE(${runs.startedAt})`,
           count: count(),
           passed: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-          failed: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
+          // every terminal non-passed outcome (failed, error, blocked)
+          failed: sql<number>`SUM(CASE WHEN ${inArray(runs.status, [...NOT_PASSED_RUN_STATUSES])} THEN 1 ELSE 0 END)`,
         })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
@@ -142,8 +149,9 @@ export async function GET(request: NextRequest) {
     const stats = aggregateStats[0];
     const totalRuns = Number(stats?.totalRuns) || 0;
     const passedRuns = Number(stats?.passedRuns) || 0;
-    const failedRuns = Number(stats?.failedRuns) || 0;
-    const passRate = totalRuns > 0 ? Math.round((passedRuns / totalRuns) * 100 * 10) / 10 : 0;
+    const notPassedRuns = Number(stats?.notPassedRuns) || 0;
+    const inFlightRuns = Number(stats?.inFlightRuns) || 0;
+    const passRate = passRatePercent(passedRuns, totalRuns, Number(stats?.inFlightRuns) || 0);
     const avgDurationMs = Math.round(Number(stats?.avgDurationMs) || 0);
 
     // Calculate P95 duration from the runs
@@ -201,7 +209,8 @@ export async function GET(request: NextRequest) {
         totalRuns,
         passRate,
         passedRuns,
-        failedRuns,
+        notPassedRuns,
+        inFlightRuns,
         avgDurationMs,
         avgDurationFormatted: formatDuration(avgDurationMs),
         p95DurationMs,

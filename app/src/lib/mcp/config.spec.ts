@@ -1,5 +1,6 @@
 import {
   MCP_SCOPES,
+  getMcpAllowedOrigins,
   getMcpResourceUrl,
   isMcpDynamicRegistrationEnabled,
   isMcpServerEnabled,
@@ -65,5 +66,26 @@ describe("getMcpResourceUrl", () => {
     expect(getMcpResourceUrl({ BETTER_AUTH_URL: "http://[::1]:3000" })).toBe("http://[::1]:3000/api/mcp");
     expect(() => getMcpResourceUrl({ BETTER_AUTH_URL: "http://app.example.com" })).toThrow("HTTPS");
     expect(() => getMcpResourceUrl({ BETTER_AUTH_URL: "ftp://app.example.com" })).toThrow("HTTPS");
+  });
+});
+
+describe("getMcpAllowedOrigins", () => {
+  it("is empty unless MCP_ALLOWED_ORIGINS is set", () => {
+    expect(getMcpAllowedOrigins({})).toEqual([]);
+    expect(getMcpAllowedOrigins({ MCP_ALLOWED_ORIGINS: "  " })).toEqual([]);
+  });
+
+  it("returns trimmed exact origins from a comma-separated list", () => {
+    expect(
+      getMcpAllowedOrigins({ MCP_ALLOWED_ORIGINS: " https://a.example.com , http://localhost:6274,, " }),
+    ).toEqual(["https://a.example.com", "http://localhost:6274"]);
+  });
+
+  it("ignores wildcards, paths, trailing slashes and non-URLs so a typo cannot widen access", () => {
+    expect(
+      getMcpAllowedOrigins({
+        MCP_ALLOWED_ORIGINS: "https://*.example.com,https://a.example.com/path,https://b.example.com/,not a url",
+      }),
+    ).toEqual([]);
   });
 });

@@ -153,7 +153,7 @@ test("requests a final JSON review without tools or GitHub credentials", async (
       assert.equal(options.headers["x-opencode-session"], "repo-42-sha")
       assert.equal(options.redirect, "error")
       const body = JSON.parse(options.body)
-      assert.equal(body.model, "deepseek-v4.1-flash")
+      assert.equal(body.model, "deepseek-v4-pro")
       assert.equal(body.tools, undefined)
       assert.equal(body.thinking.type, "disabled")
       assert.equal(body.response_format.type, "json_object")
@@ -329,8 +329,8 @@ test("prompt fences history and excludes vendor and generated paths from authori
 test("filters confidence, severity, exact evidence, root causes, and PR budgets", () => {
   const index = { "a.ts": [1, 2] }
   const evidence = { "a.ts": { 1: "run(input)", 2: "run(input)" } }
-  for (const overrides of [{ confidence: 0.89 }, { confidence: "0.99" }, { confidence: NaN },
-    { confidence: 2 }, { severity: "nit" }, { rootCause: "" }, { evidence: "guessed" }]) {
+  for (const overrides of [{ confidence: 0.7 }, { confidence: "high" }, { confidence: NaN },
+    { confidence: 200 }, { severity: "nit" }, { rootCause: "", body: " " }, { evidence: "guessed" }]) {
     assert.deepEqual(selectComments([finding(overrides)], index, { evidence }), [])
   }
   const accepted = selectComments([finding(), finding({ line: 2, body: "Same issue elsewhere" })], index, { evidence })
@@ -338,8 +338,43 @@ test("filters confidence, severity, exact evidence, root causes, and PR budgets"
   assert.deepEqual(selectComments([finding({ line: 2 })], index, { prior: accepted, evidence }), [])
   assert.deepEqual(selectComments([finding({ rootCause: "same bug rephrased" })], index, { prior: accepted, evidence }), [])
   assert.match(buildPrompt(pr(), [], { prior: accepted }).prompt, /"rootCause":"null input crash"/)
-  assert.deepEqual(selectComments([finding()], index, { prior: Array(12).fill({ body: "old" }), evidence }), [])
-  assert.equal(selectComments([finding()], index, { prior: Array(11).fill({ body: "old" }), evidence }).length, 1)
+  assert.deepEqual(selectComments([finding()], index, { prior: Array(LIMITS.maxCommentsPerPr).fill({ body: "old" }), evidence }), [])
+  assert.equal(selectComments([finding()], index, { prior: Array(LIMITS.maxCommentsPerPr - 1).fill({ body: "old" }), evidence }).length, 1)
+})
+
+test("tolerates model formatting of evidence, line, confidence, and severity", () => {
+  const index = { "a.ts": [10, 11, 12, 13, 14, 20] }
+  const evidence = { "a.ts": { 10: "  const a = 1", 11: "  if (user)  return run(input)", 12: "  }", 13: "x", 14: "y", 20: "far()" } }
+  const select = (overrides, stats) => selectComments([finding({ line: 11, evidence: "if (user) return run(input)", ...overrides })], index, { evidence, stats })
+  assert.equal(select({}).length, 1)
+  assert.equal(select({ evidence: "+  if (user)  return run(input)" }).length, 1)
+  assert.equal(select({ line: 13 })[0].line, 11)
+  assert.equal(select({ line: 17 }).length, 0)
+  assert.equal(select({ evidence: "far()", line: 11 }).length, 0)
+  assert.equal(select({ confidence: "0.8" }).length, 1)
+  assert.equal(select({ confidence: 85 }).length, 1)
+  assert.match(select({ severity: " Critical " })[0].body, /^\[blocker\] /)
+  assert.match(select({ severity: "high" })[0].body, /^\[warning\] /)
+  assert.match(select({ rootCause: undefined })[0].body, /supercheck-ai-cause:Null%20input/)
+  assert.equal(select({ severity: "constructor" }).length, 0)
+  assert.equal(select({ line: null, evidence: "  const a = 1" }).length, 0)
+  assert.equal(select({ line: "" }).length, 0)
+  // "}" matches lines 12 and 14 near line 13 (a non-match), so the snap is ambiguous.
+  const braces = { "a.ts": { ...evidence["a.ts"], 14: "}" } }
+  assert.equal(selectComments([finding({ line: 13, evidence: "}" })], index, { evidence: braces }).length, 0)
+  assert.equal(selectComments([finding({ line: 12, evidence: "}" })], index, { evidence: braces })[0].line, 12)
+  const stats = {}
+  select({ evidence: "nope" }, stats)
+  select({ confidence: 0.1 }, stats)
+  assert.deepEqual(stats, { evidence: 1, confidence: 1 })
+})
+
+test("prompt numbers new-file lines and leaves removed lines unnumbered", () => {
+  const built = buildPrompt(pr(), [{ filename: "a.ts", patch: "@@ -1,2 +7,2 @@\n keep()\n-old()\n+next()" }])
+  assert.match(built.prompt, /^ {4}7  keep\(\)$/m)
+  assert.match(built.prompt, /^ {6}-old\(\)$/m)
+  assert.match(built.prompt, /^ {4}8 \+next\(\)$/m)
+  assert.deepEqual({ ...built.evidence["a.ts"] }, { 7: "keep()", 8: "next()" })
 })
 
 test("publisher revalidates model artifacts and fresh history before posting", (t) => {
@@ -374,7 +409,7 @@ else console.log(JSON.stringify({state: 'open', head: {sha: 'abc'}}))
   assert.doesNotMatch(request.comments[0].body, /fixture-token/)
   const history = [{ ...request.comments[0], user: { login: "github-actions[bot]" }, pull_request_review_id: 7 }]
   assert.equal(run(history).comments, undefined)
-  assert.equal(run(Array(12).fill(history[0])).comments, undefined)
+  assert.equal(run(Array(LIMITS.maxCommentsPerPr).fill(history[0])).comments, undefined)
 })
 
 test("workflow carries trusted inputs separately from model output", () => {
@@ -413,7 +448,7 @@ else console.log(process.env.PR_FIXTURE)
   assert.match(readFileSync(path.join(artifact, "prompt.txt"), "utf8"), /Evidence and scope/)
   assert.deepEqual(JSON.parse(readFileSync(path.join(artifact, "evidence.json"))), { "a.ts": { 1: "run(input)" } })
   assert.equal(JSON.parse(readFileSync(path.join(artifact, "prior.json"))).length, 1)
-  assert.match(run(Array(12).fill(history[0])), /comment-budget-exhausted/)
+  assert.match(run(Array(LIMITS.maxCommentsPerPr).fill(history[0])), /comment-budget-exhausted/)
 
   writeFileSync(path.join(dir, "provider.cjs"), `global.fetch = async () => ({ok: true, json: async () => ({choices: [{finish_reason: 'stop', message: {content: process.env.MODEL_FIXTURE}}]})})`)
   execFileSync(process.execPath, ["--require", path.join(dir, "provider.cjs"), script, "model"], { env: {

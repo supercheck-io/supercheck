@@ -1,6 +1,6 @@
 ---
 name: supercheck-sre-operations
-description: Work on Supercheck AI SRE agents, incidents, services, connectors, private agents, tool execution, resilience, memory/performance, environment configuration, CI/CD, or release management.
+description: Work on Supercheck AI SRE agents, incidents and investigations, services, connectors, private agents, tool execution, resilience, memory/performance, environment configuration and feature flags, self-hosting with Docker Compose or k3s, CI/CD, or release management.
 ---
 
 # Supercheck SRE operations
@@ -54,7 +54,9 @@ flowchart LR
 ## Environment configuration
 
 - Environment access is mixed: the app reads `process.env` directly, and the worker combines `@nestjs/config` (`ConfigModule.forRoot()` plus injected `ConfigService`) with direct `process.env` reads in several services. No central schema helper exists today.
-- Keep app, worker, deployment manifests, examples, docs, and health/config diagnostics synchronized.
+- Keep app, worker, deployment manifests, examples, docs, and health/config diagnostics synchronized. Self-hosting assets live in `deploy/docker/` (compose variants, `install.sh`, `init-secrets.sh`, `setup-k3s.sh`, `setup-gvisor.sh`) and are tested by `compose.spec.py` and `install.spec.py`; the user guide is `docs/content/docs/app/deployment/`.
+- AI SRE gates live in `app/src/sre/lib/feature-gates.ts`: `SRE_ENABLED` defaults on, `SRE_AUTOMATION_ENABLED` and `SRE_AGENT_SANDBOX_ENABLED` default off. The worker reads its own copy of `SRE_ENABLED` and `SRE_AUTOMATION_ENABLED` (`worker/src/monitor/services/sre-alert-triage-queue.service.ts`), so a change to those gates must land in both.
+- AI SRE HTTP routes authorize through `app/src/app/api/sre/_auth.ts`; dynamic `[id]` routes reject malformed UUIDs before database access.
 - Validate required production values and fail closed when security-critical settings are missing.
 - Never expose secrets through health endpoints, startup logs, client-prefixed variables, build output, or configuration APIs.
 - Use distinct credentials/key namespaces for auth, encryption, object storage, AI providers, billing, email, and infrastructure.

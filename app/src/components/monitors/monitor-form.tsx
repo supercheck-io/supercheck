@@ -1236,7 +1236,7 @@ export function MonitorForm({
 
                     return (
                       <FormItem className="space-y-2">
-                        <div className="flex items-center gap-2 mb-0">
+                        <div className="flex h-3.5 items-center gap-2">
                           <FormLabel>Check Interval</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>

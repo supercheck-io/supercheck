@@ -11,6 +11,7 @@ import {
   type SreServiceListItem,
 } from "@/actions/sre-services";
 import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
+import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ServiceFormDialog } from "@/components/sre/services/service-form-dialog";
 import {
@@ -111,12 +112,11 @@ export function ServiceCatalog({
   return (
     <div className="mt-6 min-w-0 space-y-4 p-2">
       {services.length === 0 && (
-        <div className="mb-4 -mt-2">
-          <h2 className="text-2xl font-semibold">Services</h2>
-          <p className="text-sm text-muted-foreground">
-            Link monitors and jobs to services for investigation context.
-          </p>
-        </div>
+        <PageHeader
+          title="Services"
+          description="Link monitors and jobs to services for investigation context."
+          className="mb-4 -mt-2"
+        />
       )}
       {services.length === 0 ? (
         <DashboardEmptyState

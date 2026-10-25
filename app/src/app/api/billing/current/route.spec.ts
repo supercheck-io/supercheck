@@ -8,6 +8,8 @@ jest.mock("@/lib/feature-flags", () => ({
   isCloudHosted: jest.fn(() => true),
   getPlanPricing: jest.fn(() => ({ monthlyPriceCents: 4900, name: "Plus" })),
 }));
+const getUserOrgRole = jest.fn();
+jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: (...args: unknown[]) => getUserOrgRole(...args) }));
 const getTrialSummary = jest.fn();
 jest.mock("@/lib/execution/trial-limits", () => ({ getTrialSummary: (...args: unknown[]) => getTrialSummary(...args) }));
 import { GET } from "./route";
@@ -20,7 +22,8 @@ describe("current billing subscription display", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getTrialSummary.mockResolvedValue(undefined);
-    (requireUserAuthContext as jest.Mock).mockResolvedValue({ organizationId: "org-1" });
+    getUserOrgRole.mockResolvedValue("org_admin");
+    (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user-1", organizationId: "org-1" });
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
       id: "org-1", polarCustomerId: "customer-1", usagePeriodStart: null,
       usagePeriodEnd: null, subscriptionStartedAt: null, subscriptionEndsAt: null,
@@ -32,6 +35,27 @@ describe("current billing subscription display", () => {
       playwrightMinutes: meter, k6VuMinutes: meter, aiCredits: meter, sreInvestigations: meter,
     });
   });
+
+  it.each(["org_admin", "org_owner"])("serves the payload to an %s", async (role) => {
+    getUserOrgRole.mockResolvedValue(role);
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({
+      isActive: true, plan: "plus", status: "active",
+    });
+    expect((await GET()).status).toBe(200);
+    expect(getUserOrgRole).toHaveBeenCalledWith("user-1", "org-1");
+  });
+
+  it.each(["project_admin", "project_editor", "project_viewer", null])(
+    "refuses a member with role %s before reading any organization data",
+    async (role) => {
+      getUserOrgRole.mockResolvedValue(role);
+      const response = await GET();
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "Insufficient permissions" });
+      expect(db.query.organization.findFirst).not.toHaveBeenCalled();
+      expect(subscriptionService.getUsageSafe).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["none", "canceled", "unpaid"])("does not fabricate an active plan or billing period for %s", async (status) => {
     (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({

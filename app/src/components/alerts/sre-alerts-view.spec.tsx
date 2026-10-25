@@ -74,7 +74,7 @@ describe("SreAlertsView", () => {
           onRecoverableError: recoverableError,
         });
       });
-      expect(within(container).getByRole("heading", { name: "Alert signals" })).toBeInTheDocument();
+      expect(within(container).getByLabelText("Search alert signals")).toBeInTheDocument();
       expect(recoverableError).not.toHaveBeenCalled();
     } finally {
       await act(async () => root?.unmount());
@@ -100,7 +100,7 @@ describe("SreAlertsView", () => {
 
     render(<SreAlertsView alerts={alerts} isLoading={false} />);
 
-    expect(screen.getByText("Alert signals")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search alert signals")).toBeInTheDocument();
     expect(screen.getByText("Total 13 signals")).toBeInTheDocument();
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();

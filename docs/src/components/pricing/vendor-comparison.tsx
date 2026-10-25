@@ -82,7 +82,7 @@ function Slider({ label, value, min, max, unit, onChange }: SliderProps) {
 
 function LowestBadge() {
   return (
-    <span className="ml-2 rounded-full bg-fd-primary px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-fd-primary-foreground">
+    <span className="ml-2 rounded border border-fd-primary/40 px-1.5 py-0.5 align-middle text-[11px] font-medium text-fd-primary">
       Lowest
     </span>
   );
@@ -181,9 +181,9 @@ export function VendorComparison() {
   });
 
   return (
-    <section aria-labelledby="comparison-heading" className="mb-20">
+    <section aria-labelledby="comparison-heading" className="mt-24">
       <div className="mx-auto mb-8 max-w-2xl text-center">
-        <h2 id="comparison-heading" className="mb-3 text-2xl font-bold">
+        <h2 id="comparison-heading" className="mb-3 text-2xl font-semibold tracking-tight">
           Compare Supercheck with Checkly, Datadog, Better Stack and BrowserStack
         </h2>
         <p className="text-fd-muted-foreground">
@@ -199,7 +199,7 @@ export function VendorComparison() {
               key={preset.label}
               type="button"
               onClick={() => setWorkload(preset.workload)}
-              className="rounded-full border border-fd-border px-3 py-1 text-xs font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
+              className="rounded-md border border-fd-border px-3 py-1 text-xs font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary"
             >
               {preset.label}
             </button>
@@ -377,7 +377,7 @@ export function VendorComparison() {
       <p className="mt-4 border-t border-fd-border pt-4 text-center text-xs text-fd-muted-foreground">
         Browser test costs compare execution only. BrowserStack bills per parallel test. Its range is for 5
         parallel tests on monthly billing (it lists no price above 5) and is shown for reference, not
-        ranked. Supercheck includes 5 concurrent runs on Plus and 10 on Pro. Checkly and Datadog prices are annual-billing rates; Supercheck
+        ranked. Supercheck includes {SUPERCHECK_PLANS.map((plan) => `${plan.runningCapacity} concurrent runs on ${plan.name}`).join(' and ')}. Checkly and Datadog prices are annual-billing rates; Supercheck
         prices are monthly. Supercheck plans also include monitors, status
         pages, team seats, and AI SRE. Other vendors may price those separately, so check each
         vendor.

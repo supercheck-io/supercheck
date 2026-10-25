@@ -20,7 +20,7 @@ export function ServicesToolbar<TData>({
   return (
     <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 lg:max-w-sm lg:shrink-0">
-        <h2 className="text-2xl font-semibold">Services</h2>
+        <h1 className="text-2xl font-semibold">Services</h1>
         <p className="text-sm text-muted-foreground">
           Link monitors and jobs to services for investigation context.
         </p>

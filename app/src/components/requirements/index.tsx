@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Row } from "@tanstack/react-table";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
+import { PageHeader } from "@/components/shared/page-header";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import {
     Sheet,
@@ -231,7 +232,12 @@ export default function RequirementsPage() {
     }
 
     return (
-        <div className="flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
+        <div className="mt-6 flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
+            <PageHeader
+                title="Requirements"
+                description="Manage requirements and their test coverage"
+                className="-mt-2"
+            />
             <Tabs defaultValue="requirements" className="w-full mt-2">
                 <TabsList>
                     <TabsTrigger value="requirements" className="gap-2">

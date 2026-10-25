@@ -7,6 +7,7 @@ import { DataTableViewOptions } from "@/components/tests/data-table-view-options
 import { DataTableFacetedFilter } from "@/components/tests/data-table-faceted-filter";
 
 import { auditActions } from "./audit-data";
+import { formatAuditAction } from "./audit-action-labels";
 
 interface AuditTableToolbarProps<TData> {
   table: Table<TData>;
@@ -27,7 +28,7 @@ export function AuditTableToolbar<TData>({
   const availableAuditActions = actionFacets ? 
     Array.from(actionFacets.keys()).map(actionValue => ({
       value: actionValue as string,
-      label: actionValue as string,
+      label: formatAuditAction(actionValue as string),
       icon: Activity,
       color: 'text-gray-600',
     })) : 

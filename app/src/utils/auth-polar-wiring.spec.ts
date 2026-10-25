@@ -48,6 +48,7 @@ jest.mock("better-auth/plugins", () => ({
   admin: jest.fn(() => ({})),
   lastLoginMethod: jest.fn(() => ({})),
   captcha: jest.fn(() => ({})),
+  jwt: jest.fn(() => ({})),
 }));
 jest.mock("@better-auth/api-key", () => ({ apiKey: jest.fn(() => ({})) }));
 jest.mock("@/utils/db", () => ({ db: {} }));
@@ -147,9 +148,9 @@ describe("auth.ts Polar wiring", () => {
     expect(handlers.handleSubscriptionPastDue).toHaveBeenCalledTimes(1);
   });
 
-  it("calls the customer-state handler without a payload", async () => {
-    await captured.onCustomerStateChanged({});
-    expect(handlers.handleCustomerStateChanged).toHaveBeenCalledTimes(1);
+  it("normalises the customer-state payload for authoritative reconciliation", async () => {
+    await captured.onCustomerStateChanged(snake);
+    expect(handlers.handleCustomerStateChanged).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ customerId: "cus_1" }) }));
   });
 
   it("registers no unexpected webhook callbacks", () => {

@@ -44,6 +44,8 @@ import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
+import { TabSectionHeader } from "@/components/org-admin/tab-section-header";
+import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { TrialLoadTesting } from "@/components/org-admin/trial-load-testing";
@@ -119,17 +121,6 @@ interface PendingInvitation {
   expiresAt: string;
   inviterName: string;
   inviterEmail: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  slug?: string;
-  description?: string;
-  isDefault: boolean;
-  status: "active" | "archived" | "deleted";
-  createdAt: string;
-  membersCount: number;
 }
 
 interface OrgDetails {
@@ -360,19 +351,14 @@ function OrgAdminDashboardContent() {
   const hasData = orgDetails !== null;
   const isInitialLoading = !isMounted || (!hasData && detailsLoading);
 
-  // Note: membersCount is not available from the API currently.
-  // The Project interface requires it, but the /api/projects endpoint
-  // doesn't return per-project member counts. Setting to 0 for now.
-  // TODO: Add members count to /api/projects response if needed.
   const projects: Project[] = orgProjects.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
     description: p.description,
     isDefault: p.isDefault,
-    status: "active" as const,
     createdAt: p.createdAt,
-    membersCount: 0,
+    membersCount: p.membersCount ?? 0,
   }));
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -422,7 +408,7 @@ function OrgAdminDashboardContent() {
   useEffect(() => {
     setBreadcrumbs([
       { label: "Home", href: "/", isCurrentPage: false },
-      { label: "Organization Admin", href: "/org-admin", isCurrentPage: true },
+      { label: "Organization", href: "/org-admin", isCurrentPage: true },
     ]);
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
@@ -823,7 +809,7 @@ function OrgAdminDashboardContent() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                Organization Admin
+                Organization
               </h1>
               <p className="text-muted-foreground text-sm">
                 Manage projects, members, tokens, Private Agents, and audit
@@ -903,6 +889,11 @@ function OrgAdminDashboardContent() {
             </TabsList>
 
             <TabsContent value="projects" className="space-y-4">
+              <TabSectionHeader
+                icon={<FolderOpen />}
+                title="Projects"
+                description="Organize tests, monitors, and runs into projects."
+              />
               {projectsLoading && projects.length === 0 ? (
                 <TabLoadingSpinner message="Loading projects..." />
               ) : (
@@ -1076,6 +1067,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="members" className="space-y-4">
+              <TabSectionHeader
+                icon={<Users />}
+                title="Members"
+                description="Invite people and manage their roles and project access."
+              />
               {membersLoading ? (
                 <TabLoadingSpinner message="Loading members..." />
               ) : (
@@ -1104,12 +1100,14 @@ function OrgAdminDashboardContent() {
                   onMemberUpdate={() => {
                     invalidateMembers();
                     invalidateStats();
+                    // Role and project-access changes move the per-project member counts.
+                    invalidateProjects();
                   }}
                   onInviteMember={() => setShowInviteDialog(true)}
                   canInviteMembers={canInviteMembers(
                     normalizeRole(currentUserRole),
                   )}
-                  projects={projects.filter((p) => p.status === "active")}
+                  projects={projects}
                 />
               )}
 
@@ -1118,7 +1116,7 @@ function OrgAdminDashboardContent() {
                 open={showInviteDialog}
                 onOpenChange={setShowInviteDialog}
                 mode="invite"
-                projects={projects.filter((p) => p.status === "active")}
+                projects={projects}
                 onSubmit={async (memberData) => {
                   setInviting(true);
                   try {
@@ -1160,6 +1158,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-4">
+              <TabSectionHeader
+                icon={<Cable />}
+                title="Integrations"
+                description="Connect read-only evidence sources Copilot can use during investigations."
+              />
               {integrationsLoading && !integrationsLoaded ? (
                 <TabLoadingSpinner message="Loading integrations..." />
               ) : (
@@ -1176,13 +1179,13 @@ function OrgAdminDashboardContent() {
               <Collapsible
                 open={savedQueriesOpen}
                 onOpenChange={handleSavedQueriesOpenChange}
-                className="rounded-lg border"
+                className="space-y-3"
               >
                 <CollapsibleTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-auto w-full justify-between gap-3 whitespace-normal p-4 text-left"
+                    className="h-auto w-full justify-between gap-3 whitespace-normal rounded-lg border p-4 text-left"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1194,7 +1197,7 @@ function OrgAdminDashboardContent() {
                     />
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-4 border-t p-4">
+                <CollapsibleContent className="space-y-4">
                   <p className="text-sm text-muted-foreground">
                     Reuse read-only queries for common investigation questions.
                     Investigations work without them.
@@ -1227,6 +1230,11 @@ function OrgAdminDashboardContent() {
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4">
+              <TabSectionHeader
+                icon={<UserSearch />}
+                title="Audit"
+                description="Review administrative and security activity in your organization."
+              />
               <AuditLogsTable />
             </TabsContent>
 

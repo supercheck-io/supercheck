@@ -11,7 +11,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Clock,
   Info,
   SearchCheck,
   Search,
@@ -23,9 +22,9 @@ import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
 import type { AlertHistory } from "@/components/alerts/schema";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
-import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -145,15 +144,6 @@ function deriveFingerprint(alert: AlertHistory) {
     alert.targetId || alert.targetName,
     alert.type,
   ]);
-}
-
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
 }
 
 function deriveSreAlerts(alerts: AlertHistory[]) {
@@ -384,39 +374,9 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   }
 
   return (
-    <div className="w-full max-w-full space-y-4 overflow-x-hidden p-2">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-2xl font-semibold">
-              Alert signals
-            </CardTitle>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    aria-label="Alert signal scope"
-                  >
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  Investigate opens an incident. Run a full investigation from
-                  the incident. Delivery failures and recovery events stay in
-                  History.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <CardDescription>
-            Repeated failures, grouped together.
-          </CardDescription>
-        </div>
-        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:shrink-0 xl:pb-0">
+    <div className="w-full max-w-full space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-[250px] shrink-0">
             <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -467,13 +427,35 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  aria-label="Alert signal scope"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Repeated failures are grouped into one signal. Investigate opens
+                an incident. Delivery failures and recovery events stay in
+                History.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
             <Link href="/incidents">View incidents</Link>
           </Button>
         </div>
       </div>
 
-      <div className="w-full max-w-full overflow-hidden rounded-t-lg border">
+      <div className="w-full max-w-full overflow-x-auto rounded-t-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -483,7 +465,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-[260px]"
               />
               <SortableHead
                 label="Type"
@@ -491,16 +472,14 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-44"
               />
-              <TableHead className="w-[360px]">Message</TableHead>
+              <TableHead className="w-full min-w-[140px]">Message</TableHead>
               <SortableHead
                 label="Repeats"
                 sortKey="duplicateCount"
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-32"
               />
               <SortableHead
                 label="Severity"
@@ -508,7 +487,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-32"
               />
               <SortableHead
                 label="Source"
@@ -516,17 +494,15 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-40"
               />
               <SortableHead
-                label="Last seen"
+                label="Last Seen"
                 sortKey="timestamp"
                 activeKey={sortKey}
                 direction={sortDirection}
                 onSort={handleSort}
-                className="w-44"
               />
-              <TableHead className="w-44" />
+              <TableHead className="w-[1%]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -542,7 +518,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             ) : (
               pagedAlerts.map((alert) => (
                 <TableRow key={alert.fingerprint}>
-                  <TableCell className="max-w-[260px] py-2.5">
+                  <TableCell className="max-w-[200px] py-2.5">
                     <span
                       className="block truncate font-medium"
                       title={alert.targetName}
@@ -551,12 +527,12 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                     </span>
                   </TableCell>
                   <TableCell
-                    className="max-w-[180px] truncate py-2.5"
+                    className="max-w-[180px] truncate whitespace-nowrap py-2.5"
                     title={alert.type}
                   >
                     {alert.type}
                   </TableCell>
-                  <TableCell className="max-w-[360px] py-2.5">
+                  <TableCell className="w-full max-w-0 py-2.5">
                     <span
                       className="block truncate text-muted-foreground"
                       title={alert.message}
@@ -582,12 +558,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                   </TableCell>
                   <TableCell className="py-2.5">{alert.source}</TableCell>
                   <TableCell className="py-2.5">
-                    <div className="inline-flex items-center gap-1 text-sm">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span suppressHydrationWarning>
-                        {formatTimestamp(alert.timestamp)}
-                      </span>
-                    </div>
+                    <DateTimeCell value={alert.timestamp} />
                   </TableCell>
                   <TableCell className="py-2.5">
                     {isPending && pendingFingerprint === alert.fingerprint ? (

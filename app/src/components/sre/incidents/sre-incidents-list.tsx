@@ -26,6 +26,7 @@ import {
   createManualSreIncident,
   type SreIncidentListItem,
 } from "@/actions/sre-incidents";
+import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
@@ -369,119 +370,122 @@ export function SreIncidentsList({
 
   return (
     <div className="w-full max-w-full mt-6 space-y-4 p-2">
-      <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 lg:max-w-sm lg:shrink-0">
-          <h2 className="text-2xl font-semibold">Incidents</h2>
-          <p className="text-sm text-muted-foreground">
-            Track, investigate, and resolve operational incidents.
-          </p>
-        </div>
-        <div
-          className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end"
-          data-testid="incident-header-actions"
-        >
-          {incidents.length > 0 && (
-            <>
-              <div className="relative w-full sm:w-[250px]">
-                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setPageIndex(0);
-                  }}
-                  aria-label="Search incidents"
-                  placeholder="Search incidents..."
-                  className="h-8 pl-8 pr-8"
-                />
-                {search.length > 0 && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => {
-                      setSearch("");
-                      setPageIndex(0);
-                    }}
-                    aria-label="Clear incident search"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <DataTableFacetedFilter
-                  title="Severity"
-                  value={severityFilter}
-                  onValueChange={(values) => {
-                    setSeverityFilter(values);
-                    setPageIndex(0);
-                  }}
-                  options={["sev1", "sev2", "sev3", "sev4"].map((value) => ({
-                    value,
-                    label: value.toUpperCase(),
-                  }))}
-                />
-                <DataTableFacetedFilter
-                  title="Service"
-                  value={serviceFilter}
-                  onValueChange={(values) => {
-                    setServiceFilter(values);
-                    setPageIndex(0);
-                  }}
-                  options={serviceOptions}
-                />
-                <DataTableFacetedFilter
-                  title="Status"
-                  value={statusFilter}
-                  onValueChange={(values) => {
-                    // The active shortcut is exclusive so a specific status narrows the list.
-                    setStatusFilter(
-                      values.includes("active") &&
-                        !statusFilter.includes("active")
-                        ? ["active"]
-                        : values.filter((value) => value !== "active"),
-                    );
-                    setPageIndex(0);
-                  }}
-                  options={[
-                    { value: "active", label: "Active incidents" },
-                    ...Array.from(new Set([...statusOptions, "resolved"])).map(
-                      (value) => ({ value, label: formatStatus(value) }),
-                    ),
-                  ]}
-                />
-              </div>
-            </>
-          )}
-          <Button asChild type="button" variant="outline" className="h-8">
-            <Link href="/alerts">Review alerts</Link>
-          </Button>
-          <Button asChild type="button" variant="outline" className="h-8">
-            <Link href="/incidents/analytics">
-              <BarChart3 className="h-4 w-4" />
-              Trends
-            </Link>
-          </Button>
-          {projectError && (
-            <p role="status" className="text-sm text-muted-foreground">
-              Permissions unavailable. Refresh to try again.
-            </p>
-          )}
-          {(canCreate || projectLoading) && (
-            <Button
-              type="button"
-              className="h-8"
-              disabled={!canCreate}
-              aria-busy={projectLoading || undefined}
-              title={projectLoading ? "Loading permissions..." : undefined}
-              onClick={() => setDialogOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              New incident
+      <PageHeader
+        title="Incidents"
+        description="Track, investigate, and resolve operational incidents."
+        className="mb-4 -mt-2"
+        actions={
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="incident-header-actions"
+          >
+            <Button asChild type="button" variant="outline" className="h-8">
+              <Link href="/alerts">Review alerts</Link>
             </Button>
+            <Button asChild type="button" variant="outline" className="h-8">
+              <Link href="/incidents/analytics">
+                <BarChart3 className="h-4 w-4" />
+                Trends
+              </Link>
+            </Button>
+            {projectError && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Permissions unavailable. Refresh to try again.
+              </p>
+            )}
+            {(canCreate || projectLoading) && (
+              <Button
+                type="button"
+                className="h-8"
+                disabled={!canCreate}
+                aria-busy={projectLoading || undefined}
+                title={projectLoading ? "Loading permissions..." : undefined}
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                New incident
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {incidents.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2"
+          data-testid="incident-toolbar"
+        >
+        <div className="relative w-full sm:w-[250px]">
+          <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPageIndex(0);
+            }}
+            aria-label="Search incidents"
+            placeholder="Search incidents..."
+            className="h-8 pl-8 pr-8"
+          />
+          {search.length > 0 && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setSearch("");
+                setPageIndex(0);
+              }}
+              aria-label="Clear incident search"
+            >
+              <X className="h-4 w-4" />
+            </button>
           )}
         </div>
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <DataTableFacetedFilter
+            title="Severity"
+            value={severityFilter}
+            onValueChange={(values) => {
+              setSeverityFilter(values);
+              setPageIndex(0);
+            }}
+            options={["sev1", "sev2", "sev3", "sev4"].map((value) => ({
+              value,
+              label: value.toUpperCase(),
+            }))}
+          />
+          <DataTableFacetedFilter
+            title="Service"
+            value={serviceFilter}
+            onValueChange={(values) => {
+              setServiceFilter(values);
+              setPageIndex(0);
+            }}
+            options={serviceOptions}
+          />
+          <DataTableFacetedFilter
+            title="Status"
+            value={statusFilter}
+            onValueChange={(values) => {
+              // The active shortcut is exclusive so a specific status narrows the list.
+              setStatusFilter(
+                values.includes("active") &&
+                  !statusFilter.includes("active")
+                  ? ["active"]
+                  : values.filter((value) => value !== "active"),
+              );
+              setPageIndex(0);
+            }}
+            options={[
+              { value: "active", label: "Active incidents" },
+              ...Array.from(new Set([...statusOptions, "resolved"])).map(
+                (value) => ({ value, label: formatStatus(value) }),
+              ),
+            ]}
+          />
+        </div>
+        </div>
+      )}
 
       {incidents.length === 0 ? (
         <DashboardEmptyState

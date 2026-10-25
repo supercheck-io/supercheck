@@ -131,9 +131,9 @@ interface SpendingData {
 }
 
 const planDetails: Record<string, { name: string; color: string }> = {
-  plus: { name: "Plus", color: "bg-blue-500" },
-  pro: { name: "Pro", color: "bg-purple-500" },
-  unlimited: { name: "Unlimited", color: "bg-green-500" },
+  plus: { name: "Plus", color: "bg-secondary text-secondary-foreground" },
+  pro: { name: "Pro", color: "bg-primary text-primary-foreground" },
+  unlimited: { name: "Unlimited", color: "bg-green-500 text-white" },
 };
 
 interface SubscriptionTabProps {
@@ -323,7 +323,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 {plan ? `${plan.name} Plan` : "No active plan"}
               </h3>
               <Badge
-                className={`${plan ? `${plan.color} text-white` : "bg-muted text-muted-foreground"} text-sm`}
+                className={`${plan ? plan.color : "bg-muted text-muted-foreground"} text-sm`}
               >
                 {data.subscription.status === "past_due" ? "Payment overdue"
                   : expired ? "Subscription ended"
@@ -345,7 +345,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   </PopoverTrigger>
                   <PopoverContent side="top" className="w-80 space-y-1.5 text-xs text-muted-foreground">
                     <p>This monthly subscription and its allowances cover this organization only.</p>
-                    <p>K6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.</p>
+                    <p>k6 usage is peak VUs × execution minutes, rounded up per run. AI credits are a hard limit.</p>
                     <p>Discounts, credits, and plan-change proration can change your invoice. Invoices and payment details are in Manage Subscription.</p>
                   </PopoverContent>
                 </Popover>
@@ -407,7 +407,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
               </p>
             </div>}
             {/* Only organization owners can open the organization's billing portal. */}
-            {canManageSubscription && hasSubscription && (
+            {canManageSubscription && data.subscription.hasBillingCustomer && (
               <Button
                 variant="outline"
                 onClick={handleManageSubscription}
@@ -488,7 +488,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 icon={
                   <K6Logo width={18} height={18} className="text-[#7d64ff]" />
                 }
-                label="K6 Virtual User Minutes"
+                label="k6 Virtual User Minutes"
                 used={data.usage.k6VuMinutes.used}
                 included={data.usage.k6VuMinutes.included}
                 overage={data.usage.k6VuMinutes.overage}
@@ -568,7 +568,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 // Usage is metered to four decimals. Keep them for sub-unit values (a
 // five-second run is 0.0833 minutes); two are enough to read larger totals.
 function formatUsage(value: number) {
-  return value.toLocaleString(undefined, {
+  return value.toLocaleString("en-US", {
     maximumFractionDigits: Math.abs(value) < 1 ? 4 : 2,
   });
 }

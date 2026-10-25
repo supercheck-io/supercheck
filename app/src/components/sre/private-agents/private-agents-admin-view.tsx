@@ -17,6 +17,7 @@ import {
   rotatePrivateAgentToken,
   type PrivateAgentListItem,
 } from "@/actions/private-agents";
+import { TabSectionHeader } from "@/components/org-admin/tab-section-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { PrivateAgentFormDialog } from "@/components/sre/private-agents/private-agent-form-dialog";
 import {
@@ -168,6 +169,19 @@ export function PrivateAgentsAdminView({
 
   return (
     <div className="space-y-4">
+      <TabSectionHeader
+        icon={<RadioTower />}
+        title="Private Agents"
+        description="Run connectors inside your private network without exposing it."
+        action={
+          agents.length > 0 ? (
+            <Button onClick={() => setIsRegisterOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Register agent
+            </Button>
+          ) : undefined
+        }
+      />
       {agents.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
@@ -183,12 +197,6 @@ export function PrivateAgentsAdminView({
         />
       ) : (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setIsRegisterOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Register agent
-            </Button>
-          </div>
           <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
             <Table className="w-full min-w-[900px]">
               <TableHeader>

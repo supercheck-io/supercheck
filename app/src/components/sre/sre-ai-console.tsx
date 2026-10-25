@@ -250,8 +250,8 @@ export function SreAiConsole({
               <Bot className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold">Copilot</h1>
-              <p className="truncate text-xs text-muted-foreground">
+              <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
+              <p className="truncate text-sm text-muted-foreground">
                 {incidentId
                   ? "Incident evidence and connected sources."
                   : "Ask about your services and connected sources."}

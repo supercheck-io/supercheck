@@ -85,3 +85,26 @@ export function getMcpResourceUrl(
   }
   return url.toString();
 }
+
+/**
+ * Extra browser origins allowed to call the MCP endpoint, from the comma-separated `MCP_ALLOWED_ORIGINS`.
+ * The endpoint always accepts its own origin; this list is for browser-based MCP clients and is deliberately
+ * separate from the general CORS allow-list, which names sibling sites that must not reach MCP. Entries must be
+ * exact origins (`https://host[:port]`, no path or wildcard); anything else is ignored.
+ */
+export function getMcpAllowedOrigins(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  const origins: string[] = [];
+  for (const entry of (env.MCP_ALLOWED_ORIGINS ?? "").split(",")) {
+    const candidate = entry.trim();
+    // The URL parser accepts "*" in a host, so wildcards are refused explicitly.
+    if (!candidate || candidate.includes("*")) continue;
+    try {
+      if (new URL(candidate).origin === candidate) origins.push(candidate);
+    } catch {
+      // Not a URL: ignore, so a typo cannot widen access.
+    }
+  }
+  return origins;
+}

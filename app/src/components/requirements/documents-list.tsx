@@ -502,21 +502,14 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
 
     return (
         <div className="space-y-4 pt-4 max-h-[calc(100vh-210px)] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between shrink-0">
-                <div>
-                    <h2 className="text-2xl font-semibold text-foreground/90">Documents</h2>
-                    <p className="text-muted-foreground text-sm">
-                        Manage your source documents
-                    </p>
-                </div>
-                {canUpload && (documents.length > 0 || isLoading) && (
+            {canUpload && (documents.length > 0 || isLoading) && (
+                <div className="flex shrink-0 items-center justify-end">
                     <Button onClick={() => setUploadDialogOpen(true)} className="gap-2">
                         <Upload className="h-4 w-4" />
                         Upload Document
                     </Button>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* Documents Grid or Empty State */}
             {isLoading ? (
