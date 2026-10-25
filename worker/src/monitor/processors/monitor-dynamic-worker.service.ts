@@ -48,6 +48,13 @@ export class MonitorDynamicWorkerService
   private readonly logger = new Logger('MonitorDynamicWorkerService');
   private readonly workers = new Map<string, Worker>();
   private readonly activeQueueNames = new Set<string>();
+  // Leave work budget for execution and lease renewal; all regional queues share this limit.
+  private readonly monitorConcurrency = Math.max(
+    1,
+    Math.min(10, getDatabasePoolMax() - 2),
+  );
+  private activeChecks = 0;
+  private readonly waitingChecks: Array<() => void> = [];
   private connection: Redis | null = null;
   private subscriber: Redis | null = null;
   private workerLocation = 'local';
@@ -135,13 +142,27 @@ export class MonitorDynamicWorkerService
 
     const worker = new Worker(
       queueName,
-      async (job: Job<MonitorJobDataDto>) => this.processJob(job),
+      async (job: Job<MonitorJobDataDto>) => {
+        if (this.activeChecks >= this.monitorConcurrency) {
+          await new Promise<void>((resolve) =>
+            this.waitingChecks.push(resolve),
+          );
+        } else {
+          this.activeChecks++;
+        }
+        try {
+          return await this.processJob(job);
+        } finally {
+          const next = this.waitingChecks.shift();
+          if (next) next();
+          else this.activeChecks--;
+        }
+      },
       {
         // BullMQ creates and closes its own blocking connection. The service
         // owns this shared command connection and closes it during shutdown.
         connection: this.connection,
-        // Probes wait on network I/O; keep unrelated checks moving within the DB pool budget.
-        concurrency: Math.min(10, getDatabasePoolMax()),
+        concurrency: this.monitorConcurrency,
         // A synthetic check may run 5 minutes plus pod startup and artifact
         // extraction; keep the lock comfortably above that so a slow check is
         // not reported as stalled and rerun.

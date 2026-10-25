@@ -20,7 +20,7 @@ jest.mock('../../common/heartbeat/heartbeat.service', () => ({
 
 import { EventEmitter } from 'events';
 import { ConfigService } from '@nestjs/config';
-import { Worker, Job, UnrecoverableError } from 'bullmq';
+import { Worker, Job, UnrecoverableError, DelayedError } from 'bullmq';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { resetWorkerQueuesForTests } from '../../common/worker-queues';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
@@ -410,9 +410,15 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.useRealTimers());
 
-  it('caps regional concurrency at the configured database pool size', async () => {
+  it.each([
+    ['1', 1],
+    ['2', 1],
+    ['3', 1],
+    ['10', 8],
+    ['30', 10],
+  ])('keeps monitor headroom for pool %s', async (pool, concurrency) => {
     const previous = process.env.DB_POOL_MAX;
-    process.env.DB_POOL_MAX = '2';
+    process.env.DB_POOL_MAX = pool;
     const { service } = setup('eu');
     try {
       await service['handleQueueRefresh'](
@@ -421,7 +427,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       expect(Worker).toHaveBeenCalledWith(
         'monitor-eu',
         expect.any(Function),
-        expect.objectContaining({ concurrency: 2 }),
+        expect.objectContaining({ concurrency }),
       );
     } finally {
       if (previous === undefined) delete process.env.DB_POOL_MAX;
@@ -438,7 +444,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(Worker).toHaveBeenCalledWith(
       'monitor-eu',
       expect.any(Function),
-      expect.objectContaining({ concurrency: 10 }),
+      expect.objectContaining({ concurrency: 8 }),
     );
     let finishSlow: () => void = () => {};
     const slow = new Promise<void>((resolve) => {
@@ -473,6 +479,85 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       await service.onModuleDestroy();
     }
   });
+
+  it('shares one monitor budget across all local queues', async () => {
+    const { service } = setup('local');
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu', 'us', 'apac'] }),
+    );
+    const processors = (Worker as unknown as jest.Mock).mock.calls.map(
+      (call) => call[1] as (job: Job<MonitorJobDataDto>) => Promise<unknown>,
+    );
+    expect(processors).toHaveLength(3);
+    let releaseFirst = () => {};
+    let releaseRest = () => {};
+    const first = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const rest = new Promise<void>((resolve) => {
+      releaseRest = resolve;
+    });
+    let active = 0;
+    let peak = 0;
+    const execute = jest.fn(async (job: Job<MonitorJobDataDto>) => {
+      peak = Math.max(peak, ++active);
+      try {
+        await (job.id === '0' ? first : rest);
+        return [];
+      } finally {
+        active--;
+      }
+    });
+    service['processJob'] = execute;
+    const pending = Array.from({ length: 9 }, (_, index) =>
+      processors[index % 3]({ id: String(index) } as Job<MonitorJobDataDto>),
+    );
+    try {
+      await Promise.resolve();
+      expect(execute).toHaveBeenCalledTimes(8);
+      releaseFirst();
+      await pending[0];
+      await Promise.resolve();
+      expect(execute).toHaveBeenCalledTimes(9);
+      expect(peak).toBe(8);
+    } finally {
+      releaseFirst();
+      releaseRest();
+      await Promise.all(pending);
+      await service.onModuleDestroy();
+    }
+  });
+
+  it.each([new Error('probe failed'), new DelayedError()])(
+    'releases the shared permit after %s',
+    async (error) => {
+      const previous = process.env.DB_POOL_MAX;
+      process.env.DB_POOL_MAX = '3';
+      const { service } = setup('eu');
+      if (previous === undefined) delete process.env.DB_POOL_MAX;
+      else process.env.DB_POOL_MAX = previous;
+      await service['handleQueueRefresh'](
+        JSON.stringify({ locationCodes: ['eu'] }),
+      );
+      service['processJob'] = jest
+        .fn()
+        .mockRejectedValueOnce(error)
+        .mockResolvedValue([]);
+      const runJob = (Worker as unknown as jest.Mock).mock.calls[0][1] as (
+        job: Job<MonitorJobDataDto>,
+      ) => Promise<unknown>;
+      try {
+        const failed = runJob({} as Job<MonitorJobDataDto>).catch(
+          (reason) => reason,
+        );
+        const next = runJob({} as Job<MonitorJobDataDto>);
+        await expect(failed).resolves.toBe(error);
+        await expect(next).resolves.toEqual([]);
+      } finally {
+        await service.onModuleDestroy();
+      }
+    },
+  );
 
   it('shares the owned command connection and closes it after workers drain', async () => {
     const { service, connection } = setup();
