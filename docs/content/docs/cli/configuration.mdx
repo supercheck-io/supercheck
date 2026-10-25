@@ -60,8 +60,35 @@ export default defineConfig({
         alertOnRecovery: true,
         notificationProviders: ['019c22b5-6df9-79b7-b415-db8317b1bd0b', '019c22b5-a812-7acc-9f23-46f7904d2c2a'],
       },
+      tags: ['api', 'production'],
     },
   ],
+  requirements: [
+    {
+      title: 'Homepage loads for anonymous visitors',
+      description: 'The marketing homepage renders without errors.',
+      priority: 'high',
+      tags: ['web', 'smoke'],
+      externalId: 'PROJ-123',
+      externalUrl: 'https://tracker.example.com/PROJ-123',
+      tests: ['_supercheck_/playwright/homepage-check.019a1234-abcd-7000-8000-000000000001.pw.ts'],
+    },
+  ],
+  statusPages: [
+    {
+      name: 'Example Status',
+      status: 'published',
+      headline: 'Example system status',
+      language: 'en',
+      timezone: 'UTC',
+      branding: { bodyBackgroundColor: '#FFFFFF', fontColor: '#111827', greens: '#16A34A', reds: '#DC2626' },
+      notifications: { allowEmailSubscribers: true, allowRssFeed: true },
+      components: [
+        { name: 'API', description: 'Public REST API', monitors: ['API Health Monitor'], position: 0 },
+      ],
+    },
+  ],
+  tags: [{ name: 'api' }, { name: 'production' }, { name: 'web' }, { name: 'smoke' }],
   jobs: [
     {
       id: '01912345-abcd-7000-8000-000000000001',
@@ -117,6 +144,16 @@ my-project/
 <Callout type="info">
 Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`. The UUID keeps paths stable across renames, while the slug makes files easy to identify locally.
 </Callout>
+
+### Test metadata annotations
+
+`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). Annotations anywhere else in the script are ignored. They are local metadata: the CLI strips them before comparing or sending the script. `deploy` applies `@priority` and `@tags`; if an annotation is absent, the remote value is left alone.
+
+```ts
+// @title Homepage Check
+// @priority high
+// @tags smoke, web
+```
 
 ## Validate and Deploy
 
@@ -193,23 +230,58 @@ Before sync operations, the CLI verifies configured organization and project IDs
 | `enabled` | `boolean` | Whether the monitor is active |
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
 | `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery` |
+| `tags` | `string[]` | Tag names assigned to the monitor. Omit to leave remote tags unchanged; names compare case-insensitively and must exist in the project or under `tags[]` |
+
+Jobs have no `tags` field; a config containing one fails validation.
+
+</Accordion>
+<Accordion title="requirements[]" id="requirements">
+
+Needs a server with the requirements API.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Database UUID (present for existing resources, omit for new) |
+| `title` | `string` | Required, 1-500 characters |
+| `description` | `string` | Requirement description |
+| `priority` | `string` | `low`, `medium`, `high` |
+| `tags` | `string[]` | Tag names (max 10, 50 characters each). Omit to leave remote tags unchanged; `[]` clears them. Names compare case-insensitively; missing tags are created by the server |
+| `externalId` | `string` | ID in an external tracker (max 255 characters) |
+| `externalUrl` | `string` | URL in an external tracker |
+| `tests` | `string[]` | Linked tests, referenced like a job's `tests` (file path, filename or UUID; max 100). Omit to leave remote links unchanged; `[]` unlinks all |
 
 </Accordion>
 <Accordion title="statusPages[]" id="statuspages">
+
+Needs a server with the status page write API.
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Status page display name |
-| `subdomain` | `string` | Status page subdomain identifier |
+| `subdomain` | `string` | Read-only. Written by `pull`, never compared or sent (the server generates it) |
 | `status` | `string` | `draft`, `published`, `archived` |
 | `headline` | `string` | Public page headline |
 | `description` | `string` | Public description text |
 | `supportUrl` | `string` | External support URL |
-| `language` | `string` | ISO language code (e.g. `en`) |
-| `components` | `object[]` | Status page components (`name`, `description`, `monitors`, `position`) |
-| `branding` | `object` | Page styling (`bodyBackgroundColor`, `fontColor`, `greens`, `reds`) |
-| `notifications` | `object` | Subscription toggles (`allowEmailSubscribers`, `allowWebhookSubscribers`, `allowRssFeed`) |
+| `language` | `string` | Language code such as `en` or `pt-BR` |
+| `timezone` | `string` | Timezone name (max 50 characters, e.g. `UTC`) |
+| `customDomain` | `string` | Custom domain |
+| `branding` | `object` | Colors, each `#RRGGBB`: `bodyBackgroundColor`, `fontColor`, `lightFontColor`, `greens`, `yellows`, `oranges`, `blues`, `reds`, `borderColor`, `graphColor`, `linkColor`, `noData` |
+| `notifications` | `object` | Boolean toggles with no defaults: `allowPageSubscribers`, `allowEmailSubscribers`, `allowWebhookSubscribers`, `allowSlackSubscribers`, `allowIncidentSubscribers`, `allowRssFeed`. Omitted flags are left unchanged |
+| `components` | `object[]` | Components (see below) |
+
+Each entry in `components`:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Database UUID (omit for new) |
+| `name` | `string` | Component name |
+| `description` | `string` | Component description (omit to leave unchanged; `""` clears it) |
+| `monitors` | `string[]` | Monitor UUIDs, or names of monitors defined in this config. Omit to leave links unchanged; `[]` unlinks all |
+| `position` | `number` | Display order (integer, 0 or higher) |
+
+Remote components missing from config are removed only when you run `deploy --delete`.
 
 </Accordion>
 <Accordion title="variables[] and tags[]" id="variables">

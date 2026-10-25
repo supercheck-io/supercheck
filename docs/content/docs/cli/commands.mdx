@@ -317,21 +317,26 @@ supercheck run cancel <run-id>
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `test list` | List tests | `--page`, `--limit`, `--search` (title), `--type` |
+| `test list` | List tests | `--page`, `--limit`, `--search` (title), `--type`, `--priority` |
 | `test get <test-id>` | Get test details | `--include-script` |
-| `test create` | Create a test from a script file | `--title`, `--file` (both required), `--type`, `--description`, `--dry-run` |
-| `test update <test-id>` | Update a test | `--title`, `--file`, `--type`, `--description`, `--dry-run` |
+| `test create` | Create a test from a script file | `--title`, `--file` (both required), `--type`, `--description`, `--priority`, `--dry-run` |
+| `test update <test-id>` | Update a test | `--title`, `--file`, `--type`, `--description`, `--priority`, `--dry-run` |
 | `test delete <test-id>` | Delete a test with confirmation | `--force` |
 | `test tags <test-id>` | List tags for a test | — |
+| `test tag add <test-id> <tags...>` | Add tags (names or IDs), keeping existing tags | — |
+| `test tag remove <test-id> <tags...>` | Remove tags (names or IDs) | — |
 | `test validate` | Validate a script without creating it | `--file`, `--type` |
 | `test run` | Run tests locally | `--file`, `--all`, `--type` (`browser`, `performance`), `--offline`, `--playwright-config` |
 | `test execute <test-id>` | Execute one deployed test in the cloud; returns the run ID, or waits with `--wait` | `--location <code>`, `--wait`, `--timeout` (300) |
 | `test status <test-id>` | Stream live status events | `--idle-timeout` (60, min 10) |
 
-Test types: `browser`, `performance`, `api`, `database`, `custom`.
+Test types: `browser`, `performance`, `api`, `database`, `custom`. Priorities: `low`, `medium`, `high`.
 
 ```bash
 supercheck test list --search "checkout" --type browser
+supercheck test list --priority high
+supercheck test tag add <test-id> smoke checkout
+supercheck test tag remove <test-id> checkout
 supercheck test get <test-id> --include-script
 supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
 supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
@@ -363,6 +368,43 @@ Offline runs (`--offline`) skip credentials and server-side script validation. T
 
 </Accordion>
 </Accordions>
+
+---
+
+## Requirements
+
+Requirements track what the product must do and which tests prove it. `supercheck requirement` (alias `requirements`) manages them from the terminal; you can also manage them as code with `requirements[]` in `supercheck.config.ts` (see [Configuration](/docs/cli/configuration#requirements)). They need a server version that includes the requirements REST API.
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `requirement list` | List requirements with coverage status | `--search`, `--priority`, `--status` (`covered`, `failing`, `missing`), `--page` (1), `--page-size` (50) |
+| `requirement get <id>` | Get a requirement with its tags, linked tests and coverage | — |
+| `requirement create` | Create a requirement | `--title` (required, 1-500 characters), `--description`, `--priority`, `--tag`, `--external-id`, `--external-url`, `--test` |
+| `requirement update <id>` | Update a requirement; only the flags you pass change | `create` flags, `--clear-tags`, `--clear-tests` |
+| `requirement delete <id>` | Delete a requirement with confirmation | `--force` |
+| `requirement link <id> <test-ids...>` | Link tests, keeping existing links (up to 100 per call) | — |
+| `requirement unlink <id> <test-ids...>` | Unlink tests | — |
+| `requirement coverage [id]` | Coverage for one requirement, or a count per coverage status | — |
+| `requirement export` | Export requirements as CSV to stdout or a file | `--output <file>`, `--force` |
+
+```bash
+supercheck requirement list --priority high --status failing
+supercheck requirement get <requirement-id>
+supercheck requirement create --title "Users can reset their password" --priority high --tag auth,security --test <test-id>
+supercheck requirement update <requirement-id> --priority medium
+supercheck requirement update <requirement-id> --tag auth --clear-tests
+supercheck requirement link <requirement-id> <test-id-1> <test-id-2>
+supercheck requirement unlink <requirement-id> <test-id-1>
+supercheck requirement coverage
+supercheck requirement export --output requirements.csv
+supercheck requirement delete <requirement-id> --force
+```
+
+`--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set; `--clear-tags` and `--clear-tests` empty it and cannot be combined with them. Requirement tags that do not exist yet are created by the server.
+
+<Callout type="info">
+Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) with AI is available in the dashboard only. The CLI and MCP server do not upload documents.
+</Callout>
 
 ---
 
@@ -582,7 +624,7 @@ These commands are read-only and require `sre_service:view`.
 | `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only` |
 | `diff` | Preview changes between local config and server state | `--delete`, `--no-delete` |
 | `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
-| `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers | `--dry-run`, `--force` |
+| `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers, requirements and status pages | `--dry-run`, `--force` |
 
 ```bash
 supercheck pull
@@ -595,7 +637,7 @@ supercheck diff
 
 supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
-supercheck deploy --delete       # Delete remote resources absent from config
+supercheck deploy --delete       # Delete remote resources absent from config (including status page components)
 supercheck deploy --force        # Skip confirmation
 supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
 
@@ -612,7 +654,7 @@ supercheck destroy --force        # Confirm and delete resources
 <Accordions>
 <Accordion title="supercheck pull: files, backups and overwrites" id="supercheck-pull">
 
-Config pulls include monitors, jobs, notification providers, variables, tags, and status pages; test pulls also write test scripts under `_supercheck_/`. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
+Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags, and status pages (settings, branding, notifications and components); test pulls also write test scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
 
 When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed.
 
@@ -621,7 +663,7 @@ In JSON mode, the completed pull summary includes `files` and `backups` arrays w
 </Accordion>
 <Accordion title="supercheck diff" id="supercheck-diff">
 
-Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
+Includes requirements and status pages. Notification provider changes include nested `config` fields such as webhook `bodyTemplate`.
 
 </Accordion>
 <Accordion title="supercheck deploy: renames, --verify" id="supercheck-deploy">
@@ -629,6 +671,15 @@ Notification provider changes include nested `config` fields such as webhook `bo
 Deploy pushes notification provider config and webhook body templates too. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
 
 `--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
+
+</Accordion>
+<Accordion title="supercheck deploy: requirements, status pages and tags" id="supercheck-deploy-resources">
+
+- **Requirements:** omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
+- **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and remote-only components are removed only with `--delete`.
+- **Tests:** `@priority` and `@tags` annotations are applied on deploy.
+- **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config; deploy checks this before any write, matching names case-insensitively. Requirement tags are created by the server.
+- **Older servers:** before the first write, deploy checks the requirements API (when requirements are being written) and the monitor tag API (when an existing monitor is available to probe), and fails with an upgrade hint. Status page create or update fails on its first request with the same kind of hint, and a monitor created in the same deploy with no existing monitor to probe reports a missing tag API right after its create.
 
 </Accordion>
 </Accordions>
