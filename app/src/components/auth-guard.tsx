@@ -47,22 +47,25 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children, initialSession }: AuthGuardProps) {
     const router = useRouter();
-    const { data: session, isPending } = useSession();
+    const { data: session, isPending, error } = useSession();
     // Use ref to track redirect to avoid re-renders and lint warnings
     const isRedirectingRef = useRef(false);
 
     // SECURITY: Determine effective session state
-    // Priority: 1) useSession result (when available), 2) initialSession (during pending)
-    // This ensures that if useSession completes with null, we don't trust initialSession
-    const effectiveSession = useMemo(() => isPending
-        ? (initialSession ? { user: initialSession.user } : null)  // Use server data while pending
-        : session, [isPending, initialSession, session]);  // Once useSession completes, trust its result (even if null)
+    // Priority: 1) useSession result (when available), 2) initialSession (while pending or if the check failed)
+    // A completed check that returns null overrides initialSession. A failed check (network error, 5xx,
+    // wrong auth origin) is not a sign-out: redirecting then loops, because the server still sees the
+    // session and sends /sign-in straight back. Server routes keep enforcing auth on every request.
+    const checkFailed = !isPending && !!error;
+    const effectiveSession = useMemo(() => isPending || checkFailed
+        ? (initialSession ? { user: initialSession.user } : null)
+        : session, [isPending, checkFailed, initialSession, session]);
 
     // Only show loading if we're pending AND don't have an initial session from server
     const isEffectivelyPending = isPending && !initialSession;
 
     // SECURITY: Detect session expiry (server had session, but client says no)
-    const sessionExpired = !isPending && !session && !!initialSession;
+    const sessionExpired = !isPending && !checkFailed && !session && !!initialSession;
 
     useEffect(() => {
         // Wait for session check to complete (if we don't have initial session)
