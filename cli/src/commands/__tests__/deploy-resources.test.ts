@@ -92,9 +92,9 @@ describe('deploy requirements and status pages', () => {
     const change = (type: string, action: string, name: string, definition: Record<string, unknown> = {}) => ({ type, action, name, local: { type, name, definition } }) as never
 
     it('fails on unknown test/monitor tags before any write, accepting case-insensitive and same-deploy tags', async () => {
-      const client = { get: async () => ({ data: [{ id: 't1', name: 'Smoke' }] }) } as never
+      const client = { get: async () => ({ data: [{ id: 't1', name: 'Smoke' }] }), getText: async () => ({ data: '' }) } as never
       await expect(preflightDeploy(client, [change('test', 'create', 'a.pw.ts', { tags: ['smoke', 'New', 'nope'] }), change('tag', 'create', 'new')], [])).rejects.toThrow('tag "nope"')
-      await expect(preflightDeploy(client, [change('monitor', 'update', 'm', { tags: ['SMOKE'] }), change('requirement', 'create', 'r', { tags: ['anything'] })], [])).resolves.toBeUndefined().catch(() => undefined)
+      await expect(preflightDeploy(client, [change('monitor', 'update', 'm', { tags: ['SMOKE'] }), change('requirement', 'create', 'r', { tags: ['anything'] })], [])).resolves.toBeUndefined()
     })
 
     it('reports an upgrade hint when the server lacks the requirement or monitor tag APIs', async () => {

@@ -151,7 +151,7 @@ export async function preflightDeploy(
   }
   if (writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
   // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.
-  if (tagged.some((c) => c.type === 'monitor') && remoteMonitorIds[0]) await probe(`/api/monitors/${remoteMonitorIds[0]}/tags`, UPGRADE_MONITOR_TAGS)
+  if (tagged.some((c) => c.type === 'monitor') && remoteMonitorIds[0]) await probe(`/api/monitors/${encodeURIComponent(remoteMonitorIds[0])}/tags`, UPGRADE_MONITOR_TAGS)
 }
 
 async function applyTags(client: import('../api/client.js').ApiClient, resourcePath: string, refs: string[], id: string): Promise<void> {
@@ -243,7 +243,7 @@ async function applyChange(
         try { opts.state.record(change.type, change.name, id, change.id ?? change.local?.id) } catch {
         throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id })
         }
-        if (tagRefs) await applyTags(client, `${endpoint}/${id}`, tagRefs, id)
+        if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
         return { success: true, id }
       }
       case 'update': {
@@ -251,7 +251,7 @@ async function applyChange(
         // A tags-only change has nothing else to send.
         if (Object.keys(body).length > 0 || !tagRefs) await client.put(`${endpoint}/${id}`, body)
         opts.state.record(change.type, change.name, id)
-        if (tagRefs) await applyTags(client, `${endpoint}/${id}`, tagRefs, id)
+        if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
         return { success: true }
       }
       case 'delete': {
