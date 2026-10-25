@@ -33,6 +33,13 @@ it("lists home and invited projects for browser selection", async () => {
   expect((await response.json()).data).toHaveLength(2);
   expect(getSelectableProjects).toHaveBeenCalledWith("user"); expect(getUserProjects).not.toHaveBeenCalled();
 });
+it("lists only the active organization's projects for the organization page", async () => {
+  const response = await GET(new NextRequest("https://app.supercheck.io/api/projects?scope=organization"));
+  expect(response.status).toBe(200);
+  expect((await response.json()).data).toEqual([{ id: "invited-project", organizationId: "team" }]);
+  expect(hasPermissionForUser).toHaveBeenCalledWith("user", "project", "view", { organizationId: "team" });
+  expect(getUserProjects).toHaveBeenCalledWith("user", "team"); expect(getSelectableProjects).not.toHaveBeenCalled();
+});
 it("keeps CLI listing scoped to its token organization", async () => {
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user", organizationId: "team", isCliAuth: true });
   const response = await GET(new NextRequest("https://app.supercheck.io/api/projects"));

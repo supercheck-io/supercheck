@@ -136,7 +136,7 @@ export function createProjectColumns(
         const remainingCount = Math.max(0, count - displayMembers.length);
 
         return (
-          <div className="flex items-center h-10 gap-2">
+          <div className="flex items-center h-10 gap-2" title="Assigned members plus organization owners and admins">
             <div className="flex items-center">
               {displayMembers.length > 0 ? (
                 <>

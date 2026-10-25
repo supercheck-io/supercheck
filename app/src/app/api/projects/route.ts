@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
 
     // Browser project selection includes invited teams. CLI enumeration retains
     // its organization scope unless the caller explicitly requests another team.
-    if (!organizationId && !isCliAuth) {
+    // scope=organization (organization admin page) lists only the active organization.
+    if (!organizationId && !isCliAuth && searchParams.get("scope") !== "organization") {
       const [userProjects, currentProject] = await Promise.all([
         getSelectableProjects(userId), getCurrentProjectContext(),
       ]);

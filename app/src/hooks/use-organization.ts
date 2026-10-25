@@ -110,7 +110,7 @@ export async function fetchOrgMembers(): Promise<{ members: OrgMember[]; invitat
 }
 
 export async function fetchOrgProjects(): Promise<OrgProject[]> {
-  const response = await fetch("/api/projects?includeMemberCounts=1");
+  const response = await fetch("/api/projects?scope=organization&includeMemberCounts=1");
   if (!response.ok) {
     throw new Error("Failed to fetch organization projects");
   }
