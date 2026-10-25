@@ -129,8 +129,8 @@ claude mcp add --transport http supercheck \\
   },
   {
     slug: "sre",
-    role: "For on-call and SRE teams",
-    metaTitle: "Supercheck for on-call and SRE teams",
+    role: "For SRE and platform teams",
+    metaTitle: "Supercheck for SRE and platform teams",
     metaDescription:
       "Uptime and synthetic monitoring, alert routing, status pages and read-only AI incident investigation, open source and self-hostable.",
     title: "Uptime, alerts and incident evidence in one place",

@@ -90,7 +90,7 @@ export const solutionsMenu: NavMenu = {
       title: "By role",
       items: [
         { title: "Developers", description: "Ship tests and monitors with your code", href: "/solutions/developers", icon: Code },
-        { title: "On-call and SRE", description: "Catch outages, find the cause, update users", href: "/solutions/sre", icon: Layers },
+        { title: "SRE and platform", description: "Catch outages, find the cause, update users", href: "/solutions/sre", icon: Layers },
         { title: "Test automation", description: "Playwright and k6 suites that run on a schedule", href: "/solutions/test-automation", icon: ClipboardCheck },
         { title: "Engineering leaders", description: "Coverage, access and audit trail in one view", href: "/solutions/engineering-leaders", icon: Users },
       ],
