@@ -33,11 +33,14 @@ import {
   handleOrderPaid,
   handleOrderCreated,
   handleCustomerCreated,
+  handleCustomerStateChanged,
   handleCustomerDeleted,
   cleanupExpiredWebhooks,
   handleSubscriptionCreated,
 } from "./polar-webhooks";
 import { normalizePolarPayload } from "./polar-payload";
+import { reconcilePolarSubscription } from "@/lib/services/subscription-reconciliation";
+import { getBillingReconciliationStatus } from "@/lib/billing/reconciliation-status";
 
 const name = `polar_wh_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -139,6 +142,49 @@ beforeEach(async () => {
 });
 
 describe("2026-10 webhook payloads through the real handlers", () => {
+  it.each([false, true])("reconciles an authoritative snapshot without overwriting a concurrent webhook (changed=%s)", async (changed) => {
+    await deliver(handleSubscriptionActive, "subscription.active", subscription(), "2026-10-01T00:00:01Z");
+    await mockDatabase.update(schema.organization).set({ playwrightMinutesUsed: 11 }).where(eq(schema.organization.id, orgId));
+    const savedFetch = global.fetch;
+    const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET };
+    process.env.SELF_HOSTED = "false";
+    process.env.POLAR_ACCESS_TOKEN = "test";
+    process.env.POLAR_WEBHOOK_SECRET = "test";
+    let injectConflict = changed;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith("/state")) return new Response(JSON.stringify({ id: CUS, active_subscriptions: [] }));
+      if (injectConflict) {
+        injectConflict = false;
+        await mockDatabase.update(schema.organization).set({ polarWebhookEventKey: "concurrent-new-event" }).where(eq(schema.organization.id, orgId));
+      }
+      return new Response(JSON.stringify({ ...subscription(), status: "unpaid", created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-25T00:00:00Z" }));
+    });
+    try {
+      if (changed) await expect(handleCustomerStateChanged({ type: "customer.state_changed", data: { id: CUS } })).rejects.toThrow("retry");
+      else expect(await reconcilePolarSubscription(orgId)).toBe(true);
+      expect((await org()).subscriptionStatus).toBe(changed ? "active" : "none");
+      expect(Number((await org()).playwrightMinutesUsed)).toBe(11);
+      if (changed) {
+        await handleCustomerStateChanged({ type: "customer.state_changed", data: { id: CUS } });
+        expect((await org()).subscriptionStatus).toBe("none");
+        expect(Number((await org()).playwrightMinutesUsed)).toBe(11);
+      }
+    } finally {
+      global.fetch = savedFetch;
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+
+  it("reports parked usage and receipts with real aggregate SQL", async () => {
+    await mockDatabase.insert(schema.usageEvents).values({ organizationId: orgId, eventType: "playwright_execution", eventName: "playwright_minutes",
+      units: "1", unitType: "minutes", billingPeriodStart: new Date(0), billingPeriodEnd: new Date(1000), createdAt: new Date(0) });
+    await mockDatabase.insert(schema.executionUsageReceipts).values({ id: randomUUID(), organizationId: orgId, runId: "parked-run", eventType: "playwright_execution",
+      units: "1", billingPeriodStart: new Date(0), billingPeriodEnd: new Date(1000), nextAttemptAt: null });
+    expect(await getBillingReconciliationStatus()).toMatchObject({ pendingEvents: 1, parkedEvents: 1, pendingReceipts: 1, parkedReceipts: 1, requiresAttention: true });
+  });
+
   it("activates the plan from a snake_case subscription.active and stores the billing period", async () => {
     await deliver(
       handleSubscriptionActive,

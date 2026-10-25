@@ -128,10 +128,19 @@ export async function consumeSreInvestigationCredit(input: {
     return { billed: false as const };
   }
 
-  // A trial is never billed: there is no Polar customer, meter or overage.
-  if (!(await subscriptionService.hasActiveSubscription(input.organizationId)) && (await getActiveTrial(input.organizationId))) {
-    return { billed: false as const };
+  const run = await db.query.sreInvestigationRuns.findFirst({
+    where: and(eq(sreInvestigationRuns.id, input.investigationRunId),
+      eq(sreInvestigationRuns.organizationId, input.organizationId),
+      eq(sreInvestigationRuns.projectId, input.projectId),
+      eq(sreInvestigationRuns.incidentId, input.incidentId)),
+    columns: { billingTier: true, agentType: true, status: true },
+  });
+  if (!run || run.agentType !== "investigation" || run.status !== "completed") {
+    throw new Error("Billing requires a completed full investigation in this organization");
   }
+  // Admission fixes the billing tier even if the subscription changes mid-run.
+  if (run.billingTier === "trial") return { billed: false as const };
+  if (run.billingTier !== "paid") throw new Error("Investigation billing tier is unavailable");
 
   const now = new Date();
   return db.transaction(async (tx) => {

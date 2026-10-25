@@ -89,7 +89,7 @@ export function useTestMutations() {
     ...baseMutations.create,
     mutateAsync: async (...args: Parameters<typeof baseMutations.create.mutateAsync>) => {
       const result = await baseMutations.create.mutateAsync(...args);
-      // Cross-entity: Dashboard shows Total Tests count
+      // Cross-entity: Dashboard shows the Tests count
       queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
       return result;
     },
@@ -99,7 +99,7 @@ export function useTestMutations() {
     ...baseMutations.remove,
     mutateAsync: async (...args: Parameters<typeof baseMutations.remove.mutateAsync>) => {
       const result = await baseMutations.remove.mutateAsync(...args);
-      // Cross-entity: Dashboard shows Total Tests count
+      // Cross-entity: Dashboard shows the Tests count
       queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
       return result;
     },

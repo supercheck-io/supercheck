@@ -46,6 +46,8 @@ export interface OrgProject {
   isDefault: boolean;
   organizationId: string;
   createdAt: string;
+  /** Assigned project members plus org owners/admins. Only present with includeMemberCounts=1. */
+  membersCount?: number;
   _count?: {
     tests: number;
     monitors: number;
@@ -108,7 +110,7 @@ export async function fetchOrgMembers(): Promise<{ members: OrgMember[]; invitat
 }
 
 export async function fetchOrgProjects(): Promise<OrgProject[]> {
-  const response = await fetch("/api/projects");
+  const response = await fetch("/api/projects?scope=organization&includeMemberCounts=1");
   if (!response.ok) {
     throw new Error("Failed to fetch organization projects");
   }

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { k6PerformanceRuns, jobs } from "@/db/schema";
-import { eq, and, desc, gte, count, sql, avg } from "drizzle-orm";
+import { eq, and, desc, gte, count, sql, avg, inArray } from "drizzle-orm";
+import {
+  IN_FLIGHT_RUN_STATUSES,
+  NOT_PASSED_RUN_STATUSES,
+  passRatePercent,
+} from "@/lib/dashboard/run-outcomes";
 import { subDays } from "date-fns";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
@@ -118,7 +123,8 @@ export async function GET(request: NextRequest) {
           avgRequestRate: avg(k6PerformanceRuns.requestRate),
           totalRequests: sql<number>`SUM(${k6PerformanceRuns.totalRequests})`,
           passedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'passed' THEN 1 ELSE 0 END)`,
-          failedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'failed' THEN 1 ELSE 0 END)`,
+          notPassedRuns: sql<number>`SUM(CASE WHEN ${inArray(k6PerformanceRuns.status, [...NOT_PASSED_RUN_STATUSES])} THEN 1 ELSE 0 END)`,
+          inFlightRuns: sql<number>`SUM(CASE WHEN ${inArray(k6PerformanceRuns.status, [...IN_FLIGHT_RUN_STATUSES])} THEN 1 ELSE 0 END)`,
         })
         .from(k6PerformanceRuns)
         .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))
@@ -128,7 +134,7 @@ export async function GET(request: NextRequest) {
     const stats = aggregateStats[0];
     const totalRuns = Number(stats?.totalRuns) || 0;
     const passedRuns = Number(stats?.passedRuns) || 0;
-    const passRate = totalRuns > 0 ? Math.round((passedRuns / totalRuns) * 100 * 10) / 10 : 0;
+    const passRate = passRatePercent(passedRuns, totalRuns, Number(stats?.inFlightRuns) || 0);
 
     // If comparison is requested, fetch both runs
     let comparisonData = null;
@@ -331,7 +337,8 @@ export async function GET(request: NextRequest) {
       stats: {
         totalRuns,
         passedRuns,
-        failedRuns: Number(stats?.failedRuns) || 0,
+        notPassedRuns: Number(stats?.notPassedRuns) || 0,
+        inFlightRuns: Number(stats?.inFlightRuns) || 0,
         passRate,
         avgP95: Math.round(Number(stats?.avgP95) || 0),
         avgP99: Math.round(Number(stats?.avgP99) || 0),

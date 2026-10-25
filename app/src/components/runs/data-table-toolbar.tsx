@@ -16,16 +16,7 @@ export function DataTableToolbar<TData>({
   table,
 }: DataTableToolbarProps<TData>) {
   return (
-    <div className="flex items-center justify-between mb-4 -mt-2">
-      <div className="flex items-center justify-between space-y-2">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-semibold">Runs</h2>
-          <p className="text-muted-foreground text-sm">
-            View Job runs and their results
-          </p>
-        </div>
-     
-      </div>
+    <div className="flex items-center justify-between mb-4">
       <div className="flex items-center space-x-2">
         <div className="relative">
           <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />

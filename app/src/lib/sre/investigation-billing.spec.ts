@@ -35,6 +35,7 @@ jest.mock("@/utils/db", () => ({
     transaction: jest.fn(),
     query: {
       organization: { findFirst: jest.fn() },
+      sreInvestigationRuns: { findFirst: jest.fn() },
     },
   },
 }));
@@ -71,7 +72,7 @@ const mockDb = db as unknown as {
   select: jest.Mock;
   update: jest.Mock;
   transaction: jest.Mock;
-  query: { organization: { findFirst: jest.Mock } };
+  query: { organization: { findFirst: jest.Mock }; sreInvestigationRuns: { findFirst: jest.Mock } };
 };
 
 function lockedOrganizationSelect() {
@@ -117,6 +118,7 @@ describe("SRE investigation billing", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsPolarEnabled.mockReturnValue(true);
+    mockDb.query.sreInvestigationRuns.findFirst.mockResolvedValue({ billingTier: "paid", status: "completed", agentType: "investigation" });
     mockSubscriptionService.hasActiveSubscription.mockResolvedValue(true);
     mockSubscriptionService.getOrganizationPlanSafe.mockResolvedValue(
       planFixture,
@@ -368,6 +370,7 @@ describe("SRE investigation billing", () => {
     beforeEach(() => {
       mockSubscriptionService.hasActiveSubscription.mockResolvedValue(false);
       jest.mocked(getActiveTrial).mockResolvedValue(trial as never);
+      mockDb.query.sreInvestigationRuns.findFirst.mockResolvedValue({ billingTier: "trial", status: "completed", agentType: "investigation" });
     });
     afterEach(() => jest.mocked(getActiveTrial).mockResolvedValue(undefined));
 
@@ -579,6 +582,31 @@ describe("SRE investigation billing", () => {
 
     expect(tx.update).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it("never charges a trial-admitted investigation after an upgrade", async () => {
+    mockDb.query.sreInvestigationRuns.findFirst.mockResolvedValue({ billingTier: "trial", status: "completed", agentType: "investigation" });
+    await expect(consumeSreInvestigationCredit({ organizationId: "org-1", projectId: "p", userId: null,
+      incidentId: "i", investigationRunId: "r", useLiveConnectors: false })).resolves.toEqual({ billed: false });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("settles a paid-admitted investigation even after revocation with an unexpired trial", async () => {
+    mockSubscriptionService.hasActiveSubscription.mockResolvedValue(false);
+    jest.mocked(getActiveTrial).mockResolvedValueOnce({ expiresAt: new Date(Date.now() + 86400000) } as never);
+    const tx = { execute: jest.fn(), query: { usageEvents: { findFirst: jest.fn().mockResolvedValue({ id: "already-billed" }) } } };
+    mockDb.transaction.mockImplementation(async (callback) => callback(tx));
+    await expect(consumeSreInvestigationCredit({ organizationId: "org-1", projectId: "p", userId: null,
+      incidentId: "i", investigationRunId: "r", useLiveConnectors: false })).resolves.toMatchObject({ billed: true, duplicate: true });
+    expect(mockDb.query.sreInvestigationRuns.findFirst).toHaveBeenCalled();
+  });
+
+  it.each([null, { billingTier: "paid", status: "failed", agentType: "investigation" },
+    { billingTier: "paid", status: "completed", agentType: "triage" }])("refuses settlement without a completed full investigation: %p", async (run) => {
+    mockDb.query.sreInvestigationRuns.findFirst.mockResolvedValue(run);
+    await expect(consumeSreInvestigationCredit({ organizationId: "org-1", projectId: "p", userId: null,
+      incidentId: "i", investigationRunId: "r", useLiveConnectors: false })).rejects.toThrow("completed full investigation");
+    expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
   it("returns current usage against plan allowance", async () => {

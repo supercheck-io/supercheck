@@ -126,7 +126,7 @@ export async function loginStep(apiUrl: string, deps: LoginDeps): Promise<LoginO
         deps.store.save({ ...pending, nextPollAt: polledAt + pending.interval * 1000 })
         throw new DeviceLoginError(
           'TOKEN_LIMIT_REACHED',
-          'This project already has the maximum number of CLI tokens. Revoke one under Organization Admin → CLI Tokens, then run `supercheck login` again before the code expires.',
+          'This project already has the maximum number of CLI tokens. Revoke one under Organization → CLI Tokens, then run `supercheck login` again before the code expires.',
         )
       case 'disabled':
         deps.store.clear()

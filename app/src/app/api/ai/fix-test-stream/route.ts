@@ -90,27 +90,6 @@ export async function POST(request: NextRequest) {
           { status: 402 }
         );
       }
-
-      // Atomically consume AI credit (prevents race conditions)
-      // This increments first, then checks limit, and rolls back if exceeded
-      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
-      if (!creditResult.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
-            message: creditResult.reason,
-            guidance: creditResult.status === 503
-              ? "Billing is temporarily unavailable. Please try again shortly."
-              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
-            usage: {
-              used: creditResult.used,
-              limit: creditResult.limit,
-            },
-          },
-          { status: creditResult.status ?? 429 }
-        );
-      }
     }
 
     let prompt: string;
@@ -271,6 +250,26 @@ export async function POST(request: NextRequest) {
           markdownContent: errorContext,
         });
       }
+    }
+
+    // Charge only after report and prompt prerequisites succeed.
+    const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+    if (!creditResult.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
+          message: creditResult.reason,
+          guidance: creditResult.status === 503
+            ? "Billing is temporarily unavailable. Please try again shortly."
+            : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+          usage: {
+            used: creditResult.used,
+            limit: creditResult.limit,
+          },
+        },
+        { status: creditResult.status ?? 429 }
+      );
     }
 
     // Step 4: Generate streaming AI response

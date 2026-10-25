@@ -10,8 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { TrialCard } from "@/components/billing/trial-card";
+import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingFaqs } from "@/components/billing/pricing-faqs";
 import {
   RefreshCw,
@@ -428,10 +428,7 @@ export default function SubscribePage() {
                 </p>
               </div>
               {activeOrganization?.role === "org_owner" && (
-                <Button
-                  asChild
-                  className="bg-[hsl(220,90%,56%)] text-white hover:bg-[hsl(220,90%,50%)] dark:bg-[hsl(220,90%,66%)] dark:text-slate-950 dark:hover:bg-[hsl(220,90%,72%)]"
-                >
+                <Button asChild>
                   {billingNeedsAttention ? (
                     <a
                       href="mailto:hello@supercheck.io"
@@ -453,13 +450,11 @@ export default function SubscribePage() {
             </div>
           </>
         ) : (
-          activeOrganization && (
+          activeOrganization && !trialActive && (
             <p className="text-sm leading-relaxed text-muted-foreground">
               {trialEnded
                 ? "Your monitors are paused and your status pages are archived. Nothing was deleted: choose a plan below and they are restored."
-                : trialActive
-                  ? `You have ${access?.trial?.daysRemaining} days left in your free trial. Choose a plan any time to keep everything running after it ends.`
-                  : expired
+                : expired
                     ? "Your subscription has ended. Choose a plan below to restore access."
                     : "Choose a plan below to activate your organization."}
             </p>
@@ -477,7 +472,7 @@ export default function SubscribePage() {
         )}
       </Card>
 
-      {/* Free trial allowances while it is active (an ended trial is explained in the account card above) */}
+      {/* Free trial allowances while it is active */}
       {!hasBillingContext && pricingData?.trial && trialActive && (
         <TrialCard durationDays={pricingData.trial.durationDays} highlights={pricingData.trial.highlights} />
       )}
@@ -494,22 +489,22 @@ export default function SubscribePage() {
                 priceInterval={plan.interval}
                 tagline={plan.description}
                 badge={plan.id === "pro" ? "Higher capacity" : undefined}
+                ctaVariant="outline"
                 keyFeatures={[
-                  `${Number(plan.features.monitors).toLocaleString()} monitors`,
-                  `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright minutes/month`,
-                  `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-minutes/month`,
-                  `${Number(plan.features.aiCredits).toLocaleString()} AI credits/month · fair use`,
-                  `${Number(plan.features.sreInvestigationUnits).toLocaleString()} completed AI SRE reports/month`,
+                  `${Number(plan.features.monitors).toLocaleString("en-US")} monitors`,
+                  `${Number(plan.features.playwrightMinutes).toLocaleString("en-US")} Playwright minutes/month`,
+                  `${Number(plan.features.k6VuMinutes).toLocaleString("en-US")} k6 VU-minutes/month`,
+                  `${Number(plan.features.aiCredits).toLocaleString("en-US")} AI credits/month · fair use`,
+                  `${Number(plan.features.sreInvestigationUnits).toLocaleString("en-US")} completed AI SRE investigations/month`,
                   `${plan.features.teamMembers} team members · ${plan.features.projects} projects`,
                   `${plan.features.statusPages} status pages`,
                 ]}
-                overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} K6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed full AI SRE report")} · AI credits included, fair use`}
+                overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} k6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed AI SRE investigation")} · AI credits included, fair use`}
                 ctaText={
                   expired
                     ? `Resubscribe to ${plan.name}`
                     : `Continue with ${plan.name}`
                 }
-                ctaVariant={plan.id === "pro" ? "default" : "outline"}
                 onCtaClick={() => handleSubscribe(plan.id)}
                 loading={subscribing === plan.id}
                 disabled={
