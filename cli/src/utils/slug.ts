@@ -144,6 +144,8 @@ export function readScriptMetadata(script: string, key: MetadataKey): string | u
  * `// @key` run, or otherwise prepends `// @key value` plus a blank line.
  */
 export function setScriptMetadata(script: string, key: MetadataKey, value: string): string {
+  // Server-supplied values must stay on one line and cannot close a JSDoc block.
+  value = value.replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /').trim()
   const cr = script.includes('\r\n') ? '\r' : ''
   const lines = script.split('\n')
   const header = findHeader(lines)

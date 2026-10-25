@@ -14,9 +14,7 @@ export async function resolveTagIds(client: ApiClient, refs: string[]): Promise<
   const { data } = await client.get<AssignedTag[]>('/api/tags')
   const tags = Array.isArray(data) ? data : []
   const ids = refs.map((ref) => {
-    // Exact name or id first; fall back to a case-insensitive name match (the server keeps the stored spelling).
-    const match = tags.find((tag) => tag.id === ref || tag.name === ref)
-      ?? tags.find((tag) => tag.name.toLowerCase() === ref.trim().toLowerCase())
+    const match = findTag(tags, ref)
     if (!match) {
       throw new CLIError(
         `Tag "${ref}" does not exist in this project. Create it with \`supercheck tag create\` or declare it under \`tags\` in the config.`,
@@ -50,7 +48,7 @@ export async function removeAssignedTags(client: ApiClient, resourcePath: string
   return setAssignedTags(client, resourcePath, current.map((t) => t.id).filter((id) => !unwanted.includes(id)))
 }
 
-/** Find a tag by id, exact name, or (as a fallback) case-insensitive name. */
+/** Find a tag by id, exact name, or (as a fallback) case-insensitive name; the server keeps the stored spelling. */
 export function findTag<T extends { id: string; name: string }>(tags: T[], ref: string): T | undefined {
   return tags.find((tag) => tag.id === ref || tag.name === ref)
     ?? tags.find((tag) => tag.name.toLowerCase() === ref.trim().toLowerCase())

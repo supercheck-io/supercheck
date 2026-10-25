@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -192,6 +192,21 @@ describe('requirement command', () => {
       await run('export', '--output', file, '--force')
       expect(readFileSync(file, 'utf8')).toBe('id,title\n1,A\n')
       expect(existsSync(file)).toBe(true)
+    })
+
+    it('writes owner-only and refuses to follow a symlink even with --force', async () => {
+      mockGetText.mockResolvedValue({ data: 'id,title\n1,A\n' })
+      const file = join(dir, 'fresh.csv')
+      await run('export', '--output', file)
+      expect(statSync(file).mode & 0o777).toBe(0o600)
+
+      const target = join(dir, 'target.txt')
+      const link = join(dir, 'link.csv')
+      writeFileSync(target, 'keep me')
+      symlinkSync(target, link)
+      resetCommandState(requirementCommand)
+      await expect(run('export', '--output', link, '--force')).rejects.toThrow('symbolic link')
+      expect(readFileSync(target, 'utf8')).toBe('keep me')
     })
   })
 })

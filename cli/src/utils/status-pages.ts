@@ -291,7 +291,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
       if (error instanceof ApiRequestError && error.statusCode === 405) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
       if (error instanceof ApiRequestError && error.statusCode === 404) {
         if (collection) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
-        const exists = await client.get(`/api/status-pages/${opts.id}`).then(() => true, () => false)
+        const exists = await client.get(`/api/status-pages/${encodeURIComponent(String(opts.id))}`).then(() => true, () => false)
         if (exists) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
         throw new CLIError(`Status page "${opts.name}" (${opts.id}) no longer exists on the server. Remove its id from the config to create it again.`, ExitCode.ApiError)
       }
@@ -334,20 +334,20 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
   const pageId = id!
 
   if (Object.keys(settings).length > 0) {
-    await step('applying settings', () => call(() => client.put(`/api/status-pages/${pageId}`, settings)))
+    await step('applying settings', () => call(() => client.put(`/api/status-pages/${encodeURIComponent(pageId)}`, settings)))
   }
 
   if (components) {
     await step('syncing components', async () => {
       let remoteComponents: StatusPageComponent[] = []
       if (opts.action === 'update') {
-        const { data } = await call(() => client.get<Rec>(`/api/status-pages/${pageId}/components`))
+        const { data } = await call(() => client.get<Rec>(`/api/status-pages/${encodeURIComponent(pageId)}/components`))
         remoteComponents = normalizeRemoteComponents(((data as Rec).components ?? []) as Rec[])
       }
       const { pairs, unmatchedRemote } = matchComponents(components, remoteComponents)
       for (const { local, remote } of pairs) {
         if (!remote) {
-          await call(() => client.post(`/api/status-pages/${pageId}/components`, {
+          await call(() => client.post(`/api/status-pages/${encodeURIComponent(pageId)}/components`, {
             name: local.name,
             ...(local.description !== undefined ? { description: local.description } : {}),
             ...(local.monitors !== undefined ? { monitorIds: local.monitors } : {}),
@@ -362,10 +362,10 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
         if (changed.includes('description')) body.description = local.description
         if (changed.includes('monitors')) body.monitorIds = local.monitors
         if (changed.includes('position')) body.position = local.position
-        await call(() => client.put(`/api/status-pages/${pageId}/components/${remote.id}`, body))
+        await call(() => client.put(`/api/status-pages/${encodeURIComponent(pageId)}/components/${encodeURIComponent(String(remote.id))}`, body))
       }
       for (const orphan of unmatchedRemote) {
-        if (opts.deleteMissing) await call(() => client.delete(`/api/status-pages/${pageId}/components/${orphan.id}`))
+        if (opts.deleteMissing) await call(() => client.delete(`/api/status-pages/${encodeURIComponent(pageId)}/components/${encodeURIComponent(String(orphan.id))}`))
         else logger.warn(`Status page "${opts.name}": component "${orphan.name}" is not in config; kept (use --delete to remove it).`)
       }
     })
@@ -374,7 +374,7 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
   const desired = asString(definition.status)
   const current = opts.action === 'create' ? 'draft' : asString(opts.remote?.status)
   if (desired && desired !== current) {
-    await step('changing status', () => call(() => client.put(`/api/status-pages/${pageId}`, { status: desired })))
+    await step('changing status', () => call(() => client.put(`/api/status-pages/${encodeURIComponent(pageId)}`, { status: desired })))
   }
   return { id: pageId }
 }

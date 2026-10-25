@@ -498,7 +498,7 @@ export async function fetchRemoteRequirements(client: ReturnType<typeof getApiCl
   for (let i = 0; i < needDetail.length; i += REQUIREMENT_DETAIL_CONCURRENCY) {
     const batch = await Promise.all(needDetail.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async ({ id, item }) => {
       try {
-        const { data } = await client.get<{ requirement?: RemoteRequirement }>(`/api/requirements/${id}`)
+        const { data } = await client.get<{ requirement?: RemoteRequirement }>(`/api/requirements/${encodeURIComponent(id)}`)
         return data?.requirement
       } catch (err) {
         if (err instanceof ApiRequestError && err.statusCode === 404) { notFound++; return { missing: item } }
@@ -530,7 +530,7 @@ export async function fetchStatusPagesWithComponents(
     const id = safeId(page.id)
     if (!id) { out.push(page); continue }
     try {
-      const { data } = await client.get<{ statusPage?: Record<string, unknown>; components?: Array<Record<string, unknown>> }>(`/api/status-pages/${id}`)
+      const { data } = await client.get<{ statusPage?: Record<string, unknown>; components?: Array<Record<string, unknown>> }>(`/api/status-pages/${encodeURIComponent(id)}`)
       if (data && Array.isArray(data.components)) {
         out.push({ ...page, ...(data.statusPage ?? {}), components: data.components })
         continue

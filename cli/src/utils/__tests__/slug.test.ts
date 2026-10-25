@@ -58,6 +58,12 @@ describe('slug utilities', () => {
       expect(stripTitleMetadata(out)).toBe('/** x */\nfoo()\n')
     })
 
+    it('keeps server-supplied values on one line and inside the comment', () => {
+      const out = setScriptMetadata('/**\n * Docs\n */\nfoo()\n', 'tags', 'smoke */ evil()\nsteal()')
+      expect(out).toBe('/**\n * @tags smoke * / evil() steal()\n * Docs\n */\nfoo()\n')
+      expect(setScriptMetadata('foo()\n', 'priority', 'high\nevil()')).toBe('// @priority high evil()\n\nfoo()\n')
+    })
+
     it('is idempotent across repeated pulls', () => {
       let once = setScriptMetadata('foo()\n', 'title', 'T')
       once = setScriptMetadata(once, 'priority', 'high')

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { ApiRequestError } from '../errors.js'
 import { ApiClient } from '../../api/client.js'
 import { managedState } from '../managed.js'
-import { buildLocalResources, fetchRemoteRequirements } from '../resources.js'
+import { buildLocalResources, fetchRemoteRequirements, fetchStatusPagesWithComponents } from '../resources.js'
 import type { SupercheckConfig } from '../../config/schema.js'
 
 const TEST_A = '019a0000-0000-7000-8000-000000000001'
@@ -85,5 +85,43 @@ describe('requirement and status page references', () => {
     } as unknown as ApiClient
     const requirements = await fetchRemoteRequirements(client)
     expect(requirements.map((r) => r.id)).toEqual(['a', 'b'])
+  })
+
+  it('rethrows a requirement detail failure that is not a 404', async () => {
+    const client = {
+      get: async (path: string) => {
+        if (path === '/api/requirements') return { data: { data: [{ id: 'a', title: 'A', tags: [] }], total: 1, page: 1, pageSize: 200 } }
+        throw new ApiRequestError('boom', 500)
+      },
+    } as unknown as ApiClient
+    await expect(fetchRemoteRequirements(client)).rejects.toThrow('boom')
+  })
+
+  it('merges status page components from the detail route and falls back when it is missing', async () => {
+    const noComponents: unknown[] = []
+    const client = {
+      get: async (path: string) => {
+        if (path === '/api/status-pages') return { data: { data: [{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }, { name: 'No id' }], total: 3, page: 1, pageSize: 100 } }
+        if (path === '/api/status-pages/p1') return { data: { statusPage: { id: 'p1', name: 'One', headline: 'H' }, components: [{ id: 'c1', name: 'API' }] } }
+        throw new ApiRequestError('not here', 404)
+      },
+    } as unknown as ApiClient
+    const pages = await fetchStatusPagesWithComponents(client, (page) => noComponents.push(page.id))
+    expect(pages).toEqual([
+      { id: 'p1', name: 'One', headline: 'H', components: [{ id: 'c1', name: 'API' }] },
+      { id: 'p2', name: 'Two' },
+      { name: 'No id' },
+    ])
+    expect(noComponents).toEqual(['p2'])
+  })
+
+  it('rethrows a status page detail failure other than 404 or 405', async () => {
+    const client = {
+      get: async (path: string) => {
+        if (path === '/api/status-pages') return { data: { data: [{ id: 'p1', name: 'One' }], total: 1, page: 1, pageSize: 100 } }
+        throw new ApiRequestError('denied', 403)
+      },
+    } as unknown as ApiClient
+    await expect(fetchStatusPagesWithComponents(client)).rejects.toThrow('denied')
   })
 })

@@ -268,11 +268,6 @@ class IdentityMismatch extends CLIError {
   constructor(message: string) { super(message, ExitCode.ApiError) }
 }
 
-/** Server titles are untrusted text: keep them to one line and out of comment terminators. */
-function sanitizeTitle(title: string): string {
-  return title.replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /').trim()
-}
-
 export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
   const baseDir = resolve(cwd, '_supercheck_')
   if (!existsSync(baseDir)) {
@@ -316,7 +311,7 @@ export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary
 
       // Inject/Update @title, @priority and @tags metadata so the local file round-trips the test's fields.
       // Prefer JSDoc injection if a block exists, otherwise use single-line comments.
-      script = setScriptMetadata(script, 'title', sanitizeTitle(test.title))
+      script = setScriptMetadata(script, 'title', test.title)
       if (test.priority) script = setScriptMetadata(script, 'priority', test.priority)
       const tagNames = (test.tags ?? []).map((tag) => tag.name).sort()
       if (tagNames.length > 0) script = setScriptMetadata(script, 'tags', tagNames.join(', '))

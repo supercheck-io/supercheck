@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { writeFileSync } from 'node:fs'
+import { lstatSync, writeFileSync } from 'node:fs'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
@@ -285,8 +285,11 @@ requirementCommand
       logger.output(csv.replace(/\r?\n$/, ''))
       return
     }
+    if (options.force && isSymlink(options.output)) {
+      throw new CLIError(`${options.output} is a symbolic link; refusing to write through it.`, ExitCode.ConfigError)
+    }
     try {
-      writeFileSync(options.output, csv, { flag: options.force ? 'w' : 'wx' })
+      writeFileSync(options.output, csv, { flag: options.force ? 'w' : 'wx', mode: 0o600 })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new CLIError(`${options.output} already exists. Use --force to overwrite it.`, ExitCode.ConfigError)
@@ -296,3 +299,11 @@ requirementCommand
     logger.success(`Requirements exported to ${options.output}`)
     outputMutation({ file: options.output, bytes: Buffer.byteLength(csv) })
   })
+
+function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
