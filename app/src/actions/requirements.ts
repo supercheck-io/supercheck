@@ -22,10 +22,17 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
-  syncRequirementTags,
-  syncRequirementTagsByName,
-  updateCoverageSnapshot,
-} from "@/lib/requirements-internal";
+  isInCallerScope,
+  createRequirementRecord,
+  updateRequirementRecord,
+  deleteRequirementRecord,
+  linkTestsRecord,
+  syncRequirementTestsRecord,
+  unlinkTestsRecord,
+  exportRequirementsCsvRecord,
+  type CreateRequirementInput,
+  type UpdateRequirementInput,
+} from "@/lib/requirements/service";
 import {
   AT_RISK_PRIORITIES,
   accumulateRequirementCoverage,
@@ -76,33 +83,8 @@ export type RequirementListResponse = {
 // SCHEMAS
 // ============================================================================
 
-// Create requirement schema (omit auto-generated fields)
-const createRequirementSchema = requirementsInsertSchema
-  .omit({
-    id: true,
-    organizationId: true,
-    projectId: true,
-    createdByUserId: true,
-    createdAt: true,
-    updatedAt: true,
-  })
-  // Optional client-chosen id: retrying a create whose response was lost then finds the row instead of duplicating it.
-  .extend({ id: z.string().uuid().optional() });
-
-// Update requirement schema (optional fields except title)
-const updateRequirementSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string().min(1).max(500),
-  description: z.string().optional().nullable(),
-  priority: z.enum(["low", "medium", "high"]).optional().nullable(),
-  tagIds: z.array(z.string().uuid()).optional(), // Array of tag IDs
-  externalId: z.string().optional().nullable().or(z.literal("")),
-  externalUrl: z.string().url().optional().nullable().or(z.literal("")),
-  externalProvider: z.string().optional().nullable().or(z.literal("")),
-});
-
-export type CreateRequirementInput = z.infer<typeof createRequirementSchema>;
-export type UpdateRequirementInput = z.infer<typeof updateRequirementSchema>;
+// Input schemas and types live in the shared service (also used by the REST routes).
+export type { CreateRequirementInput, UpdateRequirementInput };
 
 // ============================================================================
 // TAG SYNC HELPERS
@@ -311,110 +293,18 @@ export async function createRequirement(
       };
     }
 
-    const validatedData = createRequirementSchema.parse(data);
-    if (validatedData.sourceDocumentId) {
-      const [document] = await db
-        .select({ id: requirementDocuments.id })
-        .from(requirementDocuments)
-        .where(
-          and(
-            eq(requirementDocuments.id, validatedData.sourceDocumentId),
-            eq(requirementDocuments.projectId, project.id),
-            eq(requirementDocuments.organizationId, organizationId),
-          ),
-        )
-        .limit(1);
-      if (!document) {
-        return {
-          id: "",
-          success: false,
-          error: "Source document not found in this project",
-        };
-      }
-    }
-    const newId = validatedData.id ?? crypto.randomUUID();
-
-    // The row, its tags and its initial coverage snapshot commit together: a failure part-way leaves nothing
-    // behind, so a result of {success:false} always means "not created" and the caller can safely retry.
-    const inserted = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(requirements)
-        .values({
-          id: newId,
-          organizationId,
-          projectId: project.id,
-          title: validatedData.title,
-          description: validatedData.description,
-          priority: validatedData.priority as RequirementPriority,
-          sourceDocumentId: validatedData.sourceDocumentId,
-          sourceSection: validatedData.sourceSection,
-          externalId: validatedData.externalId,
-          externalUrl: validatedData.externalUrl,
-          externalProvider: validatedData.externalProvider,
-          createdBy: (validatedData.createdBy as RequirementCreatedBy) ?? "user",
-          createdByUserId: userId,
-          createdAt: new Date(),
-        })
-        // Only the primary key means "already created"; any other unique violation must still fail and roll back.
-        .onConflictDoNothing({ target: requirements.id })
-        .returning({ id: requirements.id });
-      if (!row) return false;
-
-      // Sync tags if provided (parse comma-separated string for backward compatibility)
-      if (validatedData.tags) {
-        const tagNames = validatedData.tags.split(",").map((t) => t.trim()).filter(Boolean);
-        if (tagNames.length > 0) {
-          await syncRequirementTagsByName(newId, tagNames, organizationId, project.id, userId, tx);
-        }
-      }
-
-      // Create initial coverage snapshot (status: missing)
-      await tx.insert(requirementCoverageSnapshots).values({
-        requirementId: newId,
-        status: "missing",
-        linkedTestCount: 0,
-        passedTestCount: 0,
-        failedTestCount: 0,
-        lastEvaluatedAt: new Date(),
-      });
-      return true;
-    });
-
-    if (!inserted) {
-      // Only a client-supplied id can collide. The same id in this project means the earlier attempt committed
-      // and only its response was lost; anywhere else it is someone else's row and must not be reported as ours.
-      const [existing] = await db
-        .select({ id: requirements.id })
-        .from(requirements)
-        .where(
-          and(
-            eq(requirements.id, newId),
-            eq(requirements.organizationId, organizationId),
-            eq(requirements.projectId, project.id),
-          ),
-        )
-        .limit(1);
-      if (!existing) {
-        return { id: "", success: false, error: "Requirement id is already in use" };
-      }
-      return { id: newId, success: true };
-    }
-
-    // Log audit event
-    await logAuditEvent({
-      userId,
-      action: "requirement_created",
-      resource: "requirement",
-      resourceId: newId,
-      metadata: {
+    const result = await createRequirementRecord(
+      {
+        userId,
         organizationId,
-        title: validatedData.title,
-        priority: validatedData.priority,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      data
+    );
+    if (!result.success) {
+      return { id: "", success: false, error: result.error };
+    }
 
     // Note: revalidatePath removed intentionally. The requirements page uses
     // TanStack Query for data fetching; client-side cache invalidation
@@ -422,7 +312,7 @@ export async function createRequirement(
     // here triggers an internal router.refresh() that can cancel subsequent
     // client-side navigation (router.push/replace).
 
-    return { id: newId, success: true };
+    return { id: result.id, success: true };
   } catch (error) {
     console.error("Error creating requirement:", error);
     return {
@@ -463,81 +353,18 @@ export async function updateRequirement(
       };
     }
 
-    const validatedData = updateRequirementSchema.parse(data);
-
-    // Tag IDs come from the client: only accept tags from this project. Checked
-    // before any write so a bad tag cannot leave a half-applied update.
-    const uniqueTagIds =
-      validatedData.tagIds !== undefined
-        ? Array.from(new Set(validatedData.tagIds))
-        : undefined;
-    if (uniqueTagIds && uniqueTagIds.length > 0) {
-      const scopedTags = await db
-        .select({ id: tags.id })
-        .from(tags)
-        .where(
-          and(
-            inArray(tags.id, uniqueTagIds),
-            eq(tags.projectId, project.id),
-            eq(tags.organizationId, organizationId)
-          )
-        );
-      if (scopedTags.length !== uniqueTagIds.length) {
-        return {
-          success: false,
-          error: "One or more tags are invalid or not accessible",
-        };
-      }
-    }
-
-    // Update requirement
-    const updatedRequirements = await db
-      .update(requirements)
-      .set({
-        title: validatedData.title,
-        description: validatedData.description,
-        priority: validatedData.priority as RequirementPriority | null,
-        externalId: validatedData.externalId || null,
-        externalUrl: validatedData.externalUrl || null,
-        externalProvider: validatedData.externalProvider || null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(requirements.id, validatedData.id),
-          eq(requirements.projectId, project.id),
-          eq(requirements.organizationId, organizationId)
-        )
-      )
-      .returning({ id: requirements.id });
-
-    if (updatedRequirements.length === 0) {
-      return {
-        success: false,
-        error: "Requirement not found or access denied",
-      };
-    }
-
-    // Sync tags if provided (already validated above)
-    if (uniqueTagIds !== undefined) {
-      await syncRequirementTags(validatedData.id, uniqueTagIds);
-    }
-
-    // Log audit event
-    await logAuditEvent({
-      userId,
-      action: "requirement_updated",
-      resource: "requirement",
-      resourceId: validatedData.id,
-      metadata: {
+    const result = await updateRequirementRecord(
+      {
+        userId,
         organizationId,
-        title: validatedData.title,
-        priority: validatedData.priority,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      data
+    );
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
 
     // Note: revalidatePath removed intentionally — see createRequirement comment.
 
@@ -581,43 +408,18 @@ export async function deleteRequirement(
       };
     }
 
-    // Verify requirement belongs to current project
-    const existing = await db
-      .select({ id: requirements.id, title: requirements.title })
-      .from(requirements)
-      .where(
-        and(
-          eq(requirements.id, id),
-          eq(requirements.projectId, project.id),
-          eq(requirements.organizationId, organizationId)
-        )
-      )
-      .limit(1);
-
-    if (existing.length === 0) {
-      return {
-        success: false,
-        error: "Requirement not found",
-      };
-    }
-
-    // Delete requirement (cascade handles snapshots and test links)
-    await db.delete(requirements).where(eq(requirements.id, id));
-
-    // Log audit event
-    await logAuditEvent({
-      userId,
-      action: "requirement_deleted",
-      resource: "requirement",
-      resourceId: id,
-      metadata: {
+    const result = await deleteRequirementRecord(
+      {
+        userId,
         organizationId,
-        title: existing[0].title,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      id
+    );
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
 
     revalidatePath("/requirements");
 
@@ -709,56 +511,6 @@ export async function deleteRequirements(
 // LINK TESTS TO REQUIREMENT
 // ============================================================================
 
-/**
- * True when the requirement (and every given test) belongs to the caller's
- * project and organization. Actions take raw IDs from the client, so each one
- * that touches testRequirements must pass this before reading or writing.
- */
-async function isInCallerScope(
-  requirementId: string,
-  testIds: string[],
-  scope: { projectId: string; organizationId: string }
-): Promise<boolean> {
-  const [requirement] = await db
-    .select({ id: requirements.id })
-    .from(requirements)
-    .where(
-      and(
-        eq(requirements.id, requirementId),
-        eq(requirements.projectId, scope.projectId),
-        eq(requirements.organizationId, scope.organizationId)
-      )
-    )
-    .limit(1);
-  if (!requirement) return false;
-
-  const uniqueTestIds = Array.from(new Set(testIds));
-  if (uniqueTestIds.length === 0) return true;
-
-  const scopedTests = await db
-    .select({ id: tests.id })
-    .from(tests)
-    .where(
-      and(
-        inArray(tests.id, uniqueTestIds),
-        eq(tests.projectId, scope.projectId),
-        eq(tests.organizationId, scope.organizationId)
-      )
-    );
-  return scopedTests.length === uniqueTestIds.length;
-}
-
-/**
- * Link tests to a requirement
- */
-/** Upper bound on tests linked in one call; keeps queries and audit rows small. */
-const MAX_LINKED_TESTS_PER_REQUEST = 200;
-
-const linkTestsSchema = z.object({
-  requirementId: z.string().uuid(),
-  testIds: z.array(z.string().uuid()).max(MAX_LINKED_TESTS_PER_REQUEST),
-});
-
 export async function linkTestsToRequirement(
   requirementId: string,
   testIds: string[]
@@ -781,55 +533,19 @@ export async function linkTestsToRequirement(
       };
     }
 
-    if (!linkTestsSchema.safeParse({ requirementId, testIds }).success) {
-      return { success: false, error: "Invalid requirement or test IDs" };
-    }
-
-    if (testIds.length === 0) {
-      return { success: true };
-    }
-
-    if (
-      !(await isInCallerScope(requirementId, testIds, {
-        projectId: project.id,
+    const result = await linkTestsRecord(
+      {
+        userId,
         organizationId,
-      }))
-    ) {
-      return {
-        success: false,
-        error: "Requirement or tests not found or access denied",
-      };
-    }
-
-    // Insert test-requirement links (ignore duplicates)
-    await db
-      .insert(testRequirements)
-      .values(
-        testIds.map((testId) => ({
-          testId,
-          requirementId,
-          createdAt: new Date(),
-        }))
-      )
-      .onConflictDoNothing();
-
-    // Update coverage snapshot
-    await updateCoverageSnapshot(requirementId);
-
-    // Log audit event
-    await logAuditEvent({
-      userId,
-      action: "requirement_tests_linked",
-      resource: "requirement",
-      resourceId: requirementId,
-      metadata: {
-        organizationId,
-        testIds,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      requirementId,
+      testIds
+    );
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
 
     revalidatePath("/requirements");
 
@@ -867,89 +583,19 @@ export async function syncRequirementTests(
       };
     }
 
-    const requirementRecord = await db
-      .select({ id: requirements.id })
-      .from(requirements)
-      .where(
-        and(
-          eq(requirements.id, requirementId),
-          eq(requirements.projectId, project.id),
-          eq(requirements.organizationId, organizationId)
-        )
-      )
-      .limit(1);
-
-    if (requirementRecord.length === 0) {
-      return {
-        success: false,
-        error: "Requirement not found or access denied",
-      };
-    }
-
-    const normalizedTestIds = Array.from(
-      new Set(
-        testIds.filter(
-          (testId): testId is string =>
-            typeof testId === "string" && testId.trim().length > 0
-        )
-      )
-    );
-
-    if (normalizedTestIds.length > 0) {
-      const scopedTests = await db
-        .select({ id: tests.id })
-        .from(tests)
-        .where(
-          and(
-            inArray(tests.id, normalizedTestIds),
-            eq(tests.projectId, project.id),
-            eq(tests.organizationId, organizationId)
-          )
-        );
-
-      if (scopedTests.length !== normalizedTestIds.length) {
-        return {
-          success: false,
-          error: "One or more selected tests are invalid or not accessible",
-        };
-      }
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(testRequirements)
-        .where(eq(testRequirements.requirementId, requirementId));
-
-      if (normalizedTestIds.length > 0) {
-        await tx
-          .insert(testRequirements)
-          .values(
-            normalizedTestIds.map((testId) => ({
-              testId,
-              requirementId,
-              createdAt: new Date(),
-            }))
-          )
-          .onConflictDoNothing();
-      }
-    });
-
-    await updateCoverageSnapshot(requirementId);
-
-    await logAuditEvent({
-      userId,
-      action: "requirement_tests_synced",
-      resource: "requirement",
-      resourceId: requirementId,
-      metadata: {
+    const result = await syncRequirementTestsRecord(
+      {
+        userId,
         organizationId,
-        testIds: normalizedTestIds,
-        testCount: normalizedTestIds.length,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      requirementId,
+      testIds
+    );
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
 
     // Note: revalidatePath removed intentionally — see createRequirement comment.
 
@@ -988,52 +634,19 @@ export async function unlinkTestFromRequirement(
       };
     }
 
-    if (
-      !z.string().uuid().safeParse(requirementId).success ||
-      !z.string().uuid().safeParse(testId).success
-    ) {
-      return { success: false, error: "Invalid requirement or test ID" };
-    }
-
-    if (
-      !(await isInCallerScope(requirementId, [testId], {
-        projectId: project.id,
+    const result = await unlinkTestsRecord(
+      {
+        userId,
         organizationId,
-      }))
-    ) {
-      return {
-        success: false,
-        error: "Requirement or test not found or access denied",
-      };
-    }
-
-    // Delete the link
-    await db
-      .delete(testRequirements)
-      .where(
-        and(
-          eq(testRequirements.testId, testId),
-          eq(testRequirements.requirementId, requirementId)
-        )
-      );
-
-    // Update coverage snapshot
-    await updateCoverageSnapshot(requirementId);
-
-    // Log audit event
-    await logAuditEvent({
-      userId,
-      action: "requirement_test_unlinked",
-      resource: "requirement",
-      resourceId: requirementId,
-      metadata: {
-        organizationId,
-        testId,
         projectId: project.id,
         projectName: project.name,
       },
-      success: true,
-    });
+      requirementId,
+      [testId]
+    );
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
 
     revalidatePath("/requirements");
 
@@ -1475,120 +1088,12 @@ export async function exportRequirementsCsv(): Promise<{
       return { success: false, error: "Insufficient permissions" };
     }
 
-    // Fetch all requirements with coverage (no pagination)
-    const results = await db
-      .select({
-        id: requirements.id,
-        title: requirements.title,
-        description: requirements.description,
-        priority: requirements.priority,
-        externalId: requirements.externalId,
-        externalUrl: requirements.externalUrl,
-        coverageStatus: requirementCoverageSnapshots.status,
-        linkedTestCount: requirementCoverageSnapshots.linkedTestCount,
-        passedTestCount: requirementCoverageSnapshots.passedTestCount,
-        failedTestCount: requirementCoverageSnapshots.failedTestCount,
-        createdAt: requirements.createdAt,
-      })
-      .from(requirements)
-      .leftJoin(
-        requirementCoverageSnapshots,
-        eq(requirements.id, requirementCoverageSnapshots.requirementId)
-      )
-      .where(eq(requirements.projectId, project.id))
-      .orderBy(desc(requirements.createdAt));
-
-    // Fetch tags for all requirements
-    const requirementIds = results.map((r) => r.id);
-    const allTags =
-      requirementIds.length > 0
-        ? await db
-            .select({
-              requirementId: requirementTags.requirementId,
-              tagName: tags.name,
-            })
-            .from(requirementTags)
-            .innerJoin(
-            tags,
-            and(
-              eq(requirementTags.tagId, tags.id),
-              eq(tags.projectId, project.id)
-            )
-          )
-            .where(inArray(requirementTags.requirementId, requirementIds))
-        : [];
-
-    // Build a map of requirementId -> comma-separated tag names
-    const tagsMap = new Map<string, string>();
-    allTags.forEach(({ requirementId, tagName }) => {
-      const existing = tagsMap.get(requirementId);
-      tagsMap.set(requirementId, existing ? `${existing}, ${tagName}` : tagName);
-    });
-
-    // CSV header
-    const headers = [
-      "ID",
-      "Title",
-      "Description",
-      "Priority",
-      "Status",
-      "Tags",
-      "Linked Tests",
-      "Passed Tests",
-      "Failed Tests",
-      "External ID",
-      "External URL",
-      "Created At",
-    ];
-
-    // Helper to escape CSV values
-    const escapeCSV = (value: string | null | undefined): string => {
-      if (value === null || value === undefined) return "";
-      const str = String(value);
-      // Escape quotes and wrap in quotes if contains comma, quote, or newline
-      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
-    // Build CSV rows
-    const rows = results.map((r) => [
-      escapeCSV(r.id),
-      escapeCSV(r.title),
-      escapeCSV(r.description),
-      escapeCSV(r.priority ?? ""),
-      escapeCSV(r.coverageStatus ?? "missing"),
-      escapeCSV(tagsMap.get(r.id) ?? ""),
-      String(r.linkedTestCount ?? 0),
-      String(r.passedTestCount ?? 0),
-      String(r.failedTestCount ?? 0),
-      escapeCSV(r.externalId),
-      escapeCSV(r.externalUrl),
-      r.createdAt ? r.createdAt.toISOString() : "",
-    ]);
-
-    // Combine header and rows
-    const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join(
-      "\n"
-    );
-
-    // Generate filename with project name and date
-    const date = new Date().toISOString().split("T")[0];
-    const safeProjectName = project.name
-      .replace(/[^a-zA-Z0-9]/g, "_")
-      .toLowerCase();
-    const filename = `requirements_${safeProjectName}_${date}.csv`;
-
-    // Audit log
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "requirement_export",
-      resource: "requirement",
-      metadata: { count: results.length, format: "csv" },
-      success: true,
-    });
+    const { csv, filename } = await exportRequirementsCsvRecord({
+        userId,
+        organizationId,
+        projectId: project.id,
+        projectName: project.name,
+      });
 
     return { success: true, csv, filename };
   } catch (error) {
@@ -1596,4 +1101,3 @@ export async function exportRequirementsCsv(): Promise<{
     return { success: false, error: "Failed to export requirements" };
   }
 }
-

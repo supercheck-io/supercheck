@@ -18,6 +18,14 @@ import {
   getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
 import { z } from "zod";
+import {
+  findServerManagedKeyError,
+  httpStatusForServiceError,
+  setStatusPagePublished,
+  statusPageSettingsFieldsSchema,
+  toStatusPageDto,
+  updateStatusPageSettings,
+} from "@/lib/status-pages/service";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
@@ -314,6 +322,114 @@ export async function DELETE(
       );
     }
     console.error("Error deleting status page:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+const updateBodySchema = statusPageSettingsFieldsSchema
+  .extend({ status: z.enum(["draft", "published", "archived"]).optional() })
+  .strict();
+
+/**
+ * PUT /api/status-pages/[id]
+ * Updates any subset of the status page settings and, optionally, its status
+ * ("draft" | "published" | "archived"). Settings are applied first, then status.
+ */
+export async function PUT(request: NextRequest, context: RouteContext) {
+  try {
+    const { id } = await context.params;
+
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json({ error: "Invalid status page ID format" }, { status: 400 });
+    }
+
+    const authCtx = await requireAuthContext();
+
+    if (!checkPermissionWithContext("status_page", "update", authCtx)) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to update status pages" },
+        { status: 403 }
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const managedKeyError = findServerManagedKeyError(body);
+    if (managedKeyError) {
+      return NextResponse.json({ error: managedKeyError }, { status: 400 });
+    }
+
+    const parsed = updateBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const { status, ...settings } = parsed.data;
+    if (status === undefined && Object.keys(settings).length === 0) {
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+    }
+
+    const svcCtx = {
+      userId: authCtx.userId,
+      organizationId: authCtx.organizationId,
+      projectId: authCtx.project.id,
+      projectName: authCtx.project.name,
+    };
+
+    let settingsApplied = false;
+    if (Object.keys(settings).length > 0) {
+      const result = await updateStatusPageSettings(svcCtx, id, settings);
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.message },
+          { status: httpStatusForServiceError(result.code) }
+        );
+      }
+      settingsApplied = true;
+    }
+
+    if (status !== undefined) {
+      const result = await setStatusPagePublished(svcCtx, id, status);
+      if (!result.ok) {
+        return NextResponse.json(
+          {
+            error: settingsApplied
+              ? `Settings were saved, but the status change failed: ${result.message}`
+              : result.message,
+          },
+          { status: httpStatusForServiceError(result.code) }
+        );
+      }
+    }
+
+    const statusPage = await db.query.statusPages.findFirst({
+      where: and(
+        eq(statusPages.id, id),
+        eq(statusPages.organizationId, authCtx.organizationId),
+        eq(statusPages.projectId, authCtx.project.id)
+      ),
+    });
+    if (!statusPage) {
+      return NextResponse.json({ error: "Status page not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ statusPage: toStatusPageDto(statusPage) });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+    console.error("Error updating status page:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

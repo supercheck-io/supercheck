@@ -11,6 +11,12 @@ import {
 import { desc, eq, and, sql, like, or, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import {
+  createRequirementWithRelations,
+  getRequirementDto,
+  restCreateRequirementSchema,
+  toServiceContext,
+} from '@/lib/requirements/service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -195,6 +201,58 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching requirements:', error);
     return NextResponse.json(
       { error: 'Failed to fetch requirements' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const context = await requireAuthContext();
+
+    if (!checkPermissionWithContext('requirement', 'create', context)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to create requirements' },
+        { status: 403 }
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const parsed = restCreateRequirementSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid request body', details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const serviceCtx = toServiceContext(context);
+    const result = await createRequirementWithRelations(serviceCtx, parsed.data);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error ?? 'Failed to create requirement' },
+        { status: result.code === 'conflict' ? 409 : 400 }
+      );
+    }
+
+    const requirement = await getRequirementDto(serviceCtx, result.id);
+    return NextResponse.json({ requirement }, { status: 201 });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    console.error('Error creating requirement:', error);
+    return NextResponse.json(
+      { error: 'Failed to create requirement' },
       { status: 500 }
     );
   }

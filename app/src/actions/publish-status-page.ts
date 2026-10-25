@@ -1,19 +1,17 @@
 "use server";
 
-import { db } from "@/utils/db";
-import { statusPages, statusPageComponents } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
-import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
-import {
-  subscriptionService,
-  SubscriptionAccessDeniedError,
-} from "@/lib/services/subscription-service";
+import { setStatusPagePublished } from "@/lib/status-pages/service";
 
-export async function publishStatusPage(statusPageId: string) {
+async function changePublishState(
+  statusPageId: string,
+  target: "published" | "draft" | "archived"
+) {
+  const publishing = target === "published";
+  const verb = publishing ? "publish" : "unpublish";
   try {
     // Validate UUID format
     if (!z.string().uuid().safeParse(statusPageId).success) {
@@ -39,87 +37,24 @@ export async function publishStatusPage(statusPageId: string) {
       );
     } catch (error) {
       console.warn(
-        `User ${userId} attempted to publish status page without permission:`,
+        `User ${userId} attempted to ${verb} status page without permission:`,
         error
       );
       return {
         success: false,
-        message: "Insufficient permissions to publish status pages",
+        message: `Insufficient permissions to ${verb} status pages`,
       };
     }
 
-    // An expired trial or lapsed subscription must not bring an archived page back online.
-    try {
-      await subscriptionService.blockUntilSubscribed(organizationId);
-      await subscriptionService.requireValidPolarCustomer(organizationId);
-    } catch (error) {
-      if (error instanceof SubscriptionAccessDeniedError) {
-        return { success: false, message: error.message };
-      }
-      throw error;
+    const result = await setStatusPagePublished(
+      { userId, organizationId, projectId: project.id, projectName: project.name },
+      statusPageId,
+      target
+    );
+    if (!result.ok) {
+      return { success: false, message: result.message };
     }
-
-    // SECURITY: Verify ownership - status page must belong to this organization AND project
-    const statusPage = await db.query.statusPages.findFirst({
-      where: and(
-        eq(statusPages.id, statusPageId),
-        eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
-      ),
-    });
-
-    if (!statusPage) {
-      console.warn(
-        `[SECURITY] User ${userId} attempted to publish status page ${statusPageId} without ownership`
-      );
-      return {
-        success: false,
-        message: "Status page not found or access denied",
-      };
-    }
-
-    const visibleComponent = await db.query.statusPageComponents.findFirst({ where: and(eq(statusPageComponents.statusPageId, statusPageId), eq(statusPageComponents.showcase, true)), columns: { id: true } });
-    if (!visibleComponent) return { success: false, message: "Add at least one public component before publishing." };
-
-    // Update status page status to published
-    const [updatedStatusPage] = await db
-      .update(statusPages)
-      .set({
-        status: "published",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId)
-        )
-      )
-      .returning();
-
-    if (!updatedStatusPage) {
-      return {
-        success: false,
-        message: "Failed to publish status page",
-      };
-    }
-
-    console.log(`Status page ${statusPageId} published by user ${userId}`);
-
-    // Log the audit event
-    await logAuditEvent({
-      userId,
-      action: "status_page_published",
-      resource: "status_page",
-      resourceId: statusPageId,
-      metadata: {
-        organizationId,
-        statusPageName: updatedStatusPage.name,
-        subdomain: updatedStatusPage.subdomain,
-        projectId: project.id,
-        projectName: project.name,
-      },
-      success: true,
-    });
+    const updatedStatusPage = result.data.statusPage;
 
     // Revalidate the status page routes
     revalidatePath(`/status-pages/${statusPageId}`);
@@ -128,7 +63,9 @@ export async function publishStatusPage(statusPageId: string) {
 
     return {
       success: true,
-      message: "Status page published successfully",
+      message: publishing
+        ? "Status page published successfully"
+        : "Status page unpublished successfully",
       statusPage: {
         id: updatedStatusPage.id,
         name: updatedStatusPage.name,
@@ -137,128 +74,18 @@ export async function publishStatusPage(statusPageId: string) {
       },
     };
   } catch (error) {
-    console.error("Error publishing status page:", error);
+    console.error(`Error ${verb}ing status page:`, error);
     return {
       success: false,
-      message: "Failed to publish status page. Please try again.",
+      message: `Failed to ${verb} status page. Please try again.`,
     };
   }
 }
 
+export async function publishStatusPage(statusPageId: string) {
+  return changePublishState(statusPageId, "published");
+}
+
 export async function unpublishStatusPage(statusPageId: string, archive = false) {
-  try {
-    // Validate UUID format
-    if (!z.string().uuid().safeParse(statusPageId).success) {
-      return {
-        success: false,
-        message: "Invalid status page ID",
-      };
-    }
-
-    // Get current project context (includes auth verification)
-    const { userId, project, organizationId } = await requireProjectContext();
-
-    // Check permission
-    try {
-      await requirePermissions(
-        {
-          status_page: ["update"],
-        },
-        {
-          organizationId,
-          projectId: project.id,
-        }
-      );
-    } catch (error) {
-      console.warn(
-        `User ${userId} attempted to unpublish status page without permission:`,
-        error
-      );
-      return {
-        success: false,
-        message: "Insufficient permissions to unpublish status pages",
-      };
-    }
-
-    // SECURITY: Verify ownership
-    const statusPage = await db.query.statusPages.findFirst({
-      where: and(
-        eq(statusPages.id, statusPageId),
-        eq(statusPages.organizationId, organizationId),
-        eq(statusPages.projectId, project.id)
-      ),
-    });
-
-    if (!statusPage) {
-      console.warn(
-        `[SECURITY] User ${userId} attempted to unpublish status page ${statusPageId} without ownership`
-      );
-      return {
-        success: false,
-        message: "Status page not found or access denied",
-      };
-    }
-
-    // Update status page status to draft
-    const [updatedStatusPage] = await db
-      .update(statusPages)
-      .set({
-        status: archive === true ? "archived" : "draft",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId)
-        )
-      )
-      .returning();
-
-    if (!updatedStatusPage) {
-      return {
-        success: false,
-        message: "Failed to unpublish status page",
-      };
-    }
-
-    console.log(`Status page ${statusPageId} unpublished by user ${userId}`);
-
-    // Log the audit event
-    await logAuditEvent({
-      userId,
-      action: archive === true ? "status_page_archived" : "status_page_unpublished",
-      resource: "status_page",
-      resourceId: statusPageId,
-      metadata: {
-        organizationId,
-        statusPageName: updatedStatusPage.name,
-        subdomain: updatedStatusPage.subdomain,
-        projectId: project.id,
-        projectName: project.name,
-      },
-      success: true,
-    });
-
-    // Revalidate the status page routes
-    revalidatePath(`/status-pages/${statusPageId}`);
-    revalidatePath(`/status-pages/${statusPageId}/public`);
-    revalidatePath("/status-pages");
-
-    return {
-      success: true,
-      message: "Status page unpublished successfully",
-      statusPage: {
-        id: updatedStatusPage.id,
-        name: updatedStatusPage.name,
-        subdomain: updatedStatusPage.subdomain,
-        status: updatedStatusPage.status,
-      },
-    };
-  } catch (error) {
-    console.error("Error unpublishing status page:", error);
-    return {
-      success: false,
-      message: "Failed to unpublish status page. Please try again.",
-    };
-  }
+  return changePublishState(statusPageId, archive === true ? "archived" : "draft");
 }
