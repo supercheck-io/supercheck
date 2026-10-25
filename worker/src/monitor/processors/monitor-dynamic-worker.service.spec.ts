@@ -407,8 +407,16 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     return { service, connection, heartbeat, execute, subscriber };
   }
 
-  beforeEach(() => jest.clearAllMocks());
-  afterEach(() => jest.useRealTimers());
+  const originalPoolMax = process.env.DB_POOL_MAX;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.DB_POOL_MAX = '10';
+  });
+  afterEach(() => {
+    if (originalPoolMax === undefined) delete process.env.DB_POOL_MAX;
+    else process.env.DB_POOL_MAX = originalPoolMax;
+    jest.useRealTimers();
+  });
 
   it.each([
     ['1', 1],
