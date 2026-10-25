@@ -260,34 +260,36 @@ function AlertsPage() {
       <div className="">
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent className="p-6">
-            <PageHeader
-              title="Alerts"
-              description="Review alert signals, delivery history and notification channels"
-              actions={
-                activeTab === "channels" && (providers.length > 0 || providersLoading) ? (
-                  <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Channel
-                  </Button>
-                ) : undefined
-              }
-              className="mb-4"
-            />
+            {/* Tabs sit beside the title, as on Runs, so the table keeps the page height. */}
             <Tabs value={activeTab} className="space-y-4" onValueChange={handleTabChange}>
-              <TabsList>
-                <TabsTrigger value="signals">
-                  <Siren className="h-4 w-4 mr-2" />
-                  Signals
-                </TabsTrigger>
-                <TabsTrigger value="history">
-                  <BellRing className="h-4 w-4 mr-2" />
-                  History
-                </TabsTrigger>
-                <TabsTrigger value="channels">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Channels
-                </TabsTrigger>
-              </TabsList>
+              <PageHeader
+                title="Alerts"
+                description="Review alert signals, delivery history and notification channels"
+                actions={
+                  <>
+                    <TabsList>
+                      <TabsTrigger value="signals">
+                        <Siren className="h-4 w-4 mr-2" />
+                        Signals
+                      </TabsTrigger>
+                      <TabsTrigger value="history">
+                        <BellRing className="h-4 w-4 mr-2" />
+                        History
+                      </TabsTrigger>
+                      <TabsTrigger value="channels">
+                        <Mail className="h-4 w-4 mr-2" />
+                        Channels
+                      </TabsTrigger>
+                    </TabsList>
+                    {activeTab === "channels" && (providers.length > 0 || providersLoading) ? (
+                      <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Channel
+                      </Button>
+                    ) : null}
+                  </>
+                }
+              />
 
               <TabsContent value="signals" className="space-y-4">
                 <SreAlertsView alerts={alertHistory} isLoading={historyLoading} />

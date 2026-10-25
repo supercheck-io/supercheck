@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
+import { UUIDField } from "@/components/ui/uuid-field";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,6 +27,16 @@ function formatBytes(value: number) {
 }
 
 export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
+  {
+    accessorKey: "id",
+    header: () => <span className="ml-2">Query ID</span>,
+    cell: ({ row }) => (
+      <div className="ml-2 w-[90px]">
+        <UUIDField value={row.original.id} maxLength={8} />
+      </div>
+    ),
+    enableSorting: false,
+  },
   {
     accessorKey: "name",
     header: "Name",

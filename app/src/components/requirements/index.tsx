@@ -233,22 +233,25 @@ export default function RequirementsPage() {
 
     return (
         <div className="mt-6 flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
-            <PageHeader
-                title="Requirements"
-                description="Manage requirements and their test coverage"
-                className="-mt-2"
-            />
-            <Tabs defaultValue="requirements" className="w-full mt-2">
-                <TabsList>
-                    <TabsTrigger value="requirements" className="gap-2">
-                        <Target className="h-4 w-4" />
-                        Requirements
-                    </TabsTrigger>
-                    <TabsTrigger value="documents" className="gap-2">
-                        <FileText className="h-4 w-4" />
-                        Documents
-                    </TabsTrigger>
-                </TabsList>
+            {/* Tabs sit beside the title, as on Runs, so the table keeps the page height. */}
+            <Tabs defaultValue="requirements" className="w-full">
+                <PageHeader
+                    title="Requirements"
+                    description="Manage requirements and their test coverage"
+                    className="-mt-2"
+                    actions={
+                        <TabsList>
+                            <TabsTrigger value="requirements" className="gap-2">
+                                <Target className="h-4 w-4" />
+                                Requirements
+                            </TabsTrigger>
+                            <TabsTrigger value="documents" className="gap-2">
+                                <FileText className="h-4 w-4" />
+                                Documents
+                            </TabsTrigger>
+                        </TabsList>
+                    }
+                />
 
                 <TabsContent value="requirements" className="mt-0 pt-4">
                     <DataTable
