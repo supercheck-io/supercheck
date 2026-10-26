@@ -48,7 +48,7 @@ incidentCommand.command('resolve <id>')
   .option('--comment <comment>', 'Alias for --summary')
   .option('--force', 'Skip confirmation')
   .action(async (id: string, options: { summary?: string; comment?: string; force?: boolean }) => {
-    const summary = (options.summary ?? options.comment)?.trim()
+    const summary = options.summary?.trim() || options.comment?.trim()
     if (!summary) throw new CLIError('A resolution summary is required: pass --summary "<text>".', ExitCode.ConfigError)
     const label = /^\d+$/.test(id) ? `#${id}` : id
     id = await resolveIncidentId(id)

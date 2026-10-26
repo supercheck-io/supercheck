@@ -165,6 +165,18 @@ describe('AI SRE CLI Commands', () => {
       expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: null, role: 'assignee' }, { retries: 0 })
     })
 
+    it('unassign --commander clears the commander role', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'unassign', id, '--commander'])
+      expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: null, role: 'commander' }, { retries: 0 })
+    })
+
+    it('assign --user me fails when the context has no user id', async () => {
+      mockGet.mockResolvedValueOnce({ data: {} })
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', 'me'])).rejects.toThrow('Could not resolve the current user')
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
     it('ack acknowledges and reports repeats', async () => {
       mockPost.mockResolvedValueOnce({ data: { success: true, alreadyAcknowledged: false } })
       await incidentCommand.parseAsync(['node', 'incident', 'ack', id])

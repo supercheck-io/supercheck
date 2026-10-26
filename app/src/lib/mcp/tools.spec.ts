@@ -237,6 +237,9 @@ describe("MCP tools", () => {
     queue.push([{ id: id(1), number: 1, title: "t", severity: "sev1", status: "resolved", createdAt: null, resolvedAt: null, assigneeUserId: id(9), commanderUserId: null, acknowledgedAt: new Date(0), acknowledgedByUserId: id(9), mitigatedAt: null }]);
     const mine = await handlers.get("list_incidents")!({ limit: 5, assignee: "me" });
     expect(lastWhere().params).toContain(ctx.userId);
+    queue.push([]);
+    await handlers.get("list_incidents")!({ limit: 5, assignee: id(7) });
+    expect(lastWhere().params).toContain(id(7));
     expect((mine.structuredContent.incidents as Record<string, unknown>[])[0]).toMatchObject({ assigneeUserId: id(9), acknowledgedAt: "1970-01-01T00:00:00.000Z", mitigatedAt: null });
 
     queue.push([{ id: id(1), incidentId: id(4), agentType: "triage", status: "running", startedAt: new Date(0), completedAt: null, durationMs: null, confidenceScore: null }]);
