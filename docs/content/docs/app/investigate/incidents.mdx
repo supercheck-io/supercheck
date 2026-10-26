@@ -124,6 +124,7 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 
 - The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
 - Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
+- Email, Slack, Teams, Discord, Telegram and webhook channels are supported. A webhook that uses a preset or a custom body template is skipped for incident messages, because they use a fixed JSON body; attach a plain webhook channel to receive them.
 - Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-written conclusions. An AI finding adds only a confidence label (*AI confidence: High* or *AI result: inconclusive*); open the incident to read the finding.
 - The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
 

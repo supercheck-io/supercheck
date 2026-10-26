@@ -103,3 +103,25 @@ it("fails open on dedupe when Redis is unavailable", async () => {
   await notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null });
   expect(selectQueue).toHaveLength(0);
 });
+
+it("sends Telegram incident messages as plain text", async () => {
+  selectQueue.push([incident], [{ sourceType: "monitor", sourceId: "mon-1" }], [{ id: "p1", type: "telegram", projectId: "project-1", config: { envelope: { botToken: "123:abc", chatId: "-100" } } }]);
+  await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  const [url, init] = fetchPublicEndpoint.mock.calls[0];
+  expect(url).toBe("https://api.telegram.org/bot123:abc/sendMessage");
+  const body = JSON.parse(init.body);
+  expect(body.chat_id).toBe("-100");
+  expect(body.parse_mode).toBeUndefined();
+  expect(body.text).toContain("https://app.example.com/incidents/inc-1");
+});
+
+it("skips webhooks that use a preset or body template but still sends plain webhooks", async () => {
+  selectQueue.push([incident], [{ sourceType: "monitor", sourceId: "mon-1" }], [
+    { id: "w1", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/a", bodyTemplate: "{\"x\":1}" } } },
+    { id: "w2", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/b", preset: "pagerduty" } } },
+    { id: "w3", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/c", preset: "custom" } } },
+  ]);
+  await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+  expect(fetchPublicEndpoint.mock.calls[0][0]).toBe("https://example.com/c");
+});

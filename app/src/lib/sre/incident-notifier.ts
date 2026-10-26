@@ -110,6 +110,12 @@ async function sendEmail(recipients: string[], message: Message) {
   });
 }
 
+function hasCustomWebhookBody(config: Record<string, unknown>) {
+  const preset = typeof config.preset === "string" ? config.preset.trim() : "";
+  const template = typeof config.bodyTemplate === "string" ? config.bodyTemplate.trim() : "";
+  return (preset !== "" && preset !== "custom") || template !== "";
+}
+
 async function sendToProvider(
   provider: { type: string; config: PlainNotificationProviderConfig },
   message: Message,
@@ -128,7 +134,21 @@ async function sendToProvider(
     case "discord":
       await post(String(config.discordWebhookUrl), { content: line });
       return;
+    case "telegram":
+      // Plain text: no parse_mode, so incident titles cannot inject markup.
+      await post(`https://api.telegram.org/bot${String(config.botToken)}/sendMessage`, {
+        chat_id: String(config.chatId),
+        text: line,
+        disable_web_page_preview: true,
+      });
+      return;
     case "webhook":
+      // Presets and body templates shape payloads for one specific receiver; the fixed incident
+      // JSON would be wrong for them, so only plain webhooks receive incident messages.
+      if (hasCustomWebhookBody(config)) {
+        logger.warn({ type: "webhook" }, "Incident notification skipped for a webhook with a preset or body template");
+        return;
+      }
       await post(
         String(config.url),
         { event: `incident.${message.event}`, ...message.incident, title: message.title, text: message.text, url: message.url },
