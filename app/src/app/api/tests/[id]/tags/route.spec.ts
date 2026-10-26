@@ -9,6 +9,7 @@ const mockSelectQueue: unknown[][] = [];
 const mockDelete = jest.fn();
 const mockInsertValues = jest.fn();
 const mockTransaction = jest.fn();
+const mockFor = jest.fn();
 jest.mock("@/utils/db", () => {
   const chain = () => {
     const node: Record<string, unknown> = {};
@@ -20,7 +21,7 @@ jest.mock("@/utils/db", () => {
       return {
         limit: rows,
         orderBy: rows,
-        for: rows,
+        for: (...a: unknown[]) => { mockFor(...a); return rows(); },
         then: (res: (v: unknown[]) => unknown, rej?: (e: unknown) => unknown) => rows().then(res, rej),
       };
     };
@@ -43,7 +44,7 @@ jest.mock("@/utils/db", () => {
 import { NextRequest } from "next/server";
 import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { PATCH } from "./route";
+import { PATCH, POST } from "./route";
 
 const TEST = "44444444-4444-4444-8444-444444444444";
 const T1 = "66666666-6666-4666-8666-666666666666";
@@ -121,5 +122,20 @@ describe("PATCH /api/tests/[id]/tags", () => {
     mockSelectQueue.push([{ id: TEST }], [{ id: TEST }]);
     mockDelete.mockImplementationOnce(() => { throw new Error("boom"); });
     expect((await PATCH(req({ remove: [T1] }), params())).status).toBe(500);
+  });
+});
+
+describe("POST /api/tests/[id]/tags", () => {
+  it("replaces the set inside a transaction under the same row lock as PATCH", async () => {
+    mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], [{ id: TEST }], [{ id: T1, name: "a", color: null }]);
+    const res = await POST(
+      new NextRequest(`http://localhost/api/tests/${TEST}/tags`, { method: "POST", body: JSON.stringify({ tagIds: [T1] }) }),
+      params(),
+    );
+    expect(res.status).toBe(200);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockFor).toHaveBeenCalledWith("update");
+    expect(mockDelete).toHaveBeenCalled();
+    expect(mockInsertValues).toHaveBeenCalledWith([{ testId: TEST, tagId: T1 }]);
   });
 });

@@ -64,7 +64,8 @@ export async function readMcpBody(request: Request, maxBytes: number): Promise<u
       chunks.push(value);
     }
   } catch (error) {
-    await reader.cancel().catch(() => undefined);
+    // Not awaited: a stalled stream's cancel can itself hang, and the caller must answer and release its permit now.
+    void reader.cancel().catch(() => undefined);
     throw error;
   } finally {
     clearTimeout(timer);

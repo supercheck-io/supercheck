@@ -151,18 +151,18 @@ export async function POST(
       }
     }
 
-    // Remove existing tags for this test
-    await db.delete(testTags).where(eq(testTags.testId, testId));
-
-    // Add new tags
-    if (normalizedTagIds.length > 0) {
-      const testTagsToInsert = normalizedTagIds.map((tagId: string) => ({
-        testId,
-        tagId,
-      }));
-
-      await db.insert(testTags).values(testTagsToInsert);
-    }
+    // Replace in one transaction under the same row lock as PATCH, so a concurrent PATCH cannot push past the cap.
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: tests.id })
+        .from(tests)
+        .where(and(eq(tests.id, testId), eq(tests.organizationId, organizationId), eq(tests.projectId, project.id)))
+        .for('update');
+      await tx.delete(testTags).where(eq(testTags.testId, testId));
+      if (normalizedTagIds.length > 0) {
+        await tx.insert(testTags).values(normalizedTagIds.map((tagId: string) => ({ testId, tagId })));
+      }
+    });
 
     // Return updated tags
     const updatedTags = await db

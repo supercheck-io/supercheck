@@ -130,7 +130,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Replace semantics: remove existing, add the given set. The audit record commits with the change or not at all.
+    // Same row lock as PATCH, so a concurrent PATCH cannot push past the cap.
     await db.transaction(async (tx) => {
+      await tx
+        .select({ id: monitors.id })
+        .from(monitors)
+        .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+        .for("update");
       await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
       if (normalizedTagIds.length > 0) {
         await tx

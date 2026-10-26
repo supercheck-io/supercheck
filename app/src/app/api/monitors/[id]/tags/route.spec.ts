@@ -9,6 +9,7 @@ const mockSelectQueue: unknown[][] = [];
 const mockDelete = jest.fn();
 const mockInsertValues = jest.fn();
 const mockTransaction = jest.fn();
+const mockFor = jest.fn();
 const mockAudit = jest.fn();
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/utils/db", () => {
@@ -21,7 +22,7 @@ jest.mock("@/utils/db", () => {
       const rows = () => (cached ??= Promise.resolve(mockSelectQueue.shift() ?? []));
       return {
         limit: rows,
-        for: rows,
+        for: (...a: unknown[]) => { mockFor(...a); return rows(); },
         orderBy: rows,
         then: (res: (v: unknown[]) => unknown, rej?: (e: unknown) => unknown) => rows().then(res, rej),
       };
@@ -109,12 +110,13 @@ describe("POST /api/monitors/[id]/tags", () => {
     expect(mockInsertValues).not.toHaveBeenCalled();
   });
   it("200 replaces the tag set", async () => {
-    mockSelectQueue.push([{ id: M }], [{ id: T1 }, { id: T2 }], [{ id: T1, name: "a", color: null }]);
+    mockSelectQueue.push([{ id: M }], [{ id: T1 }, { id: T2 }], [{ id: M }], [{ id: T1, name: "a", color: null }]);
     const res = await POST(req("POST", { tagIds: [T1, T2] }), params());
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalled();
     expect(mockInsertValues).toHaveBeenCalledWith([{ monitorId: M, tagId: T1 }, { monitorId: M, tagId: T2 }]);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockFor).toHaveBeenCalledWith("update"); // same row lock as PATCH
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "monitor_tags_updated",
@@ -129,7 +131,7 @@ describe("POST /api/monitors/[id]/tags", () => {
     expect(await res.json()).toEqual({ tags: [{ id: T1, name: "a", color: null }] });
   });
   it("200 with an empty array clears all tags", async () => {
-    mockSelectQueue.push([{ id: M }], []);
+    mockSelectQueue.push([{ id: M }], [{ id: M }], []);
     const res = await POST(req("POST", { tagIds: [] }), params());
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalled();
