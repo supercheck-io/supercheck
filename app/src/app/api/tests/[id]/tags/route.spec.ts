@@ -4,6 +4,8 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: (e: unknown) => (e as { name?: string })?.name === "AuthError",
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
+const mockAudit = jest.fn();
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 
 const mockSelectQueue: unknown[][] = [];
 const mockDelete = jest.fn();
@@ -44,7 +46,7 @@ jest.mock("@/utils/db", () => {
 import { NextRequest } from "next/server";
 import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { PATCH, POST } from "./route";
+import { DELETE, PATCH, POST } from "./route";
 
 const TEST = "44444444-4444-4444-8444-444444444444";
 const T1 = "66666666-6666-4666-8666-666666666666";
@@ -100,14 +102,20 @@ describe("PATCH /api/tests/[id]/tags", () => {
   it("404 when the test disappears before the lock", async () => {
     mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], []);
     expect((await PATCH(req({ add: [T1] }), params())).status).toBe(404);
+    expect(mockAudit).not.toHaveBeenCalled();
   });
-  it("200 applies add and remove in one transaction", async () => {
+  it("200 applies add and remove in one transaction with an audit event", async () => {
     mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], [{ id: TEST }], [{ count: 2 }], [{ id: T1, name: "a" }]);
     const res = await PATCH(req({ add: [T1], remove: [T2] }), params());
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalledTimes(1);
     expect(mockInsertValues).toHaveBeenCalledWith([{ testId: TEST, tagId: T1 }]);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "test_tags_updated", resource: "test", resourceId: TEST, metadata: { add: [T1], remove: [T2], projectId: "p" } }),
+      expect.anything(),
+      { strict: true },
+    );
     expect(await res.json()).toEqual([{ id: T1, name: "a" }]);
   });
   it("200 removing an unassigned tag is a no-op success", async () => {
@@ -158,5 +166,37 @@ describe("POST /api/tests/[id]/tags", () => {
     expect(mockFor).toHaveBeenCalledWith("update");
     expect(mockDelete).toHaveBeenCalled();
     expect(mockInsertValues).toHaveBeenCalledWith([{ testId: TEST, tagId: T1 }]);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "test_tags_updated", resourceId: TEST, metadata: { tagIds: [T1], projectId: "p" } }),
+      expect.anything(),
+      { strict: true },
+    );
+  });
+});
+
+describe("DELETE /api/tests/[id]/tags", () => {
+  const del = (body: unknown) =>
+    new NextRequest(`http://localhost/api/tests/${TEST}/tags`, { method: "DELETE", body: JSON.stringify(body) });
+  it("400 for a missing or malformed tag id", async () => {
+    expect((await DELETE(del({}), params())).status).toBe(400);
+    expect((await DELETE(del({ tagId: "nope" }), params())).status).toBe(400);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+  it("404 for a test outside the project", async () => {
+    mockSelectQueue.push([]);
+    expect((await DELETE(del({ tagId: T1 }), params())).status).toBe(404);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+  it("removes the tag and audits it in one transaction", async () => {
+    mockSelectQueue.push([{ id: TEST }]);
+    const res = await DELETE(del({ tagId: T1 }), params());
+    expect(res.status).toBe(200);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "test_tag_removed", resourceId: TEST, metadata: { tagId: T1, projectId: "p" } }),
+      expect.anything(),
+      { strict: true },
+    );
   });
 });

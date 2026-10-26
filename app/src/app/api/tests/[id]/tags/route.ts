@@ -6,6 +6,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from '@/lib/tag-patch';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 // A tag deleted after validation fails the insert with FK violation 23503 (drizzle wraps the driver error in `cause`).
 // Only the tag FK: a concurrently deleted test or monitor must not read as a missing tag.
@@ -169,7 +170,19 @@ export async function POST(
       await tx.delete(testTags).where(eq(testTags.testId, testId));
       if (normalizedTagIds.length > 0) {
         await tx.insert(testTags).values(normalizedTagIds.map((tagId: string) => ({ testId, tagId })));
-      }
+      }      await logAuditEvent(
+        {
+          userId: context.userId,
+          organizationId,
+          action: 'test_tags_updated',
+          resource: 'test',
+          resourceId: testId,
+          metadata: { tagIds: normalizedTagIds, projectId: project.id },
+          success: true,
+        },
+        tx,
+        { strict: true },
+      );
     });
 
     // Return updated tags
@@ -267,7 +280,19 @@ export async function PATCH(
             .from(testTags)
             .where(eq(testTags.testId, testId));
           if (count > MAX_TAGS_PER_ENTITY) throw new TagLimitError('limit');
-        }
+        }        await logAuditEvent(
+          {
+            userId: context.userId,
+            organizationId,
+            action: 'test_tags_updated',
+            resource: 'test',
+            resourceId: testId,
+            metadata: { add, remove, projectId: project.id },
+            success: true,
+          },
+          tx,
+          { strict: true },
+        );
       });
     } catch (error) {
       if (error instanceof TagLimitError) {
@@ -321,7 +346,7 @@ export async function DELETE(
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
     const { tagId } = await request.json();
 
-    if (!tagId) {
+    if (typeof tagId !== 'string' || !isUuid(tagId)) {
       return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
     }
 
@@ -340,15 +365,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Test not found' }, { status: 404 });
     }
 
-    // Remove specific tag from test
-    await db
-      .delete(testTags)
-      .where(
-        and(
-          eq(testTags.testId, testId),
-          eq(testTags.tagId, tagId)
-        )
+    // Remove specific tag from test; the audit record commits with the change or not at all.
+    await db.transaction(async (tx) => {
+      await tx.delete(testTags).where(and(eq(testTags.testId, testId), eq(testTags.tagId, tagId)));
+      await logAuditEvent(
+        {
+          userId: context.userId,
+          organizationId,
+          action: 'test_tag_removed',
+          resource: 'test',
+          resourceId: testId,
+          metadata: { tagId, projectId: project.id },
+          success: true,
+        },
+        tx,
+        { strict: true },
       );
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

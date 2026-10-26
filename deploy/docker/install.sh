@@ -260,16 +260,37 @@ check_dns_target() { # warn when the domain's A record is not this server
   mine="$(public_ip)" || mine=""
   if [[ -z "$mine" || -z "$ips" ]]; then note "Could not compare $1 with this server's public IP; skipping that check."
   elif grep -Fxq "$mine" <<<"$ips"; then ok "$1 points to this server ($mine)"
-  else warn "$1 resolves to $(tr '\n' ' ' <<<"$ips")but this server is $mine. Let's Encrypt will fail until the A record matches."; fi
+  else warn "$1 resolves to $(tr '\n' ' ' <<<"$ips")but this server is $mine. Let's Encrypt will fail until the A record matches, unless a proxy (such as Cloudflare) forwards ACME requests here."; fi
+}
+
+ufw_allows_port() { # $1 = port; reads `ufw status verbose` on stdin
+  awk -v p="$1" '
+    /^Default:/ && /allow \(incoming\)/ { found = 1 }
+    / ALLOW/ {
+      to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); sub(/ on .*/, "", to)
+      if (to ~ /^Anywhere/) { found = 1; next }
+      n = split(to, parts, ",")
+      for (i = 1; i <= n; i++) {
+        sub(/\/(tcp|udp)$/, "", parts[i])
+        if (parts[i] == p) found = 1
+        else if (split(parts[i], r, ":") == 2 && p + 0 >= r[1] + 0 && p + 0 <= r[2] + 0) found = 1
+      }
+    }
+    END { exit !found }'
 }
 
 check_ufw() { # warn when an active ufw would block ACME and HTTPS
   command -v ufw >/dev/null 2>&1 || return 0
-  local st; st="$(ufw status 2>/dev/null || true)"
+  local st; st="$(ufw status verbose 2>/dev/null || true)"
   grep -q '^Status: active' <<<"$st" || return 0
+  # App profiles ("Nginx Full") list their ports in `ufw app info`; append those as plain rules.
+  local name
+  while IFS= read -r name; do
+    st+=$'\n'"$(ufw app info "$name" 2>/dev/null | awk '/^Ports:/ { f = 1; next } f && NF { gsub(/[[:space:]]/, ""); print $0 " ALLOW IN Anywhere" }')"
+  done < <(awk '/ ALLOW/ { to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); t = to; gsub(/\/(tcp|udp)/, "", t); if (t ~ /[A-Za-z]/ && to !~ /^Anywhere/ && to !~ / on /) print to }' <<<"$st" | sort -u)
   local p
   for p in 80 443; do
-    grep -Eq "^${p}(/tcp)?[[:space:]].*ALLOW" <<<"$st" || warn "ufw is active and port $p is not allowed. Run: sudo ufw allow $p/tcp"
+    ufw_allows_port "$p" <<<"$st" || warn "ufw is active and port $p is not allowed. Docker-published ports usually bypass ufw, so this may be harmless; if HTTPS fails, run: sudo ufw allow $p/tcp"
   done
 }
 

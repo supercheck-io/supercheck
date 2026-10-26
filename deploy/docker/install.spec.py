@@ -618,6 +618,20 @@ echo survived
         self.assertNotIn('ufw', self.run_shell(body.format(allowed)))
         self.assertNotIn('ufw', self.run_shell("ufw() { echo 'Status: inactive'; }\ncheck_ufw\n"))
 
+    def test_ufw_accepts_lists_ranges_profiles_and_allow_default(self):
+        body = "ufw() {{ if [[ $1 == app ]]; then printf 'Profile: Nginx Full\\nPorts:\\n  80,443/tcp\\n'; else printf '{}'; fi; }}\ncheck_ufw\n"
+        for status in (
+            'Status: active\nDefault: deny (incoming)\n80,443/tcp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\n1:1000/tcp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\nNginx Full ALLOW IN Anywhere\nNginx Full (v6) ALLOW IN Anywhere (v6)\n',
+            'Status: active\nDefault: allow (incoming), allow (outgoing)\n',
+            'Status: active\nDefault: deny (incoming)\nAnywhere ALLOW IN 203.0.113.0/24\n',
+        ):
+            self.assertNotIn('ufw is active', self.run_shell(body.format(status)), status)
+        out = self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n443/tcp ALLOW IN Anywhere\n80/tcp DENY IN Anywhere\n1000:2000/tcp ALLOW IN Anywhere\n'))
+        self.assertIn('port 80 is not allowed', out)
+        self.assertNotIn('port 443', out)
+
     def test_public_https_probe_warns_instead_of_failing(self):
         out = self.run_shell(r'''curl() { return 22; }
 check_public_https app.example.com

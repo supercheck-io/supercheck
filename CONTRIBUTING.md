@@ -25,7 +25,7 @@ When a route imports the auth stack, check the suite with both
 
 Requirements:
 
-- **Node.js 24 for app, worker, and docs development.** Individual packages state their supported version in `engines` and CI; the CLI retains its own minimum Node.js version.
+- **Node.js 24 for app, worker, and docs development.** Individual packages state their supported version in `engines` and CI; the CLI retains its own minimum Node.js version. The repository `.nvmrc` selects Node.js 24 for `nvm use` and similar tools; older versions fail some worker tests (for example, the ESM-only `uuid` package).
 - **Docker Compose v2** for self-hosted deployment work.
 - **Linux** (Ubuntu 22.04+, Debian 12+) for anything that exercises the K3s and gVisor execution sandbox. macOS and Windows can develop the app, worker, CLI, recorder, and docs, but cannot run the sandboxed execution stack.
 
