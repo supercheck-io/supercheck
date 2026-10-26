@@ -86,6 +86,17 @@ else
   fail=1
 fi
 
+echo "==> documented installer downloads use the v$installer_ver tag"
+for doc in README.md INSTALL.md ../../docs/content/docs/app/deployment/self-hosted.mdx; do
+  stale="$(grep -o 'supercheck/[^/]*/deploy/docker/install\.sh' "$doc" | grep -v "supercheck/v$installer_ver/" || true)"
+  if [ -n "$stale" ]; then
+    echo "  FAIL $doc fetches ${stale%%$'\n'*}"
+    fail=1
+  else
+    echo "  ok   $doc"
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   echo "Deployment validation failed" >&2
   exit 1

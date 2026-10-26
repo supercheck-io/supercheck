@@ -5,7 +5,9 @@ import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
 export class ExecutionWorkloadError extends Error {
-  constructor(message: string, readonly status: 400 | 402 | 503 = 400) { super(message); this.name = "ExecutionWorkloadError"; }
+  constructor(message: string, readonly status: 400 | 402 | 503 = 400,
+    // True when the run would be admitted if in-flight reservations were released: queued promotion keeps it waiting.
+    readonly inFlightOnly = false) { super(message); this.name = "ExecutionWorkloadError"; }
 }
 
 interface ExecutionCapacity {
@@ -80,7 +82,8 @@ async function resolveExecutionPolicy(organizationId: string): Promise<Execution
  */
 async function freshTrialRemaining(organizationId: string) {
   const entitlement = await db.query.executionEntitlements.findFirst({ where: eq(executionEntitlements.organizationId, organizationId) });
-  if (!entitlement) throw new ExecutionWorkloadError("Execution entitlement required or trial expired", 402);
+  // Mirrors worker admission: an expired entitlement has no allowance.
+  if (!entitlement || entitlement.expiresAt.getTime() <= Date.now()) throw new ExecutionWorkloadError("Execution entitlement required or trial expired", 402);
   const [held] = await db
     .select({
       playwrightHeldMs: sql<number>`coalesce(sum(case when ${executionReservations.kind} = 'playwright' then ${executionReservations.reservedMs} else 0 end),0)::bigint`,
@@ -92,9 +95,12 @@ async function freshTrialRemaining(organizationId: string) {
       isNull(executionReservations.finishedAt),
       sql`${executionReservations.leaseExpiresAt} > now()`,
     ));
+  const playwrightHeldMs = Number(held.playwrightHeldMs);
+  const k6HeldVuMs = Number(held.k6HeldVuMs);
   return {
-    playwrightRemainingMs: entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs - Number(held.playwrightHeldMs),
-    k6RemainingVuMs: entitlement.k6BudgetVuMs - entitlement.k6UsedVuMs - Number(held.k6HeldVuMs),
+    playwrightRemainingMs: entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs - playwrightHeldMs,
+    k6RemainingVuMs: entitlement.k6BudgetVuMs - entitlement.k6UsedVuMs - k6HeldVuMs,
+    playwrightHeldMs, k6HeldVuMs,
   };
 }
 
@@ -110,7 +116,9 @@ export async function assertExecutionWorkload(
   if (policy.tier !== "trial") return;
   const remaining = await freshTrialRemaining(organizationId);
   if (kind === "playwright") {
-    if (remaining.playwrightRemainingMs <= 0) throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402);
+    if (remaining.playwrightRemainingMs <= 0) {
+      throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402, remaining.playwrightRemainingMs + remaining.playwrightHeldMs > 0);
+    }
     return;
   }
   const { parseTrialK6Workload } = await import("./trial-k6-workload");
@@ -121,7 +129,8 @@ export async function assertExecutionWorkload(
   if (workload.vus > policy.k6MaxVus || workload.durationSeconds * 1000 > policy.expiresAt.getTime() - Date.now()) {
     throw new ExecutionWorkloadError("HTTP workload exceeds the trial VU or remaining duration limit");
   }
-  if (workload.vus * workload.durationSeconds * 1000 > remaining.k6RemainingVuMs) {
-    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402);
+  const needed = workload.vus * workload.durationSeconds * 1000;
+  if (needed > remaining.k6RemainingVuMs) {
+    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, needed <= remaining.k6RemainingVuMs + remaining.k6HeldVuMs);
   }
 }

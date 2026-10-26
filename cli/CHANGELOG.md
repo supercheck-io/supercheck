@@ -12,6 +12,12 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 - `deploy` rejects a test or monitor with more than 10 distinct tags before any write, instead of saving the resource and then failing to apply its tags.
 - Requirement `externalUrl` in config must be an `http://` or `https://` URL, matching the server.
 
+- `deploy` removes a status page draft it just created when applying its settings, components or status then fails (for example a custom domain the plan or server rejects), so no orphan draft is left behind. The original error is shown; if the cleanup itself fails, a warning names the draft and the error still reports its ID. Pages that existed before the run are never deleted.
+
+### Security
+
+- Upgraded `zod` to ^4.6.7, fixing GHSA-mrhx-c7xc-m3w5. `supercheck schema config` constraint entries now use zod 4's shape (for example `{"check":"min_length","minimum":1}`). Resource `id` values in config and `supercheck.state.json` must now be RFC 4122 UUIDs, matching the server; ids the server issued already are.
+
 ### Added
 
 - A requirement's `priority` can be cleared from config with `priority: ""`. This needs a server that accepts a null priority (the release after 1.4.0); an older server rejects that write with a 400.

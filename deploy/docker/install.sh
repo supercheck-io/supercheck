@@ -206,10 +206,13 @@ run_step() {
 
 # ─── Prompts (only with a terminal; every prompt has a flag) ────────────────
 
-CAN_PROMPT=false
-if [[ "$ASSUME_YES" != true && "$IS_TTY" == true ]] && ( : </dev/tty ) 2>/dev/null; then
-  CAN_PROMPT=true
-fi
+# Prompts read /dev/tty, so piping stdout (| tee) must not disable them.
+tty_readable() { ( : </dev/tty ) 2>/dev/null; }
+detect_can_prompt() {
+  CAN_PROMPT=false
+  if [[ "$ASSUME_YES" != true ]] && tty_readable; then CAN_PROMPT=true; fi
+}
+detect_can_prompt
 
 ask() { # ask "Question" "default" -> echoes the answer
   local q="$1" def="${2:-}" ans=""
@@ -237,6 +240,42 @@ docker_ready() {
   docker info >/dev/null 2>&1 || return 1
   local v; v="$(compose_version)"
   [[ -n "$v" ]] && version_ge "$v" "$MIN_COMPOSE"
+}
+
+# Docker's data dir is where images and volumes land; fall back to / and use the nearest existing parent.
+docker_data_path() {
+  local d
+  d="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)"
+  d="${d:-/}"
+  while [[ ! -e "$d" && "$d" != "/" ]]; do d="$(dirname "$d")"; done
+  echo "$d"
+}
+
+resolve_a() { getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u || true; }
+public_ip() { curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null; }
+
+check_dns_target() { # warn when the domain's A record is not this server
+  local ips mine
+  ips="$(resolve_a "$1")"
+  mine="$(public_ip)" || mine=""
+  if [[ -z "$mine" || -z "$ips" ]]; then note "Could not compare $1 with this server's public IP; skipping that check."
+  elif grep -Fxq "$mine" <<<"$ips"; then ok "$1 points to this server ($mine)"
+  else warn "$1 resolves to $(tr '\n' ' ' <<<"$ips")but this server is $mine. Let's Encrypt will fail until the A record matches."; fi
+}
+
+check_ufw() { # warn when an active ufw would block ACME and HTTPS
+  command -v ufw >/dev/null 2>&1 || return 0
+  local st; st="$(ufw status 2>/dev/null || true)"
+  grep -q '^Status: active' <<<"$st" || return 0
+  local p
+  for p in 80 443; do
+    grep -Eq "^${p}(/tcp)?[[:space:]].*ALLOW" <<<"$st" || warn "ufw is active and port $p is not allowed. Run: sudo ufw allow $p/tcp"
+  done
+}
+
+check_public_https() { # cert issuance can lag, so this only warns
+  if curl -fsS --max-time 10 -o /dev/null "https://$1/api/health" 2>/dev/null; then ok "HTTPS is answering on https://$1"
+  else warn "https://$1 is not answering over HTTPS yet. Certificate issuance can take a few minutes; check DNS, ports 80/443, and: cd $(compose_dir) && sudo docker compose logs --tail=50 traefik"; fi
 }
 
 port_in_use() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
@@ -530,14 +569,15 @@ preflight() {
     problems=1
   fi
 
-  local mem_kb cpus disk_gb
+  local mem_kb cpus disk_gb disk_path
+  disk_path="$(docker_data_path)"
   mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
   cpus="$(nproc 2>/dev/null || echo 1)"
-  disk_gb="$(df -Pk / | awk 'NR==2 {print int($4/1024/1024)}')"
+  disk_gb="$(df -Pk "$disk_path" | awk 'NR==2 {print int($4/1024/1024)}')"
   if [[ "$mem_kb" -lt 3500000 ]]; then warn "Memory is $((mem_kb / 1024)) MB; 4 GB or more is recommended. Test runs may be slow or fail."; else ok "Memory $((mem_kb / 1024)) MB"; fi
   if [[ "$cpus" -lt 2 ]]; then warn "Only ${cpus} CPU; 2 or more is recommended."; else ok "${cpus} CPUs"; fi
-  if [[ "$disk_gb" -lt 10 ]]; then fail "Only ${disk_gb} GB free on /; at least 10 GB is needed and 15 GB is recommended (the worker image alone is 3.2 GB)."; problems=1
-  elif [[ "$disk_gb" -lt 15 ]]; then warn "${disk_gb} GB free on /; 15 GB or more is recommended."
+  if [[ "$disk_gb" -lt 10 ]]; then fail "Only ${disk_gb} GB free on ${disk_path}; at least 10 GB is needed and 15 GB is recommended (the worker image alone is 3.2 GB)."; problems=1
+  elif [[ "$disk_gb" -lt 15 ]]; then warn "${disk_gb} GB free on ${disk_path}; 15 GB or more is recommended."
   else ok "${disk_gb} GB free disk"; fi
 
   if command -v curl >/dev/null 2>&1; then
@@ -671,7 +711,7 @@ main() {
       done
       [[ "$choice" == "2" ]] && MODE="public" || MODE="local"
     else
-      die "No setup chosen and no terminal to ask on." "Pass --local, or --domain <host> --email <address>."
+      die "No setup chosen and no terminal to ask on." "Pass --local, or --domain <host> --email <address>, or use --yes with those flags to skip prompts."
     fi
   fi
 
@@ -696,10 +736,12 @@ main() {
     if [[ -n "$STATUS_DOMAIN" ]]; then is_valid_domain "$STATUS_DOMAIN" || die "'$STATUS_DOMAIN' is not a valid hostname."; fi
     if getent hosts "$DOMAIN" >/dev/null 2>&1; then
       ok "$DOMAIN resolves in DNS"
+      check_dns_target "$DOMAIN"
     else
       warn "$DOMAIN does not resolve yet. Point an A record at this server before certificates can be issued."
       if [[ "$CAN_PROMPT" == true ]]; then confirm "Continue anyway?" || die "Stopped. Create the DNS record, then re-run."; fi
     fi
+    check_ufw
     ok "Public HTTPS install for ${BOLD}${DOMAIN}${RESET}"
     note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains, so also add a wildcard record (*.${STATUS_DOMAIN:-$DOMAIN})."
   elif [[ "$MODE" == "local" && "$USE_EXISTING" != true ]]; then
@@ -825,6 +867,8 @@ main() {
       die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
     fi
   fi
+
+  if [[ "$DRY_RUN" != true && "$MODE" == "public" && -n "$DOMAIN" ]]; then check_public_https "$DOMAIN"; fi
 
   # ─── Done ───────────────────────────────────────────────────────────────────
 

@@ -245,6 +245,16 @@ describe("monitor-scheduler", () => {
       expect(abortMonitorCycle).toHaveBeenCalledWith(monitorCycleId("monitor-1", "repeat:abc:1000"));
     });
 
+    it("skips the cycle without recording a scheduling failure when no expected location has a live worker", async () => {
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central", "us-east"] });
+      mockUpdateSet.mockClear();
+      mockInsertValues.mockClear();
+      await expect(processScheduledMonitor(job({ attemptsMade: 2 }))).rejects.toThrow("no jobs enqueued");
+      expect(mockUpdateSet).not.toHaveBeenCalled();
+      expect(mockInsertValues).not.toHaveBeenCalled();
+      expect(abortMonitorCycle).toHaveBeenCalled();
+    });
+
     it("keeps the cycle for a retry while attempts remain", async () => {
       (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central"] });
       await expect(processScheduledMonitor(job({ attemptsMade: 0 }))).rejects.toThrow();

@@ -117,6 +117,13 @@ describe("PATCH /api/tests/[id]/tags", () => {
     expect(mockInsertValues).not.toHaveBeenCalled();
     expect(await res.json()).toEqual([]);
   });
+  it("400 when an added tag is deleted before the insert (FK violation)", async () => {
+    mockInsertValues.mockImplementationOnce(() => { throw Object.assign(new Error("fk"), { cause: { code: "23503", constraint_name: "test_tags_tag_id_tags_id_fk" } }); });
+    mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], [{ id: TEST }]);
+    const res = await PATCH(req({ add: [T1] }), params());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("One or more tags no longer exist");
+  });
   it("500 on unexpected database errors", async () => {
     jest.spyOn(console, "error").mockImplementation(() => undefined);
     mockSelectQueue.push([{ id: TEST }], [{ id: TEST }]);
@@ -126,6 +133,20 @@ describe("PATCH /api/tests/[id]/tags", () => {
 });
 
 describe("POST /api/tests/[id]/tags", () => {
+  it.each([
+    ["on the error", () => Object.assign(new Error("fk"), { code: "23503", constraint_name: "test_tags_tag_id_tags_id_fk" })],
+    ["on the error cause", () => Object.assign(new Error("Failed query"), { cause: { code: "23503", constraint_name: "test_tags_tag_id_tags_id_fk" } })],
+  ])("400 when a tag is deleted before the insert (FK violation %s)", async (_n, makeError) => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    mockInsertValues.mockImplementationOnce(() => { throw makeError(); });
+    mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], [{ id: TEST }]);
+    const res = await POST(
+      new NextRequest(`http://localhost/api/tests/${TEST}/tags`, { method: "POST", body: JSON.stringify({ tagIds: [T1] }) }),
+      params(),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("One or more tags no longer exist");
+  });
   it("replaces the set inside a transaction under the same row lock as PATCH", async () => {
     mockSelectQueue.push([{ id: TEST }], [{ id: T1 }], [{ id: TEST }], [{ id: T1, name: "a", color: null }]);
     const res = await POST(

@@ -1,5 +1,5 @@
 jest.mock("@/utils/db", () => ({ db: { update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) })) })) } }));
-jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined), ExecutionWorkloadError: class ExecutionWorkloadError extends Error { constructor(message: string, readonly status: 400 | 402 = 400) { super(message); } } }));
+jest.mock("./execution/execution-policy", () => ({ getExecutionPolicy: jest.fn().mockResolvedValue({ tier: "paid", priority: 0 }), assertExecutionWorkload: jest.fn().mockResolvedValue(undefined), ExecutionWorkloadError: class ExecutionWorkloadError extends Error { constructor(message: string, readonly status: 400 | 402 = 400, readonly inFlightOnly = false) { super(message); } } }));
 /**
  * Capacity Manager Tests
  * 
@@ -244,6 +244,17 @@ describe('CapacityManager', () => {
       expect(mockRedisEval).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalled();
       expect(mockRedisZrem).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queued.jobId);
+    });
+
+    it('keeps a run queued when only in-flight reservations push it over the trial allowance', async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(queued));
+      jest.mocked(assertExecutionWorkload).mockRejectedValueOnce(new ExecutionWorkloadError('quota', 402, true));
+      const { db } = jest.requireMock('@/utils/db');
+      db.update.mockClear();
+      expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+      expect(mockRedisEval).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
     });
 
     it('leaves a rejected workload queued if recording its terminal status fails', async () => {

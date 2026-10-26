@@ -682,7 +682,7 @@ export class CapacityManager {
       }
       return false;
     } catch (error) {
-      if (!promoted && jobData && error instanceof ExecutionWorkloadError && error.status !== 503) {
+      if (!promoted && jobData && error instanceof ExecutionWorkloadError && error.status !== 503 && !error.inFlightOnly) {
         try {
           const { db } = await import('@/utils/db');
           const { runs } = await import('@/db/schema');
@@ -703,10 +703,15 @@ export class CapacityManager {
           logger.error({ err: recordError, jobId }, "Could not record rejected queued workload; retaining it for retry");
         }
       }
-      logger.error({ err: error, jobId, organizationId }, "Failed to promote job");
+      if (error instanceof ExecutionWorkloadError && error.inFlightOnly) {
+        logger.info({ jobId, organizationId }, "Queued job waits for in-flight runs to release allowance");
+      } else {
+        logger.error({ err: error, jobId, organizationId }, "Failed to promote job");
+      }
       // A failure that was neither a permanent rejection (handled above) nor after the job was handed to BullMQ
       // leaves the job at the head of the queue; count it so a job that keeps failing steps aside.
-      const permanentlyRejected = jobData && error instanceof ExecutionWorkloadError && error.status !== 503;
+      // An in-flight-only shortfall may clear when another run settles: defer it (rotates behind others) instead of failing it.
+      const permanentlyRejected = jobData && error instanceof ExecutionWorkloadError && error.status !== 503 && !error.inFlightOnly;
       if (!promoted && !permanentlyRejected) await this.deferFailingJob(organizationId, jobId);
       return false;
     }

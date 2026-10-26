@@ -36,17 +36,21 @@ skillsCommand.command('install')
   })
 
 // Zod is already installed; expose its typed input structure without another schema dependency.
-function describeSchema(schema: z.ZodTypeAny): unknown {
-  const def = schema._def
-  if (schema instanceof z.ZodObject) return { type: 'object', unknownKeys: def.unknownKeys, properties: Object.fromEntries(Object.entries(schema.shape).map(([key, value]) => [key, describeSchema(value as z.ZodTypeAny)])) }
-  if (schema instanceof z.ZodOptional) return { optional: true, value: describeSchema(schema.unwrap()) }
-  if (schema instanceof z.ZodDefault) return { default: def.defaultValue(), value: describeSchema(schema.removeDefault()) }
-  if (schema instanceof z.ZodArray) return { type: 'array', items: describeSchema(schema.element) }
-  if (schema instanceof z.ZodUnion) return { anyOf: schema.options.map((item: z.ZodTypeAny) => describeSchema(item)) }
+function describeSchema(schema: z.ZodType): unknown {
+  // z.ZodType exposes only the base def; the narrowed instanceof branches below carry the kind-specific fields.
+  const def = schema.def as unknown as Record<string, unknown>
+  if (schema instanceof z.ZodObject) {
+    const catchall = (def.catchall as z.ZodType | undefined)?.def.type
+    return { type: 'object', unknownKeys: catchall === 'never' ? 'strict' : catchall ? 'passthrough' : 'strip', properties: Object.fromEntries(Object.entries(schema.shape).map(([key, value]) => [key, describeSchema(value as z.ZodType)])) }
+  }
+  if (schema instanceof z.ZodOptional) return { optional: true, value: describeSchema(schema.unwrap() as z.ZodType) }
+  if (schema instanceof z.ZodDefault) return { default: schema.def.defaultValue, value: describeSchema(schema.removeDefault() as z.ZodType) }
+  if (schema instanceof z.ZodArray) return { type: 'array', items: describeSchema(schema.element as z.ZodType) }
+  if (schema instanceof z.ZodUnion) return { anyOf: schema.options.map((item) => describeSchema(item as z.ZodType)) }
   if (schema instanceof z.ZodEnum) return { enum: schema.options }
   if (schema instanceof z.ZodLiteral) return { const: schema.value }
-  if (schema instanceof z.ZodRecord) return { type: 'object', additionalProperties: describeSchema(schema.valueSchema) }
-  return { type: def.typeName.replace('Zod', '').toLowerCase(), ...(def.checks ? { constraints: def.checks } : {}) }
+  if (schema instanceof z.ZodRecord) return { type: 'object', additionalProperties: describeSchema(schema.valueType as z.ZodType) }
+  return { type: String(def.type), ...(Array.isArray(def.checks) && def.checks.length ? { constraints: def.checks.map((check) => (check as { _zod: { def: unknown } })._zod.def) } : {}) }
 }
 export const schemaCommand = new Command('schema').description('Inspect configuration input fields without loading repository code')
 schemaCommand.command('config').description('Describe the installed configuration schema').action(() => outputDetail({ version: CLI_VERSION, schema: describeSchema(supercheckConfigSchema) }, { redact: false }))

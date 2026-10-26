@@ -8,16 +8,28 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Added
 
+- The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install.
 - `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
 - The requirements API accepts `"priority": null` to clear a requirement's priority.
 
 ### Fixed
 
+- `POST` and `PATCH` on `/api/tests/{id}/tags` and `/api/monitors/{id}/tags` return 400 instead of 500 when a tag is deleted between validation and insert.
+- Monitor checks skipped because no worker is live in any expected location (such as during a deployment rollout) are no longer recorded as Down.
+- A queued trial run is no longer failed when only another run's in-flight reservation puts it over the allowance; it stays queued until that run settles. An expired trial entitlement now counts as having no remaining allowance, as in the worker.
 - MCP requests that stall while uploading their body now fail with 408 after 15 seconds and release their concurrency slots.
 - Incident analytics charts, the sidebar's outline menu button and the response-time chart's tooltip cursor use valid colors (the `hsl()` wrappers around oklch tokens are removed).
 - Trial allowance checks before queueing subtract runs that are still in flight, matching worker admission.
 - A trial reminder whose delivery succeeded but whose sent-marker write failed transiently is no longer resent.
 - A scheduled check for a deleted monitor removes its leftover repeatable schedule.
+
+### Security
+
+- Worker: `fast-uri` override raised to 3.1.9 (GHSA-w74x-v6f9-j3xg and related advisories in the build tooling chain); recorder dev dependencies refreshed. `npm audit` reports 0 vulnerabilities for app, worker, recorder, docs and cli.
+
+### Changed
+
+- The AI PR reviewer also sends the head-commit contents of changed files, within a character budget, as untrusted context. Lockfiles, build output and secret-like files are never sent.
 
 ## [1.4.0] - 2026-10-26
 

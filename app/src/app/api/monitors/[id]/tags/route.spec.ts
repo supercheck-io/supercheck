@@ -130,6 +130,14 @@ describe("POST /api/monitors/[id]/tags", () => {
     );
     expect(await res.json()).toEqual({ tags: [{ id: T1, name: "a", color: null }] });
   });
+  it("400 when a tag is deleted before the insert (FK violation)", async () => {
+    mockInsertValues.mockImplementationOnce(() => { throw Object.assign(new Error("fk"), { cause: { code: "23503", constraint_name: "monitor_tags_tag_id_tags_id_fk" } }); });
+    mockSelectQueue.push([{ id: M }], [{ id: T1 }], [{ id: M }]);
+    const res = await POST(req("POST", { tagIds: [T1] }), params());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("One or more tags no longer exist");
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
   it("200 with an empty array clears all tags", async () => {
     mockSelectQueue.push([{ id: M }], [{ id: M }], []);
     const res = await POST(req("POST", { tagIds: [] }), params());
@@ -198,6 +206,19 @@ describe("PATCH /api/monitors/[id]/tags", () => {
     expect(res.status).toBe(200);
     expect(mockInsertValues).not.toHaveBeenCalled();
     expect(await res.json()).toEqual({ tags: [] });
+  });
+  it("400 when an added tag is deleted before the insert (FK violation)", async () => {
+    mockInsertValues.mockImplementationOnce(() => { throw Object.assign(new Error("fk"), { code: "23503", constraint_name: "monitor_tags_tag_id_tags_id_fk" }); });
+    mockSelectQueue.push([{ id: M }], [{ id: T1 }], [{ id: M }]);
+    const res = await PATCH(req("PATCH", { add: [T1] }), params());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("One or more tags no longer exist");
+  });
+  it("does not report a missing tag when the monitor FK is violated", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    mockInsertValues.mockImplementationOnce(() => { throw Object.assign(new Error("fk"), { code: "23503", constraint_name: "monitor_tags_monitor_id_monitors_id_fk" }); });
+    mockSelectQueue.push([{ id: M }], [{ id: T1 }], [{ id: M }]);
+    expect((await PATCH(req("PATCH", { add: [T1] }), params())).status).toBe(500);
   });
   it("500 on unexpected database errors", async () => {
     jest.spyOn(console, "error").mockImplementation(() => undefined);

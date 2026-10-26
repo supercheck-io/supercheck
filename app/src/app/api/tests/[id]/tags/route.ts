@@ -7,6 +7,14 @@ import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from '@/lib/tag-pa
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
+// A tag deleted after validation fails the insert with FK violation 23503 (drizzle wraps the driver error in `cause`).
+// Only the tag FK: a concurrently deleted test or monitor must not read as a missing tag.
+const isFkViolation = (e: unknown) =>
+  [e, (e as { cause?: unknown })?.cause].some((x) => {
+    const pg = x as { code?: string; constraint_name?: string } | undefined;
+    return pg?.code === "23503" && Boolean(pg.constraint_name?.endsWith("_tag_id_tags_id_fk"));
+  });
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -185,6 +193,7 @@ export async function POST(
         { status: 401 }
       );
     }
+    if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
     console.error('Error updating test tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -284,6 +293,7 @@ export async function PATCH(
         { status: 401 }
       );
     }
+    if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
     console.error('Error patching test tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

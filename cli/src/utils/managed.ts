@@ -9,7 +9,7 @@ import type { LocalResource, RemoteResource } from './reconcile.js'
 import { CLIError, ExitCode } from './errors.js'
 import { extractUuidFromFilename } from './slug.js'
 
-const stateSchema = z.object({ version: z.literal(1), targets: z.record(z.record(z.string().uuid())) }).strict()
+const stateSchema = z.object({ version: z.literal(1), targets: z.record(z.string(), z.record(z.string(), z.string().uuid())) }).strict()
 export type ProjectContext = {
   apiUrl?: string
   organization: { id: string; slug?: string | null }

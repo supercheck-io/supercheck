@@ -33,6 +33,20 @@ import {
 
 const logger = queueLogger;
 
+/** No expected location has a live worker (e.g. during a deploy rollout); not a monitor failure. */
+export class NoLiveWorkersError extends Error {
+  constructor(
+    readonly monitorId: string,
+    readonly expectedLocations: string[],
+  ) {
+    super(
+      `Monitor ${monitorId}: no jobs enqueued — none of the expected locations ` +
+      `[${expectedLocations.join(', ')}] have live workers. Check worker health and location configuration.`
+    );
+    this.name = 'NoLiveWorkersError';
+  }
+}
+
 /**
  * Monitor job data structure
  */
@@ -121,7 +135,16 @@ export async function processScheduledMonitor(
         logger.warn({ err: abortError }, 'Unable to abort monitor cycle'),
       );
     }
-    // Record every enqueue failure so the monitor cannot remain falsely up.
+    if (error instanceof NoLiveWorkersError) {
+      // Worker absence is not monitor downtime; skip the cycle, but rethrow so BullMQ retries
+      // while workers may come back. Sustained absence is for worker-health alerting.
+      logger.warn(
+        { monitorId: error.monitorId, expectedLocations: error.expectedLocations },
+        'Skipping monitor cycle: no live workers in any expected location',
+      );
+      throw error;
+    }
+    // Record every other enqueue failure so the monitor cannot remain falsely up.
     const errorMessage = error instanceof Error ? error.message : String(error);
     await recordSchedulingFailure(executionJobData.monitorId, errorMessage);
     throw error; // Re-throw so BullMQ marks the scheduler job as failed
@@ -159,10 +182,7 @@ async function enqueueMonitorExecutionJobs(
     );
 
   if (enqueuedLocations.length === 0 && expectedLocations.length > 0) {
-    throw new Error(
-      `Monitor ${jobData.monitorId}: no jobs enqueued — none of the expected locations ` +
-      `[${expectedLocations.join(', ')}] have live workers. Check worker health and location configuration.`
-    );
+    throw new NoLiveWorkersError(jobData.monitorId, expectedLocations);
   }
 
   if (skippedLocations.length > 0) {

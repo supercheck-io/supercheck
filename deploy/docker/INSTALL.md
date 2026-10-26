@@ -7,7 +7,7 @@ Use this runbook for a new single-server installation. Run commands on the targe
 On Ubuntu 22.04+ or Debian 12+, install **1.4.0** (includes RustFS) instead of following the manual steps below. It never prompts when `--yes` is given:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
 sudo bash install.sh --version 1.4.0 --local --yes                                              # HTTP evaluation
 sudo bash install.sh --version 1.4.0 --domain app.example.com --email admin@example.com --yes   # public HTTPS
 ```
