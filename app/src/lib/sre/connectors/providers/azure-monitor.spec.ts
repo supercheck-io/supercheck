@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { assertReadOnlyKql, parseAzureCredential, parseAzureQuery, searchAzure, validateAzure } from "./azure-monitor";
-import { makeContext, mockHttp, params } from "./provider-test-utils";
+import { hostOf, makeContext, mockHttp, params } from "./provider-test-utils";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const CLIENT = "22222222-2222-2222-2222-222222222222";
@@ -36,7 +36,7 @@ describe("azure monitor provider", () => {
   });
 
   it("runs KQL with client-credentials auth, timespan and take", async () => {
-    const { http, calls } = mockHttp((req) => (req.url.includes("login.microsoftonline.com") ? token : { json: { tables: [{ columns: [{ name: "TimeGenerated" }, { name: "Message" }, { name: "SeverityLevel" }], rows: [["2026-10-27T11:10:00Z", "Unhandled exception in checkout", 3], ["2026-10-27T11:11:00Z", "second", 1], ["2026-10-27T11:12:00Z", "third", 1]] }] } }));
+    const { http, calls } = mockHttp((req) => (hostOf(req.url) === "login.microsoftonline.com" ? token : { json: { tables: [{ columns: [{ name: "TimeGenerated" }, { name: "Message" }, { name: "SeverityLevel" }], rows: [["2026-10-27T11:10:00Z", "Unhandled exception in checkout", 3], ["2026-10-27T11:11:00Z", "second", 1], ["2026-10-27T11:12:00Z", "third", 1]] }] } }));
     const result = await searchAzure(makeContext(http, cred), params("AppTraces | where SeverityLevel > 1;", { maxRows: 2 }));
     expect(calls[0].url).toBe(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`);
     expect(calls[0].target).toBe("vendor");
@@ -60,7 +60,7 @@ describe("azure monitor provider", () => {
   });
 
   it("reads metrics from the ARM API", async () => {
-    const { http, calls } = mockHttp((req) => (req.url.includes("login.") ? token : { json: { value: [{ name: { value: "Http5xx" }, unit: "Count", timeseries: [{ metadatavalues: [], data: [{ timeStamp: "2026-10-27T11:00:00Z", total: 1 }, { timeStamp: "2026-10-27T11:05:00Z", total: 7 }] }] }] } }));
+    const { http, calls } = mockHttp((req) => (hostOf(req.url) === "login.microsoftonline.com" ? token : { json: { value: [{ name: { value: "Http5xx" }, unit: "Count", timeseries: [{ metadatavalues: [], data: [{ timeStamp: "2026-10-27T11:00:00Z", total: 1 }, { timeStamp: "2026-10-27T11:05:00Z", total: 7 }] }] }] } }));
     const result = await searchAzure(makeContext(http, cred), params(`metrics: resource=${RESOURCE} names=Http5xx agg=Total`));
     expect(form(calls[0]).get("scope")).toBe("https://management.azure.com/.default");
     const url = new URL(calls[1].url);
@@ -73,13 +73,13 @@ describe("azure monitor provider", () => {
 
   it("maps sign-in and API failures", async () => {
     await expect(searchAzure(makeContext(mockHttp([{ status: 401, json: { error: "invalid_client", error_description: "AADSTS7000215: Invalid client secret" } }]).http, cred), params("T | take 1"))).rejects.toThrow(/invalid credentials.*AADSTS7000215/);
-    const denied = mockHttp((req) => (req.url.includes("login.") ? token : { status: 403 }));
+    const denied = mockHttp((req) => (hostOf(req.url) === "login.microsoftonline.com" ? token : { status: 403 }));
     await expect(searchAzure(makeContext(denied.http, cred), params("T | take 1"))).rejects.toThrow(/credentials rejected with HTTP 403/);
     await expect(searchAzure(makeContext(mockHttp([token]).http, cred), params(".show tables"))).rejects.toThrow(/control commands/);
   });
 
   it("validates sign-in and the workspace", async () => {
-    const { http, calls } = mockHttp((req) => (req.url.includes("login.") ? token : { json: { tables: [] } }));
+    const { http, calls } = mockHttp((req) => (hostOf(req.url) === "login.microsoftonline.com" ? token : { json: { tables: [] } }));
     await validateAzure(makeContext(http, cred));
     expect(calls.some((c) => c.url.includes("/query"))).toBe(true);
     const arm = mockHttp([token]);

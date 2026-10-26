@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { hasBalancedParentheses, parseGcpCredential, parseGcpQuery, searchGcp, signGcpJwt, validateGcp } from "./gcp-monitoring";
-import { makeContext, mockHttp, params } from "./provider-test-utils";
+import { hostOf, makeContext, mockHttp, params } from "./provider-test-utils";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -48,7 +48,7 @@ describe("gcp provider", () => {
   });
 
   it("exchanges a token at the fixed endpoint, caches it, and queries logs", async () => {
-    const { http, calls } = mockHttp((req) => (req.url.includes("oauth2") ? token : { json: { entries: [{ timestamp: "2026-10-27T11:30:00Z", severity: "ERROR", textPayload: "db down", resource: { type: "cloud_run_revision", labels: { service_name: "checkout" } }, logName: "projects/p/logs/stderr" }, { timestamp: "2026-10-27T11:31:00Z", severity: "INFO", jsonPayload: { message: "ok" } }] } }));
+    const { http, calls } = mockHttp((req) => (hostOf(req.url) === "oauth2.googleapis.com" ? token : { json: { entries: [{ timestamp: "2026-10-27T11:30:00Z", severity: "ERROR", textPayload: "db down", resource: { type: "cloud_run_revision", labels: { service_name: "checkout" } }, logName: "projects/p/logs/stderr" }, { timestamp: "2026-10-27T11:31:00Z", severity: "INFO", jsonPayload: { message: "ok" } }] } }));
     const ctx = makeContext(http, cred);
     const result = await searchGcp(ctx, params('logs: severity>=ERROR AND resource.labels.service_name="checkout"', { maxRows: 1 }));
     expect(calls[0].url).toBe("https://oauth2.googleapis.com/token");
@@ -64,12 +64,12 @@ describe("gcp provider", () => {
     expect(result.truncated).toBe(true);
     expect(result.records[0]).toMatchObject({ evidenceType: "log", severity: "error" });
     await searchGcp(ctx, params("logs: *"));
-    expect(calls.filter((c) => c.url.includes("oauth2"))).toHaveLength(1);
+    expect(calls.filter((c) => hostOf(c.url) === "oauth2.googleapis.com")).toHaveLength(1);
   });
 
   it("queries metric time series with the window and summarises points", async () => {
     const point = (v: number, t: string) => ({ interval: { endTime: t }, value: { doubleValue: v } });
-    const { http, calls } = mockHttp((req) => (req.url.includes("oauth2") ? token : { json: { timeSeries: [{ metric: { type: "run.googleapis.com/request_count", labels: { response_code_class: "5xx" } }, resource: { type: "cloud_run_revision", labels: { service_name: "checkout" } }, points: [point(9, "2026-10-27T11:59:00Z"), point(1, "2026-10-27T11:58:00Z")] }] } }));
+    const { http, calls } = mockHttp((req) => (hostOf(req.url) === "oauth2.googleapis.com" ? token : { json: { timeSeries: [{ metric: { type: "run.googleapis.com/request_count", labels: { response_code_class: "5xx" } }, resource: { type: "cloud_run_revision", labels: { service_name: "checkout" } }, points: [point(9, "2026-10-27T11:59:00Z"), point(1, "2026-10-27T11:58:00Z")] }] } }));
     const result = await searchGcp(makeContext(http, cred), params('metrics: metric.type="run.googleapis.com/request_count"'));
     const url = new URL(calls[1].url);
     expect(url.pathname).toBe("/v3/projects/proj-123/timeSeries");
@@ -82,14 +82,14 @@ describe("gcp provider", () => {
 
   it("maps token and API failures", async () => {
     await expect(searchGcp(makeContext(mockHttp([{ status: 400, json: { error: "invalid_grant", error_description: "Invalid JWT Signature." } }]).http, cred), params("logs: *"))).rejects.toThrow(/invalid credentials.*Invalid JWT Signature/);
-    const forbidden = mockHttp((req) => (req.url.includes("oauth2") ? token : { status: 403 }));
+    const forbidden = mockHttp((req) => (hostOf(req.url) === "oauth2.googleapis.com" ? token : { status: 403 }));
     await expect(searchGcp(makeContext(forbidden.http, cred), params("logs: *"))).rejects.toThrow(/credentials rejected with HTTP 403/);
   });
 
   it("validates with monitoring and falls back to logging", async () => {
-    const both = mockHttp((req) => (req.url.includes("oauth2") ? token : req.url.includes("metricDescriptors") ? { status: 403 } : { json: {} }));
+    const both = mockHttp((req) => (hostOf(req.url) === "oauth2.googleapis.com" ? token : req.url.includes("metricDescriptors") ? { status: 403 } : { json: {} }));
     await expect(validateGcp(makeContext(both.http, cred))).resolves.toBeUndefined();
-    const none = mockHttp((req) => (req.url.includes("oauth2") ? token : { status: 403 }));
+    const none = mockHttp((req) => (hostOf(req.url) === "oauth2.googleapis.com" ? token : { status: 403 }));
     await expect(validateGcp(makeContext(none.http, cred))).rejects.toThrow(/credentials rejected/);
   });
 });

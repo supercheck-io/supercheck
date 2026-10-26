@@ -40,3 +40,7 @@ export const WINDOW = {
 export function params(query: string, overrides: Partial<ProviderSearchParams> = {}): ProviderSearchParams {
   return { query, timeWindow: WINDOW, maxRows: 10, maxBytes: 256_000, maxSeconds: 10, ...overrides };
 }
+
+export function hostOf(url: string) {
+  return new URL(url).hostname;
+}

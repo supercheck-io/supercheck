@@ -47,7 +47,7 @@ describe("new relic provider", () => {
     expect(body.variables.nrql).toContain("SINCE '2026-10-27T11:00:00+0000'");
     expect(body.query).not.toContain("SELECT");
     expect(result.records[0]).toMatchObject({ evidenceType: "log", severity: "error", observedAt: "2026-10-27T11:10:00.000Z" });
-    expect(result.records[0].sourceUri).toContain("one.eu.newrelic.com");
+    expect(new URL(result.records[0].sourceUri).hostname).toBe("one.eu.newrelic.com");
   });
 
   it("truncates results to the row budget", async () => {

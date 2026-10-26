@@ -201,9 +201,11 @@ export async function searchNewRelic(
       : [];
 
   const type = recordType(nrql);
-  const host = newRelicGraphqlUrl(ctx.credential).includes('.eu.')
-    ? 'one.eu.newrelic.com'
-    : 'one.newrelic.com';
+  const host =
+    new URL(newRelicGraphqlUrl(ctx.credential)).hostname ===
+    'api.eu.newrelic.com'
+      ? 'one.eu.newrelic.com'
+      : 'one.newrelic.com';
   const records = results
     .filter(isRecord)
     .slice(0, limit)
