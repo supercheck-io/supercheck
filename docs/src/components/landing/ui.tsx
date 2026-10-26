@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { solutionsMenu } from "../../lib/site-nav";
+import type { SolutionStep } from "../../lib/solutions";
+import { CodeWindow } from "./code-window";
 
 export const primaryButton =
   "inline-flex items-center justify-center gap-2 rounded-md bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary";
@@ -83,4 +85,21 @@ export function SolutionCards({ exclude, className = "" }: { exclude?: string; c
       })}
     </ul>
   );
+}
+
+/** Right-hand visual of a how-it-works step: code, screenshot, or the bullet list when there is no visual. */
+export function StepVisual({ step }: { step: SolutionStep }) {
+  const visual = step.visual;
+  if (!visual) {
+    // Text-only steps show their details in the visual column instead.
+    return (
+      <div className="rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
+        <CheckList items={step.bullets} />
+      </div>
+    );
+  }
+  if (visual.kind === "code") {
+    return <CodeWindow code={visual.code} filename={visual.filename} lang={visual.lang} />;
+  }
+  return <Screenshot src={visual.src} alt={visual.alt} />;
 }

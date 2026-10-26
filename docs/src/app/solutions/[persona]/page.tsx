@@ -4,9 +4,8 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../../components/site-header";
 import { SiteFooter } from "../../../components/site-footer";
-import { CodeWindow } from "../../../components/landing/code-window";
-import { CheckList, Screenshot, SolutionCards, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
-import { getSolution, solutions, type SolutionStep } from "../../../lib/solutions";
+import { CheckList, Screenshot, SolutionCards, StepVisual, primaryButton, secondaryButton, textLink } from "../../../components/landing/ui";
+import { getSolution, solutions } from "../../../lib/solutions";
 import { DEMO_URL } from "../../../lib/site-nav";
 
 export const dynamicParams = false;
@@ -39,22 +38,6 @@ export async function generateMetadata({ params }: { params: Promise<{ persona: 
       images: ["/screenshots/playground-editor.png"],
     },
   };
-}
-
-function StepVisual({ step }: { step: SolutionStep }) {
-  const visual = step.visual;
-  if (!visual) {
-    // Text-only steps show their details in the visual column instead.
-    return (
-      <div className="rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
-        <CheckList items={step.bullets} />
-      </div>
-    );
-  }
-  if (visual.kind === "code") {
-    return <CodeWindow code={visual.code} filename={visual.filename} lang={visual.lang} />;
-  }
-  return <Screenshot src={visual.src} alt={visual.alt} />;
 }
 
 export default async function SolutionPage({ params }: { params: Promise<{ persona: string }> }) {

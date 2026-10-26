@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const sources = {
   'site-nav.ts': read('../src/lib/site-nav.ts'),
   'solutions.ts': read('../src/lib/solutions.ts'),
+  'products.ts': read('../src/lib/products.ts'),
 };
 
 const slug = (heading) =>
@@ -44,4 +45,22 @@ test('every solutions page is linked from the site nav', () => {
   const slugs = [...sources['solutions.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => s);
   assert.equal(slugs.length, 4);
   for (const s of slugs) assert.match(sources['site-nav.ts'], new RegExp(`href: "/solutions/${s}"`));
+});
+
+test('every product page is linked from the site nav and the sitemap', () => {
+  const sitemap = read('../public/sitemap.xml');
+  const paths = [
+    ...[...sources['products.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/product/${s}`),
+  ];
+  assert.equal(paths.length, 4);
+  for (const path of paths) {
+    assert.match(sources['site-nav.ts'], new RegExp(`href: "${path}"`));
+    assert.ok(sitemap.includes(`<loc>https://supercheck.io${path}</loc>`), `${path} missing from sitemap`);
+  }
+});
+
+test('every product screenshot exists', () => {
+  for (const [, shot] of sources['products.ts'].matchAll(/shot\("([^"]+)"/g)) {
+    assert.ok(existsSync(new URL(`../public/screenshots/site/${shot}.webp`, import.meta.url)), `missing ${shot}.webp`);
+  }
 });
