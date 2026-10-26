@@ -18,7 +18,7 @@ import { healthCommand, locationsCommand } from '../commands/health.js'
 import { configCommand } from '../commands/config.js'
 import { initCommand } from '../commands/init.js'
 import { jobCommand } from '../commands/jobs.js'
-import { runCommand } from '../commands/runs.js'
+import { runCommand, dashboardCommand } from '../commands/runs.js'
 import { testCommand } from '../commands/tests.js'
 import { monitorCommand } from '../commands/monitors.js'
 import { varCommand } from '../commands/variables.js'
@@ -160,6 +160,7 @@ program.addCommand(configCommand)
 // Register commands — resources
 program.addCommand(jobCommand)
 program.addCommand(runCommand)
+program.addCommand(dashboardCommand)
 program.addCommand(testCommand)
 program.addCommand(monitorCommand)
 program.addCommand(varCommand)

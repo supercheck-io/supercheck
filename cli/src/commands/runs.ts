@@ -3,7 +3,7 @@ import { parseIntStrict } from '../utils/number.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { getOutputFormat, output, outputDetail, outputPagination } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -135,4 +135,25 @@ runCommand.command('wait <id>')
   .action(async (id: string, options: { timeout: string }) => {
     const timeout = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
     outputDetail(await waitForRun(createAuthenticatedClient(), id, timeout))
+  })
+
+runCommand
+  .command('delete <id>')
+  .description('Delete a run and its stored artifacts')
+  .option('--force', 'Skip confirmation')
+  .action(async (id: string, options: { force?: boolean }) => {
+    if (!options.force) {
+      const { confirmPrompt } = await import('../utils/prompt.js')
+      await confirmPrompt(`Delete run ${id}?`, { default: false })
+    }
+    await withSpinner('Deleting run', () => createAuthenticatedClient().delete(`/api/runs/${id}`))
+    logger.success(`Run ${id} deleted`)
+    outputMutation({ id, deleted: true })
+  })
+
+export const dashboardCommand = new Command('dashboard')
+  .description('Show project dashboard metrics (monitors, jobs, runs, queue)')
+  .action(async () => {
+    const { data } = await withSpinner('Fetching dashboard metrics', () => createAuthenticatedClient().get<Record<string, unknown>>('/api/dashboard'))
+    outputDetail(data)
   })
