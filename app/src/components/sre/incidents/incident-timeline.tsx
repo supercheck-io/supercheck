@@ -1,0 +1,138 @@
+"use client";
+
+import { useId, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { addSreIncidentUpdate, type SreIncidentTimelineItem } from "@/actions/sre-incident-lifecycle";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useSreIncidentTimeline } from "@/hooks/use-sre";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
+
+const STATE_LABELS: Record<string, string> = {
+  assigned: "Assignment changed",
+  commander_changed: "Commander changed",
+  acknowledged: "Acknowledged",
+  resolved: "Resolved",
+  incident_updated: "Incident updated",
+  manual_incident_created: "Incident created",
+  created_from_alert_history: "Incident created from alert",
+  created_from_background_alert_triage: "Incident created from alert",
+};
+
+function str(value: unknown, max = 600) {
+  return typeof value === "string" ? value.slice(0, max) : null;
+}
+
+export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">): {
+  title: string;
+  body: string | null;
+} {
+  const data = event.eventData ?? {};
+  if (event.eventType === "comment") return { title: "Update", body: str(data.text) };
+  if (event.eventType === "ai_finding") {
+    return { title: "AI finding", body: str(data.summary) ?? str(data.error) };
+  }
+  if (event.eventType === "state_change") {
+    const state = str(data.state, 80) ?? "";
+    return { title: STATE_LABELS[state] ?? "Status change", body: str(data.comment) ?? str(data.summary) };
+  }
+  return { title: event.eventType.replace(/_/g, " "), body: null };
+}
+
+function formatTime(value: Date | string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+export function IncidentTimeline({
+  incidentId,
+  canUpdate,
+}: {
+  incidentId: string;
+  canUpdate: boolean;
+}) {
+  const id = useId();
+  const { projectId } = useProjectContext();
+  const queryClient = useQueryClient();
+  const query = useSreIncidentTimeline(incidentId);
+  const [text, setText] = useState("");
+  const [pending, setPending] = useState(false);
+  const events = query.data?.success ? query.data.events : [];
+
+  const post = async () => {
+    if (pending || !text.trim()) return;
+    setPending(true);
+    const result = await addSreIncidentUpdate({ incidentId, text });
+    setPending(false);
+    if (!result.success) {
+      toast.error(result.error);
+      return;
+    }
+    setText("");
+    await queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId) });
+  };
+
+  return (
+    <Card data-testid="incident-timeline">
+      <CardHeader>
+        <CardTitle className="text-base">Timeline</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {canUpdate && (
+          <div className="space-y-2">
+            <Label htmlFor={id}>Post an update</Label>
+            <Textarea
+              id={id}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              maxLength={2000}
+              rows={2}
+              disabled={pending}
+              placeholder="What changed, what you tried, what is next."
+            />
+            <div className="flex justify-end">
+              <Button size="sm" onClick={post} disabled={pending || !text.trim()}>
+                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Post update
+              </Button>
+            </div>
+          </div>
+        )}
+        {query.isPending ? (
+          <p className="text-sm text-muted-foreground">Loading timeline...</p>
+        ) : query.data && !query.data.success ? (
+          <p role="alert" className="text-sm text-destructive">{query.data.error}</p>
+        ) : events.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
+        ) : (
+          <ol className="space-y-3 border-l pl-4">
+            {[...events].reverse().map((event) => {
+              const { title, body } = describeTimelineEvent(event);
+              return (
+                <li key={event.id} className="relative">
+                  <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-medium">{title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {event.actorName ?? (event.actorType === "agent" ? "AI" : "System")}
+                      {" · "}
+                      <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>
+                        {formatTime(event.createdAt)}
+                      </time>
+                    </span>
+                  </div>
+                  {body && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{body}</p>}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
