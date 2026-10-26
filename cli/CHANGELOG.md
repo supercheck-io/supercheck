@@ -23,7 +23,7 @@ Requirements, status pages, test priority and tags now work from the terminal an
 - **Behavior change:** status page `notifications` flags have no defaults; an omitted flag leaves the remote value unchanged instead of resetting it.
 - **Validation change:** `tags` on jobs (never applied) now fails validation.
 - `test create --file` and `test update --file` strip the local `@title`, `@priority` and `@tags` annotations before sending the script, as `deploy` does.
-- `deploy` checks before its first write that every referenced test and monitor exists in the project, that status page fields are within the server's limits, and that a new published page declares a component, so these mistakes no longer leave a half-created page.
+- `deploy` checks before its first write that every referenced test and monitor exists in the project (and, with `--delete`, is not about to be deleted), that status page fields are within the server's limits, and that a new published page declares a component, so these mistakes no longer leave a half-created page.
 - `doctor` reads `supercheck.config.ts` as text instead of running it, verifies credentials against the API, and reports a config that targets another API instead of a rejected token. `--fix` still runs `npx playwright install`, so use it only in repositories you trust.
 - `logout` says that it removes the key from this machine only; revoke the key under CLI Tokens to invalidate it.
 - JSON errors consistently include `code`, `retryable` and `nextActions`. A 401 exits with the authentication code on every command, and a 409 maps to `CONFLICT`. Missing local script files use configuration exit code 3; missing variables use API exit code 4 and `NOT_FOUND`. `whoami` with an expired or revoked key returns `TOKEN_INVALID`.

@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { closeSync, constants, fchmodSync, lstatSync, openSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, fchmodSync, ftruncateSync, lstatSync, openSync, writeFileSync } from 'node:fs'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
@@ -291,10 +291,12 @@ requirementCommand
       throw new CLIError(`${options.output} is a symbolic link; refusing to write through it.`, ExitCode.ConfigError)
     }
     try {
-      // O_NOFOLLOW closes the window between the symlink check and the open; fchmod tightens a file --force reuses.
-      const fd = openSync(options.output, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | (options.force ? constants.O_TRUNC : constants.O_EXCL), 0o600)
+      // O_NOFOLLOW closes the window between the symlink check and the open.
+      const fd = openSync(options.output, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | (options.force ? 0 : constants.O_EXCL), 0o600)
       try {
+        // Tighten before truncating, so a file we may not chmod keeps its contents.
         fchmodSync(fd, 0o600)
+        ftruncateSync(fd)
         writeFileSync(fd, csv)
       } finally {
         closeSync(fd)

@@ -234,6 +234,16 @@ describe('assertReferencesResolvable', () => {
     expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['t-live'] })], passthrough, remoteIds)).not.toThrow()
   })
 
+  it('rejects a reference to a resource that deploy --delete removes, including from unchanged definitions', () => {
+    const passthrough = { resolve: (_type: string, ref: string) => ref }
+    const remoteIds = { test: new Set(['t-old']), monitor: new Set(['m-old']) }
+    const deleting = (type: string, id: string) => ({ action: 'delete', type, id, name: id }) as never
+    expect(() => assertReferencesResolvable([change('statusPage', 'P', { components: [{ name: 'c', monitors: ['m-old'] }] }, 'no-change'), deleting('monitor', 'm-old')], passthrough, remoteIds))
+      .toThrow('statusPage/P: monitor "m-old" is not in the config, so deploy --delete would delete it')
+    expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['t-old'] }, 'update'), deleting('test', 't-old')], passthrough, remoteIds)).toThrow('requirement/R: test "t-old"')
+    expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['t-old'] }, 'no-change')], passthrough, remoteIds)).not.toThrow()
+  })
+
   it('rejects publishing a new page that declares no components', () => {
     expect(() => assertReferencesResolvable([change('statusPage', 'P', { status: 'published' })], { resolve })).toThrow('defines no components')
     const existing = (raw: Record<string, unknown>) => ({ ...(change('statusPage', 'P', { status: 'published' }, 'update') as object), remote: { raw } }) as never

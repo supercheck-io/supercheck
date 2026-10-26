@@ -93,6 +93,8 @@ export function assertReferencesResolvable(
   const createdTests = created('test')
   const createdMonitors = created('monitor')
   const createdIds = new Set(actionable.filter((c) => c.action === 'create' && c.id).map((c) => `${c.type}:${c.id}`))
+  // deploy --delete runs deletes last; a link to a resource it deletes would vanish with it.
+  const deletingIds = new Set(actionable.filter((c) => c.action === 'delete' && c.id).map((c) => `${c.type}:${c.id}`))
   const check = (owner: string, type: 'test' | 'monitor', ref: string) => {
     const pending = () => (type === 'test' ? createdTests.has(normalizeTestRef(ref)) : createdMonitors.has(ref))
     let id: string
@@ -103,6 +105,9 @@ export function assertReferencesResolvable(
     // A well-formed id can still be a typo or a deleted resource; the server would reject it after earlier writes.
     if (remoteIds && !remoteIds[type].has(id) && !createdIds.has(`${type}:${id}`) && !pending()) {
       throw new CLIError(`${owner}: ${type} "${ref}" does not exist in this project.`, ExitCode.ConfigError)
+    }
+    if (deletingIds.has(`${type}:${id}`)) {
+      throw new CLIError(`${owner}: ${type} "${ref}" is not in the config, so deploy --delete would delete it. Add it to the config or remove the reference.`, ExitCode.ConfigError)
     }
   }
   for (const change of actionable) {
@@ -389,7 +394,8 @@ export const deployCommand = new Command('deploy')
       }
 
       const remoteIdsOf = (type: string) => new Set(remoteResources.filter((r) => r.type === type).map((r) => r.id))
-      assertReferencesResolvable(actionable, state, { test: remoteIdsOf('test'), monitor: remoteIdsOf('monitor') })
+      // Unchanged definitions are checked too: their links can point at a resource this deploy deletes.
+      assertReferencesResolvable(changes, state, { test: remoteIdsOf('test'), monitor: remoteIdsOf('monitor') })
       await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id), { dryRun: options.dryRun === true })
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')

@@ -211,10 +211,11 @@ describe('requirement command', () => {
       expect(statSync(file).mode & 0o777).toBe(0o600)
 
       const shared = join(dir, 'shared.csv')
-      writeFileSync(shared, 'old', { mode: 0o644 })
+      writeFileSync(shared, 'an older and much longer export\n', { mode: 0o644 })
       resetCommandState(requirementCommand)
       await run('export', '--output', shared, '--force')
       expect(statSync(shared).mode & 0o777).toBe(0o600)
+      expect(readFileSync(shared, 'utf8')).toBe('id,title\n1,A\n')
 
       const target = join(dir, 'target.txt')
       const link = join(dir, 'link.csv')
