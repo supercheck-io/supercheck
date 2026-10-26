@@ -14,6 +14,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { SrePostmortem } from "@/db/schema";
 import { z } from "zod";
 
 import {
@@ -62,6 +63,10 @@ import {
   getDefaultAssigneeId,
 } from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
+import { findSimilarIncidents } from "@/lib/sre/similar-incidents";
+import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
+import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incidents" }) as {
@@ -203,6 +208,18 @@ export type SreIncidentChatHistory = {
   }>;
 };
 
+export type SreSimilarIncidentListItem = {
+  id: string;
+  incidentNumber: number;
+  title: string;
+  severity: SreSeverity;
+  serviceName: string | null;
+  resolvedAt: Date | null;
+  rootCauseSummary: string | null;
+  resolutionSummary: string | null;
+  matchedOn: Array<"service" | "alert" | "title">;
+};
+
 export type SreIncidentDetail = {
   publicIncident?: { id: string; statusPageId: string } | null;
   incident: SreIncidentListItem & {
@@ -213,7 +230,9 @@ export type SreIncidentDetail = {
     acknowledgedByName: string | null;
     commanderUserId: string | null;
     commanderName: string | null;
+    postmortem: SrePostmortem | null;
   };
+  similarIncidents: SreSimilarIncidentListItem[];
   linkedAlerts: Array<{
     id: string;
     title: string;
@@ -240,6 +259,17 @@ export type SreIncidentDetail = {
     summary: string | null;
     completedAt: Date | null;
     createdAt: Date;
+    /** Null when the run predates structured output or the model output failed validation. */
+    structured: {
+      outcome: "identified" | "inconclusive";
+      confidence: number;
+      conclusion: string;
+      nextChecks: string[];
+      topEvidenceIds: string[];
+    } | null;
+    hypotheses: SreInvestigationHypothesis[];
+    steps: SreInvestigationStep[];
+    myFeedback: MyFeedback[];
   } | null;
   latestReportSnapshot: {
     id: string;
@@ -304,6 +334,30 @@ export type SreIncidentAnalytics = {
     count: number;
   }>;
 };
+
+function readStructuredSnapshot(
+  snapshot: Record<string, unknown> | null,
+): NonNullable<SreIncidentDetail["latestInvestigation"]>["structured"] {
+  const value = snapshot?.structured;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (
+    (record.outcome !== "identified" && record.outcome !== "inconclusive") ||
+    typeof record.confidence !== "number" ||
+    typeof record.conclusion !== "string"
+  ) {
+    return null;
+  }
+  const strings = (input: unknown) =>
+    Array.isArray(input) ? input.filter((item): item is string => typeof item === "string") : [];
+  return {
+    outcome: record.outcome,
+    confidence: record.confidence,
+    conclusion: record.conclusion,
+    nextChecks: strings(record.nextChecks),
+    topEvidenceIds: strings(record.topEvidenceIds),
+  };
+}
 
 function titleCase(value: string) {
   return value
@@ -815,6 +869,7 @@ export async function getSreIncidentDetails(
         resolvedAt: sreIncidents.resolvedAt,
         rootCauseSummary: sreIncidents.rootCauseSummary,
         confidenceScore: sreIncidents.confidenceScore,
+        postmortem: sreIncidents.postmortem,
         alertCount: sql<number>`count(${sreIncidentAlerts.alertEventId})::int`,
       })
       .from(sreIncidents)
@@ -896,6 +951,8 @@ export async function getSreIncidentDetails(
         status: sreInvestigationRuns.status,
         rootCauseHypothesis: sreInvestigationRuns.rootCauseHypothesis,
         agentStateSnapshot: sreInvestigationRuns.agentStateSnapshot,
+        hypotheses: sreInvestigationRuns.hypotheses,
+        steps: sreInvestigationRuns.steps,
         completedAt: sreInvestigationRuns.completedAt,
         createdAt: sreInvestigationRuns.createdAt,
       })
@@ -910,6 +967,14 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
+
+    const [myFeedback, similarIncidents] = await Promise.all([
+      latestInvestigation
+        ? listMyFeedbackForRun({ userId, organizationId, projectId: project.id }, latestInvestigation.id)
+        : Promise.resolve([] as MyFeedback[]),
+      // Past-incident context must never take the page down.
+      findSimilarIncidents({ organizationId, projectId: project.id, incidentId }).catch(() => []),
+    ]);
 
     const latestReportSnapshot = latestInvestigation
       ? await db.query.sreInvestigationReports.findFirst({
@@ -1093,8 +1158,13 @@ export async function getSreIncidentDetails(
                     : latestInvestigation.rootCauseHypothesis,
               completedAt: latestInvestigation.completedAt,
               createdAt: latestInvestigation.createdAt,
+              structured: readStructuredSnapshot(latestInvestigation.agentStateSnapshot),
+              hypotheses: readStoredHypotheses(latestInvestigation.hypotheses),
+              steps: readStoredSteps(latestInvestigation.steps),
+              myFeedback,
             }
           : null,
+        similarIncidents: similarIncidents.map(({ score: _score, ...rest }) => rest) as SreSimilarIncidentListItem[],
         latestReportSnapshot: latestReportSnapshot ?? null,
         myReportFeedback: myReportFeedback ?? null,
         evidence,

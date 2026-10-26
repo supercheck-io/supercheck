@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Megaphone, Network } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { SimilarIncidentsCard } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,11 +82,13 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
           <Button asChild variant="ghost" size="sm" className="mt-3 h-7 px-0">
             <Link href={`/copilot/evidence-graph?incident=${incident.id}`}>
               <Network className="h-4 w-4" />
-              View map
+              Investigation Map
             </Link>
           </Button>
         </CardContent>
       </Card>
+
+      <SimilarIncidentsCard incidents={detail.similarIncidents} />
 
       <Card>
         <CardHeader><CardTitle className="text-sm">Status page</CardTitle></CardHeader>

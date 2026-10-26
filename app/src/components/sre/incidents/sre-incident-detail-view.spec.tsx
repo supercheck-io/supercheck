@@ -32,6 +32,14 @@ jest.mock("@/components/sre/incidents/incident-timeline", () => ({
   IncidentTimeline: () => <div>Mock timeline</div>,
 }));
 
+jest.mock("@/components/sre/incidents/investigation-feedback", () => ({
+  InvestigationFeedback: ({ label }: { label: string }) => <div>Feedback: {label}</div>,
+}));
+
+jest.mock("@/components/sre/incidents/postmortem-card", () => ({
+  PostmortemCard: ({ canEdit }: { canEdit: boolean }) => <div data-can-edit={canEdit}>Mock post-mortem</div>,
+}));
+
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
   SreInvestigationPanel: ({ hasPrimaryService }: { hasPrimaryService: boolean }) => <div data-has-service={hasPrimaryService}>Mock AI investigation panel</div>,
 }));
@@ -55,6 +63,7 @@ function detailFixture(): SreIncidentDetail {
       acknowledgedByName: null,
       commanderUserId: null,
       commanderName: null,
+      postmortem: null,
       mitigatedAt: null,
       resolutionSummary: null,
       alertCount: 2,
@@ -69,6 +78,7 @@ function detailFixture(): SreIncidentDetail {
       rootCauseSummary: "Latency correlates with monitor failures.",
       confidenceScore: "0.7000",
     },
+    similarIncidents: [],
     linkedAlerts: [
       { id: "alert-1", title: "Checkout monitor down", severity: "sev2", status: "firing", role: "trigger", firedAt: now },
     ],
@@ -90,6 +100,10 @@ function detailFixture(): SreIncidentDetail {
       summary: "Checkout latency is correlated with dependency failures.",
       completedAt: now,
       createdAt: now,
+      structured: null,
+      hypotheses: [],
+      steps: [],
+      myFeedback: [],
     },
     latestReportSnapshot: null,
     myReportFeedback: null,
@@ -216,24 +230,58 @@ describe("SreIncidentDetailView", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
   });
-  it("renders simplified incident tabs and default investigation panel", () => {
+  it("renders the investigation controls and evidence section without tabs", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 
-    expect(screen.getByRole("tab", { name: "Investigation" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: "Evidence & brief" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "View map" })[0]).toHaveAttribute(
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.getByRole("heading", { name: "Evidence & brief" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Investigation Map" })[0]).toHaveAttribute(
       "href",
       `/copilot/evidence-graph?incident=${detailFixture().incident.id}`,
     );
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ask Copilot" })).toHaveAttribute(
+      "href",
+      `/copilot?incident=${detailFixture().incident.id}`,
+    );
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Investigation workspace"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("similar-incidents")).toHaveTextContent("No similar resolved incidents");
+  });
+
+  it("shows hypotheses, run feedback and a collapsed step trace for a structured investigation", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = {
+      ...detail.latestInvestigation!,
+      structured: {
+        outcome: "identified",
+        confidence: 0.82,
+        conclusion: "Deploy 42 caused it.",
+        nextChecks: [],
+        topEvidenceIds: ["ev-monitor-timeout"],
+      },
+      hypotheses: [
+        { key: "h1", title: "Deploy 42 regression", state: "validated", rationale: "Timing matches", evidenceIds: ["ev-monitor-timeout"] },
+        { key: "h2", title: "Database saturation", state: "ruled_out", rationale: "", evidenceIds: [] },
+      ],
+      steps: [{ index: 0, tool: "listNativeEvidence", args: "limit=10", status: "ok", resultCount: 1, durationMs: 120 }],
+    };
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByTestId("hypothesis-h1")).toHaveTextContent("Validated");
+    expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
+    expect(screen.getByText("Feedback: this investigation")).toBeInTheDocument();
+    expect(screen.getByTestId("investigation-step-trace")).not.toHaveAttribute("open");
+    expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
+  });
+
+  it("offers the post-mortem only once the incident is resolved", () => {
+    const open = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    expect(screen.queryByText("Mock post-mortem")).not.toBeInTheDocument();
+    open.unmount();
+    const detail = detailFixture();
+    detail.incident.status = "resolved";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByText("Mock post-mortem")).toHaveAttribute("data-can-edit", "true");
   });
 
   it("leads with the AI summary, then the timeline, with ownership actions in the header", () => {

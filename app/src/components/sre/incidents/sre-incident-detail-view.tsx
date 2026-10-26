@@ -15,6 +15,10 @@ import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-b
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
 import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
+import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
+import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
+import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
+import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
 import { IncidentSidebar } from "@/components/sre/incidents/incident-sidebar";
@@ -36,7 +40,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 
 type SreIncidentDetailViewProps = {
@@ -238,7 +241,7 @@ export function SreIncidentDetailView({
               <Button asChild variant="outline" size="sm">
                 <Link href={`/copilot?incident=${incident.id}`}>
                   <Bot className="h-4 w-4" />
-                  Open Copilot
+                  Ask Copilot
                 </Link>
               </Button>
             )}
@@ -269,20 +272,34 @@ export function SreIncidentDetailView({
             rootCauseSummary={incident.rootCauseSummary}
             confidenceScore={incident.confidenceScore}
             investigationStatus={detail.latestInvestigation?.status ?? null}
-          />
-          <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
-
-          <Tabs
-            id="incident-investigation"
-            defaultValue={initialTab === "brief" ? "evidence" : initialTab}
-            className="flex scroll-mt-4 flex-col gap-4"
+            investigation={detail.latestInvestigation}
+            evidence={detail.evidence}
+            incidentId={incident.id}
           >
-            <TabsList className="justify-start self-start">
-              <TabsTrigger value="investigation">Investigation</TabsTrigger>
-              <TabsTrigger value="evidence">Evidence &amp; brief</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="investigation" className="overflow-x-hidden">
+            {detail.latestInvestigation && (
+              <>
+                <InvestigationHypotheses
+                  incidentId={incident.id}
+                  investigation={detail.latestInvestigation}
+                  evidence={detail.evidence}
+                  canGiveFeedback={permissions.canUpdate}
+                />
+                {permissions.canUpdate && detail.latestInvestigation.status === "completed" && (
+                  <InvestigationFeedback
+                    key={detail.latestInvestigation.id}
+                    incidentId={incident.id}
+                    investigationRunId={detail.latestInvestigation.id}
+                    initial={detail.latestInvestigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
+                    label="this investigation"
+                  />
+                )}
+                <InvestigationStepTrace
+                  steps={detail.latestInvestigation.steps}
+                  running={detail.latestInvestigation.status === "running"}
+                />
+              </>
+            )}
+            <div id="incident-investigation" className="scroll-mt-4">
               <SreInvestigationPanel
                 key={detail.latestInvestigation?.id ?? "no-investigation"}
                 incidentId={incident.id}
@@ -302,36 +319,51 @@ export function SreIncidentDetailView({
                 canUseLiveConnectors={permissions.canUseLiveConnectors}
                 investigationEnabled={detail.capabilities.investigationEnabled}
               />
-            </TabsContent>
+            </div>
+          </IncidentAiSummaryCard>
+          <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
 
-            <TabsContent value="evidence" className="space-y-4 overflow-x-hidden">
-              <details className="rounded-lg border" open={initialTab === "brief"}>
-                <summary className="cursor-pointer rounded-lg px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  Evidence brief · Summarize or export evidence
-                </summary>
-                <div className="h-[min(40rem,75svh)] min-h-96 p-3">
-                  <SreIncidentBriefPanel
-                    key={`${incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
-                    incidentId={incident.id}
-                    incidentNumber={incident.incidentNumber}
-                    incidentTitle={incident.title}
-                    initialSummary={summary}
-                    initialProvider={provider}
-                    initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
-                    hasBrief={Boolean(detail.latestBrief)}
-                    canGenerate={permissions.canInvestigate}
-                    totalEvidenceCount={detail.evidence.length}
-                    evidenceCount={
-                      typeof detail.latestBrief?.agentStateSnapshot?.evidenceCount === "number"
-                        ? detail.latestBrief.agentStateSnapshot.evidenceCount
-                        : null
-                    }
-                  />
-                </div>
-              </details>
-              <NativeEvidenceCard detail={detail} />
-            </TabsContent>
-          </Tabs>
+          {!open && (
+            <PostmortemCard
+              key={incident.postmortem?.updatedAt ?? "none"}
+              incidentId={incident.id}
+              incidentNumber={incident.incidentNumber}
+              title={incident.title}
+              postmortem={incident.postmortem}
+              canEdit={permissions.canUpdate}
+            />
+          )}
+
+          <section aria-labelledby="incident-evidence-title" className="space-y-4">
+            <h2 id="incident-evidence-title" className="text-base font-semibold">
+              Evidence &amp; brief
+            </h2>
+            <details className="rounded-lg border" open={initialTab === "brief"}>
+              <summary className="cursor-pointer rounded-lg px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Evidence brief · Summarize or export evidence
+              </summary>
+              <div className="h-[min(40rem,75svh)] min-h-96 p-3">
+                <SreIncidentBriefPanel
+                  key={`${incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
+                  incidentId={incident.id}
+                  incidentNumber={incident.incidentNumber}
+                  incidentTitle={incident.title}
+                  initialSummary={summary}
+                  initialProvider={provider}
+                  initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
+                  hasBrief={Boolean(detail.latestBrief)}
+                  canGenerate={permissions.canInvestigate}
+                  totalEvidenceCount={detail.evidence.length}
+                  evidenceCount={
+                    typeof detail.latestBrief?.agentStateSnapshot?.evidenceCount === "number"
+                      ? detail.latestBrief.agentStateSnapshot.evidenceCount
+                      : null
+                  }
+                />
+              </div>
+            </details>
+            <NativeEvidenceCard detail={detail} />
+          </section>
         </div>
         <IncidentSidebar detail={detail} />
       </div>

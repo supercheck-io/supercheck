@@ -80,9 +80,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       const promotedIncidentId = page.url().split("/").pop();
       expect(promotedIncidentId).toMatch(/^[0-9a-f-]{36}$/i);
       await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
-      await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,
         })
@@ -101,10 +98,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       expect(briefDownload.suggestedFilename()).toMatch(
         /^incident-\d+-.+-brief\.md$/,
       );
-
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       const evidenceRows = page.locator('tr[id^="sre-evidence-"]');
       await expect(evidenceRows.first()).toBeVisible();
       const evidenceId = (
@@ -136,9 +129,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
           `/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}$`,
         ),
       );
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
       await expect(
@@ -232,22 +222,15 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: incidentTitle, exact: true }),
       ).toBeVisible();
 
-      const tabs = page.getByRole("tab");
-      await expect(tabs).toHaveCount(2);
+      await expect(page.getByRole("tab")).toHaveCount(0);
       await expect(
-        page.getByRole("tab", { name: "Investigation", exact: true }),
+        page.getByRole("heading", { name: "Evidence & brief", exact: true }),
       ).toBeVisible();
-      await expect(
-        page.getByRole("tab", { name: "Evidence & brief", exact: true }),
-      ).toBeVisible();
+      await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
       await expect(page.getByLabel("Include live sources")).toBeDisabled();
       await expect(
         page.getByText("Link a service to use live sources.", { exact: false }),
       ).toBeVisible();
-
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,
@@ -265,9 +248,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
 
       await page.reload();
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,

@@ -253,7 +253,7 @@ export function SreAiConsole({
               <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
               <p className="truncate text-sm text-muted-foreground">
                 {incidentId
-                  ? "Incident evidence and connected sources."
+                  ? "Scoped to this incident. Answers cite saved evidence."
                   : "Ask about your services and connected sources."}
               </p>
             </div>

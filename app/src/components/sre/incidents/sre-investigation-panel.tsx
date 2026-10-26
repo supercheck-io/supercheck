@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { SreMessageContent } from "@/components/sre/sre-message-content";
 import {
   Select,
   SelectContent,
@@ -122,7 +122,8 @@ export function SreInvestigationPanel({
     rejectedHypothesisValues.length > 10 ||
     rejectedHypothesisValues.some((value) => value.length > 300);
 
-  const runInvestigation = () => {
+  const [guidance, setGuidance] = useState("");
+  const runInvestigation = (note?: string) => {
     if (!canInvestigate || !investigationEnabled || investigationRunning)
       return;
     setInvestigationError(null);
@@ -134,7 +135,11 @@ export function SreInvestigationPanel({
             "content-type": "application/json",
             ...(projectId ? { "x-project-id": projectId } : {}),
           },
-          body: JSON.stringify({ incidentId, useLiveConnectors: liveConnectorsEnabled }),
+          body: JSON.stringify({
+            incidentId,
+            useLiveConnectors: liveConnectorsEnabled,
+            ...(note ? { guidance: note } : {}),
+          }),
         });
         const body = (await response.json().catch(() => null)) as {
           error?: string;
@@ -169,6 +174,7 @@ export function SreInvestigationPanel({
         setInvestigationError(message);
         toast.error(message);
       } finally {
+        if (note) setGuidance("");
         await Promise.allSettled([
           queryClient.invalidateQueries({
             queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
@@ -238,20 +244,20 @@ export function SreInvestigationPanel({
   };
 
   return (
-    <Card className="overflow-hidden">
+    <div className="overflow-hidden rounded-lg border" data-testid="investigation-controls">
       <CardHeader className="border-b px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <CardTitle className="text-lg">Investigation</CardTitle>
+            <CardTitle className="text-base">Investigation</CardTitle>
             <CardDescription>
-              Review the findings, then decide what to check or fix. AI never
-              changes your systems.
+              AI reads your evidence and connected sources. It never changes
+              your systems.
             </CardDescription>
           </div>
           {canInvestigate ? (
             <Button
               className="w-full sm:w-auto"
-              onClick={runInvestigation}
+              onClick={() => runInvestigation()}
               disabled={investigationRunning || !investigationEnabled}
             >
               {investigationRunning ? (
@@ -340,6 +346,38 @@ export function SreInvestigationPanel({
           </p>
         )}
 
+        {canInvestigate && investigationEnabled && latestInvestigation && latestInvestigation.status !== "running" && (
+          <form
+            className="space-y-2 rounded-lg border bg-muted/10 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (guidance.trim()) runInvestigation(guidance.trim());
+            }}
+          >
+            <Label htmlFor="rerun-guidance">Re-run with my note</Label>
+            <p className="text-sm text-muted-foreground">
+              Tell the investigation what to look at or what it got wrong. The
+              note is treated as a hint, not as evidence.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="rerun-guidance"
+                value={guidance}
+                maxLength={500}
+                onChange={(event) => setGuidance(event.target.value)}
+                placeholder="For example: check the CDN and DNS changes"
+              />
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={investigationRunning || !guidance.trim()}
+              >
+                Re-run with my note
+              </Button>
+            </div>
+          </form>
+        )}
+
         {!latestInvestigation && (
           <div className="rounded-lg border border-dashed p-6">
             <p className="font-medium">Start with the evidence</p>
@@ -355,46 +393,6 @@ export function SreInvestigationPanel({
                 </Link>
               </Button>
             )}
-          </div>
-        )}
-
-        {latestInvestigation && (
-          <div className="overflow-hidden rounded-lg border">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">Latest result</p>
-                <p className="text-xs text-muted-foreground">
-                  {latestInvestigation.completedAt
-                    ? `${latestInvestigation.status === "completed" ? "Completed" : "Ended"} ${new Intl.DateTimeFormat(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }).format(new Date(latestInvestigation.completedAt))}`
-                    : "Result is not complete"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Check the cited evidence before applying a fix. You confirm
-                  recovery and resolve the incident.
-                </p>
-              </div>
-              <Badge variant="outline" className="capitalize">
-                {latestInvestigation.status.replace(/_/g, " ")}
-              </Badge>
-            </div>
-            <div className="break-words px-4 py-4 text-sm leading-6">
-              {["failed", "aborted", "timed_out"].includes(latestInvestigation.status) ? (
-                <div role="alert" className="space-y-2 text-destructive">
-                  <p className="font-medium">Investigation did not complete</p>
-                  <p>{latestInvestigation.summary || "No completed report is available. Review the saved evidence before trying again."}</p>
-                </div>
-              ) : latestInvestigation.status === "running" ? (
-                <p role="status" className="text-muted-foreground">The report will appear when this run finishes.</p>
-              ) : <SreMessageContent
-                content={
-                  latestInvestigation.summary ??
-                  "No investigation summary was returned."
-                }
-              />}
-            </div>
           </div>
         )}
 
@@ -559,6 +557,6 @@ export function SreInvestigationPanel({
           </details>
         )}
       </CardContent>
-    </Card>
+    </div>
   );
 }
