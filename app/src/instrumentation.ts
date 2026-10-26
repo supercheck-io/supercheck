@@ -10,6 +10,13 @@
 export async function register() {
   // Only run on server-side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Cloud-only error monitoring; no-op without SENTRY_DSN or when SELF_HOSTED is true.
+    try {
+      const { initSentry } = await import('@/lib/sentry');
+      initSentry();
+    } catch (error) {
+      console.error('[Instrumentation] Sentry init failed:', error);
+    }
     console.log('[Instrumentation] Starting - Loading background services...');
 
     const { initializeMcpOAuthCleanup } = await import('@/lib/mcp/cleanup');
@@ -132,4 +139,15 @@ export async function register() {
 
     console.log('[Instrumentation] ✨ Background services startup complete');
   }
+}
+
+// Forwards unhandled request errors to Sentry; the SDK is only loaded when initialized.
+export async function onRequestError(
+  ...args: Parameters<typeof import('@sentry/nextjs').captureRequestError>
+) {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  const { getSentryOptions } = await import('@/lib/sentry');
+  if (!getSentryOptions()) return;
+  const Sentry = await import('@sentry/nextjs');
+  Sentry.captureRequestError(...args);
 }

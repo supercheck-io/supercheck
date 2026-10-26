@@ -194,6 +194,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
 | `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
 | `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | unset | Supercheck Cloud only (server-side error reports). Ignored when `SELF_HOSTED=true`: self-hosted installs never contact Sentry |
 
 </Accordion>
 <Accordion title="Super Admin access" id="super-admin-access">

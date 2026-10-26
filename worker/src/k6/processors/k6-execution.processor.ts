@@ -35,6 +35,7 @@ import { K6_QUEUE } from '../k6.constants';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
+import { captureJobFailure } from '../../common/sentry';
 
 type K6Task = K6ExecutionTask;
 
@@ -917,6 +918,7 @@ export class K6ExecutionProcessor
 
   @OnWorkerEvent('failed')
   onFailed(job: Job | undefined, error: Error) {
+    captureJobFailure(job, error);
     const jobId = job?.id || 'unknown';
     this.logger.error(
       `[Event:failed] k6 job ${jobId} failed with error: ${error.message}`,

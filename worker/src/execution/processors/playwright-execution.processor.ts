@@ -34,6 +34,7 @@ import { getBillableMs } from '../../common/billable-ms';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
+import { captureJobFailure } from '../../common/sentry';
 
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
@@ -808,6 +809,7 @@ export class PlaywrightExecutionProcessor
 
   @OnWorkerEvent('failed')
   onFailed(job: Job | undefined, error: Error) {
+    captureJobFailure(job, error);
     const jobId = job?.id || 'unknown';
     this.logger.error(
       `[Event:failed] Job ${jobId} failed with error: ${error.message}`,
