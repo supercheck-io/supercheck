@@ -3,7 +3,7 @@
 Install on an Ubuntu 22.04+ or Debian 12+ server with sudo access and `curl` (at least 2 vCPU, 4 GB RAM, and 15 GB free disk):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.4.0
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.4.0
 ```
 
 This installs **1.4.0**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.

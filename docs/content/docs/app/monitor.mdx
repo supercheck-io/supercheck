@@ -314,6 +314,8 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 | **Maintenance** | Under maintenance | Monitor temporarily disabled |
 | **Error** | Configuration or system error | Fix monitor configuration |
 
+A check cycle is skipped, not recorded as Down, when none of the monitor's locations has a live worker (for example during a deployment rollout that restarts workers). No result is stored and the failure count is unchanged. Because a location that permanently has no workers never turns Down this way, alert on worker health in your infrastructure monitoring to catch sustained worker absence.
+
 ## Check Intervals
 
 | Interval | Best For | Notes |

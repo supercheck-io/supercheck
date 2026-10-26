@@ -306,6 +306,11 @@ export async function applyStatusPage(client: ApiClient, opts: ApplyStatusPageOp
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (opts.action === 'create' && id) {
+        // Only a page this run created is removed, so a failed follow-up step leaves no orphan draft.
+        let cleanupError: unknown
+        const removed = await client.delete(`/api/status-pages/${encodeURIComponent(id)}`).then(() => true, (e: unknown) => { cleanupError = e; return false })
+        if (removed) throw error
+        logger.warn(`Could not remove the draft status page ${id} after the failure: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`)
         throw new CLIError(`Status page "${opts.name}" was created (${id}) but ${label} failed: ${message}`, error instanceof CLIError ? error.exitCode : ExitCode.ApiError, { id })
       }
       throw error

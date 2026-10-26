@@ -251,6 +251,22 @@ describe("trial workload admission", () => {
     mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 150_000 });
     await expect(assertExecutionWorkload("org", five, "k6", [canonical])).resolves.toBeUndefined();
   });
+  it("marks a shortfall caused only by in-flight reservations, not a genuine one", async () => {
+    mockFresh({}, { pw: trial.playwrightBudgetMs });
+    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402, inFlightOnly: true });
+    mockFresh({ playwrightUsedMs: trial.playwrightBudgetMs }, { pw: 1000 });
+    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402, inFlightOnly: false });
+    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
+    const five = { ...policy, k6MaxVus: 5 };
+    mockFresh({}, { k6: trial.k6BudgetVuMs - 149_999 });
+    await expect(assertExecutionWorkload("org", five, "k6", [canonical])).rejects.toMatchObject({ inFlightOnly: true });
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 149_999 });
+    await expect(assertExecutionWorkload("org", five, "k6", [canonical])).rejects.toMatchObject({ inFlightOnly: false });
+  });
+  it("treats an expired entitlement as having no remaining trial allowance", async () => {
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue({ ...trial, expiresAt: new Date(Date.now() - 1) } as never);
+    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402 });
+  });
   it("subtracts in-flight reservations from a fresh read, ignoring the cached policy", async () => {
     // The cached policy still shows the whole allowance; the worker would refuse this run.
     const stale = { ...policy, k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1_800_000 };

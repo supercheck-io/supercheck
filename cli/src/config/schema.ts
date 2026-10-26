@@ -23,7 +23,7 @@ export const notificationProviderDefinitionSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1),
   type: z.enum(['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
 }).strict()
 
 // --- Alert Config ---
@@ -69,7 +69,7 @@ export const monitorDefinitionSchema = z.object({
   target: z.string().optional(),
   frequencyMinutes: z.number().int().positive().optional(),
   enabled: z.boolean().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   alertConfig: alertConfigSchema.optional(),
   tags: z.array(z.string()).optional(),
 }).strict()
@@ -87,12 +87,12 @@ export const jobDefinitionSchema = z.object({
   status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
 }, {
-  errorMap: (issue, ctx) => {
+  error: (issue) => {
     if (issue.code === 'unrecognized_keys' && issue.keys.includes('tags')) {
-      const name = (ctx.data as { name?: unknown } | undefined)?.name
-      return { message: `Jobs do not support tags; remove \`tags\` from job "${typeof name === 'string' ? name : '?'}"` }
+      const name = (issue.input as { name?: unknown } | undefined)?.name
+      return `Jobs do not support tags; remove \`tags\` from job "${typeof name === 'string' ? name : '?'}"`
     }
-    return { message: ctx.defaultError }
+    return undefined
   },
 }).strict()
 

@@ -549,5 +549,84 @@ echo fixture > "$file"
         self.assertEqual((self.root / 'backup.sql').stat().st_mode & 0o777, 0o600)
 
 
+    def test_prompts_need_only_a_readable_tty_not_a_tty_stdout(self):
+        out = self.run_shell(r'''ASSUME_YES=false; IS_TTY=false
+tty_readable() { return 0; }
+detect_can_prompt; echo "A=$CAN_PROMPT"
+tty_readable() { return 1; }
+detect_can_prompt; echo "B=$CAN_PROMPT"
+ASSUME_YES=true; tty_readable() { return 0; }
+detect_can_prompt; echo "C=$CAN_PROMPT"
+''')
+        self.assertIn('A=true', out)
+        self.assertIn('B=false', out)
+        self.assertIn('C=false', out)
+
+    def test_no_terminal_error_suggests_flags(self):
+        source = (DEPLOY / 'install.sh').read_text()
+        self.assertIn('Pass --local, or --domain <host> --email <address>, or use --yes', source)
+
+    def test_disk_check_uses_docker_root_dir(self):
+        out = self.run_shell(r'''mkdir -p "$TEST_ROOT/docker"
+docker() { [[ "$*" == "info -f {{.DockerRootDir}}" ]] && echo "$TEST_ROOT/docker/lib/missing" || true; }
+echo "P=$(docker_data_path)"
+docker() { return 1; }
+echo "F=$(docker_data_path)"
+''')
+        self.assertIn('P=%s/docker\n' % self.root, out)
+        self.assertIn('F=/\n', out)
+
+    def test_preflight_measures_the_docker_data_path(self):
+        self.run_shell(r'''uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+os_field() { [[ "$1" == ID ]] && echo ubuntu || echo 24.04; }
+awk() { if [[ "$*" == *MemTotal* ]]; then echo 8000000; else cat >/dev/null; echo 20; fi; }
+nproc() { echo 2; }
+docker_data_path() { echo /srv/dockerdata; }
+df() { echo "$*" > "$TEST_ROOT/df-args"; echo x; }
+curl() { :; }
+docker() { :; }
+preflight
+''')
+        self.assertEqual((self.root / 'df-args').read_text().strip(), '-Pk /srv/dockerdata')
+
+    def test_dns_mismatch_warns_and_matching_does_not(self):
+        out = self.run_shell(r'''resolve_a() { echo 203.0.113.9; }
+public_ip() { echo 198.51.100.1; }
+check_dns_target app.example.com
+resolve_a() { echo 198.51.100.1; }
+check_dns_target app.example.com
+public_ip() { return 1; }
+check_dns_target app.example.com
+''')
+        self.assertEqual(out.count('Let\'s Encrypt will fail'), 1)
+        self.assertIn('203.0.113.9', out)
+
+    def test_dns_check_survives_a_domain_without_an_a_record(self):
+        out = self.run_shell(r'''set -Eeuo pipefail
+getent() { return 2; }
+public_ip() { echo 198.51.100.1; }
+check_dns_target v6only.example.com
+echo survived
+''')
+        self.assertIn('survived', out)
+
+    def test_ufw_warns_only_when_active_and_web_ports_blocked(self):
+        blocked = 'Status: active\n22/tcp ALLOW Anywhere\n'
+        allowed = 'Status: active\n80/tcp ALLOW Anywhere\n443/tcp ALLOW Anywhere\n'
+        body = "ufw() {{ printf '{}'; }}\ncheck_ufw\n"
+        self.assertIn('ufw', self.run_shell(body.format(blocked)))
+        self.assertNotIn('ufw', self.run_shell(body.format(allowed)))
+        self.assertNotIn('ufw', self.run_shell("ufw() { echo 'Status: inactive'; }\ncheck_ufw\n"))
+
+    def test_public_https_probe_warns_instead_of_failing(self):
+        out = self.run_shell(r'''curl() { return 22; }
+check_public_https app.example.com
+''')
+        self.assertIn('HTTPS', out)
+        self.run_shell(r'''curl() { return 0; }
+check_public_https app.example.com
+''')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -169,8 +169,26 @@ describe('applyStatusPage', () => {
     expect(normalizeLocalStatusPage({ supportUrl: 'mailto:a@b.co' }).supportUrl).toBe('mailto:a@b.co')
   })
 
-  it('reports the created id when a later step fails', async () => {
-    const { client } = fakeClient({ failOn: (call) => (call.path.endsWith('/components') ? new ApiRequestError('boom', 500) : undefined) })
+  const failSettings = (call: Call) => (call.method === 'PUT' ? new ApiRequestError('custom domain unavailable', 400) : undefined)
+
+  it('deletes the draft it just created when a later step fails, and surfaces the original error', async () => {
+    const { client, calls } = fakeClient({ failOn: failSettings })
+    const definition = normalizeLocalStatusPage({ name: 'Acme', timezone: 'UTC' })
+    const error = await applyStatusPage(client, { action: 'create', name: 'Acme', definition, deleteMissing: false, resolveMonitor }).catch((e) => e)
+    expect(error.message).toBe('custom domain unavailable')
+    expect(calls.at(-1)).toEqual({ method: 'DELETE', path: `/api/status-pages/${PAGE}`, body: undefined })
+  })
+
+  it('never deletes a page that existed before the run', async () => {
+    const { client, calls } = fakeClient({ failOn: failSettings })
+    const remote = statusPageToDefinition({ id: PAGE, name: 'Acme', status: 'draft', timezone: 'UTC' })
+    await expect(applyStatusPage(client, { action: 'update', id: PAGE, name: 'Acme', definition: { name: 'Acme', timezone: 'Europe/Paris' }, remote, deleteMissing: false, resolveMonitor }))
+      .rejects.toThrow('custom domain unavailable')
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+  })
+
+  it('reports the created id when a later step fails and the draft cannot be removed', async () => {
+    const { client } = fakeClient({ failOn: (call) => (call.method === 'DELETE' ? new ApiRequestError('nope', 500) : call.path.endsWith('/components') ? new ApiRequestError('boom', 500) : undefined) })
     const definition = normalizeLocalStatusPage({ name: 'Acme', components: [{ name: 'Web' }] })
     const error = await applyStatusPage(client, { action: 'create', name: 'Acme', definition, deleteMissing: false, resolveMonitor }).catch((e) => e)
     expect(error.message).toContain(`created (${PAGE})`)
