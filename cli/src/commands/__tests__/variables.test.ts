@@ -1,6 +1,6 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import { Readable } from 'node:stream'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -339,7 +339,40 @@ describe('var command', () => {
 
       expect(mockGetText).toHaveBeenCalledWith('/api/projects/proj-1/variables/var-3/download')
       expect(await readFile(out, 'utf-8')).toBe('{"a":1}')
+      expect((await stat(out)).mode & 0o777).toBe(0o600)
       expect(mockOutputMutation).toHaveBeenCalledWith({ id: 'var-3', key: 'UPLOAD', path: out })
+    })
+
+    it('validates the key, file type and size before reading or uploading', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'var-'))
+      const csv = join(dir, 'users.csv')
+      await writeFile(csv, 'a\n')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'users', csv])).rejects.toThrow('uppercase letter')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', join(dir, 'run.sh')])).rejects.toThrow('File type must be one of')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', join(dir, 'missing.csv')])).rejects.toThrow('Cannot read')
+      const folder = join(dir, 'folder.csv')
+      await mkdir(folder)
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', folder])).rejects.toThrow('not a regular file')
+      const big = join(dir, 'big.csv')
+      await writeFile(big, '')
+      await truncate(big, 5 * 1024 * 1024 + 1)
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', big])).rejects.toThrow('limited to 5 MB')
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('writes downloads owner-only and refuses to overwrite without --force', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.json')
+      await writeFile(out, 'old', { mode: 0o644 })
+      mockGet.mockResolvedValue({ data: variables })
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetText.mockResolvedValue({ data: 'new' })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])).rejects.toThrow('already exists')
+      expect(await readFile(out, 'utf-8')).toBe('old')
+
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out, '--force'])
+      expect(await readFile(out, 'utf-8')).toBe('new')
+      expect((await stat(out)).mode & 0o777).toBe(0o600)
     })
 
     it('refuses to download a non-file variable', async () => {

@@ -95,7 +95,7 @@ const program = new Command()
     let topLevel: Command = actionCommand
     while (topLevel.parent && topLevel.parent !== program) topLevel = topLevel.parent
     for (const [index, argument] of actionCommand.registeredArguments.entries()) {
-      if (['job', 'test', 'monitor', 'run', 'tag', 'notification', 'notifications', 'service'].includes(topLevel.name()) && /^(id|jobId|keyId|runId|testId)$/.test(argument.name()) && !isUuid(actionCommand.args[index]?.toLowerCase())) {
+      if (['job', 'test', 'monitor', 'run', 'tag', 'notification', 'notifications', 'service', 'token', 'tokens'].includes(topLevel.name()) && /^(id|jobId|keyId|runId|testId)$/.test(argument.name()) && !isUuid(actionCommand.args[index]?.toLowerCase())) {
         throw new CLIError(`${argument.name()} must be a valid UUID.`, ExitCode.ConfigError)
       }
     }

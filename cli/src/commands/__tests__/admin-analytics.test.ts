@@ -24,6 +24,7 @@ jest.unstable_mockModule('../../utils/spinner.js', () => ({
 }))
 jest.unstable_mockModule('../../utils/prompt.js', () => ({ confirmPrompt: mockConfirmPrompt }))
 
+const { setRevealSecrets } = await import('../../utils/redact.js')
 const { analyticsCommand } = await import('../analytics.js')
 const { tokenCommand } = await import('../tokens.js')
 const { projectCommand } = await import('../projects.js')
@@ -42,15 +43,22 @@ describe('analytics, token and project commands', () => {
 
   it('fetches playwright analytics with job and period', async () => {
     mockGet.mockResolvedValueOnce({ data: { runs: 3 } })
-    await analyticsCommand.parseAsync(['node', 'analytics', 'playwright', '--job', 'j1', '--period', '60'])
-    expect(mockGet).toHaveBeenCalledWith('/api/analytics/playwright', expect.objectContaining({ period: '60', jobId: 'j1' }))
+    await analyticsCommand.parseAsync(['node', 'analytics', 'playwright', '--job', '11111111-1111-4111-8111-111111111111', '--period', '60'])
+    expect(mockGet).toHaveBeenCalledWith('/api/analytics/playwright', expect.objectContaining({ period: '60', jobId: '11111111-1111-4111-8111-111111111111' }))
     expect(mockOutputDetail).toHaveBeenCalledWith({ runs: 3 })
   })
 
   it('fetches k6 analytics for a run comparison', async () => {
     mockGet.mockResolvedValueOnce({ data: {} })
-    await analyticsCommand.parseAsync(['node', 'analytics', 'k6', '--left-run', 'a', '--right-run', 'b'])
-    expect(mockGet).toHaveBeenCalledWith('/api/analytics/k6', expect.objectContaining({ leftRunId: 'a', rightRunId: 'b', period: '30' }))
+    await analyticsCommand.parseAsync(['node', 'analytics', 'k6', '--left-run', '11111111-1111-4111-8111-111111111111', '--right-run', '22222222-2222-4222-8222-222222222222'])
+    expect(mockGet).toHaveBeenCalledWith('/api/analytics/k6', expect.objectContaining({ leftRunId: '11111111-1111-4111-8111-111111111111', rightRunId: '22222222-2222-4222-8222-222222222222', period: '30' }))
+  })
+
+  it('rejects an unsupported period, a half comparison and a non-UUID job before calling the API', async () => {
+    await expect(analyticsCommand.parseAsync(['node', 'analytics', 'playwright', '--period', '7'])).rejects.toThrow('--period must be 30, 60 or 90')
+    await expect(analyticsCommand.parseAsync(['node', 'analytics', 'k6', '--left-run', '11111111-1111-4111-8111-111111111111'])).rejects.toThrow('must be used together')
+    await expect(analyticsCommand.parseAsync(['node', 'analytics', 'playwright', '--job', 'j1'])).rejects.toThrow('--job must be a UUID')
+    expect(mockGet).not.toHaveBeenCalled()
   })
 
   it('lists tokens', async () => {
@@ -60,11 +68,28 @@ describe('analytics, token and project commands', () => {
     expect(mockOutput).toHaveBeenCalledWith([{ id: 't1' }], expect.anything())
   })
 
-  it('creates a token with an expiry in seconds', async () => {
-    mockPost.mockResolvedValueOnce({ data: { token: { id: 't2', key: 'sck_live_x' } } })
-    await tokenCommand.parseAsync(['node', 'token', 'create', 'ci', '--expires-in', '7'])
-    expect(mockPost).toHaveBeenCalledWith('/api/cli-tokens', { name: 'ci', expiresIn: 604800 })
-    expect(mockOutputMutation).toHaveBeenCalledWith({ id: 't2', key: 'sck_live_x', action: 'created' })
+  it('requires --show-secrets to create a token, so the one-time key is never lost', async () => {
+    setRevealSecrets(false)
+    await expect(tokenCommand.parseAsync(['node', 'token', 'create', 'ci'])).rejects.toThrow('--show-secrets')
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('creates a token with an expiry in seconds and prints its key', async () => {
+    setRevealSecrets(true)
+    try {
+      mockPost.mockResolvedValueOnce({ data: { token: { id: 't2', key: 'sck_live_x' } } })
+      await tokenCommand.parseAsync(['node', 'token', 'create', 'ci', '--expires-in', '7'])
+      expect(mockPost).toHaveBeenCalledWith('/api/cli-tokens', { name: 'ci', expiresIn: 604800 })
+      expect(mockOutputDetail).toHaveBeenCalledWith({ id: 't2', key: 'sck_live_x' })
+    } finally {
+      setRevealSecrets(false)
+    }
+  })
+
+  it('URL-encodes token ids', async () => {
+    mockPatch.mockResolvedValue({ data: {} })
+    await tokenCommand.parseAsync(['node', 'token', 'disable', '../x'])
+    expect(mockPatch).toHaveBeenLastCalledWith('/api/cli-tokens/..%2Fx', { enabled: false })
   })
 
   it('enables and disables a token with PATCH', async () => {
