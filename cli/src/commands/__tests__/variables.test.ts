@@ -1,9 +1,13 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import { Readable } from 'node:stream'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPut = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockGetText = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
@@ -15,6 +19,7 @@ const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<boolean>>()
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
     get: mockGet,
+    getText: mockGetText,
     post: mockPost,
     put: mockPut,
     delete: mockDelete,
@@ -304,5 +309,43 @@ describe('var command', () => {
       CLIError,
     )
     expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  describe('file variables', () => {
+    it('uploads a file as multipart form data to the project route', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'var-'))
+      const file = join(dir, 'users.csv')
+      await writeFile(file, 'a,b\n1,2\n')
+      mockGet.mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockPost.mockResolvedValueOnce({ data: { success: true, data: { id: 'var-9' } } })
+
+      await varCommand.parseAsync(['node', 'var', 'upload', 'USERS', file, '--description', 'seed'])
+
+      expect(mockGet).toHaveBeenCalledWith('/api/context')
+      const [path, form] = mockPost.mock.calls[0] as [string, FormData]
+      expect(path).toBe('/api/projects/proj-1/variables')
+      expect(form.get('key')).toBe('USERS')
+      expect(form.get('description')).toBe('seed')
+      expect((form.get('file') as File).name).toBe('users.csv')
+      expect(mockOutputMutation).toHaveBeenCalledWith(expect.objectContaining({ id: 'var-9', key: 'USERS', action: 'created' }))
+    })
+
+    it('downloads a file variable to --out', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.json')
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetText.mockResolvedValueOnce({ data: '{"a":1}' })
+
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
+
+      expect(mockGetText).toHaveBeenCalledWith('/api/projects/proj-1/variables/var-3/download')
+      expect(await readFile(out, 'utf-8')).toBe('{"a":1}')
+      expect(mockOutputMutation).toHaveBeenCalledWith({ id: 'var-3', key: 'UPLOAD', path: out })
+    })
+
+    it('refuses to download a non-file variable', async () => {
+      mockGet.mockResolvedValueOnce({ data: variables })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'BASE_URL'])).rejects.toThrow('not a file variable')
+      expect(mockGetText).not.toHaveBeenCalled()
+    })
   })
 })

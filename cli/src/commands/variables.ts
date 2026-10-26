@@ -1,5 +1,7 @@
 import { Command } from 'commander'
 import { Buffer } from 'node:buffer'
+import { readFile, writeFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { output, outputDetail, outputMutation } from '../output/formatter.js'
@@ -176,4 +178,53 @@ varCommand
     )
     logger.success(`Variable "${key}" deleted`)
     outputMutation({ id: variable.id, key, deleted: true })
+  })
+
+async function getProjectId(client: ReturnType<typeof createAuthenticatedClient>): Promise<string> {
+  const { data } = await client.get<{ project: { id: string } }>('/api/context')
+  return data.project.id
+}
+
+varCommand
+  .command('upload <key> <file>')
+  .description('Create a file variable from a local file (.csv, .json, .txt, .tsv, .xml, .yaml, .yml; max 5 MB)')
+  .option('--description <description>', 'Variable description')
+  .action(async (key: string, file: string, options: { description?: string }) => {
+    if (key.length < 4 || key.length > 20) throw new CLIError('Variable key must be 4–20 characters.', ExitCode.ConfigError)
+    const client = createAuthenticatedClient()
+    const form = new FormData()
+    form.set('key', key)
+    if (options.description !== undefined) form.set('description', options.description)
+    form.set('file', new File([await readFile(file)], basename(file)))
+    const projectId = await getProjectId(client)
+    const { data } = await withSpinner(
+      'Uploading file variable',
+      () => client.post<{ data?: Record<string, unknown> }>(`/api/projects/${projectId}/variables`, form),
+    )
+    logger.success(`File variable "${key}" created`)
+    outputMutation({ ...(data.data ?? data), key, action: 'created' })
+  })
+
+varCommand
+  .command('download <key>')
+  .description('Print a file variable\'s content, or save it with --out')
+  .option('--out <path>', 'Write to a file instead of stdout')
+  .action(async (key: string, options: { out?: string }) => {
+    const client = createAuthenticatedClient()
+    const { data: variables } = await withSpinner('Fetching variable', () => client.get<Variable[]>('/api/variables'))
+    const variable = variables.find((v) => v.key === key)
+    if (!variable) throw new ApiRequestError(`Variable "${key}" not found`, 404)
+    if (variable.type !== 'file') throw new CLIError(`Variable "${key}" is not a file variable.`, ExitCode.GeneralError)
+    const projectId = await getProjectId(client)
+    const { data: content } = await withSpinner(
+      'Downloading file variable',
+      () => client.getText(`/api/projects/${projectId}/variables/${variable.id}/download`),
+    )
+    if (options.out) {
+      await writeFile(options.out, content)
+      logger.success(`Saved ${variable.fileName ?? key} to ${options.out}`)
+      outputMutation({ id: variable.id, key, path: options.out })
+    } else {
+      process.stdout.write(content)
+    }
   })

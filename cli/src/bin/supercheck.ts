@@ -37,6 +37,9 @@ import { upgradeCommand } from '../commands/upgrade.js'
 import { incidentCommand } from '../commands/incidents.js'
 import { serviceCommand } from '../commands/services.js'
 import { sreCommand } from '../commands/sre.js'
+import { analyticsCommand } from '../commands/analytics.js'
+import { tokenCommand } from '../commands/tokens.js'
+import { projectCommand } from '../commands/projects.js'
 import { setOutputFormat, setWideOutput, setJsonEnvelope, flushJsonList, type OutputFormat } from '../output/formatter.js'
 import { logger, getOutputCount, setMachineMode, setQuietMode, setLogLevel } from '../utils/logger.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
@@ -183,6 +186,9 @@ program.addCommand(auditCommand)
 program.addCommand(incidentCommand)
 program.addCommand(serviceCommand)
 program.addCommand(sreCommand)
+program.addCommand(analyticsCommand)
+program.addCommand(tokenCommand)
+program.addCommand(projectCommand)
 
 // Register commands — utilities
 program.addCommand(healthCommand)

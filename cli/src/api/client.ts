@@ -121,6 +121,8 @@ export class ApiClient {
     // configured target without exposing URL credentials, paths, or query data.
     const targetOrigin = parsedUrl.origin
     const headers = this.buildHeaders(options?.headers)
+    // Multipart bodies need fetch to set the boundary-bearing Content-Type itself.
+    if (options?.body instanceof FormData) headers.delete('Content-Type')
     const maxRetries = options?.retries ?? MAX_RETRIES
     const timeout = options?.timeout ?? this.timeout
     const attemptCount = maxRetries + 1
@@ -144,7 +146,7 @@ export class ApiClient {
         const fetchOptions: RequestInit & { dispatcher?: unknown } = {
           method,
           headers,
-          body: options?.body ? JSON.stringify(options.body) : undefined,
+          body: options?.body instanceof FormData ? options.body : options?.body ? JSON.stringify(options.body) : undefined,
           signal: controller.signal,
         }
 
