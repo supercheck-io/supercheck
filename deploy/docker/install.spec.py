@@ -618,6 +618,59 @@ echo survived
         self.assertNotIn('ufw', self.run_shell(body.format(allowed)))
         self.assertNotIn('ufw', self.run_shell("ufw() { echo 'Status: inactive'; }\ncheck_ufw\n"))
 
+    def test_ufw_accepts_lists_ranges_profiles_and_allow_default(self):
+        body = "ufw() {{ if [[ $1 == app ]]; then printf 'Profile: Nginx Full\\nPorts:\\n  80,443/tcp\\n'; else printf '{}'; fi; }}\ncheck_ufw\n"
+        for status in (
+            'Status: active\nDefault: deny (incoming)\n80,443/tcp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\n1:1000/tcp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\nNginx Full ALLOW IN Anywhere\nNginx Full (v6) ALLOW IN Anywhere (v6)\n',
+            'Status: active\nDefault: allow (incoming), allow (outgoing)\n',
+        ):
+            self.assertNotIn('ufw is active', self.run_shell(body.format(status)), status)
+        self.assertNotIn('ufw is active', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp (v6) on eth0 ALLOW IN Anywhere (v6)\nNginx Full on eth0 ALLOW IN Anywhere\n')))
+        out = self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n443/tcp ALLOW IN Anywhere\n80/tcp DENY IN Anywhere\n80/udp ALLOW IN Anywhere\n80/tcp ALLOW OUT Anywhere (out)\n1000:2000/tcp ALLOW IN Anywhere\n'))
+        self.assertIn('port 80 is not allowed', out)
+        self.assertNotIn('port 443', out)
+        # First match wins over the default; source-restricted rules do not open the port publicly;
+        # a group-wide /udp suffix covers every port in the list.
+        for status in (
+            'Status: active\nDefault: allow (incoming)\n80/tcp DENY IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\nAnywhere ALLOW IN 203.0.113.0/24\n80/tcp ALLOW IN 198.51.100.7\n',
+            'Status: active\nDefault: deny (incoming)\n80,443/udp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\n80/tcp DENY IN Anywhere\n80/tcp ALLOW IN Anywhere\n',
+        ):
+            self.assertIn('port 80 is not allowed', self.run_shell(body.format(status)), status)
+        self.assertNotIn('port 80 is not', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp DENY IN 203.0.113.9\n80/tcp ALLOW IN Anywhere # web\n')))
+
+    def test_ufw_real_padded_output_ipv4_only_and_singular_port_profile(self):
+        # Real `ufw status verbose` pads the To and Action columns.
+        verbose = ('Status: active\nDefault: deny (incoming), allow (outgoing), deny (routed)\n\n'
+                   'To                         Action      From\n--                         ------      ----\n'
+                   '22/tcp                     ALLOW IN    Anywhere\n'
+                   '80/tcp                     ALLOW IN    Anywhere\n'
+                   '443/tcp                    ALLOW IN    Anywhere\n'
+                   '80/tcp (v6)                ALLOW IN    Anywhere (v6)\n')
+        body = "ufw() {{ if [[ $1 == app ]]; then printf 'Profile: Apache\\nTitle: Web Server\\nPort: 80/tcp\\n'; else printf '{}'; fi; }}\ncheck_ufw\n"
+        self.assertNotIn('ufw is active', self.run_shell(body.format(verbose)))
+        padded_deny = 'Status: active\nDefault: allow (incoming)\n80/tcp                     DENY IN     Anywhere\n'
+        self.assertIn('port 80 is not allowed', self.run_shell(body.format(padded_deny)))
+        v6_only = 'Status: active\nDefault: deny (incoming)\n80,443/tcp (v6)            ALLOW IN    Anywhere (v6)\n'
+        out = self.run_shell(body.format(v6_only))
+        self.assertIn('port 80 is not allowed', out)
+        self.assertIn('port 443 is not allowed', out)
+        apache = 'Status: active\nDefault: deny (incoming)\nApache                     ALLOW IN    Anywhere\n443                        ALLOW IN    Anywhere\n'
+        self.assertNotIn('ufw is active', self.run_shell(body.format(apache)))
+
+    def test_ufw_survives_unknown_profiles_under_set_e(self):
+        out = self.run_shell(r'''set -Eeuo pipefail
+ufw() { if [[ $1 == app ]]; then echo 'ERROR: Could not find a profile matching' >&2; return 1; fi
+  printf 'Status: active\nDefault: deny (incoming)\nOld App ALLOW IN Anywhere\nfe80::1 80/tcp ALLOW IN Anywhere\n'; }
+check_ufw
+echo survived
+''')
+        self.assertIn('survived', out)
+        self.assertIn('port 443 is not allowed', out)
+
     def test_public_https_probe_warns_instead_of_failing(self):
         out = self.run_shell(r'''curl() { return 22; }
 check_public_https app.example.com
