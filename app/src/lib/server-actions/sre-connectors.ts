@@ -47,6 +47,8 @@ import {
   checkSreConnectorSearchRateLimit,
   checkSreConnectorValidationRateLimit,
 } from "@/lib/sre/sre-rate-limiter";
+import { providerEndpointRequirementError } from "@/lib/sre/connectors/providers/provider-credentials";
+import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { db } from "@/utils/db";
 
 const credentialTypes = [
@@ -388,6 +390,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
       "aws_session_token",
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
+    fields: flatCredentialFields(value),
   };
 }
 
@@ -928,10 +931,12 @@ export async function createSreConnector(
       };
     }
 
-    const credentialError = connectorCredentialRequirementError(
-      parsed.data.type,
-      parsed.data.credential?.value as ConnectorCredentialValue | undefined,
-    );
+    const credentialError =
+      providerEndpointRequirementError(parsed.data.type, endpointUrl) ??
+      connectorCredentialRequirementError(
+        parsed.data.type,
+        parsed.data.credential?.value as ConnectorCredentialValue | undefined,
+      );
     if (credentialError) {
       return { success: false, error: credentialError };
     }

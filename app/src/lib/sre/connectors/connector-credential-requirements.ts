@@ -1,4 +1,5 @@
 import type { ConnectorCredentialValue } from "./credential-vault";
+import { providerCredentialRequirementError } from "./providers/provider-credentials";
 
 function trimmedCredentialField(
   value: ConnectorCredentialValue | null | undefined,
@@ -38,6 +39,11 @@ export function connectorCredentialRequirementError(
       return "Datadog requires both an API key and an application key";
     }
     return null;
+  }
+
+  const providerError = providerCredentialRequirementError(connectorType, value);
+  if (providerError) {
+    return providerError;
   }
 
   if (connectorType === "aws_cloudwatch") {

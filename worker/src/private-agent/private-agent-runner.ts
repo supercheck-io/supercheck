@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+import { executeObservabilityProviderJob } from './providers/provider-executor';
 import { isIP } from 'node:net';
 
 const PROTOCOL_VERSION = '2026-06-22';
@@ -31,6 +32,11 @@ const connectorJobSpecSchema = z.object({
     'elasticsearch',
     'tempo',
     'aws_cloudwatch',
+    'jaeger',
+    'newrelic',
+    'splunk',
+    'gcp_monitoring',
+    'azure_monitor',
   ]),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
@@ -1539,6 +1545,20 @@ export async function executePrivateAgentConnectorJob(
       return executeTempo(job);
     case 'aws_cloudwatch':
       return executeCloudWatch(job);
+    case 'jaeger':
+    case 'newrelic':
+    case 'splunk':
+    case 'gcp_monitoring':
+    case 'azure_monitor':
+      return executeObservabilityProviderJob({
+        connectorId: job.jobSpec.connectorId,
+        connectorType: job.jobSpec.connectorType,
+        endpointUrl: job.jobSpec.endpointUrl,
+        query: job.jobSpec.query,
+        timeWindow: job.jobSpec.timeWindow,
+        budget: job.jobSpec.budget,
+        credential: job.credential?.value ?? null,
+      });
   }
 }
 

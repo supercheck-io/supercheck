@@ -136,8 +136,9 @@ async function fetchPinnedEndpoint(
 export function fetchConnectorEndpoint(
   input: string | URL,
   init: RequestInit = {},
+  maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
-  return fetchPinnedEndpoint(input, init, true);
+  return fetchPinnedEndpoint(input, init, true, maxResponseBytes);
 }
 
 /** Public webhook variant: always validates and pins the destination. */

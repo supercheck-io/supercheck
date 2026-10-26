@@ -45,6 +45,7 @@ import {
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
+import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
@@ -63,6 +64,11 @@ const supportedLiveConnectorTypes = [
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
 ] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
@@ -183,6 +189,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
       "aws_session_token",
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
+    fields: flatCredentialFields(value),
   };
 }
 

@@ -1,3 +1,5 @@
+import { providerStatisticsQueryError } from "./providers/provider-query-guards";
+
 export const STAGED_EVIDENCE_STAGES = [
   "statistics",
   "sample",
@@ -8,7 +10,7 @@ export const STAGED_EVIDENCE_STAGES = [
 
 export type StagedEvidenceStage = (typeof STAGED_EVIDENCE_STAGES)[number];
 
-const STAGED_LOG_CONNECTOR_TYPES = new Set(["loki"]);
+const STAGED_LOG_CONNECTOR_TYPES = new Set(["loki", "splunk", "newrelic"]);
 
 export function isStagedLogConnectorType(connectorType: string) {
   return STAGED_LOG_CONNECTOR_TYPES.has(connectorType);
@@ -52,6 +54,11 @@ export function validateStagedEvidenceQuery(input: {
   stage: StagedEvidenceStage;
   query: string;
 }) {
+  if (input.stage === "statistics") {
+    const providerError = providerStatisticsQueryError(input.connectorType, input.query);
+    if (providerError) throw new Error(providerError);
+  }
+
   if (input.connectorType === "loki" && input.stage === "statistics") {
     const isMetricLogQl = /\b(?:count_over_time|rate|bytes_rate|bytes_over_time)\s*\(/i.test(input.query);
     if (!isMetricLogQl) {
