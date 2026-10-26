@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { chmodSync, lstatSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, fchmodSync, lstatSync, openSync, writeFileSync } from 'node:fs'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
@@ -291,12 +291,21 @@ requirementCommand
       throw new CLIError(`${options.output} is a symbolic link; refusing to write through it.`, ExitCode.ConfigError)
     }
     try {
-      writeFileSync(options.output, csv, { flag: options.force ? 'w' : 'wx', mode: 0o600 })
-      // `mode` applies only when the file is created; --force over an existing file must tighten it too.
-      if (options.force) chmodSync(options.output, 0o600)
+      // O_NOFOLLOW closes the window between the symlink check and the open; fchmod tightens a file --force reuses.
+      const fd = openSync(options.output, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | (options.force ? constants.O_TRUNC : constants.O_EXCL), 0o600)
+      try {
+        fchmodSync(fd, 0o600)
+        writeFileSync(fd, csv)
+      } finally {
+        closeSync(fd)
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'EEXIST') {
         throw new CLIError(`${options.output} already exists. Use --force to overwrite it.`, ExitCode.ConfigError)
+      }
+      if (code === 'ELOOP') {
+        throw new CLIError(`${options.output} is a symbolic link; refusing to write through it.`, ExitCode.ConfigError)
       }
       throw new CLIError(`Could not write ${options.output}: ${error instanceof Error ? error.message : String(error)}`, ExitCode.GeneralError)
     }
