@@ -163,6 +163,8 @@ function normalizedBody(body) {
 const CONTEXT_SECRET_PATTERNS = [
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@'"]+:[^\s@/'"]{3,}@[^\s'"]+/i,
   /\b(?:api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token|private[_-]?key)["']?\s*[:=]\s*["'][^"'\s]{8,}["']/i,
+  // Unquoted YAML/env literals (`password: hunter2pass`); `${...}`/`$VAR` references and code expressions don't match.
+  /^\s*["']?[\w.-]*(?:api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token|private[_-]?key)["']?\s*[:=]\s*(?![$({\[])(?![A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+\s*$)[^\s"'#,;(){}]{8,}\s*$/im,
 ]
 
 const CONTEXT_SKIP = ["**/*.lock", "**/*lock.json", "**/*lock.yaml", "**/*.min.*", "**/*.map", "**/*.generated.*",
