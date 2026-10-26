@@ -106,10 +106,10 @@ export const test = crxTest.extend<{
             try {
               await locator.waitFor({ state: 'attached', timeout: 100 });
             } catch (e) {
-              if (await recorderPage.getByTitle('Record').evaluate(e => e.classList.contains('toggled'))) {
-                await recorderPage.getByTitle('Record').click();
+              if (await recorderPage.getByTitle('Record', { exact: true }).evaluate(e => e.classList.contains('toggled'))) {
+                await recorderPage.getByTitle('Record', { exact: true }).click();
                 await page.reload();
-                await recorderPage.getByTitle('Record').click();
+                await recorderPage.getByTitle('Record', { exact: true }).click();
               } else {
                 await page.reload();
               }

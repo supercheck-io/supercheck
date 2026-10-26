@@ -45,7 +45,7 @@ test('should pass assertions', async ({ page, recorderPage, baseURL, recordActio
   await recordAssertion(page.locator('body'), 'assertSnapshot');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -70,7 +70,7 @@ test('should fail assertChecked=true', async ({ page, recorderPage, baseURL, rec
   await recordAssertion(page.getByRole('checkbox').first(), 'assertValue');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -89,7 +89,7 @@ test('should fail assertChecked=false', async ({ page, recorderPage, baseURL, re
   await recordAssertion(page.getByRole('checkbox').nth(1), 'assertValue');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -108,7 +108,7 @@ test('should fail assertValue in textbox', async ({ page, recorderPage, baseURL,
   await recordAssertion(page.getByRole('textbox'), 'assertValue');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -127,7 +127,7 @@ test('should fail assertValue in select', async ({ page, recorderPage, baseURL, 
   await recordAssertion(page.locator('select'), 'assertValue');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -146,7 +146,7 @@ test('should fail assertText', async ({ page, recorderPage, baseURL, recordActio
   await recordAssertion(page.getByTestId('text'), 'assertText');
 
   // stop record and play
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -164,7 +164,7 @@ test('should fail assertVisible', async ({ page, recorderPage, baseURL, recordAc
   await recordAssertion(page.getByTestId('text'), 'assertVisible');
 
   // stop record
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   // step twice to execute navigate
   await recorderPage.getByTitle('Step over (F10)').click();

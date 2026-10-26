@@ -37,7 +37,7 @@ const langs = {
 
 for (const [lang, { linenumber, line }] of Object.entries(langs)) {
   test(`should step in ${lang}`, async ({ recorderPage, baseURL }) => {
-    await recorderPage.getByTitle('Record').click();
+    await recorderPage.getByTitle('Record', { exact: true }).click();
 
     await recorderPage.locator('.source-chooser').selectOption(lang);
 
@@ -59,7 +59,7 @@ for (const [lang, { linenumber, line }] of Object.entries(langs)) {
 }
 
 test('should support target change while steping', async ({ recorderPage }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Step Over (F10)').click();
   await recorderPage.getByTitle('Step Over (F10)').click();

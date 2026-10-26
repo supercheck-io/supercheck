@@ -23,16 +23,16 @@ test.beforeEach(async ({ page, recordAction, baseURL }) => {
 });
 
 test('should allow resume and step @smoke', async ({ recorderPage }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
-  await expect(recorderPage.getByTitle('Record')).not.toHaveClass('toggled');
+  await expect(recorderPage.getByTitle('Record', { exact: true })).not.toHaveClass('toggled');
   await expect(recorderPage.getByTitle('Resume (F8)')).not.toBeDisabled();
   await expect(recorderPage.getByTitle('Pause (F8)')).toBeDisabled();
   await expect(recorderPage.getByTitle('Step Over (F10)')).not.toBeDisabled();
 });
 
 test('should resume', async ({ recorderPage, baseURL }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -43,7 +43,7 @@ test('should resume', async ({ recorderPage, baseURL }) => {
 });
 
 test('should show errors', async ({ basePath, page, recorderPage, baseURL }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await page.route('**/*', route => route.fulfill({ path: `${basePath}/empty.html` }));
 
@@ -63,7 +63,7 @@ test('should show errors', async ({ basePath, page, recorderPage, baseURL }) => 
 });
 
 test('should clear errors when resuming after errors', async ({ basePath, page, recorderPage, baseURL }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await page.route('**/*', route => route.fulfill({ path: `${basePath}/empty.html` }));
 
@@ -91,7 +91,7 @@ test('should clear errors when resuming after errors', async ({ basePath, page, 
 
 test('should step', async ({ recorderPage, baseURL }) => {
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Step Over (F10)').click();
   await expect(recorderPage.locator('.source-line-paused .CodeMirror-line')).toHaveText(`  await page.goto('${baseURL}/input/textarea.html');`);
@@ -123,7 +123,7 @@ test('should step', async ({ recorderPage, baseURL }) => {
 });
 
 test('should step then resume', async ({ recorderPage, baseURL }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Step Over (F10)').click();
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -139,7 +139,7 @@ test('should step then resume', async ({ recorderPage, baseURL }) => {
 });
 
 test('should resume then step', async ({ recorderPage, baseURL }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Resume (F8)').click();
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -155,7 +155,7 @@ test('should resume then step', async ({ recorderPage, baseURL }) => {
 });
 
 test('should resume then record then resume', async ({ recorderPage, recordAction, baseURL, page }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Resume (F8)').click();
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -164,12 +164,12 @@ test('should resume then record then resume', async ({ recorderPage, recordActio
     `► Fill "test"( page.locator('textarea') ) ✅ — XXms`,
   ]);
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recordAction(() => page.locator('input').click());
   await recordAction(() => page.locator('input').fill('another test'));
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Resume (F8)').click();
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -192,7 +192,7 @@ test('should resume with multiple pages', async ({ context, attachRecorder, reco
   // action back to page
   await recordAction(() => page.locator('input').fill('another test'));
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Resume (F8)').click();
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([
@@ -210,7 +210,7 @@ test('should resume with multiple pages', async ({ context, attachRecorder, reco
 
 
 test('should reset call logs on resume', async ({ context, attachRecorder, recorderPage, recordAction, baseURL, page }) => {
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Resume (F8)').click();
 
   await expect.poll(dumpLogHeaders(recorderPage)).toEqual([

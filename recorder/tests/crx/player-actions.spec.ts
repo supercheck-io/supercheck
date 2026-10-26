@@ -49,7 +49,7 @@ test('should play all supported actions except setInputFiles', async ({ context,
   // closePage
   await recordAction(() => page1.close());
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   // just to make sure it navigates to root.html
   await page.goto(`${baseURL}/empty.html`);
@@ -124,7 +124,7 @@ test('should fail while playing setInputFiles', async ({ page, recorderPage, bas
     await page.locator('[type=file]').setInputFiles(`${basePath}/file-to-upload.txt`);
   });
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   // just to make sure it navigates to root.html
   await page.goto(`${baseURL}/empty.html`);
