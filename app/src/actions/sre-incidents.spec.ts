@@ -23,6 +23,7 @@ function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
     from: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),

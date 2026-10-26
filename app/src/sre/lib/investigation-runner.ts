@@ -26,6 +26,7 @@ import {
   SreInvestigationBillingError,
 } from "@/lib/sre/investigation-billing";
 import { createLogger } from "@/lib/logger/index";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 const investigationLogger = createLogger({
   module: "sre-investigation-runner",
@@ -311,6 +312,15 @@ export async function executeSreIncidentInvestigation(
         agentRunId: investigationRunId,
         createdAt: new Date(),
       });
+    });
+
+    void notifyIncidentEvent({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: incident.id,
+      event: "ai_finding",
+      dedupeDiscriminator: investigationRunId,
+      detail: result.text.split("\n").find((line) => line.trim()),
     });
 
     return {

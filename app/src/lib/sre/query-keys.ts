@@ -3,6 +3,8 @@ export const SRE_QUERY_KEYS = {
   incidents: ["sre", "incidents"] as const,
   incidentAnalytics: ["sre", "incident-analytics"] as const,
   incidentDetails: ["sre", "incident-detail"] as const,
+  incidentTimeline: ["sre", "incident-timeline"] as const,
+  incidentAssignees: ["sre", "incident-assignees"] as const,
   services: ["sre", "services"] as const,
   serviceDetails: ["sre", "service-detail"] as const,
   evidenceGraph: ["sre", "evidence-graph"] as const,
@@ -23,6 +25,17 @@ export function getSreIncidentDetailQueryKey(
   incidentId: string,
 ) {
   return [...SRE_QUERY_KEYS.incidentDetails, projectId, incidentId] as const;
+}
+
+export function getSreIncidentTimelineQueryKey(
+  projectId: string | null,
+  incidentId: string,
+) {
+  return [...SRE_QUERY_KEYS.incidentTimeline, projectId, incidentId] as const;
+}
+
+export function getSreIncidentAssigneesQueryKey(projectId: string | null) {
+  return [...SRE_QUERY_KEYS.incidentAssignees, projectId] as const;
 }
 
 export function getSreServiceDetailQueryKey(

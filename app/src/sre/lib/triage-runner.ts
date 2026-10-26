@@ -8,6 +8,7 @@ import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 export type RunSreIncidentTriageInput = {
   organizationId: string;
@@ -167,6 +168,15 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         agentRunId: run.id,
         createdAt: new Date(),
       });
+    });
+
+    void notifyIncidentEvent({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: incident.id,
+      event: "ai_finding",
+      dedupeDiscriminator: run.id,
+      detail: result.text.split("\n").find((line) => line.trim()),
     });
 
     return {
