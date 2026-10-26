@@ -7,7 +7,7 @@ import { loadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
 import { discoverFiles } from '../utils/discovery.js'
 import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
-import { getApiEndpoint, fetchAllPages } from '../utils/resources.js'
+import { getApiEndpoint, fetchAllPages, fetchRemoteRequirements } from '../utils/resources.js'
 import { withSpinner } from '../utils/spinner.js'
 import { extractUuidFromFilename } from '../utils/slug.js'
 import type { SupercheckConfig } from '../config/schema.js'
@@ -57,6 +57,11 @@ async function fetchManagedResources(
   if (Array.isArray(config.monitors)) {
     for (const m of config.monitors) {
       if (m.id) managedIds.add(`monitor:${m.id}`)
+    }
+  }
+  if (config.requirements) {
+    for (const requirement of config.requirements) {
+      if (requirement.id) managedIds.add(`requirement:${requirement.id}`)
     }
   }
   if (Array.isArray(config.statusPages)) {
@@ -137,6 +142,16 @@ async function fetchManagedResources(
       }
     }
   } catch (err) { logDestroyFetchError('notification providers', err) }
+
+  try {
+    if (managedIds.size > 0 && [...managedIds].some((key) => key.startsWith('requirement:'))) {
+      for (const requirement of await fetchRemoteRequirements(client)) {
+        if (requirement.id && managedIds.has(`requirement:${String(requirement.id)}`)) {
+          resources.push({ id: String(requirement.id), type: 'requirement', name: String(requirement.title ?? '') })
+        }
+      }
+    }
+  } catch (err) { logDestroyFetchError('requirements', err) }
 
   try {
     const statusPages = await fetchAllPages<Record<string, unknown>>(client, '/api/status-pages', 'status-pages')
@@ -222,7 +237,7 @@ export const destroyCommand = new Command('destroy')
     // Delete in reverse dependency order:
     // Jobs reference tests, so jobs must be deleted first to unblock test deletion.
     // Monitors and status pages are independent, then vars/tags last.
-    const deleteOrder = ['statusPage', 'job', 'monitor', 'notificationProvider', 'variable', 'tag', 'test']
+    const deleteOrder = ['statusPage', 'requirement', 'job', 'monitor', 'notificationProvider', 'variable', 'tag', 'test']
     const sorted = [...managed].sort((a, b) => deleteOrder.indexOf(a.type) - deleteOrder.indexOf(b.type))
 
     for (const resource of sorted) {

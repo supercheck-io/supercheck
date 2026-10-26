@@ -1,6 +1,7 @@
 import { redact } from './redact.js'
 import pc from './colors.js'
 import { logger } from './logger.js'
+import { diffComponents } from './status-pages.js'
 
 /**
  * Represents a resource defined in the local config file.
@@ -8,7 +9,7 @@ import { logger } from './logger.js'
 export interface LocalResource {
   /** Database UUID if this resource already exists on the server. Absent for new resources. */
   id?: string
-  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider'
+  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider' | 'requirement'
   name: string
   definition: Record<string, unknown>
 }
@@ -18,7 +19,7 @@ export interface LocalResource {
  */
 export interface RemoteResource {
   id: string
-  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider'
+  type: 'test' | 'monitor' | 'job' | 'variable' | 'tag' | 'statusPage' | 'notificationProvider' | 'requirement'
   name: string
   raw: Record<string, unknown>
 }
@@ -33,6 +34,8 @@ export interface ResourceChange {
   local?: LocalResource
   remote?: RemoteResource
   details?: string[]
+  /** Informational only: differences that are not changes (e.g. remote-only components kept without --delete). */
+  notes?: string[]
 }
 
 /**
@@ -46,6 +49,7 @@ export interface ResourceChange {
 export function reconcile(
   local: LocalResource[],
   remote: RemoteResource[],
+  options: { deleteMissing?: boolean } = {},
 ): ResourceChange[] {
   const changes: ResourceChange[] = []
 
@@ -88,7 +92,9 @@ export function reconcile(
         local: l,
       })
     } else {
-      const diffs = diffFields(l.definition, r.raw)
+      const notes: string[] = []
+      const diffs = diffFields(l.definition, r.raw, l.type, options.deleteMissing === true, notes)
+      const noteField = notes.length > 0 ? { notes } : {}
       if (diffs.length > 0) {
         changes.push({
           action: 'update',
@@ -98,6 +104,7 @@ export function reconcile(
           local: l,
           remote: r,
           details: diffs,
+          ...noteField,
         })
       } else {
         changes.push({
@@ -107,6 +114,7 @@ export function reconcile(
           name: l.name,
           local: l,
           remote: r,
+          ...noteField,
         })
       }
     }
@@ -149,7 +157,7 @@ function stableStringify(value: unknown): string {
  * Shallow diff between local definition fields and remote raw fields.
  * Returns a list of human-readable change descriptions.
  */
-function diffFields(local: Record<string, unknown>, remote: Record<string, unknown>): string[] {
+function diffFields(local: Record<string, unknown>, remote: Record<string, unknown>, resourceType?: string, deleteMissing = false, notes: string[] = []): string[] {
   const diffs: string[] = []
   const maskedFields = Array.isArray(remote.__maskedFields)
     ? (remote.__maskedFields as unknown[]).filter((field): field is string => typeof field === 'string')
@@ -159,13 +167,30 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     if (localVal === undefined) continue
     // Skip internal/metadata fields
     if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
+    // Read-only, server-generated: pulled but never compared.
+    if (resourceType === 'statusPage' && key === 'subdomain') continue
+    if (resourceType === 'statusPage' && key === 'components') {
+      const { changes, extras } = diffComponents(localVal, remote[key])
+      diffs.push(...changes)
+      if (deleteMissing) diffs.push(...extras.map((name) => `components: - "${name}"`))
+      else if (extras.length > 0) notes.push(`status page keeps ${extras.length} remote-only component(s) (${extras.join(', ')}); deploy --delete removes them`)
+      continue
+    }
 
     // For secret variables, the remote API returns an empty/masked value for security.
     // Skip comparing secret values to prevent phantom diffs and secret leakage in stdout.
     if (key === 'value' && (local.isSecret || remote.isSecret)) continue
 
-    const remoteVal = remote[key]
-    const [comparableLocal, comparableRemote] = key === 'config'
+    let remoteVal = remote[key]
+    // Partially specified nested settings only compare the keys the config sets.
+    if (resourceType === 'statusPage' && (key === 'branding' || key === 'notifications') && localVal && typeof localVal === 'object' && remoteVal && typeof remoteVal === 'object') {
+      remoteVal = Object.fromEntries(Object.keys(localVal as object).filter((k) => k in (remoteVal as object)).map((k) => [k, (remoteVal as Record<string, unknown>)[k]]))
+    }
+    // These resources omit empty remote strings, so a local "" already matches an unset field.
+    if ((resourceType === 'statusPage' || resourceType === 'requirement') && localVal === '' && (remoteVal === undefined || remoteVal === null)) continue
+    const [comparableLocal, comparableRemote] = key === 'tags' && Array.isArray(localVal) && Array.isArray(remoteVal)
+      ? [foldTags(localVal), foldTags(remoteVal)]
+      : key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
       : [localVal, remoteVal]
     if (stableStringify(comparableLocal) !== stableStringify(comparableRemote)) {
@@ -173,6 +198,11 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     }
   }
   return diffs
+}
+
+/** Tag names compare case-insensitively (the server matches them that way and keeps the stored spelling). */
+function foldTags(tags: unknown[]): string[] {
+  return [...new Set(tags.map((tag) => String(tag).trim().toLowerCase()))].sort()
 }
 
 function stripMaskedConfigFields(
@@ -240,6 +270,11 @@ export function formatChangePlan(changes: ResourceChange[]): void {
 
   if (unchanged.length > 0) {
     logger.info(pc.gray(`  = ${unchanged.length} unchanged`))
+  }
+
+  const notes = changes.flatMap((c) => (c.notes ?? []).map((n) => `${c.type}/${c.name}: ${n}`))
+  if (notes.length > 0) {
+    for (const n of notes) logger.info(pc.gray(`  note: ${n}`))
   }
 
   logger.newline()

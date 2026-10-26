@@ -1,6 +1,7 @@
 import { managedState, verifyContext, describeTarget, deploymentLock, rejectAmbiguousCreates } from '../utils/managed.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
+import { posix } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { logger } from '../utils/logger.js'
@@ -9,7 +10,8 @@ import {
   formatChangePlan,
   type ResourceChange,
 } from '../utils/reconcile.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { resolveTagIds, setAssignedTags } from '../utils/tag-assignment.js'
 import { buildLocalResources, fetchRemoteResources, getApiEndpoint } from '../utils/resources.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -18,6 +20,8 @@ import { encodeStoredTestScript } from '../utils/script.js'
 import pc from '../utils/colors.js'
 import { waitForRun } from '../utils/wait.js'
 import { parseIntStrict } from '../utils/number.js'
+import { applyStatusPage, OLD_SERVER_STATUS_PAGE_MESSAGE, validateStatusPageDefinition } from '../utils/status-pages.js'
+import { findTag } from '../utils/tag-assignment.js'
 
 /**
  * Prepare the body for API request by transforming local config shape
@@ -51,12 +55,10 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
     }
   }
 
-  if (type === 'statusPage') {
-    // Map description back to pageDescription
-    if (payload.description) {
-      payload.pageDescription = payload.description
-      delete payload.description
-    }
+  if (type === 'requirement') {
+    // `tests` holds resolved test ids; the API calls them `testIds`.
+    if (Array.isArray(payload.tests)) payload.testIds = payload.tests
+    delete payload.tests
   }
 
   if (type === 'notificationProvider') {
@@ -75,6 +77,130 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
   return payload
 }
 
+const normalizeTestRef = (ref: string) => posix.normalize(ref.replace(/\\/g, '/')).replace(/^_supercheck_\//, '')
+
+/**
+ * Check every reference a create/update will resolve before the first write, so a typo cannot leave a half-applied
+ * deploy. A reference may point at a resource that this same deploy creates (it is recorded when created).
+ */
+export function assertReferencesResolvable(
+  actionable: ResourceChange[],
+  state: Pick<ReturnType<typeof managedState>, 'resolve'>,
+  remoteIds?: Record<'test' | 'monitor', Set<string>>,
+): void {
+  const creates = (type: string) => actionable.filter((c) => c.type === type && c.action === 'create')
+  const created = (type: string) => new Set(creates(type).map((c) => (type === 'test' ? normalizeTestRef(c.name) : c.name)))
+  const createdTests = created('test')
+  const createdMonitors = created('monitor')
+  const createdIds = new Set(actionable.filter((c) => c.action === 'create' && c.id).map((c) => `${c.type}:${c.id}`))
+  // deploy --delete runs deletes last; a link to a resource it deletes would vanish with it.
+  const deletingIds = new Set(actionable.filter((c) => c.action === 'delete' && c.id).map((c) => `${c.type}:${c.id}`))
+  const check = (owner: string, type: 'test' | 'monitor', ref: string) => {
+    const pending = () => (type === 'test' ? createdTests.has(normalizeTestRef(ref)) : createdMonitors.has(ref))
+    let id: string
+    try { id = state.resolve(type, ref) } catch (error) {
+      if (pending()) return
+      throw error instanceof CLIError ? new CLIError(`${owner}: ${error.message}`, error.exitCode) : error
+    }
+    // A well-formed id can still be a typo or a deleted resource; the server would reject it after earlier writes.
+    if (remoteIds && !remoteIds[type].has(id) && !createdIds.has(`${type}:${id}`) && !pending()) {
+      throw new CLIError(`${owner}: ${type} "${ref}" does not exist in this project.`, ExitCode.ConfigError)
+    }
+    if (deletingIds.has(`${type}:${id}`)) {
+      throw new CLIError(`${owner}: ${type} "${ref}" is not in the config, so deploy --delete would delete it. Add it to the config or remove the reference.`, ExitCode.ConfigError)
+    }
+  }
+  for (const change of actionable) {
+    if (change.action === 'delete' || !change.local) continue
+    const definition = change.local.definition
+    if (change.type === 'requirement' && Array.isArray(definition.tests)) {
+      for (const ref of definition.tests) check(`requirement/${change.name}`, 'test', String(ref))
+    }
+    if (change.type === 'statusPage') {
+      validateStatusPageDefinition(definition, change.name)
+      // Publishing needs a component; a new page has none unless declared, an existing one only those it already has.
+      const remoteComponents = change.remote?.raw.components
+      const hasRemoteComponents = Array.isArray(remoteComponents) && remoteComponents.length > 0
+      if (definition.status === 'published' && definition.components === undefined && change.remote?.raw.status !== 'published' && !hasRemoteComponents) {
+        throw new CLIError(`Status page "${change.name}" is published but defines no components. Add at least one component before publishing.`, ExitCode.ConfigError)
+      }
+      if (Array.isArray(definition.components)) {
+        for (const component of definition.components as Array<{ monitors?: unknown[] }>) {
+          for (const ref of component.monitors ?? []) check(`statusPage/${change.name}`, 'monitor', String(ref))
+        }
+      }
+    }
+  }
+}
+
+const UPGRADE_REQUIREMENTS = 'This Supercheck server does not support managing requirements through the API; upgrade the server or remove `requirements` from the config.'
+const STATUS_PAGE_PROBE_ID = '00000000-0000-4000-8000-000000000000'
+const UPGRADE_MONITOR_TAGS = 'This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitors.'
+
+/**
+ * Resolve every test/monitor tag reference (against the project's tags plus tags this deploy creates) and check
+ * the server supports the endpoints this deploy needs, all before the first write. Requirement tags are not
+ * checked: the server creates those.
+ */
+export async function preflightDeploy(
+  client: import('../api/client.js').ApiClient,
+  actionable: ResourceChange[],
+  remoteMonitorIds: string[],
+  { dryRun = false }: { dryRun?: boolean } = {},
+): Promise<void> {
+  const writes = actionable.filter((c) => (c.action === 'create' || c.action === 'update') && c.local)
+  const tagged = writes.filter((c) => (c.type === 'test' || c.type === 'monitor') && Array.isArray(c.local!.definition.tags) && (c.local!.definition.tags as unknown[]).length > 0)
+  if (tagged.length > 0) {
+    const declared = actionable.filter((c) => c.type === 'tag' && c.action === 'create').map((c) => c.name.toLowerCase())
+    const { data } = await client.get<Array<{ id: string; name: string }>>('/api/tags')
+    const existing = Array.isArray(data) ? data : []
+    for (const change of tagged) {
+      for (const ref of change.local!.definition.tags as unknown[]) {
+        const text = String(ref)
+        if (!findTag(existing, text) && !declared.includes(text.trim().toLowerCase())) {
+          throw new CLIError(`${change.type}/${change.name}: tag "${text}" does not exist in this project. Create it with \`supercheck tag create\` or declare it under \`tags\` in the config.`, ExitCode.ConfigError)
+        }
+      }
+    }
+  }
+
+  const probe = async (path: string, message: string, text = false) => {
+    try {
+      if (text) await (client as unknown as { getText: (p: string) => Promise<unknown> }).getText(path)
+      else await client.get(path)
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(message, ExitCode.ApiError)
+      throw error
+    }
+  }
+  // A dry run writes nothing, so it skips the probes that touch the server beyond reads (export audit, status page PUT).
+  if (!dryRun && writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
+  if (!dryRun && writes.some((c) => c.type === 'statusPage')) {
+    // Older servers have no PUT on this route (405). A current one rejects an empty body (400) before touching any row.
+    try {
+      await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+      // Only the expected 400 proves support; a denied, failed or rate-limited probe would fail the write too, so stop now.
+      if (!(error instanceof ApiRequestError && error.statusCode === 400)) throw error
+    }
+  }
+  // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.
+  if (tagged.some((c) => c.type === 'monitor') && remoteMonitorIds[0]) await probe(`/api/monitors/${encodeURIComponent(remoteMonitorIds[0])}/tags`, UPGRADE_MONITOR_TAGS)
+}
+
+async function applyTags(client: import('../api/client.js').ApiClient, resourcePath: string, refs: string[], id: string): Promise<void> {
+  try {
+    await setAssignedTags(client, resourcePath, await resolveTagIds(client, refs))
+  } catch (err) {
+    if (err instanceof ApiRequestError && (err.statusCode === 404 || err.statusCode === 405) && resourcePath.startsWith('/api/monitors/')) {
+      throw new CLIError('This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitor.', ExitCode.ApiError, { id })
+    }
+    if (err instanceof CLIError && !(err instanceof ApiRequestError)) throw new CLIError(err.message, err.exitCode, { id })
+    throw new CLIError(`Saved, but tags were not applied: ${err instanceof Error ? err.message : String(err)}`, ExitCode.ApiError, { id })
+  }
+}
+
 /**
  * Apply a single resource change via the API.
  */
@@ -83,19 +209,45 @@ async function applyChange(
   change: ResourceChange,
   opts: {
     state: ReturnType<typeof managedState>
+    deleteMissing?: boolean
   },
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
     const endpoint = getApiEndpoint(change.type)
 
+    if (change.type === 'statusPage' && (change.action === 'create' || change.action === 'update')) {
+      const { id } = await applyStatusPage(client, {
+        action: change.action,
+        id: change.action === 'update' ? change.id ?? change.remote!.id : undefined,
+        name: change.name,
+        definition: change.local!.definition,
+        remote: change.remote?.raw,
+        deleteMissing: opts.deleteMissing === true,
+        resolveMonitor: (ref) => opts.state.resolve('monitor', ref),
+        onCreated: (createdId) => {
+          try { opts.state.record(change.type, change.name, createdId, change.id ?? change.local?.id) } catch {
+            throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id: createdId })
+          }
+        },
+      })
+      if (change.action === 'update') opts.state.record(change.type, change.name, id)
+      return { success: true, id }
+    }
+
     let body: Record<string, unknown> = {}
+    // Tag assignments go through the entity's tags endpoint after the write, not in the create/update body.
+    let tagRefs: string[] | undefined
     if (change.action === 'create' || change.action === 'update') {
       const rawBody = { ...change.local!.definition }
       delete rawBody.id
+      if ((change.type === 'test' || change.type === 'monitor') && Array.isArray(rawBody.tags)) {
+        tagRefs = rawBody.tags.map(String)
+        delete rawBody.tags
+      }
       if (rawBody.alertConfig && typeof rawBody.alertConfig === 'object' && 'notificationProviders' in rawBody.alertConfig && Array.isArray(rawBody.alertConfig.notificationProviders)) {
         rawBody.alertConfig = { ...rawBody.alertConfig, notificationProviders: rawBody.alertConfig.notificationProviders.map((ref) => opts.state.resolve('notificationProvider', String(ref))) }
       }
-      if (change.type === 'job' && Array.isArray(rawBody.tests)) {
+      if ((change.type === 'job' || change.type === 'requirement') && Array.isArray(rawBody.tests)) {
         rawBody.tests = rawBody.tests.map((ref) => opts.state.resolve('test', String(ref)))
       }
       if (change.type === 'monitor' && rawBody.type === 'synthetic_test' && rawBody.config && typeof rawBody.config === 'object') {
@@ -113,7 +265,11 @@ async function applyChange(
     }
     switch (change.action) {
       case 'create': {
-        const response = await client.post(endpoint, body)
+        let response
+        try { response = await client.post(endpoint, body) } catch (error) {
+          if (change.type === 'requirement' && error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(UPGRADE_REQUIREMENTS, ExitCode.ApiError)
+          throw error
+        }
 
         const data = response.data as Record<string, unknown>
         const entity = (data[change.type] ?? data.provider ?? data.variable ?? data.job ?? data.test ?? data) as Record<string, unknown>
@@ -122,17 +278,20 @@ async function applyChange(
         try { opts.state.record(change.type, change.name, id, change.id ?? change.local?.id) } catch {
         throw new CLIError('Remote create succeeded but identity could not be saved. Inspect the returned ID and state file before retrying.', ExitCode.ConfigError, { id })
         }
+        if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
         return { success: true, id }
       }
       case 'update': {
         const id = change.id ?? change.remote!.id
-        await client.put(`${endpoint}/${id}`, body)
+        // Skip the PUT only when the definition carries nothing but tags.
+        if (Object.keys(body).length > 0 || !tagRefs) await client.put(`${endpoint}/${encodeURIComponent(id)}`, body)
         opts.state.record(change.type, change.name, id)
+        if (tagRefs) await applyTags(client, `${endpoint}/${encodeURIComponent(id)}`, tagRefs, id)
         return { success: true }
       }
       case 'delete': {
         const id = change.id ?? change.remote!.id
-        await client.delete(`${endpoint}/${id}`)
+        await client.delete(`${endpoint}/${encodeURIComponent(id)}`)
         return { success: true }
       }
       default:
@@ -211,14 +370,14 @@ export const deployCommand = new Command('deploy')
         'Comparing local and remote resources...',
         async () => {
           const local = state.resolveTests(state.apply(buildLocalResources(config, cwd)))
-          const remote = await fetchRemoteResources(client)
+          const remote = await fetchRemoteResources(client, { requirements: config.requirements !== undefined })
           return { localResources: local, remoteResources: remote }
         },
         { successText: 'Resources compared' },
       )
 
       rejectAmbiguousCreates(localResources, remoteResources)
-      let changes = reconcile(localResources, remoteResources)
+      let changes = reconcile(localResources, remoteResources, { deleteMissing: options.delete === true })
 
       // Filter out deletes if --no-delete
       if (options.delete !== true) {
@@ -227,17 +386,6 @@ export const deployCommand = new Command('deploy')
 
       const actionable = changes.filter((c) => c.action !== 'no-change')
 
-      const unsupportedStatusPageMutations = actionable.filter(
-        (c) => c.type === 'statusPage' && (c.action === 'create' || c.action === 'update'),
-      )
-
-      if (unsupportedStatusPageMutations.length > 0) {
-        throw new CLIError(
-          'Status page create/update is not supported by the current API. Remove statusPages create/update changes from config (or apply them in the dashboard) and run deploy again.',
-          ExitCode.ConfigError,
-        )
-      }
-
       if (actionable.length === 0) {
         if (!options.dryRun) for (const change of changes) if (change.id) state.record(change.type, change.name, change.id)
         emit({ status: 'no_change', changes: [] })
@@ -245,6 +393,10 @@ export const deployCommand = new Command('deploy')
         return
       }
 
+      const remoteIdsOf = (type: string) => new Set(remoteResources.filter((r) => r.type === type).map((r) => r.id))
+      // Unchanged definitions are checked too: their links can point at a resource this deploy deletes.
+      assertReferencesResolvable(changes, state, { test: remoteIdsOf('test'), monitor: remoteIdsOf('monitor') })
+      await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id), { dryRun: options.dryRun === true })
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')
       if (deletions.length > 0) logger.warn(`${deletions.length} remote resource(s) will be deleted, including any created outside this config.`)
@@ -308,7 +460,7 @@ export const deployCommand = new Command('deploy')
         ...actionable.filter((c) => c.action === 'delete'),
       ]
 
-      const rank = ['notificationProvider', 'tag', 'variable', 'test', 'monitor', 'job', 'statusPage']
+      const rank = ['notificationProvider', 'tag', 'variable', 'test', 'monitor', 'job', 'requirement', 'statusPage']
       ordered.sort((a, b) => {
         if (a.action === 'delete' || b.action === 'delete') {
           return a.action === b.action ? rank.indexOf(b.type) - rank.indexOf(a.type) : a.action === 'delete' ? 1 : -1
@@ -320,7 +472,7 @@ export const deployCommand = new Command('deploy')
         const actionLabel = change.action === 'create' ? '+' : change.action === 'update' ? '~' : '-'
         const color = change.action === 'create' ? pc.green : change.action === 'update' ? pc.yellow : pc.red
 
-        const result = await applyChange(client, change, { state })
+        const result = await applyChange(client, change, { state, deleteMissing: options.delete === true })
         results.push({ action: change.action, type: change.type, name: change.name, id: result.id ?? change.id, ...result })
 
         if (result.success) {

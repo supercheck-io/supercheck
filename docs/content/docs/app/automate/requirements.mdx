@@ -136,6 +136,13 @@ See [Roles & Permissions](/docs/app/admin/roles-and-permissions) for how roles a
 
 The status filter is applied before pagination, and `total` counts matching requirements. Requirements without a coverage snapshot count as `missing`. See the [API reference](/docs/api/requirements/listRequirements) for the response format.
 
+## Manage Requirements from the CLI and MCP
+
+- **CLI:** `supercheck requirement list|get|create|update|delete|link|unlink|coverage|export` manages requirements from the terminal, and `requirements[]` in `supercheck.config.ts` manages them as code with `pull`, `diff` and `deploy`. See [CLI commands](/docs/cli/commands#requirements) and [Configuration](/docs/cli/configuration#requirements).
+- **MCP:** `list_requirements` and `get_requirement` give AI tools read-only access. See [MCP tools](/docs/mcp/tools).
+
+Extracting requirements from a document is available in the dashboard only.
+
 ## Deleting Stored Artifacts
 
 Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, the resource stays available so you can retry; a partial cleanup may already have removed some artifacts.

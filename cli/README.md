@@ -1,13 +1,13 @@
 # Supercheck CLI
 
-Manage Supercheck tests, monitors, jobs, and AI SRE from your terminal or CI, and keep them in version control. Works with Supercheck Cloud and self-hosted installations.
+Manage Supercheck tests, monitors, jobs, requirements, status pages, and AI SRE from your terminal or CI, and keep them in version control. Works with Supercheck Cloud and self-hosted installations.
 
 [![npm version](https://img.shields.io/npm/v/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli)
 [![npm downloads](https://img.shields.io/npm/dm/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli)
 [![Node.js](https://img.shields.io/node/v/@supercheck/cli)](https://nodejs.org)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/supercheck-io/supercheck/blob/main/cli/LICENSE)
 
-- **Monitoring as code.** Define monitors, jobs, variables, tags, and notification providers in `supercheck.config.ts`, then `diff` and `deploy`.
+- **Monitoring as code.** Define monitors, tests, jobs, requirements, status pages, variables, tags, and notification providers in `supercheck.config.ts`, then `diff` and `deploy`.
 - **Run tests anywhere.** Execute Playwright and k6 tests locally with no account, or on Supercheck execution workers.
 - **Built for automation.** Structured JSON output, stable exit codes, and explicit confirmation rules for CI and AI agents.
 - **AI SRE.** Triage incidents, start investigations, and ask read-only reliability questions.
@@ -25,27 +25,21 @@ npm install -g @supercheck/cli
 npx @supercheck/cli --help
 ```
 
-Update with `supercheck upgrade`. Run `supercheck doctor` to check your local setup.
+Run `supercheck doctor` to check your local setup.
 
-### Upgrade the CLI
+### Upgrade
 
-After a release is published, upgrade a global install and check its version with:
+`supercheck upgrade` updates a global install. With npm directly:
 
 ```bash
-npm install -g @supercheck/cli@latest
+npm install -g @supercheck/cli@latest                # global install
+npm install --save-dev @supercheck/cli@latest        # project-local install
 supercheck --version
-```
-
-For a project-local install:
-
-```bash
-npm install --save-dev @supercheck/cli@latest
-npx supercheck --version
 ```
 
 ## Quick start
 
-Sign in through your browser (or create a project-scoped CLI token in **Organization Admin → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
+Sign in through your browser (or create a project-scoped CLI token in **Organization → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
 
 ```bash
 supercheck login     # opens your browser; approve the code shown in the terminal
@@ -100,10 +94,20 @@ export default defineConfig({
     target: 'https://api.example.com/health',
     frequencyMinutes: 5,
   }],
+  requirements: [{
+    title: 'Users can reset their password',
+    priority: 'high',
+    tests: ['_supercheck_/playwright/reset-password.pw.ts'],
+  }],
+  statusPages: [{
+    name: 'Acme Status',
+    status: 'published',
+    components: [{ name: 'API', monitors: ['API Health'] }],
+  }],
 })
 ```
 
-`supercheck schema config --json` describes every supported field, and `supercheck config validate` checks a file. Typed objects reject unknown fields. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, and notification providers.
+`supercheck schema config --json` describes every supported field, and `supercheck config validate` checks a file. Typed objects reject unknown fields. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, requirements, status pages, and notification providers.
 
 ## Deploying safely
 
@@ -112,7 +116,8 @@ export default defineConfig({
 - **Nothing is deleted by default.** Resources absent from your config are left alone. Use `diff --delete` to preview and `deploy --delete` to prune. This also removes resources created outside the config.
 - **Ownership is explicit.** Names alone never establish ownership. If a same-named resource exists remotely but is not tracked, deploy stops: `pull` it or add its `id`.
 - **State.** Deploy records server-assigned IDs in `supercheck.state.json`, scoped to API origin, organization, and project. Commit it and share it with CI so later deploys manage the same resources. The transient `supercheck.state.json.lock` guards concurrent deploys on one filesystem; do not commit it.
-- **Dependencies.** New tests are created before the jobs and synthetic monitors that reference them.
+- **Checked before writing.** Test and monitor references, tags, server limits, and server support for each resource type are checked before the first write, so most mistakes stop the deploy before anything changes.
+- **Dependencies.** New tests are created before the jobs, synthetic monitors, requirements, and status pages that reference them.
 - **Renames.** Renaming an ID-less non-test resource creates a new one; carry its `id` or `pull` first to update in place.
 - **Secrets.** Secret variable values are never written to config. A secret variable with no value is not sent, so an unset environment variable cannot overwrite a stored secret.
 
@@ -135,7 +140,7 @@ export default defineConfig({
 | Run tests | `test run`, `test execute <id> --wait`, `job run --id <id>`, `job trigger <id> --wait` |
 | Follow a run | `run wait <id>`, `run stream <id>`, `run status <id>`, `run cancel <id>` |
 | Inspect resources | `test list`, `monitor list`, `job list`, `run list`, `monitor results <id>` |
-| Manage resources | `test`, `monitor`, `job`, `var`, `tag`, `notification` (`create`, `update`, `delete`) |
+| Manage resources | `test` (incl. `--priority`, `tag add/remove`), `monitor`, `job`, `requirement` (`list`, `get`, `create`, `update`, `delete`, `link`, `unlink`, `coverage`, `export`), `var`, `tag`, `notification` (`create`, `update`, `delete`) |
 | AI SRE | `incident list/get/timeline/resolve`, `sre triage/investigate/ask/brief/status`, `service list/get` |
 
 Run `supercheck <command> --help` for options, or see the [command reference](https://supercheck.io/docs/cli/commands).
@@ -193,6 +198,8 @@ The CLI ships offline, versioned workflow guidance. `supercheck skills` prints a
 
 ## Compatibility
 
+- Requirements, status page deploys, and monitor tags need Supercheck Cloud or a self-hosted Supercheck 1.4.0 or later. On an older server the CLI stops with an upgrade hint before writing anything, with one exception: in a project with no existing monitor to probe, a tagged monitor is created before the missing monitor-tag API is detected. Check the created monitor's ID and `supercheck.state.json` after that error.
+- Creating requirements by uploading a document (PDF, DOCX, Markdown, TXT) with AI is available in the dashboard only.
 - AI SRE requires a configured AI provider on the server. Live connectors need explicit `--live-connectors` consent and permissions.
 - `sre status` needs a Supercheck release that provides the investigation-status endpoint.
 - Firefox and WebKit local execution are supported by configuration but have not yet been verified in release testing.

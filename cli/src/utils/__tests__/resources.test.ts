@@ -7,11 +7,12 @@
  * - fetchAllPages pagination logic
  */
 
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { jest, describe, it, expect } from '@jest/globals'
 import { safeTokenPreview, getApiEndpoint, fetchAllPages, fetchRemoteResources, buildLocalResources } from '../resources.js'
+import { supercheckConfigSchema } from '../../config/schema.js'
 
 type PaginatedPayload<T> = {
   data: T[]
@@ -234,6 +235,10 @@ describe('fetchRemoteResources', () => {
         )
       }
 
+      if (path === '/api/requirements') {
+        return { data: { data: [], total: 0, page: 1, pageSize: 200 }, status: 200, headers: new Headers() } as unknown as MockGetResponse<Record<string, unknown>>
+      }
+
       if (path === '/api/variables' || path === '/api/tags' || path === '/api/notification-providers') {
         return {
           data: [],
@@ -285,5 +290,46 @@ describe('buildLocalResources', () => {
     expect(resources).toHaveLength(1)
     expect(resources[0]?.type).toBe('job')
     expect(resources[0]?.definition.status).toBeUndefined()
+  })
+})
+
+describe('fetchRemoteResources requirement scope', () => {
+  const REQ = '019a0000-0000-7000-8000-0000000000c1'
+  const makeClient = () => {
+    const get = jest.fn(async (path: string): Promise<{ data: unknown }> => {
+      if (path === '/api/requirements') return { data: { data: [{ id: REQ, title: 'Dashboard requirement', tags: [], testIds: [] }], total: 1, page: 1, pageSize: 200 } }
+      return { data: [] }
+    })
+    return { get } as unknown as ReturnType<typeof import('../../api/client.js').getApiClient>
+  }
+
+  it('includes remote requirements by default', async () => {
+    const resources = await fetchRemoteResources(makeClient())
+    expect(resources).toContainEqual(expect.objectContaining({ id: REQ, type: 'requirement' }))
+  })
+
+  it('leaves remote requirements out when the config does not manage them, so --delete cannot prune them', async () => {
+    const client = makeClient()
+    const resources = await fetchRemoteResources(client, { requirements: false })
+    expect(resources.some((resource) => resource.type === 'requirement')).toBe(false)
+    expect((client.get as jest.Mock).mock.calls.some(([path]) => String(path).startsWith('/api/requirements'))).toBe(false)
+  })
+})
+
+describe('buildLocalResources @priority annotation', () => {
+  const build = (header: string) => {
+    const cwd = mkdtempSync(join(tmpdir(), 'supercheck-priority-'))
+    mkdirSync(join(cwd, '_supercheck_', 'playwright'), { recursive: true })
+    writeFileSync(join(cwd, '_supercheck_', 'playwright', 'home.019a0000-0000-7000-8000-000000000001.pw.ts'), `${header}\nimport { test } from '@playwright/test'\n`)
+    const config = supercheckConfigSchema.parse({ schemaVersion: '1.0', project: { organization: 'o', project: 'p' }, tests: { playwright: {}, k6: {} } })
+    return buildLocalResources(config, cwd).find((resource) => resource.type === 'test')
+  }
+
+  it('accepts any letter case and sends the lowercase value', () => {
+    expect(build('// @priority High')?.definition.priority).toBe('high')
+  })
+
+  it('rejects a value that is not low, medium or high', () => {
+    expect(() => build('// @priority P1')).toThrow('@priority must be low, medium or high')
   })
 })

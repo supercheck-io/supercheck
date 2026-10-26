@@ -2,11 +2,28 @@ import { getApiClient } from '../api/client.js'
 import { discoverFiles, readFileContent } from './discovery.js'
 import { logger } from './logger.js'
 import { ApiRequestError, CLIError, ExitCode } from './errors.js'
-import { extractUuidFromFilename, stripTitleMetadata } from './slug.js'
+import { extractUuidFromFilename, readScriptMetadata, stripTitleMetadata } from './slug.js'
 import { decodeStoredTestScript, sanitizeTestScript } from './script.js'
 import type { LocalResource, RemoteResource } from './reconcile.js'
 import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
+import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
+import { PRIORITIES } from './priority.js'
+
+/** Trim, drop empties and de-duplicate case-insensitively (first spelling wins), keeping the user's spelling. */
+export function dedupeTagNames(names: unknown[]): string[] {
+  const seen = new Map<string, string>()
+  for (const raw of names) {
+    const name = String(raw).trim()
+    if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+  }
+  return [...seen.values()].sort()
+}
+
+/** Tag assignments compare by name, order-insensitively. */
+export function normalizeTagNames(names: unknown[]): string[] {
+  return [...new Set(names.map((name) => String(name).trim()).filter(Boolean))].sort()
+}
 
 /**
  * Build local resource list from the loaded config + discovered files.
@@ -25,6 +42,22 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         definition: {
           ...jobWithoutStatus,
           tests: normalizeJobTestsToIds(job.tests),
+        },
+      })
+    }
+  }
+
+  if (config.requirements) {
+    for (const requirement of config.requirements) {
+      const { tests, tags, ...rest } = requirement
+      resources.push({
+        id: requirement.id,
+        type: 'requirement',
+        name: requirement.title,
+        definition: {
+          ...rest,
+          ...(tags ? { tags: dedupeTagNames(tags) } : {}),
+          ...(tests ? { tests: [...new Set(normalizeJobTestsToIds(tests)!)].sort() } : {}),
         },
       })
     }
@@ -77,7 +110,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         id: m.id,
         type: 'monitor',
         name: m.name,
-        definition: { ...m },
+        definition: { ...m, ...(m.tags ? { tags: normalizeTagNames(m.tags) } : {}) },
       })
     }
   } else if (typeof config.monitors === 'string') {
@@ -93,7 +126,7 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         id: sp.id,
         type: 'statusPage',
         name: sp.name,
-        definition: { ...sp },
+        definition: normalizeLocalStatusPage({ ...sp }),
       })
     }
   } else if (typeof config.statusPages === 'string') {
@@ -131,6 +164,15 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
 
       const displayName = file.relativePath.replace(/^_supercheck_\//, '')
 
+      // Optional @priority / @tags annotations: absent means "leave the remote value alone".
+      const priorityAnnotation = readScriptMetadata(script, 'priority')
+      const priority = priorityAnnotation === undefined ? undefined : PRIORITIES.find((p) => p === priorityAnnotation.toLowerCase())
+      if (priorityAnnotation !== undefined && priority === undefined) {
+        throw new CLIError(`${displayName}: @priority must be low, medium or high (got "${priorityAnnotation}").`, ExitCode.ConfigError)
+      }
+      const tagsAnnotation = readScriptMetadata(script, 'tags')
+      const tags = tagsAnnotation === undefined ? undefined : normalizeTagNames(tagsAnnotation.split(','))
+
       resources.push({
         id: testId,
         type: 'test',
@@ -140,6 +182,8 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
           title,
           testType: file.type === 'playwright' ? 'playwright' : 'k6',
           script: cleanScript,
+          ...(priority !== undefined ? { priority } : {}),
+          ...(tags !== undefined ? { tags } : {}),
         },
       })
     }
@@ -288,6 +332,10 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
   delete normalized.organizationId
   delete normalized.createdByUserId
 
+  if ((type === 'test' || type === 'monitor') && Array.isArray(normalized.tags)) {
+    normalized.tags = normalizeTagNames((normalized.tags as unknown[]).map((tag) => tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag))
+  }
+
   if (type === 'monitor') {
     if (normalized.config && typeof normalized.config === 'object') {
       normalized.config = normalizeMonitorConfig(normalized.config as Record<string, unknown>)
@@ -347,14 +395,11 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
   }
 
   if (type === 'statusPage') {
-    // Normalize description field name: API may use pageDescription
-    if (normalized.pageDescription !== undefined && normalized.description === undefined) {
-      normalized.description = normalized.pageDescription
-    }
-    delete normalized.pageDescription
-    // Normalize: empty/undefined description
-    if (!normalized.description) delete normalized.description
+    // Same code path as `pull`, so pull -> diff is stable.
+    return statusPageToDefinition(normalized, Array.isArray(normalized.components) ? normalized.components as Record<string, unknown>[] : undefined)
   }
+
+  if (type === 'requirement') return normalizeRemoteRequirement(normalized)
 
   if (type === 'notificationProvider') {
     const maskedFields = Array.isArray(normalized.maskedFields)
@@ -391,10 +436,127 @@ function normalizeJobTestsToIds(tests: string[] | undefined): string[] | undefin
   })
 }
 
+/** Requirement as the single-item API returns it (tags are names, `testIds` is the linked set). */
+export interface RemoteRequirement {
+  id: string
+  title: string
+  description?: string | null
+  priority?: string | null
+  tags?: Array<string | { name?: string }>
+  externalId?: string | null
+  externalUrl?: string | null
+  testIds?: string[]
+  coverage?: { status?: string; linkedTestCount?: number; passedTestCount?: number; failedTestCount?: number; lastEvaluatedAt?: string | null } | null
+  [key: string]: unknown
+}
+
+/** Requirement in the shape of the CLI config (`tests` = linked test ids), empty values omitted. */
+function normalizeRemoteRequirement(raw: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { id: raw.id, title: raw.title }
+  if (typeof raw.description === 'string' && raw.description !== '') out.description = raw.description
+  if (typeof raw.priority === 'string' && raw.priority !== '') out.priority = raw.priority
+  if (typeof raw.externalId === 'string' && raw.externalId !== '') out.externalId = raw.externalId
+  if (typeof raw.externalUrl === 'string' && raw.externalUrl !== '') out.externalUrl = raw.externalUrl
+  const tagNames = Array.isArray(raw.tags)
+    ? dedupeTagNames((raw.tags as unknown[]).map((tag) => (tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag)))
+    : []
+  out.tags = tagNames
+  out.tests = Array.isArray(raw.testIds) ? [...new Set((raw.testIds as unknown[]).map(String))].sort() : []
+  return out
+}
+
+const REQUIREMENT_PAGE_SIZE = 200
+const REQUIREMENT_DETAIL_CONCURRENCY = 8
+
+/**
+ * Fetch every requirement with its tags and linked tests. The list endpoint pages with `page`/`pageSize` and
+ * does not return linked test ids, so each requirement is read once more (bounded concurrency).
+ */
+export async function fetchRequirementListItems(client: ReturnType<typeof getApiClient>): Promise<Array<Record<string, unknown>>> {
+  const all: Array<Record<string, unknown>> = []
+  for (let page = 1; ; page++) {
+    const { data } = await client.get<unknown>('/api/requirements', { page: String(page), pageSize: String(REQUIREMENT_PAGE_SIZE) })
+    const body = (data ?? {}) as Record<string, unknown>
+    const items = (Array.isArray(data) ? data : Array.isArray(body.data) ? body.data : Array.isArray(body.requirements) ? body.requirements : []) as Array<Record<string, unknown>>
+    all.push(...items)
+    const total = typeof body.total === 'number' ? body.total : undefined
+    if (items.length < REQUIREMENT_PAGE_SIZE || (total !== undefined && all.length >= total)) break
+  }
+  return all
+}
+
+export async function fetchRemoteRequirements(client: ReturnType<typeof getApiClient>): Promise<RemoteRequirement[]> {
+  const requirements: RemoteRequirement[] = []
+  const needDetail: Array<{ id: string; item: Record<string, unknown> }> = []
+  for (const item of await fetchRequirementListItems(client)) {
+    const id = safeId(item.id)
+    if (!id) continue
+    // Newer servers return `testIds` (and tags) on list items; older ones need a per-requirement read.
+    if (Array.isArray(item.testIds) && Array.isArray(item.tags)) requirements.push(item as unknown as RemoteRequirement)
+    else needDetail.push({ id, item })
+  }
+
+  let notFound = 0
+  for (let i = 0; i < needDetail.length; i += REQUIREMENT_DETAIL_CONCURRENCY) {
+    const batch = await Promise.all(needDetail.slice(i, i + REQUIREMENT_DETAIL_CONCURRENCY).map(async ({ id, item }) => {
+      try {
+        const { data } = await client.get<{ requirement?: RemoteRequirement }>(`/api/requirements/${encodeURIComponent(id)}`)
+        return data?.requirement
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.statusCode === 404) { notFound++; return { missing: item } }
+        throw err
+      }
+    }))
+    for (const requirement of batch) if (requirement && !('missing' in requirement)) requirements.push(requirement)
+    for (const requirement of batch) if (requirement && 'missing' in requirement) requirements.push(requirement.missing as unknown as RemoteRequirement)
+  }
+  if (notFound > 0 && notFound === needDetail.length) {
+    // Every detail read failed although the list is non-empty: this is a server without the requirement detail API,
+    // not a set of concurrent deletions. Keep the listed requirements (so none is planned for re-creation) and say so.
+    logger.warn('This server does not provide requirement details; linked tests are unknown. Upgrade the server to manage requirements as code.')
+  }
+  return requirements
+}
+
+/**
+ * Fetch status pages with their components. The list endpoint has the settings but no components, so each page is
+ * read once more. A server without the detail route yields pages without `components` (`onNoComponents` is told).
+ */
+export async function fetchStatusPagesWithComponents(
+  client: ReturnType<typeof getApiClient>,
+  onNoComponents?: (page: Record<string, unknown>) => void,
+): Promise<Array<Record<string, unknown>>> {
+  const pages = await fetchAllPages<Record<string, unknown>>(client, '/api/status-pages', 'status-pages')
+  const out: Array<Record<string, unknown>> = []
+  for (const page of pages) {
+    const id = safeId(page.id)
+    if (!id) { out.push(page); continue }
+    try {
+      const { data } = await client.get<{ statusPage?: Record<string, unknown>; components?: Array<Record<string, unknown>> }>(`/api/status-pages/${encodeURIComponent(id)}`)
+      if (data && Array.isArray(data.components)) {
+        out.push({ ...page, ...(data.statusPage ?? {}), components: data.components })
+        continue
+      }
+    } catch (err) {
+      if (!(err instanceof ApiRequestError && (err.statusCode === 404 || err.statusCode === 405))) throw err
+    }
+    onNoComponents?.(page)
+    out.push(page)
+  }
+  return out
+}
+
 /**
  * Fetch remote resources from the Supercheck API.
  */
-export async function fetchRemoteResources(client: ReturnType<typeof getApiClient>): Promise<RemoteResource[]> {
+/**
+ * `requirements: false` leaves remote requirements out entirely, so a config without `requirements[]` (written before
+ * requirements were managed as code) never plans to prune requirements created in the dashboard.
+ */
+export async function fetchRemoteResources(
+  client: ReturnType<typeof getApiClient>,
+  { requirements = true }: { requirements?: boolean } = {},
+): Promise<RemoteResource[]> {
   const resources: RemoteResource[] = []
 
   try {
@@ -459,9 +621,16 @@ export async function fetchRemoteResources(client: ReturnType<typeof getApiClien
     }
   } catch (err) { logFetchError('notification providers', err) }
 
+  if (requirements) try {
+    for (const requirement of await fetchRemoteRequirements(client)) {
+      const id = safeId(requirement.id)
+      if (!id) { logger.debug('Skipping requirement with missing id'); continue }
+      resources.push({ id, type: 'requirement', name: String(requirement.title ?? ''), raw: normalizeRemoteRaw('requirement', requirement) })
+    }
+  } catch (err) { logFetchError('requirements', err) }
+
   try {
-    const statusPages = await fetchAllPages<Record<string, unknown>>(client, '/api/status-pages', 'status-pages')
-    for (const sp of statusPages) {
+    for (const sp of await fetchStatusPagesWithComponents(client)) {
       const id = safeId(sp.id)
       if (!id) { logger.debug('Skipping status page with missing id'); continue }
       resources.push({ id, type: 'statusPage', name: String(sp.name ?? ''), raw: normalizeRemoteRaw('statusPage', sp) })
@@ -495,6 +664,7 @@ export function getApiEndpoint(type: string): string {
     case 'tag': return '/api/tags'
     case 'notificationProvider': return '/api/notification-providers'
     case 'statusPage': return '/api/status-pages'
+    case 'requirement': return '/api/requirements'
     default: throw new Error(`Unknown resource type: ${type}`)
   }
 }
