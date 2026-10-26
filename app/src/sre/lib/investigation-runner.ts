@@ -13,7 +13,17 @@ import {
   buildSreInvestigationSystemPrompt,
 } from "@/sre/agents/investigator";
 import { runSreAgent, SreAgentEmptyResponseError, SreAgentIncompleteResponseError } from "@/sre/lib/agent-runner";
-import { createSreInvestigationSubagentTools } from "@/sre/subagents/domain-subagents";
+import {
+  confidenceNotificationDetail,
+  formatInvestigationMarkdown,
+  parseInvestigationOutput,
+  toStoredHypotheses,
+} from "@/sre/lib/investigation-output";
+import {
+  MAX_TRACE_STEPS,
+  stepsFromModelStep,
+  type SreInvestigationStep,
+} from "@/sre/lib/investigation-trace";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import {
   createSreEvidenceTools,
@@ -27,6 +37,13 @@ import {
 } from "@/lib/sre/investigation-billing";
 import { createLogger } from "@/lib/logger/index";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { normalizeFeedbackNote } from "@/lib/sre/feedback-note";
+import {
+  feedbackPromptLines,
+  listIncidentFeedbackNotes,
+  listServiceFeedbackHints,
+} from "@/lib/sre/investigation-feedback";
+import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/similar-incidents";
 
 const investigationLogger = createLogger({
   module: "sre-investigation-runner",
@@ -40,6 +57,8 @@ export type RunSreIncidentInvestigationInput = {
   userId: string | null;
   incidentId: string;
   enableLiveConnectors?: boolean;
+  /** One-line responder note for a re-run; untrusted, fenced in the prompt. */
+  guidance?: string | null;
 };
 
 export type RunSreIncidentInvestigationResult =
@@ -161,7 +180,7 @@ export async function startSreIncidentInvestigation(
             incident.connectorEvidenceCount ?? 0,
           ),
           liveConnectorsEnabled,
-          specializedSubagentsEnabled: liveConnectorsEnabled,
+          ...(normalizeFeedbackNote(input.guidance) ? { guidance: normalizeFeedbackNote(input.guidance) } : {}),
         },
         createdByUserId: input.userId,
         startedAt: new Date(),
@@ -192,6 +211,8 @@ export async function executeSreIncidentInvestigation(
 ): Promise<RunSreIncidentInvestigationResult> {
   const startedAt = Date.now();
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
+  const steps: SreInvestigationStep[] = [];
+  let lastStepElapsedMs = 0;
 
   try {
     const [nativeEvidence, connectorEvidence] = await Promise.all([
@@ -231,6 +252,33 @@ export async function executeSreIncidentInvestigation(
       userId: input.userId,
       investigationRunId,
     };
+    // Context that improves the investigation but must never block it.
+    const [similar, ownNotes, serviceHints] = await Promise.all([
+      findSimilarIncidents({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+      }).catch(() => []),
+      listIncidentFeedbackNotes({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+      }, 3).catch(() => []),
+      incident.primaryServiceId
+        ? listServiceFeedbackHints({
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            serviceId: incident.primaryServiceId,
+            excludeIncidentId: incident.id,
+          }, 3).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    const guidance = normalizeFeedbackNote(input.guidance);
+    const userGuidanceLines = [
+      ...(guidance ? [guidance] : []),
+      ...feedbackPromptLines(ownNotes),
+    ];
+
     const result = await runSreAgent({
       system: buildSreInvestigationSystemPrompt(),
       prompt: buildSreInvestigationPrompt({
@@ -241,20 +289,54 @@ export async function executeSreIncidentInvestigation(
         evidenceCount: Number(incident.evidenceCount ?? 0),
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
         liveConnectorToolsEnabled: liveConnectorsEnabled,
-        specializedSubagentsEnabled: liveConnectorsEnabled,
         storedEvidenceContext,
+        pastIncidentLines: similarIncidentPromptLines(similar),
+        feedbackHintLines: feedbackPromptLines(serviceHints),
+        userGuidanceLines,
       }),
       tools: {
         ...createSreEvidenceTools(toolScope),
         ...(liveConnectorsEnabled ? createSreConnectorTools(toolScope) : {}),
-        ...(liveConnectorsEnabled ? createSreInvestigationSubagentTools() : {}),
       },
       budget: {
         maxSteps: liveConnectorsEnabled ? 8 : 5,
         maxOutputTokens: 1800,
         timeoutMs: 90_000,
       },
+      onStepFinish: async ({ event, elapsedMs }) => {
+        const added = stepsFromModelStep(
+          event as Parameters<typeof stepsFromModelStep>[0],
+          steps.length,
+          elapsedMs - lastStepElapsedMs,
+        );
+        lastStepElapsedMs = elapsedMs;
+        if (added.length === 0 || steps.length >= MAX_TRACE_STEPS) return;
+        steps.push(...added.slice(0, MAX_TRACE_STEPS - steps.length));
+        // Live progress for the incident page; a failed write must not fail the run.
+        await db
+          .update(sreInvestigationRuns)
+          .set({ steps: steps.map((step) => ({ ...step })) })
+          .where(and(eq(sreInvestigationRuns.id, investigationRunId), eq(sreInvestigationRuns.status, "running")))
+          .catch(() => undefined);
+      },
     });
+
+    const evidenceRows = await db
+      .select({ id: sreEvidenceItems.id })
+      .from(sreEvidenceItems)
+      .where(
+        and(
+          eq(sreEvidenceItems.incidentId, incident.id),
+          eq(sreEvidenceItems.organizationId, input.organizationId),
+          eq(sreEvidenceItems.projectId, input.projectId),
+        ),
+      );
+    const parsed = parseInvestigationOutput(result.text, new Set(evidenceRows.map((row) => row.id)));
+    // Schema failure degrades to the plain report: no hypotheses, no confidence.
+    const structured = parsed.ok ? parsed.output : null;
+    const reportText = structured ? formatInvestigationMarkdown(structured) : result.text;
+    const headline = (structured?.conclusion ?? result.text).slice(0, 2000);
+    const confidence = structured ? structured.confidence.toFixed(4) : null;
 
     await db.transaction(async (tx) => {
       const completed = await tx
@@ -262,10 +344,23 @@ export async function executeSreIncidentInvestigation(
         .set({
           status: "completed",
           modelId: result.modelId,
-          rootCauseHypothesis: result.text.slice(0, 2000),
+          rootCauseHypothesis: headline,
+          confidenceScore: confidence,
+          hypotheses: structured ? toStoredHypotheses(structured) : null,
+          steps: steps.map((step) => ({ ...step })),
           agentStateSnapshot: {
             mode: "sre_investigation_api",
-            summary: result.text,
+            summary: reportText,
+            structured: structured
+              ? {
+                  outcome: structured.outcome,
+                  confidence: structured.confidence,
+                  conclusion: structured.conclusion,
+                  nextChecks: structured.nextChecks,
+                  topEvidenceIds: structured.topEvidenceIds,
+                  downgraded: structured.downgraded,
+                }
+              : null,
             modelUsage: result.usage,
             finishReason: result.finishReason,
             evidenceCount: Number(incident.evidenceCount ?? 0),
@@ -273,7 +368,6 @@ export async function executeSreIncidentInvestigation(
               incident.connectorEvidenceCount ?? 0,
             ),
             liveConnectorsEnabled,
-            specializedSubagentsEnabled: liveConnectorsEnabled,
           },
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
@@ -285,7 +379,8 @@ export async function executeSreIncidentInvestigation(
       await tx
         .update(sreIncidents)
         .set({
-          rootCauseSummary: result.text.slice(0, 2000),
+          rootCauseSummary: headline,
+          confidenceScore: confidence,
           updatedAt: new Date(),
         })
         .where(
@@ -302,11 +397,11 @@ export async function executeSreIncidentInvestigation(
         eventData: {
           type: "sre_investigation",
           investigationRunId: investigationRunId,
-          summary: result.text,
+          summary: reportText,
           modelId: result.modelId,
           finishReason: result.finishReason,
           liveConnectorsEnabled,
-          specializedSubagentsEnabled: liveConnectorsEnabled,
+          outcome: structured?.outcome ?? null,
         },
         actorType: "agent",
         agentRunId: investigationRunId,
@@ -319,13 +414,15 @@ export async function executeSreIncidentInvestigation(
       projectId: input.projectId,
       incidentId: incident.id,
       event: "ai_finding",
+      // Confidence label only; conclusion and evidence text stay out of notifications.
+      detail: confidenceNotificationDetail(structured),
       dedupeDiscriminator: investigationRunId,
     });
 
     return {
       success: true,
       investigationRunId,
-      summary: result.text,
+      summary: reportText,
       modelId: result.modelId,
       finishReason: result.finishReason,
     };
@@ -356,6 +453,7 @@ export async function executeSreIncidentInvestigation(
         .update(sreInvestigationRuns)
         .set({
           status: "failed",
+          steps: steps.map((step) => ({ ...step })),
           agentStateSnapshot: {
             mode: "sre_investigation_api",
             error: errorMessage,
@@ -377,7 +475,6 @@ export async function executeSreIncidentInvestigation(
           error: errorMessage.slice(0, 1000),
           errorCode,
           liveConnectorsEnabled,
-          specializedSubagentsEnabled: liveConnectorsEnabled,
         },
         actorType: "agent",
         agentRunId: investigationRunId,

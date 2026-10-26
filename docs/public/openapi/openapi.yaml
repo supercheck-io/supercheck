@@ -255,6 +255,11 @@ paths:
                 useLiveConnectors:
                   type: boolean
                   default: false
+                guidance:
+                  type: string
+                  maxLength: 1000
+                  description: Optional one-line note for a re-run. Treated as untrusted guidance
+                    and truncated to 500 characters.
       responses:
         "202":
           description: Investigation accepted

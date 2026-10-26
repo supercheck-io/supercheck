@@ -30,6 +30,7 @@ import {
   SreSessionStoreError,
 } from "@/sre/lib/session-store";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
 
@@ -166,7 +167,7 @@ function buildAssistantUiSystemPrompt(input: {
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId
-      ? "- Use available stored evidence tools before making incident-specific claims."
+      ? "- Use available stored evidence tools before making incident-specific claims. Cite the evidence ids you rely on, written as evidence <id>. For \"have we seen this before\" questions call findSimilarIncidents and say that past incidents may be unrelated."
       : "- If no incident is scoped, do not claim incident evidence was inspected.",
     !input.liveConnectorToolsEnabled
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
@@ -427,10 +428,17 @@ export async function POST(request: NextRequest) {
     messages: await convertToModelMessages(modelMessages),
     tools: {
       ...(conversation.incidentId
-        ? createSreEvidenceTools({
-            ...connectorToolScope,
-            incidentId: conversation.incidentId,
-          })
+        ? {
+            ...createSreEvidenceTools({
+              ...connectorToolScope,
+              incidentId: conversation.incidentId,
+            }),
+            ...createSreSimilarIncidentTools({
+              organizationId: context.organizationId,
+              projectId: context.project.id,
+              incidentId: conversation.incidentId,
+            }),
+          }
         : {}),
       ...(liveConnectorToolsEnabled
         ? createSreConnectorTools(connectorToolScope)

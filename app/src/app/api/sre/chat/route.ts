@@ -15,6 +15,7 @@ import {
 } from "@/sre/lib/session-store";
 import { createSseResponse, createSseStream } from "@/sre/lib/sse-stream";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../_auth";
 
@@ -459,10 +460,17 @@ export async function POST(request: NextRequest) {
         }),
         tools: {
           ...(conversation.incidentId
-            ? createSreEvidenceTools({
-                ...connectorToolScope,
-                incidentId: conversation.incidentId,
-              })
+            ? {
+                ...createSreEvidenceTools({
+                  ...connectorToolScope,
+                  incidentId: conversation.incidentId,
+                }),
+                ...createSreSimilarIncidentTools({
+                  organizationId: context.organizationId,
+                  projectId: context.project.id,
+                  incidentId: conversation.incidentId,
+                }),
+              }
             : {}),
           ...(liveConnectorToolsEnabled
             ? createSreConnectorTools(connectorToolScope)

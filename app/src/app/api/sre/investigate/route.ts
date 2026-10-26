@@ -7,12 +7,15 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { checkSreInvestigationRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isSreInvestigationAgentEnabled } from "@/sre/lib/feature-gates";
+import { investigationGuidanceSchema } from "@/lib/sre/feedback-note";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { requireSreSameOriginRequest } from "../_auth";
 
 const investigateRequestSchema = z.object({
   incidentId: z.string().uuid(),
   useLiveConnectors: z.boolean().optional().default(false),
+  /** Optional one-line note for "Re-run with my note"; treated as untrusted user input. */
+  guidance: investigationGuidanceSchema.nullish(),
 });
 
 const investigationLogger = createLogger({ module: "sre-investigate-api" }) as {
@@ -118,6 +121,7 @@ export async function POST(request: NextRequest) {
     projectId: context.project.id,
     incidentId: parsed.data.incidentId,
     enableLiveConnectors,
+    guidance: parsed.data.guidance,
   });
 
   if (!startResult.success) {
@@ -133,6 +137,7 @@ export async function POST(request: NextRequest) {
     projectId: context.project.id,
     incidentId: parsed.data.incidentId,
     enableLiveConnectors,
+    guidance: parsed.data.guidance,
   };
 
   // Return before the 90s agent budget so Cloudflare/proxy timeouts cannot
