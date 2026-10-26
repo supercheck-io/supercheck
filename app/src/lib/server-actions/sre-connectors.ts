@@ -1169,6 +1169,9 @@ export async function validateSreConnector(
     if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
+    } else if (isRetiredConnectorType(row.type)) {
+      status = "policy_blocked";
+      outputSummary = retiredConnectorExplanation(row.type);
     } else if (row.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
         where: and(

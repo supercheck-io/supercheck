@@ -244,7 +244,9 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onValidate?.(connector)}
-                disabled={meta?.isValidating}
+                disabled={
+                  meta?.isValidating || isRetiredConnectorType(connector.type)
+                }
               >
                 Validate connector
               </DropdownMenuItem>

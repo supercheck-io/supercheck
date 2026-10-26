@@ -34,7 +34,7 @@ Existing records for other providers are labeled **Setup only** or **Unsupported
 
 ## Tickets and Knowledge Connectors
 
-Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: the AI never follows instructions found inside a page or ticket.
+Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: it is redacted, fenced, and labeled so the AI treats it as evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
 
 | Provider | Endpoint | Credential | Least privilege |
 |---|---|---|---|

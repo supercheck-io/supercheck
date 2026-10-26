@@ -1518,6 +1518,51 @@ async function executeCloudWatch(
   return executeCloudWatchAlarms(job, query);
 }
 
+const KNOWLEDGE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/** requestPrivateAgentEndpoint does not cap bodies; knowledge pages are third-party sized. */
+async function fetchBoundedJson(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<unknown> {
+  assertAgentEndpointAllowed(url);
+  return requestPrivateAgentEndpoint(
+    url,
+    {
+      method: 'GET',
+      headers: { Accept: 'application/json', ...headers },
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'error',
+    },
+    async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`credentials rejected with HTTP ${response.status}`);
+      }
+      if (!response.ok) {
+        throw new Error(
+          `connector request failed with HTTP ${response.status}`,
+        );
+      }
+      const reader = response.body?.getReader();
+      if (!reader) return {};
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > KNOWLEDGE_MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error('connector response too large');
+        }
+        chunks.push(value);
+      }
+      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    },
+  );
+}
+
 async function executeKnowledge(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -1540,7 +1585,7 @@ async function executeKnowledge(
     },
     {
       getJson: (url, headers, timeoutMs) =>
-        fetchJson(url, null, timeoutMs, headers),
+        fetchBoundedJson(url, headers, timeoutMs),
       evidenceId,
       hash: hashPayload,
     },

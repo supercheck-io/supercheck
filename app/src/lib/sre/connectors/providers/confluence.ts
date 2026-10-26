@@ -134,6 +134,7 @@ export class ConfluenceConnector extends KnowledgeConnector {
     url.searchParams.set("cql", this.buildCql(params.query));
     url.searchParams.set("limit", String(limit));
     const timeoutMs = this.timeoutMs(params);
+    const deadline = Date.now() + timeoutMs;
 
     const payload = (await knowledgeRequest({
       provider: "Confluence",
@@ -146,10 +147,12 @@ export class ConfluenceConnector extends KnowledgeConnector {
     ).slice(0, limit);
     const base = sameOriginBase(payload._links?.base, endpoint);
 
+    // One shared deadline: body fetches get only what the search left.
+    const remainingMs = deadline - Date.now();
     const bodies = await Promise.all(
       hits.map((hit, index) =>
-        index < KNOWLEDGE_MAX_BODY_FETCHES
-          ? this.fetchBody(endpoint, headers, mode, hit, timeoutMs)
+        remainingMs > 250 && index < KNOWLEDGE_MAX_BODY_FETCHES
+          ? this.fetchBody(endpoint, headers, mode, hit, remainingMs)
           : Promise.resolve(null),
       ),
     );

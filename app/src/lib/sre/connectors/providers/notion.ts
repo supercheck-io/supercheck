@@ -133,6 +133,7 @@ export class NotionConnector extends KnowledgeConnector {
   ): Promise<ConnectorEvidenceItem[]> {
     const limit = this.resultLimit(params);
     const timeoutMs = this.timeoutMs(params);
+    const deadline = Date.now() + timeoutMs;
     // Query-builder hints (type:/source:) are not Notion search syntax.
     const query = params.query
       .replace(/\b(?:type|source):\S+/g, " ")
@@ -155,10 +156,12 @@ export class NotionConnector extends KnowledgeConnector {
       Array.isArray(payload.results) ? (payload.results as NotionPage[]) : []
     ).slice(0, limit);
 
+    // One shared deadline: body fetches get only what the search left.
+    const remainingMs = deadline - Date.now();
     const bodies = await Promise.all(
       pages.map((page, index) =>
-        index < KNOWLEDGE_MAX_BODY_FETCHES && page.id
-          ? this.fetchBody(page.id, timeoutMs)
+        remainingMs > 250 && index < KNOWLEDGE_MAX_BODY_FETCHES && page.id
+          ? this.fetchBody(page.id, remainingMs)
           : Promise.resolve(null),
       ),
     );

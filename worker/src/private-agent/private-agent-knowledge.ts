@@ -246,6 +246,7 @@ async function searchConfluence(input: KnowledgeJobInput, deps: KnowledgeDeps) {
       ? query
       : `${query === '*' ? '' : `text ~ "${quote(query)}" AND `}type in (page, blogpost) ORDER BY lastmodified DESC`;
   const limit = Math.max(1, Math.min(input.maxRows, MAX_RESULTS));
+  const deadline = Date.now() + input.timeoutMs;
   const url = new URL(`${endpoint}/rest/api/search`);
   url.searchParams.set('cql', cql);
   url.searchParams.set('limit', String(limit));
@@ -282,21 +283,23 @@ async function searchConfluence(input: KnowledgeJobInput, deps: KnowledgeDeps) {
     // keep the configured endpoint
   }
 
+  const remainingMs = deadline - Date.now();
   const bodies = await Promise.all(
     hits.map(async (hit, index) => {
       const id = hit.content?.id;
-      if (index >= MAX_BODY_FETCHES || !id || !/^\d{1,20}$/.test(id))
+      if (
+        remainingMs <= 250 ||
+        index >= MAX_BODY_FETCHES ||
+        !id ||
+        !/^\d{1,20}$/.test(id)
+      )
         return null;
       const bodyUrl =
         mode === 'cloud'
           ? `${endpoint}/api/v2/${hit.content?.type === 'blogpost' ? 'blogposts' : 'pages'}/${id}?body-format=storage`
           : `${endpoint}/rest/api/content/${id}?expand=body.storage`;
       try {
-        const body = (await deps.getJson(
-          bodyUrl,
-          headers,
-          input.timeoutMs,
-        )) as {
+        const body = (await deps.getJson(bodyUrl, headers, remainingMs)) as {
           body?: { storage?: { value?: unknown } };
         };
         const value = body.body?.storage?.value;
