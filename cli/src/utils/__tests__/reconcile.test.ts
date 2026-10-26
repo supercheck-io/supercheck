@@ -200,6 +200,15 @@ describe('reconcile', () => {
     expect(details).not.toContain('local-secret')
   })
 
+  it('treats a local empty string as matching an unset status page or requirement field', () => {
+    const page = reconcile([local({ id: 'id-1', type: 'statusPage', definition: { name: 'A', supportUrl: '' } })], [remote({ type: 'statusPage', raw: { name: 'A' } })])
+    expect(page[0].action).toBe('no-change')
+    const requirement = reconcile([local({ id: 'id-1', type: 'requirement', definition: { title: 'R', description: '' } })], [remote({ type: 'requirement', raw: { title: 'R', description: null } })])
+    expect(requirement[0].action).toBe('no-change')
+    const clearing = reconcile([local({ id: 'id-1', type: 'statusPage', definition: { name: 'A', supportUrl: '' } })], [remote({ type: 'statusPage', raw: { name: 'A', supportUrl: 'https://x.test/' } })])
+    expect(clearing[0].action).toBe('update')
+  })
+
   it('treats a remote resource with no local counterpart as a delete', () => {
     const changes = reconcile([], [remote()])
 
@@ -295,6 +304,14 @@ describe('formatChangePlan', () => {
     expect(lines.some((l) => l.includes('job/Old job (job-1)'))).toBe(true)
     expect(lines.some((l) => l.includes('1 unchanged'))).toBe(true)
     expect(lines.some((l) => l.includes('3 change(s) detected.'))).toBe(true)
+  })
+
+  it('prints change notes with their resource', () => {
+    formatChangePlan([
+      { action: 'update', type: 'statusPage', id: 'sp-1', name: 'Acme', details: ['headline'], notes: ['subdomain is read-only'] },
+    ])
+
+    expect(outputLines().some((l) => l.includes('note: statusPage/Acme: subdomain is read-only'))).toBe(true)
   })
 
   it('does not count no-change entries as changes', () => {

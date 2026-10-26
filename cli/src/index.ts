@@ -18,6 +18,7 @@ export type {
   K6TestConfig,
   MonitorDefinition,
   JobDefinition,
+  RequirementDefinition,
   StatusPageDefinition,
   StatusPageComponentDefinition,
   NotificationProviderDefinition,

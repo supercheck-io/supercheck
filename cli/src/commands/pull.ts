@@ -11,9 +11,10 @@ import { getStoredBaseUrl, getStoredOrganization, getStoredProject } from '../au
 import { logger } from '../utils/logger.js'
 import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
-import { fetchAllPages } from '../utils/resources.js'
+import { fetchAllPages, fetchRemoteRequirements, fetchStatusPagesWithComponents, type RemoteRequirement } from '../utils/resources.js'
+import { statusPageToDefinition } from '../utils/status-pages.js'
 import { detectPackageManager, ensurePackageJson, installDependencies } from '../utils/package-manager.js'
-import { extractUuidFromFilename } from '../utils/slug.js'
+import { extractUuidFromFilename, setScriptMetadata } from '../utils/slug.js'
 import { isUuid, resolveWithin, testRelativePath, testTypeToFolder } from '../utils/paths.js'
 import { decodeStoredTestScript } from '../utils/script.js'
 import { redact } from '../utils/redact.js'
@@ -48,6 +49,7 @@ interface RemoteMonitor {
   status?: string
   config?: Record<string, unknown>
   alertConfig?: Record<string, unknown>
+  tags?: Array<{ id: string; name: string; color?: string }>
   organizationId?: string
   projectId?: string
   createdAt?: string
@@ -87,25 +89,8 @@ interface RemoteTag {
   color?: string
 }
 
-interface RemoteStatusPage {
-  id: string
-  name: string
-  subdomain?: string
-  status?: string
-  pageDescription?: string
-  headline?: string
-  supportUrl?: string
-  language?: string
-  allowEmailSubscribers?: boolean
-  allowWebhookSubscribers?: boolean
-  allowRssFeed?: boolean
-  cssBodyBackgroundColor?: string
-  cssFontColor?: string
-  cssGreens?: string
-  cssReds?: string
-  createdAt?: string
-  updatedAt?: string
-}
+/** Status page row (settings) plus, when the server supports it, its components. */
+type RemoteStatusPage = Record<string, unknown> & { id: string; name: string; status?: string; components?: Array<Record<string, unknown>> }
 
 interface RemoteNotificationProvider {
   id: string
@@ -128,6 +113,7 @@ interface PullSummary {
   tags: number
   notificationProviders: number
   statusPages: number
+  requirements: number
   skipped: number
   files: string[]
   backups: string[]
@@ -248,10 +234,28 @@ async function fetchNotificationProviders(client: ApiClient): Promise<RemoteNoti
 }
 
 async function fetchStatusPages(client: ApiClient): Promise<RemoteStatusPage[]> {
+  let warned = false
   try {
-    return await fetchAllPages<RemoteStatusPage>(client, '/api/status-pages', 'status-pages')
+    return await fetchStatusPagesWithComponents(client, () => {
+      if (warned) return
+      warned = true
+      logger.warn('This server does not expose status page components; they are omitted from the pulled config.')
+    }) as RemoteStatusPage[]
   } catch (err) {
     if (err instanceof ApiRequestError && err.statusCode === 404) return []
+    throw err
+  }
+}
+
+async function fetchRequirements(client: ApiClient, configured = false): Promise<RemoteRequirement[]> {
+  try {
+    return await fetchRemoteRequirements(client)
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.statusCode === 404) {
+      // Treating a missing API as "no requirements" would drop the configured ones from the rewritten config.
+      if (configured) throw new CLIError('This Supercheck server does not support requirements, but supercheck.config.ts declares them. Upgrade the server, or use --tests-only. No files were written.', ExitCode.ApiError)
+      return []
+    }
     throw err
   }
 }
@@ -268,12 +272,7 @@ class IdentityMismatch extends CLIError {
   constructor(message: string) { super(message, ExitCode.ApiError) }
 }
 
-/** Server titles are untrusted text: keep them to one line and out of comment terminators. */
-function sanitizeTitle(title: string): string {
-  return title.replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /').trim()
-}
-
-function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
+export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, managedPaths = new Map<string, string>(), obsoletePaths = new Map<string, string>()): void {
   const baseDir = resolve(cwd, '_supercheck_')
   if (!existsSync(baseDir)) {
     mkdirSync(baseDir, { recursive: true })
@@ -314,19 +313,12 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
         continue
       }
 
-      // Inject/Update @title metadata to preserve human-readable name in local file
-      // Prefer JSDoc injection if a block exists, otherwise use single-line comment
-      const title = sanitizeTitle(test.title)
-      if (/@title\s+/.test(script)) {
-        // Update existing @title (works for both // @title and * @title)
-        script = script.replace(/(@title\s+)(.+?)(\r?\n|\*\/|$)/, (_match, head: string, _old: string, tail: string) => `${head}${title}${tail}`)
-      } else if (/\/\*\*([\s\S]*?)\*\//.test(script)) {
-        // Inject into existing JSDoc
-        script = script.replace(/(\/\*\*)/, (open: string) => `${open}\n * @title ${title}`)
-      } else {
-        // No JSDoc or existing title, prepend // @title
-        script = `// @title ${title}\n\n${script}`
-      }
+      // Inject/Update @title, @priority and @tags metadata so the local file round-trips the test's fields.
+      // Prefer JSDoc injection if a block exists, otherwise use single-line comments.
+      script = setScriptMetadata(script, 'title', test.title)
+      if (test.priority) script = setScriptMetadata(script, 'priority', test.priority)
+      const tagNames = (test.tags ?? []).map((tag) => tag.name).sort()
+      if (tagNames.length > 0) script = setScriptMetadata(script, 'tags', tagNames.join(', '))
 
       // Clean up old file if UUID exists but filename changed (e.g., test renamed)
       const existingFilename = existingByUuid.get(test.id)
@@ -361,7 +353,7 @@ function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary, manag
  * Produces a clean config by removing defaults and runtime-only fields
  * while keeping field names compatible with the API for round-trip support.
  */
-function buildMonitorDefinitions(
+export function buildMonitorDefinitions(
   monitors: RemoteMonitor[],
 ): Record<string, unknown>[] {
   return monitors.map((m) => {
@@ -379,6 +371,7 @@ function buildMonitorDefinitions(
     }
     if (m.frequencyMinutes !== undefined) def.frequencyMinutes = m.frequencyMinutes
     if (m.enabled !== undefined) def.enabled = m.enabled
+    if (m.tags && m.tags.length > 0) def.tags = m.tags.map((tag) => tag.name).sort()
 
     // Pass config through, stripping only runtime/default noise
     if (m.config && typeof m.config === 'object') {
@@ -595,26 +588,35 @@ export function buildNotificationProviderDefinitions(providers: RemoteNotificati
 }
 
 /**
- * Build status page definitions from remote data.
- * Keeps essential config only — branding and styling are managed via the dashboard.
+ * Build status page definitions from remote data: settings, branding, subscriber flags and components.
+ * Uses the same mapping as remote normalization so pull -> diff reports no changes.
+ * `subdomain` is written for reference only; it is server-generated and never deployed.
  */
-function buildStatusPageDefinitions(pages: RemoteStatusPage[]): Record<string, unknown>[] {
+export function buildStatusPageDefinitions(pages: RemoteStatusPage[]): Record<string, unknown>[] {
   return pages.map((p) => {
-    const def: Record<string, unknown> = {
-      id: p.id,
-      name: p.name,
-    }
+    const def = statusPageToDefinition(p, p.components)
+    if (def.language === 'en') delete def.language
+    return def
+  })
+}
 
-    if (p.subdomain) def.subdomain = p.subdomain
-    if (p.status) def.status = p.status
-    if (p.pageDescription) def.description = p.pageDescription
-    if (p.headline) def.headline = p.headline
-    if (p.supportUrl) def.supportUrl = p.supportUrl
-    if (p.language && p.language !== 'en') def.language = p.language
-
-    // Note: branding (colors, fonts) is intentionally omitted —
-    // visual customization is better managed via the dashboard.
-
+/**
+ * Build requirement definitions. `testMap` resolves test UUIDs to file paths like job references do.
+ */
+export function buildRequirementDefinitions(
+  requirements: RemoteRequirement[],
+  testMap: Map<string, string>,
+): Record<string, unknown>[] {
+  return requirements.map((r) => {
+    const def: Record<string, unknown> = { id: r.id, title: r.title }
+    if (r.description) def.description = r.description
+    if (r.priority) def.priority = r.priority
+    const tags = (r.tags ?? []).map((tag) => (typeof tag === 'string' ? tag : String(tag.name ?? ''))).filter(Boolean).sort()
+    if (tags.length > 0) def.tags = tags
+    if (r.externalId) def.externalId = r.externalId
+    if (r.externalUrl) def.externalUrl = r.externalUrl
+    const tests = [...new Set(r.testIds ?? [])].sort().map((id) => testMap.get(id) ?? id)
+    if (tests.length > 0) def.tests = tests
     return def
   })
 }
@@ -636,6 +638,7 @@ export function generateConfigContent(opts: {
   tags: Record<string, unknown>[]
   notificationProviders: Record<string, unknown>[]
   statusPages: Record<string, unknown>[]
+  requirements?: Record<string, unknown>[]
   tests?: { playwright?: { testMatch?: string; browser?: string }; k6?: { testMatch?: string } }
 }): string {
   const parts: string[] = []
@@ -685,6 +688,13 @@ export function generateConfigContent(opts: {
     parts.push('')
     parts.push('  // Jobs — scheduled or triggered test execution groups')
     parts.push(`  jobs: ${formatArray(opts.jobs, 2)},`)
+  }
+
+  // Requirements
+  if (opts.requirements && opts.requirements.length > 0) {
+    parts.push('')
+    parts.push('  // Requirements — what the product must do, linked to the tests that cover them')
+    parts.push(`  requirements: ${formatArray(opts.requirements, 2)},`)
   }
 
   // Variables
@@ -840,7 +850,7 @@ export const pullCommand = new Command('pull')
   .option('--config <path>', 'Path to config file')
   .option('--force', 'Bypass confirmation prompt before overwriting local files')
   .option('--tests-only', 'Only pull test scripts')
-  .option('--config-only', 'Only pull config (monitors, jobs, notification providers, variables, tags, status pages)')
+  .option('--config-only', 'Only pull config (monitors, jobs, requirements, notification providers, variables, tags, status pages)')
   .option('--skip-install', 'Do not install dependencies when initializing a project')
   .option('--dry-run', 'Show what would be pulled without writing files')
   .action(async (options: {
@@ -874,7 +884,7 @@ export const pullCommand = new Command('pull')
     if (existing) await verifyContext(client, existing.config, true, existing.declaredBaseUrl)
 
     // ── Fetch project/org context and all remote resources in parallel ──
-    const [context, tests, monitors, jobs, variables, tags, notificationProviders, statusPages] = await withSpinner(
+    const [context, tests, monitors, jobs, variables, tags, notificationProviders, statusPages, requirements] = await withSpinner(
       'Fetching remote resources...',
       async () => {
         const results = await Promise.all([
@@ -886,8 +896,9 @@ export const pullCommand = new Command('pull')
           options.testsOnly ? Promise.resolve([]) : fetchTags(client),
           options.testsOnly ? Promise.resolve([]) : fetchNotificationProviders(client),
           options.testsOnly ? Promise.resolve([]) : fetchStatusPages(client),
+          options.testsOnly ? Promise.resolve([]) : fetchRequirements(client, existing?.config?.requirements !== undefined),
         ])
-        return results as [RemoteContext, RemoteTest[], RemoteMonitor[], RemoteJob[], RemoteVariable[], RemoteTag[], RemoteNotificationProvider[], RemoteStatusPage[]]
+        return results as [RemoteContext, RemoteTest[], RemoteMonitor[], RemoteJob[], RemoteVariable[], RemoteTag[], RemoteNotificationProvider[], RemoteStatusPage[], RemoteRequirement[]]
       },
       { successText: 'Fetched remote resources' },
     )
@@ -927,12 +938,12 @@ export const pullCommand = new Command('pull')
       try { resolveWithin(cwd, path) } catch { throw new CLIError(`Test path "${path}" resolves outside the project directory or through a symlink. No files were written.`, ExitCode.ConfigError) }
     }
 
-    logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages`)
+    logger.debug(`Found: ${tests.length} tests, ${monitors.length} monitors, ${jobs.length} jobs, ${variables.length} variables, ${tags.length} tags, ${notificationProviders.length} notification providers, ${statusPages.length} status pages, ${requirements.length} requirements`)
 
     logger.info('Pull only copies remote resources to local files.')
     logger.info('Local-only test scripts are preserved; `supercheck deploy` can create them remotely. Run `supercheck diff` to preview.')
 
-    const totalResources = tests.length + monitors.length + jobs.length + variables.length + tags.length + notificationProviders.length + statusPages.length
+    const totalResources = tests.length + monitors.length + jobs.length + variables.length + tags.length + notificationProviders.length + statusPages.length + requirements.length
     if (totalResources === 0) {
       if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'no_change', context, files: [], backups: [], errors: [] }))
       logger.warn(options.testsOnly ? 'No test scripts found on the remote project.'
@@ -949,6 +960,7 @@ export const pullCommand = new Command('pull')
       tags.length > 0 ? `${tags.length} tag(s)` : '',
       notificationProviders.length > 0 ? `${notificationProviders.length} notification provider(s)` : '',
       statusPages.length > 0 ? `${statusPages.length} status page(s)` : '',
+      requirements.length > 0 ? `${requirements.length} requirement(s)` : '',
     ].filter(Boolean)
     logger.info(`Found ${pc.bold(String(totalResources))} remote resource(s): ${resourceCounts.join(', ')}.`)
     if (options.configOnly) logger.info('Test scripts are excluded (--config-only).')
@@ -1014,6 +1026,10 @@ export const pullCommand = new Command('pull')
         logger.info(pc.cyan(`  Status Pages (${statusPages.length}):`))
         for (const sp of statusPages) logger.info(`    ${sp.name} (${sp.status ?? 'draft'})`)
       }
+      if (requirements.length > 0) {
+        logger.info(pc.cyan(`  Requirements (${requirements.length}):`))
+        for (const r of requirements) logger.info(`    ${r.title}${r.priority ? ` (${r.priority})` : ''}`)
+      }
 
       logger.newline()
       if (getOutputFormat() === 'json') logger.output(JSON.stringify(preview))
@@ -1039,6 +1055,7 @@ export const pullCommand = new Command('pull')
       tags: 0,
       notificationProviders: 0,
       statusPages: 0,
+      requirements: 0,
       skipped: 0,
       files: [],
       backups: [],
@@ -1066,7 +1083,8 @@ export const pullCommand = new Command('pull')
               ),
             )
             if (data?.id !== t.id) throw new IdentityMismatch(`Server returned a different test than requested (${t.id}). No files were written.`)
-            fullTests.push(data)
+            // The detail route carries no tags; keep the list item's.
+            fullTests.push({ ...data, tags: data.tags ?? t.tags })
           } catch (err) {
             // A swapped response means the server is not trustworthy for this pull; abort instead of recording a partial failure.
             if (err instanceof IdentityMismatch) throw err
@@ -1148,6 +1166,7 @@ export const pullCommand = new Command('pull')
       const tagDefs = buildTagDefinitions(tags)
       const notificationProviderDefs = buildNotificationProviderDefinitions(notificationProviders)
       const statusPageDefs = buildStatusPageDefinitions(statusPages)
+      const requirementDefs = buildRequirementDefinitions(requirements, testMap)
 
       summary.monitors = monitors.length
       summary.jobs = jobs.length
@@ -1155,6 +1174,7 @@ export const pullCommand = new Command('pull')
       summary.tags = tags.length
       summary.notificationProviders = notificationProviderDefs.length
       summary.statusPages = statusPages.length
+      summary.requirements = requirements.length
 
       const fileVariableCount = variables.length - variableDefs.length
       if (fileVariableCount > 0) {
@@ -1190,6 +1210,7 @@ export const pullCommand = new Command('pull')
         tags: tagDefs,
         notificationProviders: notificationProviderDefs,
         statusPages: statusPageDefs,
+        requirements: requirementDefs,
         tests: existing?.config.tests,
       })
 
@@ -1204,6 +1225,7 @@ export const pullCommand = new Command('pull')
         if (tagDefs.length > 0) logger.info(pc.green(`  + ${tagDefs.length} tag(s)`))
         if (notificationProviderDefs.length > 0) logger.info(pc.green(`  + ${notificationProviderDefs.length} notification provider(s)`))
         if (statusPageDefs.length > 0) logger.info(pc.green(`  + ${statusPageDefs.length} status page(s)`))
+        if (requirementDefs.length > 0) logger.info(pc.green(`  + ${requirementDefs.length} requirement(s)`))
         logger.success('Updated supercheck.config.ts')
       } else {
         logger.info('supercheck.config.ts is already up to date')
@@ -1213,7 +1235,7 @@ export const pullCommand = new Command('pull')
     // ── Summary ──
     logger.newline()
 
-    const totalWritten = summary.tests + summary.monitors + summary.jobs + summary.variables + summary.tags + summary.notificationProviders + summary.statusPages
+    const totalWritten = summary.tests + summary.monitors + summary.jobs + summary.variables + summary.tags + summary.notificationProviders + summary.statusPages + summary.requirements
     const totalErrors = summary.errors.length
 
     if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: totalErrors ? 'partial' : 'success', ...summary, configPath: options.testsOnly ? null : existing?.configPath ?? resolve(cwd, options.config ?? 'supercheck.config.ts') }))
@@ -1233,6 +1255,7 @@ export const pullCommand = new Command('pull')
       if (summary.tags > 0) resultParts.push(`${summary.tags} tag(s)`)
       if (summary.notificationProviders > 0) resultParts.push(`${summary.notificationProviders} notification provider(s)`)
       if (summary.statusPages > 0) resultParts.push(`${summary.statusPages} status page(s)`)
+      if (summary.requirements > 0) resultParts.push(`${summary.requirements} requirement(s)`)
       if (summary.skipped > 0) resultParts.push(`${summary.skipped} skipped`)
 
       if (resultParts.length > 0) {

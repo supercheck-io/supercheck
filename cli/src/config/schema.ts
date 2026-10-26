@@ -86,42 +86,99 @@ export const jobDefinitionSchema = z.object({
   cronSchedule: z.string().optional(),
   status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
-  tags: z.array(z.string()).optional(),
+}, {
+  errorMap: (issue, ctx) => {
+    if (issue.code === 'unrecognized_keys' && issue.keys.includes('tags')) {
+      const name = (ctx.data as { name?: unknown } | undefined)?.name
+      return { message: `Jobs do not support tags; remove \`tags\` from job "${typeof name === 'string' ? name : '?'}"` }
+    }
+    return { message: ctx.defaultError }
+  },
 }).strict()
 
 // --- Status Pages ---
 
+/** Mirrors the server's support contact rule: empty (clears it), an email address, or an http(s)/mailto URL. */
+function isSupportContact(value: string): boolean {
+  const isEmail = (text: string) => z.string().email().safeParse(text.trim()).success
+  if (value === '' || isEmail(value)) return true
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'mailto:') return isEmail(decodeURIComponent(url.pathname))
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export const statusPageComponentDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  monitors: z.array(z.string()).optional(),
-  position: z.number().int().min(0).optional(),
+  name: z.string().min(1).max(255),
+  description: z.string().max(2000).optional(),
+  monitors: z.array(z.string()).max(100).optional(),
+  position: z.number().int().min(0).max(1000).optional(),
+}).strict()
+
+const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Expected a #RRGGBB hex color')
+
+export const statusPageBrandingSchema = z.object({
+  bodyBackgroundColor: hexColor.optional(),
+  fontColor: hexColor.optional(),
+  lightFontColor: hexColor.optional(),
+  greens: hexColor.optional(),
+  yellows: hexColor.optional(),
+  oranges: hexColor.optional(),
+  blues: hexColor.optional(),
+  reds: hexColor.optional(),
+  borderColor: hexColor.optional(),
+  graphColor: hexColor.optional(),
+  linkColor: hexColor.optional(),
+  noData: hexColor.optional(),
+}).strict()
+
+/** No defaults: an absent flag means "leave the remote value alone". */
+export const statusPageNotificationsSchema = z.object({
+  allowPageSubscribers: z.boolean().optional(),
+  allowEmailSubscribers: z.boolean().optional(),
+  allowWebhookSubscribers: z.boolean().optional(),
+  allowSlackSubscribers: z.boolean().optional(),
+  allowIncidentSubscribers: z.boolean().optional(),
+  allowRssFeed: z.boolean().optional(),
 }).strict()
 
 export const statusPageDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
+  /** Read-only: written by `pull`, never compared and never sent (the server generates it). */
   subdomain: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
-  description: z.string().optional(),
-  headline: z.string().optional(),
-  supportUrl: z.string().optional(),
-  language: z.string().min(2).max(10).optional(),
+  description: z.string().max(2000).optional(),
+  headline: z.string().max(255).optional(),
+  supportUrl: z.string().trim().max(500).refine(isSupportContact, 'Expected an email address or an http(s)/mailto URL').optional(),
+  language: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, 'Expected a language code such as "en" or "pt-BR"').optional(),
+  timezone: z.string().max(50).optional(),
+  customDomain: z.string().max(255).regex(/^$|^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/, 'Expected a domain such as status.example.com').optional(),
   components: z.array(statusPageComponentDefinitionSchema).optional(),
-  branding: z.object({
-    bodyBackgroundColor: z.string().optional(),
-    fontColor: z.string().optional(),
-    greens: z.string().optional(),
-    reds: z.string().optional(),
-  }).strict().optional(),
-  notifications: z.object({
-    allowEmailSubscribers: z.boolean().default(true),
-    allowWebhookSubscribers: z.boolean().default(false),
-    allowRssFeed: z.boolean().default(true),
-  }).strict().optional(),
+  branding: statusPageBrandingSchema.optional(),
+  notifications: statusPageNotificationsSchema.optional(),
+}).strict()
+
+// --- Requirements ---
+
+export const requirementDefinitionSchema = z.object({
+  /** Database UUID. Present for existing resources, omitted for new ones. */
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(1).max(500),
+  description: z.string().optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+  externalId: z.string().max(255).optional(),
+  /** "" clears it. */
+  externalUrl: z.string().url().or(z.literal('')).optional(),
+  /** Linked tests, referenced the same way as a job's `tests` (file path, filename or UUID). */
+  tests: z.array(z.string()).max(100).optional(),
 }).strict()
 
 // --- Project, API, Defaults ---
@@ -157,6 +214,7 @@ export const supercheckConfigSchema = z.object({
     z.array(statusPageDefinitionSchema),
   ]).optional(),
   jobs: z.array(jobDefinitionSchema).optional(),
+  requirements: z.array(requirementDefinitionSchema).optional(),
   notificationProviders: z.array(notificationProviderDefinitionSchema).optional(),
   variables: z.array(variableDefinitionSchema).optional(),
   tags: z.array(tagDefinitionSchema).optional(),
@@ -175,6 +233,7 @@ export type PlaywrightTestConfig = z.infer<typeof playwrightTestConfigSchema>
 export type K6TestConfig = z.infer<typeof k6TestConfigSchema>
 export type MonitorDefinition = z.infer<typeof monitorDefinitionSchema>
 export type JobDefinition = z.infer<typeof jobDefinitionSchema>
+export type RequirementDefinition = z.infer<typeof requirementDefinitionSchema>
 export type StatusPageDefinition = z.infer<typeof statusPageDefinitionSchema>
 export type StatusPageComponentDefinition = z.infer<typeof statusPageComponentDefinitionSchema>
 export type NotificationProviderDefinition = z.infer<typeof notificationProviderDefinitionSchema>

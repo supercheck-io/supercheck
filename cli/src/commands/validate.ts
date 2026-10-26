@@ -6,6 +6,7 @@ import { loadConfig } from '../config/loader.js'
 import { buildLocalResources } from '../utils/resources.js'
 import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
+import { validateStatusPageDefinition } from '../utils/status-pages.js'
 import { logger } from '../utils/logger.js'
 import { withSpinner } from '../utils/spinner.js'
 
@@ -19,6 +20,21 @@ export const validateCommand = new Command('validate')
 
     const localResources = buildLocalResources(config, cwd)
     const tests = localResources.filter((r) => r.type === 'test')
+
+    // Structural checks on requirements and status pages (no network).
+    const localTestNames = new Set(tests.map((t) => t.name))
+    const uuidRef = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    for (const resource of localResources) {
+      if (resource.type === 'statusPage') validateStatusPageDefinition(resource.definition, resource.name)
+      if (resource.type === 'requirement' && Array.isArray(resource.definition.tests)) {
+        for (const ref of resource.definition.tests) {
+          const text = String(ref)
+          if (!uuidRef.test(text) && !localTestNames.has(text.replace(/^_supercheck_\//, ''))) {
+            logger.warn(`requirement/${resource.name}: test reference "${text}" matches no local test file; it must already be deployed.`)
+          }
+        }
+      }
+    }
 
     if (tests.length === 0) {
       logger.warn('No local tests found to validate.')

@@ -1,23 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-let resources: Record<string, unknown[]> = {}
+let resources: Record<string, unknown> = {}
+let requirementsError: Error | undefined
 const confirm = jest.fn<(...args: unknown[]) => Promise<void>>()
 const install = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined)
 const messages: string[] = []
 const log = (message: string) => messages.push(message)
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
+    getBaseUrl: () => 'https://app.supercheck.io',
     get: async (path: string) => ({ data: path === '/api/context'
       ? { organization: { id: 'org' }, project: { id: 'project' } }
       : resources[path] ?? [] }),
   }),
 }))
-jest.unstable_mockModule('../../config/loader.js', () => ({ tryLoadConfig: async () => null }))
+let existingConfig: unknown = null
+jest.unstable_mockModule('../../config/loader.js', () => ({ tryLoadConfig: async () => existingConfig }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({
   fetchAllPages: async (_client: unknown, path: string) => resources[path] ?? [],
+  fetchRemoteRequirements: async () => {
+    if (requirementsError) throw requirementsError
+    return resources['/api/requirements'] ?? []
+  },
+  fetchStatusPagesWithComponents: async () => resources['/api/status-pages'] ?? [],
 }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({
   withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn(),
@@ -81,6 +89,31 @@ describe('pull output and local file effects', () => {
     expect(output()).toContain('No test scripts found on the remote project.')
     expect(output()).toContain('Local-only test scripts are preserved')
     expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('refuses to pull when the config declares requirements but the server has no requirements API', async () => {
+    const { ApiRequestError } = await import('../../utils/errors.js')
+    const configPath = resolve(cwd, 'supercheck.config.ts')
+    writeFileSync(configPath, 'keep me')
+    existingConfig = { config: { project: { organization: 'org', project: 'project' }, requirements: [{ title: 'Login' }] }, configPath }
+    requirementsError = new ApiRequestError('Not Found', 404)
+    try {
+      await expect(pull('--force')).rejects.toThrow('does not support requirements')
+      expect(readFileSync(configPath, 'utf-8')).toBe('keep me')
+    } finally {
+      existingConfig = null
+      requirementsError = undefined
+    }
+  })
+
+  it('writes @tags from the list item when the detail response carries no tags', async () => {
+    const { id } = remoteTest
+    resources['/api/tests'] = [{ id, title: 'Homepage', type: 'browser', tags: [{ id: 't', name: 'core' }] }]
+    resources[`/api/tests/${id}`] = { id, title: 'Homepage', type: 'browser', script: "test('home', async () => {})\n" }
+    await pull('--tests-only', '--force')
+    const folder = resolve(cwd, '_supercheck_/playwright')
+    const file = readdirSync(folder).find((name) => name.includes(id))!
+    expect(readFileSync(resolve(folder, file), 'utf-8')).toContain('// @tags core')
   })
 
   it('preserves local-only scripts when pulling config resources', async () => {

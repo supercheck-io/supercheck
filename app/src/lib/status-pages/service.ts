@@ -826,6 +826,16 @@ export async function updateComponent(
         )
         .returning();
       if (linkedMonitorIds !== undefined) {
+        // Without explicit weights, a retained monitor keeps its weight instead of resetting to 1.
+        const keptWeights = validatedData.monitorWeights === undefined
+          ? new Map(
+              (await tx
+                .select({ monitorId: statusPageComponentMonitors.monitorId, weight: statusPageComponentMonitors.weight })
+                .from(statusPageComponentMonitors)
+                .where(eq(statusPageComponentMonitors.componentId, componentId))
+              ).map((link) => [link.monitorId, link.weight])
+            )
+          : undefined;
         await tx
           .delete(statusPageComponentMonitors)
           .where(eq(statusPageComponentMonitors.componentId, componentId));
@@ -834,7 +844,7 @@ export async function updateComponent(
             linkedMonitorIds.map((monitorId) => ({
               componentId,
               monitorId,
-              weight: validatedData.monitorWeights?.[monitorId] ?? 1,
+              weight: validatedData.monitorWeights?.[monitorId] ?? keptWeights?.get(monitorId) ?? 1,
               createdAt: new Date(),
             }))
           );
