@@ -83,8 +83,9 @@ test('test', async ({ page }) => {
   await expect(recorderPage.locator('.source-line-error-widget')).toHaveText('Unterminated string constant (5:45)');
 });
 
-test('should reflect code changes on other sources', async ({ page, attachRecorder, baseURL }) => {
-  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should reflect code changes on other sources', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
   await recorderPage.getByTitle('Record', { exact: true }).click();
 
@@ -128,8 +129,9 @@ test('test', async ({ page }) => {
   await expect(page.locator('textarea')).toHaveValue('modified test');
 });
 
-test('should reset code with errors if file changed', async ({ page, recordAction, attachRecorder, baseURL }) => {
-  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should reset code with errors if file changed', async ({ page, recordAction, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
 
   await recordAction(() => page.goto(`${baseURL}/input/textarea.html`));
@@ -159,8 +161,9 @@ test('test', async ({ page }) => {
   await expect(editorLine(recorderPage, 4)).toHaveText(`  await page.goto('${baseURL}/input/textarea.html');`);
 });
 
-test('should keep playwright test formatting', async ({ page, attachRecorder, baseURL }) => {
-  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should keep playwright test formatting', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
   await recorderPage.getByTitle('Record', { exact: true }).click();
 
