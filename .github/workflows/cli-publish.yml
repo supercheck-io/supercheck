@@ -200,6 +200,10 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+    # This job does not check out the repository, so the workflow-wide `cli` directory does not exist here.
+    defaults:
+      run:
+        working-directory: .
     steps:
       # The repo's "Latest" release is the app (vX.Y.Z); CLI releases must not displace it.
       - name: Publish GitHub release
