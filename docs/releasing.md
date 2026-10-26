@@ -50,8 +50,10 @@ tags are prereleases built from `main`.
    `deploy/docker/install.sh`, the install and upgrade examples in
    `deploy/docker/*.md` and `docs/content/docs/app/deployment/`, and date the
    `CHANGELOG.md` section. Run `./deploy/docker/validate.sh`.
-2. Merge the PR. Docs deploy on merge, so tag right away: until the images are
-   published, the documented version cannot be pulled.
+2. Merge the PR (squash; the tag must point at the commit on `main`). The merge
+   starts `docs-deploy.yml`, and until the images are published the documented
+   version cannot be pulled. Cancel that docs run and start it again with
+   `gh workflow run docs-deploy.yml` after step 3 has pushed the images.
 3. Create and push the signed tag on the merged commit (see "Creating a release
    tag"). `build-multiarch.yml` certifies the release, pushes the images
    (`latest` only for stable tags) and deploys the demo after approval.
