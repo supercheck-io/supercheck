@@ -100,9 +100,12 @@ export const jobDefinitionSchema = z.object({
 
 /** Mirrors the server's support contact rule: empty (clears it), an email address, or an http(s)/mailto URL. */
 function isSupportContact(value: string): boolean {
-  if (value === '' || /^[^\s@:]+@[^\s@]+\.[^\s@]+$/.test(value)) return true
+  const isEmail = (text: string) => z.string().email().safeParse(text.trim()).success
+  if (value === '' || isEmail(value)) return true
   try {
-    return ['http:', 'https:', 'mailto:'].includes(new URL(value).protocol)
+    const url = new URL(value)
+    if (url.protocol === 'mailto:') return isEmail(decodeURIComponent(url.pathname))
+    return url.protocol === 'http:' || url.protocol === 'https:'
   } catch {
     return false
   }

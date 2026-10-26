@@ -116,7 +116,7 @@ export default defineConfig({
 - **Nothing is deleted by default.** Resources absent from your config are left alone. Use `diff --delete` to preview and `deploy --delete` to prune. This also removes resources created outside the config.
 - **Ownership is explicit.** Names alone never establish ownership. If a same-named resource exists remotely but is not tracked, deploy stops: `pull` it or add its `id`.
 - **State.** Deploy records server-assigned IDs in `supercheck.state.json`, scoped to API origin, organization, and project. Commit it and share it with CI so later deploys manage the same resources. The transient `supercheck.state.json.lock` guards concurrent deploys on one filesystem; do not commit it.
-- **Checked before writing.** Test and monitor references, tags, server limits, and server support for each resource type are checked before the first write, so a typo cannot leave a half-applied deploy.
+- **Checked before writing.** Test and monitor references, tags, server limits, and server support for each resource type are checked before the first write, so most mistakes stop the deploy before anything changes.
 - **Dependencies.** New tests are created before the jobs, synthetic monitors, requirements, and status pages that reference them.
 - **Renames.** Renaming an ID-less non-test resource creates a new one; carry its `id` or `pull` first to update in place.
 - **Secrets.** Secret variable values are never written to config. A secret variable with no value is not sent, so an unset environment variable cannot overwrite a stored secret.

@@ -23,7 +23,7 @@ describe('status page schema', () => {
       expect(statusPageDefinitionSchema.safeParse({ name: 'A', supportUrl }).success).toBe(true)
     }
     for (const bad of [
-      { supportUrl: 'nonsense' }, { supportUrl: 'ftp://example.com' }, { customDomain: 'not a domain' }, { name: 'x'.repeat(256) },
+      { supportUrl: 'nonsense' }, { supportUrl: 'ftp://example.com' }, { supportUrl: 'mailto:garbage' }, { supportUrl: 'a@b.c' }, { customDomain: 'not a domain' }, { name: 'x'.repeat(256) },
       { headline: 'x'.repeat(256) }, { description: 'x'.repeat(2001) },
       { components: [{ name: 'c', monitors: Array.from({ length: 101 }, (_, i) => `m${i}`) }] },
       { components: [{ name: 'c', description: 'x'.repeat(2001) }] }, { components: [{ name: 'c', position: 1001 }] },

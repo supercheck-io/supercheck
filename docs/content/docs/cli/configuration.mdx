@@ -253,7 +253,7 @@ Needs a server with the requirements API. Remote requirements are compared, and 
 </Accordion>
 <Accordion title="statusPages[]" id="statuspages">
 
-Needs a server with the status page write API. `config validate` applies the server's limits, so a bad value fails before anything is written. Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
+Needs a server with the status page write API. `config validate` checks the server's length limits and formats, so most bad values fail before anything is written; the server stays the final check (for example, custom domain availability on your plan). Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
 
 | Field | Type | Description |
 |---|---|---|

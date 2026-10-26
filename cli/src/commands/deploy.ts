@@ -113,8 +113,10 @@ export function assertReferencesResolvable(
     }
     if (change.type === 'statusPage') {
       validateStatusPageDefinition(definition, change.name)
-      // A new page has no components unless the config declares some, and publishing needs one.
-      if (change.action === 'create' && definition.status === 'published' && definition.components === undefined) {
+      // Publishing needs a component; a new page has none unless declared, an existing one only those it already has.
+      const remoteComponents = change.remote?.raw.components
+      const hasRemoteComponents = Array.isArray(remoteComponents) && remoteComponents.length > 0
+      if (definition.status === 'published' && definition.components === undefined && change.remote?.raw.status !== 'published' && !hasRemoteComponents) {
         throw new CLIError(`Status page "${change.name}" is published but defines no components. Add at least one component before publishing.`, ExitCode.ConfigError)
       }
       if (Array.isArray(definition.components)) {

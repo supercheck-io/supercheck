@@ -236,7 +236,10 @@ describe('assertReferencesResolvable', () => {
 
   it('rejects publishing a new page that declares no components', () => {
     expect(() => assertReferencesResolvable([change('statusPage', 'P', { status: 'published' })], { resolve })).toThrow('defines no components')
-    expect(() => assertReferencesResolvable([change('statusPage', 'P', { status: 'published' }, 'update')], { resolve })).not.toThrow()
+    const existing = (raw: Record<string, unknown>) => ({ ...(change('statusPage', 'P', { status: 'published' }, 'update') as object), remote: { raw } }) as never
+    expect(() => assertReferencesResolvable([existing({ status: 'draft', components: [] })], { resolve })).toThrow('defines no components')
+    expect(() => assertReferencesResolvable([existing({ status: 'draft', components: [{ id: 'c', name: 'Web' }] })], { resolve })).not.toThrow()
+    expect(() => assertReferencesResolvable([existing({ status: 'published' })], { resolve })).not.toThrow()
   })
 })
 
