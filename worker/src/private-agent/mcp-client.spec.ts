@@ -2,6 +2,8 @@ jest.mock('node:dns/promises', () => ({
   lookup: jest.fn().mockResolvedValue([{ address: '10.0.0.5', family: 4 }]),
 }));
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   MCP_FENCE_CLOSE,
   MCP_FENCE_OPEN,
@@ -314,5 +316,33 @@ describe('MCP client', () => {
         jobSpec: { ...job.jobSpec, filters: {} },
       }),
     ).rejects.toThrow('mcp_operation_invalid');
+  });
+});
+
+// Shared with the app validator (app/.../providers/mcp.spec.ts) so the two cannot drift.
+const sharedCases = JSON.parse(
+  readFileSync(
+    join(
+      __dirname,
+      '../../../app/src/lib/sre/connectors/providers/mcp-validator-cases.json',
+    ),
+    'utf8',
+  ),
+) as {
+  schema: Record<string, unknown>;
+  argumentCases: Array<{ name: string; args: string; ok: boolean }>;
+  schemaCases: Array<{ name: string; schema: string; supported: boolean }>;
+};
+
+describe('MCP validator shared cases', () => {
+  it.each(sharedCases.argumentCases)('arguments: $name', ({ args, ok }) => {
+    expect(
+      validateMcpArguments(sharedCases.schema, JSON.parse(args)) === null,
+    ).toBe(ok);
+  });
+  it.each(sharedCases.schemaCases)('schema: $name', ({ schema, supported }) => {
+    expect(unsupportedSchemaReason(JSON.parse(schema)) === null).toBe(
+      supported,
+    );
   });
 });

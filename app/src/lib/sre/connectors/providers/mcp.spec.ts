@@ -12,6 +12,7 @@ import {
   unsupportedSchemaReason,
   validateMcpArguments,
 } from "./mcp";
+import cases from "./mcp-validator-cases.json";
 
 const schema = {
   type: "object",
@@ -180,5 +181,16 @@ describe("MCP allowlist re-save keeps approved definitions", () => {
     const changed = [{ ...discovered[0], description: "Now does something else", inputSchema: { type: "object", properties: {} } }];
     const built = buildAllowlist(changed as never, [{ name: "get_errors" }], [entry]);
     expect(built).toMatchObject({ ok: true, allowlist: [{ description: "Read errors", inputSchema: schema }] });
+  });
+});
+
+// The Private Agent re-validates with its own copy; worker/src/private-agent/mcp-client.spec.ts
+// runs these same cases against that implementation.
+describe("MCP validator shared cases", () => {
+  it.each(cases.argumentCases)("arguments: $name", ({ args, ok }) => {
+    expect(validateMcpArguments(cases.schema, JSON.parse(args)) === null).toBe(ok);
+  });
+  it.each(cases.schemaCases)("schema: $name", ({ schema, supported }) => {
+    expect(unsupportedSchemaReason(JSON.parse(schema)) === null).toBe(supported);
   });
 });
