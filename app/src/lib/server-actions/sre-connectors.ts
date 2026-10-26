@@ -47,8 +47,11 @@ import {
   checkSreConnectorSearchRateLimit,
   checkSreConnectorValidationRateLimit,
 } from "@/lib/sre/sre-rate-limiter";
-import { providerEndpointRequirementError } from "@/lib/sre/connectors/providers/provider-credentials";
-import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
+import {
+  FIXED_ENDPOINT_PROVIDER_TYPES,
+  flatCredentialFields,
+  providerEndpointRequirementError,
+} from "@/lib/sre/connectors/providers/provider-credentials";
 import { db } from "@/utils/db";
 
 const credentialTypes = [
@@ -923,7 +926,13 @@ export async function createSreConnector(
       };
     }
 
-    const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);
+    const isFixedEndpointProvider = (
+      FIXED_ENDPOINT_PROVIDER_TYPES as readonly string[]
+    ).includes(parsed.data.type);
+    // Fixed-host providers never read an endpoint; drop any stale value.
+    const endpointUrl = isFixedEndpointProvider
+      ? null
+      : normalizeEndpointUrl(parsed.data.endpointUrl);
     if (isSetupOnlyConnectorType(parsed.data.type)) {
       return {
         success: false,

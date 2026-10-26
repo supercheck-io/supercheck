@@ -129,11 +129,12 @@ export async function searchSplunk(
   const search = prepareSpl(params.query);
   const limit = rowLimit(params);
   const body = new URLSearchParams({
-    search,
+    search: `${search} | head ${limit + 1}`,
     earliest_time: String(Math.floor(params.timeWindow.start.getTime() / 1000)),
     latest_time: String(Math.ceil(params.timeWindow.end.getTime() / 1000)),
     output_mode: 'json',
     count: String(limit + 1),
+    max_count: String(limit + 1),
     max_time: String(clampInt(params.maxSeconds - 1, 1, 60)),
   }).toString();
 

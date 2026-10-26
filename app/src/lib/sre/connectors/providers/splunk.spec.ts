@@ -42,7 +42,8 @@ describe("splunk provider", () => {
     expect(calls[0].method).toBe("POST");
     expect(calls[0].headers.Authorization).toBe("Bearer tok");
     const body = new URLSearchParams(calls[0].body);
-    expect(body.get("search")).toBe("search index=main error");
+    expect(body.get("search")).toBe("search index=main error | head 11");
+    expect(body.get("max_count")).toBe("11");
     expect(body.get("earliest_time")).toBe(String(Date.parse("2026-10-27T11:00:00Z") / 1000));
     expect(body.get("latest_time")).toBe(String(Date.parse("2026-10-27T12:00:00Z") / 1000));
     expect(body.get("output_mode")).toBe("json");

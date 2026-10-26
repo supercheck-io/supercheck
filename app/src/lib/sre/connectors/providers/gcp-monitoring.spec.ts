@@ -42,6 +42,8 @@ describe("gcp provider", () => {
     expect(() => parseGcpQuery('logs: a) OR (b')).toThrow(/unbalanced/);
     expect(hasBalancedParentheses('a="(" AND (b)')).toBe(true);
     expect(hasBalancedParentheses("x='a) OR (b='")).toBe(false);
+    expect(hasBalancedParentheses('a -- (\n) OR ( -- )\n b')).toBe(false);
+    expect(hasBalancedParentheses('textPayload="a--b"')).toBe(true);
     expect(parseGcpQuery("logs: *").filter).toBe("");
   });
 

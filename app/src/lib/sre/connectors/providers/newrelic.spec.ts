@@ -20,6 +20,11 @@ describe("new relic provider", () => {
     expect(prepareNrql("SELECT message FROM Log LIMIT 5 since '2020-01-01'", WINDOW, 10)).toBe("SELECT message FROM Log LIMIT 5 SINCE '2026-10-27T11:00:00+0000' UNTIL '2026-10-27T12:00:00+0000'");
   });
 
+  it("does not edit quoted literals and handles decimal SINCE values", () => {
+    expect(prepareNrql("SELECT count(*) FROM Log WHERE message LIKE '%error since deploy%' SINCE 1.5 hours ago", WINDOW, 10)).toBe("SELECT count(*) FROM Log WHERE message LIKE '%error since deploy%' LIMIT 10 SINCE '2026-10-27T11:00:00+0000' UNTIL '2026-10-27T12:00:00+0000'");
+    expect(prepareNrql("SELECT message FROM Log WHERE message = 'limit 5'", WINDOW, 10)).toContain("LIMIT 10 SINCE");
+  });
+
   it("requires aggregation for statistics", () => {
     expect(nrqlStatisticsError("SELECT message FROM Log")).toMatch(/aggregation/);
     expect(nrqlStatisticsError("SELECT count(*) FROM Log")).toBeNull();

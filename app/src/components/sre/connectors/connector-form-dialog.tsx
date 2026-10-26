@@ -263,6 +263,10 @@ export function ConnectorFormDialog({
                       onValueChange={(value) => {
                         const nextType = value as ConnectorType;
                         setType(nextType);
+                        setProviderValues({});
+                        if (getProviderCredentialFields(nextType)) {
+                          setEndpointUrl("");
+                        }
                         if (apiKeyOnlyConnectorTypes.has(nextType)) {
                           setCredentialType("api_key");
                         }
@@ -416,7 +420,8 @@ export function ConnectorFormDialog({
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                  {!providerFields && (
+<div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
                     <Label htmlFor="connector-endpoint">Endpoint URL</Label>
                     <Input
                       id="connector-endpoint"
@@ -451,8 +456,9 @@ export function ConnectorFormDialog({
                         </div>
                       )}
                   </div>
+)}
 
-                  {providerFields ? (
+{providerFields ? (
                     <>
                       <ProviderCredentialInputs
                         idPrefix="connector-credential"

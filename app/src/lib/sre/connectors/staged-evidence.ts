@@ -1,4 +1,7 @@
-import { providerStatisticsQueryError } from "./providers/provider-query-guards";
+import {
+  ConnectorQueryRejectedError,
+  providerStatisticsQueryError,
+} from "./providers/provider-query-guards";
 
 export const STAGED_EVIDENCE_STAGES = [
   "statistics",
@@ -56,7 +59,7 @@ export function validateStagedEvidenceQuery(input: {
 }) {
   if (input.stage === "statistics") {
     const providerError = providerStatisticsQueryError(input.connectorType, input.query);
-    if (providerError) throw new Error(providerError);
+    if (providerError) throw new ConnectorQueryRejectedError(providerError);
   }
 
   if (input.connectorType === "loki" && input.stage === "statistics") {

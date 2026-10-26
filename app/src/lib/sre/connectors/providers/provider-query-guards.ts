@@ -4,8 +4,26 @@ import { parseJaegerQuery } from "./jaeger";
 import { assertReadOnlyNrql, nrqlStatisticsError } from "./newrelic";
 import { assertReadOnlySpl, splStatisticsError } from "./splunk";
 
+/** A fixable query mistake; the agent may correct it and retry. */
+export class ConnectorQueryRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConnectorQueryRejectedError";
+  }
+}
+
 /** Fails fast on queries a provider connector would reject, before any network call. */
 export function assertProviderQueryAllowed(connectorType: string, query: string) {
+  try {
+    checkProviderQuery(connectorType, query);
+  } catch (error) {
+    throw new ConnectorQueryRejectedError(
+      error instanceof Error ? error.message : "Query rejected",
+    );
+  }
+}
+
+function checkProviderQuery(connectorType: string, query: string) {
   switch (connectorType) {
     case "newrelic":
       assertReadOnlyNrql(query);

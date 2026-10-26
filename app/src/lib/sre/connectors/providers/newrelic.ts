@@ -23,7 +23,7 @@ const ACCOUNT_ID_PATTERN = /^\d{1,12}$/;
 const AGGREGATION_PATTERN =
   /\b(?:count|uniqueCount|average|sum|min|max|percentile|rate|median|stddev|latest|filter|histogram|apdex|funnel)\s*\(/i;
 const STRIP_TIME_CLAUSE =
-  /\b(?:since|until)\b\s+(?:'[^']*'|"[^"]*"|\d+\s+[a-z]+\s+ago|\d+|[a-z]+(?:\s+ago)?)/gi;
+  /\b(?:since|until)\b\s+(?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?\s+[a-z]+\s+ago|\d+|[a-z]+(?:\s+ago)?)/gi;
 
 export function newRelicGraphqlUrl(credential: ProviderContext['credential']) {
   const region = credentialText(credential, ['region'])?.toLowerCase();
@@ -79,13 +79,28 @@ export function prepareNrql(
   limit: number,
 ) {
   assertReadOnlyNrql(query);
-  const stripped = query
+  // Hide quoted literals (except SINCE/UNTIL timestamps) so stripping and the
+  // LIMIT check never edit or match text inside a filter value.
+  const literals: string[] = [];
+  const masked = query.replace(
+    /(\b(?:since|until)\s+)?('[^']*'|"[^"]*")/gi,
+    (match: string, clause?: string) => {
+      if (clause) return match;
+      literals.push(match);
+      return `__lit${literals.length - 1}__`;
+    },
+  );
+  const stripped = masked
     .replace(STRIP_TIME_CLAUSE, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   const hasLimit = /\blimit\s+(?:\d+|max)\b/i.test(stripped);
+  const restored = stripped.replace(
+    /__lit(\d+)__/g,
+    (_match, index: string) => literals[Number(index)] ?? '',
+  );
   return [
-    stripped,
+    restored,
     hasLimit ? null : `LIMIT ${limit}`,
     `SINCE ${nrqlTimestamp(window.start)} UNTIL ${nrqlTimestamp(window.end)}`,
   ]

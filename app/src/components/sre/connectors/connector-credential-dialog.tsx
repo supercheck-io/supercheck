@@ -298,6 +298,13 @@ export function ConnectorCredentialDialog({
             </div>
           )}
 
+          {providerFields && (
+            <p className="text-xs text-muted-foreground">
+              Rotation replaces the whole credential. Re-enter every field,
+              including optional ones such as the region or workspace ID.
+            </p>
+          )}
+
           <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
             Rotation resets validation status. Validate the connector after
             saving to confirm reachability.

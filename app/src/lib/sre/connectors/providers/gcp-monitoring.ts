@@ -244,6 +244,9 @@ export function hasBalancedParentheses(filter: string) {
       continue;
     }
     if (char === '"') quote = char;
+    // Newlines and "--" comments could hide parentheses from this check.
+    else if (char === '\n' || char === '\r') return false;
+    else if (char === '-' && filter[index + 1] === '-') return false;
     else if (char === '(') depth += 1;
     else if (char === ')') {
       depth -= 1;
