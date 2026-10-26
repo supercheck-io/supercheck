@@ -21,6 +21,7 @@ type ConnectorTableMeta = {
   onViewJob?: (connector: SreConnectorListItem) => void;
   onRotate?: (connector: SreConnectorListItem) => void;
   onDisable?: (connector: SreConnectorListItem) => void;
+  onManageMcpTools?: (connector: SreConnectorListItem) => void;
   isValidating?: boolean;
   isLoadingJobResult?: boolean;
   isDisabling?: boolean;
@@ -43,7 +44,9 @@ const riskTones: Record<SreConnectorListItem["riskLevel"], TableBadgeTone> = {
 
 function supportsEvidenceSearch(connector: SreConnectorListItem) {
   return (
-    connector.status !== "disabled" && isLiveSearchConnectorType(connector.type)
+    connector.status !== "disabled" &&
+    connector.type !== "mcp" &&
+    isLiveSearchConnectorType(connector.type)
   );
 }
 
@@ -60,6 +63,10 @@ function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
       label: "Native",
       tone: "info" as const,
     };
+  }
+
+  if (connectorType === "mcp") {
+    return { label: "Agent tools", tone: "success" as const };
   }
 
   if (isLiveSearchConnectorType(connectorType)) {
@@ -204,8 +211,14 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     cell: ({ row, table }) => {
       const connector = row.original;
       const meta = table.options.meta as ConnectorTableMeta | undefined;
-      const { onSearch, onValidate, onViewJob, onRotate, onDisable } =
-        meta ?? {};
+      const {
+        onSearch,
+        onValidate,
+        onViewJob,
+        onRotate,
+        onDisable,
+        onManageMcpTools,
+      } = meta ?? {};
 
       return (
         <div className="flex items-center justify-end gap-1">
@@ -226,6 +239,11 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               >
                 Search evidence
               </DropdownMenuItem>
+              {connector.type === "mcp" && connector.status !== "disabled" && (
+                <DropdownMenuItem onClick={() => onManageMcpTools?.(connector)}>
+                  Manage MCP tools
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => onValidate?.(connector)}
                 disabled={meta?.isValidating}

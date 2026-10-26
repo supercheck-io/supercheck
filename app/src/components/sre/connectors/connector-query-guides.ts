@@ -302,6 +302,17 @@ const guides: Record<string, ConnectorQueryGuide> = {
       },
     ],
   },
+  mcp: {
+    label: "MCP server",
+    queryLabel: "Tool",
+    queryPlaceholder: "Tools are called by investigations, not searched",
+    endpointPlaceholder: "https://mcp.internal.example.com/mcp",
+    setupHint:
+      "Streamable HTTP endpoint of an MCP server in your network. Reached only through a Private Agent. After saving, use Manage MCP tools to discover and allowlist read-only tools.",
+    credentialHint:
+      "Optional bearer token, or a custom header name plus value. Leave empty for servers that do not require authentication.",
+    examples: [],
+  },
   tempo: {
     label: "Grafana Tempo",
     queryLabel: "Trace search",

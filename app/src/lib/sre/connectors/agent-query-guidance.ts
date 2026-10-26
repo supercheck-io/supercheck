@@ -8,6 +8,8 @@ export function getAgentConnectorQueryGuidance(connectorType: string) {
       return 'LogQL only, for example {app="checkout"} or {app="checkout"} |= "error". Never use a bare Kubernetes label selector.';
     case "grafana":
       return "Plain dashboard search text, for example checkout latency.";
+    case "mcp":
+      return "Not searchable. Call allowlisted tools with callMcpTool; the tools and their arguments are listed on the connector.";
     default:
       return "Use the connector's native read-only query language.";
   }

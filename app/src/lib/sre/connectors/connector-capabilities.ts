@@ -65,6 +65,7 @@ export const PRIVATE_AGENT_CONNECTOR_TYPES = [
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "mcp",
 ] as const satisfies readonly ConnectorType[];
 
 // These APIs can be intentionally unauthenticated inside a private network.
@@ -75,6 +76,7 @@ export const OPTIONAL_CREDENTIAL_CONNECTOR_TYPES = [
   "grafana",
   "loki",
   "tempo",
+  "mcp",
 ] as const satisfies readonly ConnectorType[];
 
 export type SreConnectorType = (typeof SRE_CONNECTOR_TYPES)[number];

@@ -209,8 +209,8 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
   {
     value: "mcp",
     label: "MCP",
-    description: "Approved external tool and context servers",
-    addable: false,
+    description: "Allowlisted read-only tools on an MCP server in your network (Private Agent only)",
+    addable: true,
   },
   {
     value: "webhook",

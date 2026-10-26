@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+import { executeMcpJob, McpError, mcpOperationSchema } from './mcp-client';
 import { isIP } from 'node:net';
 
 const PROTOCOL_VERSION = '2026-06-22';
@@ -31,6 +32,7 @@ const connectorJobSpecSchema = z.object({
     'elasticsearch',
     'tempo',
     'aws_cloudwatch',
+    'mcp',
   ]),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
@@ -1515,6 +1517,30 @@ async function executeCloudWatch(
   return executeCloudWatchAlarms(job, query);
 }
 
+async function executeMcp(job: LeasedJob): Promise<ConnectorExecutionResult> {
+  const spec = job.jobSpec;
+  const operation = mcpOperationSchema.safeParse(spec.filters.mcp);
+  if (!operation.success) throw new McpError('mcp_operation_invalid');
+  const credential = job.credential?.value ?? null;
+  const result = await executeMcpJob({
+    connectorId: spec.connectorId,
+    endpointUrl: spec.endpointUrl,
+    credential,
+    operation: operation.data,
+    maxRows: spec.budget.maxRows,
+    maxBytes: spec.budget.maxBytes,
+    maxSeconds: spec.budget.maxSeconds,
+  });
+  return {
+    evidence: result.evidence,
+    truncated: result.truncated,
+    resultHash: hashPayload({
+      evidence: result.evidence,
+      truncated: result.truncated,
+    }),
+  };
+}
+
 export async function executePrivateAgentConnectorJob(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -1539,6 +1565,8 @@ export async function executePrivateAgentConnectorJob(
       return executeTempo(job);
     case 'aws_cloudwatch':
       return executeCloudWatch(job);
+    case 'mcp':
+      return executeMcp(job);
   }
 }
 

@@ -928,6 +928,19 @@ export async function createSreConnector(
       };
     }
 
+    if (parsed.data.type === "mcp") {
+      // Never reachable without a Private Agent: the server is in the customer's network.
+      if (!parsed.data.privateAgentId) {
+        return {
+          success: false,
+          error: "MCP connectors run only through a Private Agent",
+        };
+      }
+      if (!endpointUrl) {
+        return { success: false, error: "MCP connectors require an endpoint URL" };
+      }
+    }
+
     const credentialError = connectorCredentialRequirementError(
       parsed.data.type,
       parsed.data.credential?.value as ConnectorCredentialValue | undefined,
@@ -1155,7 +1168,10 @@ export async function validateSreConnector(
       | "policy_blocked" = "valid";
     let outputSummary = "Connector validation passed";
 
-    if (!credentialRow && connectorRequiresCredentials(row.type)) {
+    if (row.type === "mcp" && !row.privateAgentId) {
+      status = "policy_blocked";
+      outputSummary = "MCP connectors run only through a Private Agent";
+    } else if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
     } else if (row.privateAgentId) {
@@ -1181,7 +1197,9 @@ export async function validateSreConnector(
       } else {
         status = "policy_blocked";
         outputSummary =
-          "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
+          row.type === "mcp"
+            ? "Private Agent is connected. Use Discover tools to verify the MCP endpoint and access."
+            : "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
@@ -1484,6 +1502,14 @@ export async function searchSreConnectorEvidence(
 
     if (!connector || connector.status === "disabled") {
       return { success: false, error: "Connector not found or disabled" };
+    }
+
+    if (connector.type === "mcp") {
+      return {
+        success: false,
+        error:
+          "MCP connectors are not searchable. Allowlisted tools are called by AI investigations.",
+      };
     }
 
     const searchSupported = connector.privateAgentId

@@ -1,4 +1,5 @@
 import type { ConnectorCredentialValue } from "./credential-vault";
+import { mcpHeaderNameError } from "./providers/mcp";
 
 function trimmedCredentialField(
   value: ConnectorCredentialValue | null | undefined,
@@ -38,6 +39,10 @@ export function connectorCredentialRequirementError(
       return "Datadog requires both an API key and an application key";
     }
     return null;
+  }
+
+  if (connectorType === "mcp") {
+    return mcpHeaderNameError(trimmedCredentialField(value, ["headerName"]));
   }
 
   if (connectorType === "aws_cloudwatch") {

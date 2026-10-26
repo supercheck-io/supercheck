@@ -24,6 +24,7 @@ Choose one of these in **Add connector**.
 | **Error tracking** | Sentry |
 | **Code and deployments** | GitHub, GitLab |
 | **Incident management** | PagerDuty, Opsgenie |
+| **Custom tools** | MCP servers in your network (Private Agent only) |
 
 Existing records for other providers are labeled **Setup only** and cannot run searches.
 
@@ -121,6 +122,38 @@ Save, validate, then run one known-result query and one no-result query before r
 Use the smallest service scope and query time window that answer your question. If a search returns no evidence, check the service scope, provider permissions, and time range.
 </Callout>
 
+## MCP Servers (Private Agent only)
+
+Connect any [Model Context Protocol](https://modelcontextprotocol.io) server running inside your network as a read-only evidence source. Supercheck reaches it only through a [Private Agent](/docs/app/deployment/private-agent), so **Execution mode** must be **Private Agent**. Direct mode is rejected. Only the Streamable HTTP transport is supported. Supercheck never starts local processes or stdio servers.
+
+<Steps>
+<Step>
+Add a connector of type **MCP** with the server's endpoint URL, for example `https://mcp.internal.example.com/mcp`, and the Private Agent that can reach it. An optional credential is sent as `Authorization: Bearer <value>`, or as a custom header if you set a header name.
+</Step>
+<Step>
+Open **Manage MCP tools** from the connector menu and select **Discover tools**. The Private Agent lists the server's tools and their input schemas.
+</Step>
+<Step>
+Tick the tools investigations may call and save. Nothing is callable until you allowlist it. You can fix some arguments, such as a namespace, to a constant value that the AI cannot override.
+</Step>
+</Steps>
+
+Allowlisted tools appear to the AI as `callMcpTool` targets together with their descriptions and argument names. Each call is checked before it leaves Supercheck, and again by the agent.
+
+| Control | Behavior |
+|---|---|
+| **Allowlist** | Only tools you ticked can be called. The tool description and input schema are saved when you allowlist, so later server changes do not widen access |
+| **Server hints** | Annotations such as read-only or destructive are shown for reference. They never authorize a call |
+| **Arguments** | Validated against the saved schema, size-limited, and unknown arguments are rejected. Tools whose schema uses unsupported JSON Schema keywords cannot be allowlisted |
+| **Output** | Text and JSON only. Images, resources, and binary content are dropped. Output is redacted, truncated, and marked as untrusted data, so the AI never treats it as instructions |
+| **Limits** | Calls count toward the connector search rate limit, the investigation step budget, the connector timeout, and the output size cap |
+| **Audit** | Each call, including rejected ones, appears in the investigation tool trace and the connector audit log with the tool name, and results are stored as evidence |
+| **Network** | The agent applies its endpoint policy: no localhost or cloud metadata targets, no redirects, and no credentials in URLs |
+
+<Callout type="warn">
+Allowlist only tools that cannot change anything. Supercheck cannot verify what a tool does on your server. Prefer a server or token that exposes read-only tools, and review each tool before ticking it.
+</Callout>
+
 ## Query Examples
 
 Each provider uses its own read-only query language.
@@ -149,6 +182,7 @@ Use dedicated, read-only credentials limited to the service scope.
 | **Prometheus / Loki** | Read-only bearer token or gateway credential for query endpoints |
 | **Sentry** | Read-only integration token restricted to relevant project IDs |
 | **Datadog** | API key plus application key with read-only event access for the correct Datadog site |
+| **MCP** | A token for a read-only account on the MCP server, limited to the tools you allowlist |
 | **AWS CloudWatch** | Access key ID and secret with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`. Prefer short-lived STS credentials and include the session token |
 
 <Callout type="warn">

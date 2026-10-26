@@ -32,6 +32,7 @@ import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ConnectorCredentialDialog } from "@/components/sre/connectors/connector-credential-dialog";
 import { ConnectorFormDialog } from "@/components/sre/connectors/connector-form-dialog";
+import { McpToolsDialog } from "@/components/sre/connectors/mcp-tools-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -205,6 +206,8 @@ export function ConnectorAdminView({
   const [disablingBinding, setDisablingBinding] =
     useState<SreIntegrationBindingListItem | null>(null);
   const [rotatingCredentialConnector, setRotatingCredentialConnector] =
+    useState<SreConnectorListItem | null>(null);
+  const [mcpToolsConnector, setMcpToolsConnector] =
     useState<SreConnectorListItem | null>(null);
   const [disablingConnector, setDisablingConnector] =
     useState<SreConnectorListItem | null>(null);
@@ -519,6 +522,7 @@ export function ConnectorAdminView({
             onViewJob: viewLatestJobResult,
             onRotate: setRotatingCredentialConnector,
             onDisable: setDisablingConnector,
+            onManageMcpTools: setMcpToolsConnector,
             isValidating,
             isLoadingJobResult,
             isDisabling,
@@ -605,6 +609,14 @@ export function ConnectorAdminView({
           onOpenChange={setIsCreateOpen}
           setupOptions={setupOptions}
           onSaved={handleSaved}
+        />
+      )}
+
+      {mcpToolsConnector && (
+        <McpToolsDialog
+          connector={mcpToolsConnector}
+          open={Boolean(mcpToolsConnector)}
+          onOpenChange={(open) => !open && setMcpToolsConnector(null)}
         />
       )}
 
