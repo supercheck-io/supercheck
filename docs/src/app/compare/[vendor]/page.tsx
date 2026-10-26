@@ -102,7 +102,7 @@ export default async function ComparePage({ params }: { params: Promise<{ vendor
             </div>
             <p className="mt-4 max-w-3xl text-xs leading-relaxed text-fd-muted-foreground">
               &quot;Not listed&quot; means the vendor&apos;s pricing page names no such product. It does not mean the capability cannot be assembled
-              from other tools. A range in the Supercheck column runs from its lowest to its highest plan.
+              from other tools. A range in the Supercheck column runs from the Plus to the Pro plan of Supercheck Cloud, which is waitlist-only; see the pricing page.
             </p>
           </div>
         </section>

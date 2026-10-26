@@ -158,9 +158,8 @@ export const products: Product[] = [
       },
       {
         title: "Attach it to a synthetic monitor",
-        body: "Create a synthetic monitor, select the saved test and choose an interval. The minimum is five minutes, so runs do not overlap.",
+        body: "Create a synthetic monitor, select the saved test and choose an interval. The minimum is five minutes. Set the interval longer than the test takes so runs do not overlap.",
         bullets: [
-          "Set the interval longer than the test takes to run",
           "Choose notification channels and failure and recovery thresholds",
           "Pause the monitor during planned maintenance",
         ],
@@ -190,7 +189,7 @@ export const products: Product[] = [
       {
         question: "Can I check from several regions?",
         answer:
-          "Supercheck Cloud is waitlist-only and runs browser, Playwright and k6 execution in Europe. On a self-hosted install, checks run from wherever you run workers.",
+          "Not on Supercheck Cloud at launch: it is waitlist-only and runs browser, Playwright and k6 execution in Europe. On a self-hosted install, checks run from wherever you run workers.",
       },
       {
         question: "Does it work with tests I already have?",
@@ -222,7 +221,7 @@ export const products: Product[] = [
     capabilities: [
       {
         title: "Read-only by design",
-        body: "Supercheck recommends checks and fixes. It does not change your infrastructure, and an investigation starts only when you select Run investigation.",
+        body: "Supercheck recommends checks and fixes. It does not change your infrastructure. A full investigation starts when you select Run investigation; administrators can separately enable automatic triage.",
       },
       {
         title: "Cited findings",
