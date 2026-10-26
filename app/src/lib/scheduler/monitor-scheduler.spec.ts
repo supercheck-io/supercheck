@@ -131,6 +131,32 @@ describe("monitor-scheduler", () => {
     expect(enqueueMonitorLocationJobs).not.toHaveBeenCalled();
   });
 
+  it("removes its own repeatable schedule when the monitor is gone", async () => {
+    mockMonitorsFindFirst.mockResolvedValue(null);
+    const removeRepeatableByKey = jest.fn().mockResolvedValue(true);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorSchedulerQueue: { removeRepeatableByKey } });
+    const job = { data: { monitorId: "monitor-1", type: "website", target: "https://example.com" }, repeatJobKey: "repeat-key" };
+    await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
+    expect(removeRepeatableByKey).toHaveBeenCalledWith("repeat-key");
+  });
+
+  it("keeps the schedule of a paused monitor, which a resume may be re-adding under the same key", async () => {
+    mockMonitorsFindFirst.mockResolvedValue({ status: "paused" });
+    const removeRepeatableByKey = jest.fn().mockResolvedValue(true);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorSchedulerQueue: { removeRepeatableByKey } });
+    const job = { data: { monitorId: "monitor-1", type: "website", target: "https://example.com" }, repeatJobKey: "repeat-key" };
+    await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
+    expect(removeRepeatableByKey).not.toHaveBeenCalled();
+  });
+
+  it("does not fail the job when removing its stale schedule fails", async () => {
+    mockMonitorsFindFirst.mockResolvedValue(null);
+    const removeRepeatableByKey = jest.fn().mockRejectedValue(new Error("redis down"));
+    (getQueues as jest.Mock).mockResolvedValue({ monitorSchedulerQueue: { removeRepeatableByKey } });
+    const job = { data: { monitorId: "monitor-1", type: "website", target: "https://example.com" }, repeatJobKey: "repeat-key" };
+    await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
+  });
+
   it("records scheduling failures when project restrictions disable all allowed locations", async () => {
     const disabledRestrictionsError =
       "All restricted locations for this project are currently disabled. Enable at least one assigned location or remove the project restrictions.";

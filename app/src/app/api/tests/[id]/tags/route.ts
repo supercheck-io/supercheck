@@ -2,7 +2,8 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tests, testTags, tags } from '@/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from '@/lib/tag-patch';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -150,18 +151,18 @@ export async function POST(
       }
     }
 
-    // Remove existing tags for this test
-    await db.delete(testTags).where(eq(testTags.testId, testId));
-
-    // Add new tags
-    if (normalizedTagIds.length > 0) {
-      const testTagsToInsert = normalizedTagIds.map((tagId: string) => ({
-        testId,
-        tagId,
-      }));
-
-      await db.insert(testTags).values(testTagsToInsert);
-    }
+    // Replace in one transaction under the same row lock as PATCH, so a concurrent PATCH cannot push past the cap.
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: tests.id })
+        .from(tests)
+        .where(and(eq(tests.id, testId), eq(tests.organizationId, organizationId), eq(tests.projectId, project.id)))
+        .for('update');
+      await tx.delete(testTags).where(eq(testTags.testId, testId));
+      if (normalizedTagIds.length > 0) {
+        await tx.insert(testTags).values(normalizedTagIds.map((tagId: string) => ({ testId, tagId })));
+      }
+    });
 
     // Return updated tags
     const updatedTags = await db
@@ -185,6 +186,105 @@ export async function POST(
       );
     }
     console.error('Error updating test tags:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
+
+    if (!checkPermissionWithContext('test', 'update', context)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to update test tags' },
+        { status: 403 }
+      );
+    }
+
+    const { id: testId } = await params;
+    if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
+
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const parsed = tagPatchSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid request body: add/remove must be arrays of tag UUIDs' }, { status: 400 });
+    }
+    const { add, remove } = parsed.data;
+
+    const testScope = and(
+      eq(tests.id, testId),
+      eq(tests.organizationId, organizationId),
+      eq(tests.projectId, project.id)
+    );
+    const test = await db.select({ id: tests.id }).from(tests).where(testScope).limit(1);
+    if (test.length === 0) {
+      return NextResponse.json({ error: 'Test not found' }, { status: 404 });
+    }
+
+    if (add.length > 0) {
+      const validTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(inArray(tags.id, add), eq(tags.organizationId, organizationId), eq(tags.projectId, project.id)));
+      if (validTags.length !== add.length) {
+        return NextResponse.json(
+          { error: 'One or more tags are invalid or not accessible in this project' },
+          { status: 400 }
+        );
+      }
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        // Row lock serializes concurrent patches of one test so the cap check below cannot be raced.
+        const locked = await tx.select({ id: tests.id }).from(tests).where(testScope).for('update');
+        if (locked.length === 0) throw new TagLimitError('not-found');
+        if (remove.length > 0) {
+          await tx.delete(testTags).where(and(eq(testTags.testId, testId), inArray(testTags.tagId, remove)));
+        }
+        if (add.length > 0) {
+          await tx.insert(testTags).values(add.map((tagId) => ({ testId, tagId }))).onConflictDoNothing();
+          const [{ count }] = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(testTags)
+            .where(eq(testTags.testId, testId));
+          if (count > MAX_TAGS_PER_ENTITY) throw new TagLimitError('limit');
+        }
+      });
+    } catch (error) {
+      if (error instanceof TagLimitError) {
+        return error.message === 'not-found'
+          ? NextResponse.json({ error: 'Test not found' }, { status: 404 })
+          : NextResponse.json({ error: `Maximum of ${MAX_TAGS_PER_ENTITY} tags allowed per test` }, { status: 400 });
+      }
+      throw error;
+    }
+
+    const updatedTags = await db
+      .select({ id: tags.id, name: tags.name, color: tags.color, createdByUserId: tags.createdByUserId })
+      .from(testTags)
+      .innerJoin(tags, eq(testTags.tagId, tags.id))
+      .where(eq(testTags.testId, testId))
+      .orderBy(tags.name);
+
+    return NextResponse.json(updatedTags);
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    console.error('Error patching test tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

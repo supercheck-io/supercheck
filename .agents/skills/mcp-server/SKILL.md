@@ -46,7 +46,7 @@ User docs: `docs/content/docs/mcp/` (`tools.mdx`, `security.mdx`, `connect.mdx`)
 
 ## Transport and auth rules
 
-- Request order in `route.ts`: `POST` checks the origin (`hasTrustedRequestOrigin`), then `requireMcpAuth` verifies the token; inside `handle`, a Content-Length precheck, bounded body read (`readMcpBody`, `MAX_BODY_BYTES`), admission (`admitMcpCall`, keyed on the verified `sub`/`azp` claims: rate, batch, concurrency), then per-call context resolution. Admission cannot move ahead of token verification. Every new code path must stay behind the same checks, and the permit must be released on every exit.
+- Request order in `route.ts`: `POST` checks the origin (`hasTrustedRequestOrigin`), then `requireMcpAuth` verifies the token; inside `handle`, a Content-Length precheck, admission (`admitMcpCall`, keyed on the verified `sub`/`azp` claims: rate and concurrency, with the one-message charge taken up front), then the bounded body read (`readMcpBody`, `MAX_BODY_BYTES` and a `MCP_BODY_READ_TIMEOUT_MS` deadline answered with 408; a batch is charged for its extra messages after parsing), then per-call context resolution. Admission cannot move ahead of token verification. Every new code path must stay behind the same checks, and the permit must be released on every exit.
 - Tokens come from the Better Auth OAuth provider; OAuth HTTP endpoints outside the supported flow are denied (`isOAuthEndpointDenied`) and pruned from discovery metadata.
 - `resolveMcpCallContext` re-checks the user on every call: banned or inactive owners are rejected (`isCredentialOwnerActive`), not only at connect time.
 

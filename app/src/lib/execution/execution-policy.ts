@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { executionEntitlements } from "@/db/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { executionEntitlements, executionReservations } from "@/db/schema";
 import { db } from "@/utils/db";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
@@ -74,17 +74,43 @@ async function resolveExecutionPolicy(organizationId: string): Promise<Execution
 }
 
 /**
+ * Allowance left right now, read fresh and net of in-flight reservations exactly as worker admission
+ * computes it. The cached policy knows neither a reservation taken since it was cached nor a change of
+ * usage, so the quota answer must not come from it.
+ */
+async function freshTrialRemaining(organizationId: string) {
+  const entitlement = await db.query.executionEntitlements.findFirst({ where: eq(executionEntitlements.organizationId, organizationId) });
+  if (!entitlement) throw new ExecutionWorkloadError("Execution entitlement required or trial expired", 402);
+  const [held] = await db
+    .select({
+      playwrightHeldMs: sql<number>`coalesce(sum(case when ${executionReservations.kind} = 'playwright' then ${executionReservations.reservedMs} else 0 end),0)::bigint`,
+      k6HeldVuMs: sql<number>`coalesce(sum(case when ${executionReservations.kind} = 'k6' then ${executionReservations.reservedMs} * ${executionReservations.vus} else 0 end),0)::bigint`,
+    })
+    .from(executionReservations)
+    .where(and(
+      eq(executionReservations.organizationId, organizationId),
+      isNull(executionReservations.finishedAt),
+      sql`${executionReservations.leaseExpiresAt} > now()`,
+    ));
+  return {
+    playwrightRemainingMs: entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs - Number(held.playwrightHeldMs),
+    k6RemainingVuMs: entitlement.k6BudgetVuMs - entitlement.k6UsedVuMs - Number(held.k6HeldVuMs),
+  };
+}
+
+/**
  * Trials run the same Playwright workloads as paid plans, and k6 trials keep
  * their generated HTTP workload so the VU-ms allowance can be metered exactly.
  * Neither path asks for domain ownership: the cluster egress policy remains the
  * network boundary.
  */
 export async function assertExecutionWorkload(
-  _organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
+  organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
 ): Promise<void> {
   if (policy.tier !== "trial") return;
+  const remaining = await freshTrialRemaining(organizationId);
   if (kind === "playwright") {
-    if (policy.playwrightRemainingMs <= 0) throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402);
+    if (remaining.playwrightRemainingMs <= 0) throw new ExecutionWorkloadError("Trial browser execution quota exhausted", 402);
     return;
   }
   const { parseTrialK6Workload } = await import("./trial-k6-workload");
@@ -95,7 +121,7 @@ export async function assertExecutionWorkload(
   if (workload.vus > policy.k6MaxVus || workload.durationSeconds * 1000 > policy.expiresAt.getTime() - Date.now()) {
     throw new ExecutionWorkloadError("HTTP workload exceeds the trial VU or remaining duration limit");
   }
-  if (workload.vus * workload.durationSeconds * 1000 > policy.k6RemainingVuMs) {
+  if (workload.vus * workload.durationSeconds * 1000 > remaining.k6RemainingVuMs) {
     throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402);
   }
 }

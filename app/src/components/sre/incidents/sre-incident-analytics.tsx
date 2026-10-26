@@ -14,8 +14,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { TableBadge } from "@/components/ui/table-badge";
 
 const chartConfig = {
-  created: { label: "Created", color: "hsl(var(--chart-1))" },
-  resolved: { label: "Resolved", color: "hsl(var(--chart-2))" },
+  created: { label: "Created", color: "var(--chart-1)" },
+  resolved: { label: "Resolved", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
 function formatResolutionTime(minutes: number | null) {

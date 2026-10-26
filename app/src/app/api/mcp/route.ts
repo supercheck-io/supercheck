@@ -9,6 +9,7 @@ import { getMcpAllowedOrigins, getMcpResourceUrl, isMcpServerEnabled, MCP_READ_S
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
 import { registerMcpTools } from "@/lib/mcp/tools";
 import {
+  McpBodyTimeoutError,
   McpBodyTooLargeError,
   admitMcpCall,
   countMcpMessages,
@@ -66,6 +67,7 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
       parsedBody = await readMcpBody(request, MAX_BODY_BYTES);
     } catch (error) {
       if (error instanceof McpBodyTooLargeError) return rpcError(413, "payload_too_large", "Request body is too large");
+      if (error instanceof McpBodyTimeoutError) return rpcError(408, "request_timeout", "Request body was not received in time");
       throw error;
     }
     const surcharge = await permit.charge(countMcpMessages(parsedBody));

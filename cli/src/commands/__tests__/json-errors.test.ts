@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 const entry = fileURLToPath(new URL('../../bin/supercheck.ts', import.meta.url))
 describe('nested command JSON failures', () => {
   it.each([
-    ['incident', 'list', '--status', 'open'],
+    ['incident', 'list', '--status', 'bogus'],
     ['incident', 'list', '--severity', 'bogus'],
     ['job', 'run'],
     ['job', 'run', '--id', ''],
