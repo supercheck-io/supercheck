@@ -247,11 +247,15 @@ async function fetchStatusPages(client: ApiClient): Promise<RemoteStatusPage[]> 
   }
 }
 
-async function fetchRequirements(client: ApiClient): Promise<RemoteRequirement[]> {
+async function fetchRequirements(client: ApiClient, configured = false): Promise<RemoteRequirement[]> {
   try {
     return await fetchRemoteRequirements(client)
   } catch (err) {
-    if (err instanceof ApiRequestError && err.statusCode === 404) return []
+    if (err instanceof ApiRequestError && err.statusCode === 404) {
+      // Treating a missing API as "no requirements" would drop the configured ones from the rewritten config.
+      if (configured) throw new CLIError('This Supercheck server does not support requirements, but supercheck.config.ts declares them. Upgrade the server, or use --tests-only. No files were written.', ExitCode.ApiError)
+      return []
+    }
     throw err
   }
 }
@@ -892,7 +896,7 @@ export const pullCommand = new Command('pull')
           options.testsOnly ? Promise.resolve([]) : fetchTags(client),
           options.testsOnly ? Promise.resolve([]) : fetchNotificationProviders(client),
           options.testsOnly ? Promise.resolve([]) : fetchStatusPages(client),
-          options.testsOnly ? Promise.resolve([]) : fetchRequirements(client),
+          options.testsOnly ? Promise.resolve([]) : fetchRequirements(client, existing?.config?.requirements !== undefined),
         ])
         return results as [RemoteContext, RemoteTest[], RemoteMonitor[], RemoteJob[], RemoteVariable[], RemoteTag[], RemoteNotificationProvider[], RemoteStatusPage[], RemoteRequirement[]]
       },

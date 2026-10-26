@@ -33,7 +33,7 @@ Requirements, status pages, test priority and tags now work from the terminal an
 
 ### Fixed
 
-- `pull` writes `@tags` for every test (the tags were dropped when the script was fetched separately), refuses symlinked config destinations and writes outside the project, masks monitor URL and request credentials by default, and refuses to deploy masked credentials. Use `--show-secrets` only when those credentials must be exported.
+- `pull` stops without writing when the config declares `requirements` but the server has no requirements API, instead of rewriting the config without them. It writes `@tags` for every test (the tags were dropped when the script was fetched separately), refuses symlinked config destinations and writes outside the project, masks monitor URL and request credentials by default, and refuses to deploy masked credentials. Use `--show-secrets` only when those credentials must be exported.
 - An empty string in a status page or requirement field no longer shows as a change on every `diff`.
 - Job updates reject missing or invalid test IDs before writing, including when `--tests` consumes `--dry-run`. Cron expressions, monitor URLs, resource IDs and pagination are validated, and `--envelope` requires `--json`.
 - `run get` and `run list` return the application report URL instead of the internal storage host.
