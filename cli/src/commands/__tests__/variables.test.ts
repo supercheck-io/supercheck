@@ -377,6 +377,36 @@ describe('var command', () => {
       expect((await stat(out)).mode & 0o777).toBe(0o600)
     })
 
+    it('prints downloaded bytes to stdout without --out', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      try {
+        mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+        const bytes = new Uint8Array([0x61, 0x2c, 0x62])
+        mockGetBytes.mockResolvedValueOnce({ data: bytes })
+        await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD'])
+        expect(write).toHaveBeenCalledWith(bytes)
+        expect(mockOutputMutation).not.toHaveBeenCalled()
+      } finally {
+        write.mockRestore()
+      }
+    })
+
+    it('reports a clear error when --out cannot be written', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'missing-dir', 'out.json')
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])).rejects.toThrow('Cannot write')
+    })
+
+    it('strips control characters from the server-provided file name', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.csv')
+      const named = variables.map((v) => (v.key === 'UPLOAD' ? { ...v, fileName: 'a\u001b[31mb.csv' } : v))
+      mockGet.mockResolvedValueOnce({ data: named }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
+      expect(mockSuccess).toHaveBeenCalledWith(`Saved a[31mb.csv to ${out}`)
+    })
+
     it('refuses to download a non-file variable', async () => {
       mockGet.mockResolvedValueOnce({ data: variables })
       await expect(varCommand.parseAsync(['node', 'var', 'download', 'BASE_URL'])).rejects.toThrow('not a file variable')
