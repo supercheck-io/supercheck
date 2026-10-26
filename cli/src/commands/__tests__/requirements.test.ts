@@ -15,12 +15,13 @@ const mockOutputPagination = jest.fn<(...args: unknown[]) => void>()
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<boolean>>()
 const mockListItems = jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>[]>>()
+let outputFormat = 'table'
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({ get: mockGet, getText: mockGetText, post: mockPost, put: mockPut, delete: mockDelete }),
 }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({
-  output: mockOutput, outputDetail: mockOutputDetail, outputMutation: mockOutputMutation, outputPagination: mockOutputPagination,
+  getOutputFormat: () => outputFormat, output: mockOutput, outputDetail: mockOutputDetail, outputMutation: mockOutputMutation, outputPagination: mockOutputPagination,
 }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { output: mockOutput, info: jest.fn(), success: mockSuccess, error: jest.fn(), warn: jest.fn(), newline: jest.fn() },
@@ -59,6 +60,7 @@ describe('requirement command', () => {
     jest.resetAllMocks()
     resetCommandState(requirementCommand)
     mockConfirmPrompt.mockResolvedValue(true)
+    outputFormat = 'table'
   })
 
   it('is also available as `requirements`', () => {
@@ -177,6 +179,14 @@ describe('requirement command', () => {
       expect(mockOutput).toHaveBeenCalledWith('id,title\n1,A')
     })
 
+    it('wraps the CSV in JSON with --json', async () => {
+      outputFormat = 'json'
+      mockGetText.mockResolvedValueOnce({ data: 'id,title\n1,A\n' })
+      await run('export')
+      expect(mockOutputDetail).toHaveBeenCalledWith({ format: 'csv', content: 'id,title\n1,A\n' })
+      expect(mockOutput).not.toHaveBeenCalled()
+    })
+
     it('writes to a new file and refuses to overwrite without --force', async () => {
       const file = join(dir, 'req.csv')
       mockGetText.mockResolvedValue({ data: 'id,title\n1,A\n' })
@@ -199,6 +209,12 @@ describe('requirement command', () => {
       const file = join(dir, 'fresh.csv')
       await run('export', '--output', file)
       expect(statSync(file).mode & 0o777).toBe(0o600)
+
+      const shared = join(dir, 'shared.csv')
+      writeFileSync(shared, 'old', { mode: 0o644 })
+      resetCommandState(requirementCommand)
+      await run('export', '--output', shared, '--force')
+      expect(statSync(shared).mode & 0o777).toBe(0o600)
 
       const target = join(dir, 'target.txt')
       const link = join(dir, 'link.csv')

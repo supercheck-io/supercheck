@@ -200,6 +200,15 @@ describe('reconcile', () => {
     expect(details).not.toContain('local-secret')
   })
 
+  it('treats a local empty string as matching an unset status page or requirement field', () => {
+    const page = reconcile([local({ id: 'id-1', type: 'statusPage', definition: { name: 'A', supportUrl: '' } })], [remote({ type: 'statusPage', raw: { name: 'A' } })])
+    expect(page[0].action).toBe('no-change')
+    const requirement = reconcile([local({ id: 'id-1', type: 'requirement', definition: { title: 'R', description: '' } })], [remote({ type: 'requirement', raw: { title: 'R', description: null } })])
+    expect(requirement[0].action).toBe('no-change')
+    const clearing = reconcile([local({ id: 'id-1', type: 'statusPage', definition: { name: 'A', supportUrl: '' } })], [remote({ type: 'statusPage', raw: { name: 'A', supportUrl: 'https://x.test/' } })])
+    expect(clearing[0].action).toBe('update')
+  })
+
   it('treats a remote resource with no local counterpart as a delete', () => {
     const changes = reconcile([], [remote()])
 

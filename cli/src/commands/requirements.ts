@@ -1,8 +1,8 @@
 import { Command } from 'commander'
-import { lstatSync, writeFileSync } from 'node:fs'
+import { chmodSync, lstatSync, writeFileSync } from 'node:fs'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { withSpinner } from '../utils/spinner.js'
 import { requirePriority } from '../utils/priority.js'
@@ -282,7 +282,9 @@ requirementCommand
     const client = createAuthenticatedClient()
     const { data: csv } = await withSpinner('Exporting requirements', () => client.getText('/api/requirements/export'))
     if (!options.output) {
-      logger.output(csv.replace(/\r?\n$/, ''))
+      // --json keeps the machine contract: the CSV goes in a field instead of raw on stdout.
+      if (getOutputFormat() === 'json') outputDetail({ format: 'csv', content: csv })
+      else logger.output(csv.replace(/\r?\n$/, ''))
       return
     }
     if (options.force && isSymlink(options.output)) {
@@ -290,6 +292,8 @@ requirementCommand
     }
     try {
       writeFileSync(options.output, csv, { flag: options.force ? 'w' : 'wx', mode: 0o600 })
+      // `mode` applies only when the file is created; --force over an existing file must tighten it too.
+      if (options.force) chmodSync(options.output, 0o600)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new CLIError(`${options.output} already exists. Use --force to overwrite it.`, ExitCode.ConfigError)

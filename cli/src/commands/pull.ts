@@ -1079,7 +1079,8 @@ export const pullCommand = new Command('pull')
               ),
             )
             if (data?.id !== t.id) throw new IdentityMismatch(`Server returned a different test than requested (${t.id}). No files were written.`)
-            fullTests.push(data)
+            // The detail route carries no tags; keep the list item's.
+            fullTests.push({ ...data, tags: data.tags ?? t.tags })
           } catch (err) {
             // A swapped response means the server is not trustworthy for this pull; abort instead of recording a partial failure.
             if (err instanceof IdentityMismatch) throw err

@@ -400,7 +400,7 @@ supercheck requirement export --output requirements.csv
 supercheck requirement delete <requirement-id> --force
 ```
 
-`--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set; `--clear-tags` and `--clear-tests` empty it and cannot be combined with them. Requirement tags that do not exist yet are created by the server.
+`--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set; `--clear-tags` and `--clear-tests` empty it and cannot be combined with them. Requirement tags that do not exist yet are created by the server. `export` refuses to overwrite a file unless you pass `--force`, never writes through a symbolic link, and leaves the file readable only by you. With `--json` and no `--output`, it prints `{ "format": "csv", "content": "..." }`.
 
 <Callout type="info">
 Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) with AI is available in the dashboard only. The CLI and MCP server do not upload documents.
@@ -637,7 +637,7 @@ supercheck diff
 
 supercheck deploy
 supercheck deploy --dry-run      # Preview without applying
-supercheck deploy --delete       # Delete remote resources absent from config (including status page components)
+supercheck deploy --delete       # Delete remote resources absent from config (and components absent from a declared list)
 supercheck deploy --force        # Skip confirmation
 supercheck deploy --force --verify   # Then run each created/updated browser test once in the cloud
 
@@ -676,7 +676,7 @@ Deploy pushes notification provider config and webhook body templates too. Renam
 <Accordion title="supercheck deploy: requirements, status pages and tags" id="supercheck-deploy-resources">
 
 - **Requirements:** compared and pruned only when the config has a `requirements` key. Omitted `tags` or `tests` leave the remote value alone and `[]` clears it; tag names compare case-insensitively.
-- **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and remote-only components are removed only with `--delete`.
+- **Status pages:** `subdomain` is read-only (pulled, never sent), notification flags you omit stay unchanged, and when the page declares `components`, remote-only components are removed only with `--delete` (omitting `components` leaves them all alone).
 - **Tests:** `@priority` and `@tags` annotations are applied on deploy.
 - **Tags:** test and monitor `tags` must already exist in the project or be declared under `tags` in the config; deploy checks this before any write, matching names case-insensitively. Requirement tags are created by the server.
 - **Older servers:** before the first write, deploy checks the requirements API (when requirements are being written), the status page write API (when status pages are being written) and the monitor tag API (when an existing monitor is available to probe), and fails with an upgrade hint. A tagged monitor created in a project with no existing monitor to probe reports a missing tag API right after its create.

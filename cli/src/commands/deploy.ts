@@ -83,15 +83,26 @@ const normalizeTestRef = (ref: string) => posix.normalize(ref.replace(/\\/g, '/'
  * Check every reference a create/update will resolve before the first write, so a typo cannot leave a half-applied
  * deploy. A reference may point at a resource that this same deploy creates (it is recorded when created).
  */
-export function assertReferencesResolvable(actionable: ResourceChange[], state: Pick<ReturnType<typeof managedState>, 'resolve'>): void {
-  const created = (type: string) => new Set(actionable.filter((c) => c.type === type && c.action === 'create').map((c) => (type === 'test' ? normalizeTestRef(c.name) : c.name)))
+export function assertReferencesResolvable(
+  actionable: ResourceChange[],
+  state: Pick<ReturnType<typeof managedState>, 'resolve'>,
+  remoteIds?: Record<'test' | 'monitor', Set<string>>,
+): void {
+  const creates = (type: string) => actionable.filter((c) => c.type === type && c.action === 'create')
+  const created = (type: string) => new Set(creates(type).map((c) => (type === 'test' ? normalizeTestRef(c.name) : c.name)))
   const createdTests = created('test')
   const createdMonitors = created('monitor')
+  const createdIds = new Set(actionable.filter((c) => c.action === 'create' && c.id).map((c) => `${c.type}:${c.id}`))
   const check = (owner: string, type: 'test' | 'monitor', ref: string) => {
-    try { state.resolve(type, ref); return } catch (error) {
-      const pending = type === 'test' ? createdTests.has(normalizeTestRef(ref)) : createdMonitors.has(ref)
-      if (pending) return
+    const pending = () => (type === 'test' ? createdTests.has(normalizeTestRef(ref)) : createdMonitors.has(ref))
+    let id: string
+    try { id = state.resolve(type, ref) } catch (error) {
+      if (pending()) return
       throw error instanceof CLIError ? new CLIError(`${owner}: ${error.message}`, error.exitCode) : error
+    }
+    // A well-formed id can still be a typo or a deleted resource; the server would reject it after earlier writes.
+    if (remoteIds && !remoteIds[type].has(id) && !createdIds.has(`${type}:${id}`) && !pending()) {
+      throw new CLIError(`${owner}: ${type} "${ref}" does not exist in this project.`, ExitCode.ConfigError)
     }
   }
   for (const change of actionable) {
@@ -102,6 +113,10 @@ export function assertReferencesResolvable(actionable: ResourceChange[], state: 
     }
     if (change.type === 'statusPage') {
       validateStatusPageDefinition(definition, change.name)
+      // A new page has no components unless the config declares some, and publishing needs one.
+      if (change.action === 'create' && definition.status === 'published' && definition.components === undefined) {
+        throw new CLIError(`Status page "${change.name}" is published but defines no components. Add at least one component before publishing.`, ExitCode.ConfigError)
+      }
       if (Array.isArray(definition.components)) {
         for (const component of definition.components as Array<{ monitors?: unknown[] }>) {
           for (const ref of component.monitors ?? []) check(`statusPage/${change.name}`, 'monitor', String(ref))
@@ -371,7 +386,8 @@ export const deployCommand = new Command('deploy')
         return
       }
 
-      assertReferencesResolvable(actionable, state)
+      const remoteIdsOf = (type: string) => new Set(remoteResources.filter((r) => r.type === type).map((r) => r.id))
+      assertReferencesResolvable(actionable, state, { test: remoteIdsOf('test'), monitor: remoteIdsOf('monitor') })
       await preflightDeploy(client, actionable, remoteResources.filter((r) => r.type === 'monitor').map((r) => r.id), { dryRun: options.dryRun === true })
       if (getOutputFormat() !== 'json') formatChangePlan(changes)
       const deletions = actionable.filter((change) => change.action === 'delete')

@@ -222,6 +222,22 @@ describe('assertReferencesResolvable', () => {
     expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['nope'] })], { resolve })).toThrow('requirement/R')
     expect(() => assertReferencesResolvable([change('statusPage', 'P', { components: [{ name: 'c', monitors: ['nope'] }] })], { resolve })).toThrow('statusPage/P')
   })
+
+  it('rejects a well-formed id that is not in the project, unless this deploy creates it', () => {
+    const passthrough = { resolve: (_type: string, ref: string) => ref }
+    const remoteIds = { test: new Set(['t-live']), monitor: new Set(['m-live']) }
+    const page = (monitors: string[]) => change('statusPage', 'P', { components: [{ name: 'c', monitors }] })
+    expect(() => assertReferencesResolvable([page(['m-typo'])], passthrough, remoteIds)).toThrow('statusPage/P: monitor "m-typo" does not exist in this project')
+    expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['t-gone'] })], passthrough, remoteIds)).toThrow('requirement/R: test "t-gone"')
+    const recreated = { ...(change('monitor', 'API', {}) as object), id: 'm-gone' } as never
+    expect(() => assertReferencesResolvable([page(['m-live', 'm-gone']), recreated], passthrough, remoteIds)).not.toThrow()
+    expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['t-live'] })], passthrough, remoteIds)).not.toThrow()
+  })
+
+  it('rejects publishing a new page that declares no components', () => {
+    expect(() => assertReferencesResolvable([change('statusPage', 'P', { status: 'published' })], { resolve })).toThrow('defines no components')
+    expect(() => assertReferencesResolvable([change('statusPage', 'P', { status: 'published' }, 'update')], { resolve })).not.toThrow()
+  })
 })
 
 describe('stable diffs', () => {

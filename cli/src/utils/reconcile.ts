@@ -186,6 +186,8 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     if (resourceType === 'statusPage' && (key === 'branding' || key === 'notifications') && localVal && typeof localVal === 'object' && remoteVal && typeof remoteVal === 'object') {
       remoteVal = Object.fromEntries(Object.keys(localVal as object).filter((k) => k in (remoteVal as object)).map((k) => [k, (remoteVal as Record<string, unknown>)[k]]))
     }
+    // These resources omit empty remote strings, so a local "" already matches an unset field.
+    if ((resourceType === 'statusPage' || resourceType === 'requirement') && localVal === '' && (remoteVal === undefined || remoteVal === null)) continue
     const [comparableLocal, comparableRemote] = key === 'tags' && Array.isArray(localVal) && Array.isArray(remoteVal)
       ? [foldTags(localVal), foldTags(remoteVal)]
       : key === 'config'

@@ -147,7 +147,7 @@ Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`
 
 ### Test metadata annotations
 
-`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). `@priority` and `@tags` elsewhere in the script are ignored; `@title` is read from the first match anywhere. They are local metadata: the CLI strips them before comparing or sending the script. `deploy` applies `@priority` (any letter case) and `@tags`; if an annotation is absent, the remote value is left alone. To remove all tags from a test, use `supercheck test tag remove`.
+`supercheck pull` writes `// @title`, `// @priority` (`low`, `medium`, `high`) and `// @tags` (comma-separated tag names) in the header of each test script: the leading run of `//` lines, or inside a multi-line JSDoc block at the very top (a single-line `/** ... */` header is left alone). `@priority` and `@tags` elsewhere in the script are ignored; `@title` is read from the first match anywhere. They are local metadata: the CLI strips them before comparing or sending the script, including with `test create --file` and `test update --file`. `deploy` applies `@priority` (any letter case) and `@tags`; if an annotation is absent, the remote value is left alone. To remove all tags from a test, use `supercheck test tag remove`.
 
 ```ts
 // @title Homepage Check
@@ -237,7 +237,7 @@ Jobs have no `tags` field; a config containing one fails validation.
 </Accordion>
 <Accordion title="requirements[]" id="requirements">
 
-Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged; clear them in the dashboard or with the API.
+Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `externalId` or `externalUrl` to `""` to clear it; `priority` cannot be cleared from config.
 
 | Field | Type | Description |
 |---|---|---|
@@ -253,20 +253,20 @@ Needs a server with the requirements API. Remote requirements are compared, and 
 </Accordion>
 <Accordion title="statusPages[]" id="statuspages">
 
-Needs a server with the status page write API.
+Needs a server with the status page write API. `config validate` applies the server's limits, so a bad value fails before anything is written. Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
-| `name` | `string` | Status page display name |
+| `name` | `string` | Status page display name (max 255 characters) |
 | `subdomain` | `string` | Read-only. Written by `pull`, never compared or sent (the server generates it) |
 | `status` | `string` | `draft`, `published`, `archived` |
-| `headline` | `string` | Public page headline |
-| `description` | `string` | Public description text |
-| `supportUrl` | `string` | External support URL |
+| `headline` | `string` | Public page headline (max 255 characters) |
+| `description` | `string` | Public description text (max 2000 characters) |
+| `supportUrl` | `string` | Support contact: an email address or an `http(s)`/`mailto:` URL (max 500 characters) |
 | `language` | `string` | Language code such as `en` or `pt-BR` |
 | `timezone` | `string` | Timezone name (max 50 characters, e.g. `UTC`) |
-| `customDomain` | `string` | Custom domain |
+| `customDomain` | `string` | Custom domain such as `status.example.com` |
 | `branding` | `object` | Colors, each `#RRGGBB`: `bodyBackgroundColor`, `fontColor`, `lightFontColor`, `greens`, `yellows`, `oranges`, `blues`, `reds`, `borderColor`, `graphColor`, `linkColor`, `noData` |
 | `notifications` | `object` | Boolean toggles with no defaults: `allowPageSubscribers`, `allowEmailSubscribers`, `allowWebhookSubscribers`, `allowSlackSubscribers`, `allowIncidentSubscribers`, `allowRssFeed`. Omitted flags are left unchanged |
 | `components` | `object[]` | Components (see below) |
@@ -276,12 +276,12 @@ Each entry in `components`:
 | Field | Type | Description |
 |---|---|---|
 | `id` | `string` | Database UUID (omit for new) |
-| `name` | `string` | Component name |
-| `description` | `string` | Component description (omit to leave unchanged; `""` clears it) |
-| `monitors` | `string[]` | Monitor UUIDs, or names of monitors defined in this config. Omit to leave links unchanged; `[]` unlinks all |
-| `position` | `number` | Display order (integer, 0 or higher) |
+| `name` | `string` | Component name (max 255 characters, unique within the page) |
+| `description` | `string` | Component description (max 2000 characters; omit to leave unchanged, `""` clears it) |
+| `monitors` | `string[]` | Up to 100 monitor UUIDs, or names of monitors defined in this config. Deploy checks that each one exists before writing. Omit to leave links unchanged; `[]` unlinks all |
+| `position` | `number` | Display order (integer, 0 to 1000) |
 
-Remote components missing from config are removed only when you run `deploy --delete`.
+When the page declares `components`, remote components missing from that list are removed only when you run `deploy --delete`. Omitting `components` leaves every remote component alone, even with `--delete`. A new page with `status: 'published'` must declare at least one component.
 
 </Accordion>
 <Accordion title="variables[] and tags[]" id="variables">

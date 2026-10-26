@@ -98,13 +98,23 @@ export const jobDefinitionSchema = z.object({
 
 // --- Status Pages ---
 
+/** Mirrors the server's support contact rule: empty (clears it), an email address, or an http(s)/mailto URL. */
+function isSupportContact(value: string): boolean {
+  if (value === '' || /^[^\s@:]+@[^\s@]+\.[^\s@]+$/.test(value)) return true
+  try {
+    return ['http:', 'https:', 'mailto:'].includes(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
 export const statusPageComponentDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  monitors: z.array(z.string()).optional(),
-  position: z.number().int().min(0).optional(),
+  name: z.string().min(1).max(255),
+  description: z.string().max(2000).optional(),
+  monitors: z.array(z.string()).max(100).optional(),
+  position: z.number().int().min(0).max(1000).optional(),
 }).strict()
 
 const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Expected a #RRGGBB hex color')
@@ -137,16 +147,16 @@ export const statusPageNotificationsSchema = z.object({
 export const statusPageDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   /** Read-only: written by `pull`, never compared and never sent (the server generates it). */
   subdomain: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
-  description: z.string().optional(),
-  headline: z.string().optional(),
-  supportUrl: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  headline: z.string().max(255).optional(),
+  supportUrl: z.string().trim().max(500).refine(isSupportContact, 'Expected an email address or an http(s)/mailto URL').optional(),
   language: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, 'Expected a language code such as "en" or "pt-BR"').optional(),
   timezone: z.string().max(50).optional(),
-  customDomain: z.string().optional(),
+  customDomain: z.string().max(255).regex(/^$|^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/, 'Expected a domain such as status.example.com').optional(),
   components: z.array(statusPageComponentDefinitionSchema).optional(),
   branding: statusPageBrandingSchema.optional(),
   notifications: statusPageNotificationsSchema.optional(),
@@ -162,7 +172,8 @@ export const requirementDefinitionSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
   externalId: z.string().max(255).optional(),
-  externalUrl: z.string().url().optional(),
+  /** "" clears it. */
+  externalUrl: z.string().url().or(z.literal('')).optional(),
   /** Linked tests, referenced the same way as a job's `tests` (file path, filename or UUID). */
   tests: z.array(z.string()).max(100).optional(),
 }).strict()

@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockNarrative = jest.fn<(...args: unknown[]) => void>()
 let outputFormat = 'table'
@@ -16,6 +17,7 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
     get: mockGet,
     post: mockPost,
+    patch: mockPatch,
   }),
 }))
 
@@ -423,6 +425,35 @@ describe('AI SRE CLI Commands', () => {
       expect(mockPost).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { tagIds: ['tag-web'] })
       mockGet.mockReset()
     })
+
+    it('encodes the test id in the tag path', async () => {
+      mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : [] }))
+      mockPost.mockResolvedValueOnce({ data: [] })
+      await testCommand.parseAsync(['node', 'test', 'tag', 'add', 'a/b', 'smoke'])
+      expect(mockPost).toHaveBeenCalledWith('/api/tests/a%2Fb/tags', { tagIds: ['tag-smoke'] })
+      mockGet.mockReset()
+    })
+  })
+
+  it.each(['create', 'update'])('test %s --file strips pulled @title/@priority/@tags annotations before sending', async (action) => {
+    const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'supercheck-test-file-'))
+    const file = join(dir, 'home.pw.ts')
+    writeFileSync(file, "// @title Home\n// @priority high\n// @tags core\nimport { test } from '@playwright/test'\ntest('home', async () => {})\n")
+    const send = action === 'create' ? mockPost : mockPatch
+    send.mockResolvedValueOnce({ data: {} })
+    const args = action === 'create' ? ['create', '--title', 'Home'] : ['update', '019a0000-0000-7000-8000-000000000001']
+    try {
+      await testCommand.parseAsync(['node', 'test', ...args, '--file', file, '--type', 'browser'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    const [, body] = send.mock.calls.at(-1) as [string, { script: string }]
+    const script = Buffer.from(body.script, 'base64').toString('utf8')
+    expect(script).toContain("test('home'")
+    expect(script).not.toMatch(/@title|@priority|@tags/)
   })
 
   describe('test priority flags', () => {

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-let resources: Record<string, unknown[]> = {}
+let resources: Record<string, unknown> = {}
 const confirm = jest.fn<(...args: unknown[]) => Promise<void>>()
 const install = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined)
 const messages: string[] = []
@@ -83,6 +83,16 @@ describe('pull output and local file effects', () => {
     expect(output()).toContain('No test scripts found on the remote project.')
     expect(output()).toContain('Local-only test scripts are preserved')
     expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('writes @tags from the list item when the detail response carries no tags', async () => {
+    const { id } = remoteTest
+    resources['/api/tests'] = [{ id, title: 'Homepage', type: 'browser', tags: [{ id: 't', name: 'core' }] }]
+    resources[`/api/tests/${id}`] = { id, title: 'Homepage', type: 'browser', script: "test('home', async () => {})\n" }
+    await pull('--tests-only', '--force')
+    const folder = resolve(cwd, '_supercheck_/playwright')
+    const file = readdirSync(folder).find((name) => name.includes(id))!
+    expect(readFileSync(resolve(folder, file), 'utf-8')).toContain('// @tags core')
   })
 
   it('preserves local-only scripts when pulling config resources', async () => {

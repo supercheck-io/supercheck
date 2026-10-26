@@ -18,6 +18,7 @@ import { createTempPlaywrightConfig } from '../utils/playwright.js'
 import { ensureDependenciesForTestType, DependencyError } from '../utils/deps.js'
 import { getSse } from '../utils/sse.js'
 import { decodeStoredTestScript, encodeStoredTestScript } from '../utils/script.js'
+import { stripTitleMetadata } from '../utils/slug.js'
 import type { ApiTestType } from '../utils/validation.js'
 import { addAssignedTags, getAssignedTags, removeAssignedTags } from '../utils/tag-assignment.js'
 
@@ -255,7 +256,7 @@ testCommand
       throw new CLIError(typeMismatchError, ExitCode.ConfigError)
     }
 
-    const encodedScript = encodeStoredTestScript(script)
+    const encodedScript = encodeStoredTestScript(stripTitleMetadata(script))
 
     const body: Record<string, unknown> = {
       title: options.title,
@@ -340,7 +341,7 @@ testCommand
         }
       }
 
-      body.script = encodeStoredTestScript(raw)
+      body.script = encodeStoredTestScript(stripTitleMetadata(raw))
     }
 
     if (Object.keys(body).length === 0) {
@@ -464,7 +465,7 @@ testCommand
   .description('Get test tags')
   .action(async (id: string) => {
     const client = createAuthenticatedClient()
-    const data = await withSpinner('Fetching test tags', () => getAssignedTags(client, `/api/tests/${id}`))
+    const data = await withSpinner('Fetching test tags', () => getAssignedTags(client, `/api/tests/${encodeURIComponent(id)}`))
     output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
   })
 
@@ -477,7 +478,7 @@ testTagCommand
   .description('Add tags (names or IDs) to a test, keeping its existing tags')
   .action(async (id: string, refs: string[]) => {
     const client = createAuthenticatedClient()
-    const data = await withSpinner('Adding test tags', () => addAssignedTags(client, `/api/tests/${id}`, refs))
+    const data = await withSpinner('Adding test tags', () => addAssignedTags(client, `/api/tests/${encodeURIComponent(id)}`, refs))
     logger.success(`Test ${id} now has ${data.length} tag(s)`)
     output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
   })
@@ -487,7 +488,7 @@ testTagCommand
   .description('Remove tags (names or IDs) from a test')
   .action(async (id: string, refs: string[]) => {
     const client = createAuthenticatedClient()
-    const data = await withSpinner('Removing test tags', () => removeAssignedTags(client, `/api/tests/${id}`, refs))
+    const data = await withSpinner('Removing test tags', () => removeAssignedTags(client, `/api/tests/${encodeURIComponent(id)}`, refs))
     logger.success(`Test ${id} now has ${data.length} tag(s)`)
     output(data as unknown as Record<string, unknown>[], { columns: TAG_COLUMNS })
   })

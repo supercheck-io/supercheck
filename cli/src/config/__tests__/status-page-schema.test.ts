@@ -18,6 +18,21 @@ describe('status page schema', () => {
     expect(() => statusPageDefinitionSchema.parse({ name: 'A', branding: { unknown: '#ffffff' } })).toThrow()
   })
 
+  it('mirrors the server limits so a bad value fails before any write', () => {
+    for (const supportUrl of ['', 'help@example.com', 'https://example.com/help', 'mailto:help@example.com']) {
+      expect(statusPageDefinitionSchema.safeParse({ name: 'A', supportUrl }).success).toBe(true)
+    }
+    for (const bad of [
+      { supportUrl: 'nonsense' }, { supportUrl: 'ftp://example.com' }, { customDomain: 'not a domain' }, { name: 'x'.repeat(256) },
+      { headline: 'x'.repeat(256) }, { description: 'x'.repeat(2001) },
+      { components: [{ name: 'c', monitors: Array.from({ length: 101 }, (_, i) => `m${i}`) }] },
+      { components: [{ name: 'c', description: 'x'.repeat(2001) }] }, { components: [{ name: 'c', position: 1001 }] },
+    ]) {
+      expect(statusPageDefinitionSchema.safeParse({ name: 'A', ...bad }).success).toBe(false)
+    }
+    expect(statusPageDefinitionSchema.safeParse({ name: 'A', customDomain: '' }).success).toBe(true)
+  })
+
   it('accepts timezone, customDomain and subdomain', () => {
     expect(statusPageDefinitionSchema.parse({ name: 'A', timezone: 'UTC', customDomain: 'status.example.com', subdomain: 'abc' })).toMatchObject({ timezone: 'UTC', customDomain: 'status.example.com' })
   })
@@ -29,6 +44,7 @@ describe('requirement schema', () => {
     expect(() => requirementDefinitionSchema.parse({ title: '' })).toThrow()
     expect(() => requirementDefinitionSchema.parse({ title: 'R', priority: 'urgent' })).toThrow()
     expect(() => requirementDefinitionSchema.parse({ title: 'R', externalUrl: 'nope' })).toThrow()
+    expect(requirementDefinitionSchema.parse({ title: 'R', externalUrl: '', description: '', externalId: '' })).toBeTruthy()
     expect(() => requirementDefinitionSchema.parse({ title: 'R', extra: 1 })).toThrow()
   })
 })
