@@ -267,11 +267,14 @@ ufw_allows_port() { # $1 = port; reads `ufw status verbose` on stdin
   awk -v p="$1" '
     /^Default:/ && /allow \(incoming\)/ { found = 1 }
     / ALLOW/ {
-      to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); sub(/ on .*/, "", to)
+      # ACME and HTTPS need inbound TCP: skip outbound, forwarded and UDP-only rules.
+      if ($0 ~ / ALLOW (OUT|FWD)/) next
+      to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/ on .*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to)
       if (to ~ /^Anywhere/) { found = 1; next }
       n = split(to, parts, ",")
       for (i = 1; i <= n; i++) {
-        sub(/\/(tcp|udp)$/, "", parts[i])
+        if (parts[i] ~ /\/udp$/) continue
+        sub(/\/tcp$/, "", parts[i])
         if (parts[i] == p) found = 1
         else if (split(parts[i], r, ":") == 2 && p + 0 >= r[1] + 0 && p + 0 <= r[2] + 0) found = 1
       }
@@ -284,10 +287,12 @@ check_ufw() { # warn when an active ufw would block ACME and HTTPS
   local st; st="$(ufw status verbose 2>/dev/null || true)"
   grep -q '^Status: active' <<<"$st" || return 0
   # App profiles ("Nginx Full") list their ports in `ufw app info`; append those as plain rules.
-  local name
+  # A stale profile or an IPv6 destination fails `ufw app info`; that must not abort the installer (set -e).
+  local name info
   while IFS= read -r name; do
-    st+=$'\n'"$(ufw app info "$name" 2>/dev/null | awk '/^Ports:/ { f = 1; next } f && NF { gsub(/[[:space:]]/, ""); print $0 " ALLOW IN Anywhere" }')"
-  done < <(awk '/ ALLOW/ { to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); t = to; gsub(/\/(tcp|udp)/, "", t); if (t ~ /[A-Za-z]/ && to !~ /^Anywhere/ && to !~ / on /) print to }' <<<"$st" | sort -u)
+    info="$(ufw app info "$name" 2>/dev/null || true)"
+    st+=$'\n'"$(awk '/^Ports:/ { f = 1; next } f && NF { gsub(/[[:space:]]/, ""); print $0 " ALLOW IN Anywhere" }' <<<"$info")"
+  done < <(awk '/ ALLOW/ { to = $0; sub(/[[:space:]]+ALLOW.*/, "", to); sub(/ on .*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); if (to ~ /^[A-Za-z][A-Za-z0-9 ._-]*$/ && to !~ /^Anywhere/ && to !~ /\/(tcp|udp)$/) print to }' <<<"$st" | sort -u)
   local p
   for p in 80 443; do
     ufw_allows_port "$p" <<<"$st" || warn "ufw is active and port $p is not allowed. Docker-published ports usually bypass ufw, so this may be harmless; if HTTPS fails, run: sudo ufw allow $p/tcp"

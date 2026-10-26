@@ -170,7 +170,8 @@ export async function POST(
       await tx.delete(testTags).where(eq(testTags.testId, testId));
       if (normalizedTagIds.length > 0) {
         await tx.insert(testTags).values(normalizedTagIds.map((tagId: string) => ({ testId, tagId })));
-      }      await logAuditEvent(
+      }
+      await logAuditEvent(
         {
           userId: context.userId,
           organizationId,
@@ -280,7 +281,8 @@ export async function PATCH(
             .from(testTags)
             .where(eq(testTags.testId, testId));
           if (count > MAX_TAGS_PER_ENTITY) throw new TagLimitError('limit');
-        }        await logAuditEvent(
+        }
+        await logAuditEvent(
           {
             userId: context.userId,
             organizationId,
@@ -344,7 +346,12 @@ export async function DELETE(
 
     const { id: testId } = await params;
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    const { tagId } = await request.json();
+    let tagId: unknown;
+    try {
+      ({ tagId } = await request.json());
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
     if (typeof tagId !== 'string' || !isUuid(tagId)) {
       return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
@@ -367,7 +374,11 @@ export async function DELETE(
 
     // Remove specific tag from test; the audit record commits with the change or not at all.
     await db.transaction(async (tx) => {
-      await tx.delete(testTags).where(and(eq(testTags.testId, testId), eq(testTags.tagId, tagId)));
+      const removed = await tx
+        .delete(testTags)
+        .where(and(eq(testTags.testId, testId), eq(testTags.tagId, tagId)))
+        .returning({ tagId: testTags.tagId });
+      if (removed.length === 0) return;
       await logAuditEvent(
         {
           userId: context.userId,

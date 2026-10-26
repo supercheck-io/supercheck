@@ -12,6 +12,7 @@ const mockDelete = jest.fn();
 const mockInsertValues = jest.fn();
 const mockTransaction = jest.fn();
 const mockFor = jest.fn();
+const mockReturning = jest.fn((): unknown[] => [{ tagId: "t" }]);
 jest.mock("@/utils/db", () => {
   const chain = () => {
     const node: Record<string, unknown> = {};
@@ -31,7 +32,12 @@ jest.mock("@/utils/db", () => {
   };
   const tx = {
     select: () => chain(),
-    delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
+    delete: () => ({
+      where: (...a: unknown[]) => {
+        mockDelete(...a);
+        return Object.assign(Promise.resolve(), { returning: () => Promise.resolve(mockReturning()) });
+      },
+    }),
     insert: () => ({
       values: (v: unknown) => { mockInsertValues(v); return { onConflictDoNothing: () => Promise.resolve() }; },
     }),
@@ -177,8 +183,11 @@ describe("POST /api/tests/[id]/tags", () => {
 describe("DELETE /api/tests/[id]/tags", () => {
   const del = (body: unknown) =>
     new NextRequest(`http://localhost/api/tests/${TEST}/tags`, { method: "DELETE", body: JSON.stringify(body) });
-  it("400 for a missing or malformed tag id", async () => {
+  it("400 for a missing or malformed tag id or body", async () => {
     expect((await DELETE(del({}), params())).status).toBe(400);
+    expect(
+      (await DELETE(new NextRequest(`http://localhost/api/tests/${TEST}/tags`, { method: "DELETE", body: "{" }), params())).status,
+    ).toBe(400);
     expect((await DELETE(del({ tagId: "nope" }), params())).status).toBe(400);
     expect(mockDelete).not.toHaveBeenCalled();
   });
@@ -198,5 +207,11 @@ describe("DELETE /api/tests/[id]/tags", () => {
       expect.anything(),
       { strict: true },
     );
+  });
+  it("does not audit removing a tag that was not attached", async () => {
+    mockSelectQueue.push([{ id: TEST }]);
+    mockReturning.mockReturnValueOnce([]);
+    expect((await DELETE(del({ tagId: T1 }), params())).status).toBe(200);
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });

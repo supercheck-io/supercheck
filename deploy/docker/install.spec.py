@@ -628,9 +628,20 @@ echo survived
             'Status: active\nDefault: deny (incoming)\nAnywhere ALLOW IN 203.0.113.0/24\n',
         ):
             self.assertNotIn('ufw is active', self.run_shell(body.format(status)), status)
-        out = self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n443/tcp ALLOW IN Anywhere\n80/tcp DENY IN Anywhere\n1000:2000/tcp ALLOW IN Anywhere\n'))
+        self.assertNotIn('ufw is active', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp (v6) on eth0 ALLOW IN Anywhere (v6)\nNginx Full on eth0 ALLOW IN Anywhere\n')))
+        out = self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n443/tcp ALLOW IN Anywhere\n80/tcp DENY IN Anywhere\n80/udp ALLOW IN Anywhere\n80/tcp ALLOW OUT Anywhere (out)\n1000:2000/tcp ALLOW IN Anywhere\n'))
         self.assertIn('port 80 is not allowed', out)
         self.assertNotIn('port 443', out)
+
+    def test_ufw_survives_unknown_profiles_under_set_e(self):
+        out = self.run_shell(r'''set -Eeuo pipefail
+ufw() { if [[ $1 == app ]]; then echo 'ERROR: Could not find a profile matching' >&2; return 1; fi
+  printf 'Status: active\nDefault: deny (incoming)\nOld App ALLOW IN Anywhere\nfe80::1 80/tcp ALLOW IN Anywhere\n'; }
+check_ufw
+echo survived
+''')
+        self.assertIn('survived', out)
+        self.assertIn('port 443 is not allowed', out)
 
     def test_public_https_probe_warns_instead_of_failing(self):
         out = self.run_shell(r'''curl() { return 22; }
