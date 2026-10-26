@@ -330,7 +330,12 @@ export function SreIncidentsList({
         severityFilter.length === 0 ||
         severityFilter.includes(incident.severity);
       const matchesStatus =
-        matchesQuickFilter(incident, quickFilter, currentUserId) &&
+        // Picking a status overrides the default Active view so "Resolved" is reachable.
+        matchesQuickFilter(
+          incident,
+          statusFilter.length > 0 && quickFilter === "active" ? "all" : quickFilter,
+          currentUserId,
+        ) &&
         (statusFilter.length === 0 || statusFilter.includes(incident.status));
       const matchesService =
         serviceFilter.length === 0 ||

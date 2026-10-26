@@ -158,7 +158,7 @@ describe("resolveIncident", () => {
     const result = await resolveIncident(actor, incidentId, "  Rolled back deploy 41.  ");
     expect(result).toMatchObject({ ok: true, changed: true });
     expect(inserts[0]).toMatchObject({ eventData: { state: "resolved", comment: "Rolled back deploy 41." } });
-    expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "resolved" }));
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "resolved", dedupeDiscriminator: expect.any(String) }));
   });
 
   it("treats an already resolved incident as success without notifying again", async () => {

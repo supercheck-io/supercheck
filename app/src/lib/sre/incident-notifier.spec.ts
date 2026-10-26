@@ -15,8 +15,12 @@ const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAd
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
 jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({ fetchPublicEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args) }));
+jest.mock("@/lib/notification-providers/crypto", () => ({
+  decryptNotificationProviderConfig: jest.fn((config: { envelope?: Record<string, unknown> }) => config.envelope ?? config),
+}));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: jest.fn() }) }));
 
+import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
 
 const base = {
@@ -69,11 +73,12 @@ it("posts to providers linked to the triggering monitor and skips invalid config
     [incident],
     [{ sourceType: "monitor", sourceId: "mon-1" }],
     [
-      { id: "p1", type: "slack", config: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } },
-      { id: "p2", type: "slack", config: { webhookUrl: "http://169.254.169.254/latest" } },
+      { id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } },
+      { id: "p2", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "http://169.254.169.254/latest" } } },
     ],
   );
   await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  expect(decryptNotificationProviderConfig).toHaveBeenCalledWith(expect.anything(), "project-1");
   expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   const [url, init] = fetchPublicEndpoint.mock.calls[0];
   expect(url).toBe("https://hooks.slack.com/services/T/B/x");

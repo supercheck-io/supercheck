@@ -60,7 +60,6 @@ export async function listAssignableUsers(
     .select({
       id: user.id,
       name: user.name,
-      email: user.email,
       image: user.image,
     })
     .from(member)
@@ -191,7 +190,7 @@ function notify(
   actor: IncidentActor,
   incidentId: string,
   event: IncidentNotifyEvent,
-  extra: { assigneeUserId?: string | null; detail?: string } = {},
+  extra: { assigneeUserId?: string | null } = {},
 ) {
   // Never let a delivery problem fail the user action; the notifier logs its own errors.
   void notifyIncidentEvent({
@@ -200,6 +199,8 @@ function notify(
     incidentId,
     event,
     actorUserId: actor.userId,
+    // The guarded UPDATE already makes each transition fire once; this keeps a later, distinct repeat (reopen then resolve) from being suppressed.
+    dedupeDiscriminator: String(Date.now()),
     ...extra,
   }).catch(() => undefined);
 }
@@ -403,7 +404,7 @@ export async function resolveIncident(
       .set({
         status: "resolved",
         resolvedAt: now,
-        mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now})`,
+        mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamp)`,
         resolutionSummary: summary,
         updatedAt: now,
       })

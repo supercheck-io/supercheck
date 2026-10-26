@@ -176,7 +176,6 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       incidentId: incident.id,
       event: "ai_finding",
       dedupeDiscriminator: run.id,
-      detail: result.text.split("\n").find((line) => line.trim()),
     });
 
     return {

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { sreIncidents, sreIncidentTimelineEvents, user } from "@/db/schema";
@@ -46,7 +46,6 @@ export type SreIncidentActionResult =
 export type SreIncidentAssignee = {
   id: string;
   name: string;
-  email: string;
   image: string | null;
 };
 
@@ -181,7 +180,7 @@ export async function getSreIncidentAssignees(): Promise<
 export async function getSreIncidentTimeline(
   incidentId: string,
 ): Promise<
-  | { success: true; events: SreIncidentTimelineItem[] }
+  | { success: true; events: SreIncidentTimelineItem[] } // newest first
   | { success: false; error: string; events: [] }
 > {
   try {
@@ -215,7 +214,7 @@ export async function getSreIncidentTimeline(
       .from(sreIncidentTimelineEvents)
       .leftJoin(user, eq(user.id, sreIncidentTimelineEvents.actorUserId))
       .where(eq(sreIncidentTimelineEvents.incidentId, incident.id))
-      .orderBy(asc(sreIncidentTimelineEvents.createdAt))
+      .orderBy(desc(sreIncidentTimelineEvents.createdAt))
       .limit(500);
     return { success: true, events };
   } catch (error) {

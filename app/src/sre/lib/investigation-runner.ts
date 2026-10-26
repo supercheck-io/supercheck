@@ -320,7 +320,6 @@ export async function executeSreIncidentInvestigation(
       incidentId: incident.id,
       event: "ai_finding",
       dedupeDiscriminator: investigationRunId,
-      detail: result.text.split("\n").find((line) => line.trim()),
     });
 
     return {

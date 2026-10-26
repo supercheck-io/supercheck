@@ -47,7 +47,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
             assigneeName={incident.commanderName}
             role="commander"
             label="Commander (optional)"
-            canUpdate={canUpdate}
+            canUpdate={canUpdate && incident.status !== "resolved"}
           />
           <dl className="space-y-2">
             <Row label="Service">

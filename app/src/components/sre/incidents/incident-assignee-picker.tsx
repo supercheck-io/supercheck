@@ -60,10 +60,9 @@ export function IncidentAssigneePicker({
       incidentId,
       assigneeUserId: value === UNASSIGNED ? null : value,
       role,
-    });
-    setPending(false);
-    if (!result.success) {
-      toast.error(result.error);
+    }).catch(() => null).finally(() => setPending(false));
+    if (!result?.success) {
+      toast.error(result?.error ?? "Failed to assign incident");
       return;
     }
     toast.success(result.message);

@@ -67,10 +67,9 @@ export function IncidentTimeline({
   const post = async () => {
     if (pending || !text.trim()) return;
     setPending(true);
-    const result = await addSreIncidentUpdate({ incidentId, text });
-    setPending(false);
-    if (!result.success) {
-      toast.error(result.error);
+    const result = await addSreIncidentUpdate({ incidentId, text }).catch(() => null).finally(() => setPending(false));
+    if (!result?.success) {
+      toast.error(result?.error ?? "Failed to add update");
       return;
     }
     setText("");
@@ -111,7 +110,7 @@ export function IncidentTimeline({
           <p className="text-sm text-muted-foreground">No activity yet.</p>
         ) : (
           <ol className="space-y-3 border-l pl-4">
-            {[...events].reverse().map((event) => {
+            {events.map((event) => {
               const { title, body } = describeTimelineEvent(event);
               return (
                 <li key={event.id} className="relative">

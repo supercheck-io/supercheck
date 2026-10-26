@@ -104,7 +104,7 @@ Use **Save report** to keep the findings of a completed investigation. Generate 
 
 | Action | Behavior |
 |---|---|
-| **Default assignee** | New incidents are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
+| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
 | **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
 | **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
 | **Commander** | Optional single incident commander, set from the sidebar |
@@ -116,8 +116,8 @@ Assignments, acknowledgements, status changes, and resolution all appear on the 
 Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, and when it is **resolved**.
 
 - The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
-- Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand notify only the assignee.
-- Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, or credentials.
+- Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
+- Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-generated text; open the incident to read the AI finding.
 - The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
 
 ## Incident Lifecycle

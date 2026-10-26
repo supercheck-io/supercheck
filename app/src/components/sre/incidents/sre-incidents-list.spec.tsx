@@ -183,6 +183,19 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Total 4 incidents")).toBeInTheDocument();
   });
 
+  it("lets the Status facet reach resolved incidents without switching quick filters", () => {
+    render(
+      <SreIncidentsList
+        incidents={[incidentFixture(1), incidentFixture(3, { status: "resolved" })]}
+        loadError={null}
+      />,
+    );
+    fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
+    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
+  });
+
   it("shows assignee and AI state columns", () => {
     render(
       <SreIncidentsList
@@ -261,7 +274,8 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "resolved" }));
-    expect(screen.getByText("No incidents match the current filters.")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
 
   it("resets pagination when a facet changes", () => {

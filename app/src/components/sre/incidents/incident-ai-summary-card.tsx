@@ -40,7 +40,7 @@ export function IncidentAiSummaryCard({
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
 
   return (
-    <Card data-testid="incident-ai-summary" aria-labelledby="incident-ai-summary-title">
+    <Card data-testid="incident-ai-summary">
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <div className="space-y-1">
           <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-base">

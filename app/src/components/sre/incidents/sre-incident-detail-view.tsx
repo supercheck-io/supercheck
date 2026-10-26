@@ -273,15 +273,16 @@ export function SreIncidentDetailView({
           <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
 
           <Tabs
+            id="incident-investigation"
             defaultValue={initialTab === "brief" ? "evidence" : initialTab}
-            className="flex flex-col gap-4"
+            className="flex scroll-mt-4 flex-col gap-4"
           >
             <TabsList className="justify-start self-start">
               <TabsTrigger value="investigation">Investigation</TabsTrigger>
               <TabsTrigger value="evidence">Evidence &amp; brief</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="investigation" id="incident-investigation" className="scroll-mt-4 overflow-x-hidden">
+            <TabsContent value="investigation" className="overflow-x-hidden">
               <SreInvestigationPanel
                 key={detail.latestInvestigation?.id ?? "no-investigation"}
                 incidentId={incident.id}

@@ -21,10 +21,9 @@ export function AcknowledgeSreIncidentButton({ incidentId }: { incidentId: strin
 
   const acknowledge = async () => {
     setPending(true);
-    const result = await acknowledgeSreIncident({ incidentId });
-    setPending(false);
-    if (!result.success) {
-      toast.error(result.error);
+    const result = await acknowledgeSreIncident({ incidentId }).catch(() => null).finally(() => setPending(false));
+    if (!result?.success) {
+      toast.error(result?.error ?? "Failed to acknowledge incident");
       return;
     }
     toast.success(result.message);

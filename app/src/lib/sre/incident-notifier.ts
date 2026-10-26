@@ -9,9 +9,10 @@ import {
   sreIncidents,
   sreServices,
   user,
-  type NotificationProviderConfig,
+  type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { EmailService } from "@/lib/email-service";
+import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { createLogger } from "@/lib/logger/index";
 import {
   normalizeWebhookHeaders,
@@ -110,7 +111,7 @@ async function sendEmail(recipients: string[], message: Message) {
 }
 
 async function sendToProvider(
-  provider: { type: string; config: NotificationProviderConfig },
+  provider: { type: string; config: PlainNotificationProviderConfig },
   message: Message,
 ) {
   const config = provider.config as Record<string, unknown>;
@@ -202,6 +203,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       id: notificationProviders.id,
       type: notificationProviders.type,
       config: notificationProviders.config,
+      projectId: notificationProviders.projectId,
     };
     const providerScope = and(
       eq(notificationProviders.isEnabled, true),
@@ -226,8 +228,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     await Promise.allSettled(
       providers.map(async (provider) => {
         try {
-          validateProviderConfig(provider.type, provider.config as Record<string, unknown>);
-          await sendToProvider(provider, message);
+          // Provider configs are stored as encrypted envelopes bound to their project.
+          const config = decryptNotificationProviderConfig(provider.config, provider.projectId ?? undefined);
+          validateProviderConfig(provider.type, config);
+          await sendToProvider({ type: provider.type, config }, message);
         } catch (error) {
           logger.warn({ providerId: provider.id, type: provider.type, error: error instanceof Error ? error.message : "send failed" }, "Incident notification delivery failed");
         }

@@ -1382,7 +1382,7 @@ export async function updateSreIncident(
             : {}),
           // A reopened incident is no longer verified.
           ...(parsed.data.status !== "resolved" && current.status === "resolved"
-            ? { verifiedAt: null }
+            ? { verifiedAt: null, resolutionSummary: null }
             : {}),
           updatedAt: now,
         })
