@@ -88,7 +88,7 @@ fi
 
 echo "==> documented installer downloads use the v$installer_ver tag"
 for doc in README.md INSTALL.md ../../docs/content/docs/app/deployment/self-hosted.mdx; do
-  stale="$(grep -o 'supercheck/[^/]*/deploy/docker/install\.sh' "$doc" | grep -v "supercheck/v$installer_ver/" || true)"
+  stale="$(grep -o 'supercheck/[^/]*/deploy/docker/install\.sh' "$doc" | grep -Fvx "supercheck/v$installer_ver/deploy/docker/install.sh" || true)"
   if [ -n "$stale" ]; then
     echo "  FAIL $doc fetches ${stale%%$'\n'*}"
     fail=1

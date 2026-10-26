@@ -158,6 +158,13 @@ function normalizedBody(body) {
     .replace(/^\[(?:blocker|warning)\] /, "").trim().toLowerCase()
 }
 
+// Context-only: whole files carry unchanged lines, so also skip ones with credential assignments or
+// credentialed URLs. Kept out of SECRET_PATTERNS so review output redaction is unchanged.
+const CONTEXT_SECRET_PATTERNS = [
+  /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@'"]+:[^\s@/'"]{3,}@[^\s'"]+/i,
+  /\b(?:api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token|private[_-]?key)["']?\s*[:=]\s*["'][^"'\s]{8,}["']/i,
+]
+
 const CONTEXT_SKIP = ["**/*.lock", "**/*lock.json", "**/*lock.yaml", "**/*.min.*", "**/*.map", "**/*.generated.*",
   "**/*.snap", "**/.env*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/*.tfvars", "**/*secret*",
   "**/*credential*", "**/*kubeconfig*", "**/id_rsa*", "**/id_ed25519*", "**/.npmrc", "**/.netrc", "**/.pypirc", "**/dist/**", "**/build/**", "**/vendor/**", "**/node_modules/**", "**/.next/**", "**/coverage/**"]
@@ -179,7 +186,7 @@ export function selectContext(files, contents, { budget = LIMITS.maxContextChars
     const content = Object.hasOwn(contents ?? {}, file.filename) ? contents[file.filename] : undefined
     if (typeof content !== "string") continue // fetch failed or never attempted; already logged
     // Unchanged lines never reach the model through the diff; keep secret-looking files out entirely.
-    const secret = SECRET_PATTERNS.some((pattern) => { pattern.lastIndex = 0; return pattern.test(content) })
+    const secret = SECRET_PATTERNS.concat(CONTEXT_SECRET_PATTERNS).some((pattern) => { pattern.lastIndex = 0; return pattern.test(content) })
     const reason = content.includes("\0") ? "binary" : secret ? "secret-like" : content.length > perFile ? "too-large" : content.length > remaining ? "budget" : ""
     if (reason) { omitted.push({ path: file.filename, reason }); continue }
     remaining -= content.length
