@@ -22,6 +22,11 @@ describe("azure monitor provider", () => {
     expect(() => assertReadOnlyKql(kql)).toThrow();
   });
 
+  it("rejects a control command injected after a semicolon", () => {
+    expect(() => assertReadOnlyKql("T | take 10; .drop table X")).toThrow(/control commands/);
+    expect(() => assertReadOnlyKql("let n = 5; T | take n")).not.toThrow();
+  });
+
   it("allows normal KQL with dots inside expressions", () => {
     expect(() => assertReadOnlyKql('AppTraces | where Properties.http.status == 500 | take 5')).not.toThrow();
   });
