@@ -281,30 +281,15 @@ export function VendorComparison() {
               <th scope="col" className="px-3 py-3 text-left text-sm font-medium">
                 <span className="sr-only">Feature</span>
               </th>
-              {VENDORS.map((vendor) => {
-                const competitor = COMPETITORS.find((c) => c.id === vendor.key);
-                return (
-                  <th
-                    key={vendor.key}
-                    scope="col"
-                    className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
-                  >
-                    {competitor ? (
-                      <a
-                        href={competitor.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline-offset-2 hover:underline"
-                      >
-                        {vendor.name}
-                        <span className="sr-only"> pricing page (opens in a new tab)</span>
-                      </a>
-                    ) : (
-                      vendor.name
-                    )}
-                  </th>
-                );
-              })}
+              {VENDORS.map((vendor) => (
+                <th
+                  key={vendor.key}
+                  scope="col"
+                  className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
+                >
+                  {vendor.name}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -407,14 +392,7 @@ export function VendorComparison() {
           </li>
           {COMPETITORS.map((competitor) => (
             <li key={competitor.id}>
-              <a
-                href={competitor.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium underline underline-offset-2 hover:text-fd-foreground"
-              >
-                {competitor.name}
-              </a>
+              <span className="font-medium">{competitor.name}</span>
               : {competitor.billing} {competitor.note}
             </li>
           ))}

@@ -61,22 +61,22 @@ export const productMenu: NavMenu = {
     {
       title: "Monitor",
       items: [
-        { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port", href: "/docs/app/monitor", icon: Globe },
-        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/docs/app/monitor#synthetic-monitor", icon: MonitorPlay },
+        { title: "Uptime monitoring", description: "HTTP, website, SSL, ping and port", href: "/product/uptime-monitoring", icon: Globe },
+        { title: "Synthetic monitoring", description: "Playwright tests on a schedule", href: "/product/synthetic-monitoring", icon: MonitorPlay },
       ],
     },
     {
       title: "Communicate",
       items: [
         { title: "Alerts", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: BellRing },
-        { title: "Status pages", description: "Incidents and subscriber updates", href: "/docs/app/communicate/status-pages", icon: Tally4 },
+        { title: "Status pages", description: "Incidents and subscriber updates", href: "/product/status-pages", icon: Tally4 },
       ],
     },
     {
       title: "Investigate",
       items: [
         { title: "Incidents", description: "Alerts and runs in one place", href: "/docs/app/investigate/incidents", icon: Siren },
-        { title: "AI SRE Copilot", description: "Investigations that cite evidence", href: "/docs/app/investigate/copilot", icon: Bot },
+        { title: "AI SRE", description: "Investigations that cite evidence", href: "/product/ai-sre", icon: Bot },
         { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Plug },
       ],
     },
