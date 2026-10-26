@@ -37,9 +37,8 @@ const langs = {
 
 for (const [lang, { linenumber, line }] of Object.entries(langs)) {
   test(`should step in ${lang}`, async ({ recorderPage, baseURL }) => {
+    test.skip(lang !== 'playwright-test', 'Target selector is hidden; only Playwright Test output is supported');
     await recorderPage.getByTitle('Record', { exact: true }).click();
-
-    await recorderPage.locator('.source-chooser').selectOption(lang);
 
     await recorderPage.getByTitle('Step Over (F10)').click();
     await recorderPage.getByTitle('Step Over (F10)').click();
@@ -59,6 +58,7 @@ for (const [lang, { linenumber, line }] of Object.entries(langs)) {
 }
 
 test('should support target change while steping', async ({ recorderPage }) => {
+  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
   await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await recorderPage.getByTitle('Step Over (F10)').click();

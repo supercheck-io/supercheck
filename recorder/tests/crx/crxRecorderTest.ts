@@ -93,7 +93,11 @@ export const test = crxTest.extend<{
 
             await page.bringToFront();
             await extensionServiceWorker.evaluate(async () => {
-              // ensure we're in test mode
+              // the hooks are assigned when the background module finishes loading,
+          // which can be after the worker reports as activated
+          while (typeof (globalThis as any)._setUnderTest !== 'function')
+            await new Promise(resolve => setTimeout(resolve, 50));
+          // ensure we're in test mode
               _setUnderTest();
 
               const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

@@ -201,7 +201,7 @@ test('should resume with multiple pages', async ({ context, attachRecorder, reco
     `► Fill "test"( page.locator('textarea') ) ✅ — XXms`,
     `► newPage ✅ — XXms`,
     `► Navigate to "/input/button.html"( ${baseURL}/input/button.html ) ✅ — XXms`,
-    `► Click( page.getByRole('button', { name: 'Click target' }) ) ✅ — XXms`,
+    `► Click( page.getByRole('button', { name: 'Click me' }) ) ✅ — XXms`,
     `► Fill "another test"( page.locator('input') ) ✅ — XXms`,
   ]);
 

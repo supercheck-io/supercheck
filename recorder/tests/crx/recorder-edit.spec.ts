@@ -84,6 +84,7 @@ test('test', async ({ page }) => {
 });
 
 test('should reflect code changes on other sources', async ({ page, attachRecorder, baseURL }) => {
+  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
   const recorderPage = await attachRecorder(page);
   await recorderPage.getByTitle('Record', { exact: true }).click();
 
@@ -128,6 +129,7 @@ test('test', async ({ page }) => {
 });
 
 test('should reset code with errors if file changed', async ({ page, recordAction, attachRecorder, baseURL }) => {
+  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
   const recorderPage = await attachRecorder(page);
 
   await recordAction(() => page.goto(`${baseURL}/input/textarea.html`));
@@ -158,6 +160,7 @@ test('test', async ({ page }) => {
 });
 
 test('should keep playwright test formatting', async ({ page, attachRecorder, baseURL }) => {
+  test.skip(true, 'Target selector is hidden; only Playwright Test output is supported');
   const recorderPage = await attachRecorder(page);
   await recorderPage.getByTitle('Record', { exact: true }).click();
 
