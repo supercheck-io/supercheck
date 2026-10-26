@@ -111,7 +111,7 @@ describe('AI SRE CLI Commands', () => {
 
       await incidentCommand.parseAsync(['node', 'incident', 'resolve', '018f0000-0000-7000-8000-000000000001', '--comment', 'Fix applied', '--force'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { resolutionSummary: 'Fix applied' }, { retries: 0 })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { resolutionSummary: 'Fix applied', comment: 'Fix applied' }, { retries: 0 })
       expect(mockSuccess).toHaveBeenCalledWith('Incident resolved')
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
     })
@@ -131,7 +131,7 @@ describe('AI SRE CLI Commands', () => {
     it('resolve accepts --summary', async () => {
       mockPost.mockResolvedValueOnce({ data: { success: true } })
       await incidentCommand.parseAsync(['node', 'incident', 'resolve', id, '--summary', 'Rolled back', '--force'])
-      expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${id}/resolve`, { resolutionSummary: 'Rolled back' }, { retries: 0 })
+      expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${id}/resolve`, { resolutionSummary: 'Rolled back', comment: 'Rolled back' }, { retries: 0 })
     })
 
     it('resolve requires a summary', async () => {
@@ -175,6 +175,17 @@ describe('AI SRE CLI Commands', () => {
       mockGet.mockResolvedValueOnce({ data: {} })
       await expect(incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', 'me'])).rejects.toThrow('Could not resolve the current user')
       expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('maps a bare 404 from assign/ack to a newer-server message but keeps real not-found errors', async () => {
+      const { ApiRequestError } = await import('../../utils/errors.js')
+      mockPost.mockRejectedValueOnce(new ApiRequestError('Not Found', 404, '<html>404</html>'))
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'ack', id])).rejects.toThrow('requires a newer Supercheck server')
+      mockPost.mockRejectedValueOnce(new ApiRequestError('Not Found', 404, undefined))
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'unassign', id])).rejects.toThrow('requires a newer Supercheck server')
+      const notFound = new ApiRequestError('Incident not found', 404, { error: 'Incident not found' })
+      mockPost.mockRejectedValueOnce(notFound)
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'ack', id])).rejects.toBe(notFound)
     })
 
     it('ack acknowledges and reports repeats', async () => {
@@ -318,7 +329,7 @@ describe('AI SRE CLI Commands', () => {
       mockPost.mockResolvedValueOnce({ data: { success: true } })
       await incidentCommand.parseAsync(['node', 'incident', command, '1', ...(command === 'resolve' ? ['--comment', 'Fixed', '--force'] : [])])
       if (command === 'resolve') {
-        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { resolutionSummary: 'Fixed' }, { retries: 0 })
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { resolutionSummary: 'Fixed', comment: 'Fixed' }, { retries: 0 })
       } else {
         expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}${command === 'timeline' ? '/timeline' : ''}`)
       }
