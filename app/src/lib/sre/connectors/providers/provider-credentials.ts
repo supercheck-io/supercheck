@@ -18,6 +18,18 @@ export function providerEndpointRequirementError(
   endpointUrl: string | null,
 ): string | null {
   if (
+    endpointUrl &&
+    (ENDPOINT_REQUIRED_PROVIDER_TYPES as readonly string[]).includes(connectorType)
+  ) {
+    try {
+      if (new URL(endpointUrl).search) {
+        return "The endpoint URL must not include a query string";
+      }
+    } catch {
+      return "Enter a valid endpoint URL";
+    }
+  }
+  if (
     !endpointUrl &&
     (ENDPOINT_REQUIRED_PROVIDER_TYPES as readonly string[]).includes(connectorType)
   ) {

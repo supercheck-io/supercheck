@@ -37,7 +37,7 @@ const LOGS_SCOPE = 'https://api.loganalytics.azure.com/.default';
 const AGGREGATIONS = ['Average', 'Count', 'Maximum', 'Minimum', 'Total'];
 const INTERVAL_PATTERN = /^(?:PT\d{1,3}[MH]|P1D)$/;
 const KQL_BLOCKED =
-  /\b(?:externaldata|http_request|http_request_post|sql_request|cosmosdb_sql_request|ingest|infer_storage_schema)\b/i;
+  /\b(?:externaldata|http_request|http_request_post|sql_request|cosmosdb_sql_request|ingest|infer_storage_schema)\b|\b(?:workspace|app|resource|cluster|database|adx)\s*\(|\bevaluate\s+(?:mysql_request|azure_digital_twins_query_request|ai_\w+)/i;
 
 export type AzureCredential = {
   tenantId: string;
@@ -141,7 +141,7 @@ export function assertReadOnlyKql(query: string) {
   const blocked = KQL_BLOCKED.exec(trimmed);
   if (blocked) {
     throw new Error(
-      `KQL "${blocked[0].toLowerCase()}" is not allowed: it reads or writes outside the workspace`,
+      `KQL "${blocked[0].toLowerCase()}" is not allowed: it reads or writes outside the configured workspace`,
     );
   }
 }

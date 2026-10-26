@@ -18,7 +18,7 @@ describe("azure monitor provider", () => {
     expect(() => parseAzureCredential({ ...cred, workspaceId: "nope" })).toThrow(/workspace ID/);
   });
 
-  it.each([".drop table T", ".set T <| X", "T | take 1\n.delete table T", "T | take 1; .alter table T", "externaldata(x:string)[h@'https://x']", "T | evaluate http_request('https://x')"])("rejects control command or external read %s", (kql) => {
+  it.each([".drop table T", ".set T <| X", "T | take 1\n.delete table T", "T | take 1; .alter table T", "externaldata(x:string)[h@'https://x']", "T | evaluate http_request('https://x')", 'workspace("other").AppExceptions', 'union app("x").requests', 'cluster("c").database("d").T'])("rejects control command or external read %s", (kql) => {
     expect(() => assertReadOnlyKql(kql)).toThrow();
   });
 

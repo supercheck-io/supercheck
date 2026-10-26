@@ -45,11 +45,18 @@ const BLOCKED_COMMANDS = [
   'webhook',
   'savedsearch',
   'map',
+  'loadjob',
+  'inputcsv',
+  'fit',
+  'deletemodel',
+  'outputrss',
+  'external',
+  'externalsearch',
 ];
 // Only commands after a pipe can run; "[ | delete ]" subsearches are covered
 // because the pipe is still present.
 const BLOCKED_COMMAND_PATTERN = new RegExp(
-  `\\|\\s*(?:${BLOCKED_COMMANDS.join('|')})\\b`,
+  `\\|\\s*(?:${BLOCKED_COMMANDS.join('|')})\\b|\\bfrom\\s+savedsearch\\s*:`,
   'i',
 );
 const STATS_PATTERN =

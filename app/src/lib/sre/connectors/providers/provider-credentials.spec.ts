@@ -22,6 +22,8 @@ describe("provider credential requirements", () => {
     expect(providerEndpointRequirementError("splunk", null)).toMatch(/8089/);
     expect(providerEndpointRequirementError("splunk", "https://s")).toBeNull();
     expect(providerEndpointRequirementError("newrelic", null)).toBeNull();
+    expect(providerEndpointRequirementError("jaeger", "https://j.example.com/?x=1")).toMatch(/query string/);
+    expect(providerEndpointRequirementError("jaeger", "https://j.example.com/base")).toBeNull();
   });
   it("drops nested credential objects", () => {
     expect(flatCredentialFields({ a: "1", b: { c: "2" }, d: null })).toEqual({ a: "1", d: null });

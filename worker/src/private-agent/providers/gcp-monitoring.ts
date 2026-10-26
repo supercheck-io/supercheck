@@ -243,7 +243,7 @@ export function hasBalancedParentheses(filter: string) {
       else if (char === quote) quote = null;
       continue;
     }
-    if (char === '"' || char === "'") quote = char;
+    if (char === '"') quote = char;
     else if (char === '(') depth += 1;
     else if (char === ')') {
       depth -= 1;

@@ -212,6 +212,8 @@ export function providerHttpError(
   provider: string,
   status: number,
   body: string,
+  // Only fixed vendor hosts may echo a response body; customer endpoints could be hostile.
+  includeDetail = false,
 ) {
   if (status === 401 || status === 403) {
     return new Error(
@@ -222,7 +224,7 @@ export function providerHttpError(
     return new Error(`${provider} rate limit reached (HTTP 429)`);
   }
   if (status >= 400 && status < 500) {
-    const detail = stringOf(body, 200);
+    const detail = includeDetail ? stringOf(body, 200) : null;
     return new Error(
       `${provider} rejected the request with HTTP ${status}${detail ? `: ${detail}` : ''}`,
     );
@@ -253,7 +255,12 @@ export async function requestJson(
 ) {
   const response = await ctx.http(request);
   if (response.status < 200 || response.status >= 300) {
-    throw providerHttpError(provider, response.status, response.text);
+    throw providerHttpError(
+      provider,
+      response.status,
+      response.text,
+      request.target === 'vendor',
+    );
   }
   return parseProviderJson(provider, response);
 }

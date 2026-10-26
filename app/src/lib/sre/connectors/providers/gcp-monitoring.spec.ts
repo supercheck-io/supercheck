@@ -41,6 +41,7 @@ describe("gcp provider", () => {
     expect(() => parseGcpQuery("metrics: resource.type=x")).toThrow(/metric.type/);
     expect(() => parseGcpQuery('logs: a) OR (b')).toThrow(/unbalanced/);
     expect(hasBalancedParentheses('a="(" AND (b)')).toBe(true);
+    expect(hasBalancedParentheses("x='a) OR (b='")).toBe(false);
     expect(parseGcpQuery("logs: *").filter).toBe("");
   });
 

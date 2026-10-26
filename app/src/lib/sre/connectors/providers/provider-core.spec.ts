@@ -51,6 +51,9 @@ describe("provider core", () => {
     const req = { url: "https://x", method: "GET" as const, headers: {}, timeoutMs: 1, maxBytes: 1, target: "endpoint" as const };
     await expect(requestJson(makeContext(mockHttp([{ status: 403 }]).http), "P", req)).rejects.toThrow(/credentials rejected with HTTP 403/);
     await expect(requestJson(makeContext(mockHttp([{ status: 429 }]).http), "P", req)).rejects.toThrow(/rate limit/);
+    const bodyReq = { ...req };
+    await expect(requestJson(makeContext(mockHttp([{ status: 400, text: "internal hint" }]).http), "P", bodyReq)).rejects.toThrow(/^Error: P rejected the request with HTTP 400$|P rejected the request with HTTP 400$/);
+    await expect(requestJson(makeContext(mockHttp([{ status: 400, text: "bad query" }]).http), "P", { ...req, target: "vendor" })).rejects.toThrow(/HTTP 400: bad query/);
     await expect(requestJson(makeContext(mockHttp([{ status: 500, text: "secret stack" }]).http), "P", req)).rejects.toThrow(/^Error: P request failed with HTTP 500$|P request failed with HTTP 500$/);
     await expect(requestJson(makeContext(mockHttp([{ text: "{", truncated: true }]).http), "P", req)).rejects.toThrow(/size budget/);
     await expect(requestJson(makeContext(mockHttp([{ text: "<html>" }]).http), "P", req)).rejects.toThrow(/not valid JSON/);

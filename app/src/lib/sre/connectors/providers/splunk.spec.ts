@@ -16,6 +16,10 @@ describe("splunk provider", () => {
     "index=main [ | delete ]",
     "index=main | map search=\"search x\"",
     "index=main `macro`",
+    "index=main | loadjob 1234.5",
+    "| inputcsv secrets.csv",
+    "index=a | fit LinearRegression x into m",
+    "| from savedsearch:mysearch",
   ])("rejects write or unsafe search %s", (spl) => {
     expect(() => assertReadOnlySpl(spl)).toThrow();
   });
