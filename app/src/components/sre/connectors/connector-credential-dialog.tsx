@@ -62,8 +62,11 @@ export function ConnectorCredentialDialog({
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const [datadogApiKey, setDatadogApiKey] = useState("");
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
+  const [atlassianEmail, setAtlassianEmail] = useState("");
   const isCloudWatch = connector.type === "aws_cloudwatch";
   const isDatadog = connector.type === "datadog";
+  const isAtlassian =
+    connector.type === "jira" || connector.type === "confluence";
   const visibleCredentialTypeOptions = apiKeyOnlyConnectorTypes.has(
     connector.type,
   )
@@ -117,7 +120,12 @@ export function ConnectorCredentialDialog({
                 apiKey: trimmedDatadogApiKey,
                 applicationKey: trimmedDatadogApplicationKey,
               }
-            : { secret: trimmedCredential },
+            : {
+                secret: trimmedCredential,
+                ...(isAtlassian && atlassianEmail.trim()
+                  ? { email: atlassianEmail.trim() }
+                  : {}),
+              },
       });
 
       if (!result.success) {
@@ -130,6 +138,7 @@ export function ConnectorCredentialDialog({
       }
 
       setCredentialValue("");
+    setAtlassianEmail("");
       setAwsAccessKeyId("");
       setAwsSecretAccessKey("");
       setAwsSessionToken("");
@@ -229,6 +238,19 @@ export function ConnectorCredentialDialog({
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
+              {isAtlassian && (
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="rotate-atlassian-email">Account email</Label>
+                  <Input
+                    id="rotate-atlassian-email"
+                    value={atlassianEmail}
+                    onChange={(event) => setAtlassianEmail(event.target.value)}
+                    type="email"
+                    autoComplete="off"
+                    placeholder="Atlassian Cloud only; leave empty for a Data Center token"
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="rotate-credential-type">Credential type</Label>
                 <Select

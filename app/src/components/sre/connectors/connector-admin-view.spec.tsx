@@ -513,11 +513,11 @@ describe("ConnectorAdminView", () => {
   });
 
   it("disables evidence search for setup-only connectors without live adapters", async () => {
-    const jiraConnector = {
+    const setupOnlyConnector = {
       ...connector,
       id: "018f0000-0000-7000-8000-000000000020",
-      name: "Jira incidents",
-      type: "jira" as const,
+      name: "Splunk logs",
+      type: "splunk" as const,
       executionMode: "direct" as const,
       privateAgent: null,
       endpointUrl: "https://example.atlassian.net",
@@ -527,7 +527,7 @@ describe("ConnectorAdminView", () => {
     render(
       <ConnectorAdminView
         loadError={null}
-        initialConnectors={[jiraConnector]}
+        initialConnectors={[setupOnlyConnector]}
         setupOptions={{
           services: [
             {
@@ -548,7 +548,7 @@ describe("ConnectorAdminView", () => {
       />,
     );
 
-    openConnectorActions("Jira incidents");
+    openConnectorActions("Splunk logs");
     expect(
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     ).toHaveAttribute("aria-disabled", "true");

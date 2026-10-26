@@ -52,6 +52,9 @@ export const DIRECT_VALIDATION_CONNECTOR_TYPES = [
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jira",
+  "confluence",
+  "notion",
 ] as const satisfies readonly ConnectorType[];
 
 export const PRIVATE_AGENT_CONNECTOR_TYPES = [
@@ -65,6 +68,8 @@ export const PRIVATE_AGENT_CONNECTOR_TYPES = [
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "jira",
+  "confluence",
 ] as const satisfies readonly ConnectorType[];
 
 // These APIs can be intentionally unauthenticated inside a private network.

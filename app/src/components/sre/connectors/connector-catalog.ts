@@ -117,12 +117,6 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     addable: false,
   },
   {
-    value: "opentelemetry",
-    label: "OpenTelemetry",
-    description: "Telemetry signals and collector context",
-    addable: false,
-  },
-  {
     value: "gcp_monitoring",
     label: "Google Cloud Monitoring",
     description: "Cloud metrics, alerts, and logs",
@@ -165,57 +159,27 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     addable: false,
   },
   {
-    value: "kafka",
-    label: "Kafka",
-    description: "Broker health and consumer lag",
-    addable: false,
-  },
-  {
-    value: "rabbitmq",
-    label: "RabbitMQ",
-    description: "Queue health and delivery state",
-    addable: false,
-  },
-  {
     value: "jira",
     label: "Jira",
     description: "Tickets, incidents, and change context",
-    addable: false,
+    addable: true,
   },
   {
     value: "confluence",
     label: "Confluence",
     description: "Runbooks, postmortems, and operational docs",
-    addable: false,
+    addable: true,
   },
   {
     value: "notion",
     label: "Notion",
     description: "Knowledge base, runbooks, and incident notes",
-    addable: false,
-  },
-  {
-    value: "slack",
-    label: "Slack",
-    description: "Incident channels and responder discussion",
-    addable: false,
-  },
-  {
-    value: "teams",
-    label: "Microsoft Teams",
-    description: "Incident channels and responder discussion",
-    addable: false,
+    addable: true,
   },
   {
     value: "mcp",
     label: "MCP",
     description: "Approved external tool and context servers",
-    addable: false,
-  },
-  {
-    value: "webhook",
-    label: "Webhook",
-    description: "Inbound operational events",
     addable: false,
   },
 ];

@@ -24,8 +24,25 @@ Choose one of these in **Add connector**.
 | **Error tracking** | Sentry |
 | **Code and deployments** | GitHub, GitLab |
 | **Incident management** | PagerDuty, Opsgenie |
+| **Tickets and knowledge** | Jira, Confluence, Notion |
 
-Existing records for other providers are labeled **Setup only** and cannot run searches.
+Existing records for other providers are labeled **Setup only** or **Unsupported** and cannot run searches. Disable them from the connector actions menu.
+
+- **OpenTelemetry:** query the backend your collector exports to (Tempo, Jaeger, Loki, Prometheus, and so on).
+- **Slack and Teams:** used for notifications, not as an evidence source. Notification channels are configured separately and are not affected.
+- **Webhook, Kafka, RabbitMQ:** not evidence sources.
+
+## Tickets and Knowledge Connectors
+
+Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: the AI never follows instructions found inside a page or ticket.
+
+| Provider | Endpoint | Credential | Least privilege |
+|---|---|---|---|
+| **Jira** | Cloud site URL, or Data Center base URL | Cloud: account email and API token. Data Center: leave the email empty and use a personal access token | A dedicated user that can only browse the operational projects |
+| **Confluence** | Cloud site URL (`/wiki` is added), or Data Center base URL | Same as Jira | A dedicated user with view access to runbook and post-mortem spaces only |
+| **Notion** | Fixed at `api.notion.com`; the endpoint field is ignored | Internal integration token | Share only the runbook pages with the integration |
+
+Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
 
 ## Choose How to Connect
 
@@ -35,7 +52,7 @@ Existing records for other providers are labeled **Setup only** and cannot run s
 | An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector |
 | An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it. Otherwise deploy an agent in that network |
 
-Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, and AWS CloudWatch. GitLab, PagerDuty, and Opsgenie support **Direct** only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jira, and Confluence. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
 
 | Mode | Endpoint rules |
 |---|---|

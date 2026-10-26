@@ -2,6 +2,9 @@ import crypto from "node:crypto";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
 import { isValidKubernetesLabelSelector } from "./kubernetes-label-selector";
+import { ConfluenceConnector } from "./providers/confluence";
+import { JiraConnector } from "./providers/jira";
+import { NotionConnector } from "./providers/notion";
 
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
@@ -21,6 +24,7 @@ type DirectConnectorCredential = {
   applicationKey?: string | null;
   sessionToken?: string | null;
   region?: string | null;
+  email?: string | null;
 };
 
 type DirectConnectorOptions = ConnectorDefinition & {
@@ -2504,6 +2508,12 @@ export function createDirectConnector(
       return new TempoConnector(options);
     case "aws_cloudwatch":
       return new AwsCloudWatchConnector(options);
+    case "jira":
+      return new JiraConnector(options);
+    case "confluence":
+      return new ConfluenceConnector(options);
+    case "notion":
+      return new NotionConnector(options);
     default:
       throw new Error(
         `Direct connector search is not implemented for ${options.type}`,

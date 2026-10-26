@@ -136,6 +136,9 @@ const evidenceSearchConnectorTypes = new Set([
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jira",
+  "confluence",
+  "notion",
 ]);
 
 const connectorSearchWindows = [

@@ -63,6 +63,9 @@ const supportedLiveConnectorTypes = [
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jira",
+  "confluence",
+  "notion",
 ] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
@@ -183,6 +186,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
       "aws_session_token",
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
+    email: credentialString(value, ["email", "username"]),
   };
 }
 

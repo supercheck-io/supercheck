@@ -98,8 +98,10 @@ export function ConnectorFormDialog({
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const [datadogApiKey, setDatadogApiKey] = useState("");
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
+  const [atlassianEmail, setAtlassianEmail] = useState("");
   const isCloudWatch = type === "aws_cloudwatch";
   const isDatadog = type === "datadog";
+  const isAtlassian = type === "jira" || type === "confluence";
   const isApiKeyOnly = apiKeyOnlyConnectorTypes.has(type);
   const visibleCredentialTypeOptions = isApiKeyOnly
     ? credentialTypeOptions.filter((option) => option.value === "api_key")
@@ -176,7 +178,12 @@ export function ConnectorFormDialog({
               : !isCloudWatch && !isDatadog && trimmedCredential
                 ? {
                     credentialType,
-                    value: { secret: trimmedCredential },
+                    value: {
+                      secret: trimmedCredential,
+                      ...(isAtlassian && atlassianEmail.trim()
+                        ? { email: atlassianEmail.trim() }
+                        : {}),
+                    },
                   }
                 : undefined,
       });
@@ -193,6 +200,7 @@ export function ConnectorFormDialog({
 
       toast.success(result.message);
       setCredentialValue("");
+      setAtlassianEmail("");
       setAwsAccessKeyId("");
       setAwsSecretAccessKey("");
       setAwsSessionToken("");
@@ -516,6 +524,19 @@ export function ConnectorFormDialog({
                     </>
                   ) : (
                     <>
+                      {isAtlassian && (
+                        <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                          <Label htmlFor="atlassian-email">Account email</Label>
+                          <Input
+                            id="atlassian-email"
+                            value={atlassianEmail}
+                            onChange={(event) => setAtlassianEmail(event.target.value)}
+                            type="email"
+                            autoComplete="off"
+                            placeholder="Atlassian Cloud only; leave empty for a Data Center token"
+                          />
+                        </div>
+                      )}
                       <div className="flex min-w-0 flex-col gap-1.5">
                         <Label htmlFor="credential-type">Credential type</Label>
                         <Select

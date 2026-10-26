@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
 import { isIP } from 'node:net';
+import { executeKnowledgeJob } from './private-agent-knowledge';
 
 const PROTOCOL_VERSION = '2026-06-22';
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
@@ -31,6 +32,8 @@ const connectorJobSpecSchema = z.object({
     'elasticsearch',
     'tempo',
     'aws_cloudwatch',
+    'jira',
+    'confluence',
   ]),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
@@ -1515,6 +1518,36 @@ async function executeCloudWatch(
   return executeCloudWatchAlarms(job, query);
 }
 
+async function executeKnowledge(
+  job: LeasedJob,
+): Promise<ConnectorExecutionResult> {
+  const spec = job.jobSpec;
+  if (spec.connectorType !== 'jira' && spec.connectorType !== 'confluence') {
+    throw new Error('Unsupported knowledge connector');
+  }
+  const items = await executeKnowledgeJob(
+    {
+      connectorType: spec.connectorType,
+      connectorId: spec.connectorId,
+      endpoint: normalizedEndpoint(spec),
+      query: spec.query,
+      windowStart: spec.timeWindow.start,
+      windowEnd: spec.timeWindow.end,
+      maxRows: spec.budget.maxRows,
+      timeoutMs: Math.min(spec.budget.maxSeconds, 30) * 1000,
+      email: credentialString(job, ['email', 'username']),
+      token: apiKeyFromCredential(job),
+    },
+    {
+      getJson: (url, headers, timeoutMs) =>
+        fetchJson(url, null, timeoutMs, headers),
+      evidenceId,
+      hash: hashPayload,
+    },
+  );
+  return bounded(items, spec.budget.maxRows);
+}
+
 export async function executePrivateAgentConnectorJob(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -1539,6 +1572,9 @@ export async function executePrivateAgentConnectorJob(
       return executeTempo(job);
     case 'aws_cloudwatch':
       return executeCloudWatch(job);
+    case 'jira':
+    case 'confluence':
+      return executeKnowledge(job);
   }
 }
 

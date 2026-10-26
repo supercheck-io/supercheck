@@ -110,17 +110,7 @@ describe("connector query builders", () => {
     expect(result.query).toBe("checkout incident runbook type:page source:sre-runbooks");
   });
 
-  it("builds Slack message search syntax", () => {
-    const builder = getConnectorQueryBuilder("slack");
-    expect(builder).not.toBeNull();
-
-    const result = builder!.build({
-      channel: "incidents",
-      serviceTerm: "checkout",
-      text: "timeout",
-      afterDate: "2026-06-01",
-    });
-
-    expect(result.query).toBe("in:#incidents checkout timeout after:2026-06-01");
+  it("has no builder for retired chat connector types", () => {
+    expect(getConnectorQueryBuilder("slack")).toBeNull();
   });
 });
