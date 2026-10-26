@@ -4,51 +4,83 @@
  * Runtime env only (the Docker image is shared with self-hosted):
  * SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE. Ignored when SELF_HOSTED is true.
  *
+ * This module imports the SDK. Production code must go through
+ * ./sentry-reporter, which checks the gate in ./sentry-gate and only then
+ * requires this module, so a disabled or self-hosted worker never loads @sentry/*.
+ *
+ * Uses @sentry/node 10.x: 11.x pulls build tooling and a source-available (FSL)
+ * package into production dependencies.
+ *
  * Keep scrubbing logic in sync with app/src/lib/sentry.ts.
  */
 import * as Sentry from '@sentry/node';
 import { getServiceVersion } from './version';
-
-const isSelfHostedEnv = (env: Record<string, string | undefined>): boolean =>
-  ['true', '1'].includes(env.SELF_HOSTED?.trim().toLowerCase() ?? '');
+import { getSentryDsn } from './sentry-gate';
 
 const MAX_LENGTH = 500;
+const MAX_SQL_LENGTH = 200;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_TAGS = new Set([
   'organizationId',
   'projectId',
   'runId',
   'jobId',
   'queue',
-  'service',
 ]);
 const ALLOWED_CONTEXTS = new Set(['runtime', 'os']);
-// Integrations that capture console output, HTTP bodies/headers or local variables.
+// Default integrations that capture console output, HTTP data, local variables,
+// source lines, module lists, child processes or session telemetry.
 const DROPPED_INTEGRATIONS = new Set([
   'Console',
   'RequestData',
-  'LocalVariables',
+  'LocalVariablesAsync',
+  'ContextLines',
+  'Modules',
+  'ChildProcess',
   'Http',
   'NodeFetch',
-  'Undici',
+  'ProcessSession',
+  'OnUnhandledRejection', // re-added below in strict mode
 ]);
 
-const REDACTIONS: Array<[RegExp, string]> = [
-  [/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>]+/gi, '[url]'], // URLs and connection strings
-  [/\bBearer\s+[\w.~+/=-]+/gi, 'Bearer [redacted]'],
+// Every pattern is linear: input is truncated first and no quantifiers nest or
+// overlap (key prefixes/suffixes and URL schemes are length-bounded).
+const REDACTIONS: Array<[RegExp, string | ((m: string) => string)]> = [
+  // Quoted literals (selectors, expected text, JSON keys/values, code); an unterminated one runs to the end.
+  [/"[^"]*(?:"|$)|`[^`]*(?:`|$)|(?<!\w)'[^']*(?:'|$)/g, '[text]'],
+  // Whole header value: covers Basic/Bearer/custom schemes and cookie lists.
   [
-    /\b([\w-]*(?:key|token|secret|passw(?:or)?d|pwd|auth|cookie|session)[\w-]*)\s*[=:]\s*[^\s,;&]+/gi,
+    /\b(authorization|proxy-authorization|set-cookie|cookie)[ \t]*[:=][^\r\n]*/gi,
+    '$1: [redacted]',
+  ],
+  [/\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s<>]+/gi, '[url]'], // URLs and connection strings
+  [/\bBearer[ \t]+[\w.~+/=-]+/gi, 'Bearer [redacted]'],
+  [/\bBasic[ \t]+[A-Za-z0-9+/=]{8,}/g, 'Basic [redacted]'],
+  [
+    /\b([\w-]{0,40}(?:key|token|secret|passw(?:or)?d|pwd|auth|cookie|session)[\w-]{0,40})["']?[ \t]*[=:][ \t]*[^\s,;&]+/gi,
     '$1=[redacted]',
   ],
-  [/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]'],
-  [/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted]'], // long opaque tokens
+  [/[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}/g, '[email]'],
+  // Long opaque tokens; canonical UUIDs are opaque IDs and stay readable.
+  [/(?<![\w-])[A-Za-z0-9_-]{32,}/g, (m) => (UUID.test(m) ? m : '[redacted]')],
 ];
 
 export function scrubString(value: string): string {
-  let out = value;
-  for (const [pattern, replacement] of REDACTIONS) {
-    out = out.replace(pattern, replacement);
+  const truncated = value.length > MAX_LENGTH;
+  let out = truncated ? value.slice(0, MAX_LENGTH) : value;
+  // Drizzle: "Failed query: <sql>\nparams: <values>". Values can be PII; keep a short SQL head only.
+  const isQuery = /^\s*Failed query:/i.test(out);
+  const params = out.search(/\bparams:/i);
+  if (params >= 0) {
+    const head = out.slice(0, params);
+    out = `${isQuery ? head.slice(0, MAX_SQL_LENGTH) : head}params: [redacted]`;
+  } else if (isQuery) {
+    out = out.slice(0, MAX_SQL_LENGTH);
   }
-  return out.length > MAX_LENGTH ? `${out.slice(0, MAX_LENGTH)}...` : out;
+  for (const [pattern, replacement] of REDACTIONS) {
+    out = out.replace(pattern, replacement as string);
+  }
+  return truncated ? `${out}...` : out;
 }
 
 /** Shared beforeSend: keeps error type/message (scrubbed), stack, release, allow-listed IDs. */
@@ -94,32 +126,25 @@ export function scrubEvent<T extends Sentry.ErrorEvent>(event: T): T {
 /** Returns Sentry options, or null when Sentry must stay completely off. */
 export function getSentryOptions(
   env: Record<string, string | undefined> = process.env,
-  selfHosted: boolean = isSelfHostedEnv(env),
+  selfHosted?: boolean,
 ): Sentry.NodeOptions | null {
-  const dsn = env.SENTRY_DSN?.trim();
-  if (!dsn || selfHosted) return null;
+  const dsn = getSentryDsn(env, selfHosted);
+  if (!dsn) return null;
   return {
     dsn,
     environment: env.SENTRY_ENVIRONMENT?.trim() || env.NODE_ENV || 'production',
     release: env.SENTRY_RELEASE?.trim() || getServiceVersion(),
-    // Sentry v11 replaced sendDefaultPii with dataCollection; everything off.
-    dataCollection: {
-      userInfo: false,
-      cookies: false,
-      httpHeaders: false,
-      httpBodies: [],
-      urlQueryParams: false,
-      databaseQueryData: false,
-      queues: false,
-      stackFrameVariables: false,
-      frameContextLines: 0,
-    },
+    sendDefaultPii: false,
+    includeLocalVariables: false,
     // No tracesSampleRate / profiles / replay: tracing and profiling stay off.
     maxBreadcrumbs: 0,
     beforeBreadcrumb: () => null,
     beforeSend: scrubEvent,
-    integrations: (defaults) =>
-      defaults.filter((i) => !DROPPED_INTEGRATIONS.has(i.name)),
+    integrations: (defaults) => [
+      ...defaults.filter((i) => !DROPPED_INTEGRATIONS.has(i.name)),
+      // strict keeps Node's default: an unhandled rejection still terminates the process.
+      Sentry.onUnhandledRejectionIntegration({ mode: 'strict' }),
+    ],
   };
 }
 
@@ -131,7 +156,7 @@ export function initSentry(): boolean {
 }
 
 /** Reports a failed job by ID tags only; never reads script, variables or logs from job.data. */
-export function captureJobFailure(
+export function reportJobFailure(
   job: { id?: string; queueName?: string; data?: unknown } | undefined,
   error: Error,
 ): void {
@@ -147,4 +172,9 @@ export function captureJobFailure(
   };
   for (const [k, v] of Object.entries(candidates)) if (v) tags[k] = v;
   Sentry.captureException(error, { tags });
+}
+
+/** Flushes queued events, waiting at most `timeoutMs`. */
+export async function closeSentry(timeoutMs = 2000): Promise<void> {
+  await Sentry.close(timeoutMs);
 }

@@ -111,7 +111,7 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@react-email/components": "^0.5.7",
     "@react-email/render": "^1.4.0",
-    "@sentry/nextjs": "^11.9.0",
+    "@sentry/node": "10.76.2",
     "@tanstack/query-sync-storage-persister": "^5.104.4",
     "@tanstack/react-query": "^5.104.4",
     "@tanstack/react-query-persist-client": "^5.104.4",

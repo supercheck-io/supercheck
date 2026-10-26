@@ -13,6 +13,7 @@ import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
 import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
 import { HeartbeatModule } from './common/heartbeat/heartbeat.module';
+import { SentryShutdown } from './common/sentry-reporter';
 import { buildRedisOptions } from './common/redis/redis-options';
 
 @Module({
@@ -40,6 +41,6 @@ import { buildRedisOptions } from './common/redis/redis-options';
     HeartbeatModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SentryShutdown],
 })
 export class AppModule {}

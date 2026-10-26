@@ -10,10 +10,14 @@
 export async function register() {
   // Only run on server-side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    // Cloud-only error monitoring; no-op without SENTRY_DSN or when SELF_HOSTED is true.
+    // Cloud-only error monitoring. The gate does not import the SDK, so disabled
+    // and self-hosted deployments never load @sentry/*.
     try {
-      const { initSentry } = await import('@/lib/sentry');
-      initSentry();
+      const { getSentryDsn } = await import('@/lib/sentry-gate');
+      if (getSentryDsn()) {
+        const { initSentry, flushOnSigterm } = await import('@/lib/sentry');
+        if (initSentry()) flushOnSigterm();
+      }
     } catch (error) {
       console.error('[Instrumentation] Sentry init failed:', error);
     }
@@ -141,13 +145,16 @@ export async function register() {
   }
 }
 
-// Forwards unhandled request errors to Sentry; the SDK is only loaded when initialized.
-export async function onRequestError(
-  ...args: Parameters<typeof import('@sentry/nextjs').captureRequestError>
-) {
+// Forwards unhandled request errors to Sentry. Checks the gate first so the SDK
+// is never loaded when disabled; the request itself is not attached.
+export async function onRequestError(error: unknown) {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
-  const { getSentryOptions } = await import('@/lib/sentry');
-  if (!getSentryOptions()) return;
-  const Sentry = await import('@sentry/nextjs');
-  Sentry.captureRequestError(...args);
+  try {
+    const { getSentryDsn } = await import('@/lib/sentry-gate');
+    if (!getSentryDsn()) return;
+    const { captureRequestError } = await import('@/lib/sentry');
+    captureRequestError(error);
+  } catch {
+    // Error reporting must never throw.
+  }
 }

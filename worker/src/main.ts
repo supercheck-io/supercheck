@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { startPrivateAgentRunner } from './private-agent/private-agent-runner';
 
-import { initSentry } from './common/sentry';
+import { initSentry } from './common/sentry-reporter';
 
 async function bootstrap() {
   // No-op unless SENTRY_DSN is set and SELF_HOSTED is not true.

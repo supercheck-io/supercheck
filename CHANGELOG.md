@@ -8,7 +8,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Added
 
-- Supercheck Cloud reports server-side errors from the app and worker to Sentry when `SENTRY_DSN` is set. Ignored when `SELF_HOSTED=true`; scripts, run output, request data and secrets are never sent, and self-hosted installs make no Sentry calls.
+- Supercheck Cloud sends server-side error reports from the app and worker to Sentry when `SENTRY_DSN` is set. A report has the error type, a shortened message scrubbed of secrets, URLs, email addresses, quoted text and database values, a stack trace, service/release/environment, and internal IDs; request contents, headers, cookies, form inputs, test scripts and run logs are not attached. Ignored when `SELF_HOSTED=true`, where the Sentry SDK is not loaded and no Sentry calls are made.
 - The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install.
 - `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
 - The requirements API accepts `"priority": null` to clear a requirement's priority.

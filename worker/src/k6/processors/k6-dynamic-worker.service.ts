@@ -18,7 +18,7 @@ import { isMissingCapabilityColumnError } from '../../common/location/location-c
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
-import { captureJobFailure } from '../../common/sentry';
+import { captureJobFailure } from '../../common/sentry-reporter';
 
 /**
  * Dynamically creates BullMQ Workers for regional K6 queues.
@@ -155,11 +155,11 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     });
 
     worker.on('failed', (job: Job | undefined, error: Error) => {
-      captureJobFailure(job, error);
       this.logger.error(
         `[${queueName}] k6 job ${job?.id || 'unknown'} failed: ${error.message}`,
         error.stack,
       );
+      captureJobFailure(job, error);
     });
 
     worker.on('error', (error: Error) => {

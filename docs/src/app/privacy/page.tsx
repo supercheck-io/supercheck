@@ -106,9 +106,11 @@ export default function PrivacyPage() {
                             <li><strong>Notification services:</strong> Email, Slack, Discord, Telegram, Microsoft Teams, and webhooks for alerts you configure</li>
                             <li><strong>Support tools:</strong> Account details and support conversations when support chat is enabled</li>
                             <li><strong>Error monitoring:</strong> Sentry receives technical error reports from the hosted cloud
-                                service: the error type and message with secrets and personal data removed, the stack trace,
-                                the service and release version, and internal IDs. Your test scripts, run output, request
-                                contents, and form inputs are not sent.</li>
+                                service. A report contains the error type, a shortened error message that is
+                                scrubbed to remove secrets, URLs, email addresses, quoted text, and database values,
+                                a stack trace, the service, release, and environment, and internal IDs. We do not
+                                attach request contents, headers, cookies, form inputs, test scripts, or run logs.
+                                Scrubbing is automated and best effort.</li>
                         </ul>
                         <p className="mb-4">
                             We do not sell your personal information to third parties.
