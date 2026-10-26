@@ -22,7 +22,7 @@
 set -Eeuo pipefail
 
 # Keep in sync with the SUPERCHECK_VERSION default in docker-compose.yml (validate.sh enforces it).
-SUPERCHECK_VERSION_DEFAULT="1.3.7-canary.16"
+SUPERCHECK_VERSION_DEFAULT="1.4.0"
 REPO_URL="https://github.com/supercheck-io/supercheck.git"
 MIN_COMPOSE="2.24.4"
 KUBECONFIG_FILE="/etc/rancher/k3s/supercheck-worker.kubeconfig"

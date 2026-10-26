@@ -36,3 +36,27 @@ Check the tag before pushing:
 git cat-file -t refs/tags/v<version>   # must print: tag
 git verify-tag refs/tags/v<version>    # must print: Good "git" signature
 ```
+
+## App and worker releases
+
+Stable app and worker releases use `v<version>` tags; `v<version>-canary.<n>`
+tags are prereleases built from `main`.
+
+1. In one PR, set the version in every location the "Require stable tag to
+   match all version locations" step checks: `app/package.json`,
+   `worker/package.json` (run `npm version <version> --no-git-tag-version` in
+   each so the lockfiles follow), and every `SUPERCHECK_VERSION` default in
+   `deploy/docker/*.yml`. Update `SUPERCHECK_VERSION_DEFAULT` in
+   `deploy/docker/install.sh`, the install and upgrade examples in
+   `deploy/docker/*.md` and `docs/content/docs/app/deployment/`, and date the
+   `CHANGELOG.md` section. Run `./deploy/docker/validate.sh`.
+2. Merge the PR (squash; the tag must point at the commit on `main`). The merge
+   starts `docs-deploy.yml`, and until the images are published the documented
+   version cannot be pulled. Cancel that docs run and start it again with
+   `gh workflow run docs-deploy.yml` after step 3 has pushed the images.
+3. Create and push the signed tag on the merged commit (see "Creating a release
+   tag"). `build-multiarch.yml` certifies the release, pushes the images
+   (`latest` only for stable tags) and deploys the demo after approval.
+4. After the images are published, create the GitHub Release for the tag with
+   the changelog section as its notes. No workflow creates releases for `v*`
+   tags.

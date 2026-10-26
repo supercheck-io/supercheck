@@ -90,7 +90,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
     ```bash
     mkdir -p ~/supercheck-private-agent
     cd ~/supercheck-private-agent
-    curl -fsSL -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7-canary.16/deploy/docker/docker-compose-private-agent.yml
+    curl -fsSL -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/docker-compose-private-agent.yml
     ```
 
     Create `.env` beside it, using your dashboard's HTTPS origin without `/api`:
@@ -99,7 +99,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
     SUPERCHECK_API_URL=https://your-supercheck-instance.example
     PRIVATE_AGENT_ID=your-agent-id
     PRIVATE_AGENT_TOKEN=your-registration-token
-    SUPERCHECK_VERSION=1.3.7-canary.16
+    SUPERCHECK_VERSION=1.4.0
     ```
 
     ```bash

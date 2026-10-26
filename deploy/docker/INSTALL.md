@@ -4,12 +4,12 @@ Use this runbook for a new single-server installation. Run commands on the targe
 
 ## Fast path (recommended)
 
-On Ubuntu 22.04+ or Debian 12+, install **1.3.7-canary.16** (includes RustFS) instead of following the manual steps below. It never prompts when `--yes` is given:
+On Ubuntu 22.04+ or Debian 12+, install **1.4.0** (includes RustFS) instead of following the manual steps below. It never prompts when `--yes` is given:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
-sudo bash install.sh --version 1.3.7-canary.16 --local --yes                                              # HTTP evaluation
-sudo bash install.sh --version 1.3.7-canary.16 --domain app.example.com --email admin@example.com --yes   # public HTTPS
+sudo bash install.sh --version 1.4.0 --local --yes                                              # HTTP evaluation
+sudo bash install.sh --version 1.4.0 --domain app.example.com --email admin@example.com --yes   # public HTTPS
 ```
 
 Use `--dry-run` first to see the plan without changing the host. It exits 0 when installed and healthy, 1 on failure (log: `/var/log/supercheck/install.log`), 2 on bad usage and 3 when installed but the health check reports a problem. Re-running is safe: it keeps `.env` and skips finished steps. Report the printed URL and whether the health check passed. Use the manual runbook below for custom setups; the same Linux host requirements apply.
