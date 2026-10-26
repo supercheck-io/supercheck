@@ -20,6 +20,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  buildProviderCredentialValue,
+  getProviderCredentialFields,
+} from "./provider-credential-fields";
+import { ProviderCredentialInputs } from "./provider-credential-inputs";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -62,6 +67,8 @@ export function ConnectorCredentialDialog({
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const [datadogApiKey, setDatadogApiKey] = useState("");
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
+  const [providerValues, setProviderValues] = useState<Record<string, string>>({});
+  const providerFields = getProviderCredentialFields(connector.type);
   const isCloudWatch = connector.type === "aws_cloudwatch";
   const isDatadog = connector.type === "datadog";
   const visibleCredentialTypeOptions = apiKeyOnlyConnectorTypes.has(
@@ -95,7 +102,15 @@ export function ConnectorCredentialDialog({
       return;
     }
 
-    if (!isCloudWatch && !isDatadog && !trimmedCredential) {
+    const providerCredential = providerFields
+      ? buildProviderCredentialValue(providerFields, providerValues)
+      : null;
+    if (providerCredential?.error) {
+      toast.error(providerCredential.error);
+      return;
+    }
+
+    if (!providerFields && !isCloudWatch && !isDatadog && !trimmedCredential) {
       toast.error("Credential value is required");
       return;
     }
@@ -103,8 +118,13 @@ export function ConnectorCredentialDialog({
     startTransition(async () => {
       const result = await rotateSreConnectorCredential({
         id: connector.id,
-        credentialType: isCloudWatch || isDatadog ? "api_key" : credentialType,
-        value: isCloudWatch
+        credentialType:
+          providerFields || isCloudWatch || isDatadog
+            ? "api_key"
+            : credentialType,
+        value: providerCredential?.value
+          ? providerCredential.value
+          : isCloudWatch
           ? {
               apiKey: trimmedAwsAccessKeyId,
               secret: trimmedAwsSecretAccessKey,
@@ -135,6 +155,7 @@ export function ConnectorCredentialDialog({
       setAwsSessionToken("");
       setDatadogApiKey("");
       setDatadogApplicationKey("");
+      setProviderValues({});
       toast.success(result.message);
       onOpenChange(false);
     });
@@ -152,7 +173,18 @@ export function ConnectorCredentialDialog({
         </DialogHeader>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          {isCloudWatch ? (
+          {providerFields ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ProviderCredentialInputs
+                idPrefix="rotate-credential"
+                fields={providerFields}
+                values={providerValues}
+                onChange={(key, value) =>
+                  setProviderValues((current) => ({ ...current, [key]: value }))
+                }
+              />
+            </div>
+          ) : isCloudWatch ? (
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="rotate-aws-access-key-id">

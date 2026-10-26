@@ -1,3 +1,5 @@
+import { observabilityQueryGuides } from "./observability-query-guides";
+
 export type ConnectorQueryGuide = {
   label: string;
   queryLabel: string;
@@ -555,5 +557,5 @@ const guides: Record<string, ConnectorQueryGuide> = {
 };
 
 export function getConnectorQueryGuide(type: string): ConnectorQueryGuide {
-  return guides[type] ?? defaultGuide;
+  return guides[type] ?? observabilityQueryGuides[type] ?? defaultGuide;
 }
