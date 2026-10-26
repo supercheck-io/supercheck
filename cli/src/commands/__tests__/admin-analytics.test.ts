@@ -9,12 +9,13 @@ const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
 const mockOutputMutation = jest.fn<(...args: unknown[]) => void>()
 const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<boolean>>()
+const mockGetOutputFormat = jest.fn<() => string>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({ get: mockGet, post: mockPost, patch: mockPatch, delete: mockDelete }),
 }))
 jest.unstable_mockModule('../../output/formatter.js', () => ({
-  output: mockOutput, outputDetail: mockOutputDetail, outputMutation: mockOutputMutation,
+  output: mockOutput, outputDetail: mockOutputDetail, outputMutation: mockOutputMutation, getOutputFormat: mockGetOutputFormat,
 }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { output: jest.fn(), info: jest.fn(), success: jest.fn(), error: jest.fn(), warn: jest.fn(), newline: jest.fn() },
@@ -39,6 +40,7 @@ describe('analytics, token and project commands', () => {
     jest.resetAllMocks()
     for (const c of [analyticsCommand, tokenCommand, projectCommand]) reset(c)
     mockConfirmPrompt.mockResolvedValue(true)
+    mockGetOutputFormat.mockReturnValue('table')
   })
 
   it('fetches playwright analytics with job and period', async () => {
@@ -52,6 +54,20 @@ describe('analytics, token and project commands', () => {
     mockGet.mockResolvedValueOnce({ data: {} })
     await analyticsCommand.parseAsync(['node', 'analytics', 'k6', '--left-run', '11111111-1111-4111-8111-111111111111', '--right-run', '22222222-2222-4222-8222-222222222222'])
     expect(mockGet).toHaveBeenCalledWith('/api/analytics/k6', expect.objectContaining({ leftRunId: '11111111-1111-4111-8111-111111111111', rightRunId: '22222222-2222-4222-8222-222222222222', period: '30' }))
+  })
+
+  it('renders trend series as table rows and keeps the full response for --json', async () => {
+    const data = { totalRuns: 2, chartData: [{ date: 'd1', passRate: 100 }], frequencyData: [{ date: 'd1', runs: 2 }] }
+    mockGet.mockResolvedValueOnce({ data })
+    await analyticsCommand.parseAsync(['node', 'analytics', 'playwright'])
+    expect(mockOutputDetail).toHaveBeenCalledWith({ totalRuns: 2 })
+    expect(mockOutput).toHaveBeenCalledWith(data.chartData)
+    expect(mockOutput).toHaveBeenCalledWith(data.frequencyData)
+
+    mockGetOutputFormat.mockReturnValue('json')
+    mockGet.mockResolvedValueOnce({ data })
+    await analyticsCommand.parseAsync(['node', 'analytics', 'playwright'])
+    expect(mockOutputDetail).toHaveBeenLastCalledWith(data)
   })
 
   it('rejects an unsupported period, a half comparison and a non-UUID job before calling the API', async () => {
@@ -72,6 +88,17 @@ describe('analytics, token and project commands', () => {
     setRevealSecrets(false)
     await expect(tokenCommand.parseAsync(['node', 'token', 'create', 'ci'])).rejects.toThrow('--show-secrets')
     expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('refuses --quiet for token create, which would hide the one-time key', async () => {
+    setRevealSecrets(true)
+    try {
+      mockGetOutputFormat.mockReturnValue('quiet')
+      await expect(tokenCommand.parseAsync(['node', 'token', 'create', 'ci'])).rejects.toThrow('--quiet')
+      expect(mockPost).not.toHaveBeenCalled()
+    } finally {
+      setRevealSecrets(false)
+    }
   })
 
   it('creates a token with an expiry in seconds and prints its key', async () => {

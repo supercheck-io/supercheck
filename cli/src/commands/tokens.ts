@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
-import { output, outputDetail, outputMutation } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail, outputMutation } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { canRevealSecrets } from '../utils/redact.js'
 import { parseIntStrict } from '../utils/number.js'
@@ -26,6 +26,8 @@ tokenCommand
     if (!canRevealSecrets()) {
       throw new CLIError('Use --show-secrets when creating a CLI token so you can save its one-time value.', ExitCode.ConfigError)
     }
+    // Quiet output prints only the id, which would lose the one-time key.
+    if (getOutputFormat() === 'quiet') throw new CLIError('--quiet would hide the one-time key. Use --json or the default output.', ExitCode.ConfigError)
     const expiresIn = options.expiresIn === undefined ? undefined : parseIntStrict(options.expiresIn, '--expires-in', { min: 1, max: 365 }) * 86400
     const { data } = await withSpinner('Creating CLI token', () =>
       createAuthenticatedClient().post<{ token: Record<string, unknown> }>('/api/cli-tokens', { name, ...(expiresIn && { expiresIn }) }))

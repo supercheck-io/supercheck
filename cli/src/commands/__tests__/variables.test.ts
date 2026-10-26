@@ -7,7 +7,7 @@ import { join } from 'node:path'
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPut = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
-const mockGetText = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockGetBytes = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
@@ -19,7 +19,7 @@ const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<boolean>>()
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
     get: mockGet,
-    getText: mockGetText,
+    getBytes: mockGetBytes,
     post: mockPost,
     put: mockPut,
     delete: mockDelete,
@@ -333,12 +333,14 @@ describe('var command', () => {
     it('downloads a file variable to --out', async () => {
       const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.json')
       mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
-      mockGetText.mockResolvedValueOnce({ data: '{"a":1}' })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0xef, 0xbb, 0xbf, ...Buffer.from('{"a":1}')]) })
 
       await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
 
-      expect(mockGetText).toHaveBeenCalledWith('/api/projects/proj-1/variables/var-3/download')
-      expect(await readFile(out, 'utf-8')).toBe('{"a":1}')
+      expect(mockGetBytes).toHaveBeenCalledWith('/api/projects/proj-1/variables/var-3/download')
+      // Byte-exact: a UTF-8 BOM survives the round trip.
+      expect([...await readFile(out)].slice(0, 3)).toEqual([0xef, 0xbb, 0xbf])
+      expect((await readFile(out)).subarray(3).toString()).toBe('{"a":1}')
       expect((await stat(out)).mode & 0o777).toBe(0o600)
       expect(mockOutputMutation).toHaveBeenCalledWith({ id: 'var-3', key: 'UPLOAD', path: out })
     })
@@ -365,7 +367,7 @@ describe('var command', () => {
       await writeFile(out, 'old', { mode: 0o644 })
       mockGet.mockResolvedValue({ data: variables })
       mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
-      mockGetText.mockResolvedValue({ data: 'new' })
+      mockGetBytes.mockResolvedValue({ data: 'new' })
       await expect(varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])).rejects.toThrow('already exists')
       expect(await readFile(out, 'utf-8')).toBe('old')
 
@@ -378,7 +380,7 @@ describe('var command', () => {
     it('refuses to download a non-file variable', async () => {
       mockGet.mockResolvedValueOnce({ data: variables })
       await expect(varCommand.parseAsync(['node', 'var', 'download', 'BASE_URL'])).rejects.toThrow('not a file variable')
-      expect(mockGetText).not.toHaveBeenCalled()
+      expect(mockGetBytes).not.toHaveBeenCalled()
     })
   })
 })

@@ -113,6 +113,8 @@ export class ApiClient {
       timeout?: number
       /** Return the raw response text as `data` instead of parsing JSON (e.g. CSV exports). */
       text?: boolean
+      /** Return the raw response bytes as `data` (byte-exact file downloads). */
+      binary?: boolean
     },
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
@@ -186,6 +188,7 @@ export class ApiClient {
           continue
         }
 
+        if (options?.binary && response.ok) return { data: new Uint8Array(await response.arrayBuffer()) as T, status: response.status, headers: response.headers }
         // Read response body as text first to safely handle empty/non-JSON responses (e.g. 204 No Content)
         const text = await response.text()
 
@@ -259,6 +262,11 @@ export class ApiClient {
   /** GET a non-JSON body (e.g. CSV) as text. */
   async getText(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<ApiResponse<string>> {
     return this.request<string>('GET', path, { params, text: true })
+  }
+
+  /** GET a file body as raw bytes. */
+  async getBytes(path: string): Promise<ApiResponse<Uint8Array>> {
+    return this.request<Uint8Array>('GET', path, { binary: true })
   }
 
   async post<T = unknown>(

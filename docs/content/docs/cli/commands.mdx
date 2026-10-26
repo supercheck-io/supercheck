@@ -488,7 +488,7 @@ The `--interval` flag (seconds) is deprecated on `monitor create` and `monitor u
 | `var get <key>` | Get a variable by key | — |
 | `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin`, `--description` |
 | `var upload <key> <file>` | Create a file variable (`.csv`, `.json`, `.txt`, `.tsv`, `.xml`, `.yaml`, `.yml`; max 5 MB) | `--description` |
-| `var download <key>` | Print a file variable's content, or save it to a new owner-only file | `--out <path>`, `--force` (overwrite an existing file) |
+| `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
 | `var delete <key>` | Delete a variable | `--force` |
 
 ```bash
@@ -577,7 +577,7 @@ supercheck audit --search "deploy"
 | Command | What it does | Key flags |
 |---|---|---|
 | `token list` | List the project's CLI tokens | — |
-| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag | `--expires-in <days>` (1-365) |
+| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365) |
 | `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
 | `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
 | `project list` | List projects visible to the token | — |

@@ -223,7 +223,7 @@ varCommand
 varCommand
   .command('download <key>')
   .description('Print a file variable\'s content, or save it with --out')
-  .option('--out <path>', 'Write to a new file (owner-only permissions) instead of stdout')
+  .option('--out <path>', 'Write to a new file instead of stdout (owner-only permissions on macOS and Linux)')
   .option('--force', 'Overwrite --out if it already exists')
   .action(async (key: string, options: { out?: string; force?: boolean }) => {
     const client = createAuthenticatedClient()
@@ -234,11 +234,10 @@ varCommand
     const projectId = await getProjectId(client)
     const { data: content } = await withSpinner(
       'Downloading file variable',
-      // shortcut: decoded as UTF-8 text, which covers every allowed file type; add a byte download if binary types are allowed.
-      () => client.getText(`/api/projects/${encodeURIComponent(projectId)}/variables/${encodeURIComponent(variable.id)}/download`),
+      () => client.getBytes(`/api/projects/${encodeURIComponent(projectId)}/variables/${encodeURIComponent(variable.id)}/download`),
     )
     if (options.out) {
-      // The content may be a secret: create the file owner-only and refuse to replace (or follow a symlink at) an existing path.
+      // The content may be a secret: create the file owner-only (POSIX mode; Windows ignores it) and refuse to replace (or follow a symlink at) an existing path.
       await writeFile(options.out, content, { mode: 0o600, flag: options.force ? 'w' : 'wx' }).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'EEXIST') throw new CLIError(`${options.out} already exists. Use --force to overwrite it.`, ExitCode.ConfigError)
         throw new CLIError(`Cannot write ${options.out}: ${error.code ?? error.message}`, ExitCode.ConfigError)

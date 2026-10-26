@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
-import { outputDetail } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { isUuid } from '../utils/paths.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -31,6 +31,13 @@ for (const type of ['playwright', 'k6'] as const) {
         leftRunId: options.leftRun,
         rightRunId: options.rightRun,
       }))
-    outputDetail(data)
+    if (getOutputFormat() !== 'table') return outputDetail(data)
+    // Table view: summary fields first, then the trend series as rows (outputDetail would collapse them to counts).
+    const series = ['chartData', 'frequencyData'] as const
+    outputDetail(Object.fromEntries(Object.entries(data).filter(([key]) => !(series as readonly string[]).includes(key))))
+    for (const key of series) {
+      const rows = data[key]
+      if (Array.isArray(rows) && rows.length > 0) output(rows as Record<string, unknown>[])
+    }
   })
 }

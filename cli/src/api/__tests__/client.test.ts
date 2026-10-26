@@ -40,6 +40,34 @@ describe('ApiClient', () => {
     await expect(client.get('/api/jobs/missing')).rejects.toMatchObject({ statusCode: 404, responseBody: undefined })
   })
 
+  describe('multipart and binary bodies', () => {
+    it('sends FormData unchanged and lets fetch set the multipart Content-Type', async () => {
+      mockFetch.mockResolvedValueOnce(new Response('{"ok":true}', { status: 201 }))
+      const form = new FormData()
+      form.set('key', 'USERS')
+      await client.post('/api/projects/p/variables', form)
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(init.body).toBe(form)
+      const headers = new Headers(init.headers)
+      expect(headers.get('content-type')).toBeNull()
+      expect(headers.get('authorization')).toBe('Bearer sck_live_test123')
+    })
+
+    it('still JSON-encodes plain object bodies', async () => {
+      mockFetch.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      await client.post('/api/x', { a: 1 })
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(init.body).toBe('{"a":1}')
+      expect(new Headers(init.headers).get('content-type')).toBe('application/json')
+    })
+
+    it('returns raw bytes from getBytes', async () => {
+      mockFetch.mockResolvedValueOnce(new Response(new Uint8Array([0xef, 0xbb, 0xbf, 0x41]), { status: 200 }))
+      const { data } = await client.getBytes('/api/file')
+      expect([...data]).toEqual([0xef, 0xbb, 0xbf, 0x41])
+    })
+  })
+
   describe('constructor', () => {
     it('should use default base URL when not provided', () => {
       const defaultClient = new ApiClient()
