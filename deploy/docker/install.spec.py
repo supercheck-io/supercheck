@@ -642,6 +642,25 @@ echo survived
             self.assertIn('port 80 is not allowed', self.run_shell(body.format(status)), status)
         self.assertNotIn('port 80 is not', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp DENY IN 203.0.113.9\n80/tcp ALLOW IN Anywhere # web\n')))
 
+    def test_ufw_real_padded_output_ipv4_only_and_singular_port_profile(self):
+        # Real `ufw status verbose` pads the To and Action columns.
+        verbose = ('Status: active\nDefault: deny (incoming), allow (outgoing), deny (routed)\n\n'
+                   'To                         Action      From\n--                         ------      ----\n'
+                   '22/tcp                     ALLOW IN    Anywhere\n'
+                   '80/tcp                     ALLOW IN    Anywhere\n'
+                   '443/tcp                    ALLOW IN    Anywhere\n'
+                   '80/tcp (v6)                ALLOW IN    Anywhere (v6)\n')
+        body = "ufw() {{ if [[ $1 == app ]]; then printf 'Profile: Apache\\nTitle: Web Server\\nPort: 80/tcp\\n'; else printf '{}'; fi; }}\ncheck_ufw\n"
+        self.assertNotIn('ufw is active', self.run_shell(body.format(verbose)))
+        padded_deny = 'Status: active\nDefault: allow (incoming)\n80/tcp                     DENY IN     Anywhere\n'
+        self.assertIn('port 80 is not allowed', self.run_shell(body.format(padded_deny)))
+        v6_only = 'Status: active\nDefault: deny (incoming)\n80,443/tcp (v6)            ALLOW IN    Anywhere (v6)\n'
+        out = self.run_shell(body.format(v6_only))
+        self.assertIn('port 80 is not allowed', out)
+        self.assertIn('port 443 is not allowed', out)
+        apache = 'Status: active\nDefault: deny (incoming)\nApache                     ALLOW IN    Anywhere\n443                        ALLOW IN    Anywhere\n'
+        self.assertNotIn('ufw is active', self.run_shell(body.format(apache)))
+
     def test_ufw_survives_unknown_profiles_under_set_e(self):
         out = self.run_shell(r'''set -Eeuo pipefail
 ufw() { if [[ $1 == app ]]; then echo 'ERROR: Could not find a profile matching' >&2; return 1; fi

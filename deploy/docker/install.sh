@@ -266,7 +266,7 @@ check_dns_target() { # warn when the domain's A record is not this server
 ufw_allows_port() { # $1 = port; reads `ufw status verbose` on stdin. ufw is first-match, then the default.
   awk -v p="$1" '
     function covers(to,    n, parts, proto, i, part, r) {
-      sub(/ on .*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to)
+      sub(/ on .*/, "", to); sub(/[[:space:]]+$/, "", to)
       if (to ~ /^Anywhere/) return 1
       proto = ""; if (match(to, /\/(tcp|udp)$/)) proto = substr(to, RSTART + 1)
       n = split(to, parts, ",")
@@ -282,7 +282,8 @@ ufw_allows_port() { # $1 = port; reads `ufw status verbose` on stdin. ufw is fir
     /^Default:/ { def = ($0 ~ /allow \(incoming\)/) }
     !decided && match($0, / (ALLOW|DENY|REJECT|LIMIT)( IN)?[[:space:]]/) {
       # ACME and HTTPS need inbound TCP from anywhere: outbound/forwarded and source-restricted rules do not decide.
-      if ($0 ~ / (ALLOW|DENY|REJECT|LIMIT) (OUT|FWD)/) next
+      # IPv4 only: an IPv6 rule says nothing about the A record that ACME validation connects to.
+      if ($0 ~ / (ALLOW|DENY|REJECT|LIMIT) (OUT|FWD)/ || $0 ~ /\(v6\)/) next
       to = substr($0, 1, RSTART - 1); act = substr($0, RSTART + 1, RLENGTH - 1)
       from = substr($0, RSTART + RLENGTH); sub(/[[:space:]]*#.*/, "", from); sub(/^[[:space:]]+/, "", from)
       if (from !~ /^Anywhere/ || !covers(to)) next
@@ -302,7 +303,7 @@ check_ufw() { # warn when an active ufw would block ACME and HTTPS
     name="$(awk '/ (ALLOW|DENY|REJECT|LIMIT)/ { to = $0; sub(/[[:space:]]+(ALLOW|DENY|REJECT|LIMIT).*/, "", to); sub(/ on .*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); if (to ~ /^[A-Za-z][A-Za-z0-9 ._-]*$/ && to !~ /^Anywhere/) print to }' <<<"$line")"
     if [[ -n "$name" ]]; then
       info="$(ufw app info "$name" 2>/dev/null || true)"
-      ports="$(awk '/^Ports:/ { f = 1; next } f && NF { gsub(/[[:space:]]/, ""); printf "%s%s", sep, $0; sep = "," }' <<<"$info")"
+      ports="$(awk '/^Ports?:/ { f = 1; sub(/^Ports?:[[:space:]]*/, "") } f && NF { gsub(/[[:space:]]/, ""); printf "%s%s", sep, $0; sep = "," }' <<<"$info")"
       [[ -n "$ports" ]] && line="${ports}${line#*"$name"}"
     fi
     expanded+="$line"$'\n'
