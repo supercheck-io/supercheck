@@ -15,7 +15,9 @@ const mockQueueConstructor = Queue as unknown as jest.Mock;
 // Mirrored in worker/src/monitor/services/sre-alert-triage-queue.service.spec.ts
 // and app/src/sre/lib/feature-gates.spec.ts. Change both together.
 // [SRE_ENABLED, SRE_AUTOMATION_ENABLED, automatic triage enabled]
-const AUTOMATION_GATE_CONTRACT: Array<[string | undefined, string | undefined, boolean]> = [
+const AUTOMATION_GATE_CONTRACT: Array<
+  [string | undefined, string | undefined, boolean]
+> = [
   [undefined, undefined, false],
   [undefined, 'true', true],
   [undefined, '1', true],
@@ -119,7 +121,8 @@ describe('SreAlertTriageQueueService', () => {
     'automation gate contract: SRE_ENABLED=%j SRE_AUTOMATION_ENABLED=%j -> %s',
     async (sre, automation, expected) => {
       if (sre !== undefined) config.set('SRE_ENABLED', sre);
-      if (automation !== undefined) config.set('SRE_AUTOMATION_ENABLED', automation);
+      if (automation !== undefined)
+        config.set('SRE_AUTOMATION_ENABLED', automation);
       await new SreAlertTriageQueueService(
         configService,
       ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
