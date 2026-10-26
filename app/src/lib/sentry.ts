@@ -24,6 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_TAGS = new Set([
   "organizationId",
   "projectId",
+  "service",
   "runId",
   "jobId",
   "queue",
@@ -41,7 +42,7 @@ const DROPPED_INTEGRATIONS = new Set([
   "Http",
   "NodeFetch",
   "ProcessSession",
-  "OnUnhandledRejection", // re-added below in strict mode
+  "OnUnhandledRejection", // re-added below in warn mode
 ]);
 
 // Every pattern is linear: input is truncated first and no quantifiers nest or
@@ -142,11 +143,13 @@ export function getSentryOptions(
     // No tracesSampleRate / profiles / replay: tracing and profiling stay off.
     maxBreadcrumbs: 0,
     beforeBreadcrumb: () => null,
+    initialScope: { tags: { service: "app" } },
     beforeSend: scrubEvent,
     integrations: (defaults) => [
       ...defaults.filter((i) => !DROPPED_INTEGRATIONS.has(i.name)),
-      // strict keeps Node's default: an unhandled rejection still terminates the process.
-      Sentry.onUnhandledRejectionIntegration({ mode: "strict" }),
+      // warn, not strict: Next registers its own log-only unhandledRejection listener, so the app survives
+      // stray rejections today; strict would exit the pod. The worker, which has no such listener, uses strict.
+      Sentry.onUnhandledRejectionIntegration({ mode: "warn" }),
     ],
   };
 }
@@ -164,17 +167,11 @@ export function captureRequestError(error: unknown): void {
 }
 
 /**
- * Flushes queued events on SIGTERM. Does not change exit behaviour: if nothing
- * else handles SIGTERM, the signal is re-raised so the default termination applies.
+ * Flushes queued events on SIGTERM. Never terminates the process itself: Next and the queue
+ * shutdown handlers own exit, and the pod's grace period covers the rest.
  */
 export function flushOnSigterm(): void {
   process.once("SIGTERM", () => {
-    void Sentry.close(2000)
-      .catch(() => undefined)
-      .finally(() => {
-        if (process.listenerCount("SIGTERM") === 0) {
-          process.kill(process.pid, "SIGTERM");
-        }
-      });
+    void Sentry.close(2000).catch(() => undefined);
   });
 }

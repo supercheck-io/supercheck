@@ -59,6 +59,17 @@ describe('sentry-reporter', () => {
     expect(reportJobFailure).toHaveBeenCalledTimes(2);
   });
 
+  it('reports an UnrecoverableError on an early attempt, since it is final', () => {
+    process.env.SENTRY_DSN = DSN;
+    process.env.SELF_HOSTED = 'false';
+    const m = load();
+    const err = Object.assign(new Error('bad input'), {
+      name: 'UnrecoverableError',
+    });
+    m.captureJobFailure({ attemptsMade: 1, opts: { attempts: 3 } }, err);
+    expect(reportJobFailure).toHaveBeenCalledTimes(1);
+  });
+
   it('never throws', () => {
     process.env.SENTRY_DSN = DSN;
     process.env.SELF_HOSTED = 'false';

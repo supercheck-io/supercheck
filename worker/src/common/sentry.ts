@@ -23,6 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_TAGS = new Set([
   'organizationId',
   'projectId',
+  'service',
   'runId',
   'jobId',
   'queue',
@@ -139,6 +140,7 @@ export function getSentryOptions(
     // No tracesSampleRate / profiles / replay: tracing and profiling stay off.
     maxBreadcrumbs: 0,
     beforeBreadcrumb: () => null,
+    initialScope: { tags: { service: 'worker' } },
     beforeSend: scrubEvent,
     integrations: (defaults) => [
       ...defaults.filter((i) => !DROPPED_INTEGRATIONS.has(i.name)),

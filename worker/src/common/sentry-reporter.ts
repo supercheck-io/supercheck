@@ -38,7 +38,11 @@ export function captureJobFailure(
   error: Error,
 ): void {
   try {
-    if ((job?.attemptsMade ?? 1) < (job?.opts?.attempts ?? 1)) return;
+    // UnrecoverableError ends a job early, so that attempt is final too.
+    const final =
+      error?.name === 'UnrecoverableError' ||
+      (job?.attemptsMade ?? 1) >= (job?.opts?.attempts ?? 1);
+    if (!final) return;
     load()?.reportJobFailure(job, error);
   } catch {
     // Error reporting must never break job handling.

@@ -65,8 +65,9 @@ describe("enable gate", () => {
       ])
       .map((i: { name: string }) => i.name);
     expect(names).toEqual(["Dedupe", "OnUnhandledRejection"]);
+    // warn: Next's own listener keeps the app alive on stray rejections; strict would exit the pod.
     expect(Sentry.onUnhandledRejectionIntegration).toHaveBeenCalledWith({
-      mode: "strict",
+      mode: "warn",
     });
   });
 });

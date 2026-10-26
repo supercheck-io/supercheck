@@ -108,7 +108,9 @@ export default function PrivacyPage() {
                             <li><strong>Error monitoring:</strong> Sentry receives technical error reports from the hosted cloud
                                 service. A report contains the error type, a shortened error message that is
                                 scrubbed to remove secrets, URLs, email addresses, quoted text, and database values,
-                                a stack trace, the service, release, and environment, and internal IDs. We do not
+                                a stack trace, the service (app or worker), release, and environment, the operating
+                                system and runtime versions, and internal IDs. Hostnames and IP addresses in error
+                                messages may be included. We do not
                                 attach request contents, headers, cookies, form inputs, test scripts, or run logs.
                                 Scrubbing is automated and best effort.</li>
                         </ul>
