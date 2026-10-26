@@ -625,13 +625,22 @@ echo survived
             'Status: active\nDefault: deny (incoming)\n1:1000/tcp ALLOW IN Anywhere\n',
             'Status: active\nDefault: deny (incoming)\nNginx Full ALLOW IN Anywhere\nNginx Full (v6) ALLOW IN Anywhere (v6)\n',
             'Status: active\nDefault: allow (incoming), allow (outgoing)\n',
-            'Status: active\nDefault: deny (incoming)\nAnywhere ALLOW IN 203.0.113.0/24\n',
         ):
             self.assertNotIn('ufw is active', self.run_shell(body.format(status)), status)
         self.assertNotIn('ufw is active', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp (v6) on eth0 ALLOW IN Anywhere (v6)\nNginx Full on eth0 ALLOW IN Anywhere\n')))
         out = self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n443/tcp ALLOW IN Anywhere\n80/tcp DENY IN Anywhere\n80/udp ALLOW IN Anywhere\n80/tcp ALLOW OUT Anywhere (out)\n1000:2000/tcp ALLOW IN Anywhere\n'))
         self.assertIn('port 80 is not allowed', out)
         self.assertNotIn('port 443', out)
+        # First match wins over the default; source-restricted rules do not open the port publicly;
+        # a group-wide /udp suffix covers every port in the list.
+        for status in (
+            'Status: active\nDefault: allow (incoming)\n80/tcp DENY IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\nAnywhere ALLOW IN 203.0.113.0/24\n80/tcp ALLOW IN 198.51.100.7\n',
+            'Status: active\nDefault: deny (incoming)\n80,443/udp ALLOW IN Anywhere\n',
+            'Status: active\nDefault: deny (incoming)\n80/tcp DENY IN Anywhere\n80/tcp ALLOW IN Anywhere\n',
+        ):
+            self.assertIn('port 80 is not allowed', self.run_shell(body.format(status)), status)
+        self.assertNotIn('port 80 is not', self.run_shell(body.format('Status: active\nDefault: deny (incoming)\n80/tcp DENY IN 203.0.113.9\n80/tcp ALLOW IN Anywhere # web\n')))
 
     def test_ufw_survives_unknown_profiles_under_set_e(self):
         out = self.run_shell(r'''set -Eeuo pipefail
