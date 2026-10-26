@@ -95,14 +95,6 @@ export const solutionsMenu: NavMenu = {
         { title: "Engineering leaders", description: "Coverage, access and audit trail in one view", href: "/solutions/engineering-leaders", icon: Users },
       ],
     },
-    {
-      title: "Moving from another tool?",
-      items: [
-        { title: "Supercheck vs Checkly", description: "Capabilities and billing side by side", href: "/compare/checkly", icon: ArrowLeftRight },
-        { title: "Supercheck vs Datadog Synthetics", description: "Capabilities and billing side by side", href: "/compare/datadog-synthetics", icon: ArrowLeftRight },
-        { title: "Supercheck vs Better Stack", description: "Capabilities and billing side by side", href: "/compare/better-stack", icon: ArrowLeftRight },
-      ],
-    },
   ],
 };
 

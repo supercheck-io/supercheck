@@ -47,13 +47,12 @@ test('every solutions page is linked from the site nav', () => {
   for (const s of slugs) assert.match(sources['site-nav.ts'], new RegExp(`href: "/solutions/${s}"`));
 });
 
-test('every product and comparison page is linked from the site nav and the sitemap', () => {
+test('every product page is linked from the site nav and the sitemap', () => {
   const sitemap = read('../public/sitemap.xml');
   const paths = [
     ...[...sources['products.ts'].matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/product/${s}`),
-    ...[...read('../src/lib/comparisons.ts').matchAll(/slug: "([^"]+)"/g)].map(([, s]) => `/compare/${s}`),
   ];
-  assert.equal(paths.length, 7);
+  assert.equal(paths.length, 4);
   for (const path of paths) {
     assert.match(sources['site-nav.ts'], new RegExp(`href: "${path}"`));
     assert.ok(sitemap.includes(`<loc>https://supercheck.io${path}</loc>`), `${path} missing from sitemap`);

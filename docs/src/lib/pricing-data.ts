@@ -40,7 +40,6 @@ export interface RunPricedTier {
 export interface Competitor {
   id: 'checkly' | 'datadog' | 'betterstack' | 'browserstack';
   name: string;
-  sourceUrl: string;
   asOf: string;
   billing: string;
   note: string;
@@ -63,16 +62,14 @@ export const COMPETITORS: readonly Competitor[] = [
   {
     id: 'checkly',
     name: 'Checkly',
-    sourceUrl: 'https://www.checklyhq.com/pricing/',
     asOf: COMPETITOR_AS_OF,
     billing:
-      'Browser checks bill one run per execution; Playwright Check Suites bill one run per 30 seconds, so the Supercheck pricing comparison uses classic browser checks. Plans are shown at annual-billing rates.',
+      'Browser checks bill one run per execution; Playwright Check Suites bill one run per 30 seconds, so we price classic browser checks. Plans shown at annual-billing rates.',
     note: 'Hobby stops at 1,000 runs. Starter and Team bill $6.50 and $6.25 per 1,000 runs beyond the allowance.',
   },
   {
     id: 'datadog',
     name: 'Datadog',
-    sourceUrl: 'https://www.datadoghq.com/pricing/?product=synthetic-monitoring',
     asOf: COMPETITOR_AS_OF,
     billing:
       'Browser tests bill per run at $12 per 1,000 on annual billing ($18 on-demand). One run covers up to 25 steps.',
@@ -81,15 +78,13 @@ export const COMPETITORS: readonly Competitor[] = [
   {
     id: 'betterstack',
     name: 'Better Stack',
-    sourceUrl: 'https://betterstack.com/pricing',
     asOf: COMPETITOR_AS_OF,
     billing: 'Playwright minutes are $1 per 100 minutes.',
-    note: 'Monitors, responders, and extra status pages are billed separately and are not included in the Supercheck pricing comparison.',
+    note: 'Monitors, responders, and extra status pages are billed separately and are not included in this estimate.',
   },
   {
     id: 'browserstack',
     name: 'BrowserStack',
-    sourceUrl: 'https://www.browserstack.com/pricing?product=automate',
     asOf: COMPETITOR_AS_OF,
     billing:
       'Automate bills per parallel test with unlimited testing minutes, so its cost depends on how many tests you run at once, not on runs or minutes. On monthly billing, 1 parallel test costs $79 to $275 a month, 2 cost $159 to $550 and 5 cost $399 to $1,375, depending on browser and device coverage. Prices above 5 parallel tests are not published.',

@@ -47,7 +47,7 @@ const sections = [
     },
     {
         title: "Solutions",
-        links: solutionsMenu.groups.flatMap((group) => group.items).map((item) => ({ name: item.title, href: item.href })),
+        links: solutionsMenu.groups[0].items.map((item) => ({ name: item.title, href: item.href })),
     },
     {
         title: "Developers",
