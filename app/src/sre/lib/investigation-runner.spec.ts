@@ -140,7 +140,7 @@ describe("executeSreIncidentInvestigation failure persistence", () => {
     });
     expect(runSreAgent).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        budget: { maxSteps: steps, maxOutputTokens: 1800, timeoutMs: 90_000 },
+        budget: { maxSteps: steps, maxOutputTokens: 3000, timeoutMs: 90_000 },
       }),
     );
   });
@@ -329,6 +329,14 @@ describe("executeSreIncidentInvestigation structured output", () => {
       expect.objectContaining({ status: "completed", confidenceScore: null, hypotheses: null }),
     );
     expect((notifyIncidentEvent as jest.Mock).mock.calls[0][0].detail).toBeUndefined();
+  });
+
+  it("does not surface unvalidated JSON as the report or overwrite the incident conclusion", async () => {
+    (runSreAgent as jest.Mock).mockResolvedValue(agentResult('{"outcome":"identified","confidence":9,"conclusion":"x"}'));
+    const result = await executeSreIncidentInvestigation("run-1", incident, input);
+    expect(result).toMatchObject({ success: true, summary: expect.stringContaining("could not be validated") });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ hypotheses: null, confidenceScore: null }));
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ rootCauseSummary: expect.anything() }));
   });
 
   it("records a sanitized live step trace through onStepFinish", async () => {

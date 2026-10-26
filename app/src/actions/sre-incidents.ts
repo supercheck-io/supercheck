@@ -266,6 +266,7 @@ export type SreIncidentDetail = {
       conclusion: string;
       nextChecks: string[];
       topEvidenceIds: string[];
+      downgraded: boolean;
     } | null;
     hypotheses: SreInvestigationHypothesis[];
     steps: SreInvestigationStep[];
@@ -356,6 +357,7 @@ function readStructuredSnapshot(
     conclusion: record.conclusion,
     nextChecks: strings(record.nextChecks),
     topEvidenceIds: strings(record.topEvidenceIds),
+    downgraded: record.downgraded === true,
   };
 }
 

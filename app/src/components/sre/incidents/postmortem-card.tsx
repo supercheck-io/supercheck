@@ -21,7 +21,7 @@ const TEXT_SECTIONS = POSTMORTEM_SECTIONS.filter(({ key }) => key !== "follow_up
 function parseFollowUps(value: string | undefined): string[] {
   return (value ?? "")
     .split("\n")
-    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
+    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim().slice(0, 300))
     .filter(Boolean);
 }
 const serializeFollowUps = (items: string[]) =>
@@ -33,7 +33,7 @@ function download(filename: string, markdown: string) {
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** Editable post-mortem for a resolved incident, exportable as Markdown. */

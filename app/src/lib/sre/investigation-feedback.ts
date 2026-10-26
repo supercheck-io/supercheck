@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
 
 import {
   sreIncidents,
@@ -157,7 +157,6 @@ export async function listServiceFeedbackHints(
       note: sreInvestigationFeedback.note,
       hypothesisKey: sreInvestigationFeedback.hypothesisKey,
       hypotheses: sreInvestigationRuns.hypotheses,
-      incidentId: sreInvestigationFeedback.incidentId,
     })
     .from(sreInvestigationFeedback)
     .innerJoin(sreInvestigationRuns, eq(sreInvestigationRuns.id, sreInvestigationFeedback.investigationRunId))
@@ -169,15 +168,15 @@ export async function listServiceFeedbackHints(
         eq(sreIncidents.organizationId, scope.organizationId),
         eq(sreIncidents.projectId, scope.projectId),
         eq(sreIncidents.primaryServiceId, scope.serviceId),
+        ne(sreInvestigationFeedback.incidentId, scope.excludeIncidentId),
         isNotNull(sreInvestigationFeedback.note),
         gte(sreInvestigationFeedback.createdAt, since),
       ),
     )
     .orderBy(desc(sreInvestigationFeedback.createdAt))
-    .limit(limit + 10);
+    .limit(limit);
   return rows
-    .filter((row) => row.incidentId !== scope.excludeIncidentId && row.note)
-    .slice(0, limit)
+    .filter((row) => row.note)
     .map((row) => ({
       verdict: row.verdict,
       note: row.note as string,

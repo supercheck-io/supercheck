@@ -7,19 +7,44 @@ export type SreHypothesisState = (typeof HYPOTHESIS_STATES)[number];
 export const MIN_IDENTIFIED_CONFIDENCE = 0.3;
 const MAX_TOP_EVIDENCE = 3;
 
+const clip = (max: number) => z.string().trim().min(1).transform((value) => value.slice(0, max));
+const UUID = z.string().uuid();
+
 const hypothesisSchema = z.object({
-  title: z.string().trim().min(1).max(160),
+  title: clip(160),
   state: z.enum(HYPOTHESIS_STATES),
-  rationale: z.string().trim().max(500).default(""),
-  evidenceIds: z.array(z.string().uuid()).max(5).default([]),
+  rationale: z.string().trim().default("").transform((value) => value.slice(0, 500)),
+  // Malformed ids are dropped rather than failing the whole answer; real ids are verified against the incident later.
+  evidenceIds: z
+    .array(z.unknown())
+    .default([])
+    .transform((ids) => ids.flatMap((id) => (UUID.safeParse(id).success ? [id as string] : [])).slice(0, 5)),
 });
 
+// Small model slips (a sixth hypothesis, an over-long string, one bad hypothesis) are trimmed or dropped
+// so the rest of the result survives. Confidence and outcome stay strict.
 export const investigationOutputSchema = z.object({
   outcome: z.enum(["identified", "inconclusive"]),
   confidence: z.number().min(0).max(1),
-  conclusion: z.string().trim().min(1).max(1500),
-  hypotheses: z.array(hypothesisSchema).max(5).default([]),
-  nextChecks: z.array(z.string().trim().min(1).max(240)).max(5).default([]),
+  conclusion: clip(1500),
+  hypotheses: z
+    .array(z.unknown())
+    .default([])
+    .transform((list) =>
+      list
+        .slice(0, 20)
+        .flatMap((entry) => {
+          const parsed = hypothesisSchema.safeParse(entry);
+          return parsed.success ? [parsed.data] : [];
+        })
+        .slice(0, 5),
+    ),
+  nextChecks: z
+    .array(z.unknown())
+    .default([])
+    .transform((list) =>
+      list.slice(0, 5).flatMap((entry) => (typeof entry === "string" && entry.trim() ? [entry.trim().slice(0, 240)] : [])),
+    ),
 });
 
 export type SreInvestigationHypothesis = {

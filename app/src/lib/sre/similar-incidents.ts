@@ -10,7 +10,7 @@ import { db } from "@/utils/db";
 
 export const SIMILAR_INCIDENT_WINDOW_DAYS = 180;
 export const SIMILAR_INCIDENT_LIMIT = 5;
-const CANDIDATE_LIMIT = 50;
+const CANDIDATE_LIMIT = 200;
 const MAX_TOKENS = 6;
 const MAX_TEXT = 300;
 

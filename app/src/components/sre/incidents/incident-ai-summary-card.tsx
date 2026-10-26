@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FileSearch, Network, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
@@ -49,7 +50,9 @@ export function IncidentAiSummaryCard({
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
   const structured = investigation?.structured ?? null;
-  const conclusion = structured?.conclusion ?? rootCauseSummary;
+  // Runs without structured output keep their full report, which is longer than the stored headline.
+  const fullReport = !structured && investigationStatus === "completed" ? investigation?.summary : null;
+  const conclusion = structured?.conclusion ?? fullReport ?? rootCauseSummary;
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
@@ -110,8 +113,21 @@ export function IncidentAiSummaryCard({
                 No root cause established
               </p>
             )}
-            {failed && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>}
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{conclusion}</p>
+            {(failed || running) && (
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
+            )}
+            {structured ? (
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{conclusion}</p>
+            ) : (
+              <div className="break-words text-sm leading-relaxed">
+                <SreMessageContent content={conclusion} />
+              </div>
+            )}
+            {structured?.downgraded && (
+              <p className="text-xs text-muted-foreground">
+                The model suggested a cause, but the cited evidence did not support it, so this is reported as inconclusive.
+              </p>
+            )}
           </div>
         ) : (
           !running && !failed && (
@@ -119,6 +135,20 @@ export function IncidentAiSummaryCard({
               No AI conclusion yet. Use Investigate to start one; an inconclusive result is reported as such, never guessed.
             </p>
           )
+        )}
+        {structured && structured.nextChecks.length > 0 && !running && (
+          <section aria-labelledby="investigation-next-checks" className="space-y-1.5">
+            <h3 id="investigation-next-checks" className="text-sm font-medium">
+              Next safe checks
+            </h3>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              {structured.nextChecks.map((check) => (
+                <li key={check} className="break-words">
+                  {check}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {summaryOnly && (
           <p className="text-xs text-muted-foreground">

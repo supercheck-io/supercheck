@@ -70,13 +70,15 @@ describe("IncidentAiSummaryCard structured states", () => {
         evidence={evidence}
         investigation={investigation({
           structured: {
-            outcome: "identified", confidence: 0.82, conclusion: "Deploy 42 caused it.", nextChecks: [],
-            topEvidenceIds: evidence.map((e) => e.id).concat("missing-id"),
+            outcome: "identified", confidence: 0.82, conclusion: "Deploy 42 caused it.", nextChecks: ["Compare p95 before and after"],
+            topEvidenceIds: evidence.map((e) => e.id).concat("missing-id"), downgraded: false,
           },
         })}
       />,
     );
     expect(screen.getByText("High confidence")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Next safe checks" })).toBeInTheDocument();
+    expect(screen.getByText("Compare p95 before and after")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^View evidence:/ })).toHaveLength(3);
     expect(screen.getByRole("link", { name: "Investigation Map" })).toHaveAttribute("href", "/copilot/evidence-graph?incident=i1");
   });
@@ -89,12 +91,13 @@ describe("IncidentAiSummaryCard structured states", () => {
         investigationStatus="completed"
         evidence={evidence}
         investigation={investigation({
-          structured: { outcome: "inconclusive", confidence: 0, conclusion: "The evidence does not establish a cause.", nextChecks: [], topEvidenceIds: [] },
+          structured: { outcome: "inconclusive", confidence: 0, conclusion: "The evidence does not establish a cause.", nextChecks: [], topEvidenceIds: [], downgraded: true },
         })}
       />,
     );
     expect(screen.getByText("Inconclusive")).toBeInTheDocument();
     expect(screen.getByText("No root cause established")).toBeInTheDocument();
+    expect(screen.getByText(/did not support it/)).toBeInTheDocument();
     expect(screen.queryByText(/confidence$/)).not.toBeInTheDocument();
     expect(screen.queryAllByRole("button", { name: /^View evidence:/ })).toHaveLength(0);
   });
@@ -105,10 +108,10 @@ describe("IncidentAiSummaryCard structured states", () => {
         rootCauseSummary="Plain report"
         confidenceScore={null}
         investigationStatus="completed"
-        investigation={investigation()}
+        investigation={investigation({ summary: "Plain report" })}
       />,
     );
-    expect(screen.getByText("Plain report")).toBeInTheDocument();
+    expect(screen.getAllByText("Plain report").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Inconclusive|confidence/)).not.toBeInTheDocument();
     expect(screen.getByText(/Summary only/)).toBeInTheDocument();
   });
@@ -119,6 +122,10 @@ describe("IncidentAiSummaryCard structured states", () => {
       <IncidentAiSummaryCard rootCauseSummary={null} confidenceScore={null} investigationStatus="running" investigation={investigation({ status: "running", steps })} />,
     );
     expect(screen.getByRole("status")).toHaveTextContent("1 check done so far");
+    rerender(
+      <IncidentAiSummaryCard rootCauseSummary="Old" confidenceScore="0.6" investigationStatus="running" investigation={investigation({ status: "running" })} />,
+    );
+    expect(screen.getByText("Previous conclusion")).toBeInTheDocument();
     rerender(
       <IncidentAiSummaryCard
         rootCauseSummary="Earlier result" confidenceScore="0.6" investigationStatus="failed"

@@ -156,6 +156,7 @@ export function SreInvestigationPanel({
         }
 
         if (response.status === 202) {
+          if (note) setGuidance("");
           toast.success("Investigation started", {
             description:
               "Results will appear when the run completes. Keep this incident open or refresh it.",
@@ -163,6 +164,7 @@ export function SreInvestigationPanel({
           return;
         }
 
+        if (note) setGuidance("");
         toast.success("Investigation completed", {
           description: body?.summary
             ? body.summary.slice(0, 120)
@@ -174,7 +176,6 @@ export function SreInvestigationPanel({
         setInvestigationError(message);
         toast.error(message);
       } finally {
-        if (note) setGuidance("");
         await Promise.allSettled([
           queryClient.invalidateQueries({
             queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),

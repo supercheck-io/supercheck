@@ -3,6 +3,9 @@ import { z } from "zod";
 
 import { findSimilarIncidents } from "@/lib/sre/similar-incidents";
 
+/** Past incident text is untrusted: flatten it so it cannot read as structure or tags. */
+const clean = (value: string | null) => value?.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim() ?? null;
+
 export type SreSimilarIncidentToolScope = {
   organizationId: string;
   projectId: string;
@@ -19,11 +22,11 @@ export function createSreSimilarIncidentTools(scope: SreSimilarIncidentToolScope
       execute: async () => ({
         pastIncidents: (await findSimilarIncidents(scope)).map((incident) => ({
           incidentNumber: incident.incidentNumber,
-          title: incident.title,
-          service: incident.serviceName,
+          title: clean(incident.title),
+          service: clean(incident.serviceName),
           matchedOn: incident.matchedOn,
-          rootCauseSummary: incident.rootCauseSummary,
-          resolutionSummary: incident.resolutionSummary,
+          rootCauseSummary: clean(incident.rootCauseSummary),
+          resolutionSummary: clean(incident.resolutionSummary),
           resolvedAt: incident.resolvedAt?.toISOString() ?? null,
         })),
       }),

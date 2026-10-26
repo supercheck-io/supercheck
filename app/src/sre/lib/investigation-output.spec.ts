@@ -41,9 +41,30 @@ describe("parseInvestigationOutput", () => {
     expect(parseInvestigationOutput("The root cause is probably the database.", known).ok).toBe(false);
     expect(parseInvestigationOutput(JSON.stringify({ ...base, confidence: 4 }), known).ok).toBe(false);
     expect(parseInvestigationOutput(JSON.stringify({ ...base, conclusion: "" }), known).ok).toBe(false);
-    expect(
-      parseInvestigationOutput(JSON.stringify({ ...base, hypotheses: [{ title: "x", state: "maybe" }] }), known).ok,
-    ).toBe(false);
+    expect(parseInvestigationOutput(JSON.stringify({ ...base, outcome: "maybe" }), known).ok).toBe(false);
+  });
+
+  it("trims small model slips instead of discarding the result", () => {
+    const sloppy = {
+      ...base,
+      conclusion: "c".repeat(2000),
+      nextChecks: ["a", "b", "c", "d", "e", "f", 7],
+      hypotheses: [
+        { title: "t".repeat(300), state: "validated", evidenceIds: [E1, "evidence abcd1234", 12], rationale: "r".repeat(900) },
+        { title: "bad state", state: "maybe" },
+        ...Array.from({ length: 6 }, (_, i) => ({ title: `h${i}`, state: "inconclusive" })),
+      ],
+    };
+    const result = parseInvestigationOutput(JSON.stringify(sloppy), known);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.output.conclusion).toHaveLength(1500);
+    expect(result.output.nextChecks).toHaveLength(5);
+    expect(result.output.hypotheses).toHaveLength(5);
+    expect(result.output.hypotheses[0].title).toHaveLength(160);
+    expect(result.output.hypotheses[0].rationale).toHaveLength(500);
+    expect(result.output.hypotheses[0].evidenceIds).toEqual([E1]);
+    expect(result.output.hypotheses.map((h) => h.title)).not.toContain("bad state");
   });
 
   it("never reports an identified cause without a validated, cited hypothesis", () => {

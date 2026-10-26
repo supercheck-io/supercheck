@@ -300,7 +300,7 @@ export async function executeSreIncidentInvestigation(
       },
       budget: {
         maxSteps: liveConnectorsEnabled ? 8 : 5,
-        maxOutputTokens: 1800,
+        maxOutputTokens: 3000,
         timeoutMs: 90_000,
       },
       onStepFinish: async ({ event, elapsedMs }) => {
@@ -334,8 +334,14 @@ export async function executeSreIncidentInvestigation(
     const parsed = parseInvestigationOutput(result.text, new Set(evidenceRows.map((row) => row.id)));
     // Schema failure degrades to the plain report: no hypotheses, no confidence.
     const structured = parsed.ok ? parsed.output : null;
-    const reportText = structured ? formatInvestigationMarkdown(structured) : result.text;
-    const headline = (structured?.conclusion ?? result.text).slice(0, 2000);
+    // A JSON answer that failed validation must not be shown to responders as if it were a report.
+    const unreadable = !structured && /^\s*(```(?:json)?\s*)?\{/.test(result.text);
+    const reportText = structured
+      ? formatInvestigationMarkdown(structured)
+      : unreadable
+        ? "The investigation finished, but its result could not be validated. Run it again for a structured report."
+        : result.text;
+    const headline = (structured?.conclusion ?? reportText).slice(0, 2000);
     const confidence = structured ? structured.confidence.toFixed(4) : null;
 
     await db.transaction(async (tx) => {
@@ -379,8 +385,8 @@ export async function executeSreIncidentInvestigation(
       await tx
         .update(sreIncidents)
         .set({
-          rootCauseSummary: headline,
-          confidenceScore: confidence,
+          // Keep the last readable conclusion when this run's output was unreadable.
+          ...(unreadable ? {} : { rootCauseSummary: headline, confidenceScore: confidence }),
           updatedAt: new Date(),
         })
         .where(

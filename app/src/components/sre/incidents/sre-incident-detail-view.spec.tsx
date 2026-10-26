@@ -97,7 +97,7 @@ function detailFixture(): SreIncidentDetail {
       id: "018f0000-0000-7000-8000-000000000003",
       modelId: "test-model",
       status: "completed",
-      summary: "Checkout latency is correlated with dependency failures.",
+      summary: "Latency correlates with monitor failures.",
       completedAt: now,
       createdAt: now,
       structured: null,
@@ -259,6 +259,7 @@ describe("SreIncidentDetailView", () => {
         conclusion: "Deploy 42 caused it.",
         nextChecks: [],
         topEvidenceIds: ["ev-monitor-timeout"],
+        downgraded: false,
       },
       hypotheses: [
         { key: "h1", title: "Deploy 42 regression", state: "validated", rationale: "Timing matches", evidenceIds: ["ev-monitor-timeout"] },

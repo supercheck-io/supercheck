@@ -18,11 +18,15 @@ const MAX_ARGS_LENGTH = 160;
 const MAX_VALUE_LENGTH = 48;
 const SECRET_KEY = /(token|secret|password|passwd|authorization|api[-_]?key|credential|cookie|bearer)/i;
 
+// Values that look like credentials are hidden even under an innocent key name.
+const SECRET_VALUE = /(^\s*(bearer|basic)\s|eyJ[A-Za-z0-9_-]{10,}|\b(sk|pk|sck|ghp|glpat|xox[abp])[-_][A-Za-z0-9_-]{8,}|^[A-Za-z0-9+/=_-]{32,}$)/i;
+
 function summarizeValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value === "string") {
     const flat = value.replace(/\s+/g, " ").trim();
+    if (SECRET_VALUE.test(flat)) return "[redacted]";
     return flat.length > MAX_VALUE_LENGTH ? `${flat.slice(0, MAX_VALUE_LENGTH - 3)}...` : flat;
   }
   if (Array.isArray(value)) return `[${value.length} items]`;

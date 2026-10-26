@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -11,6 +11,7 @@ import {
   sreInvestigationRuns,
   sreServices,
 } from "@/db/schema";
+import { requireSreSubscription } from "@/app/api/sre/_auth";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -107,7 +108,7 @@ export async function generateSrePostmortem(
         .select({ at: sreIncidentTimelineEvents.createdAt, eventType: sreIncidentTimelineEvents.eventType, data: sreIncidentTimelineEvents.eventData })
         .from(sreIncidentTimelineEvents)
         .where(eq(sreIncidentTimelineEvents.incidentId, incident.id))
-        .orderBy(asc(sreIncidentTimelineEvents.createdAt))
+        .orderBy(desc(sreIncidentTimelineEvents.createdAt))
         .limit(40),
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })
@@ -155,10 +156,12 @@ export async function generateSrePostmortem(
         ? structured.nextChecks.filter((check): check is string => typeof check === "string").slice(0, 5)
         : [],
       evidence,
-      timeline: timeline.map((event) => ({ at: event.at, label: timelineLabel(event.eventType, event.data) })),
+      timeline: [...timeline].reverse().map((event) => ({ at: event.at, label: timelineLabel(event.eventType, event.data) })),
     };
 
-    const draft = await generatePostmortemDraft(context);
+    // Same usage gate as chat; when it is closed the template still works, with no model call.
+    const gate = await requireSreSubscription(auth.organizationId, { allowTrial: false });
+    const draft = await generatePostmortemDraft(context, { useAi: gate === null });
     const postmortem = toStoredPostmortem(draft.sections, incident.postmortem, true);
     await db
       .update(sreIncidents)

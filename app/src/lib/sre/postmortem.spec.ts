@@ -59,7 +59,7 @@ describe("generatePostmortemDraft", () => {
     const draft = await generatePostmortemDraft(ctx);
     expect(draft.source).toBe("ai");
     expect(draft.sections.root_cause).toBe("R");
-    expect(runSreAgent.mock.calls[0][0].budget).toEqual({ maxSteps: 1, maxOutputTokens: 1800, timeoutMs: 45_000 });
+    expect(runSreAgent.mock.calls[0][0].budget).toEqual({ maxSteps: 1, maxOutputTokens: 3000, timeoutMs: 45_000 });
   });
 
   it.each([
@@ -72,6 +72,12 @@ describe("generatePostmortemDraft", () => {
     const draft = await generatePostmortemDraft(ctx);
     expect(draft.source).toBe("template");
     expect(draft.sections.summary).toContain("Incident #12");
+  });
+
+  it("never calls the model when AI is disabled by the caller", async () => {
+    const draft = await generatePostmortemDraft(ctx, { useAi: false });
+    expect(draft.source).toBe("template");
+    expect(runSreAgent).not.toHaveBeenCalled();
   });
 
   it("fences untrusted incident text so it cannot close the fence", () => {

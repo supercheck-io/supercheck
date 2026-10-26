@@ -13,6 +13,8 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
 const rate = jest.fn();
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSrePostmortemRateLimit: (...a: unknown[]) => rate(...a) }));
+const subscription = jest.fn();
+jest.mock("@/app/api/sre/_auth", () => ({ requireSreSubscription: (...a: unknown[]) => subscription(...a) }));
 const generate = jest.fn();
 jest.mock("@/lib/sre/postmortem", () => ({
   ...jest.requireActual("@/lib/sre/postmortem"),
@@ -53,6 +55,7 @@ beforeEach(() => {
   perm.mockReturnValue(true);
   rate.mockResolvedValue({ allowed: true, remaining: 4 });
   generate.mockResolvedValue({ sections, source: "template" });
+  subscription.mockResolvedValue(null);
 });
 
 describe("generateSrePostmortem", () => {
@@ -81,6 +84,22 @@ describe("generateSrePostmortem", () => {
     const result = await generateSrePostmortem({ incidentId });
     expect(result).toMatchObject({ success: true, source: "template" });
     expect(updates[0]).toEqual(expect.objectContaining({ postmortem: expect.objectContaining({ generatedAt: expect.any(String) }) }));
+  });
+});
+
+describe("generateSrePostmortem usage gate", () => {
+  it("skips the model call (template only) when the usage gate is closed", async () => {
+    queue.push([resolved], [], [], []);
+    subscription.mockResolvedValue({ status: 402 });
+    const result = await generateSrePostmortem({ incidentId });
+    expect(result.success).toBe(true);
+    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: false });
+    expect(subscription).toHaveBeenCalledWith(ctx.organizationId, { allowTrial: false });
+  });
+  it("uses the model when the gate is open", async () => {
+    queue.push([resolved], [], [], []);
+    await generateSrePostmortem({ incidentId });
+    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: true });
   });
 });
 

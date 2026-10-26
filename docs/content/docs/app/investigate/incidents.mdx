@@ -144,10 +144,10 @@ Resolving records your decision and the summary on the incident and its timeline
 
 When an incident is resolved, the **Post-mortem** card offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
 
-- One bounded AI call writes the draft. If AI is unavailable or returns something unusable, you get a template filled from the incident record instead, with placeholders where facts are missing. Nothing is invented.
+- One bounded AI call writes the draft. If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, you get a template filled from the incident record instead, with placeholders where facts are missing. Nothing is invented.
 - Every section is editable. Follow-ups are a simple list you can add to and remove from. Select **Save post-mortem** to keep your edits.
 - **Regenerate draft** replaces the current text after you confirm. **Export Markdown** downloads the post-mortem as a `.md` file.
-- Drafting is limited to a few drafts per incident per hour. It needs permission to update incidents; people with view access can read and export it.
+- Drafting is limited to five drafts per person per incident per hour. It needs permission to update incidents; people with view access can read and export it.
 
 Review the draft before sharing it. The incident timeline and resolution summary remain the record of what happened.
 

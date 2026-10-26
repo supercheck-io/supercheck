@@ -8,6 +8,16 @@ describe("summarizeToolArgs", () => {
     expect(summary).toContain("limit=5");
     expect(summary.length).toBeLessThanOrEqual(160);
   });
+  it("redacts credential-looking values under innocent key names", () => {
+    const summary = summarizeToolArgs({
+      query: "Bearer abc.def.ghi",
+      note: "eyJhbGciOiJIUzI1NiJ9.payload.sig",
+      id: "sck_live_1234567890abcdef",
+      blob: "A".repeat(40),
+      service: "checkout-api",
+    });
+    expect(summary).toBe("query=[redacted], note=[redacted], id=[redacted], blob=[redacted], service=checkout-api");
+  });
   it("returns empty for non-object input", () => {
     expect(summarizeToolArgs(null)).toBe("");
     expect(summarizeToolArgs("raw")).toBe("");
