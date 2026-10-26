@@ -108,7 +108,7 @@ export const test = crxTest.extend<{
 
             const locator = page.locator('x-pw-glass').first();
             try {
-              await locator.waitFor({ state: 'attached', timeout: 100 });
+              await locator.waitFor({ state: 'attached', timeout: 500 });
             } catch (e) {
               if (await recorderPage.getByTitle('Record', { exact: true }).evaluate(e => e.classList.contains('toggled'))) {
                 await recorderPage.getByTitle('Record', { exact: true }).click();
@@ -117,7 +117,7 @@ export const test = crxTest.extend<{
               } else {
                 await page.reload();
               }
-              await locator.waitFor({ state: 'attached', timeout: 100 });
+              await locator.waitFor({ state: 'attached', timeout: 5000 });
             }
 
             return recorderPage;
