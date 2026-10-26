@@ -4,8 +4,8 @@ jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
     insert: jest.fn(),
-    transaction: jest.fn(),
     update: jest.fn(),
+    transaction: jest.fn(),
   },
 }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn() }));
@@ -68,6 +68,13 @@ function mockIncidentLookup() {
   (db.select as jest.Mock).mockReturnValue(chain);
 }
 
+function mockStaleRecovery(recovered: Array<{ id: string }> = []) {
+  const where = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(recovered) });
+  const set = jest.fn().mockReturnValue({ where });
+  (db.update as jest.Mock).mockReturnValue({ set });
+  return { set, where };
+}
+
 function mockInsertFailure(error: unknown) {
   const returning = jest.fn().mockRejectedValue(error);
   const values = jest.fn().mockReturnValue({ returning });
@@ -78,6 +85,21 @@ describe("startSreIncidentInvestigation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIncidentLookup();
+    mockStaleRecovery();
+  });
+
+  it("fails stale running runs with a mapped code before admitting a new run", async () => {
+    const { set } = mockStaleRecovery([{ id: "stale-run" }]);
+    mockInsertFailure({ cause: { code: "23505", constraint_name: "sre_investigation_runs_active_incident_unique" } });
+
+    await startSreIncidentInvestigation(input);
+
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      agentStateSnapshot: expect.objectContaining({ errorCode: "stale_run" }),
+    }));
+    expect((db.update as jest.Mock).mock.invocationCallOrder[0])
+      .toBeLessThan((db.insert as jest.Mock).mock.invocationCallOrder[0]);
   });
 
   it("returns 409 when the database guard rejects a concurrent active run", async () => {

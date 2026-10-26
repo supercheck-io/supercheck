@@ -102,11 +102,12 @@ export type PostmortemDraft = { sections: PostmortemSections; source: "ai" | "te
 /** One bounded model call; any failure falls back to the deterministic template. */
 export async function generatePostmortemDraft(
   ctx: PostmortemContext,
-  options: { useAi?: boolean } = {},
+  options: { useAi?: boolean; organizationId?: string } = {},
 ): Promise<PostmortemDraft> {
   if (options.useAi === false) return { sections: buildDeterministicPostmortem(ctx), source: "template" };
   try {
     const result = await runSreAgent({
+      organizationId: options.organizationId,
       system: POSTMORTEM_SYSTEM,
       prompt: buildPostmortemPrompt(ctx),
       budget: { maxSteps: 1, maxOutputTokens: 3000, timeoutMs: 45_000 },

@@ -43,6 +43,11 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null),
+  recordSreTokenUsage: jest.fn(),
+}));
+
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({
   checkSreChatRateLimit: jest.fn(),
 }));

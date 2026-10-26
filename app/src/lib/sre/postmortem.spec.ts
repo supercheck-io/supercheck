@@ -54,6 +54,13 @@ describe("buildDeterministicPostmortem", () => {
 });
 
 describe("generatePostmortemDraft", () => {
+  it("passes the organization so the daily usage limit applies, and falls back to the template when refused", async () => {
+    runSreAgent.mockRejectedValue(new Error("daily limit"));
+    const draft = await generatePostmortemDraft(ctx, { organizationId: "org-1" });
+    expect(runSreAgent.mock.calls[0][0].organizationId).toBe("org-1");
+    expect(draft.source).toBe("template");
+  });
+
   it("uses a validated model response", async () => {
     runSreAgent.mockResolvedValue({ text: '```json\n{"summary":"S","impact":"I","timeline":"T","root_cause":"R","contributing_factors":"C","follow_ups":"- F"}\n```' });
     const draft = await generatePostmortemDraft(ctx);

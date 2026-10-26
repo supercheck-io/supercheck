@@ -36,6 +36,10 @@ jest.mock("@/components/sre/incidents/investigation-feedback", () => ({
   InvestigationFeedback: ({ label }: { label: string }) => <div>Feedback: {label}</div>,
 }));
 
+jest.mock("@/components/sre/incidents/similar-incidents-card", () => ({
+  SimilarIncidentsCard: () => <div data-testid="similar-incidents">Mock similar incidents</div>,
+}));
+
 jest.mock("@/components/sre/incidents/postmortem-card", () => ({
   PostmortemCard: ({ canEdit }: { canEdit: boolean }) => <div data-can-edit={canEdit}>Mock post-mortem</div>,
 }));
@@ -78,7 +82,6 @@ function detailFixture(): SreIncidentDetail {
       rootCauseSummary: "Latency correlates with monitor failures.",
       confidenceScore: "0.7000",
     },
-    similarIncidents: [],
     linkedAlerts: [
       { id: "alert-1", title: "Checkout monitor down", severity: "sev2", status: "firing", role: "trigger", firedAt: now },
     ],
@@ -246,7 +249,7 @@ describe("SreIncidentDetailView", () => {
     );
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
-    expect(screen.getByTestId("similar-incidents")).toHaveTextContent("No similar resolved incidents");
+    expect(screen.getByTestId("similar-incidents")).toHaveTextContent("Mock similar incidents");
   });
 
   it("shows hypotheses, run feedback and a collapsed step trace for a structured investigation", () => {

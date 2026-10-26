@@ -1,20 +1,28 @@
+"use client";
+
 import Link from "next/link";
 
-import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { useSreSimilarIncidents } from "@/hooks/use-sre";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
 
 const MATCH_LABEL = { service: "Same service", alert: "Same alert source", title: "Similar title" } as const;
 
 /** Resolved incidents from the last 180 days that look related. History only; may be unrelated. */
-export function SimilarIncidentsCard({ incidents }: { incidents: SreIncidentDetail["similarIncidents"] }) {
+export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
+  const { data, isLoading } = useSreSimilarIncidents(incidentId);
+  const incidents = data?.success ? data.incidents : [];
   return (
     <Card data-testid="similar-incidents">
       <CardHeader>
         <CardTitle className="text-sm">Similar incidents</CardTitle>
       </CardHeader>
       <CardContent>
-        {incidents.length === 0 ? (
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground" role="status">Loading similar incidents...</p>
+        ) : data && !data.success ? (
+          <p className="text-sm text-muted-foreground">Similar incidents are unavailable right now.</p>
+        ) : incidents.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No similar resolved incidents in the last 180 days.
           </p>

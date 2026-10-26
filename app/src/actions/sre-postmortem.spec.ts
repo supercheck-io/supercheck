@@ -93,13 +93,13 @@ describe("generateSrePostmortem usage gate", () => {
     subscription.mockResolvedValue({ status: 402 });
     const result = await generateSrePostmortem({ incidentId });
     expect(result.success).toBe(true);
-    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: false });
+    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: false, organizationId: ctx.organizationId });
     expect(subscription).toHaveBeenCalledWith(ctx.organizationId, { allowTrial: false });
   });
   it("uses the model when the gate is open", async () => {
     queue.push([resolved], [], [], []);
     await generateSrePostmortem({ incidentId });
-    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: true });
+    expect(generate).toHaveBeenCalledWith(expect.anything(), { useAi: true, organizationId: ctx.organizationId });
   });
 });
 

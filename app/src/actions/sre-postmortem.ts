@@ -161,7 +161,7 @@ export async function generateSrePostmortem(
 
     // Same usage gate as chat; when it is closed the template still works, with no model call.
     const gate = await requireSreSubscription(auth.organizationId, { allowTrial: false });
-    const draft = await generatePostmortemDraft(context, { useAi: gate === null });
+    const draft = await generatePostmortemDraft(context, { useAi: gate === null, organizationId: auth.organizationId });
     const postmortem = toStoredPostmortem(draft.sections, incident.postmortem, true);
     await db
       .update(sreIncidents)

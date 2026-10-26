@@ -64,7 +64,6 @@ import {
 } from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
-import { findSimilarIncidents } from "@/lib/sre/similar-incidents";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
 import { db } from "@/utils/db";
@@ -208,18 +207,6 @@ export type SreIncidentChatHistory = {
   }>;
 };
 
-export type SreSimilarIncidentListItem = {
-  id: string;
-  incidentNumber: number;
-  title: string;
-  severity: SreSeverity;
-  serviceName: string | null;
-  resolvedAt: Date | null;
-  rootCauseSummary: string | null;
-  resolutionSummary: string | null;
-  matchedOn: Array<"service" | "alert" | "title">;
-};
-
 export type SreIncidentDetail = {
   publicIncident?: { id: string; statusPageId: string } | null;
   incident: SreIncidentListItem & {
@@ -232,7 +219,6 @@ export type SreIncidentDetail = {
     commanderName: string | null;
     postmortem: SrePostmortem | null;
   };
-  similarIncidents: SreSimilarIncidentListItem[];
   linkedAlerts: Array<{
     id: string;
     title: string;
@@ -970,13 +956,9 @@ export async function getSreIncidentDetails(
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
 
-    const [myFeedback, similarIncidents] = await Promise.all([
-      latestInvestigation
-        ? listMyFeedbackForRun({ userId, organizationId, projectId: project.id }, latestInvestigation.id)
-        : Promise.resolve([] as MyFeedback[]),
-      // Past-incident context must never take the page down.
-      findSimilarIncidents({ organizationId, projectId: project.id, incidentId }).catch(() => []),
-    ]);
+    const myFeedback = latestInvestigation
+      ? await listMyFeedbackForRun({ userId, organizationId, projectId: project.id }, latestInvestigation.id)
+      : ([] as MyFeedback[]);
 
     const latestReportSnapshot = latestInvestigation
       ? await db.query.sreInvestigationReports.findFirst({
@@ -1166,7 +1148,6 @@ export async function getSreIncidentDetails(
               myFeedback,
             }
           : null,
-        similarIncidents: similarIncidents.map(({ score: _score, ...rest }) => rest) as SreSimilarIncidentListItem[],
         latestReportSnapshot: latestReportSnapshot ?? null,
         myReportFeedback: myReportFeedback ?? null,
         evidence,

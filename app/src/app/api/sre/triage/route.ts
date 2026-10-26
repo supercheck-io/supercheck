@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isSreTriageAgentEnabled } from "@/sre/lib/feature-gates";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
@@ -95,6 +96,9 @@ export async function POST(request: NextRequest) {
       },
     );
   }
+
+  const dailyLimitResponse = await sreDailyTokenLimitResponse(context.organizationId);
+  if (dailyLimitResponse) return dailyLimitResponse;
 
   const result = await runSreIncidentTriage({
     userId: context.userId,

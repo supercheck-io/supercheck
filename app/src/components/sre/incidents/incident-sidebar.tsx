@@ -88,7 +88,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
         </CardContent>
       </Card>
 
-      <SimilarIncidentsCard incidents={detail.similarIncidents} />
+      <SimilarIncidentsCard incidentId={incident.id} />
 
       <Card>
         <CardHeader><CardTitle className="text-sm">Status page</CardTitle></CardHeader>
