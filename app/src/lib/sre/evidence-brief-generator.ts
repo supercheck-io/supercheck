@@ -8,6 +8,7 @@ import {
   validateAIConfiguration,
 } from "@/lib/ai/ai-provider";
 import { createLogger } from "@/lib/logger/index";
+import { checkSreDailyTokenLimit, recordSreTokenUsage } from "@/lib/sre/sre-daily-token-limit";
 
 const briefLogger = createLogger({ module: "sre-evidence-brief" }) as {
   warn: (data: unknown, msg?: string) => void;
@@ -298,6 +299,10 @@ export async function generateEvidenceBrief(input: {
   }
 
   try {
+    // Over the daily AI limit: serve the deterministic brief instead of failing.
+    if (!(await checkSreDailyTokenLimit(input.organizationId)).allowed) {
+      return fallbackBrief(input.evidence, modelId);
+    }
     validateAIConfiguration();
 
     const result = await generateText({
@@ -309,6 +314,7 @@ export async function generateEvidenceBrief(input: {
       abortSignal: AbortSignal.timeout(45_000),
     });
 
+    await recordSreTokenUsage(input.organizationId, result.usage);
     const parsed = briefSchema.safeParse(JSON.parse(extractJson(result.text)));
     if (!parsed.success) {
       return fallbackBrief(input.evidence, modelId);
@@ -363,6 +369,9 @@ export async function streamEvidenceBrief(
   }
 
   try {
+    if (!(await checkSreDailyTokenLimit(input.organizationId)).allowed) {
+      return streamFallback();
+    }
     validateAIConfiguration();
 
     const result = await streamText({
@@ -380,6 +389,7 @@ export async function streamEvidenceBrief(
       await onChunk(chunk);
     }
 
+    await recordSreTokenUsage(input.organizationId, await result.totalUsage);
     const summary = chunks.join("").trim();
     if (!summary) {
       return streamFallback(new Error("AI provider returned an empty brief"));

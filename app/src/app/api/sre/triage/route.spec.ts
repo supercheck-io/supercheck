@@ -23,6 +23,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn() }));
+
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),

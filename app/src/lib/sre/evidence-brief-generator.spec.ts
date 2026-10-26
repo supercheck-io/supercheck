@@ -1,4 +1,13 @@
+import { generateText } from "ai";
+
+import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
 import { generateEvidenceBrief } from "./evidence-brief-generator";
+
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  checkSreDailyTokenLimit: jest.fn().mockResolvedValue({ allowed: true, resetTime: 0 }),
+  recordSreTokenUsage: jest.fn(),
+}));
+jest.mock("ai", () => ({ ...jest.requireActual("ai"), generateText: jest.fn() }));
 
 describe("generateEvidenceBrief", () => {
   const originalProvider = process.env.AI_PROVIDER;
@@ -65,5 +74,20 @@ describe("generateEvidenceBrief", () => {
       "Link a relevant monitor, job, run, alert, or connector evidence source.",
     );
     expect(brief.summary).not.toContain("mapped to a service");
+  });
+
+  it("serves the deterministic brief without calling the model over the daily limit", async () => {
+    process.env.AI_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-key";
+    jest.mocked(checkSreDailyTokenLimit).mockResolvedValueOnce({ allowed: false, resetTime: Date.now() + 1000 });
+
+    const brief = await generateEvidenceBrief({
+      incidentTitle: "Checkout", incidentSeverity: "sev2", userId: "u", organizationId: "org-a",
+      evidence: [{ id: "e1", sourceType: "native", title: "t", summary: "s", evidenceType: "metric", severity: null, confidence: "0.8", sourceUri: null, rawContentExcerpt: null, observedAt: new Date() }] as never,
+    });
+
+    expect(brief.provider).toBe("fallback");
+    expect(checkSreDailyTokenLimit).toHaveBeenCalledWith("org-a");
+    expect(generateText).not.toHaveBeenCalled();
   });
 });
