@@ -20,6 +20,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Added
 
+- `run delete <id>` (`DELETE /api/runs/<id>`, confirms unless `--force`) and `dashboard` (`GET /api/dashboard`) for project metrics. Status-page incident create/update/delete is not included: the app exposes it only as server actions, not a REST route.
 - A requirement's `priority` can be cleared from config with `priority: ""`. This needs a server that accepts a null priority (the release after 1.4.0); an older server rejects that write with a 400.
 
 ## [0.4.0] - 2026-10-26

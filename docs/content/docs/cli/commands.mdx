@@ -300,6 +300,8 @@ The CLI validates the read token and job before starting a waited trigger. If wa
 | `run wait <run-id>` | Wait for an existing run to reach a terminal state; never starts or retriggers a run | `--timeout <seconds>` (300) |
 | `run stream <run-id>` | Watch live console output | `--idle-timeout` (60, min 10) |
 | `run cancel <run-id>` | Cancel a running execution | — |
+| `run delete <run-id>` | Delete a run and its stored artifacts (active runs are refused) | `--force` (skip confirmation) |
+| `dashboard` | Show project dashboard metrics (monitors, jobs, runs, queue) | — |
 
 ```bash
 supercheck run list --job <job-id> --status failed --limit 20
@@ -307,6 +309,8 @@ supercheck run get <run-id>
 supercheck run wait <run-id> --timeout 600
 supercheck run stream <run-id> --idle-timeout 120
 supercheck run cancel <run-id>
+supercheck run delete <run-id> --force
+supercheck dashboard --json
 ```
 
 `run stream`: failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events. `--idle-timeout` is the number of seconds to wait with no data before timing out.

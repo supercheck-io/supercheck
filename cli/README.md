@@ -138,7 +138,7 @@ export default defineConfig({
 | Inspect the CLI | `capabilities [--online]`, `schema config`, `doctor`, `whoami`, `health` |
 | Sync configuration | `pull`, `diff`, `deploy`, `destroy`, `config validate`, `config print` |
 | Run tests | `test run`, `test execute <id> --wait`, `job run --id <id>`, `job trigger <id> --wait` |
-| Follow a run | `run wait <id>`, `run stream <id>`, `run status <id>`, `run cancel <id>` |
+| Follow a run | `run wait <id>`, `run stream <id>`, `run status <id>`, `run cancel <id>`, `run delete <id> [--force]`, `dashboard` |
 | Inspect resources | `test list`, `monitor list`, `job list`, `run list`, `monitor results <id>` |
 | Manage resources | `test` (incl. `--priority`, `tag add/remove`), `monitor`, `job`, `requirement` (`list`, `get`, `create`, `update`, `delete`, `link`, `unlink`, `coverage`, `export`), `var`, `tag`, `notification` (`create`, `update`, `delete`) |
 | AI SRE | `incident list/get/timeline/resolve`, `sre triage/investigate/ask/brief/status`, `service list/get` |

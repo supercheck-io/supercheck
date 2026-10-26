@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPatch = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockUnauthenticatedGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
@@ -25,7 +26,7 @@ let outputFormat = 'table'
 let authenticated = true
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, patch: mockPatch, post: mockPost, delete: jest.fn() }),
+  createAuthenticatedClient: () => ({ get: mockGet, patch: mockPatch, post: mockPost, delete: mockDelete }),
   getResolvedConfigBaseUrl: () => 'https://config.test',
 }))
 
@@ -111,7 +112,7 @@ const { tagCommand } = await import('../tags.js')
 const { auditCommand } = await import('../audit.js')
 const { alertCommand } = await import('../alerts.js')
 const { healthCommand, locationsCommand } = await import('../health.js')
-const { runCommand } = await import('../runs.js')
+const { runCommand, dashboardCommand } = await import('../runs.js')
 const { configCommand } = await import('../config.js')
 const { skillsCommand, schemaCommand, capabilitiesCommand } = await import('../skills.js')
 const { validateCommand } = await import('../validate.js')
@@ -137,6 +138,7 @@ describe('read-only and operational commands', () => {
       healthCommand,
       locationsCommand,
       runCommand,
+      dashboardCommand,
       configCommand,
       skillsCommand,
       schemaCommand,
@@ -375,6 +377,31 @@ describe('read-only and operational commands', () => {
 
       expect(mockPost).toHaveBeenCalledWith('/api/runs/run-1/cancel')
       expect(mockOutputDetail).toHaveBeenCalledWith({ success: true })
+    })
+
+    it('deletes a run after confirmation, and skips the prompt with --force', async () => {
+      mockDelete.mockResolvedValue({ data: { success: true } })
+      mockConfirmPrompt.mockResolvedValueOnce(undefined)
+      await runCommand.parseAsync(['node', 'run', 'delete', 'run-1'])
+      expect(mockConfirmPrompt).toHaveBeenCalledTimes(1)
+      expect(mockDelete).toHaveBeenCalledWith('/api/runs/run-1')
+      mockConfirmPrompt.mockClear()
+      await runCommand.parseAsync(['node', 'run', 'delete', 'run-2', '--force'])
+      expect(mockConfirmPrompt).not.toHaveBeenCalled()
+      expect(mockDelete).toHaveBeenCalledWith('/api/runs/run-2')
+    })
+
+    it('does not delete when the confirmation is declined', async () => {
+      mockConfirmPrompt.mockRejectedValueOnce(new Error('cancelled'))
+      await expect(runCommand.parseAsync(['node', 'run', 'delete', 'run-1'])).rejects.toThrow('cancelled')
+      expect(mockDelete).not.toHaveBeenCalled()
+    })
+
+    it('shows dashboard metrics', async () => {
+      mockGet.mockResolvedValueOnce({ data: { monitors: { total: 2 } } })
+      await dashboardCommand.parseAsync(['node', 'dashboard'])
+      expect(mockGet).toHaveBeenCalledWith('/api/dashboard')
+      expect(mockOutputDetail).toHaveBeenCalledWith({ monitors: { total: 2 } })
     })
 
     it('waits with a bounded deadline converted from seconds', async () => {

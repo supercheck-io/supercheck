@@ -260,16 +260,57 @@ check_dns_target() { # warn when the domain's A record is not this server
   mine="$(public_ip)" || mine=""
   if [[ -z "$mine" || -z "$ips" ]]; then note "Could not compare $1 with this server's public IP; skipping that check."
   elif grep -Fxq "$mine" <<<"$ips"; then ok "$1 points to this server ($mine)"
-  else warn "$1 resolves to $(tr '\n' ' ' <<<"$ips")but this server is $mine. Let's Encrypt will fail until the A record matches."; fi
+  else warn "$1 resolves to $(tr '\n' ' ' <<<"$ips")but this server is $mine. Let's Encrypt will fail until the A record matches, unless a proxy (such as Cloudflare) forwards ACME requests here."; fi
+}
+
+ufw_allows_port() { # $1 = port; reads `ufw status verbose` on stdin. ufw is first-match, then the default.
+  awk -v p="$1" '
+    function covers(to,    n, parts, proto, i, part, r) {
+      sub(/ on .*/, "", to); sub(/[[:space:]]+$/, "", to)
+      if (to ~ /^Anywhere/) return 1
+      proto = ""; if (match(to, /\/(tcp|udp)$/)) proto = substr(to, RSTART + 1)
+      n = split(to, parts, ",")
+      for (i = 1; i <= n; i++) {
+        part = parts[i]
+        if (match(part, /\/(tcp|udp)$/)) { if (substr(part, RSTART + 1) == "udp") continue; sub(/\/tcp$/, "", part) }
+        else if (proto == "udp") continue
+        if (part == p) return 1
+        if (split(part, r, ":") == 2 && p + 0 >= r[1] + 0 && p + 0 <= r[2] + 0) return 1
+      }
+      return 0
+    }
+    /^Default:/ { def = ($0 ~ /allow \(incoming\)/) }
+    !decided && match($0, / (ALLOW|DENY|REJECT|LIMIT)( IN)?[[:space:]]/) {
+      # ACME and HTTPS need inbound TCP from anywhere: outbound/forwarded and source-restricted rules do not decide.
+      # IPv4 only: an IPv6 rule says nothing about the A record that ACME validation connects to.
+      if ($0 ~ / (ALLOW|DENY|REJECT|LIMIT) (OUT|FWD)/ || $0 ~ /\(v6\)/) next
+      to = substr($0, 1, RSTART - 1); act = substr($0, RSTART + 1, RLENGTH - 1)
+      from = substr($0, RSTART + RLENGTH); sub(/[[:space:]]*#.*/, "", from); sub(/^[[:space:]]+/, "", from)
+      if (from !~ /^Anywhere/ || !covers(to)) next
+      decided = 1; allowed = (act ~ /^(ALLOW|LIMIT)/)
+    }
+    END { exit !(decided ? allowed : def) }'
 }
 
 check_ufw() { # warn when an active ufw would block ACME and HTTPS
   command -v ufw >/dev/null 2>&1 || return 0
-  local st; st="$(ufw status 2>/dev/null || true)"
+  local st; st="$(ufw status verbose 2>/dev/null || true)"
   grep -q '^Status: active' <<<"$st" || return 0
+  # Expand app profiles ("Nginx Full") in place so rule order is kept. A stale profile or an IPv6
+  # destination fails `ufw app info`; that must not abort the installer (set -e).
+  local expanded="" line name info ports
+  while IFS= read -r line; do
+    name="$(awk '/ (ALLOW|DENY|REJECT|LIMIT)/ { to = $0; sub(/[[:space:]]+(ALLOW|DENY|REJECT|LIMIT).*/, "", to); sub(/ on .*/, "", to); sub(/[[:space:]]*\(v6\)$/, "", to); if (to ~ /^[A-Za-z][A-Za-z0-9 ._-]*$/ && to !~ /^Anywhere/) print to }' <<<"$line")"
+    if [[ -n "$name" ]]; then
+      info="$(ufw app info "$name" 2>/dev/null || true)"
+      ports="$(awk '/^Ports?:/ { f = 1; sub(/^Ports?:[[:space:]]*/, "") } f && NF { gsub(/[[:space:]]/, ""); printf "%s%s", sep, $0; sep = "," }' <<<"$info")"
+      [[ -n "$ports" ]] && line="${ports}${line#*"$name"}"
+    fi
+    expanded+="$line"$'\n'
+  done <<<"$st"
   local p
   for p in 80 443; do
-    grep -Eq "^${p}(/tcp)?[[:space:]].*ALLOW" <<<"$st" || warn "ufw is active and port $p is not allowed. Run: sudo ufw allow $p/tcp"
+    ufw_allows_port "$p" <<<"$expanded" || warn "ufw is active and port $p is not allowed. Docker-published ports usually bypass ufw, so this may be harmless; if HTTPS fails, run: sudo ufw allow $p/tcp"
   done
 }
 
