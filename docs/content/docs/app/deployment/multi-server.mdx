@@ -97,7 +97,7 @@ sequenceDiagram
 | Main server | A running self-hosted instance and Super Admin access |
 | Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk minimum (15 GB recommended), `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
 | Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379), and S3 (9000) |
-| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.3.7** |
+| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.4.0** |
 
 <Callout type="warn">
 Never expose PostgreSQL, Redis, or S3 publicly. Allow only worker hosts. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
@@ -148,8 +148,8 @@ sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker co
 ```bash
 mkdir -p ~/supercheck-worker
 cd ~/supercheck-worker
-curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7/deploy/docker/setup-k3s.sh
-curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.3.7/deploy/docker/docker-compose-worker.yml
+curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/setup-k3s.sh
+curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/docker-compose-worker.yml
 sudo bash setup-k3s.sh
 ```
 
@@ -163,7 +163,7 @@ Create `.env` in the same directory. Use the main server's **private** address, 
 ```dotenv
 WORKER_LOCATION=worker-extra
 SELF_HOSTED=true
-SUPERCHECK_VERSION=1.3.7
+SUPERCHECK_VERSION=1.4.0
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@10.0.0.10:5432/supercheck
 REDIS_HOST=10.0.0.10
 REDIS_PORT=6379
@@ -209,7 +209,7 @@ An unknown token stops the worker at startup. Which workloads users may run in a
 
 `CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
 
-For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.3.7/deploy/docker/docker-compose-worker.yml).
+For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.4.0/deploy/docker/docker-compose-worker.yml).
 
 ## Missing-region detection
 

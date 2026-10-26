@@ -137,17 +137,17 @@ apply_public_config
         self.run_shell(r'''printf '%s\n' BETTER_AUTH_SECRET=fixture SUPERCHECK_VERSION=1.3.6 > "$COMPOSE_DIR/.env"
 USING_THIS_CHECKOUT=false
 VERSION_SET=true
-VERSION=1.3.7
+VERSION=1.4.0
 persist_version
 ''')
         self.assertEqual((self.root / 'compose/.env').read_text(),
-                         'BETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION=1.3.7\n')
+                         'BETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION=1.4.0\n')
 
     def test_checkout_version_flag_is_ignored(self):
         self.run_shell(r'''echo SUPERCHECK_VERSION=1.3.6 > "$COMPOSE_DIR/.env"
 USING_THIS_CHECKOUT=true
 VERSION_SET=true
-VERSION=1.3.7
+VERSION=1.4.0
 persist_version
 ''')
         self.assertEqual((self.root / 'compose/.env').read_text(), 'SUPERCHECK_VERSION=1.3.6\n')
@@ -174,7 +174,7 @@ main
 USING_THIS_CHECKOUT=false
 SOURCE_FETCHED=false
 VERSION_SET=false
-VERSION=1.3.7
+VERSION=1.4.0
 persist_version
 ''')
         self.assertEqual((self.root / 'compose/.env').read_text(), 'BETTER_AUTH_SECRET=fixture\n')
@@ -187,7 +187,7 @@ EMAIL=admin@example.com
 apply_public_config
 USING_THIS_CHECKOUT=false
 VERSION_SET=true
-VERSION=1.3.7
+VERSION=1.4.0
 persist_version
 ''')
         backups = list((self.root / 'compose').glob('.env.bak-*'))
@@ -235,7 +235,7 @@ touch .env.new
 chmod 644 .env.new
 USING_THIS_CHECKOUT=false
 VERSION_SET=true
-VERSION=1.3.7
+VERSION=1.4.0
 persist_version
 ''')
 
@@ -280,12 +280,12 @@ docker() { [[ "$*" == 'volume ls -q' ]] && printf '%s\n' supercheck_minio-data s
 USING_THIS_CHECKOUT=false
 SOURCE_FETCHED=true
 VERSION_SET=false
-VERSION=1.3.7
+VERSION=1.4.0
 unset SUPERCHECK_VERSION
 persist_version
 persist_version
 ''')
-        self.assertIn('SUPERCHECK_VERSION=1.3.7', (self.root / 'compose/.env').read_text())
+        self.assertIn('SUPERCHECK_VERSION=1.4.0', (self.root / 'compose/.env').read_text())
         self.assertEqual(len(list((self.root / 'compose').glob('.env.bak-*'))), 1)
 
     def test_existing_docker_still_installs_missing_network_tools(self):
