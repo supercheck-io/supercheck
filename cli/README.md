@@ -198,7 +198,7 @@ The CLI ships offline, versioned workflow guidance. `supercheck skills` prints a
 
 ## Compatibility
 
-- Requirements, status page deploys, and monitor tags need a Supercheck server with those APIs (Supercheck Cloud, or a self-hosted release that includes them). On an older server the CLI stops with an upgrade hint before writing anything, with one exception: in a project with no existing monitor to probe, a tagged monitor is created before the missing monitor-tag API is detected. Check the created monitor's ID and `supercheck.state.json` after that error.
+- Requirements, status page deploys, and monitor tags need Supercheck Cloud or a self-hosted Supercheck 1.4.0 or later. On an older server the CLI stops with an upgrade hint before writing anything, with one exception: in a project with no existing monitor to probe, a tagged monitor is created before the missing monitor-tag API is detected. Check the created monitor's ID and `supercheck.state.json` after that error.
 - Creating requirements by uploading a document (PDF, DOCX, Markdown, TXT) with AI is available in the dashboard only.
 - AI SRE requires a configured AI provider on the server. Live connectors need explicit `--live-connectors` consent and permissions.
 - `sre status` needs a Supercheck release that provides the investigation-status endpoint.

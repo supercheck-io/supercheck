@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.4.0 - 2026-10-26
+Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Server changes are listed in the [Supercheck changelog](https://github.com/supercheck-io/supercheck/blob/main/CHANGELOG.md).
 
-Requirements, status pages, test priority and tags now work from the terminal and as code. Requirements, status page writes and monitor tags need a Supercheck server with the matching APIs; on an older server the CLI stops with an upgrade hint before it writes anything.
+## [Unreleased]
+
+## [0.4.0] - 2026-10-26
+
+Requirements, status pages, test priority and tags now work from the terminal and as code. Requirements, status page writes and monitor tags need Supercheck 1.4.0 or later; on an older server the CLI stops with an upgrade hint before it writes anything.
 
 ### Added
 
@@ -40,9 +44,71 @@ Requirements, status pages, test priority and tags now work from the terminal an
 - Plain `login` resumes an approved `--reauth` grant.
 - Deployment locks are published only after their owner information is written, so an interrupted lock creation cannot leave an empty lock that blocks later deploys.
 
-## 0.3.2 - 2026-10-18
+## [0.3.2] - 2026-10-18
 
-- Fix CLI k6 detection when identical script content is parsed repeatedly, including duplicate scripts in one command.
-- Preserve syntax diagnostics for invalid k6 scripts and remove duplicated request-size error text.
-- Server-side: k6 validation now rejects scripts with no default export or `scenarios` entry point, while dynamic scenario options still pass. Takes effect once your Supercheck instance is upgraded.
-- Publish CLI releases from GitHub Actions using npm trusted publishing (OIDC).
+0.3.1 was not published; its changes ship in 0.3.2.
+
+### Added
+
+- **Agent workflows.** Offline `skills`, `schema config` and `capabilities` commands; account-free local test and job execution; cloud test execution; and waiting on existing runs. JSON plans and results, confirmation handling, project-target checks and deployment state tracking with generated resource IDs are improved.
+- **`init` prefills the project.** `init` fills in the authenticated organization and project IDs, with environment overrides and a warning if the context is unavailable. `--skip-install` records the required dev dependencies and tells you to install them; Playwright browsers still need `npx playwright install chromium`.
+
+### Changed
+
+- **License.** The CLI is now Apache-2.0, with `LICENSE` and `NOTICE` included in the npm package. Earlier published versions keep their original license terms. The app and worker, including Private Agent mode, remain AGPL-3.0-only.
+- Releases are published from GitHub Actions with npm trusted publishing (OIDC).
+
+### Fixed
+
+- k6 detection works when identical script content is parsed repeatedly, including duplicate scripts in one command. Syntax diagnostics for invalid k6 scripts are kept, and duplicated request-size error text is removed.
+- k6 runtime imports are parsed during deploy, test and job preflight checks, including same-line and multiline imports, while comments and type-only imports are ignored.
+- `sre triage` no longer times out early, rate limits fail fast, interrupted streams exit non-zero, and `incident resolve` requires `--force` in non-interactive sessions.
+- Discord, Teams and generic webhook credentials are redacted. Individual pull errors are kept in human output, diagnostics stay usable with an invalid project config, stale resource-name aliases are retired, and resumable run IDs survive wait timeouts. Offline config commands require an existing file, while offline file-based test execution works without one.
+- Monitor URLs and non-credential headers stay visible in output while credentials are masked (provider and untyped configs fail closed). Syncing stops when the config's `api.baseUrl` differs from the active API origin, and the target is printed before prompts. Waiting continues through transient poll errors so a started run is not abandoned. Deploy locks left by a dead process are recovered. The tail of large local runner output is captured and large JSON reports are parsed. Missing `.gitignore` entries for traces and backups are added to existing projects.
+
+### Security
+
+- `pull` accepts only UUID test IDs, keeps every write inside the project (including through symlinks), aborts if the server answers for a different test, and writes server test titles as a single comment line. Generated config treats server strings as literals, never as `process.env` reads; secret variables link to environment variables only for ordinary names, and deploy never sends an empty secret value. Read-only commands skip the extra project-context request but still verify the declared API origin, which is now compared before `SUPERCHECK_URL` is applied.
+
+### Server compatibility
+
+- k6 validation on the server rejects scripts with no default export or `scenarios` entry point, while dynamic scenario options still pass. This takes effect once your Supercheck instance is upgraded.
+
+## [0.3.0] - 2026-10-07
+
+- **Investigation status.** `sre status <runId>` shows the lifecycle of an investigation in the current project.
+- **Clearer output.** `--wide` and `--no-color`, readable detail tables, labeled investigation narratives and elapsed progress.
+- **Safer configuration sync.** `deploy` and `diff` keep remote resources that are absent from the local configuration; use `--delete` to remove them.
+- **Pull previews.** Resource counts and affected files, notes on preserved local-only tests and skipped file variables, and disclosure of dependency installation before confirmation. Overwrite confirmation defaults to no; `--force` supports unattended pulls.
+- **Automation output.** JSON and quiet output are consistent, including authentication results and errors. Cleanup and exit handling for interrupted streams are improved.
+- **Reliability.** Fixes terminal hangs, duplicated progress, truncated IDs, color escapes, and unclear validation, login and network errors.
+
+**Server compatibility:** matching app and worker updates improve secret-safe Playwright console streaming and notification-name consistency, and keep k6 threshold results when HTML export is unavailable.
+
+## [0.2.1] - 2026-10-06
+
+- Incident and AI SRE commands accept incident numbers as well as UUIDs.
+- Login keeps the correct API URL and supports read-only authentication.
+- Failed executions and interrupted streams return failing exit codes, and streaming output in JSON mode is newline-delimited JSON.
+- Synthetic and port-check monitors can be created, with input validation.
+- Monitoring-only health checks, and clearer local-job and credential-storage guidance.
+
+**Compatibility:** older servers resolve incident numbers among their newest 500 incidents; updated servers support exact lookup. Updating the CLI does not update app or worker deployments.
+
+## [0.2.0] - 2026-09-11
+
+- AI SRE incident, service and investigation commands.
+- Improved test-source uploads and drift detection for notification configuration.
+
+## [0.1.3] - 2026-06-26
+
+- Notification secrets are preserved during configuration `pull`, `diff` and `deploy`.
+
+## [0.1.2] - 2026-03-21
+
+- First tracked release of `@supercheck/cli`.
+
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...HEAD
+[0.4.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.3.2...cli-v0.4.0
+[0.3.2]: https://github.com/supercheck-io/supercheck/compare/cli-v0.2.1...cli-v0.3.2
+[0.2.1]: https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1
