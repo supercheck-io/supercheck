@@ -2,7 +2,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals'
 
 const waitForRun = jest.fn<(...a: unknown[]) => Promise<Record<string, unknown>>>()
 jest.unstable_mockModule('../../utils/wait.js', () => ({ waitForRun }))
-const { verifyDeployedTests } = await import('../deploy.js')
+const { verifyDeployedTests, verificationFailureMessage } = await import('../deploy.js')
 
 const post = jest.fn<(...a: unknown[]) => Promise<{ data: Record<string, unknown> }>>()
 const client = { post } as never
@@ -60,5 +60,17 @@ describe('verifyDeployedTests', () => {
     post.mockResolvedValue({ data: {} })
     expect((await run([change('a', 'playwright')]))[0]).toMatchObject({ status: 'error' })
     expect(waitForRun).not.toHaveBeenCalled()
+  })
+})
+
+describe('verificationFailureMessage', () => {
+  it('lists each failed run id in the message so the human renderer shows it', () => {
+    const msg = verificationFailureMessage([
+      { id: 't1', name: 'Login', runId: 'run-9', status: 'failed' },
+      { id: 't2', name: 'Cart', status: 'error', reason: 'no run id' },
+    ])
+    expect(msg).toContain('2 cloud verification run(s) did not pass')
+    expect(msg).toContain('Login (run-9)')
+    expect(msg).toContain('Cart (no run)')
   })
 })

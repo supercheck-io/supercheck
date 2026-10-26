@@ -6,6 +6,19 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+### Added
+
+- `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
+- The requirements API accepts `"priority": null` to clear a requirement's priority.
+
+### Fixed
+
+- MCP requests that stall while uploading their body now fail with 408 after 15 seconds and release their concurrency slots.
+- Incident analytics charts, the sidebar's outline menu button and the response-time chart's tooltip cursor use valid colors (the `hsl()` wrappers around oklch tokens are removed).
+- Trial allowance checks before queueing subtract runs that are still in flight, matching worker admission.
+- A trial reminder whose delivery succeeded but whose sent-marker write failed transiently is no longer resent.
+- A scheduled check for a deleted monitor removes its leftover repeatable schedule.
+
 ## [1.4.0] - 2026-10-26
 
 This release replaces the bundled MinIO storage with RustFS, adds a read-only MCP server, opens requirements and status pages to the API and CLI, makes automatic AI SRE triage opt-in, and hardens authentication, status pages and run cancellation. [CLI 0.4.0](cli/CHANGELOG.md) ships alongside it and needs this server version for its requirements, status page and monitor tag commands.

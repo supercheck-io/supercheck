@@ -4,6 +4,18 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- `test tag add` and `test tag remove` now send an atomic per-tag change (`PATCH /api/tests/<id>/tags`) instead of replacing the whole set, so concurrent tag changes are no longer lost. Older servers fall back to the previous read-then-replace. Removing an unknown tag is now a no-op.
+- `deploy --verify` now names the failed verification runs (title and run ID) in the human-readable error, not only in `--json` output.
+- `deploy` checks requirement support with a validation-only `POST /api/requirements` instead of exporting every requirement (which also wrote an export audit event). A status page route's own JSON 404 is no longer mistaken for an old server.
+- `deploy` rejects a test or monitor with more than 10 distinct tags before any write, instead of saving the resource and then failing to apply its tags.
+- Requirement `externalUrl` in config must be an `http://` or `https://` URL, matching the server.
+
+### Added
+
+- A requirement's `priority` can be cleared from config with `priority: ""`. This needs a server that accepts a null priority (the release after 1.4.0); an older server rejects that write with a 400.
+
 ## [0.4.0] - 2026-10-26
 
 Requirements, status pages, test priority and tags now work from the terminal and as code. Requirements, status page writes and monitor tags need Supercheck 1.4.0 or later; on an older server the CLI stops with an upgrade hint before it writes anything.

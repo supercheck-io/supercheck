@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors, monitorTags, tags } from "@/db/schema";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from "@/lib/tag-patch";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-const MAX_TAGS_PER_MONITOR = 10;
+const MAX_TAGS_PER_MONITOR = MAX_TAGS_PER_ENTITY;
 
 const notFound = () => NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
@@ -155,6 +156,107 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     if (isAuthError(error)) return authFailure(error);
     console.error("Error updating monitor tags:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
+
+    if (!checkPermissionWithContext("monitor", "update", context)) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to update monitor tags" },
+        { status: 403 }
+      );
+    }
+
+    const { id: monitorId } = await params;
+    if (!isUuid(monitorId)) return notFound();
+
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const parsed = tagPatchSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid request body: add/remove must be arrays of tag UUIDs" }, { status: 400 });
+    }
+    const { add, remove } = parsed.data;
+
+    if (!(await monitorExists(monitorId, organizationId, project.id))) return notFound();
+
+    if (add.length > 0) {
+      const validTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(inArray(tags.id, add), eq(tags.organizationId, organizationId), eq(tags.projectId, project.id)));
+      if (validTags.length !== add.length) {
+        return NextResponse.json(
+          { error: "One or more tags are invalid or not accessible in this project" },
+          { status: 400 }
+        );
+      }
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        // Row lock serializes concurrent patches of one monitor so the cap check below cannot be raced.
+        const locked = await tx
+          .select({ id: monitors.id })
+          .from(monitors)
+          .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+          .for("update");
+        if (locked.length === 0) throw new TagLimitError("not-found");
+        if (remove.length > 0) {
+          await tx
+            .delete(monitorTags)
+            .where(and(eq(monitorTags.monitorId, monitorId), inArray(monitorTags.tagId, remove)));
+        }
+        if (add.length > 0) {
+          await tx
+            .insert(monitorTags)
+            .values(add.map((tagId) => ({ monitorId, tagId })))
+            .onConflictDoNothing();
+          const [{ count }] = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(monitorTags)
+            .where(eq(monitorTags.monitorId, monitorId));
+          if (count > MAX_TAGS_PER_MONITOR) throw new TagLimitError("limit");
+        }
+        await logAuditEvent(
+          {
+            userId: context.userId,
+            organizationId,
+            action: "monitor_tags_updated",
+            resource: "monitor",
+            resourceId: monitorId,
+            metadata: { add, remove, projectId: project.id },
+            success: true,
+          },
+          tx,
+          { strict: true },
+        );
+      });
+    } catch (error) {
+      if (error instanceof TagLimitError) {
+        return error.message === "not-found"
+          ? notFound()
+          : NextResponse.json(
+              { error: `Maximum of ${MAX_TAGS_PER_MONITOR} tags allowed per monitor` },
+              { status: 400 }
+            );
+      }
+      throw error;
+    }
+
+    return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
+  } catch (error) {
+    if (isAuthError(error)) return authFailure(error);
+    console.error("Error patching monitor tags:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

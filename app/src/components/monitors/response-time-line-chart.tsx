@@ -331,7 +331,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
               <Tooltip
                 content={<CustomTooltip />}
                 cursor={{
-                  stroke: "hsl(var(--primary))",
+                  stroke: "var(--primary)",
                   strokeWidth: 1,
                   opacity: 0.3,
                   strokeDasharray: "3 3",

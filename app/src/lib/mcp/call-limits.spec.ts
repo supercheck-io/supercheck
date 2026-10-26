@@ -10,6 +10,9 @@ import {
   MCP_MAX_BATCH,
   MCP_MAX_CONCURRENT,
   MCP_USER_MAX_CONCURRENT,
+  MCP_BODY_READ_TIMEOUT_MS,
+  McpBodyTimeoutError,
+  readMcpBody,
   type McpCallPermit,
 } from "./call-limits";
 
@@ -171,3 +174,23 @@ describe("McpCallPermit.charge", () => {
   });
 });
 
+
+describe("readMcpBody deadline", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("cancels the reader and rejects when the client stalls mid-upload", async () => {
+    jest.useFakeTimers();
+    const cancel = jest.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"jsonrpc":'));
+      },
+      cancel,
+    });
+    const request = { body } as unknown as Request;
+    const result = readMcpBody(request, 1024).catch((error) => error);
+    await jest.advanceTimersByTimeAsync(MCP_BODY_READ_TIMEOUT_MS);
+    expect(await result).toBeInstanceOf(McpBodyTimeoutError);
+    expect(cancel).toHaveBeenCalled();
+  });
+});

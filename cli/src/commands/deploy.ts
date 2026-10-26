@@ -59,6 +59,8 @@ function prepareBodyForApi(type: string, body: Record<string, unknown>): Record<
     // `tests` holds resolved test ids; the API calls them `testIds`.
     if (Array.isArray(payload.tests)) payload.testIds = payload.tests
     delete payload.tests
+    // The API takes null, not "", to clear a priority.
+    if (payload.priority === '') payload.priority = null
   }
 
   if (type === 'notificationProvider') {
@@ -134,6 +136,7 @@ export function assertReferencesResolvable(
 }
 
 const UPGRADE_REQUIREMENTS = 'This Supercheck server does not support managing requirements through the API; upgrade the server or remove `requirements` from the config.'
+const MAX_TAGS_PER_RESOURCE = 10 // server limit for tests (api/tests/[id]/tags) and monitors (api/monitors/[id]/tags)
 const STATUS_PAGE_PROBE_ID = '00000000-0000-4000-8000-000000000000'
 const UPGRADE_MONITOR_TAGS = 'This Supercheck server does not support monitor tag assignment. Upgrade the server or remove `tags` from the monitors.'
 
@@ -150,6 +153,12 @@ export async function preflightDeploy(
 ): Promise<void> {
   const writes = actionable.filter((c) => (c.action === 'create' || c.action === 'update') && c.local)
   const tagged = writes.filter((c) => (c.type === 'test' || c.type === 'monitor') && Array.isArray(c.local!.definition.tags) && (c.local!.definition.tags as unknown[]).length > 0)
+  for (const change of tagged) {
+    const distinct = new Set((change.local!.definition.tags as unknown[]).map((t) => String(t).trim().toLowerCase()))
+    if (distinct.size > MAX_TAGS_PER_RESOURCE) {
+      throw new CLIError(`${change.type}/${change.name}: at most ${MAX_TAGS_PER_RESOURCE} tags are allowed (got ${distinct.size}).`, ExitCode.ConfigError)
+    }
+  }
   if (tagged.length > 0) {
     const declared = actionable.filter((c) => c.type === 'tag' && c.action === 'create').map((c) => c.name.toLowerCase())
     const { data } = await client.get<Array<{ id: string; name: string }>>('/api/tags')
@@ -164,25 +173,34 @@ export async function preflightDeploy(
     }
   }
 
-  const probe = async (path: string, message: string, text = false) => {
+  const probe = async (path: string, message: string) => {
     try {
-      if (text) await (client as unknown as { getText: (p: string) => Promise<unknown> }).getText(path)
-      else await client.get(path)
+      await client.get(path)
     } catch (error) {
       if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(message, ExitCode.ApiError)
       throw error
     }
   }
-  // A dry run writes nothing, so it skips the probes that touch the server beyond reads (export audit, status page PUT).
-  if (!dryRun && writes.some((c) => c.type === 'requirement')) await probe('/api/requirements/export', UPGRADE_REQUIREMENTS, true)
+  // A dry run writes nothing, so it skips the probes that send writes (requirement POST, status page PUT).
+  if (!dryRun && writes.some((c) => c.type === 'requirement')) {
+    // GET /api/requirements exists on older servers too, so probe the create route: a current one rejects `{}` (400) before writing; older ones have no POST (405).
+    try {
+      await client.post('/api/requirements', {})
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(UPGRADE_REQUIREMENTS, ExitCode.ApiError)
+      if (!(error instanceof ApiRequestError && error.statusCode === 400)) throw error
+    }
+  }
   if (!dryRun && writes.some((c) => c.type === 'statusPage')) {
     // Older servers have no PUT on this route (405). A current one rejects an empty body (400) before touching any row.
     try {
       await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
     } catch (error) {
-      if (error instanceof ApiRequestError && (error.statusCode === 404 || error.statusCode === 405)) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
-      // Only the expected 400 proves support; a denied, failed or rate-limited probe would fail the write too, so stop now.
-      if (!(error instanceof ApiRequestError && error.statusCode === 400)) throw error
+      // A 404 with a JSON error body is the route's own "not found" (the route exists); Next's missing-route 404 has no JSON body.
+      const routeMissing = error instanceof ApiRequestError && (error.statusCode === 405 || (error.statusCode === 404 && !(error.responseBody as { error?: unknown } | undefined)?.error))
+      if (routeMissing) throw new CLIError(OLD_SERVER_STATUS_PAGE_MESSAGE, ExitCode.ApiError)
+      // A 400 or the route's own JSON 404 proves support; a denied, failed or rate-limited probe would fail the write too, so stop now.
+      if (!(error instanceof ApiRequestError && (error.statusCode === 400 || error.statusCode === 404))) throw error
     }
   }
   // Needs an existing monitor to probe; without one, the monitor tag step maps the same error right after the create.
@@ -309,6 +327,11 @@ const VERIFY_LIMIT = 5
 export function failedVerifications(verification: Record<string, unknown>[] | undefined): Record<string, unknown>[] {
   return (verification ?? []).filter((v) => v.status !== 'passed' && v.status !== 'skipped')
 }
+export function verificationFailureMessage(unverified: Record<string, unknown>[]): string {
+  const runs = unverified.map((v) => `${String(v.name ?? v.id)} (${v.runId ? String(v.runId) : 'no run'})`).join(', ')
+  return `Deploy succeeded but ${unverified.length} cloud verification run(s) did not pass: ${runs}. Inspect these runs; do not re-trigger blindly.`
+}
+
 export async function verifyDeployedTests(
   client: ReturnType<typeof createAuthenticatedClient>,
   changes: { action: string; type: string; name: string; id?: string; local?: { definition: Record<string, unknown> } }[],
@@ -496,7 +519,7 @@ export const deployCommand = new Command('deploy')
       emit({ status: failed ? 'partial' : 'success', results, succeeded, failed, skipped: ordered.length - results.length, statePath: state.path, ...(verification ? { verification } : {}) })
       const unverified = failedVerifications(verification)
       if (unverified.length > 0 && failed === 0) {
-        throw new CLIError(`Deploy succeeded but ${unverified.length} cloud verification run(s) did not pass. Inspect the run IDs in the output; do not re-trigger blindly.`, ExitCode.GeneralError, { verification })
+        throw new CLIError(verificationFailureMessage(unverified), ExitCode.GeneralError, { verification })
       }
       if (failed > 0) {
         throw new CLIError(

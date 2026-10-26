@@ -499,6 +499,29 @@ describe("sendTrialReminders", () => {
     expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
   });
 
+  it("retries recording a delivered reminder so a transient write failure does not resend it", async () => {
+    const { database, sets } = build({ midway: [entry()] });
+    const update = (database as unknown as { update: jest.Mock }).update;
+    const recorder = update.getMockImplementation()!;
+    update.mockImplementationOnce(() => { throw new Error("db blip"); });
+    update.mockImplementation(recorder);
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 1, ending: 0, ended: 0 });
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(sets).toEqual([{ midwayNotifiedAt: NOW }]);
+  });
+
+  it("keeps going when recording keeps failing after a successful send", async () => {
+    const { database } = build({ midway: [entry({ organizationId: "a" }), entry({ organizationId: "b" })] });
+    const update = (database as unknown as { update: jest.Mock }).update;
+    update.mockImplementation(() => { throw new Error("db down"); });
+    const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const deliver = jest.fn().mockResolvedValue(true);
+    await expect(sendTrialReminders({ now: NOW, database, deliver })).resolves.toEqual({ midway: 2, ending: 0, ended: 0 });
+    expect(update).toHaveBeenCalledTimes(6);
+    error.mockRestore();
+  });
+
   it("sends each kind from its own list and records the matching column", async () => {
     const { database, sets } = build({
       midway: [entry({ organizationId: "a" })],

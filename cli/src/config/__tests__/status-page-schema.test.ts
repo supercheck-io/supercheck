@@ -62,3 +62,14 @@ describe('other schema rules', () => {
     expect(result.error?.issues[0].message).toBe('Jobs do not support tags; remove `tags` from job "Nightly"')
   })
 })
+
+describe('requirement externalUrl', () => {
+  it('accepts http(s) and "" but rejects other schemes like the server does', () => {
+    for (const externalUrl of ['https://jira.example.com/X-1', 'http://example.com', '']) {
+      expect(requirementDefinitionSchema.safeParse({ title: 'R', externalUrl }).success).toBe(true)
+    }
+    for (const externalUrl of ['javascript:alert(1)', 'ftp://example.com', 'mailto:a@b.co']) {
+      expect(requirementDefinitionSchema.safeParse({ title: 'R', externalUrl }).success).toBe(false)
+    }
+  })
+})

@@ -237,17 +237,17 @@ Jobs have no `tags` field; a config containing one fails validation.
 </Accordion>
 <Accordion title="requirements[]" id="requirements">
 
-Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `externalId` or `externalUrl` to `""` to clear it; `priority` cannot be cleared from config.
+Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `priority`, `externalId` or `externalUrl` to `""` to clear it.
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `title` | `string` | Required, 1-500 characters |
 | `description` | `string` | Requirement description |
-| `priority` | `string` | `low`, `medium`, `high` |
+| `priority` | `string` | `low`, `medium`, `high`; `""` clears it |
 | `tags` | `string[]` | Tag names (max 10, 50 characters each). Omit to leave remote tags unchanged; `[]` clears them. Names compare case-insensitively; missing tags are created by the server |
 | `externalId` | `string` | ID in an external tracker (max 255 characters) |
-| `externalUrl` | `string` | URL in an external tracker |
+| `externalUrl` | `string` | `http://` or `https://` URL in an external tracker |
 | `tests` | `string[]` | Linked tests, referenced like a job's `tests` (file path, filename or UUID; max 100). Omit to leave remote links unchanged; `[]` unlinks all |
 
 </Accordion>

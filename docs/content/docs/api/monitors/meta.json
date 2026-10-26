@@ -19,6 +19,7 @@
     "getMonitorLocationStats",
     "getMonitorTags",
     "replaceMonitorTags",
+    "patchMonitorTags",
     "deleteMonitorTag"
   ]
 }

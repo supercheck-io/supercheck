@@ -409,28 +409,28 @@ describe('AI SRE CLI Commands', () => {
     const TEST_ID = '019a0000-0000-7000-8000-000000000001'
     const projectTags = [{ id: 'tag-smoke', name: 'Smoke' }, { id: 'tag-web', name: 'web' }]
 
-    it('test tag add keeps current tags and posts the merged set to the test', async () => {
+    it('test tag add patches only the named tags onto the test', async () => {
       mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : [{ id: 'tag-web', name: 'web' }] }))
-      mockPost.mockResolvedValueOnce({ data: projectTags })
+      mockPatch.mockResolvedValueOnce({ data: projectTags })
       await testCommand.parseAsync(['node', 'test', 'tag', 'add', TEST_ID, 'smoke'])
-      expect(mockPost).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { tagIds: ['tag-web', 'tag-smoke'] })
+      expect(mockPatch).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { add: ['tag-smoke'] })
       expect(mockSuccess).toHaveBeenCalledWith(`Test ${TEST_ID} now has 2 tag(s)`)
       mockGet.mockReset()
     })
 
-    it('test tag remove posts the remaining set', async () => {
+    it('test tag remove patches only the named tags off the test', async () => {
       mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : projectTags }))
-      mockPost.mockResolvedValueOnce({ data: [projectTags[1]] })
+      mockPatch.mockResolvedValueOnce({ data: [projectTags[1]] })
       await testCommand.parseAsync(['node', 'test', 'tag', 'remove', TEST_ID, 'SMOKE'])
-      expect(mockPost).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { tagIds: ['tag-web'] })
+      expect(mockPatch).toHaveBeenCalledWith(`/api/tests/${TEST_ID}/tags`, { remove: ['tag-smoke'] })
       mockGet.mockReset()
     })
 
     it('encodes the test id in the tag path', async () => {
       mockGet.mockImplementation(async (path) => ({ data: path === '/api/tags' ? projectTags : [] }))
-      mockPost.mockResolvedValueOnce({ data: [] })
+      mockPatch.mockResolvedValueOnce({ data: [] })
       await testCommand.parseAsync(['node', 'test', 'tag', 'add', 'a/b', 'smoke'])
-      expect(mockPost).toHaveBeenCalledWith('/api/tests/a%2Fb/tags', { tagIds: ['tag-smoke'] })
+      expect(mockPatch).toHaveBeenCalledWith('/api/tests/a%2Fb/tags', { add: ['tag-smoke'] })
       mockGet.mockReset()
     })
   })

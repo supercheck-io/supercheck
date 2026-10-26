@@ -39,6 +39,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/mcp/tools", () => ({ registerMcpTools: jest.fn() }));
 
 import { DELETE, GET, POST } from "./route";
+import { MCP_BODY_READ_TIMEOUT_MS } from "@/lib/mcp/call-limits";
 
 const init = {
   ctx: { userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "project_viewer" },
@@ -169,6 +170,30 @@ describe("/api/mcp", () => {
     const req = rpc("initialize");
     const big = new Request(req, { headers: { ...Object.fromEntries(req.headers), "content-length": String(2 * 1024 * 1024) } });
     expect((await POST(big)).status).toBe(413);
+  });
+
+  it("times out a stalled body upload with 408 and releases the permit", async () => {
+    jest.useFakeTimers();
+    try {
+      const stalled = () =>
+        new Request("https://app.example.com/api/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+          body: new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("{")) }),
+          duplex: "half",
+        } as RequestInit);
+      // Fill every per-app slot; each must free its permit on timeout or the next call is refused with 429.
+      const pending = Array.from({ length: 4 }, () => POST(stalled()));
+      await jest.advanceTimersByTimeAsync(MCP_BODY_READ_TIMEOUT_MS);
+      for (const res of await Promise.all(pending)) {
+        expect(res.status).toBe(408);
+        expect(await res.json()).toMatchObject({ error: { data: { code: "request_timeout" } } });
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    expect((await POST(rpc("initialize"))).status).toBe(200);
   });
 
   it("serves initialize over JSON for a valid caller", async () => {

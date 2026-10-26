@@ -34,11 +34,16 @@ export type McpCallRefusal = {
 /** Whose call it is: the user, and the connected app (OAuth client) acting for them. */
 export type McpCallSubject = { user: string; client: string };
 
+/** Longest a client may take to finish sending a request body while holding an admission permit. */
+export const MCP_BODY_READ_TIMEOUT_MS = 15_000;
+
 export class McpBodyTooLargeError extends Error {}
+export class McpBodyTimeoutError extends Error {}
 
 /**
  * Reads the request body once, refusing to buffer more than `maxBytes` even when the client
- * sends no Content-Length. Returns the parsed JSON, or `undefined` when it is not JSON (the
+ * sends no Content-Length, or waiting longer than `MCP_BODY_READ_TIMEOUT_MS` in total (the stream is then
+ * cancelled and `McpBodyTimeoutError` thrown). Returns the parsed JSON, or `undefined` when it is not JSON (the
  * transport then rejects the request itself).
  */
 export async function readMcpBody(request: Request, maxBytes: number): Promise<unknown> {
@@ -46,15 +51,23 @@ export async function readMcpBody(request: Request, maxBytes: number): Promise<u
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    received += value.byteLength;
-    if (received > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new McpBodyTooLargeError();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new McpBodyTimeoutError()), MCP_BODY_READ_TIMEOUT_MS);
+  });
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), deadline]);
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) throw new McpBodyTooLargeError();
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));

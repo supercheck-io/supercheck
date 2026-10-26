@@ -949,7 +949,7 @@ const tagNameSchema = z.string().trim().min(1).max(50);
 
 const requirementBodyFields = {
   description: z.string().max(10000).nullable().optional(),
-  priority: z.enum(["low", "medium", "high"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).nullable().optional(),
   tags: z.array(tagNameSchema).max(10).optional(),
   externalId: z.string().max(255).nullable().optional(),
   externalUrl: httpUrlSchema.max(2048).nullable().optional().or(z.literal("")),
@@ -1039,7 +1039,7 @@ export async function updateRequirementWithRelations(
     };
   }
 
-  // Only the fields present in the body are written; `null` clears description/externalId/externalUrl.
+  // Only the fields present in the body are written; `null` clears description/priority/externalId/externalUrl.
   return updateRequirementRecord(
     ctx,
     {

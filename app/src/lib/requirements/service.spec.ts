@@ -158,6 +158,12 @@ describe("requirements service", () => {
     expect(set).not.toHaveProperty("description");
   });
 
+  it("update clears priority with null", async () => {
+    expect(restUpdateRequirementSchema.safeParse({ priority: null }).success).toBe(true);
+    await updateRequirementWithRelations(ctx, R, { priority: null });
+    expect(mockUpdateSet.mock.calls[0][0]).toMatchObject({ priority: null });
+  });
+
   it("maps the tag cap to an invalid result instead of throwing", async () => {
     (syncRequirementTagsByName as jest.Mock).mockRejectedValueOnce(
       Object.assign(new Error("Maximum of 10 tags allowed per requirement"), { name: "TagLimitError" })

@@ -77,7 +77,8 @@ describe('deploy requirements and status pages', () => {
     await deployCommand.parseAsync(['node', 'deploy', '--force'])
 
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
-      'PUT /api/status-pages/00000000-0000-4000-8000-000000000000', // capability probe, before any write
+      'POST /api/requirements', // capability probes, before any write
+      'PUT /api/status-pages/00000000-0000-4000-8000-000000000000',
       'POST /api/tests',
       'POST /api/monitors',
       'POST /api/requirements',
@@ -85,12 +86,18 @@ describe('deploy requirements and status pages', () => {
       'POST /api/status-pages/019a0000-0000-7000-8000-0000000000c1/components',
       'PUT /api/status-pages/019a0000-0000-7000-8000-0000000000c1',
     ])
-    const writes = calls.slice(1)
+    const writes = calls.slice(2)
     expect(writes[2].body).toEqual({ title: 'Login', tags: ['auth'], testIds: [T1] })
     expect(writes[3].body).toEqual({ name: 'Acme' })
     expect(writes[4].body).toEqual({ name: 'Web', monitorIds: [M1], position: 0 })
     expect(writes[5].body).toEqual({ status: 'published' })
     expect(JSON.stringify(calls)).not.toContain('subdomain')
+  })
+
+  it('sends a requirement priority of "" as null so the server clears it', async () => {
+    local = [{ type: 'requirement', name: 'Login', definition: { title: 'Login', priority: '' } }]
+    await deployCommand.parseAsync(['node', 'deploy', '--force'])
+    expect(calls.at(-1)).toEqual({ method: 'POST', path: '/api/requirements', body: { title: 'Login', priority: null } })
   })
 
   it('fails before any write when a status page definition is invalid', async () => {
@@ -103,16 +110,43 @@ describe('deploy requirements and status pages', () => {
     const change = (type: string, action: string, name: string, definition: Record<string, unknown> = {}) => ({ type, action, name, local: { type, name, definition } }) as never
 
     it('fails on unknown test/monitor tags before any write, accepting case-insensitive and same-deploy tags', async () => {
-      const client = { get: async () => ({ data: [{ id: 't1', name: 'Smoke' }] }), getText: async () => ({ data: '' }) } as never
+      const client = { get: async () => ({ data: [{ id: 't1', name: 'Smoke' }] }), post: async () => { throw new ApiRequestError('Invalid request body', 400) } } as never
       await expect(preflightDeploy(client, [change('test', 'create', 'a.pw.ts', { tags: ['smoke', 'New', 'nope'] }), change('tag', 'create', 'new')], [])).rejects.toThrow('tag "nope"')
       await expect(preflightDeploy(client, [change('monitor', 'update', 'm', { tags: ['SMOKE'] }), change('requirement', 'create', 'r', { tags: ['anything'] })], [])).resolves.toBeUndefined()
     })
 
     it('reports an upgrade hint when the server lacks the requirement or monitor tag APIs', async () => {
-      const old = { get: async () => { throw new ApiRequestError('x', 404) }, getText: async () => { throw new ApiRequestError('x', 404) } } as never
+      const old = { get: async () => { throw new ApiRequestError('x', 404) }, post: async () => { throw new ApiRequestError('Method Not Allowed', 405) } } as never
       await expect(preflightDeploy(old, [change('requirement', 'create', 'r')], [])).rejects.toThrow('does not support managing requirements')
       const tagsOk = { get: async (path: string) => { if (path.endsWith('/tags') && path.includes('/monitors/')) throw new ApiRequestError('x', 404); return { data: [{ id: 't', name: 'a' }] } } } as never
       await expect(preflightDeploy(tagsOk, [change('monitor', 'create', 'm', { tags: ['a'] })], ['m1'])).rejects.toThrow('monitor tag assignment')
+    })
+
+    it('probes requirement support with a body the server rejects before writing, never the CSV export', async () => {
+      const post = jest.fn<(path: string, body: unknown) => Promise<never>>(async () => { throw new ApiRequestError('Invalid request body', 400) })
+      const getText = jest.fn()
+      await expect(preflightDeploy({ post, getText } as never, [change('requirement', 'create', 'r')], [])).resolves.toBeUndefined()
+      expect(post).toHaveBeenCalledWith('/api/requirements', {})
+      expect(getText).not.toHaveBeenCalled()
+      const denied = { post: async () => { throw new ApiRequestError('Insufficient permissions', 403) } } as never
+      await expect(preflightDeploy(denied, [change('requirement', 'create', 'r')], [])).rejects.toThrow('Insufficient permissions')
+    })
+
+    it('rejects more than 10 distinct tags on a test or monitor before any write', async () => {
+      const get = jest.fn()
+      const tags = Array.from({ length: 11 }, (_, i) => `t${i}`)
+      await expect(preflightDeploy({ get } as never, [change('test', 'create', 'a.pw.ts', { tags })], [])).rejects.toThrow(/at most 10 tags/)
+      await expect(preflightDeploy({ get } as never, [change('monitor', 'update', 'm', { tags })], [])).rejects.toThrow(/at most 10 tags/)
+      expect(get).not.toHaveBeenCalled()
+      const client = { get: async () => ({ data: [{ id: 't', name: 'a' }] }) } as never
+      await expect(preflightDeploy(client, [change('test', 'create', 'a.pw.ts', { tags: Array.from({ length: 12 }, () => 'A') })], [])).resolves.toBeUndefined()
+    })
+
+    it('treats a JSON not-found 404 from the status page probe as supported, but an HTML route-missing 404 as old', async () => {
+      const notFound = { put: async () => { throw new ApiRequestError('x', 404, { error: 'Status page not found' }) } } as never
+      await expect(preflightDeploy(notFound, [change('statusPage', 'update', 'Acme')], [])).resolves.toBeUndefined()
+      const missingRoute = { put: async () => { throw new ApiRequestError('x', 404) } } as never
+      await expect(preflightDeploy(missingRoute, [change('statusPage', 'update', 'Acme')], [])).rejects.toThrow(OLD_SERVER_STATUS_PAGE_MESSAGE)
     })
 
     it('probes status page write support before any write: 405 means an older server, 400 means supported', async () => {

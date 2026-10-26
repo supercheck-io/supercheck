@@ -323,8 +323,8 @@ supercheck run cancel <run-id>
 | `test update <test-id>` | Update a test | `--title`, `--file`, `--type`, `--description`, `--priority`, `--dry-run` |
 | `test delete <test-id>` | Delete a test with confirmation | `--force` |
 | `test tags <test-id>` | List tags for a test | — |
-| `test tag add <test-id> <tags...>` | Add tags (names or IDs), keeping existing tags | — |
-| `test tag remove <test-id> <tags...>` | Remove tags (names or IDs) | — |
+| `test tag add <test-id> <tags...>` | Add tags (names or IDs), keeping existing tags; applied atomically on the server, so concurrent tag changes are not lost (older servers fall back to read-then-replace) | — |
+| `test tag remove <test-id> <tags...>` | Remove tags (names or IDs); unknown or unassigned tags are ignored | — |
 | `test validate` | Validate a script without creating it | `--file`, `--type` |
 | `test run` | Run tests locally | `--file`, `--all`, `--type` (`browser`, `performance`), `--offline`, `--playwright-config` |
 | `test execute <test-id>` | Execute one deployed test in the cloud; returns the run ID, or waits with `--wait` | `--location <code>`, `--wait`, `--timeout` (300) |
@@ -670,7 +670,7 @@ Includes requirements and status pages. Notification provider changes include ne
 
 Deploy pushes notification provider config and webhook body templates too. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless `--delete` is used. Carry its explicit ID or pull it first to update the existing resource.
 
-`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the output keeps the run ID so you can inspect it instead of triggering again.
+`--verify` executes every browser test that this deploy created or updated once and waits for the result (up to 5 tests, `--verify-timeout <seconds>` each). Performance (k6) tests are deployed but never run implicitly, because they consume load budget; run them with `supercheck test execute` after you have approved the target, load and spend. If a verification run fails, the command exits `1` and the error message lists each failed test with its run ID (also in `--json` under `verification`) so you can inspect it instead of triggering again.
 
 </Accordion>
 <Accordion title="supercheck deploy: requirements, status pages and tags" id="supercheck-deploy-resources">

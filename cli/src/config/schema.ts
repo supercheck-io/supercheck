@@ -172,11 +172,12 @@ export const requirementDefinitionSchema = z.object({
   id: z.string().uuid().optional(),
   title: z.string().trim().min(1).max(500),
   description: z.string().optional(),
-  priority: z.enum(['low', 'medium', 'high']).optional(),
+  /** "" clears it. */
+  priority: z.enum(['low', 'medium', 'high']).or(z.literal('')).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
   externalId: z.string().max(255).optional(),
-  /** "" clears it. */
-  externalUrl: z.string().url().or(z.literal('')).optional(),
+  /** "" clears it. http(s) only, like the server (app/src/lib/requirements/http-url-schema.ts). */
+  externalUrl: z.string().url().refine((v) => /^https?:\/\//i.test(v), 'URL must start with http:// or https://').or(z.literal('')).optional(),
   /** Linked tests, referenced the same way as a job's `tests` (file path, filename or UUID). */
   tests: z.array(z.string()).max(100).optional(),
 }).strict()

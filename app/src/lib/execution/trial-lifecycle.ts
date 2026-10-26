@@ -409,6 +409,25 @@ function reminderCondition(kind: TrialNotificationKind, now: Date) {
   );
 }
 
+const MARK_SENT_ATTEMPTS = 3;
+
+/**
+ * Records a reminder that was already delivered. Marking before the send would lose a warning when
+ * delivery fails, so a failed write is retried briefly instead; if it still fails the next run may
+ * resend once, which is the cheaper error. It never throws, so one write failure cannot stop the batch.
+ */
+async function markSentAfterDelivery(mark: () => PromiseLike<unknown>, organizationId: string, kind: string) {
+  for (let attempt = 1; attempt <= MARK_SENT_ATTEMPTS; attempt++) {
+    try {
+      await mark();
+      return;
+    } catch (error) {
+      if (attempt === MARK_SENT_ATTEMPTS) console.error(`Trial ${kind} reminder for org ${organizationId} was sent but not recorded:`, error);
+      else await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    }
+  }
+}
+
 /**
  * Emails the organization owners at the middle of the trial, in its last day,
  * and after it ends. Each reminder is sent at most once, only to verified
@@ -491,7 +510,7 @@ export async function sendTrialReminders(options: {
         recipients,
       });
       if (!delivered) continue;
-      await markSent(entry.organizationId);
+      await markSentAfterDelivery(() => markSent(entry.organizationId), entry.organizationId, kind);
       result[kind] += 1;
     }
   }
