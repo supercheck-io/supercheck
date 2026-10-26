@@ -230,6 +230,15 @@ describe("MCP tools", () => {
     expect(lastWhere().params).toContain("resolved");
     expect(lastWhere().params).not.toContain("open");
 
+    queue.push([]);
+    await handlers.get("list_incidents")!({ limit: 5, assignee: "unassigned" });
+    expect(lastWhere().sql).toContain("is null");
+
+    queue.push([{ id: id(1), number: 1, title: "t", severity: "sev1", status: "resolved", createdAt: null, resolvedAt: null, assigneeUserId: id(9), commanderUserId: null, acknowledgedAt: new Date(0), acknowledgedByUserId: id(9), mitigatedAt: null }]);
+    const mine = await handlers.get("list_incidents")!({ limit: 5, assignee: "me" });
+    expect(lastWhere().params).toContain(ctx.userId);
+    expect((mine.structuredContent.incidents as Record<string, unknown>[])[0]).toMatchObject({ assigneeUserId: id(9), acknowledgedAt: "1970-01-01T00:00:00.000Z", mitigatedAt: null });
+
     queue.push([{ id: id(1), incidentId: id(4), agentType: "triage", status: "running", startedAt: new Date(0), completedAt: null, durationMs: null, confidenceScore: null }]);
     const inv = await handlers.get("list_investigations")!({ limit: 5, incidentId: id(4) });
     expect(inv.structuredContent.investigations).toHaveLength(1);
@@ -241,6 +250,7 @@ describe("MCP tools", () => {
     expect(schemas.get("list_runs")!.status.safeParse("bogus").success).toBe(false);
     expect(schemas.get("list_runs")!.jobId.safeParse("nope").success).toBe(false);
     expect(schemas.get("list_incidents")!.status.safeParse("bogus").success).toBe(false);
+    expect(schemas.get("list_incidents")!.assignee.safeParse("someone").success).toBe(false);
   });
 
   it("points to CLI commands for requirements, pull and diff", async () => {
