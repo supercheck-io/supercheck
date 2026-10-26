@@ -334,7 +334,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.3.7-canary.16}
+    image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.3.7}
     expose:
       - "3000"
     environment:
@@ -412,7 +412,7 @@ services:
   # Self-hosted production uses the Kubernetes execution backend so Docker
   # Compose and cloud deployments share the same per-run gVisor Job model.
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7-canary.16}
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7}
     pull_policy: always
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
@@ -421,7 +421,7 @@ services:
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
-      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7-canary.16}
+      WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7}
       EXECUTION_NAMESPACE: ${EXECUTION_NAMESPACE:-supercheck-execution}
       KUBECONFIG: /run/secrets/supercheck-kubeconfig
     # GVISOR-006: Read-only root filesystem with writable tmpfs mounts
@@ -482,7 +482,7 @@ services:
   # Run exactly one replica; scale to zero only after pending cycles have drained (see the runbook).
   monitor-control:
     profiles: [monitor-control]
-    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7-canary.16}
+    image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.3.7}
     pull_policy: always
     init: true
     user: "pwuser:pwuser"
