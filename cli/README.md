@@ -1,6 +1,6 @@
 # Supercheck CLI
 
-Manage Supercheck tests, monitors, jobs, and AI SRE from your terminal or CI, and keep them in version control. Works with Supercheck Cloud and self-hosted installations.
+Manage Supercheck tests, monitors, jobs, requirements, status pages, and AI SRE from your terminal or CI, and keep them in version control. Works with Supercheck Cloud and self-hosted installations.
 
 [![npm version](https://img.shields.io/npm/v/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli)
 [![npm downloads](https://img.shields.io/npm/dm/@supercheck/cli)](https://www.npmjs.com/package/@supercheck/cli)
@@ -25,27 +25,21 @@ npm install -g @supercheck/cli
 npx @supercheck/cli --help
 ```
 
-Update with `supercheck upgrade`. Run `supercheck doctor` to check your local setup.
+Run `supercheck doctor` to check your local setup.
 
-### Upgrade the CLI
+### Upgrade
 
-After a release is published, upgrade a global install and check its version with:
+`supercheck upgrade` updates a global install. With npm directly:
 
 ```bash
-npm install -g @supercheck/cli@latest
+npm install -g @supercheck/cli@latest                # global install
+npm install --save-dev @supercheck/cli@latest        # project-local install
 supercheck --version
-```
-
-For a project-local install:
-
-```bash
-npm install --save-dev @supercheck/cli@latest
-npx supercheck --version
 ```
 
 ## Quick start
 
-Sign in through your browser (or create a project-scoped CLI token in **Organization Admin → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
+Sign in through your browser (or create a project-scoped CLI token in **Organization → CLI Tokens** and use `supercheck login --token <cli-token>`), then:
 
 ```bash
 supercheck login     # opens your browser; approve the code shown in the terminal
@@ -100,10 +94,20 @@ export default defineConfig({
     target: 'https://api.example.com/health',
     frequencyMinutes: 5,
   }],
+  requirements: [{
+    title: 'Users can reset their password',
+    priority: 'high',
+    tests: ['_supercheck_/playwright/reset-password.pw.ts'],
+  }],
+  statusPages: [{
+    name: 'Acme Status',
+    status: 'published',
+    components: [{ name: 'API', monitors: ['API Health'] }],
+  }],
 })
 ```
 
-`supercheck schema config --json` describes every supported field, and `supercheck config validate` checks a file. Typed objects reject unknown fields. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, and notification providers.
+`supercheck schema config --json` describes every supported field, and `supercheck config validate` checks a file. Typed objects reject unknown fields. See the [configuration guide](https://supercheck.io/docs/cli/configuration) for test discovery, secrets, requirements, status pages, and notification providers.
 
 ## Deploying safely
 
@@ -112,7 +116,8 @@ export default defineConfig({
 - **Nothing is deleted by default.** Resources absent from your config are left alone. Use `diff --delete` to preview and `deploy --delete` to prune. This also removes resources created outside the config.
 - **Ownership is explicit.** Names alone never establish ownership. If a same-named resource exists remotely but is not tracked, deploy stops: `pull` it or add its `id`.
 - **State.** Deploy records server-assigned IDs in `supercheck.state.json`, scoped to API origin, organization, and project. Commit it and share it with CI so later deploys manage the same resources. The transient `supercheck.state.json.lock` guards concurrent deploys on one filesystem; do not commit it.
-- **Dependencies.** New tests are created before the jobs and synthetic monitors that reference them.
+- **Checked before writing.** Test and monitor references, tags, server limits, and server support for each resource type are checked before the first write, so a typo cannot leave a half-applied deploy.
+- **Dependencies.** New tests are created before the jobs, synthetic monitors, requirements, and status pages that reference them.
 - **Renames.** Renaming an ID-less non-test resource creates a new one; carry its `id` or `pull` first to update in place.
 - **Secrets.** Secret variable values are never written to config. A secret variable with no value is not sent, so an unset environment variable cannot overwrite a stored secret.
 
@@ -193,6 +198,8 @@ The CLI ships offline, versioned workflow guidance. `supercheck skills` prints a
 
 ## Compatibility
 
+- Requirements, status page deploys, and monitor tags need a Supercheck server with those APIs (Supercheck Cloud, or a self-hosted release that includes them). On an older server the CLI stops with an upgrade hint before writing anything.
+- Creating requirements by uploading a document (PDF, DOCX, Markdown, TXT) with AI is available in the dashboard only.
 - AI SRE requires a configured AI provider on the server. Live connectors need explicit `--live-connectors` consent and permissions.
 - `sre status` needs a Supercheck release that provides the investigation-status endpoint.
 - Firefox and WebKit local execution are supported by configuration but have not yet been verified in release testing.
