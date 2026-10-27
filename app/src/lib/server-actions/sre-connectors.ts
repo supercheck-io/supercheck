@@ -47,6 +47,11 @@ import {
   checkSreConnectorSearchRateLimit,
   checkSreConnectorValidationRateLimit,
 } from "@/lib/sre/sre-rate-limiter";
+import {
+  FIXED_ENDPOINT_PROVIDER_TYPES,
+  flatCredentialFields,
+  providerEndpointRequirementError,
+} from "@/lib/sre/connectors/providers/provider-credentials";
 import { db } from "@/utils/db";
 
 const credentialTypes = [
@@ -388,6 +393,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
       "aws_session_token",
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
+    fields: flatCredentialFields(value),
   };
 }
 
@@ -920,7 +926,13 @@ export async function createSreConnector(
       };
     }
 
-    const endpointUrl = normalizeEndpointUrl(parsed.data.endpointUrl);
+    const isFixedEndpointProvider = (
+      FIXED_ENDPOINT_PROVIDER_TYPES as readonly string[]
+    ).includes(parsed.data.type);
+    // Fixed-host providers never read an endpoint; drop any stale value.
+    const endpointUrl = isFixedEndpointProvider
+      ? null
+      : normalizeEndpointUrl(parsed.data.endpointUrl);
     if (isSetupOnlyConnectorType(parsed.data.type)) {
       return {
         success: false,
@@ -928,10 +940,12 @@ export async function createSreConnector(
       };
     }
 
-    const credentialError = connectorCredentialRequirementError(
-      parsed.data.type,
-      parsed.data.credential?.value as ConnectorCredentialValue | undefined,
-    );
+    const credentialError =
+      providerEndpointRequirementError(parsed.data.type, endpointUrl) ??
+      connectorCredentialRequirementError(
+        parsed.data.type,
+        parsed.data.credential?.value as ConnectorCredentialValue | undefined,
+      );
     if (credentialError) {
       return { success: false, error: credentialError };
     }

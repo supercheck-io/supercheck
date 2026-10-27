@@ -35,6 +35,11 @@ import {
 import { TableBadge } from "@/components/ui/table-badge";
 import { SRE_CONNECTOR_CATALOG } from "./connector-catalog";
 import { getConnectorQueryGuide } from "./connector-query-guides";
+import {
+  buildProviderCredentialValue,
+  getProviderCredentialFields,
+} from "./provider-credential-fields";
+import { ProviderCredentialInputs } from "./provider-credential-inputs";
 
 type ConnectorFormDialogProps = {
   open: boolean;
@@ -98,6 +103,8 @@ export function ConnectorFormDialog({
   const [awsSessionToken, setAwsSessionToken] = useState("");
   const [datadogApiKey, setDatadogApiKey] = useState("");
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
+  const [providerValues, setProviderValues] = useState<Record<string, string>>({});
+  const providerFields = getProviderCredentialFields(type);
   const isCloudWatch = type === "aws_cloudwatch";
   const isDatadog = type === "datadog";
   const isApiKeyOnly = apiKeyOnlyConnectorTypes.has(type);
@@ -142,6 +149,17 @@ export function ConnectorFormDialog({
       return;
     }
 
+    const providerCredential = providerFields
+      ? buildProviderCredentialValue(providerFields, providerValues)
+      : null;
+    if (providerCredential?.error) {
+      const anyValue = Object.values(providerValues).some((v) => v.trim());
+      if (anyValue) {
+        toast.error(providerCredential.error);
+        return;
+      }
+    }
+
     startTransition(async () => {
       const result = await createSreConnector({
         name,
@@ -154,7 +172,11 @@ export function ConnectorFormDialog({
         defaultTimeWindowMinutes: 60,
         outputLimits: { maxRows: 100, maxBytes: 1_048_576, maxSeconds: 10 },
         credential:
-          isCloudWatch && trimmedAwsAccessKeyId && trimmedAwsSecretAccessKey
+          providerCredential?.value
+            ? { credentialType: "api_key", value: providerCredential.value }
+            : providerFields
+              ? undefined
+              : isCloudWatch && trimmedAwsAccessKeyId && trimmedAwsSecretAccessKey
             ? {
                 credentialType: "api_key",
                 value: {
@@ -198,6 +220,7 @@ export function ConnectorFormDialog({
       setAwsSessionToken("");
       setDatadogApiKey("");
       setDatadogApplicationKey("");
+      setProviderValues({});
       onOpenChange(false);
     });
   };
@@ -240,6 +263,10 @@ export function ConnectorFormDialog({
                       onValueChange={(value) => {
                         const nextType = value as ConnectorType;
                         setType(nextType);
+                        setProviderValues({});
+                        if (getProviderCredentialFields(nextType)) {
+                          setEndpointUrl("");
+                        }
                         if (apiKeyOnlyConnectorTypes.has(nextType)) {
                           setCredentialType("api_key");
                         }
@@ -393,7 +420,8 @@ export function ConnectorFormDialog({
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                  {!providerFields && (
+<div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
                     <Label htmlFor="connector-endpoint">Endpoint URL</Label>
                     <Input
                       id="connector-endpoint"
@@ -428,8 +456,26 @@ export function ConnectorFormDialog({
                         </div>
                       )}
                   </div>
+)}
 
-                  {isCloudWatch ? (
+{providerFields ? (
+                    <>
+                      <ProviderCredentialInputs
+                        idPrefix="connector-credential"
+                        fields={providerFields}
+                        values={providerValues}
+                        onChange={(key, value) =>
+                          setProviderValues((current) => ({
+                            ...current,
+                            [key]: value,
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground sm:col-span-2">
+                        {queryGuide.credentialHint}
+                      </p>
+                    </>
+                  ) : isCloudWatch ? (
                     <>
                       <div className="flex min-w-0 flex-col gap-1.5">
                         <Label htmlFor="aws-access-key-id">

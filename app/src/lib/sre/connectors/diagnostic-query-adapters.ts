@@ -1,4 +1,8 @@
 import type { DiagnosticQueryType } from "./diagnostic-query";
+import {
+  OBSERVABILITY_QUERY_TYPES,
+  observabilityDiagnosticRecipes,
+} from "./providers/diagnostic-recipes";
 
 export type DiagnosticQueryAdapterRecipe = {
   id: string;
@@ -30,6 +34,11 @@ const CONNECTOR_QUERY_TYPES: Record<string, DiagnosticQueryType[]> = {
   postgresql: ["sql"],
   mysql: ["sql"],
   clickhouse: ["sql"],
+  jaeger: [...OBSERVABILITY_QUERY_TYPES.jaeger],
+  newrelic: [...OBSERVABILITY_QUERY_TYPES.newrelic],
+  splunk: [...OBSERVABILITY_QUERY_TYPES.splunk],
+  gcp_monitoring: [...OBSERVABILITY_QUERY_TYPES.gcp_monitoring],
+  azure_monitor: [...OBSERVABILITY_QUERY_TYPES.azure_monitor],
 };
 
 export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
@@ -158,6 +167,7 @@ export const diagnosticQueryAdapterRecipes: DiagnosticQueryAdapterRecipe[] = [
     allowlist: { service: [], pattern: ["error", "exception", "timeout"] },
     limits: { maxRows: 100, maxBytes: 524_288, maxSeconds: 10 },
   },
+  ...observabilityDiagnosticRecipes,
 ];
 
 export function getSupportedDiagnosticQueryTypes(connectorType: string): DiagnosticQueryType[] | null {
