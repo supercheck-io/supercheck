@@ -2,13 +2,18 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { TableBadge } from "@/components/ui/table-badge";
+import { ListPagination } from "@/components/admin/list-pagination";
+import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -52,16 +57,13 @@ import {
   Loader2,
   CheckCircle,
   Ban,
-  Shield,
   Plus,
   Copy,
   Eye,
   EyeOff,
   Check,
   CalendarIcon,
-  Terminal,
   Clock,
-  User,
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -90,6 +92,18 @@ interface CreatedToken {
 
 export function CliTokensTable() {
   const [tokens, setTokens] = useState<CliToken[]>([]);
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [page, setPage] = useState({ index: 0, size: pageSize });
+  // Auto-fit changes the size outside the table, so carry the page across here.
+  if (page.size !== pageSize) {
+    setPage({
+      index: repaginate(page.index, page.size, pageSize, tokens.length),
+      size: pageSize,
+    });
+  }
+  const pageCount = Math.max(1, Math.ceil(tokens.length / pageSize));
+  const pageIndex = Math.min(page.index, pageCount - 1);
+  const pageTokens = tokens.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -382,19 +396,20 @@ export function CliTokensTable() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* CLI Tokens Card */}
         <div className="space-y-4">
           <div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <h2 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
-                  <Terminal className="h-5 w-5 text-muted-foreground" />
-                  CLI Tokens
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Manage API tokens for CLI and CI/CD access
-                </p>
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Manage API tokens for CLI and CI/CD access.{" "}
+                <a
+                  href="https://supercheck.io/docs/cli/installation"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  CLI documentation
+                </a>
+              </p>
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
                   <Button>
@@ -636,80 +651,77 @@ export function CliTokensTable() {
                 icon={<Key className="h-10 w-10" />}
               />
             ) : (
-              <div
-                className={cn(
-                  "space-y-2",
-                  tokens.length > 4 && "max-h-[300px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
-                )}
-              >
-                {tokens.map((token) => {
-                  const expiryStatus = getExpiryStatus(token.expiresAt);
-                  const isExpired = expiryStatus?.status === "expired";
-                  return (
-                    <div
-                      key={token.id}
-                      className={cn(
-                        "group flex items-center justify-between p-4 border rounded-lg transition-colors",
-                        isExpired
-                          ? "bg-red-500/5 border-red-500/20"
-                          : "hover:bg-muted/50"
-                      )}
-                    >
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <Key className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <span className="font-medium text-sm">
-                            {token.name}
-                          </span>
-                          <code className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
-                            {token.start}
-                          </code>
-                          {token.enabled && !isExpired && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              Active
-                            </span>
-                          )}
-                          {!token.enabled && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
-                              Disabled
-                            </span>
-                          )}
-                          {expiryStatus && (
-                            <span
-                              className={cn(
-                                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
-                                expiryStatus.className
-                              )}
-                            >
-                              {expiryStatus.text}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-x-4 gap-y-1 text-xs text-muted-foreground flex-wrap ml-[26px]">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {format(new Date(token.createdAt), "MMM d, yyyy")}
-                          </span>
-                          <span>
-                            {token.expiresAt
-                              ? `Expires ${format(new Date(token.expiresAt), "MMM d, yyyy")}`
-                              : "No expiry"}
-                          </span>
-                          {token.createdByName && (
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {token.createdByName}
-                            </span>
-                          )}
-                          {token.lastRequest && (
-                            <span>
-                              Last used {format(new Date(token.lastRequest), "MMM d, yyyy")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 ml-4 shrink-0">
+              <>
+                <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
+                  <Table className="w-full min-w-[900px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Expires</TableHead>
+                        <TableHead>Created by</TableHead>
+                        <TableHead>Last used</TableHead>
+                        <TableHead className="w-[100px]" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody ref={bodyRef}>
+                      {pageTokens.map((token) => {
+                        const expiryStatus = getExpiryStatus(token.expiresAt);
+                        const isExpired = expiryStatus?.status === "expired";
+                        return (
+                          <TableRow key={token.id}>
+                            <TableCell className="py-2.5">
+                              <div className="flex items-center gap-2">
+                                <Key className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="font-medium">{token.name}</span>
+                                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                                  {token.start}
+                                </code>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {token.enabled && !isExpired && (
+                                  <TableBadge tone="success" compact>
+                                    Active
+                                  </TableBadge>
+                                )}
+                                {!token.enabled && (
+                                  <TableBadge tone="slate" compact>
+                                    Disabled
+                                  </TableBadge>
+                                )}
+                                {expiryStatus && (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                                      expiryStatus.className
+                                    )}
+                                  >
+                                    {expiryStatus.text}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground">
+                              {format(new Date(token.createdAt), "MMM d, yyyy")}
+                            </TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground">
+                              {token.expiresAt
+                                ? format(new Date(token.expiresAt), "MMM d, yyyy")
+                                : "No expiry"}
+                            </TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground">
+                              {token.createdByName || "-"}
+                            </TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground">
+                              {token.lastRequest
+                                ? format(new Date(token.lastRequest), "MMM d, yyyy")
+                                : "Never"}
+                            </TableCell>
+                            <TableCell className="py-2.5">
+                              <div className="flex items-center justify-end gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -764,92 +776,26 @@ export function CliTokensTable() {
                             Delete token
                           </TooltipContent>
                         </Tooltip>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ListPagination
+                  total={tokens.length}
+                  itemName="tokens"
+                  pageIndex={pageIndex}
+                  pageSize={pageSize}
+                  pageCount={pageCount}
+                  onPageChange={(index) => setPage({ index, size: pageSize })}
+                  onPageSizeChange={setPageSize}
+                />
+              </>
             )}
           </div>
-        </div>
-
-        {/* Usage & Security Info */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-muted-foreground" />
-                CLI Usage
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="space-y-1.5">
-                {[
-                  "npm install -g @supercheck/cli",
-                  "supercheck login --token <your-token>",
-                  "supercheck whoami",
-                ].map((command, index) => (
-                  <div
-                    key={index}
-                    className="group flex items-center justify-between bg-background rounded-md px-3 py-2 border"
-                  >
-                    <code className="text-xs font-mono text-muted-foreground">
-                      {command}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                      aria-label={`Copy command: ${command}`}
-                      onClick={() => {
-                        navigator.clipboard.writeText(command);
-                        toast.success("Command copied to clipboard");
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                Security Best Practices
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-xs text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
-                  Use environment variables in CI/CD (never hardcode tokens)
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
-                  Set expiration dates for temporary access
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
-                  Rotate tokens regularly and revoke unused ones
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="h-1 w-1 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
-                  Max 20 CLI tokens per project
-                </li>
-              </ul>
-              <a
-                href="https://supercheck.io/docs/cli/installation"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-8"
-              >
-                View CLI documentation →
-              </a>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Delete Confirmation Dialog */}

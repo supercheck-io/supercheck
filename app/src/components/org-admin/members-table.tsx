@@ -70,7 +70,6 @@ export function MembersTable({
       meta={{
         globalFilterColumns: ["name", "email"],
         globalFilterFn: memberGlobalFilterFn,
-        initialPageSize: 8,
       }}
     />
   );

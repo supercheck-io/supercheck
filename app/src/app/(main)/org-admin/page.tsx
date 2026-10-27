@@ -9,9 +9,10 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/shared/page-header";
+import { SectionTabs, type SectionTab } from "@/components/shared/section-tabs";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -33,7 +34,7 @@ import {
   DollarSign,
   UserSearch,
   Terminal,
-  EllipsisVertical,
+  Pencil,
   RadioTower,
   Cable,
   SquareLibrary,
@@ -243,6 +244,20 @@ function OrgAdminDashboardContent() {
             "private-agents",
           ],
     [isCloudHosted],
+  );
+
+  const tabs = useMemo<SectionTab[]>(
+    () =>
+      [
+        { value: "projects", label: "Projects", icon: FolderOpen },
+        { value: "members", label: "Members", icon: Users },
+        { value: "cli-tokens", label: "CLI Tokens", icon: Terminal },
+        { value: "audit", label: "Audit", icon: UserSearch },
+        { value: "integrations", label: "Integrations", icon: Cable },
+        { value: "private-agents", label: "Private Agents", icon: RadioTower },
+        { value: "subscription", label: "Subscription", icon: DollarSign },
+      ].filter((tab) => allowedTabs.includes(tab.value)),
+    [allowedTabs],
   );
 
   const requestedTab = searchParams.get("tab");
@@ -803,453 +818,388 @@ function OrgAdminDashboardContent() {
   );
 
   return (
-    <div className="overflow-hidden">
-      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
-        <CardContent className="p-6 overflow-hidden">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Organization
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                Manage projects, members, tokens, Private Agents, and audit
-                data.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <TableBadge tone="info" className="max-w-[320px]">
-                <Building2 className="mr-1.5 h-3.5 w-3.5" />
-                <span className="truncate">{orgDetails.name}</span>
-              </TableBadge>
+    <div className="mt-6 flex h-full w-full max-w-full flex-col space-y-2 overflow-x-hidden p-2">
+      <Tabs
+        value={activeTab}
+        className="w-full"
+        onValueChange={handleTabChange}
+      >
+        <PageHeader
+          title="Organization"
+          className="-mt-2"
+          description={
+            <span className="inline-flex max-w-full items-center gap-1">
+              <span className="truncate">{orgDetails.name}</span>
               {userCanRenameOrg && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-6 w-6 shrink-0"
                   onClick={() => {
                     setNewOrgName(orgDetails.name);
                     setShowRenameOrgDialog(true);
                   }}
                   title="Rename organization"
+                  aria-label="Rename organization"
                 >
-                  <EllipsisVertical className="h-3.5 w-3.5" />
+                  <Pencil className="h-3.5 w-3.5" />
                 </Button>
               )}
-            </div>
-          </div>
+            </span>
+          }
+          actions={
+            <SectionTabs
+              tabs={tabs}
+              value={activeTab}
+              onValueChange={handleTabChange}
+              collapseBelow="xl"
+            />
+          }
+        />
 
-          <Tabs
-            value={activeTab}
-            className="space-y-4"
-            onValueChange={handleTabChange}
+        <TabsContent value="projects" className="mt-0 space-y-4 pt-4">
+          {projectsLoading && projects.length === 0 ? (
+            <TabLoadingSpinner message="Loading projects..." />
+          ) : (
+            <ProjectsTable
+              projects={projects}
+              onCreateProject={() => setShowCreateProjectDialog(true)}
+              onEditProject={handleEditProject}
+              onManageLocations={handleManageLocations}
+              canCreateProjects={canCreateProjects(
+                normalizeRole(currentUserRole),
+              )}
+              canManageProject={canManageProject(
+                normalizeRole(currentUserRole),
+              )}
+            />
+          )}
+
+          {/* Create Project Dialog */}
+          <Dialog
+            open={showCreateProjectDialog}
+            onOpenChange={setShowCreateProjectDialog}
           >
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 lg:w-auto">
-              <TabsTrigger value="projects" className="flex items-center gap-2">
-                <FolderOpen className="h-4 w-4" />
-                <span className="hidden sm:inline">Projects</span>
-              </TabsTrigger>
-              <TabsTrigger value="members" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                <span className="hidden sm:inline">Members</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="cli-tokens"
-                className="flex items-center gap-2"
-              >
-                <Terminal className="h-4 w-4" />
-                <span className="hidden sm:inline">CLI Tokens</span>
-              </TabsTrigger>
-              <TabsTrigger value="audit" className="flex items-center gap-2">
-                <UserSearch className="h-4 w-4" />
-                <span className="hidden sm:inline">Audit</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="integrations"
-                className="flex items-center gap-2"
-              >
-                <Cable className="h-4 w-4" />
-                <span className="hidden sm:inline">Integrations</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="private-agents"
-                className="flex items-center gap-2"
-              >
-                <RadioTower className="h-4 w-4" />
-                <span className="hidden sm:inline">Private Agents</span>
-              </TabsTrigger>
-              {isCloudHosted && (
-                <TabsTrigger
-                  value="subscription"
-                  className="flex items-center gap-2"
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span className="hidden sm:inline">Subscription</span>
-                </TabsTrigger>
-              )}
-            </TabsList>
-
-            <TabsContent value="projects" className="space-y-4">
-              <TabSectionHeader
-                icon={<FolderOpen />}
-                title="Projects"
-                description="Organize tests, monitors, and runs into projects."
-              />
-              {projectsLoading && projects.length === 0 ? (
-                <TabLoadingSpinner message="Loading projects..." />
-              ) : (
-                <ProjectsTable
-                  projects={projects}
-                  onCreateProject={() => setShowCreateProjectDialog(true)}
-                  onEditProject={handleEditProject}
-                  onManageLocations={handleManageLocations}
-                  canCreateProjects={canCreateProjects(
-                    normalizeRole(currentUserRole),
-                  )}
-                  canManageProject={canManageProject(
-                    normalizeRole(currentUserRole),
-                  )}
-                />
-              )}
-
-              {/* Create Project Dialog */}
-              <Dialog
-                open={showCreateProjectDialog}
-                onOpenChange={setShowCreateProjectDialog}
-              >
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <FolderOpen className="h-5 w-5" />
-                      Create New Project
-                    </DialogTitle>
-                    <DialogDescription>
-                      Create a new project in your organization. Both name and
-                      description are required.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <FormInput
-                      id="project-name"
-                      label="Name"
-                      value={newProject.name}
-                      onChange={(e) =>
-                        setNewProject({ ...newProject, name: e.target.value })
-                      }
-                      placeholder="Enter project name"
-                      maxLength={20}
-                      showCharacterCount={true}
-                    />
-                    <FormInput
-                      id="project-description"
-                      label="Description"
-                      value={newProject.description}
-                      onChange={(e) =>
-                        setNewProject({
-                          ...newProject,
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder="Enter project description"
-                      maxLength={100}
-                      showCharacterCount={true}
-                    />
-                  </div>
-                  <DialogFooter className="gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowCreateProjectDialog(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => handleCreateProject()}
-                      disabled={
-                        creatingProject ||
-                        !newProject.name.trim() ||
-                        !newProject.description.trim()
-                      }
-                    >
-                      {creatingProject ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        "Create Project"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              {/* Edit Project Dialog */}
-              <Dialog
-                open={showEditProjectDialog}
-                onOpenChange={setShowEditProjectDialog}
-              >
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <FolderOpen className="h-5 w-5" />
-                      Edit Project
-                    </DialogTitle>
-                    <DialogDescription>
-                      Update your project details. Both name and description are
-                      required.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <FormInput
-                      id="edit-project-name"
-                      label="Name"
-                      value={newProject.name}
-                      onChange={(e) =>
-                        setNewProject({ ...newProject, name: e.target.value })
-                      }
-                      placeholder="Enter project name"
-                      maxLength={20}
-                      showCharacterCount={true}
-                    />
-                    <FormInput
-                      id="edit-project-description"
-                      label="Description"
-                      value={newProject.description}
-                      onChange={(e) =>
-                        setNewProject({
-                          ...newProject,
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder="Enter project description"
-                      maxLength={100}
-                      showCharacterCount={true}
-                    />
-                  </div>
-                  <DialogFooter className="gap-2 sm:gap-0">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowEditProjectDialog(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleUpdateProject}
-                      disabled={
-                        updatingProject ||
-                        !newProject.name.trim() ||
-                        !newProject.description.trim()
-                      }
-                    >
-                      {updatingProject ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Updating...
-                        </>
-                      ) : (
-                        "Update Project"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              {/* Project Location Restrictions Dialog */}
-              {locationProject && (
-                <ProjectLocationsDialog
-                  open={!!locationProject}
-                  onOpenChange={(open) => {
-                    if (!open) setLocationProject(null);
-                  }}
-                  projectId={locationProject.id}
-                  projectName={locationProject.name}
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="members" className="space-y-4">
-              <TabSectionHeader
-                icon={<Users />}
-                title="Members"
-                description="Invite people and manage their roles and project access."
-              />
-              {membersLoading ? (
-                <TabLoadingSpinner message="Loading members..." />
-              ) : (
-                <MembersTable
-                  members={[
-                    ...(members || []).map((m) => ({
-                      ...m,
-                      type: "member" as const,
-                      role: m.role as
-                        | "org_owner"
-                        | "org_admin"
-                        | "project_admin"
-                        | "project_editor"
-                        | "project_viewer",
-                    })),
-                    ...(invitations || [])
-                      .filter(
-                        (i) => i.status === "pending" || i.status === "expired",
-                      )
-                      .map((i) => ({
-                        ...i,
-                        type: "invitation" as const,
-                        status: i.status as "pending" | "expired",
-                      })),
-                  ]}
-                  onMemberUpdate={() => {
-                    invalidateMembers();
-                    invalidateStats();
-                    // Role and project-access changes move the per-project member counts.
-                    invalidateProjects();
-                  }}
-                  onInviteMember={() => setShowInviteDialog(true)}
-                  canInviteMembers={canInviteMembers(
-                    normalizeRole(currentUserRole),
-                  )}
-                  projects={projects}
-                />
-              )}
-
-              {/* Member Access Dialog - Invite Mode */}
-              <MemberAccessDialog
-                open={showInviteDialog}
-                onOpenChange={setShowInviteDialog}
-                mode="invite"
-                projects={projects}
-                onSubmit={async (memberData) => {
-                  setInviting(true);
-                  try {
-                    const response = await fetch(
-                      "/api/organizations/members/invite",
-                      {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          email: memberData.email,
-                          role: memberData.role,
-                          selectedProjects: memberData.selectedProjects,
-                        }),
-                      },
-                    );
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                      invalidateMembers();
-                    } else {
-                      throw new Error(
-                        data.error || "Failed to send invitation",
-                      );
-                    }
-                  } finally {
-                    setInviting(false);
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FolderOpen className="h-5 w-5" />
+                  Create New Project
+                </DialogTitle>
+                <DialogDescription>
+                  Create a new project in your organization. Both name and
+                  description are required.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <FormInput
+                  id="project-name"
+                  label="Name"
+                  value={newProject.name}
+                  onChange={(e) =>
+                    setNewProject({ ...newProject, name: e.target.value })
                   }
-                }}
-                isLoading={inviting}
-                isCloudMode={isCloudHosted}
-              />
-            </TabsContent>
+                  placeholder="Enter project name"
+                  maxLength={20}
+                  showCharacterCount={true}
+                />
+                <FormInput
+                  id="project-description"
+                  label="Description"
+                  value={newProject.description}
+                  onChange={(e) =>
+                    setNewProject({
+                      ...newProject,
+                      description: e.target.value,
+                    })
+                  }
+                  placeholder="Enter project description"
+                  maxLength={100}
+                  showCharacterCount={true}
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateProjectDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleCreateProject()}
+                  disabled={
+                    creatingProject ||
+                    !newProject.name.trim() ||
+                    !newProject.description.trim()
+                  }
+                >
+                  {creatingProject ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Project"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-            <TabsContent value="cli-tokens" className="space-y-4">
-              <CliTokensTable />
-            </TabsContent>
+          {/* Edit Project Dialog */}
+          <Dialog
+            open={showEditProjectDialog}
+            onOpenChange={setShowEditProjectDialog}
+          >
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FolderOpen className="h-5 w-5" />
+                  Edit Project
+                </DialogTitle>
+                <DialogDescription>
+                  Update your project details. Both name and description are
+                  required.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <FormInput
+                  id="edit-project-name"
+                  label="Name"
+                  value={newProject.name}
+                  onChange={(e) =>
+                    setNewProject({ ...newProject, name: e.target.value })
+                  }
+                  placeholder="Enter project name"
+                  maxLength={20}
+                  showCharacterCount={true}
+                />
+                <FormInput
+                  id="edit-project-description"
+                  label="Description"
+                  value={newProject.description}
+                  onChange={(e) =>
+                    setNewProject({
+                      ...newProject,
+                      description: e.target.value,
+                    })
+                  }
+                  placeholder="Enter project description"
+                  maxLength={100}
+                  showCharacterCount={true}
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditProjectDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateProject}
+                  disabled={
+                    updatingProject ||
+                    !newProject.name.trim() ||
+                    !newProject.description.trim()
+                  }
+                >
+                  {updatingProject ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Project"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-            <TabsContent value="integrations" className="space-y-4">
-              <TabSectionHeader
-                icon={<Cable />}
-                title="Integrations"
-                description="Connect read-only evidence sources Copilot can use during investigations."
-              />
-              {integrationsLoading && !integrationsLoaded ? (
-                <TabLoadingSpinner message="Loading integrations..." />
+          {/* Project Location Restrictions Dialog */}
+          {locationProject && (
+            <ProjectLocationsDialog
+              open={!!locationProject}
+              onOpenChange={(open) => {
+                if (!open) setLocationProject(null);
+              }}
+              projectId={locationProject.id}
+              projectName={locationProject.name}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="members" className="mt-0 space-y-4 pt-4">
+          {membersLoading ? (
+            <TabLoadingSpinner message="Loading members..." />
+          ) : (
+            <MembersTable
+              members={[
+                ...(members || []).map((m) => ({
+                  ...m,
+                  type: "member" as const,
+                  role: m.role as
+                    | "org_owner"
+                    | "org_admin"
+                    | "project_admin"
+                    | "project_editor"
+                    | "project_viewer",
+                })),
+                ...(invitations || [])
+                  .filter(
+                    (i) => i.status === "pending" || i.status === "expired",
+                  )
+                  .map((i) => ({
+                    ...i,
+                    type: "invitation" as const,
+                    status: i.status as "pending" | "expired",
+                  })),
+              ]}
+              onMemberUpdate={() => {
+                invalidateMembers();
+                invalidateStats();
+                // Role and project-access changes move the per-project member counts.
+                invalidateProjects();
+              }}
+              onInviteMember={() => setShowInviteDialog(true)}
+              canInviteMembers={canInviteMembers(
+                normalizeRole(currentUserRole),
+              )}
+              projects={projects}
+            />
+          )}
+
+          {/* Member Access Dialog - Invite Mode */}
+          <MemberAccessDialog
+            open={showInviteDialog}
+            onOpenChange={setShowInviteDialog}
+            mode="invite"
+            projects={projects}
+            onSubmit={async (memberData) => {
+              setInviting(true);
+              try {
+                const response = await fetch(
+                  "/api/organizations/members/invite",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      email: memberData.email,
+                      role: memberData.role,
+                      selectedProjects: memberData.selectedProjects,
+                    }),
+                  },
+                );
+
+                const data = await response.json();
+
+                if (data.success) {
+                  invalidateMembers();
+                } else {
+                  throw new Error(data.error || "Failed to send invitation");
+                }
+              } finally {
+                setInviting(false);
+              }
+            }}
+            isLoading={inviting}
+            isCloudMode={isCloudHosted}
+          />
+        </TabsContent>
+
+        <TabsContent value="cli-tokens" className="mt-0 space-y-4 pt-4">
+          <CliTokensTable />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="mt-0 space-y-4 pt-4">
+          <TabSectionHeader
+            icon={<Cable />}
+            title="Integrations"
+            description="Connect read-only evidence sources Copilot can use during investigations."
+          />
+          {integrationsLoading && !integrationsLoaded ? (
+            <TabLoadingSpinner message="Loading integrations..." />
+          ) : (
+            <ConnectorAdminView
+              initialConnectors={connectors}
+              setupOptions={connectorSetupOptions}
+              initialBindings={integrationBindings}
+              bindingSetupOptions={integrationBindingSetupOptions}
+              loadError={integrationsLoadError}
+              setupStatus={sreSetupStatus}
+              onSetupChanged={handleSreSetupChanged}
+            />
+          )}
+          <Collapsible
+            open={savedQueriesOpen}
+            onOpenChange={handleSavedQueriesOpenChange}
+            className="space-y-3"
+          >
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto w-full justify-between gap-3 whitespace-normal rounded-lg border p-4 text-left"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  Saved queries
+                  <TableBadge compact>Optional</TableBadge>
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform ${savedQueriesOpen ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Reuse read-only queries for common investigation questions.
+                Investigations work without them.
+              </p>
+              {!diagnosticLoaded ? (
+                <TabLoadingSpinner message="Loading saved queries..." />
               ) : (
-                <ConnectorAdminView
-                  initialConnectors={connectors}
-                  setupOptions={connectorSetupOptions}
-                  initialBindings={integrationBindings}
-                  bindingSetupOptions={integrationBindingSetupOptions}
-                  loadError={integrationsLoadError}
+                <DiagnosticQueriesAdminView
+                  initialQueries={diagnosticQueries}
+                  setupOptions={diagnosticSetupOptions}
+                  loadError={diagnosticLoadError}
                   setupStatus={sreSetupStatus}
                   onSetupChanged={handleSreSetupChanged}
                 />
               )}
-              <Collapsible
-                open={savedQueriesOpen}
-                onOpenChange={handleSavedQueriesOpenChange}
-                className="space-y-3"
-              >
-                <CollapsibleTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-auto w-full justify-between gap-3 whitespace-normal rounded-lg border p-4 text-left"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      Saved queries
-                      <TableBadge compact>Optional</TableBadge>
-                    </span>
-                    <ChevronDown
-                      className={`h-4 w-4 shrink-0 transition-transform ${savedQueriesOpen ? "rotate-180" : ""}`}
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Reuse read-only queries for common investigation questions.
-                    Investigations work without them.
-                  </p>
-                  {!diagnosticLoaded ? (
-                    <TabLoadingSpinner message="Loading saved queries..." />
-                  ) : (
-                    <DiagnosticQueriesAdminView
-                      initialQueries={diagnosticQueries}
-                      setupOptions={diagnosticSetupOptions}
-                      loadError={diagnosticLoadError}
-                      setupStatus={sreSetupStatus}
-                      onSetupChanged={handleSreSetupChanged}
-                    />
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            </TabsContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </TabsContent>
 
-            <TabsContent value="private-agents" className="space-y-4">
-              {privateAgentsLoading && !privateAgentsLoaded ? (
-                <TabLoadingSpinner message="Loading Private Agents..." />
-              ) : (
-                <PrivateAgentsAdminView
-                  initialAgents={privateAgents}
-                  loadError={privateAgentsLoadError}
-                  onSetupChanged={handleSreSetupChanged}
-                />
-              )}
-            </TabsContent>
+        <TabsContent value="private-agents" className="mt-0 space-y-4 pt-4">
+          {privateAgentsLoading && !privateAgentsLoaded ? (
+            <TabLoadingSpinner message="Loading Private Agents..." />
+          ) : (
+            <PrivateAgentsAdminView
+              initialAgents={privateAgents}
+              loadError={privateAgentsLoadError}
+              onSetupChanged={handleSreSetupChanged}
+            />
+          )}
+        </TabsContent>
 
-            <TabsContent value="audit" className="space-y-4">
-              <TabSectionHeader
-                icon={<UserSearch />}
-                title="Audit"
-                description="Review administrative and security activity in your organization."
-              />
-              <AuditLogsTable />
-            </TabsContent>
+        <TabsContent value="audit" className="mt-0 space-y-4 pt-4">
+          <AuditLogsTable />
+        </TabsContent>
 
-            {isCloudHosted && (
-              <TabsContent value="subscription" className="space-y-4">
-                <SubscriptionTab
-                  key={orgDetails?.id}
-                  currentUserRole={currentUserRole}
-                />
-                <TrialLoadTesting canManage={userCanRenameOrg} />
-              </TabsContent>
-            )}
-          </Tabs>
-        </CardContent>
-      </Card>
+        {isCloudHosted && (
+          <TabsContent value="subscription" className="mt-0 space-y-4 pt-4">
+            <SubscriptionTab
+              key={orgDetails?.id}
+              currentUserRole={currentUserRole}
+            />
+            <TrialLoadTesting canManage={userCanRenameOrg} />
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Rename Organization Dialog */}
       <Dialog open={showRenameOrgDialog} onOpenChange={setShowRenameOrgDialog}>

@@ -17,7 +17,8 @@ import {
   rotatePrivateAgentToken,
   type PrivateAgentListItem,
 } from "@/actions/private-agents";
-import { TabSectionHeader } from "@/components/org-admin/tab-section-header";
+import { ListPagination } from "@/components/admin/list-pagination";
+import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { PrivateAgentFormDialog } from "@/components/sre/private-agents/private-agent-form-dialog";
 import {
@@ -87,6 +88,18 @@ export function PrivateAgentsAdminView({
   onSetupChanged,
 }: PrivateAgentsAdminViewProps) {
   const [agents, setAgents] = useState(initialAgents);
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [page, setPage] = useState({ index: 0, size: pageSize });
+  // Auto-fit changes the size outside the table, so carry the page across here.
+  if (page.size !== pageSize) {
+    setPage({
+      index: repaginate(page.index, page.size, pageSize, agents.length),
+      size: pageSize,
+    });
+  }
+  const pageCount = Math.max(1, Math.ceil(agents.length / pageSize));
+  const pageIndex = Math.min(page.index, pageCount - 1);
+  const pageAgents = agents.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [disablingAgent, setDisablingAgent] =
     useState<PrivateAgentListItem | null>(null);
@@ -169,19 +182,17 @@ export function PrivateAgentsAdminView({
 
   return (
     <div className="space-y-4">
-      <TabSectionHeader
-        icon={<RadioTower />}
-        title="Private Agents"
-        description="Run connectors inside your private network without exposing it."
-        action={
-          agents.length > 0 ? (
-            <Button onClick={() => setIsRegisterOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Register agent
-            </Button>
-          ) : undefined
-        }
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Run connectors inside your private network without exposing it.
+        </p>
+        {agents.length > 0 && (
+          <Button onClick={() => setIsRegisterOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Register agent
+          </Button>
+        )}
+      </div>
       {agents.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
@@ -209,8 +220,8 @@ export function PrivateAgentsAdminView({
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {agents.map((agent) => (
+              <TableBody ref={bodyRef}>
+                {pageAgents.map((agent) => (
                   <TableRow key={agent.id}>
                     <TableCell className="min-w-[240px] whitespace-normal py-2.5">
                       <div className="space-y-1">
@@ -297,6 +308,15 @@ export function PrivateAgentsAdminView({
               </TableBody>
             </Table>
           </div>
+          <ListPagination
+            total={agents.length}
+            itemName="agents"
+            pageIndex={pageIndex}
+            pageSize={pageSize}
+            pageCount={pageCount}
+            onPageChange={(index) => setPage({ index, size: pageSize })}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 

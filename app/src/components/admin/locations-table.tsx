@@ -50,6 +50,8 @@ import { AddLocationDialog } from "@/components/admin/add-location-dialog";
 import { EditLocationDialog } from "@/components/admin/edit-location-dialog";
 import type { LocationWithStatus } from "@/app/api/admin/locations/route";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
+import { ListPagination } from "@/components/admin/list-pagination";
+import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
 
 export function LocationsTable() {
   const { locations, unregisteredLocations, isLoading, refetch } =
@@ -95,6 +97,22 @@ export function LocationsTable() {
     }
   }, [deleteTarget, deleteLocation]);
 
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [page, setPage] = React.useState({ index: 0, size: pageSize });
+  // Auto-fit changes the size outside the table, so carry the page across here.
+  if (page.size !== pageSize) {
+    setPage({
+      index: repaginate(page.index, page.size, pageSize, locations.length),
+      size: pageSize,
+    });
+  }
+  const pageCount = Math.max(1, Math.ceil(locations.length / pageSize));
+  const pageIndex = Math.min(page.index, pageCount - 1);
+  const pageLocations = locations.slice(
+    pageIndex * pageSize,
+    (pageIndex + 1) * pageSize,
+  );
+
   if (isLoading && locations.length === 0) {
     return <TabLoadingSpinner message="Loading locations..." />;
   }
@@ -121,14 +139,7 @@ export function LocationsTable() {
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-muted-foreground" />
-          <span className="text-sm font-medium">
-            {locations.length} location{locations.length !== 1 && "s"}
-          </span>
-        </div>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -142,7 +153,7 @@ export function LocationsTable() {
       </div>
 
       {/* Table */}
-      <div className="rounded-md border">
+      <div className="rounded-t-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -157,7 +168,7 @@ export function LocationsTable() {
               <TableHead className="w-[50px]" />
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {locations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="h-24 text-center">
@@ -168,30 +179,32 @@ export function LocationsTable() {
                 </TableCell>
               </TableRow>
             ) : (
-              locations.map((loc) => (
+              pageLocations.map((loc) => (
                 <TableRow key={loc.id}>
-                  <TableCell className="text-lg">
-                    {loc.flag || "📍"}
+                  <TableCell className="py-2.5 text-lg">
+                    {loc.flag || (
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                    )}
                   </TableCell>
-                  <TableCell className="font-medium">{loc.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="py-2.5 font-medium">{loc.name}</TableCell>
+                  <TableCell className="py-2.5">
                     <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
                       {loc.code}
                     </code>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="py-2.5 text-sm text-muted-foreground">
                     {loc.region || "—"}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <Server className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-sm">{loc.workerCount}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="py-2.5 text-center">
                     <StatusBadge status={loc.status} />
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="py-2.5 text-center">
                     {loc.isDefault && (
                       <TableBadge tone="purple" compact>
                         Default
@@ -208,7 +221,7 @@ export function LocationsTable() {
                       </TableBadge>
                     )}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="py-2.5 text-center">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="inline-flex" tabIndex={loc.isDefault || loc.code === "local" ? 0 : undefined}>
@@ -229,7 +242,7 @@ export function LocationsTable() {
                       )}
                     </Tooltip>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-2.5">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -264,6 +277,15 @@ export function LocationsTable() {
           </TableBody>
         </Table>
       </div>
+      <ListPagination
+        total={locations.length}
+        itemName="locations"
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        pageCount={pageCount}
+        onPageChange={(index) => setPage({ index, size: pageSize })}
+        onPageSizeChange={setPageSize}
+      />
 
       {/* Add dialog */}
       <AddLocationDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -295,7 +317,7 @@ export function LocationsTable() {
               <code>{deleteTarget?.code}</code>)?
               {deleteTarget?.workerCount && deleteTarget.workerCount > 0 ? (
                 <span className="mt-2 block text-amber-600 dark:text-amber-400">
-                  ⚠️ This location has {deleteTarget.workerCount} active
+                  This location has {deleteTarget.workerCount} active
                   worker(s). Jobs in its queue will be drained before deletion.
                 </span>
               ) : null}
