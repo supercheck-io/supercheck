@@ -10,6 +10,7 @@ export type CreateSreInvestigationSubagentToolsInput = {
   budget?: SreAgentBudgetInput;
   model?: LanguageModel;
   validateConfiguration?: boolean;
+  organizationId?: string;
 };
 
 type DomainSubagentConfig = {
@@ -82,6 +83,7 @@ export function createSreInvestigationSubagentTools(input: CreateSreInvestigatio
         budget: { maxSteps: 1, maxOutputTokens: 700, timeoutMs: 30_000, ...input.budget },
         model: input.model,
         validateConfiguration: input.validateConfiguration,
+        organizationId: input.organizationId,
       }),
     ])
   ) as Record<DomainSubagentConfig["toolName"], ReturnType<typeof createSubagentTool>>;

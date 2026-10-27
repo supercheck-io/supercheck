@@ -75,10 +75,6 @@ function connectorSourceType(value: string) {
     : null;
 }
 
-function jobSpecServiceId(jobSpec: Record<string, unknown>) {
-  return typeof jobSpec.serviceId === "string" ? jobSpec.serviceId : null;
-}
-
 async function importCompletedPrivateAgentConnectorEvidence(input: {
   organizationId: string;
   projectId: string;
@@ -104,6 +100,10 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
         eq(privateAgentJobs.projectId, input.projectId),
         eq(privateAgentJobs.jobClass, "sre_connector_query"),
         eq(privateAgentJobs.status, "completed"),
+        // Filter in SQL so the row cap applies to this service's jobs. A job
+        // that finished before the window opened cannot hold in-window evidence.
+        sql`${privateAgentJobs.jobSpec}->>'serviceId' = ${input.serviceId}`,
+        gte(privateAgentJobs.completedAt, input.window.since),
         eq(externalConnectors.organizationId, input.organizationId),
         eq(externalConnectors.projectId, input.projectId),
       ),
@@ -114,11 +114,7 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
     )
     .limit(25);
 
-  const matchingJobs = completedJobs.filter(
-    ({ job }) => jobSpecServiceId(job.jobSpec) === input.serviceId,
-  );
-
-  if (matchingJobs.length === 0) {
+  if (completedJobs.length === 0) {
     return [];
   }
 
@@ -128,7 +124,7 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
     );
     const imported = [];
 
-    for (const { job, connector } of matchingJobs) {
+    for (const { job, connector } of completedJobs) {
       const sourceType = connectorSourceType(connector.type);
       if (!sourceType) {
         continue;
@@ -438,10 +434,8 @@ export async function runSreEvidenceBriefGeneration(input: {
       investigationRunId: run.id,
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Evidence brief generation failed";
+    // Raw errors can embed provider or evidence detail; they stay in server logs.
+    const errorMessage = "Evidence brief generation failed";
     orchestratorLogger.error(
       { err: error },
       "Failed to generate SRE evidence brief",
