@@ -11,14 +11,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionTabs, type SectionTab } from "@/components/shared/section-tabs";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -37,15 +33,12 @@ import {
   Pencil,
   RadioTower,
   Cable,
-  SquareLibrary,
-  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { CliTokensTable } from "@/components/admin/cli-tokens-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
-import { TabSectionHeader } from "@/components/org-admin/tab-section-header";
 import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
@@ -278,7 +271,7 @@ function OrgAdminDashboardContent() {
     requestedTab === "runbooks" ||
     requestedTab === "diagnostic-recipes";
   const [savedQueriesOpen, setSavedQueriesOpen] = useState(
-    requestedSavedQueries,
+    requestedSavedQueries && safeTab === "integrations",
   );
 
   const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
@@ -433,8 +426,8 @@ function OrgAdminDashboardContent() {
   }, [safeTab]);
 
   useEffect(() => {
-    setSavedQueriesOpen(requestedSavedQueries);
-  }, [requestedSavedQueries]);
+    setSavedQueriesOpen(requestedSavedQueries && safeTab === "integrations");
+  }, [requestedSavedQueries, safeTab]);
 
   useEffect(() => {
     if (requestedTab === "services") {
@@ -818,23 +811,27 @@ function OrgAdminDashboardContent() {
   );
 
   return (
-    <div className="mt-6 flex h-full w-full max-w-full flex-col space-y-2 overflow-x-hidden p-2">
+    <div>
+      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+        <CardContent className="p-6 overflow-hidden">
       <Tabs
         value={activeTab}
-        className="w-full"
+        className="w-full space-y-4"
         onValueChange={handleTabChange}
       >
         <PageHeader
           title="Organization"
-          className="-mt-2"
-          description={
-            <span className="inline-flex max-w-full items-center gap-1">
-              <span className="truncate">{orgDetails.name}</span>
+          titleAdornment={
+            <span className="inline-flex min-w-0 max-w-[320px] items-center gap-1">
+              <TableBadge tone="info" className="min-w-0">
+                <Building2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{orgDetails.name}</span>
+              </TableBadge>
               {userCanRenameOrg && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 shrink-0"
+                  className="h-7 w-7 shrink-0"
                   onClick={() => {
                     setNewOrgName(orgDetails.name);
                     setShowRenameOrgDialog(true);
@@ -857,7 +854,7 @@ function OrgAdminDashboardContent() {
           }
         />
 
-        <TabsContent value="projects" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="projects" className="mt-0 space-y-4">
           {projectsLoading && projects.length === 0 ? (
             <TabLoadingSpinner message="Loading projects..." />
           ) : (
@@ -1030,7 +1027,7 @@ function OrgAdminDashboardContent() {
           )}
         </TabsContent>
 
-        <TabsContent value="members" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="members" className="mt-0 space-y-4">
           {membersLoading ? (
             <TabLoadingSpinner message="Loading members..." />
           ) : (
@@ -1110,16 +1107,11 @@ function OrgAdminDashboardContent() {
           />
         </TabsContent>
 
-        <TabsContent value="cli-tokens" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="cli-tokens" className="mt-0 space-y-4">
           <CliTokensTable />
         </TabsContent>
 
-        <TabsContent value="integrations" className="mt-0 space-y-4 pt-4">
-          <TabSectionHeader
-            icon={<Cable />}
-            title="Integrations"
-            description="Connect read-only evidence sources Copilot can use during investigations."
-          />
+        <TabsContent value="integrations" className="mt-0 space-y-4">
           {integrationsLoading && !integrationsLoaded ? (
             <TabLoadingSpinner message="Loading integrations..." />
           ) : (
@@ -1131,50 +1123,12 @@ function OrgAdminDashboardContent() {
               loadError={integrationsLoadError}
               setupStatus={sreSetupStatus}
               onSetupChanged={handleSreSetupChanged}
+              onOpenSavedQueries={() => handleSavedQueriesOpenChange(true)}
             />
           )}
-          <Collapsible
-            open={savedQueriesOpen}
-            onOpenChange={handleSavedQueriesOpenChange}
-            className="space-y-3"
-          >
-            <CollapsibleTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-auto w-full justify-between gap-3 whitespace-normal rounded-lg border p-4 text-left"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <SquareLibrary className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  Saved queries
-                  <TableBadge compact>Optional</TableBadge>
-                </span>
-                <ChevronDown
-                  className={`h-4 w-4 shrink-0 transition-transform ${savedQueriesOpen ? "rotate-180" : ""}`}
-                />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Reuse read-only queries for common investigation questions.
-                Investigations work without them.
-              </p>
-              {!diagnosticLoaded ? (
-                <TabLoadingSpinner message="Loading saved queries..." />
-              ) : (
-                <DiagnosticQueriesAdminView
-                  initialQueries={diagnosticQueries}
-                  setupOptions={diagnosticSetupOptions}
-                  loadError={diagnosticLoadError}
-                  setupStatus={sreSetupStatus}
-                  onSetupChanged={handleSreSetupChanged}
-                />
-              )}
-            </CollapsibleContent>
-          </Collapsible>
         </TabsContent>
 
-        <TabsContent value="private-agents" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="private-agents" className="mt-0 space-y-4">
           {privateAgentsLoading && !privateAgentsLoaded ? (
             <TabLoadingSpinner message="Loading Private Agents..." />
           ) : (
@@ -1186,12 +1140,12 @@ function OrgAdminDashboardContent() {
           )}
         </TabsContent>
 
-        <TabsContent value="audit" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="audit" className="mt-0 space-y-4">
           <AuditLogsTable />
         </TabsContent>
 
         {isCloudHosted && (
-          <TabsContent value="subscription" className="mt-0 space-y-4 pt-4">
+          <TabsContent value="subscription" className="mt-0 space-y-4">
             <SubscriptionTab
               key={orgDetails?.id}
               currentUserRole={currentUserRole}
@@ -1200,6 +1154,36 @@ function OrgAdminDashboardContent() {
           </TabsContent>
         )}
       </Tabs>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={savedQueriesOpen}
+        onOpenChange={handleSavedQueriesOpenChange}
+      >
+        <DialogContent className="max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-5xl">
+          <DialogHeader className="border-b px-6 py-5">
+            <DialogTitle>Saved queries</DialogTitle>
+            <DialogDescription>
+              Reuse read-only queries for common investigation questions.
+              Investigations work without them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 py-5">
+            {!diagnosticLoaded ? (
+              <TabLoadingSpinner message="Loading saved queries..." />
+            ) : (
+              <DiagnosticQueriesAdminView
+                initialQueries={diagnosticQueries}
+                setupOptions={diagnosticSetupOptions}
+                loadError={diagnosticLoadError}
+                setupStatus={sreSetupStatus}
+                onSetupChanged={handleSreSetupChanged}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename Organization Dialog */}
       <Dialog open={showRenameOrgDialog} onOpenChange={setShowRenameOrgDialog}>

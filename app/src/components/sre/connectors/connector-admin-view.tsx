@@ -87,6 +87,8 @@ type ConnectorAdminViewProps = {
   loadError: string | null;
   setupStatus?: SreOnboardingStatus | null;
   onSetupChanged?: () => void;
+  /** Opens the saved queries dialog owned by the page. */
+  onOpenSavedQueries?: () => void;
 };
 
 const statusClasses: Record<SreConnectorListItem["status"], string> = {
@@ -193,11 +195,13 @@ export function ConnectorAdminView({
   loadError,
   setupStatus = null,
   onSetupChanged,
+  onOpenSavedQueries,
 }: ConnectorAdminViewProps) {
   const [connectors, setConnectors] = useState(initialConnectors);
   const [bindings, setBindings] = useState(initialBindings);
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isSetupGuideOpen, setIsSetupGuideOpen] = useState(false);
   const [isBindingDialogOpen, setIsBindingDialogOpen] = useState(false);
   const [bindingProviderId, setBindingProviderId] = useState("");
   const [bindingConnectorId, setBindingConnectorId] = useState("");
@@ -509,9 +513,15 @@ export function ConnectorAdminView({
               table={table}
               onAddConnector={() => setIsCreateOpen(true)}
               onAddBinding={() => setIsBindingDialogOpen(true)}
-              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
+              onOpenSetupGuide={() => setIsSetupGuideOpen(true)}
+              onOpenSavedQueries={onOpenSavedQueries}
             />
           )}
+          onRowClick={(row) =>
+            supportsEvidenceSearch(row.original)
+              ? openSearchDialog(row.original)
+              : setRotatingCredentialConnector(row.original)
+          }
           entityLabel="connectors"
           meta={{
             onSearch: openSearchDialog,
@@ -598,6 +608,12 @@ export function ConnectorAdminView({
           </div>
         </div>
       )}
+
+      <SreSetupGuideDialog
+        status={setupStatus}
+        open={isSetupGuideOpen}
+        onOpenChange={setIsSetupGuideOpen}
+      />
 
       {isCreateOpen && (
         <ConnectorFormDialog

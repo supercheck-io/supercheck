@@ -15,6 +15,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionTabs, type SectionTab } from "@/components/shared/section-tabs";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Users,
   Building2,
@@ -33,6 +34,7 @@ import {
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { cn } from "@/lib/utils";
 import { LocationsTable } from "@/components/admin/locations-table";
 
 const TABS: SectionTab[] = [
@@ -70,6 +72,7 @@ export default function AdminDashboard() {
     : "overview";
 
   const [activeTab, setActiveTab] = useState(safeTab);
+  const isQueuesTab = activeTab === "queues";
 
   // Bull Dashboard iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -163,16 +166,26 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="mt-6 flex h-full w-full max-w-full flex-col space-y-2 overflow-x-hidden p-2">
+    <div
+      {...(isQueuesTab ? { "data-fit-viewport": "" } : {})}
+      className={cn("flex min-h-0 flex-1 flex-col", isQueuesTab && "lg:overflow-auto")}
+    >
+      <Card
+        className={cn(
+          "m-4 shadow-sm transition-shadow duration-200 hover:shadow-md",
+          isQueuesTab ? "flex min-h-0 flex-1 flex-col lg:min-h-[400px]" : "shrink-0",
+        )}
+      >
+        <CardContent
+          className={cn("p-6", isQueuesTab && "flex min-h-0 flex-1 flex-col")}
+        >
       <Tabs
         value={activeTab}
-        className="w-full"
+        className={cn("w-full space-y-4", isQueuesTab && "flex min-h-0 flex-1 flex-col")}
         onValueChange={handleTabChange}
       >
         <PageHeader
           title="Super Admin"
-          description="Manage system users, organizations, and platform-wide operational data."
-          className="-mt-2"
           actions={
             <SectionTabs
               tabs={TABS}
@@ -183,7 +196,7 @@ export default function AdminDashboard() {
           }
         />
 
-        <TabsContent value="overview" className="mt-0 space-y-6 pt-4">
+        <TabsContent value="overview" className="mt-0 space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
             <StatsCard
               title="Total Users"
@@ -260,7 +273,7 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="users" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="users" className="mt-0 space-y-4">
 
           {usersLoading && users.length === 0 ? (
             <TabLoadingSpinner message="Loading users..." />
@@ -275,7 +288,7 @@ export default function AdminDashboard() {
           )}
         </TabsContent>
 
-        <TabsContent value="organizations" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="organizations" className="mt-0 space-y-4">
           {orgsLoading && organizations.length === 0 ? (
             <TabLoadingSpinner message="Loading organizations..." />
           ) : (
@@ -283,45 +296,36 @@ export default function AdminDashboard() {
           )}
         </TabsContent>
 
-        <TabsContent value="locations" className="mt-0 space-y-4 pt-4">
+        <TabsContent value="locations" className="mt-0 space-y-4">
           <LocationsTable />
         </TabsContent>
 
-        <TabsContent value="queues" className="mt-0 pt-4">
-          <div className="rounded-lg border bg-background overflow-hidden">
+        <TabsContent
+          value="queues"
+          className="mt-0 flex min-h-0 flex-1 flex-col"
+        >
+          <div className="relative h-[calc(100svh-22rem)] min-h-[400px] overflow-hidden rounded-lg border bg-background lg:h-auto lg:flex-1">
             {iframeError ? (
-              <div
-                className="flex justify-center items-center"
-                style={{
-                  height: "calc(100vh - 280px)",
-                  minHeight: "400px",
-                }}
-              >
-                <div className="flex flex-col items-center space-y-4 text-center px-4">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex flex-col items-center space-y-4 px-4 text-center">
                   <AlertCircle className="h-10 w-10 text-destructive" />
                   <div>
                     <h3 className="text-lg font-semibold">
                       Failed to load Queue Dashboard
                     </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       The dashboard may be unavailable or taking too long to
                       respond.
                     </p>
                   </div>
                   <Button variant="outline" onClick={handleIframeRefresh}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw className="mr-2 h-4 w-4" />
                     Try Again
                   </Button>
                 </div>
               </div>
             ) : !iframeLoaded ? (
-              <div
-                className="flex justify-center items-center"
-                style={{
-                  height: "calc(100vh - 280px)",
-                  minHeight: "400px",
-                }}
-              >
+              <div className="absolute inset-0 flex items-center justify-center">
                 <SupercheckLoading size="md" message="Loading Queue Dashboard..." />
               </div>
             ) : null}
@@ -329,12 +333,10 @@ export default function AdminDashboard() {
             <iframe
               ref={iframeRef}
               src="/api/admin/queues/"
-              className="w-full"
-              style={{
-                height: "calc(100vh - 280px)",
-                minHeight: "400px",
-                display: iframeLoaded && !iframeError ? "block" : "none",
-              }}
+              className={cn(
+                "absolute inset-0 h-full w-full",
+                (!iframeLoaded || iframeError) && "hidden",
+              )}
               title="Queue Dashboard"
               onLoad={handleIframeLoad}
               sandbox="allow-scripts allow-same-origin allow-forms"
@@ -342,6 +344,8 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
       </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 }

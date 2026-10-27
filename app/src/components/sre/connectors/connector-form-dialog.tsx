@@ -204,7 +204,7 @@ export function ConnectorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-none gap-0 overflow-hidden p-0 sm:max-h-[min(92svh,920px)] sm:w-[calc(100vw-2rem)] sm:max-w-none xl:w-auto xl:min-w-[80rem] xl:max-w-[80rem]">
+      <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-h-[min(92svh,920px)] sm:w-[calc(100vw-2rem)] sm:max-w-3xl">
         <DialogHeader className="border-b px-5 py-5 sm:px-8">
           <DialogTitle className="text-xl">Add connector</DialogTitle>
           <DialogDescription>
@@ -215,8 +215,8 @@ export function ConnectorFormDialog({
 
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 [scrollbar-width:thin] sm:px-8">
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:gap-8">
-              <section className="space-y-5 xl:border-r xl:pr-8">
+            <div className="grid gap-6">
+              <section className="space-y-5">
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
                     1
@@ -284,8 +284,7 @@ export function ConnectorFormDialog({
                       aria-invalid={Boolean(firstError(fieldErrors, "name"))}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Use a name responders will recognize in evidence
-                      citations.
+                      Shown in evidence citations.
                     </p>
                     {firstError(fieldErrors, "name") && (
                       <p className="text-xs text-destructive">
@@ -313,8 +312,7 @@ export function ConnectorFormDialog({
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Classifies the sensitivity of evidence returned by this
-                      source.
+                      Sensitivity of the evidence returned.
                     </p>
                   </div>
 
@@ -347,7 +345,7 @@ export function ConnectorFormDialog({
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       {supportsPrivateAgent
-                        ? "Direct reaches public APIs. Private Agent reaches internal services."
+                        ? "Direct for public APIs, Private Agent for internal services."
                         : `${selectedTypeOption?.label ?? "This connector"} currently supports direct execution only.`}
                     </p>
                   </div>
@@ -375,7 +373,7 @@ export function ConnectorFormDialog({
                 </div>
               </section>
 
-              <section className="space-y-5">
+              <section className="space-y-5 border-t pt-6">
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
                     2
@@ -386,8 +384,7 @@ export function ConnectorFormDialog({
                       Endpoint and read-only access
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Add the endpoint and least-privilege credential used for
-                      evidence queries.
+                      Endpoint and least-privilege credential for queries.
                     </p>
                   </div>
                 </div>
@@ -566,7 +563,7 @@ export function ConnectorFormDialog({
                 </div>
               </section>
 
-              <section className="space-y-4 border-t pt-6 xl:col-span-2">
+              <section className="space-y-4 border-t pt-6">
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
                     3
@@ -574,8 +571,7 @@ export function ConnectorFormDialog({
                   <div>
                     <p className="text-sm font-semibold">Service scope</p>
                     <p className="text-xs text-muted-foreground">
-                      Optional. Restrict evidence access to specific services;
-                      leave empty only for intentional organization-wide access.
+                      Optional. Leave empty only for organization-wide access.
                     </p>
                   </div>
                 </div>

@@ -1,10 +1,22 @@
 "use client";
 
 import { Table } from "@tanstack/react-table";
-import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link2, Plus, Search } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Link2,
+  ListChecks,
+  MoreHorizontal,
+  Plus,
+  Search,
+  SquareLibrary,
+} from "lucide-react";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
 
@@ -12,14 +24,16 @@ interface ConnectorsToolbarProps<TData> {
   table: Table<TData>;
   onAddConnector: () => void;
   onAddBinding: () => void;
-  setupGuide?: ReactNode;
+  onOpenSetupGuide: () => void;
+  onOpenSavedQueries?: () => void;
 }
 
 export function ConnectorsToolbar<TData>({
   table,
   onAddConnector,
   onAddBinding,
-  setupGuide,
+  onOpenSetupGuide,
+  onOpenSavedQueries,
 }: ConnectorsToolbarProps<TData>) {
   const typeColumn = table.getColumn("type");
   const availableTypeValues = typeColumn?.getFacetedUniqueValues();
@@ -65,11 +79,30 @@ export function ConnectorsToolbar<TData>({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Button type="button" variant="outline" onClick={onAddBinding}>
-          <Link2 className="mr-2 h-4 w-4" />
-          Context links
-        </Button>
-        {setupGuide}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline">
+              <MoreHorizontal className="mr-2 h-4 w-4" />
+              More
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onOpenSetupGuide}>
+              <ListChecks className="mr-2 h-4 w-4" />
+              Setup guide
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onAddBinding}>
+              <Link2 className="mr-2 h-4 w-4" />
+              Context links
+            </DropdownMenuItem>
+            {onOpenSavedQueries && (
+              <DropdownMenuItem onSelect={onOpenSavedQueries}>
+                <SquareLibrary className="mr-2 h-4 w-4" />
+                Saved queries
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button onClick={onAddConnector}>
           <Plus className="mr-2 h-4 w-4" />
           Add connector

@@ -131,8 +131,7 @@ describe("ConnectorAdminView", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Add connector" });
     expect(dialog).toHaveClass("w-[calc(100vw-1rem)]");
-    expect(dialog).toHaveClass("sm:max-w-none");
-    expect(dialog).toHaveClass("xl:min-w-[80rem]");
+    expect(dialog).toHaveClass("sm:max-w-3xl");
     expect(screen.getByText("Connection")).toBeInTheDocument();
     expect(
       screen.getByText("Endpoint and read-only access"),
@@ -552,5 +551,53 @@ describe("ConnectorAdminView", () => {
     expect(
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     ).toHaveAttribute("aria-disabled", "true");
+  });
+  it("opens the evidence search dialog when a connector row is clicked or activated by keyboard", async () => {
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[connector]}
+        setupOptions={{ services: [], privateAgents: [] }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+      />,
+    );
+
+    const row = screen.getByText("CloudWatch prod").closest("tr") as HTMLElement;
+    fireEvent.click(row);
+    expect(
+      await screen.findByRole("button", { name: "Search evidence" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps secondary toolbar actions in a More menu", async () => {
+    const onOpenSavedQueries = jest.fn();
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[connector]}
+        setupOptions={{ services: [], privateAgents: [] }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+        onOpenSavedQueries={onOpenSavedQueries}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /add connector/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /setup guide/i })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { name: /more/i }), {
+      key: "Enter",
+      code: "Enter",
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /saved queries/i }));
+    expect(onOpenSavedQueries).toHaveBeenCalled();
   });
 });

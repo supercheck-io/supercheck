@@ -182,22 +182,19 @@ export function PrivateAgentsAdminView({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Run connectors inside your private network without exposing it.
-        </p>
-        {agents.length > 0 && (
+      {agents.length > 0 && (
+        <div className="flex justify-end">
           <Button onClick={() => setIsRegisterOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Register agent
           </Button>
-        )}
-      </div>
+        </div>
+      )}
       {agents.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
           title="No Private Agents registered"
-          description="Register a Private Agent before configuring private-network connectors in cloud deployments."
+          description="Register a Private Agent to run connectors inside your private network without exposing it."
           icon={<KeyRound className="h-10 w-10" />}
           action={
             <Button onClick={() => setIsRegisterOpen(true)}>
