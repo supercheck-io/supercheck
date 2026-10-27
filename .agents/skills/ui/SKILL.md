@@ -27,6 +27,7 @@ The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`a
 ## Components and patterns
 
 - Tables: TanStack Table with the `ui/data-table-*` pieces (column header, faceted filter, view options). Reference: `components/monitors/data-table.tsx`.
+- List tables fit the window: use `useFitPagination` / `useFitPageSize` and `pageSizeOptions` from `hooks/use-fit-page-size.ts` (rows per page follow the viewport; a manual choice overrides). Pass a fixed size for tables embedded in sheets. Pages that must fill the viewport without scrolling put `data-fit-viewport` on their root (the layout reads it).
 - Forms: react-hook-form with `zodResolver` and the shared Zod schemas; use `ui/form.tsx` or `ui/field.tsx` as the neighboring form does.
 - Destructive actions confirm with `ui/alert-dialog.tsx` and name the object being deleted.
 - Feedback: `toast` from `sonner` (the `<Toaster>` is `ui/sonner.tsx`).

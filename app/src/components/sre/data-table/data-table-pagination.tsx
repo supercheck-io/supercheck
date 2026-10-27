@@ -1,3 +1,4 @@
+import { pageSizeOptions } from "@/hooks/use-fit-page-size";
 import type { Table } from "@tanstack/react-table";
 import {
   ChevronLeft,
@@ -45,7 +46,7 @@ export function DataTablePagination<TData>({
               <SelectValue />
             </SelectTrigger>
             <SelectContent side="top">
-              {[12, 25, 50, 100].map((pageSize) => (
+              {pageSizeOptions(table.getState().pagination.pageSize).map((pageSize) => (
                 <SelectItem key={pageSize} value={`${pageSize}`}>
                   {pageSize}
                 </SelectItem>
