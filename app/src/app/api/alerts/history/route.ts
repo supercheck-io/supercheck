@@ -143,6 +143,29 @@ export async function GET(request: NextRequest) {
       
       const history = historyResult as unknown as AlertHistoryRow[];
 
+      // The incident each alert belonged to: the earliest incident of the same source that was not yet
+      // resolved when the alert was sent (same alert type first). Creation time is not compared, since a
+      // queue backlog can create the incident well after the alert.
+      const ids = history.map((item) => item.id);
+      const incidentRows = ids.length
+        ? ((await dbInstance.execute(sql`
+            SELECT DISTINCT ON (ah.id) ah.id AS "alertId", i.id AS "incidentId", i.incident_number AS "incidentNumber"
+            FROM alert_history ah
+            JOIN sre_alert_events e
+              ON e.source_id = coalesce(ah.monitor_id, ah.job_id)
+             AND e.organization_id = ${context.organizationId}
+             AND e.project_id = ${context.project.id}
+            JOIN sre_incident_alerts ia ON ia.alert_event_id = e.id
+            JOIN sre_incidents i ON i.id = ia.incident_id
+            WHERE ah.id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+              AND (i.resolved_at IS NULL OR i.resolved_at >= ah.sent_at - interval '1 minute')
+            ORDER BY ah.id, (e.dedup_key LIKE '%:' || ah.type) DESC, i.created_at ASC
+          `)) as unknown as Array<{ alertId: string; incidentId: string; incidentNumber: number }>)
+        : [];
+      const incidentByAlert = new Map(
+        incidentRows.map((row) => [row.alertId, { id: row.incidentId, number: Number(row.incidentNumber) }]),
+      );
+
       // Transform the data to match the expected format
       const transformedHistory = history.map((item: AlertHistoryRow) => ({
         id: item.id,
@@ -153,6 +176,7 @@ export async function GET(request: NextRequest) {
         message: item.message,
         status: item.status,
         timestamp: item.timestamp,
+        incident: incidentByAlert.get(item.id) ?? null,
         notificationProvider:
           item.providerType ||
           item.providerName ||

@@ -26,13 +26,20 @@ alertCommand
     const items = Array.isArray(data) ? data : data.data
     const pagination = Array.isArray(data) ? null : data.pagination
 
-    output(items, {
+    // Older servers send no incident; show it as "#<number>" when the alert opened or joined one.
+    const rows = items.map((item) => {
+      const incident = item.incident as { number?: number } | null | undefined
+      return { ...item, incident: incident?.number ? `#${incident.number}` : '' }
+    })
+
+    output(rows, {
       columns: [
         { key: 'id', header: 'ID' },
         { key: 'targetType', header: 'Target Type' },
         { key: 'targetName', header: 'Target' },
         { key: 'type', header: 'Alert Type' },
         { key: 'status', header: 'Status' },
+        { key: 'incident', header: 'Incident' },
         { key: 'timestamp', header: 'Time' },
       ],
     })

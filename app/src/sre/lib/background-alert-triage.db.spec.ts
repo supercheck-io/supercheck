@@ -17,8 +17,12 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(async () => undefined) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
+jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(), isAuthError: () => false }));
+jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
 
 import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
+import { GET as getAlertHistory } from "@/app/api/alerts/history/route";
+import { requireAuthContext } from "@/lib/auth-context";
 import { resolveIncident } from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
@@ -252,6 +256,22 @@ it("resolves a job failure processed after a later passing run, and job recovery
   await sourceRecovery(minutes(70), true);
   const rows = await incidents();
   expect(rows.at(-1)!.status).toBe("resolved");
+});
+
+it("alert history links each alert to the incident it belonged to", async () => {
+  await alert("monitor_failure", minutes(0));
+  await alert("monitor_recovery", minutes(5));
+  await alert("monitor_failure", minutes(70)); // after the reopen window: a new incident
+  jest.mocked(requireAuthContext).mockResolvedValue({ organizationId: orgId, project: { id: projectId } } as never);
+  const response = await getAlertHistory(new Request("http://localhost/api/alerts/history") as never);
+  const rows = (await response.json()) as Array<{ type: string; timestamp: string; incident: { number: number } | null }>;
+  const [first, second] = await incidents();
+  const byTime = rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  expect(byTime.map((row) => [row.type, row.incident?.number ?? null])).toEqual([
+    ["monitor_failure", first.number],
+    ["monitor_recovery", first.number],
+    ["monitor_failure", second.number],
+  ]);
 });
 
 it("never auto-resolves an SSL expiry incident from an up/down recovery", async () => {

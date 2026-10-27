@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -58,6 +59,7 @@ type DerivedSreAlert = {
   severity: SreAlertSeverity;
   timestamp: string;
   duplicateCount: number;
+  incident: { id: string; number: number } | null;
 };
 
 type SreAlertsViewProps = {
@@ -166,6 +168,7 @@ function deriveSreAlerts(alerts: AlertHistory[]) {
       severity: deriveSeverity(alert),
       timestamp: alert.timestamp,
       duplicateCount: (previous?.duplicateCount ?? 0) + 1,
+      incident: alert.incident ?? null,
     });
   }
   return Array.from(grouped.values());
@@ -544,6 +547,10 @@ export function SreAlertsView({ alerts, isLoading, toolbarEnd }: SreAlertsViewPr
                       <Button variant="outline" size="sm" disabled className="h-8" aria-busy="true">
                         <SearchCheck className="h-4 w-4" />
                         Opening...
+                      </Button>
+                    ) : alert.incident ? (
+                      <Button variant="ghost" size="sm" asChild className="h-8">
+                        <Link href={`/incidents/${alert.incident.id}`}>Incident #{alert.incident.number}</Link>
                       </Button>
                     ) : incidentByFingerprint[alert.fingerprint] ? (
                       <TableBadge tone="info" compact>

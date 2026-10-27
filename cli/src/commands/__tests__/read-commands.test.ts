@@ -281,8 +281,18 @@ describe('read-only and operational commands', () => {
       await alertCommand.parseAsync(['node', 'alert', 'history'])
 
       const [rows] = mockOutput.mock.calls[0] as [Array<Record<string, unknown>>]
-      expect(rows).toEqual([{ id: 'alert-1', status: 'firing' }])
+      expect(rows).toEqual([{ id: 'alert-1', status: 'firing', incident: '' }])
       expect(mockOutputPagination).toHaveBeenCalledWith(null)
+    })
+
+    it('shows the linked incident number', async () => {
+      mockGet.mockResolvedValueOnce({ data: [{ id: 'a', incident: { id: 'i', number: 7 } }, { id: 'b', incident: null }] })
+
+      await alertCommand.parseAsync(['node', 'alert', 'history'])
+
+      const [rows, options] = mockOutput.mock.calls[0] as [Array<Record<string, unknown>>, { columns: Array<{ key: string }> }]
+      expect(rows.map((row) => row.incident)).toEqual(['#7', ''])
+      expect(options.columns.map((column) => column.key)).toContain('incident')
     })
 
     it('accepts a paginated response and forwards its metadata', async () => {
