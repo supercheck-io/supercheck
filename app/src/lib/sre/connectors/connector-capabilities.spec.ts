@@ -1,6 +1,8 @@
 import {
   connectorRequiresCredentials,
+  isLiveSearchConnectorType,
   OPTIONAL_CREDENTIAL_CONNECTOR_TYPES,
+  SRE_CONNECTOR_TYPES,
 } from "./connector-capabilities";
 
 describe("connector credential requirements", () => {
@@ -18,7 +20,13 @@ describe("connector credential requirements", () => {
     },
   );
 
-  it("keeps webhook credential handling optional", () => {
-    expect(connectorRequiresCredentials("webhook")).toBe(false);
+});
+
+describe("connector catalog", () => {
+  it("only lists types the investigation agent can search or call", () => {
+    for (const type of SRE_CONNECTOR_TYPES) {
+      if (type === "supercheck_native") continue;
+      expect(isLiveSearchConnectorType(type)).toBe(true);
+    }
   });
 });

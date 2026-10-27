@@ -109,8 +109,4 @@ describe("connector query builders", () => {
 
     expect(result.query).toBe("checkout incident runbook type:page source:sre-runbooks");
   });
-
-  it("has no builder for retired chat connector types", () => {
-    expect(getConnectorQueryBuilder("slack")).toBeNull();
-  });
 });

@@ -39,4 +39,13 @@ describe("connectorCredentialRequirementError", () => {
       }),
     ).toBeNull();
   });
+
+  it("requires a knowledge connector token and a sane email", () => {
+    expect(connectorCredentialRequirementError("jira", { email: "a@b.co" })).toContain("API token");
+    expect(connectorCredentialRequirementError("confluence", { secret: "t", email: "nope" })).toContain("valid email");
+    expect(connectorCredentialRequirementError("jira", { secret: "t", email: "a@b.co" })).toBeNull();
+    expect(connectorCredentialRequirementError("jira", { secret: "pat" })).toBeNull();
+    expect(connectorCredentialRequirementError("notion", { secret: " " })).toContain("integration token");
+    expect(connectorCredentialRequirementError("notion", { secret: "x" })).toBeNull();
+  });
 });

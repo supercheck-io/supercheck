@@ -355,7 +355,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
 test.describe("AI SRE connector catalog @aisre @connectors @critical", () => {
   test.beforeAll(() => requireRbacUser("orgOwner"));
 
-  test("offers every implemented live-search connector and omits setup-only adapters", async ({
+  test("offers every live-search connector and no removed types", async ({
     orgOwnerPage: page,
   }) => {
     await page.goto("/org-admin?tab=integrations");
@@ -383,6 +383,15 @@ test.describe("AI SRE connector catalog @aisre @connectors @critical", () => {
       "AWS CloudWatch",
       "PagerDuty",
       "Opsgenie",
+      "Splunk",
+      "New Relic",
+      "Jaeger",
+      "Google Cloud Monitoring",
+      "Azure Monitor",
+      "Jira",
+      "Confluence",
+      "Notion",
+      "MCP",
     ];
     for (const connector of implemented) {
       await expect(
@@ -390,9 +399,10 @@ test.describe("AI SRE connector catalog @aisre @connectors @critical", () => {
       ).toBeVisible();
     }
     for (const unsupported of [
-      "Jira",
-      "Confluence",
-      "Notion",
+      "AppDynamics",
+      "PostgreSQL",
+      "Redis",
+      "OpenTelemetry",
       "Slack",
       "Microsoft Teams",
     ]) {

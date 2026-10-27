@@ -7,6 +7,7 @@ import { DateCell } from "@/components/ui/table-cells";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UserActions } from "./user-actions";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { UserCell } from "@/components/ui/user-cell";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
   Tooltip,
@@ -25,6 +26,7 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
+  image?: string | null;
   role?: string;
   banned?: boolean;
   banReason?: string;
@@ -94,9 +96,12 @@ export const createUserColumns = (
       <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
-      <div className="flex items-center h-8 font-medium">
-        {row.getValue("name")}
-      </div>
+      <UserCell
+        name={row.original.name}
+        email={row.original.email}
+        image={row.original.image}
+        className="h-8 max-w-[220px] font-medium"
+      />
     ),
   },
   {

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { format } from "date-fns";
 import {
   Trash2,
@@ -14,7 +15,6 @@ import {
   Ban,
   Shield,
   Clock,
-  User,
 } from "lucide-react";
 import {
   Tooltip,
@@ -50,6 +50,7 @@ interface ApiKey {
   lastRequest?: string;
   requestCount?: string;
   createdByName?: string;
+  createdByImage?: string | null;
 }
 
 interface CicdSettingsProps {
@@ -300,9 +301,9 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                               ? `Expires ${format(new Date(key.expiresAt), "MMM d, yyyy")}`
                               : "No expiry"}
                           </span>
-                          {key.createdByName && (
+                          {key.createdByName && key.createdByName !== "-" && (
                             <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
+                              <UserAvatar name={key.createdByName} image={key.createdByImage} className="h-4 w-4" />
                               {key.createdByName}
                             </span>
                           )}
