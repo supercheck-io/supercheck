@@ -30,7 +30,8 @@ export function AdminListToolbar<TData>({
   facets?: ToolbarFacet[];
   children?: ReactNode;
 }) {
-  const search = (table.getState().globalFilter as string) ?? "";
+  const globalFilter: unknown = table.getState().globalFilter;
+  const search = typeof globalFilter === "string" ? globalFilter : "";
   const isFiltered = table.getState().columnFilters.length > 0 || search.length > 0;
 
   return (

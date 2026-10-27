@@ -95,7 +95,7 @@ export function ListPagination({
           <Button
             variant="outline"
             className="hidden h-8 w-8 p-0 lg:flex"
-            onClick={() => onPageChange(pageCount - 1)}
+            onClick={() => onPageChange(Math.max(0, pageCount - 1))}
             disabled={!canNext}
           >
             <span className="sr-only">Go to last page</span>
