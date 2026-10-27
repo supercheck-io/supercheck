@@ -22,7 +22,9 @@ async function toAvatarBlob(file: File): Promise<Blob> {
   const side = Math.min(bitmap.width, bitmap.height);
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = AVATAR_SIZE;
-  canvas.getContext("2d")?.drawImage(
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process image");
+  ctx.drawImage(
     bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE,
   );
   bitmap.close();
@@ -38,6 +40,8 @@ function refreshSession() {
 function ProfileTab({ onClose }: { onClose: () => void }) {
   const { data: session } = useSession();
   const user = session?.user;
+  // The server blocks photo changes while impersonating; keep the whole form read-only for consistency.
+  const impersonating = !!(session?.session as { impersonatedBy?: string | null } | undefined)?.impersonatedBy;
   const [name, setName] = useState(user?.name ?? "");
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -102,11 +106,11 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
           <AvatarFallback className="rounded-full text-lg">{user?.name?.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={photoBusy} onClick={() => fileInput.current?.click()}>
+          <Button type="button" variant="outline" size="sm" disabled={photoBusy || impersonating} onClick={() => fileInput.current?.click()}>
             Change photo
           </Button>
           {user?.image && (
-            <Button type="button" variant="ghost" size="sm" disabled={photoBusy} onClick={removePhoto}>
+            <Button type="button" variant="ghost" size="sm" disabled={photoBusy || impersonating} onClick={removePhoto}>
               Remove photo
             </Button>
           )}
@@ -124,7 +128,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
       <form onSubmit={saveName} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="account-name">Name</Label>
-          <Input id="account-name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!nameError} />
+          <Input id="account-name" disabled={impersonating} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!nameError} />
           {nameError && dirty && <p role="alert" className="text-xs text-destructive">{nameError}</p>}
         </div>
         <div className="space-y-2">
@@ -132,7 +136,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
           <Input id="account-email" value={user?.email ?? ""} readOnly disabled />
         </div>
         <div className="flex justify-end">
-          <Button type="submit" disabled={saving || !dirty || !!nameError}>{saving ? "Saving..." : "Save changes"}</Button>
+          <Button type="submit" disabled={impersonating || saving || !dirty || !!nameError}>{saving ? "Saving..." : "Save changes"}</Button>
         </div>
       </form>
     </div>
@@ -156,7 +160,7 @@ export function AccountDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="connected-apps">Connected apps</TabsTrigger>
             </TabsList>
-            <TabsContent value="profile" className="pt-4">{profile}</TabsContent>
+            <TabsContent value="profile" forceMount className="pt-4 data-[state=inactive]:hidden">{profile}</TabsContent>
             <TabsContent value="connected-apps" className="pt-4 max-h-[60vh] overflow-y-auto"><ConnectedApps /></TabsContent>
           </Tabs>
         ) : profile}

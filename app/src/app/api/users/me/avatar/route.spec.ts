@@ -26,7 +26,11 @@ const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3];
 const req = (bytes: number[] | Uint8Array, type = "image/png") => {
   const form = new FormData();
   form.append("file", new File([new Uint8Array(bytes)], "a.png", { type }));
-  return new NextRequest("http://localhost/api/users/me/avatar", { method: "POST", body: form });
+  return new NextRequest("http://localhost/api/users/me/avatar", {
+    method: "POST",
+    body: form,
+    headers: { "content-length": String(bytes.length + 200) },
+  });
 };
 
 describe("POST /api/users/me/avatar", () => {
@@ -59,6 +63,10 @@ describe("POST /api/users/me/avatar", () => {
     const res = await POST(req(new TextEncoder().encode("<svg/>"), "image/png"));
     expect(res.status).toBe(415);
     expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("411 without a Content-Length", async () => {
+    expect((await POST(new NextRequest("http://localhost/x", { method: "POST", body: "x" }))).status).toBe(411);
   });
 
   it("413 above 2 MB", async () => {

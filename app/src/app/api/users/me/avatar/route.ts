@@ -40,8 +40,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Reject oversized bodies before buffering them (multipart overhead is small).
-  const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > AVATAR_MAX_BYTES + 16 * 1024) return err("Image must be 2 MB or smaller", 413);
+  const lengthHeader = request.headers.get("content-length");
+  if (!lengthHeader) return err("Content-Length required", 411);
+  if (!(Number(lengthHeader) <= AVATAR_MAX_BYTES + 16 * 1024)) return err("Image must be 2 MB or smaller", 413);
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
