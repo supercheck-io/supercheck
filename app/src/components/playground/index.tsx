@@ -1587,7 +1587,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                           </div>
                         )}
 
-                        <div className="flex-1">
+                        <div className="flex min-h-0 flex-1 flex-col">
                           <CodeEditor
                             value={editorContent}
                             onChange={(value) => {
