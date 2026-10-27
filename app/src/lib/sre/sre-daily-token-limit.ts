@@ -91,7 +91,7 @@ export async function recordSreTokenUsage(
   if (!Number.isFinite(tokens) || tokens <= 0 || getSreDailyTokenLimit() === 0) return;
 
   try {
-    const redis = await getRedisConnection();
+    const redis = await withTimeout(getRedisConnection());
     if (!redis) return;
     const key = dayKey(organizationId, new Date());
     await withTimeout(redis.multi().incrby(key, Math.ceil(tokens)).expire(key, KEY_TTL_SECONDS).exec());

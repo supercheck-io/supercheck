@@ -808,6 +808,9 @@ export async function getSreIncidentDetails(
       };
     }
 
+    // A run whose process died stays "running" and would lock the Investigate button; release it on read.
+    await failStaleSreInvestigationRunsForIncident({ organizationId, projectId: project.id, incidentId }).catch(() => undefined);
+
     const [latestBrief] = await db
       .select({
         id: sreInvestigationRuns.id,
@@ -830,9 +833,6 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
-
-    // A run whose process died stays "running" and would lock the Investigate button; release it on read.
-    await failStaleSreInvestigationRunsForIncident({ organizationId, projectId: project.id, incidentId }).catch(() => undefined);
 
     const [latestInvestigation] = await db
       .select({

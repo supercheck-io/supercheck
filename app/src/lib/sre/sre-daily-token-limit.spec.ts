@@ -85,6 +85,18 @@ describe("SRE daily token limit", () => {
     expect(incrby).not.toHaveBeenCalled();
   });
 
+  it("does not hang recording when the Redis connection stalls", async () => {
+    jest.useFakeTimers();
+    try {
+      getRedisConnection.mockReturnValueOnce(new Promise(() => undefined));
+      const done = recordSreTokenUsage("org-a", { totalTokens: 5 });
+      await jest.advanceTimersByTimeAsync(2_500);
+      await expect(done).resolves.toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("never throws when recording fails", async () => {
     exec.mockRejectedValueOnce(new Error("down"));
     await expect(recordSreTokenUsage("org-a", { totalTokens: 5 })).resolves.toBeUndefined();
