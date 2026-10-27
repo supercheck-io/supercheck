@@ -304,6 +304,17 @@ const guides: Record<string, ConnectorQueryGuide> = {
       },
     ],
   },
+  mcp: {
+    label: "MCP server",
+    queryLabel: "Tool",
+    queryPlaceholder: "Tools are called by investigations, not searched",
+    endpointPlaceholder: "https://mcp.internal.example.com/mcp",
+    setupHint:
+      "Streamable HTTP endpoint of an MCP server in your network. Reached only through a Private Agent. After saving, use Manage MCP tools to discover and allowlist read-only tools.",
+    credentialHint:
+      "Optional bearer token, or a custom header name plus value. Leave empty for servers that do not require authentication.",
+    examples: [],
+  },
   tempo: {
     label: "Grafana Tempo",
     queryLabel: "Trace search",
@@ -431,9 +442,9 @@ const guides: Record<string, ConnectorQueryGuide> = {
       'project = CHECKOUT AND labels = "checkout" AND updated >= -14d',
     endpointPlaceholder: "https://your-domain.atlassian.net",
     setupHint:
-      "Use Jira Cloud with read-only issue/search access. Scope projects and labels to operational tickets, incidents, deploys, and changes.",
+      "Use your Jira site URL (Cloud) or base URL (Data Center). Plain text is searched with a time window; JQL is passed through as-is. Scope to operational tickets, incidents, deploys, and changes.",
     credentialHint:
-      "Use a read-only API token or OAuth token with issue search permissions. Avoid administrator tokens.",
+      "Cloud: account email plus an API token for a dedicated read-only user with Browse Projects permission. Data Center: leave the email empty and use a personal access token. Avoid administrator tokens.",
     examples: [
       {
         label: "Recent service tickets",
@@ -466,9 +477,9 @@ const guides: Record<string, ConnectorQueryGuide> = {
     queryPlaceholder: 'space = "SRE" AND type = "page" AND text ~ "checkout"',
     endpointPlaceholder: "https://your-domain.atlassian.net/wiki",
     setupHint:
-      "Use Confluence read-only search for runbooks, postmortems, architecture notes, and operational procedures.",
+      "Use your Confluence site URL (Cloud, /wiki is added automatically) or base URL (Data Center). Plain text searches pages and blog posts; CQL is passed through as-is. Page bodies are fetched for the top hits only.",
     credentialHint:
-      "Use a read-only API token or OAuth token limited to content read/search permissions.",
+      "Cloud: account email plus an API token for a dedicated user with view-only access to the needed spaces. Data Center: leave the email empty and use a personal access token.",
     examples: [
       {
         label: "Service runbooks",
@@ -498,16 +509,16 @@ const guides: Record<string, ConnectorQueryGuide> = {
   notion: {
     label: "Notion",
     queryLabel: "Search query",
-    queryPlaceholder: "checkout incident runbook type:page",
+    queryPlaceholder: "checkout incident runbook",
     endpointPlaceholder: "https://api.notion.com",
     setupHint:
-      "Use Notion search for service runbooks, incident notes, and operational knowledge bases. Share only approved pages/databases with the integration.",
+      "Notion is reached at api.notion.com (the endpoint field is ignored). Share only approved runbook pages with the integration; page text is fetched for the top hits only.",
     credentialHint:
       "Use an internal integration token with read-only access to the required pages or databases.",
     examples: [
       {
         label: "Service runbook",
-        query: "checkout incident runbook type:page",
+        query: "checkout incident runbook",
         description:
           "Find the primary runbook or operational procedure for a service.",
       },
@@ -522,35 +533,6 @@ const guides: Record<string, ConnectorQueryGuide> = {
       {
         label: "Notion search API",
         href: "https://developers.notion.com/reference/post-search",
-      },
-    ],
-  },
-  slack: {
-    label: "Slack",
-    queryLabel: "Message search",
-    queryPlaceholder: "in:#incidents checkout timeout after:2026-06-01",
-    endpointPlaceholder: "https://slack.com/api",
-    setupHint:
-      "Use Slack read-only search for incident channels and operational discussion threads. Prefer dedicated incident channels over broad workspace search.",
-    credentialHint:
-      "Use a token with the narrowest read/search scopes that your Slack plan and app model allow. Do not use user tokens with write scopes.",
-    examples: [
-      {
-        label: "Incident channel",
-        query: "in:#incidents checkout incident",
-        description: "Find incident discussion for the affected service.",
-      },
-      {
-        label: "Recent symptom search",
-        query: "in:#incidents checkout timeout after:2026-06-01",
-        description:
-          "Find recent chat messages about service symptoms or mitigation.",
-      },
-    ],
-    docs: [
-      {
-        label: "Slack message search API",
-        href: "https://docs.slack.dev/reference/methods/search.messages/",
       },
     ],
   },

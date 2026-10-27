@@ -12,7 +12,10 @@ import { getActualModelName } from "@/lib/ai/ai-provider";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
-import { DIRECT_VALIDATION_CONNECTOR_TYPES } from "@/lib/sre/connectors";
+import {
+  isLiveSearchConnectorType,
+  SRE_CONNECTOR_TYPES,
+} from "@/lib/sre/connectors";
 import type {
   BriefEvidenceInput,
   EvidenceBrief,
@@ -29,16 +32,16 @@ const orchestratorLogger = createLogger({
   error: (data: unknown, msg?: string) => void;
 };
 
-const connectorEvidenceSourceTypes = [
-  ...DIRECT_VALIDATION_CONNECTOR_TYPES,
-  "splunk",
-  "slack",
-  "mcp",
-  "webhook",
-] as const;
+// Derived from live capabilities so a connector type is accepted exactly when
+// it can actually return evidence.
+const connectorEvidenceSourceTypes = SRE_CONNECTOR_TYPES.filter(
+  isLiveSearchConnectorType,
+) as ConnectorEvidenceSourceType[];
 
-type ConnectorEvidenceSourceType =
-  (typeof connectorEvidenceSourceTypes)[number];
+type ConnectorEvidenceSourceType = Extract<
+  (typeof SRE_CONNECTOR_TYPES)[number],
+  (typeof sreEvidenceItems.$inferSelect)["sourceType"]
+>;
 
 const connectorEvidenceSourceTypeSet = new Set<string>(
   connectorEvidenceSourceTypes,

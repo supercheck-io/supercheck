@@ -707,4 +707,37 @@ describe('assertSecureApiUrl', () => {
   ])('rejects %s', (url) => {
     expect(() => assertSecureApiUrl(url)).toThrow('must use https://');
   });
+
+  it('rejects oversized Jira responses and reads small ones', async () => {
+    const jiraJob = {
+      ...baseJob,
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'jira' as const,
+        endpointUrl: 'https://jira.internal',
+        query: 'checkout',
+      },
+    };
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ issues: [], pad: 'x'.repeat(3 * 1024 * 1024) }),
+        {
+          status: 200,
+        },
+      ),
+    );
+    await expect(executePrivateAgentConnectorJob(jiraJob)).rejects.toThrow(
+      'too large',
+    );
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          issues: [{ key: 'OPS-1', fields: { summary: 'Disk' } }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await executePrivateAgentConnectorJob(jiraJob);
+    expect(result.evidence[0].title).toContain('OPS-1');
+  });
 });

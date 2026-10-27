@@ -25,8 +25,26 @@ Choose one of these in **Add connector**.
 | **Error tracking** | Sentry |
 | **Code and deployments** | GitHub, GitLab |
 | **Incident management** | PagerDuty, Opsgenie |
+| **Tickets and knowledge** | Jira, Confluence, Notion |
+| **Custom tools** | MCP servers in your network (Private Agent only) |
 
-Existing records for other providers are labeled **Setup only** and cannot run searches.
+Existing records for other providers are labeled **Setup only** or **Unsupported** and cannot run searches. Disable them from the connector actions menu.
+
+- **OpenTelemetry:** query the backend your collector exports to (Tempo, Jaeger, Loki, Prometheus, and so on).
+- **Slack and Teams:** used for notifications, not as an evidence source. Notification channels are configured separately and are not affected.
+- **Webhook, Kafka, RabbitMQ:** not evidence sources.
+
+## Tickets and Knowledge Connectors
+
+Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: it is redacted, fenced, and labeled so the AI treats it as evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
+
+| Provider | Endpoint | Credential | Least privilege |
+|---|---|---|---|
+| **Jira** | Cloud site URL, or Data Center base URL | Cloud: account email and API token. Data Center: leave the email empty and use a personal access token | A dedicated user that can only browse the operational projects |
+| **Confluence** | Cloud site URL (`/wiki` is added), or Data Center base URL | Same as Jira | A dedicated user with view access to runbook and post-mortem spaces only |
+| **Notion** | Fixed at `api.notion.com`; the endpoint field is ignored | Internal integration token | Share only the runbook pages with the integration |
+
+Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
 
 ## Choose How to Connect
 
@@ -36,7 +54,7 @@ Existing records for other providers are labeled **Setup only** and cannot run s
 | An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector |
 | An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it. Otherwise deploy an agent in that network |
 
-Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, and Azure Monitor. GitLab, PagerDuty, and Opsgenie support **Direct** only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, and Confluence. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
 
 | Mode | Endpoint rules |
 |---|---|
@@ -122,6 +140,38 @@ Save, validate, then run one known-result query and one no-result query before r
 Use the smallest service scope and query time window that answer your question. If a search returns no evidence, check the service scope, provider permissions, and time range.
 </Callout>
 
+## MCP Servers (Private Agent only)
+
+Connect any [Model Context Protocol](https://modelcontextprotocol.io) server running inside your network as a read-only evidence source. Supercheck reaches it only through a [Private Agent](/docs/app/deployment/private-agent), so **Execution mode** must be **Private Agent**. Direct mode is rejected. Only the Streamable HTTP transport is supported. Supercheck never starts local processes or stdio servers.
+
+<Steps>
+<Step>
+Add a connector of type **MCP** with the server's endpoint URL, for example `https://mcp.internal.example.com/mcp`, and the Private Agent that can reach it. An optional credential is sent as `Authorization: Bearer <value>`, or as a custom header if you set a header name.
+</Step>
+<Step>
+Open **Manage MCP tools** from the connector menu and select **Discover tools**. The Private Agent lists the server's tools and their input schemas.
+</Step>
+<Step>
+Tick the tools investigations may call and save. Nothing is callable until you allowlist it. You can fix some arguments, such as a namespace, to a constant value that the AI cannot override.
+</Step>
+</Steps>
+
+Allowlisted tools appear to the AI as `callMcpTool` targets together with their descriptions and argument names. Each call is checked before it leaves Supercheck, and again by the agent.
+
+| Control | Behavior |
+|---|---|
+| **Allowlist** | Only tools you ticked can be called. The tool description and input schema are saved when you allowlist, so later server changes do not widen access |
+| **Server hints** | Annotations such as read-only or destructive are shown for reference. They never authorize a call |
+| **Arguments** | Validated against the saved schema, size-limited, and unknown arguments are rejected. Tools whose schema uses unsupported JSON Schema keywords cannot be allowlisted |
+| **Output** | Text and JSON only. Images, resources, and binary content are dropped. Output is redacted, truncated, and marked as untrusted data, so the AI never treats it as instructions |
+| **Limits** | Calls count toward the connector search rate limit, the investigation step budget, the connector timeout, and the output size cap |
+| **Audit** | Each call, including rejected ones, appears in the investigation tool trace and the connector audit log with the tool name, and results are stored as evidence |
+| **Network** | The agent applies its endpoint policy: no localhost or cloud metadata targets, no redirects, and no credentials in URLs |
+
+<Callout type="warn">
+Allowlist only tools that cannot change anything. Supercheck cannot verify what a tool does on your server. Prefer a server or token that exposes read-only tools, and review each tool before ticking it.
+</Callout>
+
 ## Query Examples
 
 Each provider uses its own read-only query language.
@@ -159,6 +209,7 @@ Use dedicated, read-only credentials limited to the service scope.
 | **Prometheus / Loki** | Read-only bearer token or gateway credential for query endpoints |
 | **Sentry** | Read-only integration token restricted to relevant project IDs |
 | **Datadog** | API key plus application key with read-only event access for the correct Datadog site |
+| **MCP** | A token for a read-only account on the MCP server, limited to the tools you allowlist |
 | **AWS CloudWatch** | Access key ID and secret with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`. Prefer short-lived STS credentials and include the session token |
 | **Jaeger** | Jaeger has no built-in authentication. Put it behind a gateway and use a read-only bearer token, or leave the credential empty on a private network |
 | **New Relic** | A User API key from a user or service user with read-only access to the account, plus the numeric account ID. Choose `us` or `eu` for the data region. Ingest and license keys do not work |

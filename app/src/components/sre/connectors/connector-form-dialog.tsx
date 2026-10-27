@@ -105,8 +105,12 @@ export function ConnectorFormDialog({
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
   const [providerValues, setProviderValues] = useState<Record<string, string>>({});
   const providerFields = getProviderCredentialFields(type);
+  const [atlassianEmail, setAtlassianEmail] = useState("");
+  const [mcpHeaderName, setMcpHeaderName] = useState("");
+  const isMcp = type === "mcp";
   const isCloudWatch = type === "aws_cloudwatch";
   const isDatadog = type === "datadog";
+  const isAtlassian = type === "jira" || type === "confluence";
   const isApiKeyOnly = apiKeyOnlyConnectorTypes.has(type);
   const visibleCredentialTypeOptions = isApiKeyOnly
     ? credentialTypeOptions.filter((option) => option.value === "api_key")
@@ -141,6 +145,11 @@ export function ConnectorFormDialog({
       Boolean(trimmedDatadogApiKey) !== Boolean(trimmedDatadogApplicationKey)
     ) {
       toast.error("Datadog requires both an API key and an application key");
+      return;
+    }
+
+    if (isMcp && mcpHeaderName.trim() && !trimmedCredential) {
+      toast.error("Enter the credential value for the custom header");
       return;
     }
 
@@ -198,7 +207,15 @@ export function ConnectorFormDialog({
               : !isCloudWatch && !isDatadog && trimmedCredential
                 ? {
                     credentialType,
-                    value: { secret: trimmedCredential },
+                    value: {
+                      secret: trimmedCredential,
+                      ...(isAtlassian && atlassianEmail.trim()
+                        ? { email: atlassianEmail.trim() }
+                        : {}),
+                      ...(isMcp && mcpHeaderName.trim()
+                        ? { headerName: mcpHeaderName.trim() }
+                        : {}),
+                    },
                   }
                 : undefined,
       });
@@ -215,12 +232,14 @@ export function ConnectorFormDialog({
 
       toast.success(result.message);
       setCredentialValue("");
+      setAtlassianEmail("");
       setAwsAccessKeyId("");
       setAwsSecretAccessKey("");
       setAwsSessionToken("");
       setDatadogApiKey("");
       setDatadogApplicationKey("");
       setProviderValues({});
+      setMcpHeaderName("");
       onOpenChange(false);
     });
   };
@@ -274,6 +293,8 @@ export function ConnectorFormDialog({
                           setExecutionMode("direct");
                           setPrivateAgentId(null);
                         }
+                        // MCP servers are only reachable through a Private Agent.
+                        if (nextType === "mcp") setExecutionMode("private_agent");
                       }}
                     >
                       <SelectTrigger id="connector-type" className="w-full">
@@ -292,11 +313,11 @@ export function ConnectorFormDialog({
                         {selectedTypeOption?.description}
                       </p>
                       <TableBadge
-                        tone={isLiveSearchType ? "success" : "warning"}
+                        tone={isLiveSearchType || isMcp ? "success" : "warning"}
                         compact
                         className="shrink-0"
                       >
-                        {isLiveSearchType ? "Live search" : "Setup only"}
+                        {isMcp ? "Agent tools" : isLiveSearchType ? "Live search" : "Setup only"}
                       </TableBadge>
                     </div>
                   </div>
@@ -360,7 +381,9 @@ export function ConnectorFormDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="direct">Direct</SelectItem>
+                        <SelectItem value="direct" disabled={isMcp}>
+                          Direct
+                        </SelectItem>
                         <SelectItem
                           value="private_agent"
                           disabled={
@@ -373,7 +396,9 @@ export function ConnectorFormDialog({
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {supportsPrivateAgent
+                      {isMcp
+                        ? "MCP servers run inside your network and are reached only through a Private Agent."
+                        : supportsPrivateAgent
                         ? "Direct reaches public APIs. Private Agent reaches internal services."
                         : `${selectedTypeOption?.label ?? "This connector"} currently supports direct execution only.`}
                     </p>
@@ -562,6 +587,19 @@ export function ConnectorFormDialog({
                     </>
                   ) : (
                     <>
+                      {isAtlassian && (
+                        <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                          <Label htmlFor="atlassian-email">Account email</Label>
+                          <Input
+                            id="atlassian-email"
+                            value={atlassianEmail}
+                            onChange={(event) => setAtlassianEmail(event.target.value)}
+                            type="email"
+                            autoComplete="off"
+                            placeholder="Atlassian Cloud only; leave empty for a Data Center token"
+                          />
+                        </div>
+                      )}
                       <div className="flex min-w-0 flex-col gap-1.5">
                         <Label htmlFor="credential-type">Credential type</Label>
                         <Select
@@ -604,6 +642,21 @@ export function ConnectorFormDialog({
                           placeholder="Paste read-only credential"
                         />
                       </div>
+                      {isMcp && (
+                        <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                          <Label htmlFor="mcp-header-name">
+                            Header name (optional)
+                          </Label>
+                          <Input
+                            id="mcp-header-name"
+                            value={mcpHeaderName}
+                            onChange={(event) =>
+                              setMcpHeaderName(event.target.value)
+                            }
+                            placeholder="X-Api-Key (defaults to Authorization: Bearer)"
+                          />
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground sm:col-span-2">
                         {queryGuide.credentialHint}
                       </p>

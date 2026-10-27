@@ -1,5 +1,6 @@
 import type { ConnectorCredentialValue } from "./credential-vault";
 import { providerCredentialRequirementError } from "./providers/provider-credentials";
+import { mcpHeaderNameError } from "./providers/mcp";
 
 function trimmedCredentialField(
   value: ConnectorCredentialValue | null | undefined,
@@ -44,6 +45,29 @@ export function connectorCredentialRequirementError(
   const providerError = providerCredentialRequirementError(connectorType, value);
   if (providerError) {
     return providerError;
+  }
+
+  if (connectorType === "jira" || connectorType === "confluence") {
+    const label = connectorType === "jira" ? "Jira" : "Confluence";
+    const token = trimmedCredentialField(value, ["apiKey", "api_key", "secret"]);
+    const email = trimmedCredentialField(value, ["email", "username"]);
+    if (!token) {
+      return `${label} requires an API token (Cloud) or a personal access token (Data Center)`;
+    }
+    if (email && !email.includes("@")) {
+      return `${label} account email must be a valid email address`;
+    }
+    return null;
+  }
+
+  if (connectorType === "notion") {
+    return trimmedCredentialField(value, ["apiKey", "api_key", "secret"])
+      ? null
+      : "Notion requires an internal integration token";
+  }
+
+  if (connectorType === "mcp") {
+    return mcpHeaderNameError(trimmedCredentialField(value, ["headerName"]));
   }
 
   if (connectorType === "aws_cloudwatch") {

@@ -44,11 +44,10 @@ describe("connector query guides", () => {
     );
   });
 
-  it("provides knowledge, ticketing, and chat setup references", () => {
+  it("provides knowledge and ticketing setup references", () => {
     const jira = getConnectorQueryGuide("jira");
     const confluence = getConnectorQueryGuide("confluence");
     const notion = getConnectorQueryGuide("notion");
-    const slack = getConnectorQueryGuide("slack");
 
     expect(jira.docs?.map((doc) => doc.href)).toEqual(
       expect.arrayContaining([
@@ -61,10 +60,5 @@ describe("connector query guides", () => {
       ]),
     );
     expect(notion.examples[0]?.query).toContain("runbook");
-    expect(slack.docs?.map((doc) => doc.href)).toEqual(
-      expect.arrayContaining([
-        "https://docs.slack.dev/reference/methods/search.messages/",
-      ]),
-    );
   });
 });

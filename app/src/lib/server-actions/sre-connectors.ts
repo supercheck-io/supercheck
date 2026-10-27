@@ -22,6 +22,10 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import {
+  isRetiredConnectorType,
+  retiredConnectorExplanation,
+} from "@/lib/sre/connectors/retired-connectors";
+import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   decryptConnectorCredential,
   encryptConnectorCredential,
@@ -394,6 +398,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
     fields: flatCredentialFields(value),
+    email: credentialString(value, ["email", "username"]),
   };
 }
 
@@ -933,11 +938,30 @@ export async function createSreConnector(
     const endpointUrl = isFixedEndpointProvider
       ? null
       : normalizeEndpointUrl(parsed.data.endpointUrl);
+    if (isRetiredConnectorType(parsed.data.type)) {
+      return {
+        success: false,
+        error: retiredConnectorExplanation(parsed.data.type),
+      };
+    }
     if (isSetupOnlyConnectorType(parsed.data.type)) {
       return {
         success: false,
         error: `${parsed.data.type.replace(/_/g, " ")} connectors are setup-only right now. Live investigation search is not available yet, so new setup is disabled until a read-only adapter is shipped.`,
       };
+    }
+
+    if (parsed.data.type === "mcp") {
+      // Never reachable without a Private Agent: the server is in the customer's network.
+      if (!parsed.data.privateAgentId) {
+        return {
+          success: false,
+          error: "MCP connectors run only through a Private Agent",
+        };
+      }
+      if (!endpointUrl) {
+        return { success: false, error: "MCP connectors require an endpoint URL" };
+      }
     }
 
     const credentialError =
@@ -1169,9 +1193,15 @@ export async function validateSreConnector(
       | "policy_blocked" = "valid";
     let outputSummary = "Connector validation passed";
 
-    if (!credentialRow && connectorRequiresCredentials(row.type)) {
+    if (row.type === "mcp" && !row.privateAgentId) {
+      status = "policy_blocked";
+      outputSummary = "MCP connectors run only through a Private Agent";
+    } else if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
+    } else if (isRetiredConnectorType(row.type)) {
+      status = "policy_blocked";
+      outputSummary = retiredConnectorExplanation(row.type);
     } else if (row.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
         where: and(
@@ -1195,7 +1225,9 @@ export async function validateSreConnector(
       } else {
         status = "policy_blocked";
         outputSummary =
-          "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
+          row.type === "mcp"
+            ? "Private Agent is connected. Use Discover tools to verify the MCP endpoint and access."
+            : "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
@@ -1221,6 +1253,9 @@ export async function validateSreConnector(
           (validation.status === "valid"
             ? "Connector validation passed"
             : "Connector validation failed");
+      } else if (isRetiredConnectorType(row.type)) {
+        status = "policy_blocked";
+        outputSummary = retiredConnectorExplanation(row.type);
       } else if (isSetupOnlyConnectorType(row.type)) {
         status = "policy_blocked";
         outputSummary =
@@ -1498,6 +1533,14 @@ export async function searchSreConnectorEvidence(
 
     if (!connector || connector.status === "disabled") {
       return { success: false, error: "Connector not found or disabled" };
+    }
+
+    if (connector.type === "mcp") {
+      return {
+        success: false,
+        error:
+          "MCP connectors are not searchable. Allowlisted tools are called by AI investigations.",
+      };
     }
 
     const searchSupported = connector.privateAgentId

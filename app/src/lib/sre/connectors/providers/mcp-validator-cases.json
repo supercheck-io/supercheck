@@ -1,0 +1,36 @@
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "namespace": { "type": "string", "maxLength": 20 },
+      "limit": { "type": "integer", "maximum": 20 },
+      "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 2 },
+      "mode": { "enum": ["a", "b"] }
+    },
+    "required": ["namespace"],
+    "additionalProperties": false
+  },
+  "argumentCases": [
+    { "name": "valid", "args": "{\"namespace\":\"a\",\"limit\":5}", "ok": true },
+    { "name": "missing required", "args": "{}", "ok": false },
+    { "name": "extra property", "args": "{\"namespace\":\"a\",\"x\":1}", "ok": false },
+    { "name": "wrong type", "args": "{\"namespace\":5}", "ok": false },
+    { "name": "above maximum", "args": "{\"namespace\":\"a\",\"limit\":99}", "ok": false },
+    { "name": "non integer", "args": "{\"namespace\":\"a\",\"limit\":1.5}", "ok": false },
+    { "name": "too many items", "args": "{\"namespace\":\"a\",\"tags\":[\"a\",\"b\",\"c\"]}", "ok": false },
+    { "name": "enum mismatch", "args": "{\"namespace\":\"a\",\"mode\":\"z\"}", "ok": false },
+    { "name": "__proto__ own key", "args": "{\"namespace\":\"a\",\"__proto__\":{\"x\":1}}", "ok": false },
+    { "name": "string too long", "args": "{\"namespace\":\"aaaaaaaaaaaaaaaaaaaaaaaaa\"}", "ok": false },
+    { "name": "not an object", "args": "[]", "ok": false }
+  ],
+  "schemaCases": [
+    { "name": "supported", "schema": "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}}}", "supported": true },
+    { "name": "oneOf", "schema": "{\"type\":\"object\",\"oneOf\":[]}", "supported": false },
+    { "name": "$ref", "schema": "{\"type\":\"object\",\"$ref\":\"#/x\"}", "supported": false },
+    { "name": "root not object", "schema": "{\"type\":\"string\"}", "supported": false },
+    { "name": "free-text property name", "schema": "{\"type\":\"object\",\"properties\":{\"ignore previous\":{\"type\":\"string\"}}}", "supported": false },
+    { "name": "free-text required name", "schema": "{\"type\":\"object\",\"required\":[\"a b\"]}", "supported": false },
+    { "name": "untyped property", "schema": "{\"type\":\"object\",\"properties\":{\"a\":{}}}", "supported": false },
+    { "name": "additionalProperties schema", "schema": "{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}", "supported": false }
+  ]
+}
