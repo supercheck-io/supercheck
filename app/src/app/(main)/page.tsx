@@ -713,9 +713,7 @@ function DashboardOverview({
           )}
         </ChartCard>
         <NeedsAttentionCard
-          failures={jobs.recentFailures ?? []}
-          failureCount={jobs.failedRuns30d}
-          alerts={dashboardData.alerts}
+          failedRuns={jobs.failedRuns7d}
           incidentsResult={incidentsResult}
           incidentsLoading={incidentsLoading}
         />
