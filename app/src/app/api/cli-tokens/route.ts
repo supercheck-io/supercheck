@@ -145,7 +145,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, expiresIn } = validation.data;
+    const { name } = validation.data;
+    let { expiresIn } = validation.data;
+    // A CLI token may create tokens, but none that outlive it: a stolen token cannot mint a longer-lived replacement.
+    if (context.isCliAuth && context.cliTokenExpiresAt) {
+      const remaining = Math.floor((context.cliTokenExpiresAt.getTime() - Date.now()) / 1000);
+      if (remaining <= 0) {
+        return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
+      }
+      expiresIn = Math.min(expiresIn ?? remaining, remaining);
+    }
 
     const issued = await issueCliApiKeyAtomically({
       userId: context.userId,

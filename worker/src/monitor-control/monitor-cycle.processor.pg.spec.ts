@@ -271,8 +271,15 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         'limit',
         { ...seed, nextAt: 0 },
       );
+      const before = processor.snapshot();
       await processor.tick(new Date(deadline.getTime() + 1000));
       expect((await cycle('limit')).status).toBe(status);
+      const after = processor.snapshot();
+      // Billing outages count as close failures too, so operators are alerted before an abort.
+      expect(after.cycleFailures - before.cycleFailures).toBe(1);
+      expect(after.abortedCycles - before.abortedCycles).toBe(
+        status === 'aborted' ? 1 : 0,
+      );
       spy.mockRestore();
     });
 

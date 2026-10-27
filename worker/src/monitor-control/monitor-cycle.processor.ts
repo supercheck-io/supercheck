@@ -68,6 +68,7 @@ export type ProcessorSnapshot = {
   closed: Record<string, number>;
   notifyFailures: number;
   cycleFailures: number;
+  abortedCycles: number;
   retentionDeleted: number;
 };
 
@@ -107,6 +108,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     closed: {},
     notifyFailures: 0,
     cycleFailures: 0,
+    abortedCycles: 0,
     retentionDeleted: 0,
   };
 
@@ -270,6 +272,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         billingFailures >= BILLING_GIVE_UP_AFTER
       ) {
         this.failing.delete(id);
+        this.state.abortedCycles += 1;
         await this.cycles.abortCycle(id).catch(() => undefined);
         this.logger.error(
           `Aborted cycle ${id} after ${failures + billingFailures} failed closures; investigate the cause above`,

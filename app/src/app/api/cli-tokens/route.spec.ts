@@ -47,6 +47,8 @@ beforeEach(() => {
 });
 
 describe("POST /api/cli-tokens", () => {
+  afterEach(() => jest.useRealTimers());
+
   it("creates a token, returns the plaintext once and audits without the secret", async () => {
     mockIssue.mockResolvedValue(created(new Date("2026-11-20T00:00:00Z")));
     const res = await POST(req({ name: "  CI  ", expiresIn: 86400 }));
@@ -98,6 +100,26 @@ describe("POST /api/cli-tokens", () => {
     const res = await POST(req({ name: "a" }));
     expect(res.status).toBe(201);
     expect(mockImpersonated).not.toHaveBeenCalled();
+  });
+
+  it("caps a token created by a CLI token at the parent token's expiry", async () => {
+    jest.useFakeTimers({ now: new Date("2026-10-27T00:00:00Z"), doNotFake: ["nextTick", "setImmediate", "queueMicrotask"] });
+    const parentExpiry = new Date(Date.now() + 2 * 86400 * 1000);
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: parentExpiry });
+    mockIssue.mockResolvedValue(created());
+    expect((await POST(req({ name: "a", expiresIn: 365 * 86400 }))).status).toBe(201);
+    expect((await POST(req({ name: "b" }))).status).toBe(201);
+    expect((await POST(req({ name: "c", expiresIn: 3600 }))).status).toBe(201);
+    const issued = mockIssue.mock.calls.map(([input]) => input.expiresInSeconds);
+    expect(issued).toEqual([2 * 86400, 2 * 86400, 3600]);
+  });
+
+  it("leaves expiry alone for browser sessions and non-expiring CLI tokens", async () => {
+    mockIssue.mockResolvedValue(created());
+    await POST(req({ name: "a" }));
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: null });
+    await POST(req({ name: "b", expiresIn: 365 * 86400 }));
+    expect(mockIssue.mock.calls.map(([input]) => input.expiresInSeconds)).toEqual([undefined, 365 * 86400]);
   });
 
   it("returns a generic 500 without leaking internals", async () => {

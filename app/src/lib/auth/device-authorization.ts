@@ -12,6 +12,7 @@ import {
   resolveProjectPermissionContext,
 } from "@/lib/rbac/middleware";
 import { issueCliApiKey } from "@/lib/auth/cli-key-service";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 
 export const DEVICE_CLIENT_ID = "supercheck-cli";
 export const DEVICE_GRANT_TTL_SECONDS = 15 * 60;
@@ -445,7 +446,15 @@ export async function exchangeDeviceCode(input: {
       };
     }
     const permissionContext = peekedPermission;
+    // A grant approved before a suspension must not mint a key during it: the key would
+    // outlive a temporary ban.
+    const [approver] = await tx
+      .select({ banned: user.banned, banExpires: user.banExpires })
+      .from(user)
+      .where(eq(user.id, grant.approvedUserId))
+      .limit(1);
     if (
+      !isCredentialOwnerActive(approver) ||
       !permissionContext ||
       !checkPermissionWithContext("apiKey", "create", permissionContext)
     ) {

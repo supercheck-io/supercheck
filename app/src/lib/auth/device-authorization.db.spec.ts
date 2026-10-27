@@ -287,6 +287,31 @@ describe("device authorization lifecycle", () => {
     expect(await keyCount()).toBe(0);
   });
 
+  it.each([
+    ["permanently", null],
+    ["until a future date", new Date(Date.now() + 3600_000)],
+  ])("refuses issuance if the approver was suspended %s before exchange", async (_label, banExpires) => {
+    const grant = await newGrant();
+    await approveDeviceGrant({ userCode: grant.userCode, userId: ownerId, projectId });
+    await mockDatabase.update(schema.user).set({ banned: true, banExpires }).where(eq(schema.user.id, ownerId));
+    expect(
+      await exchangeDeviceCode({ deviceCode: grant.deviceCode, clientId: DEVICE_CLIENT_ID }),
+    ).toMatchObject({ ok: false, error: "access_denied" });
+    expect(await keyCount()).toBe(0);
+  });
+
+  it("issues a key once a temporary suspension has expired", async () => {
+    const grant = await newGrant();
+    await approveDeviceGrant({ userCode: grant.userCode, userId: ownerId, projectId });
+    await mockDatabase
+      .update(schema.user)
+      .set({ banned: true, banExpires: new Date(Date.now() - 1000) })
+      .where(eq(schema.user.id, ownerId));
+    expect(
+      await exchangeDeviceCode({ deviceCode: grant.deviceCode, clientId: DEVICE_CLIENT_ID }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("rejects the wrong client and unknown device codes", async () => {
     const grant = await newGrant();
     expect(
