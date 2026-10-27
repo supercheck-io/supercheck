@@ -213,10 +213,10 @@ export const products: Product[] = [
     eyebrow: "AI SRE",
     metaTitle: "AI SRE for incident investigation",
     metaDescription:
-      "Open an incident, run a read-only AI investigation over your monitor, test and connector evidence, and review cited findings and evidence gaps.",
+      "Failing monitors and jobs open incidents automatically. Run a read-only AI investigation over your monitor, test and connector evidence, and review cited findings and evidence gaps.",
     title: "Investigations that cite their evidence",
     intro:
-      "When a monitor fails, open an incident and run a read-only AI investigation over stored results, test artifacts and the connectors you enable. Findings link to evidence, and missing data is reported as a gap.",
+      "When a monitor or job fails, Supercheck opens an incident and resolves it when the check recovers. Run a read-only AI investigation over stored results, test artifacts and the connectors you enable. Findings link to evidence, and missing data is reported as a gap.",
     guide: { href: "/docs/app/investigate", label: "Read the investigate guide" },
     capabilities: [
       {
@@ -234,8 +234,8 @@ export const products: Product[] = [
     ],
     steps: [
       {
-        title: "Open an incident from an alert",
-        body: "Select Investigate next to a failure signal, or create an incident from scratch. Opening an incident does not start an investigation.",
+        title: "Incidents open from alerts",
+        body: "A failing monitor or job opens one incident, later failures join it, and recovery resolves it unless someone acknowledged it. You can also create an incident from scratch. Opening an incident does not start an investigation.",
         bullets: [
           "Filter the queue by severity SEV1 to SEV4",
           "Link the incident to a service in the catalog",
