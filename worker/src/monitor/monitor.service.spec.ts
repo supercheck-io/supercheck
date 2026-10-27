@@ -119,10 +119,7 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
-import {
-  resolvePublicAddress,
-  vettedLookup,
-} from '../common/utils/pinned-monitor-request';
+import { vettedLookup } from '../common/utils/pinned-monitor-request';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
