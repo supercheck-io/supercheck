@@ -6259,6 +6259,12 @@ components:
           type: string
           format: date-time
           nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time

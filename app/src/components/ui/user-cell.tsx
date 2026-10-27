@@ -73,7 +73,7 @@ export function UserCell({
   // The tooltip shows the full name (it may be truncated) and the email.
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipTrigger asChild tabIndex={0}>{content}</TooltipTrigger>
       <TooltipContent>
         {name && email ? (
           <>
