@@ -251,6 +251,12 @@ export function SreIncidentsList({
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
   const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [lastPageSize, setLastPageSize] = useState(pageSize);
+  // Auto-fit changes the size outside the pager, so keep the first visible row on screen.
+  if (lastPageSize !== pageSize) {
+    setLastPageSize(pageSize);
+    setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
+  }
   const [isPending, startTransition] = useTransition();
 
   const resetForm = () => {

@@ -81,7 +81,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
               {detail.linkedAlerts.map((alert) => (
                 <li key={alert.id} className="flex items-start justify-between gap-2 text-sm">
                   <span className="min-w-0 break-words">{alert.title}</span>
-                  <TableBadge compact tone={alert.status === "firing" ? "danger" : "success"}>{alert.status}</TableBadge>
+                  <TableBadge compact tone={alert.status === "firing" ? "danger" : alert.status === "resolved" ? "success" : "neutral"}>{alert.status}</TableBadge>
                 </li>
               ))}
             </ul>
