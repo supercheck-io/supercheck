@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { NeedsAttentionCard, failuresByTrigger, incidentsBySeverity } from "./dashboard-panels";
 
 const failedRuns = { manual: 2, scheduled: 1, remote: 0 };
@@ -15,31 +15,37 @@ describe("chart data", () => {
 });
 
 describe("NeedsAttentionCard", () => {
-  it("shows totals and links for failures and open incidents", () => {
-    render(<NeedsAttentionCard failedRuns={failedRuns} incidentsResult={{ available: true, incidents: [incident("sev1"), incident("sev2")] }} incidentsLoading={false} />);
-    const failures = screen.getByTestId("panel-recent-failures");
-    expect(failures.textContent).toContain("3");
-    expect(within(failures).getByRole("link", { name: "All runs" }).getAttribute("href")).toBe("/runs");
-    const incidents = screen.getByTestId("panel-open-incidents");
-    expect(incidents.textContent).toContain("2");
-    expect(within(incidents).getByRole("link", { name: "All incidents" }).getAttribute("href")).toBe("/incidents");
+  const openIncidents = { available: true as const, incidents: [incident("sev1"), incident("sev2")] };
+
+  it("shows failed runs first, then incidents on the Incidents tab", () => {
+    render(<NeedsAttentionCard failedRuns={failedRuns} incidentsResult={openIncidents} incidentsLoading={false} />);
+    expect(screen.getByTestId("panel-recent-failures")).toBeTruthy();
+    expect(screen.getByText("3 failed runs by trigger, last 7 days")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "All runs" }).getAttribute("href")).toBe("/runs");
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Incidents" }));
+    expect(screen.getByTestId("panel-open-incidents")).toBeTruthy();
+    expect(screen.getByText("2 open incidents by severity")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "All incidents" }).getAttribute("href")).toBe("/incidents");
   });
 
-  it("omits the incidents section when the incidents API is unavailable", () => {
+  it("omits the incidents tab when the incidents API is unavailable", () => {
     render(<NeedsAttentionCard failedRuns={failedRuns} incidentsResult={{ available: false }} incidentsLoading={false} />);
-    expect(screen.queryByTestId("panel-open-incidents")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Incidents" })).toBeNull();
     expect(screen.getByTestId("panel-recent-failures")).toBeTruthy();
   });
 
   it("shows empty messages when nothing needs attention", () => {
     render(<NeedsAttentionCard failedRuns={{ manual: 0, scheduled: 0, remote: 0 }} incidentsResult={{ available: true, incidents: [] }} incidentsLoading={false} />);
     expect(screen.getByText("No failed runs in the last 7 days")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Incidents" }));
     expect(screen.getByText("No open incidents")).toBeTruthy();
   });
 
-  it("keeps the incidents section and hides its total while loading", () => {
+  it("hides the incident total while loading", () => {
     render(<NeedsAttentionCard failedRuns={failedRuns} incidentsResult={undefined} incidentsLoading />);
-    const incidents = screen.getByTestId("panel-open-incidents");
-    expect(incidents.textContent).not.toMatch(/\d/);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Incidents" }));
+    expect(screen.getByText("Open incidents by severity")).toBeTruthy();
+    expect(screen.getByTestId("panel-open-incidents").textContent).not.toMatch(/\d/);
   });
 });

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Bar, BarChart, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DashboardData } from "@/hooks/use-dashboard";
 import type { OpenIncidentsResult } from "@/hooks/use-open-incidents";
 
@@ -42,58 +43,24 @@ export function incidentsBySeverity(incidents: Array<{ severity: string }>): Bar
   }));
 }
 
-/** Heading with the total and a link to the list, over a chart that fills the remaining height. */
-function Section({
-  title,
-  total,
-  href,
-  linkLabel,
-  testId,
-  children,
-}: {
-  title: string;
-  total: number | null;
-  href: string;
-  linkLabel: string;
-  testId: string;
-  children: ReactNode;
-}) {
-  return (
-    <section data-testid={testId} className="flex min-h-0 flex-1 flex-col first:pb-2 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">
-          {title}
-          {total !== null ? (
-            <span className="ml-2 text-sm font-semibold tabular-nums text-foreground">{total}</span>
-          ) : null}
-        </h3>
-        <Link href={href} className="text-xs text-muted-foreground hover:text-foreground">
-          {linkLabel}
-        </Link>
-      </div>
-      <div className="mt-1 min-h-0 flex-1">{children}</div>
-    </section>
-  );
-}
-
-function BarsOrEmpty({ data, empty }: { data: BarDatum[]; empty: string }) {
+function StatusBars({ data, empty }: { data: BarDatum[]; empty: string }) {
   if (data.every((d) => d.count === 0)) {
     return (
-      <div className="flex h-full min-h-10 items-center justify-center text-sm text-muted-foreground">{empty}</div>
+      <div className="flex h-44 items-center justify-center text-sm text-muted-foreground lg:h-full">{empty}</div>
     );
   }
+  // Same chart as Job Status and Monitor Status.
   return (
-    <ChartContainer config={chartConfig} className="h-24 w-full lg:h-full lg:min-h-12">
+    <ChartContainer config={chartConfig} className="h-44 w-full lg:h-full lg:min-h-20">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 0, right: 24, bottom: 0, left: 0 }}>
-          <XAxis type="number" hide allowDecimals={false} />
-          <YAxis type="category" dataKey="name" width={64} fontSize={11} tickLine={false} axisLine={false} />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-          <Bar dataKey="count" radius={4} barSize={10}>
+        <BarChart data={data}>
+          <XAxis dataKey="name" fontSize={11} tickLine={false} />
+          <YAxis fontSize={11} allowDecimals={false} />
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
             {data.map((entry) => (
               <Cell key={entry.name} fill={entry.fill} />
             ))}
-            <LabelList dataKey="count" position="right" fontSize={11} className="fill-muted-foreground" />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -102,9 +69,9 @@ function BarsOrEmpty({ data, empty }: { data: BarDatum[]; empty: string }) {
 }
 
 /**
- * Failed runs (last 7 days, by trigger) and open incidents (by severity). The
- * incidents section is omitted when the incidents API is unavailable (not
- * permitted or feature disabled).
+ * Failed runs (last 7 days, by trigger) and open incidents (by severity), one tab each.
+ * The incidents tab is omitted when the incidents API is unavailable (not permitted or
+ * feature disabled).
  */
 export function NeedsAttentionCard({
   failedRuns,
@@ -115,46 +82,59 @@ export function NeedsAttentionCard({
   incidentsResult: OpenIncidentsResult | undefined;
   incidentsLoading: boolean;
 }) {
+  const [tab, setTab] = useState<"runs" | "incidents">("runs");
   const failureData = failuresByTrigger(failedRuns);
   const failureTotal = failureData.reduce((sum, d) => sum + d.count, 0);
   const incidentData = incidentsBySeverity(incidentsResult?.available ? incidentsResult.incidents : []);
   // Totals come from the bars so an unrecognised severity can't make them disagree.
   const incidentTotal = incidentData.reduce((sum, d) => sum + d.count, 0);
   const showIncidents = incidentsLoading || !!incidentsResult?.available;
+  const active = showIncidents ? tab : "runs";
+  const description =
+    active === "runs"
+      ? `${failureTotal} failed ${failureTotal === 1 ? "run" : "runs"} by trigger, last 7 days`
+      : incidentsLoading
+        ? "Open incidents by severity"
+        : `${incidentTotal} open ${incidentTotal === 1 ? "incident" : "incidents"} by severity`;
 
   return (
     <Card data-testid="panel-needs-attention" className="flex h-full min-h-0 flex-col">
-      <CardHeader className="space-y-0 px-4 pb-2 pt-4">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          Needs attention
-        </CardTitle>
+      <CardHeader className="space-y-1 px-4 pb-2 pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            Needs attention
+          </CardTitle>
+          {showIncidents ? (
+            <Tabs value={active} onValueChange={(value) => setTab(value as "runs" | "incidents")}>
+              <TabsList className="h-7">
+                <TabsTrigger value="runs" className="h-5 px-2 text-xs">Runs</TabsTrigger>
+                <TabsTrigger value="incidents" className="h-5 px-2 text-xs">Incidents</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : null}
+        </div>
+        <CardDescription className="flex justify-between gap-2 text-xs [@media(max-height:760px)]:hidden">
+          <span className="truncate">{description}</span>
+          <Link href={active === "runs" ? "/runs" : "/incidents"} className="shrink-0 hover:text-foreground">
+            {active === "runs" ? "All runs" : "All incidents"}
+          </Link>
+        </CardDescription>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-3 pt-0">
-        <Section
-          testId="panel-recent-failures"
-          title="Failed runs, last 7 days"
-          total={failureTotal}
-          href="/runs"
-          linkLabel="All runs"
-        >
-          <BarsOrEmpty data={failureData} empty="No failed runs in the last 7 days" />
-        </Section>
-        {showIncidents ? (
-          <Section
-            testId="panel-open-incidents"
-            title="Open incidents"
-            total={incidentsLoading ? null : incidentTotal}
-            href="/incidents"
-            linkLabel="All incidents"
-          >
+      <CardContent className="px-4 pb-4 pt-2 lg:min-h-0 lg:flex-1">
+        {active === "runs" ? (
+          <div data-testid="panel-recent-failures" className="h-full">
+            <StatusBars data={failureData} empty="No failed runs in the last 7 days" />
+          </div>
+        ) : (
+          <div data-testid="panel-open-incidents" className="h-full">
             {incidentsLoading ? (
-              <Skeleton className="h-full min-h-10 w-full" />
+              <Skeleton className="h-44 w-full lg:h-full" />
             ) : (
-              <BarsOrEmpty data={incidentData} empty="No open incidents" />
+              <StatusBars data={incidentData} empty="No open incidents" />
             )}
-          </Section>
-        ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
