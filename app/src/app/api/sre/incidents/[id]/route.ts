@@ -1,3 +1,4 @@
+import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -47,5 +48,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .limit(1);
 
   if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
-  return NextResponse.json({ success: true, incident });
+  // statusLabel is the user-facing status (six values); status stays the stored value.
+  return NextResponse.json({ success: true, incident: { ...incident, statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label } });
 }

@@ -365,7 +365,8 @@ export async function collectNativeEvidence(input: {
 
   for (const alert of linkedAlerts) {
     addEvidence(evidence, {
-      sourceUri: `/incidents?tab=alerts&fingerprint=${encodeURIComponent(alert.fingerprintHash)}`,
+      // Stored URI kept stable so evidence dedupe still matches older rows; /alerts redirects to the alerts tab.
+      sourceUri: `/alerts?tab=sre-alerts&fingerprint=${encodeURIComponent(alert.fingerprintHash)}`,
       title: `Alert event: ${alert.title}`,
       summary: alert.description ?? `SRE alert ${alert.status} with severity ${alert.severity}`,
       rawContentExcerpt: excerpt(alert),

@@ -403,7 +403,7 @@ export class NotificationService {
         dashboardUrl = `${baseUrl}/notification-run/${payload.metadata.runId}`;
       }
     } else {
-      dashboardUrl = `${baseUrl}/alerts`;
+      dashboardUrl = `${baseUrl}/incidents?tab=alerts`;
     }
 
     const targetUrl = payload.metadata?.target;
