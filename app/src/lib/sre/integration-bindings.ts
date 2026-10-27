@@ -29,26 +29,21 @@ export const SRE_INTEGRATION_CORRELATION_STRATEGIES = [
 export type SreIntegrationCorrelationStrategy =
   (typeof SRE_INTEGRATION_CORRELATION_STRATEGIES)[number];
 
-export type BindableSreConnectorType =
-  | "pagerduty"
-  | "opsgenie"
-  | "splunk"
-  | "slack"
-  | "teams"
-  | "webhook";
+export type BindableSreConnectorType = "pagerduty" | "opsgenie" | "splunk";
 
+// Slack, Teams and webhook integrations have no matching connector type, so they cannot be bound.
 const compatibleConnectorTypes: Record<
   SreIntegrationKey,
   readonly BindableSreConnectorType[]
 > = {
   pagerduty: ["pagerduty"],
   opsgenie: ["opsgenie"],
-  splunk_on_call: ["splunk", "webhook"],
-  better_stack: ["webhook"],
-  incident_io: ["webhook"],
-  slack: ["slack"],
-  teams: ["teams"],
-  generic_webhook: ["webhook"],
+  splunk_on_call: ["splunk"],
+  better_stack: [],
+  incident_io: [],
+  slack: [],
+  teams: [],
+  generic_webhook: [],
 };
 
 const defaultCorrelationStrategy: Record<
