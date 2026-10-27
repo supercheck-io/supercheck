@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
@@ -69,6 +70,27 @@ describe('SreAlertTriageQueueService', () => {
       [{ id: 'h-pending', status: 'pending' }],
     );
     expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
+
+  it('logs an enqueue failure and does not throw', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const failure = new Error('redis down');
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add: jest.fn().mockRejectedValue(failure),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows([
+        { id: 'alert-history-1', status: 'sent' },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to enqueue SRE alert triage jobs',
+      failure,
+    );
+    errorSpy.mockRestore();
   });
 
   it.each(INCIDENT_GATE_CONTRACT)(

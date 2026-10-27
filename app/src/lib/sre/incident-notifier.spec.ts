@@ -142,6 +142,21 @@ it("skips webhooks that use a preset or body template but still sends plain webh
   expect(fetchPublicEndpoint.mock.calls[0][0]).toBe("https://example.com/c");
 });
 
+it("sends a plain webhook the fixed incident JSON with its custom headers", async () => {
+  selectQueue.push([incident], [{ sourceType: "monitor", sourceId: "mon-1" }], [
+    { id: "w1", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/hook", headers: { "X-Token": "t" } } } },
+  ]);
+  await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  const [url, init] = fetchPublicEndpoint.mock.calls[0];
+  expect(url).toBe("https://example.com/hook");
+  expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
+  expect(JSON.parse(init.body)).toMatchObject({
+    event: "incident.resolved",
+    title: expect.any(String),
+    url: "https://app.example.com/incidents/inc-1",
+  });
+});
+
 describe("one message per event for alert-triggered incidents", () => {
   const provider = { id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } };
   const source = [{ sourceType: "monitor", sourceId: "mon-1" }];

@@ -42,6 +42,7 @@ import {
   MAX_RESOLUTION_SUMMARY_LENGTH,
   acknowledgeIncident,
   addIncidentUpdate,
+  announceSystemTransition,
   assignIncident,
   applySourceRecovery,
   getDefaultAssigneeId,
@@ -357,5 +358,38 @@ describe("reopenRecentlyAutoResolved", () => {
     expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
     selectQueue.push([]);
     expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+  });
+});
+
+describe("announceSystemTransition", () => {
+  const announce = (event: "resolved" | "recovered" | "reopened") =>
+    announceSystemTransition(actor.organizationId, actor.projectId, incidentId, event, {
+      assigneeUserId: assignee,
+      discriminator: "d1",
+    });
+
+  it("audits and notifies, marking only resolved as automatic", async () => {
+    await announce("resolved");
+    await announce("recovered");
+    await announce("reopened");
+    const calls = (notifyIncidentEvent as jest.Mock).mock.calls.map(([arg]) => [arg.event, arg.automatic]);
+    expect(calls).toEqual([["resolved", true], ["recovered", false], ["reopened", false]]);
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ assigneeUserId: assignee, dedupeDiscriminator: "d1", incidentId }),
+    );
+    const actions = (logAuditEvent as jest.Mock).mock.calls.map(([arg]) => arg.action);
+    expect(actions).toEqual(["sre_incident_auto_resolved", "sre_incident_recovered", "sre_incident_reopened"]);
+  });
+
+  it("still notifies when the audit write fails", async () => {
+    (logAuditEvent as jest.Mock).mockRejectedValueOnce(new Error("audit down"));
+    await expect(announce("reopened")).resolves.toBeUndefined();
+    expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when the notification fails", async () => {
+    (notifyIncidentEvent as jest.Mock).mockRejectedValueOnce(new Error("notify down"));
+    await expect(announce("resolved")).resolves.toBeUndefined();
+    expect(logAuditEvent).toHaveBeenCalledTimes(1);
   });
 });

@@ -182,7 +182,7 @@ export class MonitorEvaluator {
    * Consolidated alert logic for both single and multi-location monitors.
    * Prevents unnecessary alerts on initial monitor creation (pending → any status).
    *
-   * Threshold behavior (aligned with single-location saveMonitorResult path):
+   * Threshold behavior:
    * - failureThreshold: Number of consecutive failures before first alert (default: 1)
    * - recoveryThreshold: Number of consecutive successes before recovery alert (default: 1)
    * - Max 3 failure alerts with exponential reminders and one recovery alert

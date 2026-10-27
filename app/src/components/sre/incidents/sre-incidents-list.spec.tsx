@@ -368,3 +368,41 @@ describe("SreIncidentsList", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("SreIncidentsList display-status facet", () => {
+  const pick = (label: string) => {
+    fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
+    fireEvent.click(screen.getByRole("option", { name: label }));
+  };
+  const incidents = [
+    incidentFixture(1, { status: "triggered", title: "Fresh" }),
+    incidentFixture(3, { status: "triggered", acknowledgedAt: new Date("2026-07-03T01:00:00Z"), title: "Acked" }),
+    incidentFixture(5, { status: "investigating", title: "Looking" }),
+    incidentFixture(7, { status: "identified", title: "Known" }),
+    incidentFixture(9, { status: "recommendations_ready", title: "Ready" }),
+    incidentFixture(11, { status: "user_applying_fix", title: "Applying" }),
+    incidentFixture(13, { status: "verifying", title: "Watching" }),
+  ];
+
+  it("maps Acknowledged to triggered incidents with acknowledgedAt", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Acknowledged");
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Acked")).toBeInTheDocument();
+  });
+
+  it("keeps unacknowledged triggered incidents under Triggered only", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Triggered");
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Fresh")).toBeInTheDocument();
+  });
+
+  it("maps Fixing to identified, recommendations_ready and user_applying_fix", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Fixing");
+    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    for (const title of ["Known", "Ready", "Applying"]) expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByText("Looking")).not.toBeInTheDocument();
+  });
+});

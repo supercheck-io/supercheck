@@ -2,11 +2,11 @@
 
 import { createHash } from "crypto";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { sreInvestigationReportFeedback, sreInvestigationReports } from "@/db/schema";
+import { sreInvestigationReports } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -17,37 +17,6 @@ import { db } from "@/utils/db";
 const createSnapshotSchema = z.object({
   investigationRunId: z.string().uuid(),
 });
-
-const feedbackAccuracySchema = z.enum(["accurate", "partially_accurate", "incorrect", "needs_more_evidence"]);
-
-const saveFeedbackSchema = z.object({
-  reportSnapshotId: z.string().uuid(),
-  accuracy: feedbackAccuracySchema,
-  notes: z.string().max(2_000).optional(),
-  rejectedHypotheses: z.array(z.string().min(1).max(300)).max(10).default([]),
-});
-
-function normalizeFeedbackText(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function normalizeFeedbackNotes(value: string | undefined) {
-  const normalized = normalizeFeedbackText(value ?? "");
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeRejectedHypotheses(values: string[]) {
-  const unique = new Set<string>();
-
-  for (const value of values) {
-    const normalized = normalizeFeedbackText(value);
-    if (normalized) {
-      unique.add(normalized);
-    }
-  }
-
-  return Array.from(unique).slice(0, 10);
-}
 
 function hashReportContent(report: unknown) {
   const stableReport = typeof report === "object" && report !== null
@@ -178,107 +147,5 @@ export async function createSreInvestigationReportSnapshot(input: z.input<typeof
   } catch (error) {
     console.error("Error saving SRE investigation report snapshot:", error);
     return { success: false as const, error: "Failed to save SRE investigation report" };
-  }
-}
-
-export async function saveSreInvestigationReportFeedback(input: z.input<typeof saveFeedbackSchema>) {
-  const parsed = saveFeedbackSchema.safeParse(input);
-  if (!parsed.success) {
-    return { success: false as const, error: "Invalid SRE investigation report feedback" };
-  }
-
-  try {
-    const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
-      userId,
-      organizationId,
-      project,
-    });
-
-    if (!canInvestigate) {
-      return { success: false as const, error: "Insufficient permissions to review SRE investigation reports" };
-    }
-
-    const report = await db.query.sreInvestigationReports.findFirst({
-      where: and(
-        eq(sreInvestigationReports.id, parsed.data.reportSnapshotId),
-        eq(sreInvestigationReports.organizationId, organizationId),
-        eq(sreInvestigationReports.projectId, project.id)
-      ),
-      columns: {
-        id: true,
-        incidentId: true,
-        investigationRunId: true,
-      },
-    });
-
-    if (!report) {
-      return { success: false as const, error: "SRE investigation report snapshot not found" };
-    }
-
-    const rejectedHypotheses = normalizeRejectedHypotheses(parsed.data.rejectedHypotheses);
-    const notes = normalizeFeedbackNotes(parsed.data.notes);
-    const [feedback] = await db
-      .insert(sreInvestigationReportFeedback)
-      .values({
-        organizationId,
-        projectId: project.id,
-        reportId: report.id,
-        incidentId: report.incidentId,
-        investigationRunId: report.investigationRunId,
-        accuracy: parsed.data.accuracy,
-        rejectedHypotheses,
-        notes,
-        createdByUserId: userId,
-      })
-      .onConflictDoUpdate({
-        target: [sreInvestigationReportFeedback.reportId, sreInvestigationReportFeedback.createdByUserId],
-        set: {
-          accuracy: parsed.data.accuracy,
-          rejectedHypotheses,
-          notes,
-          updatedAt: sql`now()`,
-        },
-      })
-      .returning({
-        id: sreInvestigationReportFeedback.id,
-        accuracy: sreInvestigationReportFeedback.accuracy,
-        rejectedHypotheses: sreInvestigationReportFeedback.rejectedHypotheses,
-        updatedAt: sreInvestigationReportFeedback.updatedAt,
-      });
-
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "sre_investigation_report_feedback_saved",
-      resource: "sre_investigation_report",
-      resourceId: report.id,
-      metadata: {
-        projectId: project.id,
-        investigationRunId: report.investigationRunId,
-        incidentId: report.incidentId,
-        feedbackId: feedback.id,
-        accuracy: feedback.accuracy,
-        rejectedHypothesisCount: feedback.rejectedHypotheses.length,
-        hasNotes: Boolean(notes),
-      },
-      success: true,
-    });
-
-    revalidatePath("/incidents");
-    if (report.incidentId) {
-      revalidatePath(`/incidents/${report.incidentId}`);
-    }
-
-    return {
-      success: true as const,
-      feedbackId: feedback.id,
-      accuracy: feedback.accuracy,
-      rejectedHypothesisCount: feedback.rejectedHypotheses.length,
-      updatedAt: feedback.updatedAt.toISOString(),
-    };
-  } catch (error) {
-    console.error("Error saving SRE investigation report feedback:", error);
-    return { success: false as const, error: "Failed to save SRE investigation report feedback" };
   }
 }

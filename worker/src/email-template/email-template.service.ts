@@ -147,11 +147,6 @@ export class EmailTemplateService {
     });
   }
 
-  /** Local rendering has no external dependency, so it is always healthy. */
-  healthCheck(): { healthy: boolean; message: string } {
-    return { healthy: true, message: 'Email templates render locally' };
-  }
-
   private pushRunFields(
     fields: Field[],
     p: { runId?: string; dashboardUrl?: string },

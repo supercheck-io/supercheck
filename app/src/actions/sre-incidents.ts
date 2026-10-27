@@ -29,7 +29,6 @@ import {
   sreIncidentTimelineEvents,
   sreEvidenceItems,
   sreInvestigationRuns,
-  sreInvestigationReportFeedback,
   sreInvestigationReports,
   sreInvestigationToolCalls,
   sreServiceDependencies,
@@ -46,8 +45,6 @@ import {
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
-  archiveSreConversation,
-  getSreConversation,
   listSreConversations,
   listSreMessages,
 } from "@/sre/lib/session-store";
@@ -111,11 +108,6 @@ const updateIncidentSchema = z.object({
     "resolved",
   ]),
   primaryServiceId: z.string().uuid().nullable(),
-});
-
-const archiveIncidentChatSchema = z.object({
-  incidentId: z.string().uuid(),
-  conversationId: z.string().uuid(),
 });
 
 type SreSeverity = "sev1" | "sev2" | "sev3" | "sev4";
@@ -266,12 +258,6 @@ export type SreIncidentDetail = {
     createdAt: Date;
     reportHash: string;
     investigationRunId: string;
-  } | null;
-  myReportFeedback: {
-    accuracy: "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence";
-    notes: string | null;
-    rejectedHypotheses: string[];
-    updatedAt: Date;
   } | null;
   evidence: Array<{
     id: string;
@@ -989,23 +975,6 @@ export async function getSreIncidentDetails(
         })
       : null;
 
-    const myReportFeedback = latestReportSnapshot
-      ? await db.query.sreInvestigationReportFeedback.findFirst({
-          where: and(
-            eq(sreInvestigationReportFeedback.organizationId, organizationId),
-            eq(sreInvestigationReportFeedback.projectId, project.id),
-            eq(sreInvestigationReportFeedback.reportId, latestReportSnapshot.id),
-            eq(sreInvestigationReportFeedback.createdByUserId, userId),
-          ),
-          columns: {
-            accuracy: true,
-            notes: true,
-            rejectedHypotheses: true,
-            updatedAt: true,
-          },
-        })
-      : null;
-
     const [evidence, investigationCountRow, toolMetricsRow] = await Promise.all(
       [
         db
@@ -1156,7 +1125,6 @@ export async function getSreIncidentDetails(
             }
           : null,
         latestReportSnapshot: latestReportSnapshot ?? null,
-        myReportFeedback: myReportFeedback ?? null,
         evidence,
         chatHistory,
         chatHistories,
@@ -1182,73 +1150,6 @@ export async function getSreIncidentDetails(
       error: "Failed to fetch SRE incident",
       detail: null,
     };
-  }
-}
-
-export async function archiveSreIncidentChatConversation(
-  input: z.infer<typeof archiveIncidentChatSchema>,
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const parsed = archiveIncidentChatSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: "Invalid SRE chat archive request" };
-    }
-
-    const { userId, organizationId, project } = await requireProjectContext();
-    const canInvestigate = checkPermissionWithContext(
-      "sre_investigation",
-      "investigate",
-      {
-        userId,
-        organizationId,
-        project,
-      },
-    );
-
-    if (!canInvestigate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to archive SRE chat conversations",
-      };
-    }
-
-    const conversation = await getSreConversation({
-      organizationId,
-      projectId: project.id,
-      userId,
-      conversationId: parsed.data.conversationId,
-    });
-
-    if (conversation.incidentId !== parsed.data.incidentId) {
-      return {
-        success: false,
-        error: "Conversation does not belong to this incident",
-      };
-    }
-
-    await archiveSreConversation({
-      organizationId,
-      projectId: project.id,
-      userId,
-      conversationId: parsed.data.conversationId,
-    });
-
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: "sre_incident_chat_archived",
-      resource: "sre_chat_conversation",
-      resourceId: parsed.data.conversationId,
-      metadata: { projectId: project.id, incidentId: parsed.data.incidentId },
-      success: true,
-    });
-
-    revalidatePath(`/incidents/${parsed.data.incidentId}`);
-
-    return { success: true };
-  } catch (error) {
-    logger.error({ error }, "Error archiving SRE incident chat conversation");
-    return { success: false, error: "Failed to archive SRE chat conversation" };
   }
 }
 

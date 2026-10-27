@@ -38,7 +38,7 @@ export type IncidentNotifyEvent =
   | "recovered"
   | "reopened";
 
-export type IncidentNotifyInput = {
+type IncidentNotifyInput = {
   organizationId: string;
   projectId: string;
   incidentId: string;

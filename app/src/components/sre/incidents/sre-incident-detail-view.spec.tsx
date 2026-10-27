@@ -113,7 +113,6 @@ function detailFixture(): SreIncidentDetail {
       myFeedback: [],
     },
     latestReportSnapshot: null,
-    myReportFeedback: null,
     evidence: [
       {
         id: "ev-monitor-timeout",
@@ -329,5 +328,84 @@ describe("SreIncidentDetailView", () => {
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
     expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Rolled back the deploy.");
+  });
+});
+
+describe("SreIncidentDetailView actions menu and primary button", () => {
+  const openMenu = () => {
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+  };
+
+  it("gives editors Edit, Ask Copilot and Re-run investigation", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Ask Copilot" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Re-run investigation" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Resolve" })).toBeInTheDocument();
+  });
+
+  it("offers Run investigation when nothing has run yet", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = null;
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: "Run investigation" })).toBeInTheDocument();
+  });
+
+  it("hides Edit, Ask Copilot and Re-run from viewers but keeps the investigation map", () => {
+    const detail = detailFixture();
+    detail.permissions.canUpdate = false;
+    detail.permissions.canInvestigate = false;
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: "Investigation map" })).toBeInTheDocument();
+    for (const name of [/^Edit$/, /Ask Copilot/, /investigation$/i, /^Resolve$/]) {
+      expect(screen.queryByRole("menuitem", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("shows Acknowledge, then Resolve, then Post-mortem as the incident progresses", () => {
+    const fresh = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resolve incident" })).not.toBeInTheDocument();
+    fresh.unmount();
+
+    const acked = detailFixture();
+    acked.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
+    const ackedView = render(<SreIncidentDetailView detail={acked} services={[]} />);
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resolve incident" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
+    ackedView.unmount();
+
+    const resolved = detailFixture();
+    resolved.incident.status = "resolved";
+    render(<SreIncidentDetailView detail={resolved} services={[]} />);
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resolve incident" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Post-mortem" })).toBeInTheDocument();
+  });
+
+  it("shows no primary action to a viewer of an open incident", () => {
+    const detail = detailFixture();
+    detail.permissions.canUpdate = false;
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resolve incident" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
+  });
+
+  it("omits the resolution summary on open incidents and shows it once resolved", () => {
+    const open = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    expect(screen.queryByTestId("resolution-summary")).not.toBeInTheDocument();
+    open.unmount();
+    const detail = detailFixture();
+    detail.incident.status = "resolved";
+    detail.incident.resolutionSummary = "Scaled the pool.";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Resolution: Scaled the pool.");
   });
 });

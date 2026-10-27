@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   isFailureAlertStreak,
   JobNotificationService,
@@ -160,6 +161,85 @@ describe('JobNotificationService', () => {
       );
     },
   );
+
+  describe('timeout and error paths', () => {
+    const params = {
+      jobId: 'job-1',
+      runId: 'run-1',
+      finalStatus: 'timeout',
+      durationSeconds: 90,
+    } as never;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    });
+    afterEach(() => errorSpy.mockRestore());
+
+    it('sends a job_timeout warning payload and records it as job_timeout history', async () => {
+      const { service, dbService, notificationService } = createService();
+      await service.handleJobNotifications(params);
+
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          type: 'job_timeout',
+          severity: 'warning',
+          title: 'Job Timeout - Checkout smoke test',
+          message: expect.stringContaining('timed out after 90 seconds'),
+          targetId: 'job-1',
+          metadata: expect.objectContaining({ runId: 'run-1', duration: 90 }),
+        }),
+      );
+      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+      for (const call of dbService.saveAlertHistory.mock.calls) {
+        expect(call.slice(0, 2)).toEqual(['job-1', 'job_timeout']);
+      }
+    });
+
+    it('does not notify on timeout when alertOnTimeout is off', async () => {
+      const { service, dbService, notificationService } = createService();
+      (await dbService.getJobById()).alertConfig.alertOnTimeout = false;
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('logs and swallows an alert-history save failure', async () => {
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      dbService.saveAlertHistory
+        .mockReset()
+        .mockRejectedValue(new Error('db down'));
+      await expect(
+        service.handleJobNotifications(params),
+      ).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Failed to save alert history for job job-1: db down',
+        ),
+      );
+      expect(
+        sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('logs and swallows a failure loading the job', async () => {
+      const { service, dbService } = createService();
+      dbService.getJobById.mockRejectedValue(new Error('lookup failed'));
+      await expect(
+        service.handleJobNotifications(params),
+      ).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Failed to handle job notifications for job job-1: lookup failed',
+        ),
+      );
+    });
+  });
 
   describe('failure alert cap', () => {
     it('alerts at threshold then every max(5, 2x threshold), max 3 per streak', () => {

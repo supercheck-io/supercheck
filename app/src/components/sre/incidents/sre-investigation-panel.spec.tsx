@@ -22,17 +22,14 @@ jest.mock("@/hooks/use-project-context", () => ({
 
 jest.mock("@/actions/sre-investigation-reports", () => ({
   createSreInvestigationReportSnapshot: jest.fn(),
-  saveSreInvestigationReportFeedback: jest.fn(),
 }));
 
 import {
   createSreInvestigationReportSnapshot,
-  saveSreInvestigationReportFeedback,
 } from "@/actions/sre-investigation-reports";
 import { SreInvestigationPanel, SreReportSnapshotControl } from "./sre-investigation-panel";
 
 const mockCreateSnapshot = createSreInvestigationReportSnapshot as jest.Mock;
-const mockSaveFeedback = saveSreInvestigationReportFeedback as jest.Mock;
 
 describe("SreInvestigationPanel", () => {
   beforeEach(() => {
@@ -47,7 +44,6 @@ describe("SreInvestigationPanel", () => {
       createdAt: "2026-06-24T12:00:00.000Z",
       reused: false,
     });
-    mockSaveFeedback.mockResolvedValue({ success: true });
   });
 
   it("falls back to saved evidence if a previously selected live-source scope disappears", async () => {

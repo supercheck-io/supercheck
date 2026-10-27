@@ -35,13 +35,13 @@ export type IncidentActor = {
   userId: string;
 };
 
-export type LifecycleFailure = {
+type LifecycleFailure = {
   ok: false;
   code: "not_found" | "invalid" | "conflict";
   error: string;
 };
 
-export type LifecycleResult<T extends object = object> =
+type LifecycleResult<T extends object = object> =
   | ({ ok: true } & T)
   | LifecycleFailure;
 

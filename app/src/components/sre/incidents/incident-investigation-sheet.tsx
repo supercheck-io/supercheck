@@ -3,7 +3,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
-export type InvestigationSection = {
+type InvestigationSection = {
   id: string;
   title: string;
   /** Sections without content for this incident are left out. */

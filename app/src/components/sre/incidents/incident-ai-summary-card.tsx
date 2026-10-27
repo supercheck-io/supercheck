@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export type IncidentAiSummaryCardProps = {
+type IncidentAiSummaryCardProps = {
   rootCauseSummary: string | null;
   /** Decimal string from the database (0-1). */
   confidenceScore: string | null;
