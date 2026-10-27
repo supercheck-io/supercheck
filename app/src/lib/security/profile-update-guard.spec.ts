@@ -8,7 +8,6 @@ jest.mock("better-auth/api", () => ({
     }
   },
 }));
-jest.mock("@aws-sdk/client-s3", () => ({ S3Client: jest.fn(() => ({ send: jest.fn() })), PutObjectCommand: jest.fn(), GetObjectCommand: jest.fn(), DeleteObjectCommand: jest.fn(), ListObjectsV2Command: jest.fn() }));
 
 import { guardProfileUpdate } from "./profile-update-guard";
 import type { AuthHookContext } from "./login-lockout-hooks";

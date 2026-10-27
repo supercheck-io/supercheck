@@ -1,5 +1,5 @@
 import { APIError, getSessionFromCtx } from "better-auth/api";
-import { avatarVersionOf } from "@/lib/user-avatar";
+import { avatarVersionOf } from "@/lib/user-avatar-path";
 import type { AuthHookContext } from "./login-lockout-hooks";
 
 /**
