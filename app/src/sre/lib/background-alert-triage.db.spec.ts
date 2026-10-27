@@ -87,7 +87,7 @@ const minutes = (n: number) => new Date(base + n * 60_000);
 async function alert(
   type: string,
   at: Date,
-  opts: { status?: "sent" | "failed" | "pending"; job?: boolean } = {},
+  opts: { status?: "sent" | "failed" | "pending"; job?: boolean; provider?: string; dedupKey?: string } = {},
 ) {
   const [row] = await mockDatabase
     .insert(schema.alertHistory)
@@ -98,8 +98,9 @@ async function alert(
       targetType: opts.job ? "job" : "monitor",
       monitorId: opts.job ? null : monitorId,
       jobId: opts.job ? jobId : null,
-      provider: "slack",
+      provider: opts.provider ?? "slack",
       status: opts.status ?? "sent",
+      deliveryMetadata: opts.dedupKey ? ({ version: 1, correlation: { dedupKey: opts.dedupKey } } as never) : null,
       sentAt: at,
     })
     .returning();
@@ -256,4 +257,13 @@ it("links a new monitor incident to the open automatic status update for its com
   const [pub] = await mockDatabase.select({ link: schema.incidents.sreIncidentId }).from(schema.incidents).where(eq(schema.incidents.id, statusIncident.id));
   expect(sre.link).toBe(statusIncident.id);
   expect(pub.link).toBe(row.id);
+});
+
+it("opens one incident when a failure is delivered to several channels", async () => {
+  await alert("monitor_failure", minutes(0), { provider: "slack" });
+  // Webhook deliveries carry a channel correlation key without the alert type.
+  await alert("monitor_failure", minutes(0), { provider: "webhook", dedupKey: `monitor:${monitorId}` });
+  expect(await incidents()).toHaveLength(1);
+  await alert("monitor_recovery", minutes(5), { provider: "webhook", dedupKey: `monitor:${monitorId}` });
+  expect((await incidents()).map((r) => r.status)).toEqual(["resolved"]);
 });

@@ -145,7 +145,6 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       status: alertHistory.status,
       provider: alertHistory.provider,
       sentAt: alertHistory.sentAt,
-      deliveryMetadata: alertHistory.deliveryMetadata,
       monitorName: monitors.name,
       monitorOrganizationId: monitors.organizationId,
       monitorProjectId: monitors.projectId,
@@ -230,13 +229,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     ["sev1", "sev2", "sev3", "sev4"].includes(alertConfig.incidentSeverity)
       ? alertConfig.incidentSeverity
       : deriveSeverity(alert.type, alert.message);
-  const deliveryDedupKey =
-    typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
-    alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
-      ? alert.deliveryMetadata.correlation.dedupKey.trim()
-      : undefined;
-  const dedupKey =
-    deliveryDedupKey ?? [projectId, sourceType, sourceId, alert.type].join(":");
+  // One identity per source and alert type. The delivery correlation key is per
+  // channel (webhooks use a type-less "monitor:<id>"), so using it made one
+  // failure delivered to Slack and a webhook open two incidents.
+  const dedupKey = [projectId, sourceType, sourceId, alert.type].join(":");
   const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
   const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
 
