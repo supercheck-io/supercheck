@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
-export function EvidenceDetailsDialog({ item }: { item: SreIncidentDetail["evidence"][number] }) {
+/** `children` replaces the default "View" button as the dialog trigger (for example a citation chip). */
+export function EvidenceDetailsDialog({ item, children }: { item: SreIncidentDetail["evidence"][number]; children?: React.ReactNode }) {
   const external = /^https?:/i.test(item.sourceUri);
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" aria-label={`View evidence: ${item.title}`}>View</Button>
+        {children ?? <Button variant="ghost" size="sm" aria-label={`View evidence: ${item.title}`}>View</Button>}
       </DialogTrigger>
       <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>

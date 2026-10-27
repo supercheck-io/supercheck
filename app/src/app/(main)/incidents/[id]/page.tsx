@@ -9,7 +9,7 @@ type Params = {
 
 function parseIncidentTab(value: string | string[] | undefined) {
   const tab = Array.isArray(value) ? value[0] : value;
-  return tab === "evidence" || tab === "brief" ? tab : "investigation";
+  return tab === "investigation" || tab === "evidence" || tab === "brief" ? tab : "overview";
 }
 
 export default async function SreIncidentDetailPage({

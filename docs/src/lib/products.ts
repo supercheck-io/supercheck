@@ -253,7 +253,7 @@ export const products: Product[] = [
           "Evidence gaps and next safe checks",
           "Save the report or download an evidence brief as Markdown",
         ],
-        href: "/docs/app/investigate/incidents#investigation-report",
+        href: "/docs/app/investigate/incidents#ai-summary",
         linkLabel: "Investigation report",
       },
       {

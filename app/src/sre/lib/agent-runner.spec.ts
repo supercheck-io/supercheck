@@ -9,6 +9,11 @@ import { logger } from "@/lib/logger/index";
 import { runSreAgent } from "./agent-runner";
 
 jest.mock("@/lib/logger/index", () => ({ logger: { info: jest.fn() } }));
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  assertSreDailyTokenLimit: jest.fn(),
+  recordSreTokenUsage: jest.fn(),
+}));
+import { assertSreDailyTokenLimit, recordSreTokenUsage } from "@/lib/sre/sre-daily-token-limit";
 
 const emptyUsage = {
   inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
@@ -134,5 +139,47 @@ describe("runSreAgent", () => {
     ).rejects.toThrow(
       "SRE agent did not complete successfully (tool-calls)",
     );
+  });
+
+  describe("daily token limit", () => {
+    const stopModel = () => new MockLanguageModelV3({
+      doStream: async (): Promise<LanguageModelV3StreamResult> => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "t" },
+            { type: "text-delta", id: "t", delta: "Report" },
+            { type: "text-end", id: "t" },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: "stop" },
+              usage: {
+                inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 5, text: 5, reasoning: 0 },
+              },
+            },
+          ],
+        }),
+      }),
+    });
+
+    it("checks the limit before the call and counts step usage for the organization", async () => {
+      await runSreAgent({ model: stopModel(), validateConfiguration: false, system: "s", prompt: "p", organizationId: "org-a" });
+      expect(assertSreDailyTokenLimit).toHaveBeenCalledWith("org-a");
+      expect(recordSreTokenUsage).toHaveBeenCalledWith("org-a", expect.objectContaining({ totalTokens: 15 }));
+    });
+
+    it("does not call the model when the limit is reached", async () => {
+      jest.mocked(assertSreDailyTokenLimit).mockRejectedValueOnce(new Error("limit"));
+      const model = stopModel();
+      await expect(runSreAgent({ model, validateConfiguration: false, system: "s", prompt: "p", organizationId: "org-a" })).rejects.toThrow("limit");
+      expect(model.doStreamCalls).toHaveLength(0);
+    });
+
+    it("skips accounting when no organization is given", async () => {
+      jest.mocked(recordSreTokenUsage).mockClear();
+      await runSreAgent({ model: stopModel(), validateConfiguration: false, system: "s", prompt: "p" });
+      expect(recordSreTokenUsage).not.toHaveBeenCalled();
+    });
   });
 });

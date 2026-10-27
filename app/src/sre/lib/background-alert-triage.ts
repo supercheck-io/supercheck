@@ -25,6 +25,8 @@ import {
   isSreAlertCorrelationEnabled,
   isSreBackgroundAlertTriageEnabled,
 } from "@/sre/lib/feature-gates";
+import { getDefaultAssigneeId } from "@/lib/sre/incident-lifecycle";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
@@ -439,11 +441,16 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         severity,
         status: "triggered",
         primaryServiceId: mappedService?.id ?? null,
+        assigneeUserId: await getDefaultAssigneeId(tx, {
+          organizationId,
+          projectId,
+          serviceId: mappedService?.id ?? null,
+        }),
         createdByUserId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .returning({ id: sreIncidents.id });
+      .returning({ id: sreIncidents.id, assigneeUserId: sreIncidents.assigneeUserId });
 
     await tx.insert(sreIncidentAlerts).values({
       incidentId: incident.id,
@@ -476,8 +483,19 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       alertEventId: alertEvent.id,
       incidentId: incident.id,
       alreadyTriaged: false,
+      createdAssigneeUserId: incident.assigneeUserId,
     };
   });
+
+  if (!result.skipped && "createdAssigneeUserId" in result) {
+    await notifyIncidentEvent({
+      organizationId,
+      projectId,
+      incidentId: result.incidentId,
+      event: "created",
+      assigneeUserId: result.createdAssigneeUserId,
+    });
+  }
 
   if ("correlation" in result && result.correlation) {
     await logAuditEvent({
