@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 
-import { fitRows, pageSizeOptions, repaginate, useFitPagination } from "./use-fit-page-size";
+import { fitRows, pageSizeOptions, repaginate, useFitPageSize, useFitPagination } from "./use-fit-page-size";
 
 describe("fitRows", () => {
   it("fits whole rows above the content below the table", () => {
@@ -54,5 +54,53 @@ describe("useFitPagination", () => {
   it("uses a fixed size when one is given", () => {
     const { result } = renderHook(() => useFitPagination(40, 5));
     expect(result.current.pagination.pageSize).toBe(5);
+  });
+});
+
+describe("useFitPageSize layout feedback", () => {
+  it("stops resizing when the measured size flips on every frame", () => {
+    const originalResizeObserver = global.ResizeObserver;
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
+    jest.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    let observer: (() => void) | undefined;
+    global.ResizeObserver = class {
+      constructor(cb: () => void) {
+        observer = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    const { result } = renderHook(() => useFitPageSize());
+    const body = document.createElement("tbody");
+    document.body.appendChild(body);
+    // Alternate the body position so each measurement fits a different number of rows.
+    let top = 100;
+    jest.spyOn(body, "getBoundingClientRect").mockImplementation(
+      () => ({ top, bottom: top + 10, height: 10 }) as DOMRect,
+    );
+    act(() => result.current.bodyRef(body));
+
+    const sizes = new Set<number>();
+    for (let i = 0; i < 40; i++) {
+      top = top === 100 ? 400 : 100;
+      act(() => {
+        observer?.();
+        frames.splice(0).forEach((cb) => cb(0));
+      });
+      sizes.add(result.current.pageSize);
+    }
+    expect(sizes.size).toBeGreaterThan(1);
+    const settled = result.current.pageSize;
+    top = top === 100 ? 400 : 100;
+    act(() => {
+      observer?.();
+      frames.splice(0).forEach((cb) => cb(0));
+    });
+    expect(result.current.pageSize).toBe(settled);
+    jest.restoreAllMocks();
+    global.ResizeObserver = originalResizeObserver;
   });
 });
