@@ -95,7 +95,7 @@ function StatusBars({ data, empty }: { data: Array<{ name: string; count: number
   if (data.length === 0) return <ChartEmpty message={empty} />;
   return (
     <ChartContainer config={chartConfig} className={chartClass}>
-      <BarChart data={data}>
+      <BarChart data={data} accessibilityLayer>
         <XAxis dataKey="name" fontSize={11} tickLine={false} interval={0} />
         <YAxis fontSize={11} allowDecimals={false} />
         <ChartTooltip content={<ChartTooltipContent />} />
@@ -145,7 +145,7 @@ export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
         <ChartCard title="Created and resolved" description="Daily incidents created and resolved" icon={<Activity className={mutedIcon} />}>
           {hasFlow ? (
             <ChartContainer config={chartConfig} className={chartClass}>
-              <AreaChart data={analytics.daily}>
+              <AreaChart data={analytics.daily} accessibilityLayer>
                 <XAxis dataKey="date" {...DAY_AXIS} tickFormatter={(value) => formatTrendDate(String(value))} />
                 <YAxis fontSize={11} allowDecimals={false} />
                 <ChartTooltip content={<ChartTooltipContent labelFormatter={(value) => formatTrendDate(String(value))} />} />
