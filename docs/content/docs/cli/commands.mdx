@@ -577,7 +577,7 @@ supercheck audit --search "deploy"
 | Command | What it does | Key flags |
 |---|---|---|
 | `token list` | List the project's CLI tokens | — |
-| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365) |
+| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365; never past the expiry of the token you are using) |
 | `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
 | `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
 | `project list` | List projects visible to the token | — |

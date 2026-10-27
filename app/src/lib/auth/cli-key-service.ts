@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
+import { clampExpiry } from "@/lib/auth/cli-token-expiry";
 import {
   generateCliToken,
   getApiKeyPrefix,
@@ -19,6 +20,8 @@ export interface IssueCliKeyInput {
   name: string;
   /** Seconds until expiry; omit/0 for a non-expiring key (dashboard default). */
   expiresInSeconds?: number | null;
+  /** Hard upper bound for the key's expiry, e.g. the CLI token that is minting it. */
+  notAfter?: Date | null;
 }
 
 export type IssueCliKeyResult =
@@ -34,7 +37,7 @@ export type IssueCliKeyResult =
         createdAt: Date;
       };
     }
-  | { ok: false; reason: "limit_reached" | "name_conflict" };
+  | { ok: false; reason: "limit_reached" | "name_conflict" | "parent_expired" };
 
 /**
  * Serialises CLI-key issuance per project for the rest of the transaction.
@@ -94,10 +97,13 @@ export async function issueCliApiKey(
   const plaintext = generateCliToken(false); // sck_live_*
   const start = getApiKeyPrefix(plaintext);
   const now = new Date();
-  const expiresAt =
+  const expiresAt = clampExpiry(
     input.expiresInSeconds && input.expiresInSeconds > 0
       ? new Date(now.getTime() + input.expiresInSeconds * 1000)
-      : null;
+      : null,
+    input.notAfter,
+  );
+  if (expiresAt && expiresAt <= now) return { ok: false, reason: "parent_expired" };
   const id = crypto.randomUUID();
 
   await tx.insert(apikey).values({

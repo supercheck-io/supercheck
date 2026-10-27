@@ -9,7 +9,11 @@ import axios from 'axios';
 
 jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
 
-import { requestPinnedMonitorTarget } from './pinned-monitor-request';
+import {
+  requestPinnedMonitorTarget,
+  resolvePublicAddress,
+  vettedLookup,
+} from './pinned-monitor-request';
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 
@@ -222,5 +226,87 @@ describe('pinned HTTP monitor requests', () => {
       ),
     ).resolves.toMatchObject({ status: 200 });
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('resolvePublicAddress', () => {
+  beforeEach(() => mockLookup.mockReset());
+
+  it('prefers IPv4 and returns the address the caller must connect to', async () => {
+    mockLookup.mockResolvedValue([
+      { address: '2606:2800:220:1::1', family: 6 },
+      { address: '93.184.216.34', family: 4 },
+    ] as never);
+    await expect(resolvePublicAddress('example.com', false)).resolves.toEqual({
+      address: '93.184.216.34',
+      family: 4,
+    });
+  });
+
+  it.each(['10.0.0.5', '169.254.169.254', 'fd00::1', '::ffff:127.0.0.1'])(
+    'refuses a hostname that resolves to %s',
+    async (address) => {
+      mockLookup.mockResolvedValue([
+        { address, family: address.includes(':') ? 6 : 4 },
+      ] as never);
+      await expect(
+        resolvePublicAddress('rebind.example.com', false),
+      ).rejects.toThrow('private or reserved networks');
+    },
+  );
+
+  it('refuses a private literal without a DNS lookup and allows it when opted in', async () => {
+    await expect(resolvePublicAddress('192.168.1.1', false)).rejects.toThrow();
+    await expect(resolvePublicAddress('192.168.1.1', true)).resolves.toEqual({
+      address: '192.168.1.1',
+      family: 4,
+    });
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('vettedLookup', () => {
+  beforeEach(() => mockLookup.mockReset());
+
+  it('falls back across vetted addresses without another DNS lookup', async () => {
+    const { createServer: createTcpServer, connect } = await import('node:net');
+    const server = createTcpServer((socket) => socket.end());
+    await new Promise<void>((resolve) => server.listen(0, '::1', resolve));
+    const { port } = server.address() as { port: number };
+    mockLookup.mockResolvedValue([
+      // Refused (the server listens on ::1 only), then the reachable address.
+      { address: '127.0.0.1', family: 4 },
+      { address: '::1', family: 6 },
+    ] as never);
+    try {
+      const lookup = await vettedLookup('dual.example.com', true);
+      await new Promise<void>((resolve, reject) => {
+        const socket = connect({
+          host: 'dual.example.com',
+          port,
+          lookup,
+          autoSelectFamily: true,
+        });
+        socket.once('connect', () => {
+          expect(socket.remoteAddress).toBe('::1');
+          socket.destroy();
+          resolve();
+        });
+        socket.once('error', reject);
+      });
+      expect(mockLookup).toHaveBeenCalledTimes(1);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('refuses before connecting when any resolved address is private', async () => {
+    mockLookup.mockResolvedValue([
+      { address: '93.184.216.34', family: 4 },
+      { address: '10.0.0.5', family: 4 },
+    ] as never);
+    await expect(vettedLookup('mixed.example.com', false)).rejects.toThrow(
+      'private or reserved networks',
+    );
   });
 });

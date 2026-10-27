@@ -4,6 +4,7 @@ import { apikey, user } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { capExpiryToCliToken } from "@/lib/auth/cli-token-expiry";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import {
@@ -147,7 +148,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, expiresIn } = validation.data;
+    const { name } = validation.data;
+    const expiresIn = capExpiryToCliToken(context, validation.data.expiresIn);
+    if (expiresIn === null) {
+      return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
+    }
 
     const issued = await issueCliApiKeyAtomically({
       userId: context.userId,
@@ -155,8 +160,12 @@ export async function POST(request: NextRequest) {
       projectId: context.project.id,
       name,
       expiresInSeconds: expiresIn,
+      notAfter: context.isCliAuth ? context.cliTokenExpiresAt : null,
     });
 
+    if (!issued.ok && issued.reason === "parent_expired") {
+      return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
+    }
     if (!issued.ok) {
       return issued.reason === "limit_reached"
         ? NextResponse.json(

@@ -78,7 +78,7 @@ export async function PATCH(
     // Verify the token belongs to this project and is a CLI token (no jobId)
     if (!isUuid((await params).id)) return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
     const tokenRecord = await db
-      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId })
+      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId })
       .from(apikey)
       .where(
         and(
@@ -91,6 +91,11 @@ export async function PATCH(
 
     if (tokenRecord.length === 0) {
       return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
+    }
+    // Anyone with apiKey:update may revoke a project token, but only its owner may re-enable it,
+    // so a stolen token cannot undo another member's revocation.
+    if (enabled === true && tokenRecord[0].ownerId !== context.userId) {
+      return NextResponse.json({ error: "Only the token's owner can re-enable it" }, { status: 403 });
     }
 
     const updateData: Record<string, unknown> = { updatedAt: new Date() };

@@ -271,9 +271,36 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         'limit',
         { ...seed, nextAt: 0 },
       );
+      const before = processor.snapshot();
       await processor.tick(new Date(deadline.getTime() + 1000));
       expect((await cycle('limit')).status).toBe(status);
+      const after = processor.snapshot();
+      // Billing outages count as close failures too, so operators are alerted before an abort.
+      expect(after.cycleFailures - before.cycleFailures).toBe(1);
+      expect(after.abortedCycles - before.abortedCycles).toBe(
+        status === 'aborted' ? 1 : 0,
+      );
       spy.mockRestore();
+    });
+
+    it('does not count an abort that failed to persist', async () => {
+      await open('abort-fails');
+      const close = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(new Error('poison'));
+      const abort = jest
+        .spyOn(MonitorCycleService.prototype, 'abortCycle')
+        .mockRejectedValue(new Error('db down'));
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'abort-fails',
+        { failures: 19, billingFailures: 0, nextAt: 0 },
+      );
+      const before = processor.snapshot().abortedCycles;
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect(processor.snapshot().abortedCycles).toBe(before);
+      expect((await cycle('abort-fails')).status).toBe('open');
+      close.mockRestore();
+      abort.mockRestore();
     });
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {

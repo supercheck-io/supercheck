@@ -38,6 +38,11 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
       execute: (requestConfig: unknown) => Promise<unknown>,
     ) => execute(config),
   ),
+  resolvePublicAddress: jest.fn(async () => ({
+    address: '93.184.216.34',
+    family: 4,
+  })),
+  vettedLookup: jest.fn(async () => jest.fn()),
 }));
 
 // Unit tests must not dial the internet. `net` and `tls` are replaced with
@@ -50,7 +55,10 @@ jest.mock('net', () => {
 
   class FakeSocket extends EventEmitter {
     destroy = jest.fn();
-    connect = jest.fn((_port: number, _host: string, callback?: () => void) => {
+    // Accepts both connect(port, host, cb) and connect(options, cb).
+    connect = jest.fn((...args: unknown[]) => {
+      const callback = args.find((a) => typeof a === 'function') as
+        (() => void) | undefined;
       process.nextTick(() => {
         if (state.behavior === 'connect') callback?.();
         else
@@ -111,6 +119,7 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import { vettedLookup } from '../common/utils/pinned-monitor-request';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
@@ -848,6 +857,44 @@ describe('MonitorService', () => {
       );
     });
 
+    it('resolves port check hosts through the private-address guard', async () => {
+      netState.behavior = 'connect';
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432 },
+      });
+
+      expect(vettedLookup).toHaveBeenCalledWith('db.example.com', false);
+      expect(result).toMatchObject({ status: 'up', isUp: true });
+    });
+
+    it.each(['ping_host', 'port_check'] as const)(
+      'refuses a %s target that resolves to a private address',
+      async (type) => {
+        netState.behavior = 'connect';
+        jest
+          .mocked(vettedLookup)
+          .mockRejectedValue(
+            new Error('Access to private or reserved networks is not allowed'),
+          );
+
+        const result = await service.executeMonitor({
+          ...mockJobData,
+          type,
+          target: 'rebind.example.com',
+          config: { ...mockJobData.config, port: 5432 },
+        });
+
+        expect(result).toMatchObject({ isUp: false });
+        expect(result?.details?.errorMessage).toContain(
+          'private or reserved networks',
+        );
+        jest.mocked(vettedLookup).mockResolvedValue(jest.fn());
+      },
+    );
+
     it('reports a refused port as down', async () => {
       netState.behavior = 'error';
 
@@ -879,6 +926,36 @@ describe('MonitorService', () => {
         status: 'down',
         isUp: false,
         details: { sslCertificate: { valid: false } },
+      });
+    });
+
+    it('refuses an SSL check whose host resolves to a private address, without dialing', async () => {
+      const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
+      tls.connect.mockClear();
+      jest
+        .mocked(vettedLookup)
+        .mockRejectedValueOnce(
+          new Error('Access to private or reserved networks is not allowed'),
+        );
+      const result = await service['executeSslCheck'](
+        'https://rebind.example.com',
+        {},
+      );
+      expect(vettedLookup).toHaveBeenCalledWith('rebind.example.com', false);
+      expect(result.isUp).toBe(false);
+      expect(tls.connect).not.toHaveBeenCalled();
+    });
+
+    it('dials only vetted addresses but keeps the hostname for SNI', async () => {
+      const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
+      tls.connect.mockClear();
+      const lookup = jest.fn();
+      jest.mocked(vettedLookup).mockResolvedValueOnce(lookup);
+      await service['executeSslCheck']('https://example.com', {});
+      expect(tls.connect.mock.calls[0][0]).toMatchObject({
+        host: 'example.com',
+        servername: 'example.com',
+        lookup,
       });
     });
 

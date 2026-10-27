@@ -63,7 +63,11 @@ import {
   getErrorMessage,
 } from '../common/validation';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
-import { requestPinnedMonitorTarget } from '../common/utils/pinned-monitor-request';
+import {
+  requestPinnedMonitorTarget,
+  resolvePublicAddress,
+  vettedLookup,
+} from '../common/utils/pinned-monitor-request';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -1609,9 +1613,16 @@ export class MonitorService {
 
       for (const port of tcpPorts) {
         try {
+          // Resolved per attempt so a lookup failure still reports the host as down.
+          const lookup = await vettedLookup(
+            target,
+            process.env.ALLOW_INTERNAL_TARGETS === 'true',
+          );
           await new Promise<void>((resolve, reject) => {
             const socket = createConnection({
               host: target,
+              lookup,
+              autoSelectFamily: true,
               port: port,
               timeout: timeout,
             });
@@ -1738,7 +1749,9 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
+      const allowInternal = process.env.ALLOW_INTERNAL_TARGETS === 'true';
       if (protocol === 'tcp') {
+        const lookup = await vettedLookup(target, allowInternal);
         // TCP port check using net module
         const net = await import('net');
 
@@ -1750,11 +1763,14 @@ export class MonitorService {
             reject(new Error(`Connection timeout after ${timeout}ms`));
           }, timeout);
 
-          socket.connect(port, target, () => {
-            clearTimeout(timeoutHandle);
-            socket.destroy();
-            resolve();
-          });
+          socket.connect(
+            { port, host: target, lookup, autoSelectFamily: true },
+            () => {
+              clearTimeout(timeoutHandle);
+              socket.destroy();
+              resolve();
+            },
+          );
 
           socket.on('error', (error) => {
             clearTimeout(timeoutHandle);
@@ -1793,11 +1809,9 @@ export class MonitorService {
       } else if (protocol === 'udp') {
         // UDP port check using dgram module
         const dgram = await import('dgram');
-        const net = await import('net');
-
-        // Determine socket type based on IP version
-        const isIPv6 = net.isIPv6(target);
-        const socketType = isIPv6 ? 'udp6' : 'udp4';
+        // UDP is connectionless, so there is no fallback: send to the first vetted address.
+        const resolved = await resolvePublicAddress(target, allowInternal);
+        const socketType = resolved.family === 6 ? 'udp6' : 'udp4';
 
         await new Promise<void>((resolve, reject) => {
           const client = dgram.createSocket(socketType);
@@ -1818,7 +1832,7 @@ export class MonitorService {
           // Send a small test packet
           const message = Buffer.from('ping');
 
-          client.send(message, port, target, (error) => {
+          client.send(message, port, resolved.address, (error) => {
             if (!isResolved) {
               isResolved = true;
               clearTimeout(timeoutHandle);
@@ -1981,6 +1995,12 @@ export class MonitorService {
         }
       }
 
+      // Dial only vetted addresses: a second lookup could rebind to a private host.
+      const lookup = await vettedLookup(
+        hostname.replace(/^\[|\]$/g, ''),
+        process.env.ALLOW_INTERNAL_TARGETS === 'true',
+      );
+
       const certificateInfo = await new Promise<{
         certificate: tls.DetailedPeerCertificate;
         authorized: boolean;
@@ -1991,6 +2011,7 @@ export class MonitorService {
         const socket = tls.connect(
           {
             host: hostname,
+            lookup, // Node's default autoSelectFamily falls back across the vetted addresses
             port: port,
             rejectUnauthorized: false, // Allow connection to inspect invalid/expired certificates
             servername: hostname, // SNI support for proper certificate validation

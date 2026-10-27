@@ -30,6 +30,7 @@ import {
   partitionMonitorLocationsByAvailability,
   resolveMonitorLocations,
 } from "./monitor-location-routing";
+import { NoLiveWorkersError } from "./no-live-workers-error";
 
 // Local interface for cleanup queues (separate from capacity management)
 interface CleanupQueues {
@@ -1768,12 +1769,7 @@ export async function addMonitorExecutionJobToQueue(
 
     // Only fail when NO locations can accept jobs
     if (enqueuedLocations.length === 0 && effectiveLocations.length > 0) {
-      const available = Object.keys(monitorExecutionQueue).join(", ") || "none";
-      throw new Error(
-        `No active monitor workers available for any configured location(s) [${effectiveLocations.join(", ")}]. ` +
-        `Available queues: [${available}]. ` +
-        `Ensure workers are running in the required regions.`
-      );
+      throw new NoLiveWorkersError(task.monitorId, effectiveLocations);
     }
 
     if (skippedLocations.length > 0) {
@@ -1804,8 +1800,12 @@ export async function addMonitorExecutionJobToQueue(
       { err: error, monitorId: task.monitorId },
       `Error adding monitor execution job for monitor ${task.monitorId}`
     );
-    const { recordSchedulingFailure } = await import("./monitor-scheduling-failure");
-    await recordSchedulingFailure(task.monitorId, error instanceof Error ? error.message : String(error));
+    // No live worker (e.g. during a rollout) is not a monitor failure: writing a Down row here
+    // would count as downtime and advance the alert threshold.
+    if (!(error instanceof NoLiveWorkersError)) {
+      const { recordSchedulingFailure } = await import("./monitor-scheduling-failure");
+      await recordSchedulingFailure(task.monitorId, error instanceof Error ? error.message : String(error));
+    }
     throw new Error(
       `Failed to add monitor execution job: ${
         error instanceof Error ? error.message : String(error)

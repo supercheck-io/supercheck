@@ -98,6 +98,8 @@ export function renderMetrics(
     `supercheck_monitor_cycle_notify_failures_total ${s.notifyFailures}`,
     '# TYPE supercheck_monitor_cycle_close_failures_total counter',
     `supercheck_monitor_cycle_close_failures_total ${s.cycleFailures}`,
+    '# TYPE supercheck_monitor_cycle_aborted_total counter',
+    `supercheck_monitor_cycle_aborted_total ${s.abortedCycles}`,
   ];
   return lines.join('\n') + '\n';
 }

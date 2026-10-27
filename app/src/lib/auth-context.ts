@@ -45,6 +45,8 @@ export interface AuthContext {
   organizationSlug?: string;
   /** Whether this request was authenticated via CLI token (vs session cookie) */
   isCliAuth: boolean;
+  /** Expiry of the CLI token that authenticated this request; null when it never expires. */
+  cliTokenExpiresAt?: Date | null;
 }
 
 /**
@@ -290,6 +292,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     organizationName: ctx.orgName ?? undefined,
     organizationSlug: ctx.orgSlug ?? undefined,
     isCliAuth: true,
+    cliTokenExpiresAt: matchedKey.expiresAt,
     project: {
       id: ctx.projectId,
       name: ctx.projectName ?? "Unknown Project",

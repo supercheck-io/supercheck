@@ -25,6 +25,9 @@ describe("queue location refresh", () => {
   const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
   const MonitorCycleClosedError = class extends Error { cycleId = "c"; status = "closed"; };
   const set = jest.fn().mockResolvedValue("OK");
+  const resolveMonitorLocations = jest.fn();
+  const partitionMonitorLocationsByAvailability = jest.fn();
+  const recordSchedulingFailure = jest.fn().mockResolvedValue(undefined);
   const pipeline = jest.fn(() => {
     const results: Array<[null, string | number]> = [];
     return {
@@ -124,7 +127,8 @@ describe("queue location refresh", () => {
     }));
     jest.doMock("./queue-event-hub", () => ({ invalidateQueueEventHub }));
     jest.doMock("./bull-board/state", () => ({ invalidateBullBoard }));
-    jest.doMock("./monitor-location-routing", () => ({}));
+    jest.doMock("./monitor-location-routing", () => ({ resolveMonitorLocations, partitionMonitorLocationsByAvailability }));
+    jest.doMock("./monitor-scheduling-failure", () => ({ recordSchedulingFailure }));
     jest.doMock("./monitor-cycles", () => ({
       ...jest.requireActual("./monitor-cycles"),
       persistMonitorCycle,
@@ -253,6 +257,24 @@ describe("queue location refresh", () => {
       projectId: "project-1", script: "", tests: [], location: "global",
     })).rejects.toMatchObject({ code: "queue_unavailable" });
     expect(reserveSlot).not.toHaveBeenCalled();
+  });
+
+  describe("immediate monitor runs", () => {
+    const task = { monitorId: "monitor-1", projectId: "project-1", type: "website" as const, target: "https://example.com" };
+
+    it("does not record downtime when no expected location has a live worker", async () => {
+      resolveMonitorLocations.mockResolvedValue(["eu-central"]);
+      partitionMonitorLocationsByAvailability.mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central"] });
+      await expect(queueModule.addMonitorExecutionJobToQueue(task)).rejects.toThrow("have live workers");
+      expect(recordSchedulingFailure).not.toHaveBeenCalled();
+      expect(flowAddBulk).not.toHaveBeenCalled();
+    });
+
+    it("still records a real scheduling failure", async () => {
+      resolveMonitorLocations.mockRejectedValue(new Error("project restricts all locations"));
+      await expect(queueModule.addMonitorExecutionJobToQueue(task)).rejects.toThrow("project restricts all locations");
+      expect(recordSchedulingFailure).toHaveBeenCalledWith("monitor-1", "project restricts all locations");
+    });
   });
 
   it("never expires BullMQ control keys or unfinished job payloads during cleanup", async () => {

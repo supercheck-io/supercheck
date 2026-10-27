@@ -1,7 +1,8 @@
 import { lookup } from 'node:dns/promises';
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
-import { isIP } from 'node:net';
+import type { LookupAddress } from 'node:dns';
+import { isIP, type LookupFunction } from 'node:net';
 import {
   AxiosHeaders,
   type AxiosRequestConfig,
@@ -32,21 +33,15 @@ const SENSITIVE_REDIRECT_HEADERS = [
   'proxy-authorization',
 ];
 
-async function pinRequestConfig(
-  input: AxiosRequestConfig<unknown>,
+/**
+ * Resolve a monitor host once and refuse private or reserved destinations. Callers connect only to
+ * the returned addresses, never re-resolving the name, so DNS rebinding cannot swap in an internal
+ * address. IPv4 comes first to preserve behaviour in regions without reliable IPv6 routing.
+ */
+export async function resolvePublicAddresses(
+  hostname: string,
   allowInternalTargets: boolean,
-): Promise<PinnedConfig> {
-  if (!input.url) throw new Error('Monitor URL is required');
-
-  const url = new URL(input.url);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Monitor URL must use HTTP or HTTPS');
-  }
-  if (url.username || url.password) {
-    throw new Error('Monitor URLs cannot include credentials');
-  }
-
-  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+): Promise<LookupAddress[]> {
   const literalFamily = isIP(hostname);
   const addresses = literalFamily
     ? [{ address: hostname, family: literalFamily }]
@@ -62,9 +57,48 @@ async function pinRequestConfig(
     throw new Error('Access to private or reserved networks is not allowed');
   }
 
-  // Prefer IPv4 where available to preserve existing monitor behavior in
-  // regions without reliable IPv6 routing, while still supporting IPv6-only hosts.
-  const selected = addresses.find(({ family }) => family === 4) ?? addresses[0];
+  return [
+    ...addresses.filter(({ family }) => family === 4),
+    ...addresses.filter(({ family }) => family !== 4),
+  ];
+}
+
+/** First vetted address, for connectionless probes (UDP) that cannot fall back. */
+export async function resolvePublicAddress(
+  hostname: string,
+  allowInternalTargets: boolean,
+): Promise<LookupAddress> {
+  return (await resolvePublicAddresses(hostname, allowInternalTargets))[0];
+}
+
+/** A lookup for net/tls.connect that only ever yields the vetted addresses for `hostname`. */
+export async function vettedLookup(
+  hostname: string,
+  allowInternalTargets: boolean,
+): Promise<LookupFunction> {
+  return createPinnedLookup(
+    await resolvePublicAddresses(hostname, allowInternalTargets),
+  );
+}
+
+async function pinRequestConfig(
+  input: AxiosRequestConfig<unknown>,
+  allowInternalTargets: boolean,
+): Promise<PinnedConfig> {
+  if (!input.url) throw new Error('Monitor URL is required');
+
+  const url = new URL(input.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Monitor URL must use HTTP or HTTPS');
+  }
+  if (url.username || url.password) {
+    throw new Error('Monitor URLs cannot include credentials');
+  }
+
+  const selected = await resolvePublicAddress(
+    url.hostname.replace(/^\[|\]$/g, ''),
+    allowInternalTargets,
+  );
   const pinnedLookup = createPinnedLookup(selected);
 
   const httpAgent = new HttpAgent({ lookup: pinnedLookup });

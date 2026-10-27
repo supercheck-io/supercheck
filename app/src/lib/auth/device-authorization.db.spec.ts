@@ -157,6 +157,17 @@ describe("shared CLI key issuance", () => {
     expect(results.filter((r) => !r.ok && r.reason === "name_conflict")).toHaveLength(3);
   });
 
+  it("bounds expiry by notAfter at write time and refuses once the parent has expired", async () => {
+    const parentExpiry = new Date(Date.now() + 60_000);
+    const capped = await issueCliApiKeyAtomically({ ...input("child"), expiresInSeconds: 86400, notAfter: parentExpiry });
+    if (!capped.ok) throw new Error("expected key");
+    expect(capped.key.expiresAt).toEqual(parentExpiry);
+    expect(
+      await issueCliApiKeyAtomically({ ...input("late"), notAfter: new Date(Date.now() - 1000) }),
+    ).toMatchObject({ ok: false, reason: "parent_expired" });
+    expect(await keyCount()).toBe(1);
+  });
+
   it("stores only a hash of the key", async () => {
     const result = await issueCliApiKeyAtomically(input("hash-check"));
     if (!result.ok) throw new Error("expected key");
@@ -285,6 +296,31 @@ describe("device authorization lifecycle", () => {
       await exchangeDeviceCode({ deviceCode: grant.deviceCode, clientId: DEVICE_CLIENT_ID }),
     ).toMatchObject({ ok: false, error: "access_denied" });
     expect(await keyCount()).toBe(0);
+  });
+
+  it.each([
+    ["permanently", null],
+    ["until a future date", new Date(Date.now() + 3600_000)],
+  ])("refuses issuance if the approver was suspended %s before exchange", async (_label, banExpires) => {
+    const grant = await newGrant();
+    await approveDeviceGrant({ userCode: grant.userCode, userId: ownerId, projectId });
+    await mockDatabase.update(schema.user).set({ banned: true, banExpires }).where(eq(schema.user.id, ownerId));
+    expect(
+      await exchangeDeviceCode({ deviceCode: grant.deviceCode, clientId: DEVICE_CLIENT_ID }),
+    ).toMatchObject({ ok: false, error: "access_denied" });
+    expect(await keyCount()).toBe(0);
+  });
+
+  it("issues a key once a temporary suspension has expired", async () => {
+    const grant = await newGrant();
+    await approveDeviceGrant({ userCode: grant.userCode, userId: ownerId, projectId });
+    await mockDatabase
+      .update(schema.user)
+      .set({ banned: true, banExpires: new Date(Date.now() - 1000) })
+      .where(eq(schema.user.id, ownerId));
+    expect(
+      await exchangeDeviceCode({ deviceCode: grant.deviceCode, clientId: DEVICE_CLIENT_ID }),
+    ).toMatchObject({ ok: true });
   });
 
   it("rejects the wrong client and unknown device codes", async () => {

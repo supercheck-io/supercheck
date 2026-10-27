@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { session, user, member, projects, projectMembers, organization } from "@/db/schema";
 import { eq, and, asc, gt } from "drizzle-orm";
 import { normalizeRole } from "./role-normalizer";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { Role } from "./permissions-client";
 
 type UnifiedAuthContext = {
@@ -62,6 +63,7 @@ export async function getUnifiedAuthContext(
         email: user.email,
         role: user.role,
         banned: user.banned,
+        banExpires: user.banExpires,
       })
       .from(session)
       .leftJoin(user, eq(session.userId, user.id))
@@ -88,10 +90,12 @@ export async function getUnifiedAuthContext(
       };
     }
 
-    if (s.banned) {
+    // Same rule as every other credential: an expired temporary ban no longer blocks access.
+    const sessionUserId = s.userId;
+    if (!isCredentialOwnerActive(s)) {
         return {
           isValid: false,
-          userId: s.userId,
+          userId: sessionUserId,
           impersonatedBy: null,
           projectId: null,
           projectName: null,

@@ -21,6 +21,7 @@ const snapshot = (
   closed: { closed: 4, superseded: 1 },
   notifyFailures: 1,
   cycleFailures: 0,
+  abortedCycles: 0,
   retentionDeleted: 0,
   ...overrides,
 });
@@ -64,6 +65,7 @@ describe('control-plane metrics', () => {
       'supercheck_monitor_cycle_closed_total{outcome="closed"} 4',
     );
     expect(text).toContain('supercheck_monitor_cycle_notify_failures_total 1');
+    expect(text).toContain('supercheck_monitor_cycle_aborted_total 0');
   });
 });
 

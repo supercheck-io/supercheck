@@ -72,6 +72,18 @@ describe("organization and project consistency in unified auth", () => {
       .mockReturnValueOnce(rows([{ projectId: "foreign-project", projectOrgId: "foreign-org", orgRole: null }], true));
     expect(await getUnifiedAuthContext("token", "foreign-project")).toMatchObject({ isValid: false, projectId: null, organizationId: null });
   });
+  it.each([
+    ["a permanent ban", null, false],
+    ["an active temporary ban", new Date(Date.now() + 60_000), false],
+    ["an expired temporary ban", new Date(Date.now() - 60_000), true],
+  ])("applies %s to the session user", async (_label, banExpires, allowed) => {
+    (db.select as jest.Mock).mockReset()
+      .mockReturnValueOnce(rows([{ userId: "user", activeOrgId: "org-a", banned: true, banExpires }]))
+      .mockReturnValueOnce(rows([{ projectId: "project-a", projectOrgId: "org-a", orgRole: "org_owner" }], true));
+    const context = await getUnifiedAuthContext("token", "project-a");
+    expect(context.isValid).toBe(allowed);
+    if (!allowed) expect(context).toMatchObject({ error: "User is banned", projectId: null });
+  });
   it("fails closed for unsupported compound membership roles", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ userId: "user", activeOrgId: "extra-org", activeProjectId: "extra-project" }]))

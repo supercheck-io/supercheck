@@ -385,7 +385,15 @@ spec:
     - Egress
   ingress: []
   egress:
-    - ports:
+    # DNS only through the cluster resolver, so pods cannot query private resolvers.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -401,8 +409,51 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+      # Any public port except mail (25, 465, 587, 2525) and this host's control plane
+      # (6443 API, 2379-2380 etcd, 9100, 9345, 10250, 10255), which public node IPs expose.
       ports:
         - protocol: TCP
+          port: 1
+          endPort: 24
+        - protocol: TCP
+          port: 26
+          endPort: 464
+        - protocol: TCP
+          port: 466
+          endPort: 586
+        - protocol: TCP
+          port: 588
+          endPort: 2378
+        - protocol: TCP
+          port: 2381
+          endPort: 2524
+        - protocol: TCP
+          port: 2526
+          endPort: 6442
+        - protocol: TCP
+          port: 6444
+          endPort: 9099
+        - protocol: TCP
+          port: 9101
+          endPort: 9344
+        - protocol: TCP
+          port: 9346
+          endPort: 10249
+        - protocol: TCP
+          port: 10251
+          endPort: 10254
+        - protocol: TCP
+          port: 10256
+          endPort: 65535
+        # Redundant with the ranges above, for a CNI that ignores endPort.
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
 YAML
 
 # ─── Step 7: Create restricted worker RBAC + kubeconfig ──────────────────────

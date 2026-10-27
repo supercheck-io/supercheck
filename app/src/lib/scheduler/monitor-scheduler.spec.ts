@@ -213,6 +213,15 @@ describe("monitor-scheduler", () => {
     expect(enqueueMonitorLocationJobs).not.toHaveBeenCalled();
   });
 
+  it("does not record downtime when no expected location has a live worker (closure flag off)", async () => {
+    mockResolveMonitorLocations.mockResolvedValue(["eu-central"]);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorExecutionQueue: { "eu-central": {} } });
+    (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central"] });
+    await expect(processScheduledMonitor({ data: { monitorId: "monitor-1", type: "website", target: "https://example.com" } } as never)).rejects.toThrow("no jobs enqueued");
+    expect(mockUpdateSet).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
   describe("missing-cycle closure", () => {
     const data = { monitorId: "monitor-1", type: "website", target: "https://example.com" };
     const job = (overrides: Record<string, unknown> = {}) =>
