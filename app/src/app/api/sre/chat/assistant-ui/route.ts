@@ -17,6 +17,7 @@ import {
 import { requireProjectContext } from "@/lib/project-context";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { recordSreTokenUsage, sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import {
@@ -102,9 +103,8 @@ const assistantUiChatRequestSchema = z.object({
 });
 
 function authErrorResponse(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  void error; // never echo the underlying error to the client
+  return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 }
 
 function getTextFromUiMessage(message: SreAssistantUiMessage) {
@@ -244,6 +244,9 @@ export async function POST(request: NextRequest) {
 
   const subscriptionError = await requireSreSubscription(context.organizationId);
   if (subscriptionError) return subscriptionError;
+
+  const dailyLimitResponse = await sreDailyTokenLimitResponse(context.organizationId);
+  if (dailyLimitResponse) return dailyLimitResponse;
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
@@ -438,6 +441,7 @@ export async function POST(request: NextRequest) {
     },
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
+    onStepFinish: (event) => recordSreTokenUsage(context.organizationId, event.usage),
     // Stop the model when the client disconnects, not only on the time budget.
     abortSignal: AbortSignal.any([
       AbortSignal.timeout(budget.timeoutMs),

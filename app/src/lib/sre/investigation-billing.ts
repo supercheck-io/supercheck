@@ -35,6 +35,7 @@ export async function failStuckSreInvestigationRuns(options?: {
       agentStateSnapshot: {
         mode: "sre_investigation_recovery",
         error: "Investigation exceeded the execution recovery window",
+        errorCode: "stale_run",
       },
       durationMs: sql<number>`GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)::integer)`,
     })
