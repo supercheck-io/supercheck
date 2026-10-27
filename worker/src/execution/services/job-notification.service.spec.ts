@@ -174,21 +174,25 @@ describe('JobNotificationService', () => {
       expect(maxFailureAlertStreak(3)).toBe(15);
     });
 
+    // Feeds exactly the rows the service asks for, like the real query would.
     it.each([
       [2, false],
       [6, true],
       [11, true],
       [12, false],
       [16, false],
+      [40, false],
     ])('job failure streak of %i sends=%s', async (streak, sends) => {
       const { service, dbService, notificationService } = createService();
-      dbService.getRecentRunsForJob.mockResolvedValue([
-        { id: 'run-1', status: 'failed' },
-        ...Array.from({ length: streak - 1 }, (_, i) => ({
-          id: `old-${i}`,
-          status: 'failed',
-        })),
-      ]);
+      dbService.getRecentRunsForJob.mockImplementation(
+        (_id: string, limit: number) =>
+          Promise.resolve(
+            Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
+              id: i === 0 ? 'run-1' : `old-${i}`,
+              status: 'failed',
+            })),
+          ),
+      );
       await service.handleJobNotifications({
         jobId: 'job-1',
         runId: 'run-1',
@@ -208,7 +212,7 @@ describe('JobNotificationService', () => {
         finalStatus: 'failed',
         durationSeconds: 1,
       });
-      expect(dbService.getRecentRunsForJob).toHaveBeenCalledWith('job-1', 11);
+      expect(dbService.getRecentRunsForJob).toHaveBeenCalledWith('job-1', 12);
     });
   });
 });

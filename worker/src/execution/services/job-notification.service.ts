@@ -144,7 +144,8 @@ export class JobNotificationService {
         jobId,
         Math.max(
           alertConfig.recoveryThreshold,
-          maxFailureAlertStreak(alertConfig.failureThreshold),
+          // +1 so the count can pass the last alert point (otherwise it saturates there).
+          maxFailureAlertStreak(alertConfig.failureThreshold) + 1,
         ),
       );
 
@@ -182,6 +183,7 @@ export class JobNotificationService {
         normalizedStatus === 'passed' &&
         consecutiveSuccesses >= alertConfig.recoveryThreshold;
 
+      // Timeouts are not counted in the failure streak above, so they are not capped here.
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout && finalStatus === 'timeout';
 

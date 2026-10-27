@@ -32,6 +32,7 @@ import {
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
+import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
@@ -529,6 +530,15 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       role: "trigger",
       createdAt: new Date(),
     });
+
+    if (sourceType === "monitor") {
+      await linkStatusPageIncidentsToSreIncident(tx, {
+        sreIncidentId: incident.id,
+        organizationId,
+        projectId,
+        monitorId: sourceId,
+      });
+    }
 
     await tx.insert(sreIncidentTimelineEvents).values({
       incidentId: incident.id,

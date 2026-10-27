@@ -3,7 +3,7 @@
 const selectQueue: unknown[][] = [];
 function chain(result: unknown[]) {
   const node: Record<string, unknown> = {};
-  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin"]) node[name] = jest.fn(() => node);
+  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy"]) node[name] = jest.fn(() => node);
   node.then = (resolve: (value: unknown[]) => unknown) => resolve(result);
   return node;
 }
@@ -144,18 +144,31 @@ it("skips webhooks that use a preset or body template but still sends plain webh
 
 describe("one message per event for alert-triggered incidents", () => {
   const provider = { id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } };
-  const run = (input: Record<string, unknown>) => {
-    selectQueue.push([incident], [{ sourceType: "monitor", sourceId: "mon-1" }], [provider]);
+  const source = [{ sourceType: "monitor", sourceId: "mon-1" }];
+  const run = (input: Record<string, unknown>, delivered: Array<{ status: string }> = [{ status: "sent" }]) => {
+    selectQueue.push([incident], source);
+    if (input.event === "created") selectQueue.push(delivered);
+    selectQueue.push([provider]);
     return notifyIncidentEvent({ ...base, assigneeUserId: null, ...input } as never);
   };
 
   it.each([
-    ["created", {}],
     ["recovered", {}],
+    ["reopened", {}],
     ["resolved", { automatic: true }],
   ])("skips channel posts for %s %j", async (event, extra) => {
     await run({ event, ...extra });
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("skips channel posts for created when the alert was delivered", async () => {
+    await run({ event: "created" });
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("posts created to channels when every alert delivery failed", async () => {
+    await run({ event: "created" }, [{ status: "failed" }]);
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -163,14 +176,13 @@ describe("one message per event for alert-triggered incidents", () => {
     ["acknowledged", {}],
     ["ai_finding", {}],
     ["resolved", {}],
-    ["reopened", {}],
   ])("still posts channels for %s", async (event, extra) => {
     await run({ event, ...extra });
     expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   });
 
   it("still emails the assignee when channels are skipped", async () => {
-    selectQueue.push([incident], [{ email: "ada@example.com" }], [{ sourceType: "monitor", sourceId: "mon-1" }], [provider]);
+    selectQueue.push([incident], [{ email: "ada@example.com" }], source);
     await notifyIncidentEvent({ ...base, event: "recovered", assigneeUserId: "assignee", actorUserId: null });
     expect(sendEmailToMultiple.mock.calls[0][0].text).toContain("recovered");
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();

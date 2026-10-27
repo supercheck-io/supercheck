@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import {
+  alertHistory,
   member,
   projectMembers,
   sreAlertEvents,
@@ -10,6 +11,7 @@ import {
   sreServiceOwners,
   sreServices,
   user,
+  type AlertType,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
@@ -505,8 +507,20 @@ type SourceRef = {
   sourceId: string;
 };
 
+// Only failures that a passing check really ends: monitor up/down and job failure/timeout.
+// Never SSL-expiry (a passing check does not renew a certificate) or custom triggers.
+const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
+const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout"];
+
+const recoverableTrigger = () =>
+  or(
+    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${type}`}`),
+    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${title}`}`),
+  );
+
 const triggerSourceMatch = (source: SourceRef) =>
   and(
+    recoverableTrigger(),
     eq(sreIncidents.organizationId, source.organizationId),
     eq(sreIncidents.projectId, source.projectId),
     eq(sreIncidentAlerts.role, "trigger"),
@@ -543,6 +557,23 @@ export async function applySourceRecovery(
     .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
     .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
     .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
+  if (open.length === 0) return { resolved: [], recovered: [] };
+
+  // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
+  const [latestFailure] = await tx
+    .select({ sentAt: sql<Date | null>`max(${alertHistory.sentAt})` })
+    .from(alertHistory)
+    .where(
+      and(
+        source.sourceType === "monitor"
+          ? eq(alertHistory.monitorId, source.sourceId)
+          : eq(alertHistory.jobId, source.sourceId),
+        inArray(alertHistory.type, RECOVERABLE_ALERT_TYPES),
+      ),
+    );
+  if (latestFailure?.sentAt && new Date(latestFailure.sentAt) > source.recoveredAt) {
+    return { resolved: [], recovered: [] };
+  }
 
   const resolved: { id: string }[] = [];
   const recovered: { id: string; assigneeUserId: string | null }[] = [];
@@ -582,6 +613,18 @@ export async function applySourceRecovery(
         continue;
       }
     }
+    const [lastState] = await tx
+      .select({ state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'` })
+      .from(sreIncidentTimelineEvents)
+      .where(
+        and(
+          eq(sreIncidentTimelineEvents.incidentId, incident.id),
+          eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        ),
+      )
+      .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+      .limit(1);
+    if (lastState?.state === "recovered") continue; // already noted; do not repeat the note or email
     await tx.insert(sreIncidentTimelineEvents).values({
       incidentId: incident.id,
       eventType: "state_change",
@@ -628,18 +671,23 @@ export async function reopenRecentlyAutoResolved(
     return null;
   }
 
-  const [auto] = await tx
-    .select({ id: sreIncidentTimelineEvents.id })
+  // Only when the most recent resolve/reopen was the automatic one; a person's later resolve wins.
+  const [lastResolution] = await tx
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      automatic: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'automatic'`,
+    })
     .from(sreIncidentTimelineEvents)
     .where(
       and(
         eq(sreIncidentTimelineEvents.incidentId, latest.id),
-        sql`${sreIncidentTimelineEvents.eventData}->>'state' = 'resolved'`,
-        sql`${sreIncidentTimelineEvents.eventData}->>'automatic' = 'true'`,
+        eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('resolved', 'reopened')`,
       ),
     )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
     .limit(1);
-  if (!auto) return null;
+  if (lastResolution?.state !== "resolved" || lastResolution.automatic !== "true") return null;
 
   const now = new Date();
   const [updated] = await tx

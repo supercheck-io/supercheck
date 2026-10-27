@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
+  statusPageComponentMonitors,
   statusPages,
   incidents,
   incidentUpdates,
@@ -69,6 +70,50 @@ export async function linkOpenSreIncident(
       and(eq(sreIncidents.id, match.id), isNull(sreIncidents.statusPageIncidentId)),
     );
   return match.id;
+}
+
+/**
+ * Inverse of linkOpenSreIncident: when a new SRE incident opens for a monitor, link the
+ * open automatic status-page incidents of components that include that monitor.
+ */
+export async function linkStatusPageIncidentsToSreIncident(
+  tx: Tx,
+  args: {
+    sreIncidentId: string;
+    organizationId: string;
+    projectId: string | null;
+    monitorId: string;
+  },
+) {
+  // No project means no safe scope match; skip linking.
+  if (!args.projectId) return [];
+  const matches = await tx
+    .select({ id: incidents.id })
+    .from(incidents)
+    .innerJoin(statusPages, eq(statusPages.id, incidents.statusPageId))
+    .innerJoin(
+      statusPageComponentMonitors,
+      eq(statusPageComponentMonitors.componentId, incidents.sourceComponentId),
+    )
+    .where(
+      and(
+        eq(statusPages.organizationId, args.organizationId),
+        eq(statusPages.projectId, args.projectId),
+        eq(statusPageComponentMonitors.monitorId, args.monitorId),
+        ne(incidents.status, "resolved"),
+        isNull(incidents.sreIncidentId),
+      ),
+    )
+    .orderBy(desc(incidents.createdAt));
+  const ids = [...new Set(matches.map((match) => match.id))];
+  if (ids.length === 0) return [];
+  await tx.update(incidents).set({ sreIncidentId: args.sreIncidentId }).where(inArray(incidents.id, ids));
+  // Single slot on the SRE incident: the first (newest) status-page incident wins.
+  await tx
+    .update(sreIncidents)
+    .set({ statusPageIncidentId: ids[0] })
+    .where(and(eq(sreIncidents.id, args.sreIncidentId), isNull(sreIncidents.statusPageIncidentId)));
+  return ids;
 }
 
 export async function reconcileStatusPages() {

@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
 import {
+  alertHistory,
   jobNotificationSettings,
   monitorNotificationSettings,
   notificationProviders,
@@ -189,6 +190,23 @@ async function sendToProvider(
   }
 }
 
+/** True when a failure alert for this source was delivered (status `sent`) in the last 15 minutes. */
+async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string) {
+  const rows = await db
+    .select({ status: alertHistory.status })
+    .from(alertHistory)
+    .where(
+      and(
+        sourceType === "monitor" ? eq(alertHistory.monitorId, sourceId) : eq(alertHistory.jobId, sourceId),
+        inArray(alertHistory.type, ["monitor_failure", "job_failed", "job_timeout", "ssl_expiring"]),
+        gte(alertHistory.sentAt, new Date(Date.now() - 15 * 60_000)),
+      ),
+    )
+    .orderBy(desc(alertHistory.sentAt))
+    .limit(20);
+  return rows.some((row) => row.status === "sent");
+}
+
 /**
  * Announce an incident lifecycle event through the notification providers the
  * triggering monitor or job already uses, plus a direct email to the assignee.
@@ -259,7 +277,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
 
     // One message per event: the worker already posted the alert (created) and the
     // recovery (automatic resolve, recovered) to these channels.
-    if (input.event === "created" || input.event === "recovered" || (input.event === "resolved" && input.automatic)) return;
+    // `created` is skipped only when the worker's alert was actually delivered; if every
+    // delivery failed, the channels have not heard about it yet.
+    if (input.event === "recovered" || input.event === "reopened" || (input.event === "resolved" && input.automatic)) return;
+    if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId))) return;
 
     const providerColumns = {
       id: notificationProviders.id,

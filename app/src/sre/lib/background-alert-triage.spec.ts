@@ -17,6 +17,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
+jest.mock("@/lib/status-page-reconciliation", () => ({ linkStatusPageIncidentsToSreIncident: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
 
 const selectQueue: unknown[][] = [];
@@ -55,6 +56,7 @@ import {
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import {
   isSreAutomaticTriageEnabled,
   isSreBackgroundAlertTriageEnabled,
@@ -157,6 +159,19 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
       expect(mockDb.transaction).toBeDefined();
       expect(tx.insert).not.toHaveBeenCalled();
+    });
+
+    it("links open status-page incidents for a new monitor incident, not for jobs", async () => {
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(linkStatusPageIncidentsToSreIncident).toHaveBeenCalledWith(tx, { sreIncidentId: "new-id", organizationId: "org-1", projectId: "proj-1", monitorId: "mon-1" });
+
+      (linkStatusPageIncidentsToSreIncident as jest.Mock).mockClear();
+      selectQueue.push([alertRow({ monitorId: null, jobId: "job-1", type: "job_failed", monitorOrganizationId: null, monitorProjectId: null, jobOrganizationId: "org-1", jobProjectId: "proj-1", jobName: "N" })]);
+      freshIncidentQueue();
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(linkStatusPageIncidentsToSreIncident).not.toHaveBeenCalled();
     });
 
     it("uses incidentSeverity for new incidents", async () => {

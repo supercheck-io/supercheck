@@ -233,7 +233,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("auto-resolves an unacknowledged incident with an automatic timeline event", async () => {
-    selectQueue.push([open(null)]);
+    selectQueue.push([open(null)], [{ sentAt: new Date("2026-01-01T01:00:00Z") }]);
     updateQueue.push([{ id: incidentId }]);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(result).toEqual({ resolved: [{ id: incidentId }], recovered: [] });
@@ -249,7 +249,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("only notes recovery on an acknowledged incident", async () => {
-    selectQueue.push([open(new Date())]);
+    selectQueue.push([open(new Date())], [{ sentAt: null }], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(executor.update).not.toHaveBeenCalled();
     expect(result.recovered).toEqual([{ id: incidentId, assigneeUserId: assignee }]);
@@ -257,7 +257,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("only notes recovery when autoResolveIncident is off", async () => {
-    selectQueue.push([open(null)]);
+    selectQueue.push([open(null)], [{ sentAt: null }], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: false });
     expect(executor.update).not.toHaveBeenCalled();
     expect(result.resolved).toEqual([]);
@@ -265,11 +265,36 @@ describe("applySourceRecovery", () => {
   });
 
   it("falls back to a recovered note when the guarded update loses a race", async () => {
-    selectQueue.push([open(null)]);
+    selectQueue.push([open(null)], [{ sentAt: null }], []);
     updateQueue.push([]);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(result.resolved).toEqual([]);
     expect(result.recovered).toHaveLength(1);
+  });
+
+  it("ignores a stale recovery when a newer failure alert exists", async () => {
+    selectQueue.push([open(null)], [{ sentAt: new Date("2026-01-01T01:45:00Z") }]);
+    expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("does not repeat the recovered note", async () => {
+    selectQueue.push([open(new Date())], [{ sentAt: null }], [{ state: "recovered" }]);
+    expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("scopes the open-incident lookup to recoverable failure alert types (not ssl_expiring)", async () => {
+    selectQueue.push([]);
+    await applySourceRecovery(executor as never, { ...source, autoResolve: true });
+    const where = (executor.select.mock.results[0].value as { where: jest.Mock }).where.mock.calls[0][0];
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core") as typeof import("drizzle-orm/pg-core");
+    const text = JSON.stringify(new PgDialect().sqlToQuery(where).params);
+    expect(text).toContain("monitor_failure");
+    expect(text).toContain("job_failed");
+    expect(text).toContain("job_timeout");
+    expect(text).not.toContain("ssl_expiring");
   });
 
   it("does nothing when no incident is open", async () => {
@@ -297,7 +322,7 @@ describe("reopenRecentlyAutoResolved", () => {
   });
 
   it("reopens an auto-resolved incident inside the 30 minute window", async () => {
-    selectQueue.push([latest()], [{ id: "evt" }]);
+    selectQueue.push([latest()], [{ state: "resolved", automatic: "true" }]);
     updateQueue.push([{ id: incidentId }]);
     expect(await reopenRecentlyAutoResolved(executor as never, source)).toEqual({
       incidentId,
@@ -309,6 +334,14 @@ describe("reopenRecentlyAutoResolved", () => {
 
   it("does not reopen outside the window", async () => {
     selectQueue.push([latest({ resolvedAt: new Date("2026-01-01T01:29:00Z") })]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    expect(executor.update).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen after auto-resolve, reopen, then a manual resolve", async () => {
+    selectQueue.push([latest()], [{ state: "resolved", automatic: null }]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    selectQueue.push([latest()], [{ state: "reopened", automatic: null }]);
     expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
     expect(executor.update).not.toHaveBeenCalled();
   });
