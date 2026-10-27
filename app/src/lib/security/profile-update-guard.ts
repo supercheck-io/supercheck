@@ -3,15 +3,22 @@ import { avatarVersionOf } from "@/lib/user-avatar-path";
 import type { AuthHookContext } from "./login-lockout-hooks";
 
 /**
- * Server-side rules for Better Auth's /update-user, which browsers can call directly:
+ * Server-side rules for Better Auth's /update-user and /sign-up/email, which browsers call directly:
  * no profile edits while impersonating, and `image` may only be cleared, kept, or set
  * to the user's own uploaded avatar (any other URL would be loaded by every viewer).
  */
 export async function guardProfileUpdate(ctx: AuthHookContext) {
-  if (ctx.path !== "/update-user") return;
   const body = (ctx.body ?? {}) as Record<string, unknown>;
-  const changesName = "name" in body;
-  const changesImage = "image" in body;
+  // Sign-up has no uploaded avatar yet, so an email sign-up may not set one at all.
+  if (ctx.path === "/sign-up/email") {
+    if (body.image !== undefined && body.image !== null) {
+      throw new APIError("BAD_REQUEST", { message: "Upload a photo from your account settings" });
+    }
+    return;
+  }
+  if (ctx.path !== "/update-user") return;
+  const changesName = body.name !== undefined;
+  const changesImage = body.image !== undefined;
   if (!changesName && !changesImage) return;
 
   const session = await getSessionFromCtx(ctx);

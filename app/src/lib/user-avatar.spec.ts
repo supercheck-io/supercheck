@@ -50,6 +50,20 @@ describe("pruneAvatars", () => {
     expect(deleted()).toEqual(["avatars/u1/orphan.png"]);
   });
 
+  it("follows continuation tokens past one listing page", async () => {
+    let page = 0;
+    mockSend.mockImplementation(async (command: { kind: string }) => {
+      if (command.kind !== "list") return {};
+      page += 1;
+      return page === 1
+        ? { Contents: [{ Key: "avatars/u1/a.png", LastModified: old }], IsTruncated: true, NextContinuationToken: "t2" }
+        : { Contents: [{ Key: "avatars/u1/b.png", LastModified: old }], IsTruncated: false };
+    });
+    await pruneAvatars("u1", null, 0);
+    expect(mockSend.mock.calls.filter(([c]) => c.kind === "list")[1][0].input.ContinuationToken).toBe("t2");
+    expect(deleted().sort()).toEqual(["avatars/u1/a.png", "avatars/u1/b.png"]);
+  });
+
   it("deletes everything for a deleted account", async () => {
     await pruneAvatars("u1", null, 0);
     expect(deleted().sort()).toEqual(["avatars/u1/in-flight.png", "avatars/u1/keep.png", "avatars/u1/orphan.png"]);

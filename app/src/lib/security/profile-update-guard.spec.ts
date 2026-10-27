@@ -55,4 +55,15 @@ describe("guardProfileUpdate", () => {
     await expect(update({ image: ownAvatar.replace("u1", "u2") })).rejects.toMatchObject({ status: "BAD_REQUEST" });
     await expect(update({ image: 42 })).rejects.toMatchObject({ status: "BAD_REQUEST" });
   });
+
+  it("rejects an image on email sign-up but allows sign-up without one", async () => {
+    await expect(update({ email: "a@b.co", image: "https://evil.example/t.png" }, "/sign-up/email")).rejects.toMatchObject({ status: "BAD_REQUEST" });
+    await expect(update({ email: "a@b.co" }, "/sign-up/email")).resolves.toBeUndefined();
+    await expect(update({ email: "a@b.co", image: null }, "/sign-up/email")).resolves.toBeUndefined();
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it("treats an undefined image as not changing it", async () => {
+    await expect(update({ name: "Ada", image: undefined })).resolves.toBeUndefined();
+  });
 });

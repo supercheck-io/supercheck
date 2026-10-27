@@ -70,9 +70,15 @@ const PRUNE_MIN_AGE_MS = 60_000;
 export async function pruneAvatars(userId: string, keep: string | null, minAgeMs = PRUNE_MIN_AGE_MS): Promise<void> {
   try {
     const prefix = `avatars/${userId}/`;
-    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+    const objects: { Key?: string; LastModified?: Date }[] = [];
+    let token: string | undefined;
+    do {
+      const page = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, ContinuationToken: token }));
+      objects.push(...(page.Contents ?? []));
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
     const cutoff = Date.now() - minAgeMs;
-    const stale = (listed.Contents ?? []).filter(
+    const stale = objects.filter(
       (object) => object.Key && object.Key !== `${prefix}${keep}` && (object.LastModified?.getTime() ?? 0) <= cutoff,
     );
     await Promise.all(stale.map((object) => s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: object.Key }))));

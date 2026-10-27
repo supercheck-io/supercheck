@@ -386,6 +386,18 @@ export const auth = betterAuth({
       generateId: () => uuidv7(),
     },
   },
+  databaseHooks: {
+    user: {
+      delete: {
+        // Covers Better Auth's own deletion paths (e.g. admin remove-user); the custom admin route prunes itself.
+        // Dynamic import keeps the S3 client out of every module that imports auth.
+        after: async (deleted) => {
+          const { pruneAvatars } = await import("@/lib/user-avatar");
+          await pruneAvatars(deleted.id, null, 0);
+        },
+      },
+    },
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
     updateAge: 60 * 60 * 24,
