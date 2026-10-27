@@ -467,7 +467,7 @@ export function StatusPageDetail({
                   <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.activeIncidents ?? 0}</div>
                     <div className="text-sm text-muted-foreground">
-                      Active Incidents
+                      Active updates
                     </div>
                   </div>
                 </div>
