@@ -27,6 +27,12 @@ describe("linkOpenSreIncident", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("does nothing without a project scope", async () => {
+    const { tx, update } = makeTx({ id: "sre-1" });
+    expect(await linkOpenSreIncident(tx, { ...args, projectId: null })).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("does nothing when no open SRE incident matches", async () => {
     const { tx, update } = makeTx(undefined);
     expect(await linkOpenSreIncident(tx, args)).toBeNull();

@@ -36,7 +36,8 @@ export async function linkOpenSreIncident(
     monitorIds: string[];
   },
 ) {
-  if (!args.monitorIds.length) return null;
+  // No project means no safe scope for the match; skip linking.
+  if (!args.monitorIds.length || !args.projectId) return null;
   const [match] = await tx
     .select({ id: sreIncidents.id })
     .from(sreIncidents)
@@ -45,7 +46,7 @@ export async function linkOpenSreIncident(
     .where(
       and(
         eq(sreIncidents.organizationId, args.organizationId),
-        args.projectId ? eq(sreIncidents.projectId, args.projectId) : undefined,
+        eq(sreIncidents.projectId, args.projectId),
         ne(sreIncidents.status, "resolved"),
         eq(sreIncidentAlerts.role, "trigger"),
         eq(sreAlertEvents.sourceType, "monitor"),

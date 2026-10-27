@@ -50,10 +50,11 @@ export const MonitorAlertEmail = ({
   const statusColor = color ?? getStatusColor(type);
 
   // Helper to check if a string is a URL
+  // Only http(s) values become links; other schemes (javascript:, data:) stay text.
   const isUrl = (str: string) => {
     try {
-      new URL(str);
-      return true;
+      const { protocol } = new URL(str);
+      return protocol === "http:" || protocol === "https:";
     } catch {
       return false;
     }
@@ -94,10 +95,7 @@ export const MonitorAlertEmail = ({
         <table style={detailsTable}>
           <tbody>
             {fields.map((field, index) => {
-              const isLink =
-                isUrl(field.value) ||
-                field.title.toLowerCase().includes("url") ||
-                field.title.toLowerCase().includes("link");
+              const isLink = isUrl(field.value);
               
               return (
                 <tr key={index}>

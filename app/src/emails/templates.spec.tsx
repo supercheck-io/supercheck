@@ -44,6 +44,24 @@ describe("email templates", () => {
     expect(html).not.toContain("View incidents");
   });
 
+  it("monitor alert: links only http(s) field values", () => {
+    const html = renderToStaticMarkup(
+      <MonitorAlertEmail
+        title="Down"
+        message="m"
+        footer="x"
+        type="failure"
+        fields={[
+          { title: "URL", value: "https://example.com/health" },
+          { title: "Link", value: "javascript:alert(1)" },
+        ]}
+      />,
+    );
+    expect(html).toContain('href="https://example.com/health"');
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain("javascript:alert(1)");
+  });
+
   it("BaseLayout picks readable header text for light colors", () => {
     const html = renderToStaticMarkup(
       <BaseLayout preview="p" title="T" headerColor="#fde68a">x</BaseLayout>,
