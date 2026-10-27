@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectorTypeLabel } from "@/components/logo/connector-logos";
 import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
-import { getSreConnectorLabel } from "@/components/sre/connectors/connector-catalog";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 
 type ConnectorTableMeta = {
@@ -109,9 +109,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
       const capability = connectorCapabilityBadge(connector.type);
       return (
         <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap">
-          <TableBadge compact>
-            {getSreConnectorLabel(connector.type)}
-          </TableBadge>
+          <ConnectorTypeLabel type={connector.type} />
           <TableBadge tone={capability.tone} compact>
             {capability.label}
           </TableBadge>

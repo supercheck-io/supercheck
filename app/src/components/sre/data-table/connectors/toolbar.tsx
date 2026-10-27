@@ -1,5 +1,6 @@
 "use client";
 
+import { connectorTypeLogo } from "@/components/logo/connector-logos";
 import { Table } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,11 @@ export function ConnectorsToolbar<TData>({
   const availableTypeValues = typeColumn?.getFacetedUniqueValues();
   const typeOptions = SRE_CONNECTOR_CATALOG.filter(
     ({ value }) => !availableTypeValues || availableTypeValues.has(value),
-  ).map(({ value, label }) => ({ value, label }));
+  ).map(({ value, label }) => ({
+    value,
+    label,
+    icon: connectorTypeLogo(value),
+  }));
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

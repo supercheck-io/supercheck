@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectorTypeLabel } from "@/components/logo/connector-logos";
 import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SreDiagnosticQueryListItem } from "@/actions/sre-diagnostic-queries";
-import { getSreConnectorLabel } from "@/components/sre/connectors/connector-catalog";
 
 type DiagnosticRecipeTableMeta = {
   onDelete?: (query: SreDiagnosticQueryListItem) => void;
@@ -87,9 +87,7 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
       <DataTableColumnHeader column={column} title="Connector Type" />
     ),
     cell: ({ row }) => (
-      <TableBadge compact>
-        {getSreConnectorLabel(row.original.connectorType)}
-      </TableBadge>
+      <ConnectorTypeLabel type={row.original.connectorType} />
     ),
   },
   {

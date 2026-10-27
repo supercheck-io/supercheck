@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectorTypeIcon } from "@/components/logo/connector-logos";
 import { useState, useTransition, type FormEvent } from "react";
 import { KeyRound, Loader2, Network, PlugZap, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -255,6 +256,10 @@ export function ConnectorFormDialog({
                       <SelectContent>
                         {connectorTypeOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
+                            <ConnectorTypeIcon
+                              type={option.value}
+                              className="h-4 w-4 text-foreground"
+                            />
                             {option.label}
                           </SelectItem>
                         ))}

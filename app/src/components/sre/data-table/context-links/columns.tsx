@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectorTypeIcon } from "@/components/logo/connector-logos";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, Unlink } from "lucide-react";
 
@@ -62,11 +63,14 @@ export const columns: ColumnDef<SreIntegrationBindingListItem>[] = [
       <DataTableColumnHeader column={column} title="Connector" />
     ),
     cell: ({ row }) => (
-      <TruncatedTextWithTooltip
-        text={`${row.original.externalConnector.name} (${titleCase(row.original.externalConnector.type)})`}
-        maxLength={28}
-        maxWidth="220px"
-      />
+      <div className="flex min-w-0 items-center gap-2">
+        <ConnectorTypeIcon type={row.original.externalConnector.type} />
+        <TruncatedTextWithTooltip
+          text={`${row.original.externalConnector.name} (${titleCase(row.original.externalConnector.type)})`}
+          maxLength={28}
+          maxWidth="220px"
+        />
+      </div>
     ),
   },
   {
