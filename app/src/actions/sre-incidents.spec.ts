@@ -98,4 +98,22 @@ describe("getSreIncidentDetails investigation summary", () => {
     expect(insert).not.toHaveBeenCalled();
     expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).not.toHaveBeenCalled();
   });
+
+  it("groups by every plain column the detail query selects (Postgres rejects the rest)", async () => {
+    const { Column, sql } = jest.requireActual("drizzle-orm");
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const dialect = new PgDialect();
+    const render = (column: unknown) => dialect.sqlToQuery(sql`${column}`).sql;
+    const query = selectRows([]);
+    (db.select as jest.Mock).mockReturnValueOnce(query).mockReturnValue(selectRows([]));
+    await getSreIncidentDetails("incident-1");
+    const selected = (db.select as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+    const grouped = new Set(query.groupBy.mock.calls[0].map(render));
+    // sre_incidents is grouped by its primary key, so its own columns are functionally dependent.
+    const missing = Object.entries(selected)
+      .filter(([, column]) => column instanceof Column)
+      .map(([, column]) => render(column))
+      .filter((name) => !name.startsWith('"sre_incidents".') && !grouped.has(name));
+    expect(missing).toEqual([]);
+  });
 });

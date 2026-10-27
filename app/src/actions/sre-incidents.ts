@@ -899,6 +899,7 @@ export async function getSreIncidentDetails(
         acker.name,
         sreIncidents.commanderUserId,
         commander.name,
+        commander.image,
         sreIncidents.mitigatedAt,
         sreIncidents.resolutionSummary,
       )
