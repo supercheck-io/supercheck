@@ -30,7 +30,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
-import { IncidentPersonAvatar } from "@/components/sre/incidents/incident-person-avatar";
 import { IncidentsFirstRunChecklist } from "@/components/sre/incidents/incidents-first-run-checklist";
 import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { Button } from "@/components/ui/button";
@@ -60,6 +59,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { UserCell } from "@/components/ui/user-cell";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
@@ -692,10 +692,7 @@ export function SreIncidentsList({
                         {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <div className={cn("flex items-center gap-2", !incident.assigneeName && "text-muted-foreground")}>
-                          <IncidentPersonAvatar name={incident.assigneeName} image={incident.assigneeImage} />
-                          <span className="truncate text-sm">{incident.assigneeName ?? "Unassigned"}</span>
-                        </div>
+                        <UserCell name={incident.assigneeName} image={incident.assigneeImage} />
                       </TableCell>
                       <TableCell className="py-2.5 text-sm tabular-nums">
                         <span

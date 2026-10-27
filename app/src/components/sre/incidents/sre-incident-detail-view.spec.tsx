@@ -67,6 +67,7 @@ function detailFixture(): SreIncidentDetail {
       acknowledgedByName: null,
       commanderUserId: null,
       commanderName: null,
+      commanderImage: null,
       postmortem: null,
       mitigatedAt: null,
       resolutionSummary: null,

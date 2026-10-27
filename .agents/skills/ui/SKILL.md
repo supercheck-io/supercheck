@@ -32,6 +32,7 @@ The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`a
 - Destructive actions confirm with `ui/alert-dialog.tsx` and name the object being deleted.
 - Feedback: `toast` from `sonner` (the `<Toaster>` is `ui/sonner.tsx`).
 - Long values: `ui/truncated-text-with-tooltip.tsx`; ids: `ui/uuid-field.tsx`; copy: `ui/copy-button.tsx`.
+- People: `UserCell` (avatar, name, email in a tooltip, "Unassigned"/"System" empty state) and `UserAvatar` from `ui/user-cell.tsx`. Never render "Name (email)" inline or hand-roll initials; select `user.image` in the query so the photo shows.
 - Icons from `lucide-react` only.
 
 ## Tokens, theming, charts
