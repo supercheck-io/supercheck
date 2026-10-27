@@ -53,6 +53,11 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
   completeSreIncidentInvestigation: jest.fn(),
 }));
 
+const mockDailyLimit = jest.fn();
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  sreDailyTokenLimitResponse: (...args: unknown[]) => mockDailyLimit(...args),
+}));
+
 jest.mock("@/lib/sre/investigation-billing", () => {
   class SreInvestigationBillingError extends Error {
     constructor(message: string, readonly code: string) {
@@ -93,6 +98,7 @@ describe("SRE investigate API", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getAfterTasks().length = 0;
+    mockDailyLimit.mockResolvedValue(null);
     mockIsSreInvestigationAgentEnabled.mockReturnValue(true);
     mockRequireProjectContext.mockResolvedValue(context);
     mockCheckPermissionWithContext.mockReturnValue(true);
@@ -182,6 +188,7 @@ describe("SRE investigate API", () => {
       projectId: context.project.id,
       incidentId: "018f0000-0000-7000-8000-000000000005",
       enableLiveConnectors: false,
+      guidance: undefined,
     });
     await flushAfterTasks();
     expect(mockCompleteSreIncidentInvestigation).toHaveBeenCalledWith(
@@ -193,8 +200,37 @@ describe("SRE investigate API", () => {
         projectId: context.project.id,
         incidentId: "018f0000-0000-7000-8000-000000000005",
         enableLiveConnectors: false,
+        guidance: undefined,
       },
     );
+  });
+
+  it("normalizes the optional re-run guidance note and rejects oversized notes", async () => {
+    mockCheckPermissionWithContext.mockReturnValue(true);
+    const incidentId = "018f0000-0000-7000-8000-000000000005";
+    const post = (guidance: string) =>
+      POST(new NextRequest("http://localhost/api/sre/investigate", {
+        method: "POST",
+        body: JSON.stringify({ incidentId, guidance }),
+      }));
+    expect((await post("x".repeat(1001))).status).toBe(400);
+    expect((await post("check the\n CDN")).status).toBe(202);
+    expect(mockStartSreIncidentInvestigation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ guidance: "check the CDN" }),
+    );
+  });
+
+  it("returns the daily usage limit response before starting a run", async () => {
+    mockDailyLimit.mockResolvedValueOnce(Response.json({ error: "limit", code: "daily_ai_limit" }, { status: 429 }));
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+
+    expect(response.status).toBe(429);
+    expect(mockDailyLimit).toHaveBeenCalledWith(expect.any(String));
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
   it("returns payment required when billing preflight blocks investigation", async () => {
@@ -207,7 +243,7 @@ describe("SRE investigate API", () => {
     const body = await response.json();
 
     expect(response.status).toBe(402);
-    expect(body).toEqual({ error: "Monthly spending limit reached", code: "spending_limit" });
+    expect(body).toEqual({ error: "Your organization has reached its usage limit. Raise the limit or try again later.", code: "spending_limit" });
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
     expect(mockCompleteSreIncidentInvestigation).not.toHaveBeenCalled();
   });
