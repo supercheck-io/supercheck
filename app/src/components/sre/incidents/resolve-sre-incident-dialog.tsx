@@ -70,7 +70,14 @@ export function ResolveSreIncidentDialog({
         }
         setOpen(false);
         setComment(defaultSummary.slice(0, 2000));
-        toast.success(body.message ?? "Incident resolved");
+        toast.success(body.message ?? "Incident resolved", {
+          description: "You can generate a post-mortem draft from the incident timeline.",
+          action: {
+            label: "Post-mortem",
+            onClick: () =>
+              document.getElementById("incident-postmortem")?.scrollIntoView({ behavior: "smooth" }),
+          },
+        });
         await Promise.allSettled(
           [
             getSreIncidentDetailQueryKey(projectId, incidentId),

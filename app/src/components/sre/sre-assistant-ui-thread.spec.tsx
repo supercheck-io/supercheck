@@ -5,7 +5,7 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { SreAssistantUiThread } from "./sre-assistant-ui-thread";
+import { INCIDENT_STARTERS, SreAssistantUiThread } from "./sre-assistant-ui-thread";
 import { AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
@@ -55,6 +55,17 @@ describe("Incident Copilot live sources", () => {
       );
     },
   );
+});
+
+describe("incident suggested prompts", () => {
+  it("offers the three incident questions", () => {
+    expect(INCIDENT_STARTERS.map((starter) => starter.label)).toEqual([
+      "What changed before this started?",
+      "Have we seen this before?",
+      "What should I check next?",
+    ]);
+    expect(INCIDENT_STARTERS[0].prompt).toMatch(/cite the evidence/i);
+  });
 });
 
 describe("CopilotChatHelp", () => {

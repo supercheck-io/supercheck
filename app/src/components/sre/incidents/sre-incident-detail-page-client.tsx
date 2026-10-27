@@ -10,7 +10,7 @@ export function SreIncidentDetailPageClient({
   initialTab,
 }: {
   incidentId: string;
-  initialTab: "investigation" | "evidence" | "brief";
+  initialTab: "overview" | "investigation" | "evidence" | "brief";
 }) {
   const query = useSreIncidentPageData(incidentId);
 

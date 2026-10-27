@@ -13,6 +13,7 @@ import {
   getSreIncidentAssignees,
   getSreIncidentTimeline,
 } from "@/actions/sre-incident-lifecycle";
+import { getSreSimilarIncidents } from "@/actions/sre-similar-incidents";
 import { getSreServiceDetail, getSreServices } from "@/actions/sre-services";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
@@ -23,6 +24,7 @@ import {
   getSreIncidentDetailQueryKey,
   getSreIncidentTimelineQueryKey,
   getSreIncidentsQueryKey,
+  getSreSimilarIncidentsQueryKey,
   getSreServiceDetailQueryKey,
 } from "@/lib/sre/query-keys";
 
@@ -79,6 +81,18 @@ export function useSreIncidentTimeline(incidentId: string) {
     queryFn: () => getSreIncidentTimeline(incidentId),
     enabled: Boolean(projectId && incidentId),
     staleTime: 15_000,
+    meta: MEMORY_ONLY_QUERY,
+  });
+}
+
+/** History changes rarely: cached for minutes and never part of the investigation polling. */
+export function useSreSimilarIncidents(incidentId: string) {
+  const { projectId } = useProjectContext();
+  return useQuery({
+    queryKey: getSreSimilarIncidentsQueryKey(projectId, incidentId),
+    queryFn: () => getSreSimilarIncidents(incidentId),
+    enabled: Boolean(projectId && incidentId),
+    staleTime: 5 * 60_000,
     meta: MEMORY_ONLY_QUERY,
   });
 }

@@ -188,6 +188,7 @@ describe("SRE investigate API", () => {
       projectId: context.project.id,
       incidentId: "018f0000-0000-7000-8000-000000000005",
       enableLiveConnectors: false,
+      guidance: undefined,
     });
     await flushAfterTasks();
     expect(mockCompleteSreIncidentInvestigation).toHaveBeenCalledWith(
@@ -199,7 +200,23 @@ describe("SRE investigate API", () => {
         projectId: context.project.id,
         incidentId: "018f0000-0000-7000-8000-000000000005",
         enableLiveConnectors: false,
+        guidance: undefined,
       },
+    );
+  });
+
+  it("normalizes the optional re-run guidance note and rejects oversized notes", async () => {
+    mockCheckPermissionWithContext.mockReturnValue(true);
+    const incidentId = "018f0000-0000-7000-8000-000000000005";
+    const post = (guidance: string) =>
+      POST(new NextRequest("http://localhost/api/sre/investigate", {
+        method: "POST",
+        body: JSON.stringify({ incidentId, guidance }),
+      }));
+    expect((await post("x".repeat(1001))).status).toBe(400);
+    expect((await post("check the\n CDN")).status).toBe(202);
+    expect(mockStartSreIncidentInvestigation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ guidance: "check the CDN" }),
     );
   });
 

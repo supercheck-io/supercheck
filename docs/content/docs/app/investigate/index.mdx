@@ -14,7 +14,7 @@ Supercheck recommends checks and fixes. It never changes your infrastructure
 Opening an incident does not start an investigation. Select **Run investigation** when ready
 </Card>
 <Card icon={<Quote className="text-purple-500" />} title="Cited">
-Findings link to evidence, and gaps are stated rather than guessed
+Findings link to evidence. When the evidence is weak the result is **Inconclusive**, not a guess
 </Card>
 </Cards>
 
@@ -37,7 +37,8 @@ sequenceDiagram
     rect rgba(59, 130, 246, 0.08)
         You->>App: Open or create an incident
         You->>App: Select Run investigation
-        App-->>You: Cited findings and evidence gaps
+        App-->>You: Conclusion, confidence, ranked hypotheses, cited evidence
+        You->>App: Mark Right or Wrong, or re-run with a note
     end
     opt A fix is needed
         You->>Environment: Apply fix with your own tools
@@ -78,7 +79,7 @@ Register the systems you operate in the **Services** catalog. Services provide c
 | Screen | Purpose |
 |---|---|
 | **Communicate → Alerts** | Grouped failure signals, notification history, and channels. Select **Investigate** to open an incident directly |
-| **Investigate → [Incidents](/docs/app/investigate/incidents)** | Incident queue and workspaces. Run investigations and generate evidence briefs |
+| **Investigate → [Incidents](/docs/app/investigate/incidents)** | Incident queue and workspaces. Run investigations, review hypotheses and similar incidents, draft post-mortems |
 | **Investigate → [Copilot](/docs/app/investigate/copilot)** | Ask questions about symptoms, logs, or active incident evidence |
 | **Investigate → Services** | Service metadata, owners, repositories, and tiers |
 | **Organization → [Integrations](/docs/app/investigate/connectors)** | Read-only connectors to external tools |

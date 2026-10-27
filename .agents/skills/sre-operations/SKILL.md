@@ -34,6 +34,7 @@ flowchart LR
 - Cancellation and timeout propagate through model streams, tools, polling, persistence, and UI state.
 - Retry only transient/idempotent operations; prevent duplicate messages, actions, tool records, usage events, and charges.
 - Provider fallback (including deterministic evidence-brief fallbacks) must preserve tenant scope, safety policy, configured model selection, usage accounting, and error semantics.
+- Investigation results are structured and validated in `app/src/sre/lib/investigation-output.ts` (conclusion, confidence, ranked hypotheses; Inconclusive is valid; a hypothesis is Validated only with evidence from this incident). Similar past incidents (5 resolved, 180 days, same project) and user feedback notes are hints, never evidence. Post-mortem drafts are rate limited (5 per user per incident per hour) and fall back to a deterministic template. Changes under `app/src/sre/**` run the `sre-eval` CI gate.
 - Redact secrets and sensitive telemetry before model invocation and persisted transcripts.
 
 ## Resilience
