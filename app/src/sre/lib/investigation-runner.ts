@@ -356,6 +356,9 @@ export async function executeSreIncidentInvestigation(
         .set({
           status: "completed",
           modelId: result.modelId,
+          promptTokens: result.usage.inputTokens,
+          completionTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
           rootCauseHypothesis: headline,
           confidenceScore: confidence,
           hypotheses: structured ? toStoredHypotheses(structured) : null,
