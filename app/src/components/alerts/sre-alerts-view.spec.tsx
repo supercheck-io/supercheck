@@ -104,8 +104,9 @@ describe("SreAlertsView", () => {
     expect(screen.getByText("Total 13 signals")).toBeInTheDocument();
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    // jsdom has no layout, so the fitted page size stays at its first option (10).
     expect(screen.getAllByRole("button", { name: "Open incident" })).toHaveLength(
-      12,
+      10,
     );
     expect(
       screen.queryByText("Notification failure should stay in history"),

@@ -43,6 +43,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 
 type SreAlertSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 
@@ -72,7 +73,6 @@ type AlertSortKey =
   | "timestamp";
 type SortDirection = "asc" | "desc";
 
-const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
 const severityTones: Record<SreAlertSeverity, TableBadgeTone> = {
   sev1: "danger",
@@ -256,7 +256,8 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   const [sortKey, setSortKey] = useState<AlertSortKey>("timestamp");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(12);
+  // Rows fit the window like the other list pages, so the page itself never scrolls.
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
   const [incidentByFingerprint, setIncidentByFingerprint] = useState<
     Record<string, number>
   >({});
@@ -473,7 +474,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               <TableHead className="w-[1%]" />
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {pagedAlerts.length === 0 ? (
               <TableRow>
                 <TableCell
@@ -585,7 +586,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent side="top">
-                {PAGE_SIZE_OPTIONS.map((option) => (
+                {pageSizeOptions(pageSize).map((option) => (
                   <SelectItem key={option} value={`${option}`}>
                     {option}
                   </SelectItem>
