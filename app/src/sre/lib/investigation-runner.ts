@@ -44,9 +44,13 @@ import {
   listIncidentFeedbackNotes,
   listServiceFeedbackHints,
 } from "@/lib/sre/investigation-feedback";
+import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
 import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/similar-incidents";
 import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+
+const NATIVE_EVIDENCE_TIMEOUT_MS = 15_000;
+const NATIVE_EVIDENCE_FRESH_MS = 10 * 60 * 1000;
 
 const investigationLogger = createLogger({
   module: "sre-investigation-runner",
@@ -220,7 +224,7 @@ export async function executeSreIncidentInvestigation(
   let lastStepElapsedMs = 0;
 
   try {
-    const [nativeEvidence, connectorEvidence] = await Promise.all([
+    let [nativeEvidence, connectorEvidence] = await Promise.all([
       listStoredSreEvidence({
         organizationId: input.organizationId,
         projectId: input.projectId,
@@ -236,6 +240,40 @@ export async function executeSreIncidentInvestigation(
         limit: 8,
       }),
     ]);
+    // Native monitor/run/alert evidence is otherwise only stored by the evidence
+    // brief; collect it here so the agent can see it. Best-effort and bounded.
+    let collectedCount = 0;
+    const freshAfter = Date.now() - NATIVE_EVIDENCE_FRESH_MS;
+    if (!nativeEvidence.some((item) => new Date(item.createdAt).getTime() > freshAfter)) {
+      try {
+        // shortcut: the abandoned collection keeps running in the background after the timeout.
+        const persisted = await Promise.race([
+          persistNativeEvidence({
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            incidentId: incident.id,
+            userId: input.userId,
+            investigationRunId,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("native evidence collection timed out")), NATIVE_EVIDENCE_TIMEOUT_MS).unref?.(),
+          ),
+        ]);
+        collectedCount = persisted?.createdCount ?? 0;
+        if (collectedCount > 0) {
+          nativeEvidence = await listStoredSreEvidence({
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            incidentId: incident.id,
+            sourceMode: "native",
+            limit: 8,
+          });
+        }
+      } catch (error) {
+        investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
+      }
+    }
+    const evidenceCount = Number(incident.evidenceCount ?? 0) + collectedCount;
     const storedEvidenceContext = [...nativeEvidence, ...connectorEvidence].map(
       (item) => {
         const summary =
@@ -292,7 +330,7 @@ export async function executeSreIncidentInvestigation(
         severity: incident.severity,
         status: incident.status,
         serviceName: incident.primaryServiceName,
-        evidenceCount: Number(incident.evidenceCount ?? 0),
+        evidenceCount,
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
         liveConnectorToolsEnabled: liveConnectorsEnabled,
         storedEvidenceContext,
@@ -378,7 +416,7 @@ export async function executeSreIncidentInvestigation(
               : null,
             modelUsage: result.usage,
             finishReason: result.finishReason,
-            evidenceCount: Number(incident.evidenceCount ?? 0),
+            evidenceCount,
             connectorEvidenceCount: Number(
               incident.connectorEvidenceCount ?? 0,
             ),

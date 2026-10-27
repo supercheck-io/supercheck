@@ -51,5 +51,13 @@ export function toDisplayStatus(status: StoredStatus, acknowledgedAt: Date | str
 
 export function getDisplayStatus(status: StoredStatus, acknowledgedAt: Date | string | null) {
   const value = toDisplayStatus(status, acknowledgedAt);
-  return INCIDENT_DISPLAY_STATUSES.find((entry) => entry.value === value)!;
+  // A status this build does not know (newer server, bad row) still renders rather than throwing.
+  return (
+    INCIDENT_DISPLAY_STATUSES.find((entry) => entry.value === value) ?? {
+      value: "investigating" as const,
+      label: String(status ?? "Unknown").replace(/_/g, " "),
+      tone: "slate" as TableBadgeTone,
+      description: "",
+    }
+  );
 }

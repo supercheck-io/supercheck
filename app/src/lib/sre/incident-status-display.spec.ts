@@ -27,3 +27,7 @@ describe("getDisplayStatus", () => {
     expect(getDisplayStatus("verifying", null)).toMatchObject({ value: "monitoring", label: "Monitoring" });
   });
 });
+
+it("falls back to the raw status for an unknown value", () => {
+  expect(getDisplayStatus("paused_by_owner" as never, null).label).toBe("paused by owner");
+});

@@ -33,9 +33,11 @@ incidentCommand.command('list')
   .option('--assignee <assignee>', 'Filter by assignee: me, unassigned or a user UUID')
   .action(async (options: { status?: string; severity?: string; assignee?: string }) => {
     const { data } = await withSpinner('Fetching incidents', () => createAuthenticatedClient().get<IncidentEnvelope>('/api/sre/incidents', options))
-    output(data.incidents, { columns: [
+    // Older servers have no statusLabel; fall back to the stored status.
+    const incidents = data.incidents.map((incident) => ({ ...incident, statusLabel: incident.statusLabel ?? incident.status }))
+    output(incidents, { columns: [
       { key: 'incidentNumber', header: '#' }, { key: 'severity', header: 'Severity' },
-      { key: 'status', header: 'Status' }, { key: 'title', header: 'Title' },
+      { key: 'statusLabel', header: 'Status' }, { key: 'title', header: 'Title' },
       { key: 'primaryServiceName', header: 'Service' }, { key: 'assigneeUserId', header: 'Assignee' },
       { key: 'acknowledgedAt', header: 'Acked' }, { key: 'updatedAt', header: 'Updated' },
     ] })

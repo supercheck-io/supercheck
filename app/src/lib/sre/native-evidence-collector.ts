@@ -190,7 +190,8 @@ export async function collectNativeEvidence(input: {
     .from(sreIncidentAlerts)
     .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
     .where(eq(sreIncidentAlerts.incidentId, input.incidentId))
-    .orderBy(desc(sreAlertEvents.firedAt));
+    .orderBy(desc(sreAlertEvents.firedAt))
+    .limit(50);
 
   if (linkedAlerts.length === 0) {
     const timelineRows = await db
@@ -199,7 +200,8 @@ export async function collectNativeEvidence(input: {
       })
       .from(sreIncidentTimelineEvents)
       .where(eq(sreIncidentTimelineEvents.incidentId, input.incidentId))
-      .orderBy(desc(sreIncidentTimelineEvents.createdAt));
+      .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+      .limit(200);
 
     const alertHistoryIds = Array.from(
       new Set(
@@ -300,6 +302,7 @@ export async function collectNativeEvidence(input: {
             )
           )
           .orderBy(desc(monitorResults.checkedAt))
+          .limit(200)
       : Promise.resolve([]),
     jobIds.length > 0
       ? db
@@ -319,6 +322,7 @@ export async function collectNativeEvidence(input: {
           .from(runs)
           .where(and(eq(runs.projectId, input.projectId), inArray(runs.jobId, jobIds)))
           .orderBy(desc(runs.createdAt))
+          .limit(100)
       : Promise.resolve([]),
     jobIds.length > 0
       ? db
@@ -326,6 +330,7 @@ export async function collectNativeEvidence(input: {
           .from(k6PerformanceRuns)
           .where(and(eq(k6PerformanceRuns.projectId, input.projectId), inArray(k6PerformanceRuns.jobId, jobIds)))
           .orderBy(desc(k6PerformanceRuns.startedAt))
+          .limit(100)
       : Promise.resolve([]),
   ]);
 
