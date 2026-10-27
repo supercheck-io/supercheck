@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useOrganizations, type OrganizationSummary } from "@/hooks/use-organizations";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 import { announceProjectChange, reloadProjectContext } from "@/lib/project-navigation";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -37,9 +37,15 @@ export function LeaveOrganizationDialog() {
   };
   return (
     <>
-      <DropdownMenuItem onSelect={(event) => { event.preventDefault(); setConfirmedOrganization(activeOrganization ?? null); setOpen(true); }}>
-        Leave organization
-      </DropdownMenuItem>
+      <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Organization</p>
+          <p className="truncate text-sm text-muted-foreground">{organization.name}</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="shrink-0 text-destructive" onClick={() => { setConfirmedOrganization(activeOrganization ?? null); setOpen(true); }}>
+          Leave
+        </Button>
+      </div>
       <AlertDialog open={open} onOpenChange={value => { if (!pending) setOpen(value); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

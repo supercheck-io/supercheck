@@ -57,6 +57,7 @@ export async function GET() {
         expiresAt: apikey.expiresAt,
         lastRequest: apikey.lastRequest,
         createdByName: user.name,
+        createdByImage: user.image,
       })
       .from(apikey)
       .leftJoin(user, eq(apikey.referenceId, user.id))
@@ -79,6 +80,7 @@ export async function GET() {
         start: t.start || "sck_...",
         lastRequest: t.lastRequest?.toISOString() || null,
         createdByName: t.createdByName || null,
+        createdByImage: t.createdByImage ?? null,
       })),
     });
   } catch (error) {

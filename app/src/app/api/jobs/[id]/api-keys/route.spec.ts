@@ -6,7 +6,7 @@ const inserted: Record<string, unknown>[] = [];
 const chain = () => {
   const rows = selects.shift() ?? [];
   const c: Record<string, unknown> = {};
-  for (const m of ["from", "where", "limit"]) c[m] = () => c;
+  for (const m of ["from", "leftJoin", "where", "orderBy", "limit"]) c[m] = () => c;
   c.then = (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve);
   return c;
 };
@@ -37,7 +37,7 @@ jest.mock("@/lib/logger/pino-config", () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }),
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const jobId = "11111111-1111-4111-8111-111111111111";
 const context = { userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: false };
@@ -97,5 +97,26 @@ describe("POST /api/jobs/[id]/api-keys impersonation guard", () => {
     mockImpersonated.mockResolvedValue(true);
     expect((await post({ name: "ci" })).status).toBe(201);
     expect(mockImpersonated).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/jobs/[id]/api-keys", () => {
+  it("returns the creator's avatar alongside the name", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    selects.length = 0;
+    selects.push(
+      [{ id: jobId, organizationId: "o1", projectId: "p1" }],
+      [
+        { id: "k1", name: "ci", start: "job_ab", enabled: true, createdAt: new Date(), expiresAt: null, jobId, lastRequest: null, createdByName: "Ada", createdByImage: "/api/users/u1/avatar?v=x" },
+        { id: "k2", name: "old", start: "job_cd", enabled: true, createdAt: new Date(), expiresAt: null, jobId, lastRequest: null, createdByName: null, createdByImage: null },
+      ],
+    );
+
+    const res = await GET(new NextRequest(`https://app.example.com/api/jobs/${jobId}/api-keys`), { params: Promise.resolve({ id: jobId }) });
+    const body = await res.json();
+    expect(body.apiKeys.map((k: Record<string, unknown>) => [k.createdByName, k.createdByImage])).toEqual([
+      ["Ada", "/api/users/u1/avatar?v=x"],
+      ["-", null],
+    ]);
   });
 });

@@ -20,12 +20,16 @@ jest.mock("@/lib/rbac/middleware", () => ({
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
-jest.mock("@/utils/db", () => ({ db: {} }));
+const mockSelectRows = jest.fn();
+jest.mock("@/utils/db", () => {
+  const chain = { from: () => chain, leftJoin: () => chain, where: () => chain, orderBy: () => mockSelectRows() };
+  return { db: { select: () => chain } };
+});
 jest.mock("@/lib/logger/pino-config", () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }),
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const context = { userId: "u1", organizationId: "o1", project: { id: "p1" } };
 const req = (body: unknown) =>
@@ -135,5 +139,29 @@ describe("POST /api/cli-tokens", () => {
     const res = await POST(req({ name: "a" }));
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain("postgres://");
+  });
+});
+
+describe("GET /api/cli-tokens", () => {
+  beforeEach(() => {
+    mockRequireAuth.mockResolvedValue(context);
+    mockCheckPermission.mockReturnValue(true);
+  });
+
+  it("returns the creator's name and avatar, or null for a deleted creator", async () => {
+    mockSelectRows.mockResolvedValue([
+      { id: "k1", name: "CI", start: "sck_live_ab", enabled: true, createdAt: new Date("2026-10-20T00:00:00Z"), expiresAt: null, lastRequest: null, createdByName: "Ada", createdByImage: "/api/users/u1/avatar?v=x" },
+      { id: "k2", name: "Old", start: "sck_live_cd", enabled: true, createdAt: new Date("2026-10-21T00:00:00Z"), expiresAt: null, lastRequest: null, createdByName: null, createdByImage: null },
+    ]);
+    const body = await (await GET()).json();
+    expect(body.tokens.map((t: Record<string, unknown>) => [t.createdByName, t.createdByImage])).toEqual([
+      ["Ada", "/api/users/u1/avatar?v=x"],
+      [null, null],
+    ]);
+  });
+
+  it("requires apiKey:view", async () => {
+    mockCheckPermission.mockReturnValue(false);
+    expect((await GET()).status).toBe(403);
   });
 });

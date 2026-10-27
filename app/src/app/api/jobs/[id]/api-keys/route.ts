@@ -78,6 +78,7 @@ export async function GET(
         jobId: apikey.jobId,
         lastRequest: apikey.lastRequest,
         createdByName: user.name,
+        createdByImage: user.image,
       })
       .from(apikey)
       .leftJoin(user, eq(apikey.referenceId, user.id))
@@ -96,6 +97,7 @@ export async function GET(
         jobId: key.jobId,
         lastRequest: key.lastRequest?.toISOString() || null,
         createdByName: key.createdByName || "-",
+        createdByImage: key.createdByImage ?? null,
       })),
     });
   } catch (error) {

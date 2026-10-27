@@ -4,13 +4,14 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { authClient, useSession } from "@/utils/auth-client";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectedApps } from "@/components/connected-apps/connected-apps";
+import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
 
 const AVATAR_SIZE = 256;
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
@@ -101,10 +102,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Avatar className="h-16 w-16 rounded-full" data-testid="account-avatar">
-          <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
-          <AvatarFallback className="rounded-full text-lg">{user?.name?.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <UserAvatar name={user?.name || user?.email} image={user?.image} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={photoBusy || impersonating} onClick={() => fileInput.current?.click()}>
             Change photo
@@ -139,6 +137,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
           <Button type="submit" disabled={impersonating || saving || !dirty || !!nameError}>{saving ? "Saving..." : "Save changes"}</Button>
         </div>
       </form>
+      <LeaveOrganizationDialog />
     </div>
   );
 }

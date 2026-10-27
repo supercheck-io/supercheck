@@ -23,7 +23,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  isLiveSearchConnectorType,
   isPrivateAgentConnectorType,
 } from "@/lib/sre/connectors/connector-capabilities";
 import {
@@ -120,7 +119,6 @@ export function ConnectorFormDialog({
   const selectedTypeOption = connectorTypeOptions.find(
     (option) => option.value === type,
   );
-  const isLiveSearchType = isLiveSearchConnectorType(type);
   const queryGuide = getConnectorQueryGuide(type);
 
   const toggleService = (serviceId: string) => {
@@ -318,11 +316,11 @@ export function ConnectorFormDialog({
                         {selectedTypeOption?.description}
                       </p>
                       <TableBadge
-                        tone={isLiveSearchType || isMcp ? "success" : "warning"}
+                        tone="success"
                         compact
                         className="shrink-0"
                       >
-                        {isMcp ? "Agent tools" : isLiveSearchType ? "Live search" : "Setup only"}
+                        {isMcp ? "Agent tools" : "Live search"}
                       </TableBadge>
                     </div>
                   </div>

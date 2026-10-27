@@ -9,7 +9,6 @@ jest.mock("@/hooks/use-organizations", () => ({ useOrganizations: jest.fn() }));
 jest.mock("@/hooks/use-project-context", () => ({ clearProjectsCache: jest.fn() }));
 jest.mock("@/lib/project-navigation", () => ({ announceProjectChange: jest.fn(), reloadProjectContext: jest.fn() }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
-jest.mock("@/components/ui/dropdown-menu", () => ({ DropdownMenuItem: ({ children, onSelect }: { children: React.ReactNode; onSelect: (event: React.MouseEvent) => void }) => <button onClick={onSelect}>{children}</button> }));
 beforeEach(() => {
   jest.clearAllMocks();
   (useOrganizations as jest.Mock).mockReturnValue({ activeOrganization: { id: "org-1", name: "Invited team", role: "project_viewer" } });
@@ -17,7 +16,7 @@ beforeEach(() => {
 });
 it("requires confirmation and reloads with cleared context after leaving", async () => {
   render(<LeaveOrganizationDialog />);
-  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave" }));
   const dialog = screen.getByRole("alertdialog");
   expect(within(dialog).getByText("Leave Invited team?")).toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
@@ -28,14 +27,14 @@ it("requires confirmation and reloads with cleared context after leaving", async
 });
 it("lets a member cancel without changing membership", () => {
   render(<LeaveOrganizationDialog />);
-  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave" }));
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(fetch).not.toHaveBeenCalled();
 });
 it("shows ownership guidance without a destructive action for an owner", () => {
   (useOrganizations as jest.Mock).mockReturnValue({ activeOrganization: { id: "org-1", name: "My team", role: "org_owner" } });
   render(<LeaveOrganizationDialog />);
-  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave" }));
   const dialog = screen.getByRole("alertdialog");
   expect(within(dialog).getByText(/must transfer ownership or delete/)).toBeInTheDocument();
   expect(within(dialog).queryByRole("button", { name: "Leave organization" })).not.toBeInTheDocument();
@@ -43,7 +42,7 @@ it("shows ownership guidance without a destructive action for an owner", () => {
 it("keeps the dialog and displays a server error without reloading", async () => {
   (fetch as jest.Mock).mockResolvedValue({ ok: false, json: async () => ({ error: "Membership changed; try again" }) });
   render(<LeaveOrganizationDialog />);
-  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave" }));
   fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Leave organization" }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Membership changed; try again"));
   expect(screen.getByRole("alertdialog")).toBeInTheDocument();
@@ -51,7 +50,7 @@ it("keeps the dialog and displays a server error without reloading", async () =>
 });
 it("keeps the confirmed organization fixed if active organization data changes", async () => {
   const { rerender } = render(<LeaveOrganizationDialog />);
-  fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave" }));
   (useOrganizations as jest.Mock).mockReturnValue({ activeOrganization: { id: "org-2", name: "Other team", role: "project_viewer" } });
   rerender(<LeaveOrganizationDialog />);
   const dialog = screen.getByRole("alertdialog");

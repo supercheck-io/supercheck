@@ -5,6 +5,7 @@ const mockRateLimit = jest.fn();
 const mockPut = jest.fn();
 const mockDelete = jest.fn();
 const mockLimit = jest.fn();
+const mockPrune = jest.fn();
 
 jest.mock("@aws-sdk/client-s3", () => ({ S3Client: jest.fn(() => ({ send: jest.fn() })), PutObjectCommand: jest.fn(), GetObjectCommand: jest.fn(), DeleteObjectCommand: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: async () => new Headers() }));
@@ -17,6 +18,7 @@ jest.mock("@/lib/user-avatar", () => ({
   ...jest.requireActual("@/lib/user-avatar"),
   putAvatar: (...a: unknown[]) => mockPut(...a),
   deleteAvatar: (...a: unknown[]) => mockDelete(...a),
+  pruneAvatars: (...a: unknown[]) => mockPrune(...a),
 }));
 
 import { NextRequest } from "next/server";
@@ -85,6 +87,8 @@ describe("POST /api/users/me/avatar", () => {
     expect(mockPut).toHaveBeenCalledWith("u1", expect.stringMatching(/\.png$/), expect.any(Uint8Array));
     expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image } }));
     expect(mockDelete).toHaveBeenCalledWith("u1", prev);
+    // Orphans from earlier concurrent uploads are pruned, keeping the new version.
+    expect(mockPrune).toHaveBeenCalledWith("u1", image.split("v=")[1]);
   });
 
   it("cleans up the new object when the profile update fails", async () => {
@@ -104,5 +108,6 @@ describe("DELETE /api/users/me/avatar", () => {
     expect(res.status).toBe(200);
     expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image: null } }));
     expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockPrune).toHaveBeenCalledWith("u1", null);
   });
 });

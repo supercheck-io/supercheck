@@ -97,6 +97,7 @@ describe("Audit API Route", () => {
           userId: "user-1",
           userName: "Alice",
           userEmail: "alice@example.com",
+          userImage: "/api/users/user-1/avatar?v=abc",
         },
       ]),
     };
@@ -130,6 +131,7 @@ describe("Audit API Route", () => {
     expect(body.data.pagination.limit).toBe(100);
     expect(body.data.pagination.totalPages).toBe(3);
     expect(body.data.logs[0].createdAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(body.data.logs[0].user).toEqual({ id: "user-1", name: "Alice", email: "alice@example.com", image: "/api/users/user-1/avatar?v=abc" });
     expect(body.data.filters.actions).toEqual(["login"]);
     expect(logsQuery.limit).toHaveBeenCalledWith(100);
     expect(logsQuery.offset).toHaveBeenCalledWith(0);

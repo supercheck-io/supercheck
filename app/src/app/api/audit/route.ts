@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
         userId: auditLogs.userId,
         userName: user.name,
         userEmail: user.email,
+        userImage: user.image,
       })
       .from(auditLogs)
       .leftJoin(user, eq(auditLogs.userId, user.id))
@@ -120,7 +121,8 @@ export async function GET(request: NextRequest) {
           user: {
             id: log.userId,
             name: log.userName,
-            email: log.userEmail
+            email: log.userEmail,
+            image: log.userImage
           }
         })),
         pagination: {
