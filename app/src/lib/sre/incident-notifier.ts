@@ -11,7 +11,9 @@ import {
   user,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
+import { renderIncidentUpdateEmail } from "@/lib/email-renderer";
 import { EmailService } from "@/lib/email-service";
+import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { createLogger } from "@/lib/logger/index";
 import {
@@ -31,7 +33,9 @@ export type IncidentNotifyEvent =
   | "assigned"
   | "acknowledged"
   | "ai_finding"
-  | "resolved";
+  | "resolved"
+  | "recovered"
+  | "reopened";
 
 export type IncidentNotifyInput = {
   organizationId: string;
@@ -45,6 +49,8 @@ export type IncidentNotifyInput = {
   detail?: string;
   /** Distinguishes repeats of one event, such as the investigation run id. */
   dedupeDiscriminator?: string;
+  /** `resolved` by alert recovery rather than a person (channels already got the recovery alert). */
+  automatic?: boolean;
 };
 
 const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
@@ -53,6 +59,8 @@ const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
   acknowledged: "acknowledged",
   ai_finding: "has an AI finding",
   resolved: "resolved",
+  recovered: "recovered",
+  reopened: "reopened",
 };
 
 const DEDUPE_TTL_SECONDS = 600;
@@ -77,7 +85,14 @@ async function claimEvent(input: IncidentNotifyInput): Promise<boolean> {
   }
 }
 
-type Message = { title: string; text: string; url: string; event: IncidentNotifyEvent; incident: { id: string; number: number; severity: string; status: string } };
+type Message = {
+  title: string;
+  text: string;
+  url: string;
+  event: IncidentNotifyEvent;
+  incident: { id: string; number: number; severity: string; status: string };
+  email: { title: string; statusLabel: string; serviceName?: string; detail?: string };
+};
 
 async function post(url: string, body: unknown, headers: Record<string, string> = {}) {
   const controller = new AbortController();
@@ -102,12 +117,28 @@ function escapeHtml(value: string) {
 async function sendEmail(recipients: string[], message: Message) {
   const unique = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))].slice(0, MAX_EMAIL_RECIPIENTS);
   if (unique.length === 0) return;
-  await EmailService.getInstance().sendEmailToMultiple({
-    recipients: unique,
-    subject: message.title,
-    text: `${message.text}\n\n${message.url}`,
-    html: `<p>${escapeHtml(message.text)}</p><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
-  });
+  let rendered: { subject: string; html: string; text: string };
+  try {
+    rendered = await renderIncidentUpdateEmail({
+      event: message.event,
+      incidentNumber: message.incident.number,
+      title: message.email.title,
+      severity: message.incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
+      statusLabel: message.email.statusLabel,
+      serviceName: message.email.serviceName,
+      detail: message.email.detail,
+      incidentUrl: message.url,
+    });
+  } catch (error) {
+    // Never drop the email because a template failed; send the plain version.
+    logger.warn({ error }, "Incident email template failed; sending plain email");
+    rendered = {
+      subject: message.title,
+      text: `${message.text}\n\n${message.url}`,
+      html: `<p>${escapeHtml(message.text)}</p><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
+    };
+  }
+  await EmailService.getInstance().sendEmailToMultiple({ recipients: unique, ...rendered });
 }
 
 function hasCustomWebhookBody(config: Record<string, unknown>) {
@@ -174,6 +205,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         title: sreIncidents.title,
         severity: sreIncidents.severity,
         status: sreIncidents.status,
+        acknowledgedAt: sreIncidents.acknowledgedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         serviceName: sreServices.name,
       })
@@ -201,10 +233,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       url,
       event: input.event,
       incident: { id: incident.id, number: incident.number, severity: incident.severity, status: incident.status },
+      email: {
+        title: incident.title,
+        statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
+        serviceName: incident.serviceName ?? undefined,
+        detail,
+      },
     };
 
     // Direct email to the person who now owns it (not to themselves).
-    const directTo = input.event === "assigned" || input.event === "created" ? input.assigneeUserId : null;
+    const directTo = ["assigned", "created", "recovered", "reopened"].includes(input.event) ? input.assigneeUserId : null;
     if (directTo && directTo !== input.actorUserId) {
       const [assignee] = await db.select({ email: user.email }).from(user).where(eq(user.id, directTo)).limit(1);
       if (assignee?.email) await sendEmail([assignee.email], message);
@@ -218,6 +256,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
       .limit(1);
     if (!source?.sourceId || (source.sourceType !== "monitor" && source.sourceType !== "job")) return;
+
+    // One message per event: the worker already posted the alert (created) and the
+    // recovery (automatic resolve, recovered) to these channels.
+    if (input.event === "created" || input.event === "recovered" || (input.event === "resolved" && input.automatic)) return;
 
     const providerColumns = {
       id: notificationProviders.id,

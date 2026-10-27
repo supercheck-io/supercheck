@@ -28,7 +28,10 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       return;
     }
 
-    const sentRows = rows.filter((row) => row.status === 'sent');
+    // Failed deliveries still open incidents; only 'pending' rows are skipped.
+    const sentRows = rows.filter(
+      (row) => row.status === 'sent' || row.status === 'failed',
+    );
     if (sentRows.length === 0) {
       return;
     }
@@ -56,19 +59,15 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     }
   }
 
-  // SRE_ENABLED is on unless disabled; SRE_AUTOMATION_ENABLED is opt-in and
-  // must be explicitly "true" or "1". Keep in sync with
-  // app/src/sre/lib/feature-gates.ts.
+  // Opening/deduping incidents from alerts needs only SRE_ENABLED (default on).
+  // AI triage (SRE_AUTOMATION_ENABLED) is gated app-side. Keep in sync with
+  // isSreEnabled in app/src/sre/lib/feature-gates.ts.
   private isEnabled() {
-    const read = (key: string) =>
-      this.configService.get<string>(key)?.trim().toLowerCase();
-    const sre = read('SRE_ENABLED');
-    const automation = read('SRE_AUTOMATION_ENABLED');
-    return (
-      sre !== 'false' &&
-      sre !== '0' &&
-      (automation === 'true' || automation === '1')
-    );
+    const sre = this.configService
+      .get<string>('SRE_ENABLED')
+      ?.trim()
+      .toLowerCase();
+    return sre !== 'false' && sre !== '0';
   }
 
   private getQueue() {

@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
@@ -7,6 +7,9 @@ import {
   incidentUpdates,
   incidentComponents,
   statusPageNotificationEvents,
+  sreIncidents,
+  sreIncidentAlerts,
+  sreAlertEvents,
 } from "@/db/schema";
 import {
   statusAggregationService,
@@ -17,6 +20,55 @@ import {
   formatSystemMessage,
   getSystemMessages,
 } from "./status-page-system-messages";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Link an automatic status-page incident to the open SRE incident that was
+ * triggered by one of the component's monitors.
+ */
+export async function linkOpenSreIncident(
+  tx: Tx,
+  args: {
+    statusPageIncidentId: string;
+    organizationId: string;
+    projectId: string | null;
+    monitorIds: string[];
+  },
+) {
+  if (!args.monitorIds.length) return null;
+  const [match] = await tx
+    .select({ id: sreIncidents.id })
+    .from(sreIncidents)
+    .innerJoin(sreIncidentAlerts, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
+    .where(
+      and(
+        eq(sreIncidents.organizationId, args.organizationId),
+        args.projectId ? eq(sreIncidents.projectId, args.projectId) : undefined,
+        ne(sreIncidents.status, "resolved"),
+        eq(sreIncidentAlerts.role, "trigger"),
+        eq(sreAlertEvents.sourceType, "monitor"),
+        inArray(sreAlertEvents.sourceId, args.monitorIds),
+      ),
+    )
+    .orderBy(desc(sreIncidents.createdAt))
+    .limit(1);
+  if (!match) return null;
+  await tx
+    .update(incidents)
+    .set({ sreIncidentId: match.id })
+    .where(eq(incidents.id, args.statusPageIncidentId));
+  // sre_incidents.status_page_incident_id is a single slot: the first status-page
+  // incident linked wins; later ones keep only their own sreIncidentId.
+  await tx
+    .update(sreIncidents)
+    .set({ statusPageIncidentId: args.statusPageIncidentId })
+    .where(
+      and(eq(sreIncidents.id, match.id), isNull(sreIncidents.statusPageIncidentId)),
+    );
+  return match.id;
+}
 
 export async function reconcileStatusPages() {
   // A transaction lock makes the singleton tick safe across app replicas and retries.
@@ -206,6 +258,14 @@ export async function reconcileStatusPages() {
             deliverNotifications: true,
           })
           .returning();
+        if (page) {
+          await linkOpenSreIncident(tx, {
+            statusPageIncidentId: incident.id,
+            organizationId: page.organizationId,
+            projectId: page.projectId,
+            monitorIds: component.monitors.map((association) => association.monitorId),
+          });
+        }
         await tx
           .insert(incidentComponents)
           .values({

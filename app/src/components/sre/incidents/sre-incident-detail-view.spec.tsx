@@ -11,11 +11,13 @@ jest.mock("@/components/sre/incidents/generate-evidence-brief-button", () => ({
 }));
 
 jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
-  EditSreIncidentDialog: () => <button type="button">Edit incident</button>,
+  EditSreIncidentDialog: () => null,
 }));
 
 jest.mock("@/components/sre/incidents/resolve-sre-incident-dialog", () => ({
-  ResolveSreIncidentDialog: () => <button>Resolve incident</button>,
+  OPEN_POSTMORTEM_EVENT: "incident:open-postmortem",
+  ResolveSreIncidentDialog: ({ open }: { open?: boolean }) =>
+    open === undefined ? <button>Resolve incident</button> : null,
 }));
 
 jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
@@ -46,6 +48,7 @@ jest.mock("@/components/sre/incidents/postmortem-card", () => ({
 
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
   SreInvestigationPanel: ({ hasPrimaryService }: { hasPrimaryService: boolean }) => <div data-has-service={hasPrimaryService}>Mock AI investigation panel</div>,
+  SreReportSnapshotControl: () => <div>Mock snapshot control</div>,
 }));
 
 function detailFixture(): SreIncidentDetail {
@@ -219,11 +222,6 @@ describe("SreIncidentDetailView", () => {
       screen.queryByRole("button", { name: "Resolve incident" }),
     ).not.toBeInTheDocument();
     expect(
-      screen
-        .getByText("Evidence brief · Summarize or export evidence")
-        .closest("details"),
-    ).toHaveAttribute("open");
-    expect(
       screen.queryByRole("button", { name: "Generate brief" }),
     ).not.toBeInTheDocument();
     fireEvent.click(
@@ -234,32 +232,34 @@ describe("SreIncidentDetailView", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
   });
-  it("splits the incident into overview, investigation and evidence tabs", () => {
-    const view = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
-
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Overview",
-      "Investigation",
-      "Evidence1",
-    ]);
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    view.unmount();
-    render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab="investigation" />);
-    expect(screen.getAllByRole("link", { name: "Investigation Map" })[0]).toHaveAttribute(
-      "href",
-      `/copilot/evidence-graph?incident=${detailFixture().incident.id}`,
-    );
-    expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Ask Copilot" })).toHaveAttribute(
-      "href",
-      `/copilot?incident=${detailFixture().incident.id}`,
-    );
+  it("has no tabs, shows the stepper, and keeps the investigation sheet closed by default", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("investigation-sheet")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("#42");
+    expect(screen.getByRole("navigation", { name: "Incident progress" }).querySelector("[aria-current=step]")).toHaveTextContent("Investigating");
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
     expect(screen.getByTestId("similar-incidents")).toHaveTextContent("Mock similar incidents");
   });
 
-  it("shows hypotheses on the overview and run feedback with the step trace on the investigation tab", () => {
+  it.each([
+    ["investigation", "Mock AI investigation panel"],
+    ["evidence", "Monitor timeout"],
+    ["brief", "Brief summary"],
+  ] as const)("opens the sheet on load for the legacy ?tab=%s link", (tab, text) => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab={tab} />);
+    const sheet = screen.getByTestId("investigation-sheet");
+    expect(sheet).toHaveTextContent(text);
+  });
+
+  it("opens the sheet from Investigation details and the actions menu holds the secondary links", async () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
+    expect(screen.getByTestId("investigation-sheet")).toHaveTextContent("Run controls");
+    fireEvent.keyDown(screen.getByTestId("investigation-sheet"), { key: "Escape" });
+  });
+
+  it("shows hypotheses, the step trace and one feedback control in the sheet", () => {
     const detail = detailFixture();
     detail.latestInvestigation = {
       ...detail.latestInvestigation!,
@@ -277,23 +277,22 @@ describe("SreIncidentDetailView", () => {
       ],
       steps: [{ index: 0, tool: "listNativeEvidence", args: "limit=10", status: "ok", resultCount: 1, durationMs: 120 }],
     };
-    const overview = render(<SreIncidentDetailView detail={detail} services={[]} />);
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
     expect(screen.getByTestId("hypothesis-h1")).toHaveTextContent("Validated");
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
-    overview.unmount();
-    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
-    expect(screen.getByText("Feedback: this investigation")).toBeInTheDocument();
+    expect(screen.getAllByText("Feedback: this investigation")).toHaveLength(1);
     expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("open");
   });
 
   it("offers the post-mortem only once the incident is resolved", () => {
     const open = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
-    expect(screen.queryByText("Mock post-mortem")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
     open.unmount();
     const detail = detailFixture();
     detail.incident.status = "resolved";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Post-mortem" }));
     expect(screen.getByText("Mock post-mortem")).toHaveAttribute("data-can-edit", "true");
   });
 
@@ -301,13 +300,14 @@ describe("SreIncidentDetailView", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     const summary = screen.getByTestId("incident-ai-summary");
     expect(summary).toHaveTextContent("Latency correlates with monitor failures.");
-    expect(summary).toHaveTextContent("Medium confidence");
+    expect(summary).toHaveTextContent("Confidence: Medium");
     expect(
       summary.compareDocumentPosition(screen.getByText("Mock timeline")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByText("Assignee: Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Owner: Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Publish update" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Post update" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Add commander" })).toBeInTheDocument();
   });
 
   it("hides acknowledge once acknowledged and shows MTTA in the sidebar", () => {
@@ -327,7 +327,7 @@ describe("SreIncidentDetailView", () => {
     detail.incident.resolutionSummary = "Rolled back the deploy.";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Publish update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
     expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Rolled back the deploy.");
   });
 });

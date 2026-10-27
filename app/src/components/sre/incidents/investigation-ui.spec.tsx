@@ -38,23 +38,20 @@ describe("InvestigationStepTrace", () => {
 describe("SimilarIncidentsCard", () => {
   const ok = (incidents: unknown[]) => mockSimilar.mockReturnValue({ isLoading: false, data: { success: true, incidents } });
 
-  it("shows an empty state", () => {
+  it("renders nothing when empty, loading or unavailable", () => {
     ok([]);
-    render(<SimilarIncidentsCard incidentId="i-1" />);
+    const { container, rerender } = render(<SimilarIncidentsCard incidentId="i-1" />);
     expect(mockSimilar).toHaveBeenCalledWith("i-1");
-    expect(screen.getByText(/No similar resolved incidents in the last 180 days/)).toBeInTheDocument();
-  });
-
-  it("shows loading and error states", () => {
+    expect(container).toBeEmptyDOMElement();
     mockSimilar.mockReturnValue({ isLoading: true, data: undefined });
-    const { rerender } = render(<SimilarIncidentsCard incidentId="i-1" />);
-    expect(screen.getByRole("status")).toHaveTextContent(/Loading/);
+    rerender(<SimilarIncidentsCard incidentId="i-1" />);
+    expect(container).toBeEmptyDOMElement();
     mockSimilar.mockReturnValue({ isLoading: false, data: { success: false, error: "x", incidents: [] } });
     rerender(<SimilarIncidentsCard incidentId="i-1" />);
-    expect(screen.getByText(/unavailable/)).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("links to past incidents with match reasons and a may-be-unrelated caveat", () => {
+  it("links to past incidents with match reasons", () => {
     ok([
       {
         id: "i-2", incidentNumber: 7, title: "Checkout latency", severity: "sev2", serviceName: "checkout",
@@ -65,6 +62,5 @@ describe("SimilarIncidentsCard", () => {
     expect(screen.getByRole("link", { name: "#7 Checkout latency" })).toHaveAttribute("href", "/incidents/i-2");
     expect(screen.getByText("Same service")).toBeInTheDocument();
     expect(screen.getByText("Rolled back")).toBeInTheDocument();
-    expect(screen.getByText(/may be unrelated/)).toBeInTheDocument();
   });
 });

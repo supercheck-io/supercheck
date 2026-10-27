@@ -60,9 +60,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       });
       expect(alertResponse.status(), await alertResponse.text()).toBe(200);
 
-      await page.goto("/alerts?tab=signals", { waitUntil: "domcontentloaded" });
+      await page.goto("/incidents?tab=alerts", { waitUntil: "domcontentloaded" });
       await expect(
-        page.getByRole("heading", { name: "Alerts", exact: true }),
+        page.getByRole("tab", { name: "Alerts", exact: true }),
       ).toBeVisible();
       await expect(page.getByLabel("Search alert signals")).toBeVisible();
       const signalRow = page.getByRole("row").filter({ hasText: alertMessage });

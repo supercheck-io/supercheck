@@ -46,6 +46,9 @@ const updateJobSchema = z.object({
       failureThreshold: z.number(),
       recoveryThreshold: z.number(),
       customMessage: z.string().optional(),
+      incidentEnabled: z.boolean().optional(),
+      incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
+      autoResolveIncident: z.boolean().optional(),
     })
     .optional(),
 });

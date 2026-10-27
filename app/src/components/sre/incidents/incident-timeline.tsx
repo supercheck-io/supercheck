@@ -20,6 +20,8 @@ const STATE_LABELS: Record<string, string> = {
   commander_changed: "Commander changed",
   acknowledged: "Acknowledged",
   resolved: "Resolved",
+  recovered: "Recovered",
+  reopened: "Reopened",
   incident_updated: "Incident updated",
   manual_incident_created: "Incident created",
   created_from_alert_history: "Incident created from alert",
@@ -78,61 +80,64 @@ export function IncidentTimeline({
   };
 
   return (
-    <Card data-testid="incident-timeline">
-      <CardHeader>
-        <CardTitle className="text-base">Timeline</CardTitle>
+    <Card data-testid="incident-timeline" className="flex min-h-0 flex-1 flex-col gap-3 py-4">
+      <CardHeader className="shrink-0 px-4 py-0">
+        <CardTitle className="text-sm">Timeline</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 px-4">
         {canUpdate && (
-          <div className="space-y-2">
-            <Label htmlFor={id}>Post an update</Label>
+          <div className="flex shrink-0 items-end gap-2">
+            <Label htmlFor={id} className="sr-only">
+              Post an update
+            </Label>
             <Textarea
               id={id}
               value={text}
               onChange={(event) => setText(event.target.value)}
               maxLength={2000}
-              rows={2}
+              rows={1}
               disabled={pending}
-              placeholder="What changed, what you tried, what is next."
+              placeholder="Write an update..."
+              className="min-h-9 max-h-24 resize-none py-2"
             />
-            <div className="flex justify-end">
-              <Button size="sm" onClick={post} disabled={pending || !text.trim()}>
-                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Post update
-              </Button>
-            </div>
+            <Button size="sm" onClick={post} disabled={pending || !text.trim()}>
+              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Post
+            </Button>
           </div>
         )}
-        {query.isPending ? (
-          <p className="text-sm text-muted-foreground">Loading timeline...</p>
-        ) : query.data && !query.data.success ? (
-          <p role="alert" className="text-sm text-destructive">{query.data.error}</p>
-        ) : events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No activity yet.</p>
-        ) : (
-          <ol className="space-y-3 border-l pl-4">
-            {events.map((event) => {
-              const { title, body } = describeTimelineEvent(event);
-              return (
-                <li key={event.id} className="relative">
-                  <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
-                  <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                    <span className="font-medium">{title}</span>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {event.actorName && <UserAvatar name={event.actorName} image={event.actorImage} className="h-4 w-4" />}
-                      {event.actorName ?? (event.actorType === "agent" ? "AI" : "System")}
-                      {" · "}
-                      <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>
-                        {formatTime(event.createdAt)}
-                      </time>
-                    </span>
-                  </div>
-                  {body && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{body}</p>}
-                </li>
-              );
-            })}
-          </ol>
-        )}
+        <div className="max-h-96 min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-none">
+          {query.isPending ? (
+            <p className="text-sm text-muted-foreground">Loading timeline...</p>
+          ) : query.data && !query.data.success ? (
+            <p role="alert" className="text-sm text-destructive">{query.data.error}</p>
+          ) : events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activity yet.</p>
+          ) : (
+            <ol className="ml-1 space-y-3 border-l pl-4">
+              {events.map((event) => {
+                const { title, body } = describeTimelineEvent(event);
+                return (
+                  <li key={event.id} className="relative">
+                    <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
+                    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                      <span className="font-medium">{title}</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {event.actorName && <UserAvatar name={event.actorName} image={event.actorImage} className="h-4 w-4" />}
+                        {event.actorName ?? (event.actorType === "agent" ? "AI" : "System")}
+                        {" · "}
+                        <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>
+                          {formatTime(event.createdAt)}
+                        </time>
+                      </span>
+                    </div>
+                    {body && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{body}</p>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import {
   member,
   projectMembers,
+  sreAlertEvents,
+  sreIncidentAlerts,
   sreIncidentTimelineEvents,
   sreIncidents,
   sreServiceOwners,
@@ -487,4 +489,212 @@ export async function addIncidentUpdate(
   });
   await audit(actor, "sre_incident_update_added", incident, {});
   return { ok: true, incident };
+}
+
+// --- Alert-driven (system) transitions -------------------------------------
+// Used by background alert processing under its advisory lock; callers announce
+// the returned events with notifyIncidentEvent after the transaction commits.
+
+/** A source's failure alert may reopen an auto-resolved incident for this long. */
+export const INCIDENT_REOPEN_WINDOW_MS = 30 * 60 * 1000;
+
+type SourceRef = {
+  organizationId: string;
+  projectId: string;
+  sourceType: "monitor" | "job";
+  sourceId: string;
+};
+
+const triggerSourceMatch = (source: SourceRef) =>
+  and(
+    eq(sreIncidents.organizationId, source.organizationId),
+    eq(sreIncidents.projectId, source.projectId),
+    eq(sreIncidentAlerts.role, "trigger"),
+    eq(sreAlertEvents.sourceType, source.sourceType),
+    eq(sreAlertEvents.sourceId, source.sourceId),
+  );
+
+function describeDuration(ms: number) {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}h${rest ? ` ${rest}m` : ""}`;
+}
+
+/**
+ * Handle a recovery signal for a monitor/job: auto-resolve open, unacknowledged
+ * trigger incidents (when allowed), otherwise leave a `recovered` note for the owner.
+ */
+export async function applySourceRecovery(
+  tx: Executor,
+  source: SourceRef & { targetName: string; autoResolve: boolean; recoveredAt: Date },
+) {
+  const open = await tx
+    .select({
+      id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
+      createdAt: sreIncidents.createdAt,
+      acknowledgedAt: sreIncidents.acknowledgedAt,
+      assigneeUserId: sreIncidents.assigneeUserId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
+
+  const resolved: { id: string }[] = [];
+  const recovered: { id: string; assigneeUserId: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const incident of open) {
+    if (seen.has(incident.id)) continue;
+    seen.add(incident.id);
+    const now = source.recoveredAt;
+    if (source.autoResolve && !incident.acknowledgedAt) {
+      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - incident.createdAt.getTime())}.`;
+      const [updated] = await tx
+        .update(sreIncidents)
+        .set({
+          status: "resolved",
+          resolvedAt: now,
+          mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamp)`,
+          resolutionSummary: summary,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(sreIncidents.id, incident.id),
+            ne(sreIncidents.status, "resolved"),
+            isNull(sreIncidents.acknowledgedAt),
+          ),
+        )
+        .returning({ id: sreIncidents.id });
+      if (updated) {
+        await tx.insert(sreIncidentTimelineEvents).values({
+          incidentId: incident.id,
+          eventType: "state_change",
+          eventData: { state: "resolved", comment: summary, automatic: true },
+          actorType: "system",
+          createdAt: now,
+        });
+        resolved.push({ id: incident.id });
+        continue;
+      }
+    }
+    await tx.insert(sreIncidentTimelineEvents).values({
+      incidentId: incident.id,
+      eventType: "state_change",
+      eventData: {
+        state: "recovered",
+        comment: `${source.targetName} recovered; resolve when you've confirmed`,
+      },
+      actorType: "system",
+      createdAt: now,
+    });
+    recovered.push({ id: incident.id, assigneeUserId: incident.assigneeUserId });
+  }
+  return { resolved, recovered };
+}
+
+/**
+ * Reopen the source's most recent trigger incident when it was auto-resolved
+ * within the reopen window and no other incident for the source is open.
+ */
+export async function reopenRecentlyAutoResolved(
+  tx: Executor,
+  source: SourceRef & { firedAt: Date },
+) {
+  const [latest] = await tx
+    .select({
+      id: sreIncidents.id,
+      status: sreIncidents.status,
+      resolvedAt: sreIncidents.resolvedAt,
+      assigneeUserId: sreIncidents.assigneeUserId,
+      triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(triggerSourceMatch(source))
+    .orderBy(desc(sreIncidents.createdAt))
+    .limit(1);
+  if (
+    !latest ||
+    latest.status !== "resolved" ||
+    !latest.resolvedAt ||
+    source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS
+  ) {
+    return null;
+  }
+
+  const [auto] = await tx
+    .select({ id: sreIncidentTimelineEvents.id })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, latest.id),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' = 'resolved'`,
+        sql`${sreIncidentTimelineEvents.eventData}->>'automatic' = 'true'`,
+      ),
+    )
+    .limit(1);
+  if (!auto) return null;
+
+  const now = new Date();
+  const [updated] = await tx
+    .update(sreIncidents)
+    .set({
+      status: "triggered",
+      resolvedAt: null,
+      mitigatedAt: null,
+      resolutionSummary: null,
+      // A returning failure needs a fresh acknowledgement (and stays auto-resolvable).
+      acknowledgedAt: null,
+      acknowledgedByUserId: null,
+      updatedAt: now,
+    })
+    .where(and(eq(sreIncidents.id, latest.id), eq(sreIncidents.status, "resolved")))
+    .returning({ id: sreIncidents.id });
+  if (!updated) return null;
+
+  await tx.insert(sreIncidentTimelineEvents).values({
+    incidentId: latest.id,
+    eventType: "state_change",
+    eventData: { state: "reopened", comment: "Failure returned within 30 minutes of automatic recovery" },
+    actorType: "system",
+    createdAt: now,
+  });
+  return {
+    incidentId: latest.id,
+    assigneeUserId: latest.assigneeUserId,
+    alreadyTriaged: Boolean(latest.triageInvestigationRunId),
+  };
+}
+
+/** Audit + announce an alert-driven transition (best effort; never throws). */
+export async function announceSystemTransition(
+  organizationId: string,
+  projectId: string,
+  incidentId: string,
+  event: "resolved" | "recovered" | "reopened",
+  extra: { assigneeUserId?: string | null; discriminator: string },
+) {
+  await logAuditEvent({
+    organizationId,
+    action: `sre_incident_${event === "resolved" ? "auto_resolved" : event}`,
+    resource: "sre_incident",
+    resourceId: incidentId,
+    metadata: { projectId },
+    success: true,
+  }).catch(() => undefined);
+  await notifyIncidentEvent({
+    organizationId,
+    projectId,
+    incidentId,
+    event,
+    automatic: event === "resolved",
+    assigneeUserId: extra.assigneeUserId,
+    dedupeDiscriminator: extra.discriminator,
+  }).catch(() => undefined);
 }

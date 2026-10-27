@@ -1,5 +1,6 @@
 import {
   Body,
+  Button,
   Container,
   Head,
   Heading,
@@ -25,21 +26,28 @@ export const BaseLayout = ({
   title,
   children,
   footer,
-  headerColor = "#52c41a",
+  headerColor = "#15803d",
   showStandardFooter = true,
 }: BaseLayoutProps) => {
+  const headerText = readableTextColor(headerColor);
   return (
     <Html>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
+        {/* Light-only: our palette is fixed, so stop clients from auto-inverting it badly. */}
+        <meta name="color-scheme" content="light only" />
+        <meta name="supported-color-schemes" content="light only" />
+        <style>{`@media only screen and (max-width: 620px) { .sc-container { width: 100% !important; border-radius: 0 !important; } }`}</style>
       </Head>
       <Preview>{preview}</Preview>
       <Body style={main}>
-        <Container style={container}>
+        <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={{ ...header, background: headerColor }}>
-            <Heading style={headerTitle}>{title}</Heading>
+            <Heading style={{ ...headerTitle, color: headerText }}>
+              {title}
+            </Heading>
           </Section>
 
           {/* Main Content */}
@@ -63,7 +71,7 @@ export const BaseLayout = ({
                     Terms of Service
                   </Link>
                   <br />
-                  <span style={{ color: "#9ca3af" }}>
+                  <span style={{ color: "#6b7280" }}>
                     © {new Date().getFullYear()} Supercheck. All rights reserved.
                   </span>
                 </Text>
@@ -112,7 +120,7 @@ const header = {
 
 const headerTitle = {
   color: "#ffffff",
-  fontSize: "24px",
+  fontSize: "22px",
   fontWeight: "700" as const,
   margin: "0",
   lineHeight: "1.3",
@@ -139,14 +147,14 @@ const footerSection = {
 };
 
 const standardFooterText = {
-  color: "#9ca3af",
+  color: "#6b7280",
   fontSize: "12px",
   lineHeight: "1.6",
   margin: "16px 0 0",
 };
 
 const footerLink = {
-  color: "#6b7280",
+  color: "#4b5563",
   textDecoration: "none",
   fontWeight: "500" as const,
 };
@@ -154,5 +162,47 @@ const footerLink = {
 const bottomSpacer = {
   height: "20px",
 };
+
+/**
+ * Shared primary button so every email has the same call to action.
+ */
+export const EmailButton = ({
+  href,
+  children,
+  background = "#111827",
+}: {
+  href: string;
+  children: React.ReactNode;
+  background?: string;
+}) => (
+  <Button
+    href={href}
+    style={{
+      backgroundColor: background,
+      borderRadius: "6px",
+      color: readableTextColor(background),
+      fontSize: "15px",
+      fontWeight: "600",
+      textDecoration: "none",
+      textAlign: "center",
+      display: "inline-block",
+      padding: "12px 28px",
+    }}
+  >
+    {children}
+  </Button>
+);
+
+/** White or near-black text, whichever has better contrast on `hex` (WCAG luminance). */
+function readableTextColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#ffffff";
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.179 ? "#111827" : "#ffffff";
+}
 
 export default BaseLayout;

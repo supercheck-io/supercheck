@@ -13,7 +13,7 @@ export function IncidentsFirstRunChecklist() {
       icon={<Siren className="h-10 w-10" aria-hidden="true" />}
       action={
         <Button asChild variant="outline" data-testid="incidents-first-run">
-          <Link href="/alerts">Set up alerts</Link>
+          <Link href="/notifications">Set up alerts</Link>
         </Button>
       }
     />

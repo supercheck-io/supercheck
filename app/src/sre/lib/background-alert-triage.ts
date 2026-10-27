@@ -23,9 +23,15 @@ import {
 } from "@/lib/sre/alert-correlation";
 import {
   isSreAlertCorrelationEnabled,
+  isSreAutomaticTriageEnabled,
   isSreBackgroundAlertTriageEnabled,
 } from "@/sre/lib/feature-gates";
-import { getDefaultAssigneeId } from "@/lib/sre/incident-lifecycle";
+import {
+  announceSystemTransition,
+  applySourceRecovery,
+  getDefaultAssigneeId,
+  reopenRecentlyAutoResolved,
+} from "@/lib/sre/incident-lifecycle";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
@@ -66,6 +72,9 @@ export type SreBackgroundAlertTriageResult =
         | "already_triaged"
         | "triage_in_progress"
         | "unsupported_source"
+        | "incident_disabled"
+        | "recovery_handled"
+        | "ai_disabled"
         | "ai_not_configured";
     }
   | {
@@ -139,7 +148,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       monitorName: monitors.name,
       monitorOrganizationId: monitors.organizationId,
       monitorProjectId: monitors.projectId,
+      monitorAlertConfig: monitors.alertConfig,
       jobName: jobs.name,
+      jobAlertConfig: jobs.alertConfig,
       jobOrganizationId: jobs.organizationId,
       jobProjectId: jobs.projectId,
     })
@@ -153,14 +164,12 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     return { skipped: true as const, reason: "alert_not_found" as const };
   }
 
-  if (alert.status !== "sent") {
+  // Failed deliveries still open an incident; only undelivered (pending) rows wait.
+  if (alert.status !== "sent" && alert.status !== "failed") {
     return { skipped: true as const, reason: "non_sent_alert" as const };
   }
 
   const alertStatus = deriveAlertStatus(alert.type);
-  if (alertStatus !== "firing") {
-    return { skipped: true as const, reason: "resolved_alert" as const };
-  }
 
   const organizationId = alert.monitorOrganizationId ?? alert.jobOrganizationId;
   const projectId = alert.monitorProjectId ?? alert.jobProjectId;
@@ -176,8 +185,50 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   }
 
   const targetName = alert.monitorName ?? alert.jobName ?? alert.target;
-  const severity = deriveSeverity(alert.type, alert.message);
+  const alertConfig = alert.monitorId
+    ? alert.monitorAlertConfig
+    : alert.jobAlertConfig;
   const firedAt = alert.sentAt ?? new Date();
+
+  if (alertStatus !== "firing") {
+    // Recovery: resolve (or flag) open incidents of the same source, regardless of alert type.
+    const recovery = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
+      );
+      return applySourceRecovery(tx, {
+        organizationId,
+        projectId,
+        sourceType,
+        sourceId,
+        targetName,
+        autoResolve: alertConfig?.autoResolveIncident !== false,
+        recoveredAt: firedAt,
+      });
+    });
+    for (const { id } of recovery.resolved) {
+      await announceSystemTransition(organizationId, projectId, id, "resolved", {
+        discriminator: alert.id,
+      });
+    }
+    for (const { id, assigneeUserId } of recovery.recovered) {
+      await announceSystemTransition(organizationId, projectId, id, "recovered", {
+        assigneeUserId,
+        discriminator: alert.id,
+      });
+    }
+    return { skipped: true as const, reason: "recovery_handled" as const };
+  }
+
+  if (alertConfig?.incidentEnabled === false) {
+    return { skipped: true as const, reason: "incident_disabled" as const };
+  }
+
+  const severity =
+    alertConfig?.incidentSeverity &&
+    ["sev1", "sev2", "sev3", "sev4"].includes(alertConfig.incidentSeverity)
+      ? alertConfig.incidentSeverity
+      : deriveSeverity(alert.type, alert.message);
   const deliveryDedupKey =
     typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
     alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
@@ -275,6 +326,26 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         alertEventId: alertEvent.id,
         incidentId: existingIncident.id,
         alreadyTriaged: Boolean(existingIncident.triageInvestigationRunId),
+      };
+    }
+
+    // A failure shortly after an automatic recovery is the same incident coming back.
+    const reopened = await reopenRecentlyAutoResolved(tx, {
+      organizationId,
+      projectId,
+      sourceType,
+      sourceId,
+      firedAt,
+    });
+    if (reopened) {
+      return {
+        skipped: false as const,
+        organizationId,
+        projectId,
+        alertEventId: alertEvent.id,
+        incidentId: reopened.incidentId,
+        alreadyTriaged: reopened.alreadyTriaged,
+        reopenedAssigneeUserId: reopened.assigneeUserId,
       };
     }
 
@@ -497,6 +568,13 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     });
   }
 
+  if (!result.skipped && "reopenedAssigneeUserId" in result) {
+    await announceSystemTransition(organizationId, projectId, result.incidentId, "reopened", {
+      assigneeUserId: result.reopenedAssigneeUserId,
+      discriminator: alert.id,
+    });
+  }
+
   if ("correlation" in result && result.correlation) {
     await logAuditEvent({
       organizationId,
@@ -530,12 +608,6 @@ export async function processSreBackgroundAlertTriageJob(
     return { success: true, skipped: true, reason: "invalid_job" };
   }
 
-  try {
-    validateAIConfiguration();
-  } catch {
-    return { success: true, skipped: true, reason: "ai_not_configured" };
-  }
-
   const incident = await createOrGetIncidentForAlertHistory(
     parsed.data.alertHistoryId,
   );
@@ -545,6 +617,16 @@ export async function processSreBackgroundAlertTriageJob(
 
   if (incident.alreadyTriaged) {
     return { success: true, skipped: true, reason: "already_triaged" };
+  }
+
+  // Incidents open regardless; AI triage is the optional part on top.
+  if (!isSreAutomaticTriageEnabled()) {
+    return { success: true, skipped: true, reason: "ai_disabled" };
+  }
+  try {
+    validateAIConfiguration();
+  } catch {
+    return { success: true, skipped: true, reason: "ai_not_configured" };
   }
 
   const triage = await runSreIncidentTriage({

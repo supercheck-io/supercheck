@@ -1,4 +1,8 @@
-import { JobNotificationService } from './job-notification.service';
+import {
+  isFailureAlertStreak,
+  JobNotificationService,
+  maxFailureAlertStreak,
+} from './job-notification.service';
 
 describe('JobNotificationService', () => {
   function createService() {
@@ -156,4 +160,55 @@ describe('JobNotificationService', () => {
       );
     },
   );
+
+  describe('failure alert cap', () => {
+    it('alerts at threshold then every max(5, 2x threshold), max 3 per streak', () => {
+      const alertingAt = (t: number, upTo = 40) =>
+        Array.from({ length: upTo }, (_, i) => i + 1).filter((n) =>
+          isFailureAlertStreak(n, t),
+        );
+      expect(alertingAt(1)).toEqual([1, 6, 11]);
+      expect(alertingAt(2)).toEqual([2, 7, 12]);
+      expect(alertingAt(3)).toEqual([3, 9, 15]);
+      expect(maxFailureAlertStreak(1)).toBe(11);
+      expect(maxFailureAlertStreak(3)).toBe(15);
+    });
+
+    it.each([
+      [2, false],
+      [6, true],
+      [11, true],
+      [12, false],
+      [16, false],
+    ])('job failure streak of %i sends=%s', async (streak, sends) => {
+      const { service, dbService, notificationService } = createService();
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        { id: 'run-1', status: 'failed' },
+        ...Array.from({ length: streak - 1 }, (_, i) => ({
+          id: `old-${i}`,
+          status: 'failed',
+        })),
+      ]);
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(sends ? 1 : 0);
+    });
+
+    it('requests enough history to see the last capped alert', async () => {
+      const { service, dbService } = createService();
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      expect(dbService.getRecentRunsForJob).toHaveBeenCalledWith('job-1', 11);
+    });
+  });
 });

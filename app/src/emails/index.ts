@@ -14,6 +14,13 @@ export { StatusPageVerificationEmail } from "./status-page-verification";
 export { StatusPageWelcomeEmail } from "./status-page-welcome";
 export { IncidentNotificationEmail } from "./incident-notification";
 export { MonitorAlertEmail } from "./monitor-alert";
+export {
+  IncidentUpdateEmail,
+  incidentUpdateHeadline,
+  type IncidentUpdateEmailProps,
+  type IncidentUpdateEvent,
+  type IncidentUpdateSeverity,
+} from "./incident-update";
 export { TestEmail } from "./test-email";
 export { UsageNotificationEmail } from "./usage-notification";
 export { TrialNotificationEmail, trialNotificationSubject, type TrialNotificationKind } from "./trial-notification";

@@ -209,7 +209,7 @@ export type SreIncidentChatHistory = {
 };
 
 export type SreIncidentDetail = {
-  publicIncident?: { id: string; statusPageId: string } | null;
+  publicIncident?: { id: string; statusPageId: string; status: string } | null;
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
     confidenceScore: string | null;
@@ -1115,7 +1115,7 @@ export async function getSreIncidentDetails(
       )
       .orderBy(desc(sreAlertEvents.firedAt))
       .limit(20);
-    const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
+    const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
 
     return {
@@ -1964,7 +1964,7 @@ export async function createSreIncidentFromAlert(
       alertStatus,
     });
 
-    revalidatePath("/alerts");
+    revalidatePath("/incidents");
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${result.incident.id}`);
 

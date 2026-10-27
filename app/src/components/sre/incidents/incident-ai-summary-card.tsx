@@ -1,14 +1,17 @@
-import Link from "next/link";
-import { FileSearch, Network, Sparkles } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { FileSearch, PanelRightOpen, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
+import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -21,9 +24,10 @@ export type IncidentAiSummaryCardProps = {
   /** Latest investigation run; enables citations, live progress and failure details. */
   investigation?: SreIncidentDetail["latestInvestigation"];
   evidence?: SreIncidentDetail["evidence"];
-  /** Enables the link to the investigation map. */
-  incidentId?: string;
-  children?: React.ReactNode;
+  /** Whole-investigation feedback control, shown beside "Was this right?". */
+  feedback?: React.ReactNode;
+  /** Opens the investigation details sheet. */
+  onOpenDetails?: () => void;
 };
 
 export function confidenceLabel(score: string | null): {
@@ -38,15 +42,18 @@ export function confidenceLabel(score: string | null): {
   return { label: "Inconclusive", tone: "slate" };
 }
 
+const CLAMP_THRESHOLD = 240;
+
 export function IncidentAiSummaryCard({
   rootCauseSummary,
   confidenceScore,
   investigationStatus,
   investigation = null,
   evidence = [],
-  incidentId,
-  children,
+  feedback,
+  onOpenDetails,
 }: IncidentAiSummaryCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
   const structured = investigation?.structured ?? null;
@@ -63,21 +70,19 @@ export function IncidentAiSummaryCard({
     .slice(0, 3);
   const stepCount = investigation?.steps.length ?? 0;
   const summaryOnly = investigationStatus === "completed" && Boolean(investigation) && !structured;
+  const nextCheck = structured?.nextChecks[0] ?? null;
+  const clampable = (conclusion?.length ?? 0) > CLAMP_THRESHOLD;
 
   return (
-    <Card data-testid="incident-ai-summary">
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <div className="space-y-1">
-          <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-            AI summary
-          </CardTitle>
-          <CardDescription>
-            {running
-              ? "Investigating now. This updates when the run finishes."
-              : "Latest conclusion from the AI investigation. Check the cited evidence before acting."}
-          </CardDescription>
-        </div>
+    <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-0">
+        <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm">
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          AI summary
+          <InfoTip label="About the AI summary">
+            The AI&apos;s best explanation from the evidence it could read. Inconclusive means it did not find enough proof.
+          </InfoTip>
+        </CardTitle>
         {conclusion && !running && !unrated && (
           inconclusive || confidence.label === "Inconclusive" ? (
             <TableBadge tone="slate" compact aria-label="Confidence: Inconclusive">
@@ -85,12 +90,12 @@ export function IncidentAiSummaryCard({
             </TableBadge>
           ) : (
             <TableBadge tone={confidence.tone} compact aria-label={`Confidence: ${confidence.label}`}>
-              {confidence.label} confidence
+              Confidence: {confidence.label}
             </TableBadge>
           )
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-4">
         {running && (
           <p role="status" className="text-sm text-muted-foreground">
             {stepCount > 0
@@ -101,13 +106,13 @@ export function IncidentAiSummaryCard({
         {failed && (
           <div role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive">
             <p className="font-medium">Investigation did not complete</p>
-            <p className="mt-1">
+            <p className="mt-1 line-clamp-3">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </p>
           </div>
         )}
         {conclusion ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {inconclusive && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 No root cause established
@@ -116,12 +121,24 @@ export function IncidentAiSummaryCard({
             {(failed || running) && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
-            {structured ? (
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{conclusion}</p>
-            ) : (
-              <div className="break-words text-sm leading-relaxed">
-                <SreMessageContent content={conclusion} />
-              </div>
+            <div className={expanded ? "max-h-48 overflow-y-auto" : clampable ? "line-clamp-3" : undefined}>
+              {structured ? (
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{conclusion}</p>
+              ) : (
+                <div className="break-words text-sm leading-relaxed">
+                  <SreMessageContent content={conclusion} />
+                </div>
+              )}
+            </div>
+            {clampable && (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((value) => !value)}
+                className="rounded-sm text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {expanded ? "Show less" : "Show more"}
+              </button>
             )}
             {structured?.downgraded && (
               <p className="text-xs text-muted-foreground">
@@ -132,30 +149,11 @@ export function IncidentAiSummaryCard({
         ) : (
           !running && !failed && (
             <p className="text-sm text-muted-foreground">
-              No AI conclusion yet. Use Investigate to start one; an inconclusive result is reported as such, never guessed.
+              No AI conclusion yet. Open Investigation details to start one; an inconclusive result is reported as such, never guessed.
             </p>
           )
         )}
-        {structured && structured.nextChecks.length > 0 && !running && (
-          <section aria-labelledby="investigation-next-checks" className="space-y-1.5">
-            <h3 id="investigation-next-checks" className="text-sm font-medium">
-              Next safe checks
-            </h3>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {structured.nextChecks.map((check) => (
-                <li key={check} className="break-words">
-                  {check}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        {summaryOnly && (
-          <p className="text-xs text-muted-foreground">
-            Summary only: this run did not return structured hypotheses. Run it again for a ranked breakdown.
-          </p>
-        )}
-        {(citations.length > 0 || (incidentId && evidence.length > 0)) && !running && (
+        {citations.length > 0 && !running && (
           <div className="flex flex-wrap items-center gap-2" aria-label="Cited evidence">
             {citations.map((item) => (
               <EvidenceDetailsDialog key={item.id} item={item}>
@@ -169,18 +167,28 @@ export function IncidentAiSummaryCard({
                 </button>
               </EvidenceDetailsDialog>
             ))}
-            {incidentId && (
-              <Link
-                href={`/copilot/evidence-graph?incident=${incidentId}`}
-                className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Network className="h-3.5 w-3.5" aria-hidden="true" />
-                Investigation Map
-              </Link>
-            )}
           </div>
         )}
-        {children}
+        {nextCheck && !running && (
+          <p className="line-clamp-2 break-words text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Next step: </span>
+            {nextCheck}
+          </p>
+        )}
+        {summaryOnly && (
+          <p className="text-xs text-muted-foreground">
+            Summary only: this run did not return structured hypotheses. Run it again for a ranked breakdown.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm">{feedback}</div>
+          {onOpenDetails && (
+            <Button type="button" variant="ghost" size="sm" onClick={onOpenDetails}>
+              <PanelRightOpen className="h-4 w-4" />
+              Investigation details
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

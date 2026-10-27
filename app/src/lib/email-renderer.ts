@@ -15,6 +15,9 @@ import {
   StatusPageWelcomeEmail,
   IncidentNotificationEmail,
   MonitorAlertEmail,
+  IncidentUpdateEmail,
+  incidentUpdateHeadline,
+  type IncidentUpdateEmailProps,
   TestEmail,
   UsageNotificationEmail,
   TrialNotificationEmail,
@@ -160,6 +163,7 @@ export async function renderMonitorAlertEmail(params: {
   footer: string;
   type: "failure" | "success" | "warning";
   color: string;
+  incidentsUrl?: string;
 }): Promise<RenderedEmail> {
   const component = MonitorAlertEmail(params);
 
@@ -239,6 +243,22 @@ export async function renderTrialNotificationEmail(params: {
 
   return {
     subject: trialNotificationSubject(params.kind, params.organizationName, params.daysRemaining),
+    html: await render(component, { pretty: false }),
+    text: await render(component, { plainText: true }),
+  };
+}
+
+/**
+ * Team-facing incident update email (created, assigned, resolved, ...).
+ * Not the public status-page subscriber email (see renderIncidentNotificationEmail).
+ */
+export async function renderIncidentUpdateEmail(
+  params: IncidentUpdateEmailProps,
+): Promise<RenderedEmail> {
+  const component = IncidentUpdateEmail(params);
+
+  return {
+    subject: `[${params.severity.toUpperCase()}] ${incidentUpdateHeadline(params.event, params.actorName)}: #${params.incidentNumber} ${params.title}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };

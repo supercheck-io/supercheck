@@ -18,12 +18,16 @@ export const isSreAlertCorrelationEnabled = isSreEnabled;
 
 // Automatic triage is opt-in: it only runs when SRE_AUTOMATION_ENABLED is
 // explicitly "true" or "1". Keep in sync with
-// worker/src/monitor/services/sre-alert-triage-queue.service.ts.
+// the AI step of the alert pipeline (the worker gate only needs SRE_ENABLED).
 export function isSreAutomaticTriageEnabled() {
   return isSreEnabled() && enabledOnlyWhenExplicit(process.env.SRE_AUTOMATION_ENABLED);
 }
 
-export const isSreBackgroundAlertTriageEnabled = isSreAutomaticTriageEnabled;
+// The alert->incident pipeline (queue, processor, incident creation/recovery)
+// needs only SRE_ENABLED. Keep in sync with
+// worker/src/monitor/services/sre-alert-triage-queue.service.ts. AI triage on
+// top of it still needs isSreAutomaticTriageEnabled().
+export const isSreBackgroundAlertTriageEnabled = isSreEnabled;
 
 // Internal sandbox infrastructure is separate from normal SRE workflows.
 export function isSreAgentSandboxEnabled() {

@@ -32,6 +32,32 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at
+// the threshold, then every max(5, 2 x threshold) failures after it, max 3 per streak.
+const MAX_FAILURE_ALERTS_PER_STREAK = 3;
+
+function failureAlertInterval(threshold: number) {
+  return Math.max(5, threshold * 2);
+}
+
+export function maxFailureAlertStreak(threshold: number) {
+  const t = Math.max(1, threshold || 1);
+  return t + failureAlertInterval(t) * (MAX_FAILURE_ALERTS_PER_STREAK - 1);
+}
+
+export function isFailureAlertStreak(
+  consecutiveFailures: number,
+  threshold: number,
+) {
+  const t = Math.max(1, threshold || 1);
+  const after = consecutiveFailures - t;
+  if (after < 0) return false;
+  const interval = failureAlertInterval(t);
+  return (
+    after % interval === 0 && after / interval < MAX_FAILURE_ALERTS_PER_STREAK
+  );
+}
+
 @Injectable()
 export class JobNotificationService {
   private readonly logger = new Logger(JobNotificationService.name);
@@ -116,7 +142,10 @@ export class JobNotificationService {
 
       const recentRuns = await this.dbService.getRecentRunsForJob(
         jobId,
-        Math.max(alertConfig.failureThreshold, alertConfig.recoveryThreshold),
+        Math.max(
+          alertConfig.recoveryThreshold,
+          maxFailureAlertStreak(alertConfig.failureThreshold),
+        ),
       );
 
       const normalizedStatus = finalStatus === 'error' ? 'failed' : finalStatus;
@@ -146,7 +175,7 @@ export class JobNotificationService {
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        consecutiveFailures >= alertConfig.failureThreshold;
+        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&

@@ -1,10 +1,10 @@
 module.exports = {
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  moduleFileExtensions: ['js', 'json', 'ts', 'tsx'],
   rootDir: 'src',
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
   testRegex: '.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.(t|j)sx?$': 'ts-jest',
   },
   collectCoverageFrom: ['**/*.(t|j)s', '!**/*.spec.ts', '!**/node_modules/**'],
   coverageDirectory: '../coverage',

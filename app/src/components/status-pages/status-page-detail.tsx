@@ -424,9 +424,9 @@ export function StatusPageDetail({
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">Components</span>
           </TabsTrigger>
-          <TabsTrigger value="incidents" aria-label="Incidents" className="flex items-center gap-2">
+          <TabsTrigger value="incidents" aria-label="Status updates" className="flex items-center gap-2">
             <OctagonAlert className="h-4 w-4" />
-            <span className="hidden sm:inline">Incidents</span>
+            <span className="hidden sm:inline">Status updates</span>
           </TabsTrigger>
           <TabsTrigger value="subscribers" aria-label="Subscribers" className="flex items-center gap-2">
             <Users className="h-4 w-4" />

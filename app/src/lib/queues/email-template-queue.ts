@@ -2,6 +2,10 @@ import { Queue, QueueEvents } from "bullmq";
 import { getQueues, EMAIL_TEMPLATE_QUEUE } from "../queue";
 
 /**
+ * @deprecated The worker now renders alert emails locally (worker/src/emails).
+ * shortcut: kept for rolling deploys from workers <= current release; delete next release
+ */
+/**
  * Email Template Rendering Queue
  *
  * This queue handles rendering of email templates using react-email.

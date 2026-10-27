@@ -1,4 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+
+jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
+jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: jest.fn() }));
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -22,13 +25,13 @@ describe("IncidentAiSummaryCard", () => {
   it("renders the conclusion with a confidence label", () => {
     render(<IncidentAiSummaryCard rootCauseSummary="Bad deploy" confidenceScore="0.8000" investigationStatus="completed" />);
     expect(screen.getByText("Bad deploy")).toBeInTheDocument();
-    expect(screen.getByText("High confidence")).toBeInTheDocument();
+    expect(screen.getByText("Confidence: High")).toBeInTheDocument();
   });
 
   it("never invents a conclusion when there is none", () => {
     render(<IncidentAiSummaryCard rootCauseSummary={null} confidenceScore="0.9" investigationStatus={null} />);
     expect(screen.getByText(/No AI conclusion yet/)).toBeInTheDocument();
-    expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
   });
 
   it("shows a running state", () => {
@@ -66,7 +69,6 @@ describe("IncidentAiSummaryCard structured states", () => {
         rootCauseSummary="Deploy 42 caused it."
         confidenceScore="0.8200"
         investigationStatus="completed"
-        incidentId="i1"
         evidence={evidence}
         investigation={investigation({
           structured: {
@@ -76,11 +78,10 @@ describe("IncidentAiSummaryCard structured states", () => {
         })}
       />,
     );
-    expect(screen.getByText("High confidence")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Next safe checks" })).toBeInTheDocument();
+    expect(screen.getByText("Confidence: High")).toBeInTheDocument();
     expect(screen.getByText("Compare p95 before and after")).toBeInTheDocument();
+    expect(screen.getByText(/Next step/)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^View evidence:/ })).toHaveLength(3);
-    expect(screen.getByRole("link", { name: "Investigation Map" })).toHaveAttribute("href", "/copilot/evidence-graph?incident=i1");
   });
 
   it("shows Inconclusive as a first-class outcome without citations", () => {
@@ -98,7 +99,7 @@ describe("IncidentAiSummaryCard structured states", () => {
     expect(screen.getByText("Inconclusive")).toBeInTheDocument();
     expect(screen.getByText("No root cause established")).toBeInTheDocument();
     expect(screen.getByText(/did not support it/)).toBeInTheDocument();
-    expect(screen.queryByText(/confidence$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Confidence:/)).not.toBeInTheDocument();
     expect(screen.queryAllByRole("button", { name: /^View evidence:/ })).toHaveLength(0);
   });
 
@@ -112,7 +113,7 @@ describe("IncidentAiSummaryCard structured states", () => {
       />,
     );
     expect(screen.getAllByText("Plain report").length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Inconclusive|confidence/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Inconclusive|Confidence/)).not.toBeInTheDocument();
     expect(screen.getByText(/Summary only/)).toBeInTheDocument();
   });
 
@@ -145,5 +146,27 @@ describe("describeTimelineEvent", () => {
     expect(describeTimelineEvent({ eventType: "comment", eventData: { text: "hi" } })).toEqual({ title: "Update", body: "hi" });
     expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { summary: "Cause" } }).body).toBe("Cause");
     expect(describeTimelineEvent({ eventType: "tool_call", eventData: null })).toEqual({ title: "tool call", body: null });
+  });
+});
+
+describe("IncidentAiSummaryCard compact layout", () => {
+  it("clamps a long conclusion until Show more is pressed and exposes the details button", () => {
+    const onOpenDetails = jest.fn();
+    render(
+      <IncidentAiSummaryCard
+        rootCauseSummary={"Long conclusion. ".repeat(40)}
+        confidenceScore="0.6"
+        investigationStatus="completed"
+        onOpenDetails={onOpenDetails}
+        feedback={<span>Was this right?</span>}
+      />,
+    );
+    const more = screen.getByRole("button", { name: "Show more" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(more);
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
+    expect(onOpenDetails).toHaveBeenCalled();
+    expect(screen.getByText("Was this right?")).toBeInTheDocument();
   });
 });

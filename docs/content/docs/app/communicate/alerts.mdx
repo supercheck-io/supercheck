@@ -10,6 +10,8 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
+Channels live on the **Notifications** page in the sidebar. Alert signals and delivery history are on the **Alerts** tab of the **Incidents** page (`Incidents → Alerts`; switch to **History** for deliveries). Alerts are automatic: a check failed or recovered. Alerts that need a person open an incident.
+
 ## Alert Workflow
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
@@ -71,8 +73,8 @@ Adaptive Card notifications via Power Automate workflows
 
 ## Setting Up Providers
 
-1. Go to **Alerts → Channels**
-2. Click **Add Channel**
+1. Go to **Notifications**
+2. Click **Create channel**
 3. Select the provider type and enter credentials
 4. Click **Test Connection** to verify the connection
 5. Save the provider
@@ -118,6 +120,8 @@ The number of consecutive failures required before sending the first failure ale
 The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert.
 
 SSL expiration warnings are evaluated independently of the monitor's up/down result. Enable **SSL Expiration Alerts** on a website monitor and set its warning window; a warning is sent at most once every 24 hours while the certificate remains within that window.
+
+**Job failures** follow the same rule as monitors: the first alert at the failure threshold, then repeats at threshold + the larger of 5 or 2x threshold failures, at most 3 alerts per failure streak. A passing run resets the streak.
 
 **Alert Limiting**
 
@@ -446,7 +450,7 @@ From Signals, responders can:
 - Search by target, message, type, source, or fingerprint.
 - Filter by severity or source.
 - Sort by signal, severity, source, or last seen time.
-- Select **Investigate** to open a new or existing SRE incident. This does not start a full AI investigation. Administrators may separately enable automatic triage.
+- Select **Investigate** to open a new or existing SRE incident. Incidents also open automatically when an alert fires, and resolve automatically on recovery if nobody acknowledged them (configurable per monitor or job under **Incidents** in Alert Settings). AI triage is optional and separate: administrators may enable it.
 - Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
 
 ## Alert History

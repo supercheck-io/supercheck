@@ -10,10 +10,22 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 | From | How |
 |---|---|
-| **An alert** | In **Communicate → Alerts → Signals**, select **Investigate** next to a failure. Repeated deliveries are grouped, and the latest alert opens a new or existing incident without starting a full investigation |
+| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Investigate** next to a failure in **Communicate → Alerts → Signals**. Neither path starts a full AI investigation |
 | **Scratch** | In **Investigate → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
 
 Both paths open the incident workspace.
+
+### Incident settings per monitor or job
+
+In **Alert Settings**, the **Incidents** block controls this check:
+
+- **Open an incident when this alerts** (on by default).
+- **Severity**: *Auto* derives SEV1 to SEV4 from the alert, or pick a fixed level for new incidents.
+- **Resolve automatically on recovery if nobody acknowledged it** (on by default; needs recovery alerts on). When the check passes again, an unacknowledged incident resolves itself with a note. An acknowledged incident stays open, gets a *recovered* note, and its assignee is emailed so a person confirms and resolves it.
+
+If the check fails again within 30 minutes of an automatic resolution, the same incident reopens instead of a new one opening.
+
+Incidents open even when AI is not configured. AI triage is optional and runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is set up.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
@@ -23,15 +35,17 @@ The queue opens on **Active** incidents. Use the quick filters **Active**, **Ass
 
 | Column | Shows |
 |---|---|
-| **#** | Incident number |
-| **Title**, **Severity**, **Status** | What happened and how urgent it is |
-| **Service** | The linked catalog service |
-| **Assignee** | The person responsible, or *Unassigned* |
-| **Age** | Time since detection (detection to resolution once resolved) |
-| **AI** | State of the latest AI investigation |
+The page fits the window without a page scrollbar. The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **...** menu holds **Edit**, **Ask Copilot**, **Run investigation**, and **Investigation map**. Hover the info icons for a one-sentence explanation of each term.
 
-Quick actions open **Review alerts** and **Trends**. A project with no incidents yet explains how incidents open and links to alert setup.
+A progress line shows the six statuses: Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved.
 
+| Area | Contents |
+|---|---|
+| **AI summary** | The conclusion (select **Show more** to expand), confidence, the top evidence, the next step, and a **Was this right?** control. **Investigation details** opens a side panel |
+| **Timeline** | A box to post updates above the event list. Only the list scrolls |
+| **Investigation details** panel | Run controls, hypotheses, the step log, every evidence item, the evidence brief, a report snapshot, and the post-mortem once resolved |
+
+The right sidebar shows the **owner** (and an optional commander, added with **+ Add commander**), service, **status page** state with **Post update**, linked **alerts**, **similar incidents** (only when there are matches), and start time, acknowledgement, MTTA, and MTTR. Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
 ![Incident Queue](/screenshots/sre-incidents-queue.png)
 
 ## Incident Workspace
@@ -118,7 +132,9 @@ Assignments, acknowledgements, status changes, and resolution all appear on the 
 
 ## Notifications
 
-Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, and when it is **resolved**.
+Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, **reopens**, and when it is **resolved**.
+
+- Incidents opened by a monitor or job alert do not repeat the alert in its channels: the alert (and its recovery) already went there. Opening and automatic resolution therefore post nothing extra to those channels; assignment, acknowledgement, AI findings, reopening, and manual resolution do. When a recovered incident was acknowledged, only its assignee is emailed.
 
 - The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
 - Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
@@ -130,7 +146,7 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 
 | Stage | Who | Action |
 |---|---|---|
-| **Triage** | Responder / Supercheck | Select **Investigate** on an alert signal or create an incident manually. Automatic correlation depends on administrator configuration |
+| **Triage** | Responder / Supercheck | An incident opens automatically from an alert (or create one manually). AI triage and correlation depend on administrator configuration |
 | **Investigate** | AI SRE agent | Reads native evidence and authorized connectors, then generates cited hypotheses |
 | **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
 | **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |

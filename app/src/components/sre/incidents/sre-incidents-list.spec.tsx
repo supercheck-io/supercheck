@@ -191,7 +191,7 @@ describe("SreIncidentsList", () => {
       />,
     );
     fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
-    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
@@ -226,7 +226,7 @@ describe("SreIncidentsList", () => {
   it("shows the empty state with setup links when there are no incidents", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} />);
     expect(screen.getByTestId("incidents-first-run")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/alerts");
+    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/notifications");
     expect(screen.getByRole("heading", { name: "No incidents" })).toBeInTheDocument();
   });
 
@@ -272,7 +272,7 @@ describe("SreIncidentsList", () => {
         { name: /Status/ },
       ),
     );
-    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
