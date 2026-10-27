@@ -60,7 +60,7 @@ function variableGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValu
   if (!filterValue) return true;
   const search = String(filterValue).toLowerCase();
   // Use default columns for filtering
-  const columns = ["key", "description", "value"];
+  const columns = ["key", "description", "value", "createdBy"];
   const result = columns.some((id: string) => {
     const value = row.getValue(id);
     if (typeof value === "string" || typeof value === "number") {
@@ -178,7 +178,7 @@ export function DataTable<TData, TValue>({
     globalFilterFn: variableGlobalFilterFn,
     meta: {
       ...meta,
-      globalFilterColumns: ["key", "description", "value"],
+      globalFilterColumns: ["key", "description", "value", "createdBy"],
     } as ExtendedTableMeta<TData>,
   });
 

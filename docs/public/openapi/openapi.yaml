@@ -7402,6 +7402,12 @@ components:
         createdBy:
           type: string
           nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -7467,12 +7473,6 @@ components:
           items:
             type: string
           description: Tag names.
-        createdByName:
-          type: string
-          nullable: true
-        createdByImage:
-          type: string
-          nullable: true
         externalId:
           type: string
           nullable: true

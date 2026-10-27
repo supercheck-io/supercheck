@@ -10750,6 +10750,14 @@
             "type": "string",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -10837,14 +10845,6 @@
               "type": "string"
             },
             "description": "Tag names."
-          },
-          "createdByName": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdByImage": {
-            "type": "string",
-            "nullable": true
           },
           "externalId": {
             "type": "string",
