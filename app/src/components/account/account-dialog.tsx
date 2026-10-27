@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { authClient, useSession } from "@/utils/auth-client";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -101,10 +101,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Avatar className="h-16 w-16 rounded-full" data-testid="account-avatar">
-          <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
-          <AvatarFallback className="rounded-full text-lg">{user?.name?.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <UserAvatar name={user?.name || user?.email} image={user?.image} className="h-16 w-16" data-testid="account-avatar" />
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={photoBusy || impersonating} onClick={() => fileInput.current?.click()}>
             Change photo

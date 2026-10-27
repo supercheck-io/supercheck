@@ -218,6 +218,7 @@ export type SreIncidentDetail = {
     acknowledgedByName: string | null;
     commanderUserId: string | null;
     commanderName: string | null;
+    commanderImage: string | null;
     postmortem: SrePostmortem | null;
   };
   linkedAlerts: Array<{
@@ -851,6 +852,7 @@ export async function getSreIncidentDetails(
         acknowledgedByName: acker.name,
         commanderUserId: sreIncidents.commanderUserId,
         commanderName: commander.name,
+        commanderImage: commander.image,
         mitigatedAt: sreIncidents.mitigatedAt,
         resolutionSummary: sreIncidents.resolutionSummary,
         createdAt: sreIncidents.createdAt,

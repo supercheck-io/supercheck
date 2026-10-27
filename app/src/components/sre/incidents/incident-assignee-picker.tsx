@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { assignSreIncident } from "@/actions/sre-incident-lifecycle";
-import { IncidentPersonAvatar } from "@/components/sre/incidents/incident-person-avatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { UserAvatar, UserCell } from "@/components/ui/user-cell";
 import { useSreIncidentAssignees } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
@@ -28,6 +28,7 @@ export function IncidentAssigneePicker({
   incidentId,
   assigneeUserId,
   assigneeName,
+  assigneeImage,
   role = "assignee",
   label = "Assignee",
   canUpdate,
@@ -35,6 +36,7 @@ export function IncidentAssigneePicker({
   incidentId: string;
   assigneeUserId: string | null;
   assigneeName: string | null;
+  assigneeImage?: string | null;
   role?: "assignee" | "commander";
   label?: string;
   canUpdate: boolean;
@@ -50,10 +52,7 @@ export function IncidentAssigneePicker({
     return (
       <div className="space-y-1">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-2 text-sm">
-          <IncidentPersonAvatar name={assigneeName} className="h-5 w-5" />
-          {assigneeName ?? "Unassigned"}
-        </div>
+        <UserCell name={assigneeName} image={assigneeImage} avatarClassName="h-5 w-5" />
       </div>
     );
   }
@@ -96,7 +95,7 @@ export function IncidentAssigneePicker({
               const name = assigneeUserId ? (person?.name ?? assigneeName ?? "Assigned") : null;
               return (
                 <span className="flex items-center gap-2">
-                  <IncidentPersonAvatar name={name} image={person?.image} className="h-5 w-5" />
+                  <UserAvatar name={name} image={person?.image ?? assigneeImage} className="h-5 w-5" />
                   {name ?? "Unassigned"}
                 </span>
               );
@@ -107,7 +106,10 @@ export function IncidentAssigneePicker({
           <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
           {people.map((person) => (
             <SelectItem key={person.id} value={person.id}>
-              {person.name}
+              <span className="flex items-center gap-2">
+                <UserAvatar name={person.name} image={person.image} className="h-5 w-5" />
+                {person.name}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
 import { Moon, Sun, User, UserCog, Monitor } from "lucide-react";
@@ -57,13 +57,7 @@ export function NavUser() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button data-testid="user-menu" className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
-          <Avatar className="h-8 w-8 rounded-full">
-            <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
-            <AvatarFallback className="rounded-full">
-              {user?.name?.charAt(0).toUpperCase()}
-              {/* {user?.name?.charAt(1).toUpperCase()} */}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar name={user?.name || user?.email} image={user?.image} className="h-8 w-8" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>

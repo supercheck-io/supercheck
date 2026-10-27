@@ -8628,6 +8628,10 @@
               "email": {
                 "type": "string",
                 "nullable": true
+              },
+              "image": {
+                "type": "string",
+                "nullable": true
               }
             }
           }
@@ -9175,6 +9179,10 @@
             "nullable": true
           },
           "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
             "type": "string",
             "nullable": true
           },

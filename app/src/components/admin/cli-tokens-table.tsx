@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
+import { UserCell } from "@/components/ui/user-cell";
 import {
   Popover,
   PopoverContent,
@@ -78,6 +79,7 @@ interface CliToken {
   createdAt: string;
   lastRequest: string | null;
   createdByName: string | null;
+  createdByImage?: string | null;
 }
 
 interface CreatedToken {
@@ -422,9 +424,12 @@ export function CliTokensTable() {
           <DataTableColumnHeader column={column} title="Created by" />
         ),
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
-            {row.original.createdByName || "-"}
-          </span>
+          <UserCell
+            name={row.original.createdByName}
+            image={row.original.createdByImage}
+            emptyLabel="Unknown"
+            className="max-w-[180px]"
+          />
         ),
       },
       {

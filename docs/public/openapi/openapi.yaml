@@ -5895,6 +5895,9 @@ components:
             email:
               type: string
               nullable: true
+            image:
+              type: string
+              nullable: true
     AuditResponse:
       type: object
       properties:
@@ -6284,6 +6287,9 @@ components:
           format: date-time
           nullable: true
         createdByName:
+          type: string
+          nullable: true
+        createdByImage:
           type: string
           nullable: true
         createdAt:
