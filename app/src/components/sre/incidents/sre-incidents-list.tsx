@@ -32,6 +32,7 @@ import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filte
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { IncidentsFirstRunChecklist } from "@/components/sre/incidents/incidents-first-run-checklist";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -120,7 +121,6 @@ type IncidentSortKey =
   | "updatedAt";
 type SortDirection = "asc" | "desc";
 
-const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
 const severityTones: Record<SreIncidentListItem["severity"], TableBadgeTone> = {
   sev1: "danger",
@@ -254,7 +254,7 @@ export function SreIncidentsList({
   const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(12);
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
   const [isPending, startTransition] = useTransition();
 
   const resetForm = () => {
@@ -624,7 +624,7 @@ export function SreIncidentsList({
                   />
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={bodyRef}>
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
                     <TableCell
@@ -638,7 +638,7 @@ export function SreIncidentsList({
                   pagedIncidents.map((incident) => (
                     <TableRow
                       key={incident.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="h-13 cursor-pointer hover:bg-muted/50"
                       tabIndex={0}
                       onClick={() => router.push(`/incidents/${incident.id}`)}
                       onKeyDown={(event) => {
@@ -757,7 +757,7 @@ export function SreIncidentsList({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent side="top">
-                    {PAGE_SIZE_OPTIONS.map((option) => (
+                    {pageSizeOptions(pageSize).map((option) => (
                       <SelectItem key={option} value={`${option}`}>
                         {option}
                       </SelectItem>

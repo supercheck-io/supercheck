@@ -354,7 +354,7 @@ describe("SreIncidentsList", () => {
     expect(
       within(table).queryByRole("columnheader", { name: /Evidence/ }),
     ).not.toBeInTheDocument();
-    expect(within(table).getAllByRole("row")).toHaveLength(13);
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
     expect(within(table).getAllByRole("row")[1]).not.toHaveClass("h-[72px]");
 
     fireEvent.change(screen.getByPlaceholderText("Search incidents..."), {
