@@ -14,6 +14,10 @@ import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
 import { getSreConnectorLabel } from "@/components/sre/connectors/connector-catalog";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
+import {
+  isRetiredConnectorType,
+  retiredConnectorExplanation,
+} from "@/lib/sre/connectors/retired-connectors";
 
 type ConnectorTableMeta = {
   onSearch?: (connector: SreConnectorListItem) => void;
@@ -65,6 +69,14 @@ function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
     };
   }
 
+  if (isRetiredConnectorType(connectorType)) {
+    return {
+      label: "Unsupported",
+      tone: "danger" as const,
+      title: retiredConnectorExplanation(connectorType),
+    };
+  }
+
   if (connectorType === "mcp") {
     return { label: "Agent tools", tone: "success" as const };
   }
@@ -112,7 +124,11 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
           <TableBadge compact>
             {getSreConnectorLabel(connector.type)}
           </TableBadge>
-          <TableBadge tone={capability.tone} compact>
+          <TableBadge
+            tone={capability.tone}
+            compact
+            title={"title" in capability ? capability.title : undefined}
+          >
             {capability.label}
           </TableBadge>
         </div>
@@ -246,7 +262,9 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               )}
               <DropdownMenuItem
                 onClick={() => onValidate?.(connector)}
-                disabled={meta?.isValidating}
+                disabled={
+                  meta?.isValidating || isRetiredConnectorType(connector.type)
+                }
               >
                 Validate connector
               </DropdownMenuItem>

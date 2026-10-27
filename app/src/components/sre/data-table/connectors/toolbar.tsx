@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link2, Plus, Search } from "lucide-react";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
-import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
+import {
+  getSreConnectorLabel,
+  SRE_CONNECTOR_CATALOG,
+} from "@/components/sre/connectors/connector-catalog";
 
 interface ConnectorsToolbarProps<TData> {
   table: Table<TData>;
@@ -23,9 +26,14 @@ export function ConnectorsToolbar<TData>({
 }: ConnectorsToolbarProps<TData>) {
   const typeColumn = table.getColumn("type");
   const availableTypeValues = typeColumn?.getFacetedUniqueValues();
-  const typeOptions = SRE_CONNECTOR_CATALOG.filter(
-    ({ value }) => !availableTypeValues || availableTypeValues.has(value),
-  ).map(({ value, label }) => ({ value, label }));
+  const typeOptions = Array.from(
+    new Set([
+      ...SRE_CONNECTOR_CATALOG.map(({ value }) => value as string),
+      ...(availableTypeValues ? Array.from(availableTypeValues.keys()) : []),
+    ]),
+  )
+    .filter((value) => !availableTypeValues || availableTypeValues.has(value))
+    .map((value) => ({ value, label: getSreConnectorLabel(value) }));
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

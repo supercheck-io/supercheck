@@ -134,9 +134,17 @@ const evidenceSearchConnectorTypes = new Set([
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jira",
+  "confluence",
+  "notion",
 ]);
 
 const connectorSearchWindows = [
