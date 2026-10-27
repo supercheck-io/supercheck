@@ -1,9 +1,8 @@
 {
   "title": "Communicate",
-  "description": "Alerts, dashboards, and status pages",
+  "description": "Alerts, notification channels, and status pages",
   "icon": "Radio",
   "pages": [
-    "dashboard",
     "alerts",
     "status-pages"
   ]

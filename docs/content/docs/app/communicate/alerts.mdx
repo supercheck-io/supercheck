@@ -10,7 +10,7 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
-Channels live on the **Notifications** page in the sidebar. Alert signals and delivery history are on the **Alerts** tab of the **Incidents** page (`Incidents → Alerts`; switch to **History** for deliveries). Alerts are automatic: a check failed or recovered. Alerts that need a person open an incident.
+Channels live on the **Notifications** page in the sidebar. Alert signals and delivery history are on the **Alerts** tab of the **Incidents** page (`Incidents → Alerts`; switch to **History** for deliveries). Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Alert Workflow
 
@@ -36,7 +36,8 @@ sequenceDiagram
     end
     opt An enabled alert condition occurs
         Environment-->>You: Failure or recovery notification
-        You->>App: Open linked monitor or run
+        App-->>You: Incident opened (or joined) for the check
+        You->>App: Open linked monitor, run, or incident
     end
 ```
 
@@ -439,7 +440,7 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 
 ## Alert Signals
 
-Use **Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications remain in **History** so they do not create false incident noise.
+Use **Incidents → Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications are listed only in **History** (the toggle on the same tab).
 
 ![Alert Signals](/screenshots/sre-alert-signals.png)
 
@@ -455,7 +456,7 @@ From Signals, responders can:
 
 ## Alert History
 
-Track all alerts from **Alerts → History**:
+Track all alerts from **Incidents → Alerts → History**:
 
 ![Alert History](/screenshots/alert-history.png)
 

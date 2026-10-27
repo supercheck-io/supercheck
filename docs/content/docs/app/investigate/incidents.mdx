@@ -11,7 +11,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 | From | How |
 |---|---|
 | **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Incidents → Alerts**. Neither path starts a full AI investigation |
-| **Scratch** | In **Investigate → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
+| **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
 
 Both paths open the incident workspace.
 
@@ -21,20 +21,52 @@ In **Alert Settings**, the **Incidents** block controls this check:
 
 - **Open an incident when this alerts** (on by default).
 - **Severity**: *Auto* derives SEV1 to SEV4 from the alert, or pick a fixed level for new incidents.
-- **Resolve automatically on recovery if nobody acknowledged it** (on by default; needs recovery alerts on). When the check passes again, an unacknowledged incident resolves itself with a note. An acknowledged incident stays open, gets a *recovered* note, and its assignee is emailed so a person confirms and resolves it.
+- **Resolve automatically on recovery if nobody acknowledged it** (on by default). When the check passes again, an unacknowledged incident resolves itself with a note, even when recovery alerts are off or no channel is notified. An acknowledged incident stays open, gets a *recovered* note, and its assignee is emailed so a person confirms and resolves it.
 
 If the check fails again within 30 minutes of an automatic resolution, the same incident reopens instead of a new one opening.
 
-Incidents open even when AI is not configured. AI triage is optional and runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is set up.
+Incidents open even when AI is not configured. AI triage is optional and runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is set up. Self-hosted: `SRE_ENABLED` (default on) is all that opens incidents from alerts; `SRE_AUTOMATION_ENABLED` gates only the AI triage step.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
 ## Incident Queue
 
+Open **Incidents** in the sidebar. The page has two tabs: **Incidents** and **Alerts** (see [Alerts](/docs/app/communicate/alerts#alert-signals)). **Trends** and **New incident** are in the page header.
+
 The queue opens on **Active** incidents. Use the quick filters **Active**, **Assigned to me**, **Unassigned**, and **All**, or narrow by severity (`SEV1` through `SEV4`), status, service, or title.
 
 | Column | Shows |
 |---|---|
+| **#** | Incident number |
+| **Title**, **Severity**, **Status** | What happened and how urgent it is |
+| **Service** | The linked catalog service |
+| **Assignee** | The person responsible, or *Unassigned* |
+| **Age** | Time since detection (detection to resolution once resolved) |
+| **AI** | State of the latest AI investigation |
+
+![Incident Queue](/screenshots/sre-incidents-queue.png)
+
+### Statuses
+
+The queue and incident page show six statuses. Each maps from the stored incident status.
+
+| Status | Meaning | Stored status |
+|---|---|---|
+| **Triggered** | An alert opened the incident and nobody has acknowledged it | `triggered`, not acknowledged |
+| **Acknowledged** | Someone is on it | `triggered`, acknowledged |
+| **Investigating** | The team or the AI is looking for the cause | `investigating` |
+| **Fixing** | The cause is known and a fix is being prepared or applied | `identified`, `recommendations_ready`, `user_applying_fix` |
+| **Monitoring** | A fix is in place and you are watching it hold | `verifying` |
+| **Resolved** | The incident is over | `resolved` |
+
+The API, CLI, and MCP return the label as `statusLabel` next to the stored `status`. Status filters take the stored values.
+
+### Titles
+
+Incidents opened by an alert are titled `<target>: <alert type>`, for example *Checkout API: Monitor down* or *Nightly job: Job failed*.
+
+## Incident Workspace
+
 The page fits the window without a page scrollbar. The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **...** menu holds **Edit**, **Ask Copilot**, **Run investigation**, and **Investigation map**. Hover the info icons for a one-sentence explanation of each term.
 
 A progress line shows the six statuses: Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved.
@@ -46,19 +78,6 @@ A progress line shows the six statuses: Triggered, Acknowledged, Investigating, 
 | **Investigation details** panel | Run controls, hypotheses, the step log, every evidence item, the evidence brief, a report snapshot, and the post-mortem once resolved |
 
 The right sidebar shows the **owner** (and an optional commander, added with **+ Add commander**), service, **status page** state with **Post update**, linked **alerts**, **similar incidents** (only when there are matches), and start time, acknowledgement, MTTA, and MTTR. Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
-![Incident Queue](/screenshots/sre-incidents-queue.png)
-
-## Incident Workspace
-
-The header shows the incident number, title, severity, status, service, and when it opened, with **Ask Copilot**, **Edit incident**, **Acknowledge**, and **Resolve incident**. The page has three tabs:
-
-| Tab | Contents |
-|---|---|
-| **Overview** | The **AI summary** with hypotheses, the **post-mortem** once the incident is resolved, and the **timeline** with a box to post updates |
-| **Investigation** | Run or re-run the investigation, the **How I investigated** step log, and feedback on the whole run |
-| **Evidence** | Every evidence item for the incident, plus the **Evidence brief** to summarize or export it |
-
-The right sidebar shows the **assignee** and optional **commander**, service, linked alerts, **similar incidents**, the status-page link with **Publish update**, and timestamps with MTTA and MTTR. Open a tab directly with `?tab=investigation` or `?tab=evidence`.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
@@ -75,7 +94,7 @@ The summary card answers four questions in order.
 
 **Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs from before structured results, or runs whose output could not be validated, show a plain summary without hypotheses or a confidence rating.
 
-On the **Investigation** tab, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
+In the **Investigation details** panel, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
 
 ![Investigation Map](/screenshots/sre-investigation-map.png)
 
@@ -97,7 +116,7 @@ The sidebar lists up to five **resolved incidents from the last 180 days** in th
 
 ### Evidence
 
-The **Evidence** tab organizes observations from Supercheck checks and connected systems.
+The **Evidence** section of the panel organizes observations from Supercheck checks and connected systems.
 
 | Item | Contents |
 |---|---|
@@ -142,6 +161,16 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 - Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-written conclusions. An AI finding adds only a confidence label (*AI confidence: High* or *AI result: inconclusive*); open the incident to read the finding.
 - The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
 
+## How Alerts Become Incidents
+
+When a monitor or job alert fires, Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider. A delivery that fails still opens the incident.
+
+- **One incident per source.** While an incident for a monitor or job is open, further failures join it as linked alerts instead of opening another.
+- **Severity.** *Auto* derives SEV1 to SEV4 from the alert. A fixed level in the check's **Incidents** settings overrides it.
+- **Auto-resolve.** When the check recovers and *Resolve automatically on recovery if nobody acknowledged it* is on (the default), an unacknowledged incident resolves itself with a note. This does not depend on recovery alerts or on any channel being notified. An acknowledged incident stays open for a person to resolve.
+- **Reopen.** If the check fails again within 30 minutes of an automatic resolution, the same incident reopens.
+- **Channels.** Opening and automatic resolution post nothing new: the alert and recovery already went to the check's channels. See [Notifications](#notifications) below for what else is announced.
+
 ## Incident Lifecycle
 
 | Stage | Who | Action |
@@ -182,13 +211,13 @@ Select **Trends** in the queue to see metrics for the last 30 days.
 
 ## Copilot Assistance
 
-Open **Investigate → Copilot**, or select **Ask Copilot** on an incident to chat with that incident's evidence in scope. Suggested questions: *What changed before this started?*, *Have we seen this before?*, and *What should I check next?*. See [Copilot Chat](/docs/app/investigate/copilot) for modes, live sources, and limits.
+Open **Respond → Copilot**, or select **Ask Copilot** on an incident to chat with that incident's evidence in scope. Suggested questions: *What changed before this started?*, *Have we seen this before?*, and *What should I check next?*. See [Copilot Chat](/docs/app/investigate/copilot) for modes, live sources, and limits.
 
 ## Alerts vs. Incidents
 
 | Open | To |
 |---|---|
-| **Alerts** | Review failure signals, delivery history, and notification channels |
+| **Incidents → Alerts** | Review failure signals and delivery history. Channels are under **Notifications** |
 | **Incidents** | Investigate evidence, save findings, and record recovery |
 
 ## Permissions
