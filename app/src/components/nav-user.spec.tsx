@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 
 let mockMcpEnabled = false;
+beforeEach(() => { mockMcpEnabled = false; });
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ isMcpEnabled: mockMcpEnabled }) }));
 jest.mock("@/utils/auth-client", () => ({
   useSession: () => ({ data: { user: { name: "Ada", email: "ada@example.com", image: null } }, isPending: false }),
@@ -21,35 +22,31 @@ jest.mock("@/components/ui/dropdown-menu", () => {
   return {
     DropdownMenu: Pass, DropdownMenuContent: Pass, DropdownMenuLabel: Pass, DropdownMenuSeparator: () => <hr />,
     DropdownMenuTrigger: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-    DropdownMenuItem: ({ children, asChild, onClick, ...rest }: { children?: React.ReactNode; asChild?: boolean; onClick?: () => void; "data-testid"?: string }) =>
-      asChild ? <>{children}</> : <div role="menuitem" onClick={onClick} {...rest}>{children}</div>,
+    DropdownMenuItem: ({ children, asChild, onClick, onSelect, ...rest }: { children?: React.ReactNode; asChild?: boolean; onClick?: () => void; onSelect?: () => void; "data-testid"?: string }) =>
+      asChild ? <>{children}</> : <div role="menuitem" onClick={onClick ?? onSelect} {...rest}>{children}</div>,
   };
 });
 
+jest.mock("@/components/account/account-dialog", () => ({
+  AccountDialog: ({ open }: { open: boolean }) => (open ? <div role="dialog">Account dialog</div> : null),
+}));
+
+import { fireEvent } from "@testing-library/react";
 import { NavUser } from "./nav-user";
 
-describe("NavUser: Connected apps", () => {
-  const originalSourceUrl = process.env.NEXT_PUBLIC_SOURCE_URL;
-  beforeEach(() => {
-    mockMcpEnabled = false;
-    delete process.env.NEXT_PUBLIC_SOURCE_URL;
-  });
-  afterEach(() => {
-    if (originalSourceUrl === undefined) delete process.env.NEXT_PUBLIC_SOURCE_URL;
-    else process.env.NEXT_PUBLIC_SOURCE_URL = originalSourceUrl;
+describe("NavUser", () => {
+  it("opens the Account dialog from the menu", () => {
+    render(<NavUser />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("account-menu-item"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("links to Connected apps where the MCP server is enabled", () => {
+  it("no longer has separate Connected apps or Source code items", () => {
     mockMcpEnabled = true;
     render(<NavUser />);
-    const link = screen.getByTestId("connected-apps-link");
-    expect(link).toHaveAttribute("href", "/connected-apps");
-    expect(link).toHaveTextContent("Connected apps");
-  });
-
-  it("does not offer a page that says 'not enabled' when the MCP server is off", () => {
-    render(<NavUser />);
     expect(screen.queryByTestId("connected-apps-link")).not.toBeInTheDocument();
+    expect(screen.queryByText("Source code")).not.toBeInTheDocument();
   });
 
   it("keeps the rest of the menu unchanged", () => {
@@ -57,18 +54,5 @@ describe("NavUser: Connected apps", () => {
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByTestId("sign-out-button")).toBeInTheDocument();
     expect(screen.getByText("Theme")).toBeInTheDocument();
-  });
-
-  it("keeps corresponding source accessible from the profile menu", () => {
-    render(<NavUser />);
-    expect(screen.getByRole("link", { name: "Source code" }))
-      .toHaveAttribute("href", "https://github.com/supercheck-io/supercheck");
-  });
-
-  it("uses the deployment's source offer", () => {
-    process.env.NEXT_PUBLIC_SOURCE_URL = "https://example.com/source";
-    render(<NavUser />);
-    expect(screen.getByRole("link", { name: "Source code" }))
-      .toHaveAttribute("href", "https://example.com/source");
   });
 });

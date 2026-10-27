@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signOut } from "@/utils/auth-client";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +13,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
-import { Moon, Sun, User, Monitor, Plug, Code } from "lucide-react";
-import Link from "next/link";
-import { useAppConfig } from "@/hooks/use-app-config";
+import { Moon, Sun, User, UserCog, Monitor } from "lucide-react";
+import { AccountDialog } from "@/components/account/account-dialog";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 import { resetChatwootSession } from "@/components/support/chatwoot-widget";
 import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
@@ -26,7 +25,7 @@ export function NavUser() {
   const user = session?.user;
   const hasData = user !== undefined && user !== null;
   const { theme, setTheme } = useTheme();
-  const { isMcpEnabled } = useAppConfig();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const isMounted = useSyncExternalStore(
     () => () => {},
@@ -54,6 +53,7 @@ export function NavUser() {
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button data-testid="user-menu" className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
@@ -105,26 +105,15 @@ export function NavUser() {
           <span className="ml-auto">{theme === "light" && <span className="inline-block w-2 h-2 rounded-full bg-primary" />}</span>
         </DropdownMenuItem>
 
-        {isMcpEnabled && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/connected-apps" data-testid="connected-apps-link">
-                <Plug className="h-4 w-4 mr-2" />Connected apps
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
-
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href={process.env.NEXT_PUBLIC_SOURCE_URL || "https://github.com/supercheck-io/supercheck"} target="_blank" rel="noopener noreferrer">
-            <Code className="h-4 w-4 mr-2" />Source code
-          </a>
+        <DropdownMenuItem onSelect={() => setAccountOpen(true)} data-testid="account-menu-item">
+          <UserCog className="h-4 w-4 mr-2" />Account
         </DropdownMenuItem>
         <LeaveOrganizationDialog />
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
+    </>
   );
 }
