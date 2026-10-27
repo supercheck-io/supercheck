@@ -451,7 +451,7 @@ From Signals, responders can:
 - Search by target, message, type, source, or fingerprint.
 - Filter by severity or source.
 - Sort by signal, severity, source, or last seen time.
-- Select **Open incident** to go to the incident for that alert. Incidents open automatically when an alert fires, and resolve automatically on recovery if nobody acknowledged them (configurable per monitor or job under **Incidents** in Alert Settings). AI triage is optional and separate: administrators may enable it.
+- Select **Incident #N** to go to the incident a signal belongs to, or **Open incident** when it has none (for example when incidents are turned off for that monitor). Incidents open automatically when an alert fires, and resolve automatically on recovery if nobody acknowledged them (configurable per monitor or job under **Incidents** in Alert Settings). AI triage is optional and separate: administrators may enable it.
 - Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
 
 ## Alert History
@@ -464,6 +464,7 @@ Track all alerts from **Incidents → Alerts → History**:
 - Target (monitor or job name)
 - Notification channels used
 - Delivery status
+- The incident the alert belongs to, linked
 - Timestamp
 - Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
 
