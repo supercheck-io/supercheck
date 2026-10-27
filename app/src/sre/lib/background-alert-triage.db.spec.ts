@@ -267,3 +267,34 @@ it("opens one incident when a failure is delivered to several channels", async (
   await alert("monitor_recovery", minutes(5), { provider: "webhook", dedupKey: `monitor:${monitorId}` });
   expect((await incidents()).map((r) => r.status)).toEqual(["resolved"]);
 });
+
+it("joins an incident opened under the old webhook identity instead of opening a second one", async () => {
+  // Seed an open incident created before identities moved to source + type.
+  const [incident] = await mockDatabase
+    .insert(schema.sreIncidents)
+    .values({ organizationId: orgId, projectId, incidentNumber: 1, title: "Checkout API: Monitor Failure", severity: "sev2", status: "triggered", acknowledgedAt: minutes(1) })
+    .returning();
+  const [legacyEvent] = await mockDatabase
+    .insert(schema.sreAlertEvents)
+    .values({
+      organizationId: orgId,
+      projectId,
+      fingerprintHash: randomUUID(),
+      dedupKey: `monitor:${monitorId}`,
+      severity: "sev2",
+      status: "firing",
+      sourceType: "monitor",
+      sourceId: monitorId,
+      title: "Checkout API: Monitor Failure",
+      firedAt: minutes(0),
+    })
+    .returning();
+  await mockDatabase.insert(schema.sreIncidentAlerts).values({ incidentId: incident.id, alertEventId: legacyEvent.id, role: "trigger" });
+
+  await alert("monitor_failure", minutes(5));
+  expect(await incidents()).toHaveLength(1);
+
+  // Acknowledged, so recovery leaves a note; it must still find the legacy incident by title.
+  await alert("monitor_recovery", minutes(10));
+  expect(await states(incident.id)).toContain("recovered");
+});

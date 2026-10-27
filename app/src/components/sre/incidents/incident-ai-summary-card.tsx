@@ -172,7 +172,7 @@ export function IncidentAiSummaryCard({
           )
         )}
         {citations.length > 0 && !running && (
-          <div className="flex flex-wrap items-center gap-2" aria-label="Cited evidence">
+          <div className="flex flex-wrap items-center gap-2" aria-label={inconclusive ? "Reviewed evidence" : "Cited evidence"}>
             {citations.map((item) => (
               <EvidenceDetailsDialog key={item.id} item={item}>
                 <button

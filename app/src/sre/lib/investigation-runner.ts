@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, max, sql } from "drizzle-orm";
 
 import {
   sreEvidenceItems,
@@ -243,10 +243,19 @@ export async function executeSreIncidentInvestigation(
     // Native monitor/run/alert evidence is otherwise only stored by the evidence
     // brief; collect it here so the agent can see it. Best-effort and bounded.
     let collectedCount = 0;
-    const freshAfter = Date.now() - NATIVE_EVIDENCE_FRESH_MS;
-    if (!nativeEvidence.some((item) => new Date(item.createdAt).getTime() > freshAfter)) {
-      try {
-        // shortcut: the abandoned collection keeps running in the background after the timeout.
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const [{ latest } = { latest: null }] = await db
+      .select({ latest: max(sreEvidenceItems.createdAt) })
+      .from(sreEvidenceItems)
+      .where(and(
+        eq(sreEvidenceItems.incidentId, incident.id),
+        eq(sreEvidenceItems.organizationId, input.organizationId),
+        eq(sreEvidenceItems.projectId, input.projectId),
+        eq(sreEvidenceItems.sourceType, "native"),
+      ));
+      if (!latest || new Date(latest).getTime() < Date.now() - NATIVE_EVIDENCE_FRESH_MS) {
         const persisted = await Promise.race([
           persistNativeEvidence({
             organizationId: input.organizationId,
@@ -254,10 +263,14 @@ export async function executeSreIncidentInvestigation(
             incidentId: incident.id,
             userId: input.userId,
             investigationRunId,
+            signal: abort.signal,
           }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("native evidence collection timed out")), NATIVE_EVIDENCE_TIMEOUT_MS).unref?.(),
-          ),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              abort.abort();
+              reject(new Error("native evidence collection timed out"));
+            }, NATIVE_EVIDENCE_TIMEOUT_MS);
+          }),
         ]);
         collectedCount = persisted?.createdCount ?? 0;
         if (collectedCount > 0) {
@@ -269,9 +282,11 @@ export async function executeSreIncidentInvestigation(
             limit: 8,
           });
         }
-      } catch (error) {
-        investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
       }
+    } catch (error) {
+      investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
+    } finally {
+      clearTimeout(timer);
     }
     const evidenceCount = Number(incident.evidenceCount ?? 0) + collectedCount;
     const storedEvidenceContext = [...nativeEvidence, ...connectorEvidence].map(

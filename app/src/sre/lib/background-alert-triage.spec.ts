@@ -14,6 +14,7 @@ jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn()
 jest.mock("@/lib/sre/incident-lifecycle", () => ({
   applySourceRecovery: jest.fn(),
   reopenRecentlyAutoResolved: jest.fn(),
+  findOpenIncidentForSource: jest.fn().mockResolvedValue(null),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));

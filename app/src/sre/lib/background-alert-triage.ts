@@ -29,6 +29,7 @@ import {
 import {
   announceSystemTransition,
   applySourceRecovery,
+  findOpenIncidentForSource,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
@@ -109,6 +110,8 @@ function deriveSeverity(type: string, message: string): SreSeverity {
 
   return "sev4";
 }
+
+const RECOVERABLE_FAILURE_TYPES = new Set(["monitor_failure", "job_failed", "job_timeout"]);
 
 function deriveAlertStatus(type: string): SreAlertStatus {
   const normalizedType = type.toLowerCase();
@@ -335,6 +338,25 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         alreadyTriaged: reopened.alreadyTriaged,
         reopenedAssigneeUserId: reopened.assigneeUserId,
       };
+    }
+
+    // A recoverable failure joins the source's open incident even under a different identity.
+    if (RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+      const openForSource = await findOpenIncidentForSource(tx, { organizationId, projectId, sourceType, sourceId });
+      if (openForSource) {
+        await tx
+          .insert(sreIncidentAlerts)
+          .values({ incidentId: openForSource.id, alertEventId: alertEvent.id, role: "related", createdAt: new Date() })
+          .onConflictDoNothing();
+        return {
+          skipped: false as const,
+          organizationId,
+          projectId,
+          alertEventId: alertEvent.id,
+          incidentId: openForSource.id,
+          alreadyTriaged: Boolean(openForSource.triageInvestigationRunId),
+        };
+      }
     }
 
     if (isSreAlertCorrelationEnabled()) {

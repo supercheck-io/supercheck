@@ -71,3 +71,22 @@ it("persists native evidence for a monitor-alert incident and is idempotent", as
   const [{ count: after }] = await client`SELECT count(*)::int AS count FROM sre_evidence_items WHERE incident_id = ${incidentId}`;
   expect(after).toBe(before);
 });
+
+it("creates no duplicates when two collections run concurrently", async () => {
+  await client`DELETE FROM sre_evidence_items WHERE incident_id = ${incidentId}`;
+  const scope = { organizationId: org, projectId: project, incidentId, userId: null };
+  const [a, b] = await Promise.all([persistNativeEvidence(scope), persistNativeEvidence(scope)]);
+  expect(a.createdCount + b.createdCount).toBe(a.rows.length);
+  const [{ total, distinct }] = await client`SELECT count(*)::int AS total, count(DISTINCT citation_result_hash)::int AS distinct FROM sre_evidence_items WHERE incident_id = ${incidentId}`;
+  expect(total).toBe(distinct);
+});
+
+it("inserts nothing when already aborted", async () => {
+  await client`DELETE FROM sre_evidence_items WHERE incident_id = ${incidentId}`;
+  const controller = new AbortController();
+  controller.abort();
+  const result = await persistNativeEvidence({ organizationId: org, projectId: project, incidentId, userId: null, signal: controller.signal });
+  expect(result.createdCount).toBe(0);
+  const [{ count }] = await client`SELECT count(*)::int AS count FROM sre_evidence_items WHERE incident_id = ${incidentId}`;
+  expect(count).toBe(0);
+});

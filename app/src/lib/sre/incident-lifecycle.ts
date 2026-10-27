@@ -646,6 +646,26 @@ export async function applySourceRecovery(
 }
 
 /**
+ * The open incident already tracking this source's up/down failure, if any. A new
+ * failure joins it even when its alert identity differs (for example incidents
+ * opened before identities moved to source plus type).
+ */
+export async function findOpenIncidentForSource(tx: Executor, source: SourceRef) {
+  const [open] = await tx
+    .select({
+      id: sreIncidents.id,
+      triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")))
+    .orderBy(desc(sreIncidents.createdAt))
+    .limit(1);
+  return open ?? null;
+}
+
+/**
  * Reopen the source's most recent trigger incident when it was auto-resolved
  * within the reopen window and no other incident for the source is open.
  */
