@@ -397,30 +397,6 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
   };
 }
 
-function validationUrl(
-  connectorType: SreConnectorType,
-  endpointUrl: string | null,
-) {
-  if (connectorType === "github") {
-    return "https://api.github.com/rate_limit";
-  }
-
-  if (!endpointUrl) {
-    return null;
-  }
-
-  switch (connectorType) {
-    case "grafana":
-      return `${endpointUrl}/api/search?limit=1`;
-    case "prometheus":
-      return `${endpointUrl}/api/v1/status/runtimeinfo`;
-    case "kubernetes":
-      return `${endpointUrl}/version`;
-    default:
-      return endpointUrl;
-  }
-}
-
 function buildConnectorDefinition(
   row: typeof externalConnectors.$inferSelect,
   scopedServiceIds: string[],
@@ -1211,7 +1187,6 @@ export async function validateSreConnector(
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
-      const url = validationUrl(row.type, endpointUrl);
 
       if (isDirectValidationConnectorType(row.type)) {
         const credential = credentialRow
@@ -1233,45 +1208,10 @@ export async function validateSreConnector(
           (validation.status === "valid"
             ? "Connector validation passed"
             : "Connector validation failed");
-      } else if (!url && row.type !== "github") {
+      } else {
+        // Only rows of a removed type can reach this; never send them anywhere.
         status = "policy_blocked";
-        outputSummary =
-          "Connector endpoint URL is required for direct validation";
-      } else if (url) {
-        const credential = credentialRow
-          ? decryptConnectorCredential(credentialRow.encryptedCredential, {
-              organizationId,
-              projectId: project.id,
-              connectorId: row.id,
-            })
-          : null;
-
-        const secret = credentialSecret(credential);
-        const response = await fetch(url, {
-          method: "GET",
-          headers: secret
-            ? {
-                Authorization: `Bearer ${secret}`,
-                Accept: "application/json",
-              }
-            : { Accept: "application/json" },
-          signal: AbortSignal.timeout(
-            Math.min(
-              (normalizeOutputLimits(row.outputLimits).maxSeconds || 10) * 1000,
-              30_000,
-            ),
-          ),
-          cache: "no-store",
-          redirect: "error",
-        });
-
-        if (response.status === 401 || response.status === 403) {
-          status = "invalid_credentials";
-          outputSummary = `Connector credential rejected with HTTP ${response.status}`;
-        } else if (!response.ok) {
-          status = "unreachable";
-          outputSummary = `Connector validation failed with HTTP ${response.status}`;
-        }
+        outputSummary = "This connector type is not supported";
       }
     }
 

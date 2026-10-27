@@ -92,9 +92,7 @@ type SreEvidenceSourceType =
   | "gcp_monitoring"
   | "azure_monitor"
   | "splunk"
-  | "slack"
-  | "mcp"
-  | "webhook";
+  | "mcp";
 type SreEvidenceType = "metric" | "log" | "trace" | "artifact" | "deployment" | "event" | "document" | "topology";
 type SreAgentType = "triage" | "investigation" | "background" | "sre_ai";
 type SreRunStatus = "running" | "completed" | "failed" | "aborted" | "timed_out";

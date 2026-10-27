@@ -83,9 +83,7 @@ type SreEvidenceSourceType =
   | 'gcp_monitoring'
   | 'azure_monitor'
   | 'splunk'
-  | 'slack'
-  | 'mcp'
-  | 'webhook';
+  | 'mcp';
 type SreEvidenceType =
   | 'metric'
   | 'log'
