@@ -70,6 +70,14 @@ describe("POST /api/alerts/history", () => {
     expect(enqueueSreAlertTriageJob).not.toHaveBeenCalled();
   });
 
+  it("requires incident update rights as well as monitor manage", async () => {
+    const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+    checkPermissionWithContext.mockImplementation((resource: string) => resource === "monitor");
+    expect((await post({ monitorId: MONITOR_ID })).status).toBe(403);
+    expect(checkPermissionWithContext).toHaveBeenCalledWith("sre_incident", "update", expect.anything());
+    checkPermissionWithContext.mockImplementation(() => true);
+  });
+
   it("requires the id that matches targetType", async () => {
     mockInsert();
     expect((await post({ jobId: MONITOR_ID })).status).toBe(400);

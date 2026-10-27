@@ -242,7 +242,10 @@ export async function POST(request: NextRequest) {
     }
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    const canManage = checkPermissionWithContext('monitor', 'manage', projectContext);
+    // A recorded alert can open or resolve an incident, so it needs incident rights too.
+    const canManage =
+      checkPermissionWithContext('monitor', 'manage', projectContext) &&
+      checkPermissionWithContext('sre_incident', 'update', projectContext);
 
     if (!canManage) {
       return NextResponse.json(
