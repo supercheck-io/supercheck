@@ -283,6 +283,26 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       spy.mockRestore();
     });
 
+    it('does not count an abort that failed to persist', async () => {
+      await open('abort-fails');
+      const close = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(new Error('poison'));
+      const abort = jest
+        .spyOn(MonitorCycleService.prototype, 'abortCycle')
+        .mockRejectedValue(new Error('db down'));
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'abort-fails',
+        { failures: 19, billingFailures: 0, nextAt: 0 },
+      );
+      const before = processor.snapshot().abortedCycles;
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect(processor.snapshot().abortedCycles).toBe(before);
+      expect((await cycle('abort-fails')).status).toBe('open');
+      close.mockRestore();
+      abort.mockRestore();
+    });
+
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {
       await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)
         SELECT 'bulk-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamp, ${deadline.toISOString()}::timestamp, '["eu"]'::jsonb, 'any', 100

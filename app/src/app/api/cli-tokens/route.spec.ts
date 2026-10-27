@@ -55,7 +55,7 @@ describe("POST /api/cli-tokens", () => {
     expect(res.status).toBe(201);
     const json = await res.json();
     expect(json.token).toMatchObject({ id: "k1", key: "sck_live_secret", enabled: true, expiresAt: "2026-11-20T00:00:00.000Z" });
-    expect(mockIssue).toHaveBeenCalledWith({ userId: "u1", organizationId: "o1", projectId: "p1", name: "CI", expiresInSeconds: 86400 });
+    expect(mockIssue).toHaveBeenCalledWith({ userId: "u1", organizationId: "o1", projectId: "p1", name: "CI", expiresInSeconds: 86400, notAfter: null });
     expect(JSON.stringify(mockAudit.mock.calls)).not.toContain("sck_live_secret");
     expect(mockAudit.mock.calls[0][0]).toMatchObject({ action: "cli_token_created", resourceId: "k1" });
   });
@@ -120,6 +120,14 @@ describe("POST /api/cli-tokens", () => {
     mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: null });
     await POST(req({ name: "b", expiresIn: 365 * 86400 }));
     expect(mockIssue.mock.calls.map(([input]) => input.expiresInSeconds)).toEqual([undefined, 365 * 86400]);
+  });
+
+  it("passes the parent expiry as a write-time bound and maps an expired parent to 401", async () => {
+    const parentExpiry = new Date(Date.now() + 86400_000);
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: parentExpiry });
+    mockIssue.mockResolvedValueOnce({ ok: false, reason: "parent_expired" });
+    expect((await POST(req({ name: "a" }))).status).toBe(401);
+    expect(mockIssue.mock.calls[0][0]).toMatchObject({ notAfter: parentExpiry });
   });
 
   it("returns a generic 500 without leaking internals", async () => {

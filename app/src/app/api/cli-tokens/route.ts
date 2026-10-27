@@ -158,8 +158,12 @@ export async function POST(request: NextRequest) {
       projectId: context.project.id,
       name,
       expiresInSeconds: expiresIn,
+      notAfter: context.isCliAuth ? context.cliTokenExpiresAt : null,
     });
 
+    if (!issued.ok && issued.reason === "parent_expired") {
+      return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
+    }
     if (!issued.ok) {
       return issued.reason === "limit_reached"
         ? NextResponse.json(

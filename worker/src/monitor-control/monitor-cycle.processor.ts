@@ -272,8 +272,16 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         billingFailures >= BILLING_GIVE_UP_AFTER
       ) {
         this.failing.delete(id);
+        try {
+          await this.cycles.abortCycle(id);
+        } catch (abortError) {
+          // Left open, so the next pass retries the closure from scratch.
+          this.logger.error(
+            `Aborting cycle ${id} failed: ${describeError(abortError)}`,
+          );
+          return;
+        }
         this.state.abortedCycles += 1;
-        await this.cycles.abortCycle(id).catch(() => undefined);
         this.logger.error(
           `Aborted cycle ${id} after ${failures + billingFailures} failed closures; investigate the cause above`,
         );

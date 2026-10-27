@@ -42,6 +42,7 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
     address: '93.184.216.34',
     family: 4,
   })),
+  vettedLookup: jest.fn(async () => jest.fn()),
 }));
 
 // Unit tests must not dial the internet. `net` and `tls` are replaced with
@@ -54,7 +55,10 @@ jest.mock('net', () => {
 
   class FakeSocket extends EventEmitter {
     destroy = jest.fn();
-    connect = jest.fn((_port: number, _host: string, callback?: () => void) => {
+    // Accepts both connect(port, host, cb) and connect(options, cb).
+    connect = jest.fn((...args: unknown[]) => {
+      const callback = args.find((a) => typeof a === 'function') as
+        (() => void) | undefined;
       process.nextTick(() => {
         if (state.behavior === 'connect') callback?.();
         else
@@ -115,7 +119,10 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
-import { resolvePublicAddress } from '../common/utils/pinned-monitor-request';
+import {
+  resolvePublicAddress,
+  vettedLookup,
+} from '../common/utils/pinned-monitor-request';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
@@ -862,10 +869,7 @@ describe('MonitorService', () => {
         config: { ...mockJobData.config, port: 5432 },
       });
 
-      expect(resolvePublicAddress).toHaveBeenCalledWith(
-        'db.example.com',
-        false,
-      );
+      expect(vettedLookup).toHaveBeenCalledWith('db.example.com', false);
       expect(result).toMatchObject({ status: 'up', isUp: true });
     });
 
@@ -874,7 +878,7 @@ describe('MonitorService', () => {
       async (type) => {
         netState.behavior = 'connect';
         jest
-          .mocked(resolvePublicAddress)
+          .mocked(vettedLookup)
           .mockRejectedValue(
             new Error('Access to private or reserved networks is not allowed'),
           );
@@ -890,10 +894,7 @@ describe('MonitorService', () => {
         expect(result?.details?.errorMessage).toContain(
           'private or reserved networks',
         );
-        jest.mocked(resolvePublicAddress).mockResolvedValue({
-          address: '93.184.216.34',
-          family: 4,
-        });
+        jest.mocked(vettedLookup).mockResolvedValue(jest.fn());
       },
     );
 
@@ -935,7 +936,7 @@ describe('MonitorService', () => {
       const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
       tls.connect.mockClear();
       jest
-        .mocked(resolvePublicAddress)
+        .mocked(vettedLookup)
         .mockRejectedValueOnce(
           new Error('Access to private or reserved networks is not allowed'),
         );
@@ -943,21 +944,21 @@ describe('MonitorService', () => {
         'https://rebind.example.com',
         {},
       );
-      expect(resolvePublicAddress).toHaveBeenCalledWith(
-        'rebind.example.com',
-        false,
-      );
+      expect(vettedLookup).toHaveBeenCalledWith('rebind.example.com', false);
       expect(result.isUp).toBe(false);
       expect(tls.connect).not.toHaveBeenCalled();
     });
 
-    it('dials the vetted address but keeps the hostname for SNI', async () => {
+    it('dials only vetted addresses but keeps the hostname for SNI', async () => {
       const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
       tls.connect.mockClear();
+      const lookup = jest.fn();
+      jest.mocked(vettedLookup).mockResolvedValueOnce(lookup);
       await service['executeSslCheck']('https://example.com', {});
       expect(tls.connect.mock.calls[0][0]).toMatchObject({
-        host: '93.184.216.34',
+        host: 'example.com',
         servername: 'example.com',
+        lookup,
       });
     });
 

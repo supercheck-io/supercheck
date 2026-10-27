@@ -12,6 +12,7 @@ jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
 import {
   requestPinnedMonitorTarget,
   resolvePublicAddress,
+  vettedLookup,
 } from './pinned-monitor-request';
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
@@ -261,5 +262,51 @@ describe('resolvePublicAddress', () => {
       family: 4,
     });
     expect(mockLookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('vettedLookup', () => {
+  beforeEach(() => mockLookup.mockReset());
+
+  it('falls back across vetted addresses without another DNS lookup', async () => {
+    const { createServer: createTcpServer, connect } = await import('node:net');
+    const server = createTcpServer((socket) => socket.end());
+    await new Promise<void>((resolve) => server.listen(0, '::1', resolve));
+    const { port } = server.address() as { port: number };
+    mockLookup.mockResolvedValue([
+      // Refused (the server listens on ::1 only), then the reachable address.
+      { address: '127.0.0.1', family: 4 },
+      { address: '::1', family: 6 },
+    ] as never);
+    try {
+      const lookup = await vettedLookup('dual.example.com', true);
+      await new Promise<void>((resolve, reject) => {
+        const socket = connect({
+          host: 'dual.example.com',
+          port,
+          lookup,
+          autoSelectFamily: true,
+        });
+        socket.once('connect', () => {
+          expect(socket.remoteAddress).toBe('::1');
+          socket.destroy();
+          resolve();
+        });
+        socket.once('error', reject);
+      });
+      expect(mockLookup).toHaveBeenCalledTimes(1);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('refuses before connecting when any resolved address is private', async () => {
+    mockLookup.mockResolvedValue([
+      { address: '93.184.216.34', family: 4 },
+      { address: '10.0.0.5', family: 4 },
+    ] as never);
+    await expect(vettedLookup('mixed.example.com', false)).rejects.toThrow(
+      'private or reserved networks',
+    );
   });
 });

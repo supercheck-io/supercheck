@@ -8,7 +8,7 @@ import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/mi
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { capExpiryToCliToken } from "@/lib/auth/cli-token-expiry";
+import { capExpiryToCliToken, clampExpiry } from "@/lib/auth/cli-token-expiry";
 import crypto from "crypto";
 
 const logger = createLogger({ module: 'api-keys' });
@@ -237,11 +237,11 @@ export async function POST(
     const apiKeyHash = hashApiKey(apiKeyValue); // Hash the key for storage
     
     const now = new Date();
-    let expiresAt = null;
-    
-    if (expiresIn && expiresIn > 0) {
-      expiresAt = new Date(now.getTime() + expiresIn * 1000);
-      
+    let expiresAt = expiresIn && expiresIn > 0 ? new Date(now.getTime() + expiresIn * 1000) : null;
+    // Re-clamp to the parent's absolute expiry: the queries above take time.
+    expiresAt = clampExpiry(expiresAt, authCtx.isCliAuth ? authCtx.cliTokenExpiresAt : null);
+
+    if (expiresAt) {
       // Additional validation: ensure expiry is in the future
       if (expiresAt <= now) {
         return NextResponse.json(
