@@ -45,6 +45,8 @@ import {
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
+import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
+import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
 import { db } from "@/utils/db";
 
 const MAX_TOOL_ROWS = 10;
@@ -66,6 +68,11 @@ const supportedLiveConnectorTypes = [
   "jira",
   "confluence",
   "notion",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
 ] as const;
 type SupportedLiveConnectorType = (typeof supportedLiveConnectorTypes)[number];
 
@@ -187,6 +194,7 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
     ]),
     region: credentialString(value, ["region", "awsRegion", "aws_region"]),
     email: credentialString(value, ["email", "username"]),
+    fields: flatCredentialFields(value),
   };
 }
 
@@ -1182,7 +1190,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
     }),
     searchLiveConnectorEvidence: tool({
       description:
-        "Search one live read-only connector for the incident service or a selected project service. Staged log searches require an active investigation run; in chat, omit stage and use ordinary bounded queries. During an investigation, progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function. Incident-scoped results are persisted; general-chat results are temporary. Private Agent searches wait for a bounded server-authorized result; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
+        "Search one live read-only connector for the incident service or a selected project service. Staged log searches require an active investigation run; in chat, omit stage and use ordinary bounded queries. During an investigation, progress through statistics, sample, signatures, temporal_context, then correlation. Loki statistics require a LogQL metric function; Splunk statistics need a stats/timechart/top command and New Relic statistics an NRQL aggregation. Provider dialects: SPL (Splunk), NRQL (New Relic), KQL or metrics: (Azure Monitor), logs:/metrics: filters (Google Cloud), service:/trace: (Jaeger). Query-language rejections are retryable; fix the query. Incident-scoped results are persisted; general-chat results are temporary. Private Agent searches wait for a bounded server-authorized result; if queued is true, do not treat the pending search as evidence. For Kubernetes, never infer a label selector from a service name: use * with an explicit namespace until a returned pod or stored evidence verifies the label mapping. If a response has error=true, do not call the same connector again during this run; report the failure or use a different source.",
       inputSchema: connectorSearchInputSchema,
       execute: async (input) => {
         if (connectorFailureGuard.hasFailed(input.connectorId)) {
@@ -1201,7 +1209,19 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
 
         try {
           return await searchIncidentLiveConnectorEvidence(scope, input);
-        } catch {
+        } catch (error) {
+          if (error instanceof ConnectorQueryRejectedError) {
+            // A query-language mistake is fixable; keep the connector usable.
+            return {
+              executionMode: "error" as const,
+              queued: false,
+              evidence: [],
+              truncated: false,
+              error: true,
+              retryable: true,
+              message: `The connector rejected the query: ${error.message}`,
+            };
+          }
           connectorFailureGuard.markFailed(input.connectorId);
           return {
             executionMode: "error" as const,

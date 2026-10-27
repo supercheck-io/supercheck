@@ -33,6 +33,7 @@ flowchart LR
 - Jira, Confluence, and Notion are read-only knowledge connectors (Notion is direct only; Jira and Confluence also run on a Private Agent in `worker/src/private-agent/private-agent-knowledge.ts`). Page text is redacted, size-capped, fenced as untrusted document evidence, and fetched for top results only. Slack, Teams, Webhook, Kafka, and RabbitMQ are not evidence sources; unsupported records show as Unsupported and must be disableable.
 - Cancellation and timeout propagate through model streams, tools, polling, persistence, and UI state.
 - Retry only transient/idempotent operations; prevent duplicate messages, actions, tool records, usage events, and charges.
+- Observability providers (Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor) live in `app/src/lib/sre/connectors/providers/` and are copied to `worker/src/private-agent/providers/`; edit the app files and run `npm run sync:sre-providers` in `app/`. Queries are read-only (reject Splunk write commands, non-SELECT NRQL, KQL control commands) and always time-windowed. New Relic, Google Cloud, and Azure call fixed vendor hosts.
 - Provider fallback (including deterministic evidence-brief fallbacks) must preserve tenant scope, safety policy, configured model selection, usage accounting, and error semantics.
 - Redact secrets and sensitive telemetry before model invocation and persisted transcripts.
 

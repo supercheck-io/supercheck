@@ -55,6 +55,11 @@ export const DIRECT_VALIDATION_CONNECTOR_TYPES = [
   "jira",
   "confluence",
   "notion",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
 ] as const satisfies readonly ConnectorType[];
 
 export const PRIVATE_AGENT_CONNECTOR_TYPES = [
@@ -70,6 +75,11 @@ export const PRIVATE_AGENT_CONNECTOR_TYPES = [
   "aws_cloudwatch",
   "jira",
   "confluence",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
 ] as const satisfies readonly ConnectorType[];
 
 // These APIs can be intentionally unauthenticated inside a private network.
@@ -80,6 +90,7 @@ export const OPTIONAL_CREDENTIAL_CONNECTOR_TYPES = [
   "grafana",
   "loki",
   "tempo",
+  "jaeger",
 ] as const satisfies readonly ConnectorType[];
 
 export type SreConnectorType = (typeof SRE_CONNECTOR_TYPES)[number];

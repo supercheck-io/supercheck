@@ -16,10 +16,11 @@ Choose one of these in **Add connector**.
 
 | Category | Providers |
 |---|---|
-| **Metrics and dashboards** | Prometheus, Grafana, AWS CloudWatch |
+| **Metrics and dashboards** | Prometheus, Grafana, AWS CloudWatch, Google Cloud Monitoring, Azure Monitor |
 | **Operational events** | Datadog |
-| **Logs and search** | Loki, Elasticsearch / OpenSearch |
-| **Distributed traces** | Grafana Tempo |
+| **Logs and search** | Loki, Elasticsearch / OpenSearch, Splunk, Google Cloud Logging, Azure Log Analytics |
+| **Distributed traces** | Grafana Tempo, Jaeger |
+| **Application performance (NRQL)** | New Relic |
 | **Cloud and orchestration** | Kubernetes |
 | **Error tracking** | Sentry |
 | **Code and deployments** | GitHub, GitLab |
@@ -52,7 +53,7 @@ Plain text queries search by text. Jira adds the investigation time window to pl
 | An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector |
 | An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it. Otherwise deploy an agent in that network |
 
-Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jira, and Confluence. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, and Confluence. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
 
 | Mode | Endpoint rules |
 |---|---|
@@ -150,6 +151,15 @@ Each provider uses its own read-only query language.
 | **Prometheus** | PromQL, such as `sum(rate(http_requests_total{status=~"5.."}[5m]))` |
 | **Loki** | LogQL with a stream selector, such as `{service="checkout"} \|= "error"` |
 | **Kubernetes** | `*` or a verified label selector, with an explicit namespace |
+| **Jaeger** | `service:checkout error:true minDuration:500ms`, `trace:<id>`, or `*` to list services |
+| **New Relic** | NRQL, such as `SELECT count(*) FROM Transaction WHERE appName = 'checkout' AND error IS true FACET name` |
+| **Splunk** | SPL, such as `index=main service="checkout" error \| stats count by sourcetype` |
+| **Google Cloud** | `logs: severity>=ERROR AND resource.labels.service_name="checkout"` or `metrics: metric.type="run.googleapis.com/request_count"` |
+| **Azure Monitor** | KQL, such as `AppExceptions \| summarize count() by ProblemId`, or `metrics: resource=<resource ID> names="Http5xx" agg=Total` |
+
+Every search is limited to the investigation time window. Supercheck adds the window for you: leave out `SINCE`/`UNTIL` in NRQL and `earliest`/`latest` in SPL, because they are replaced. Results are capped by the connector's row, size and time limits, and a truncated result is marked as such.
+
+Queries are read-only. Supercheck rejects Splunk commands that write, notify, run scripts or fan out (`delete`, `outputlookup`, `collect`, `sendemail`, `rest`, `map`, and similar), NRQL that is not a single `SELECT`/`FROM`/`SHOW` statement, and Azure KQL control commands that start with `.`.
 
 Kubernetes searches require a namespace. Grant the connector service account read-only access only to the namespaces under test. Never grant cluster-admin or write permissions.
 
@@ -167,6 +177,13 @@ Use dedicated, read-only credentials limited to the service scope.
 | **Sentry** | Read-only integration token restricted to relevant project IDs |
 | **Datadog** | API key plus application key with read-only event access for the correct Datadog site |
 | **AWS CloudWatch** | Access key ID and secret with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`. Prefer short-lived STS credentials and include the session token |
+| **Jaeger** | Jaeger has no built-in authentication. Put it behind a gateway and use a read-only bearer token, or leave the credential empty on a private network |
+| **New Relic** | A User API key from a user or service user with read-only access to the account, plus the numeric account ID. Choose `us` or `eu` for the data region. Ingest and license keys do not work |
+| **Splunk** | An authentication token for a user whose role has search capability and read access only to the indexes you need. Do not grant admin, delete, or lookup-write capabilities. Use the management endpoint, usually port 8089 |
+| **Google Cloud** | A service account JSON key with only `roles/monitoring.viewer` and `roles/logging.viewer` on the project. Supercheck exchanges it for a short-lived token and never uses the `token_uri` in the file |
+| **Azure Monitor** | An app registration (tenant ID, client ID, client secret) with `Monitoring Reader` on the resources and `Log Analytics Reader` on the workspace. Add the Log Analytics workspace ID to run KQL |
+
+New Relic, Google Cloud, and Azure Monitor call fixed vendor API hosts, so they have no endpoint URL to set. Their sign-in requests go only to the vendor's own hosts. Jaeger and Splunk use the endpoint you enter and follow the endpoint rules above.
 
 <Callout type="warn">
 Store credentials in the connector credential fields, not in prompts or endpoint URLs. Supercheck encrypts stored credentials and does not include them in AI prompts.

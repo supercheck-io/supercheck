@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+import { executeObservabilityProviderJob } from './providers/provider-executor';
 import { isIP } from 'node:net';
 import { executeKnowledgeJob } from './private-agent-knowledge';
 
@@ -34,6 +35,11 @@ const connectorJobSpecSchema = z.object({
     'aws_cloudwatch',
     'jira',
     'confluence',
+    'jaeger',
+    'newrelic',
+    'splunk',
+    'gcp_monitoring',
+    'azure_monitor',
   ]),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
@@ -1620,6 +1626,20 @@ export async function executePrivateAgentConnectorJob(
     case 'jira':
     case 'confluence':
       return executeKnowledge(job);
+    case 'jaeger':
+    case 'newrelic':
+    case 'splunk':
+    case 'gcp_monitoring':
+    case 'azure_monitor':
+      return executeObservabilityProviderJob({
+        connectorId: job.jobSpec.connectorId,
+        connectorType: job.jobSpec.connectorType,
+        endpointUrl: job.jobSpec.endpointUrl,
+        query: job.jobSpec.query,
+        timeWindow: job.jobSpec.timeWindow,
+        budget: job.jobSpec.budget,
+        credential: job.credential?.value ?? null,
+      });
   }
 }
 

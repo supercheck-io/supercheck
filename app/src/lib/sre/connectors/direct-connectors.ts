@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
+import {
+  ObservabilityProviderConnector,
+  isObservabilityProviderType,
+} from "./providers/provider-connectors";
 import { isValidKubernetesLabelSelector } from "./kubernetes-label-selector";
 import { ConfluenceConnector } from "./providers/confluence";
 import { JiraConnector } from "./providers/jira";
@@ -25,6 +29,8 @@ type DirectConnectorCredential = {
   sessionToken?: string | null;
   region?: string | null;
   email?: string | null;
+  // Every stored field, for providers with structured credentials.
+  fields?: Record<string, string | number | boolean | null> | null;
 };
 
 type DirectConnectorOptions = ConnectorDefinition & {
@@ -2515,6 +2521,12 @@ export function createDirectConnector(
     case "notion":
       return new NotionConnector(options);
     default:
+      if (isObservabilityProviderType(options.type)) {
+        return new ObservabilityProviderConnector({
+          ...options,
+          type: options.type,
+        });
+      }
       throw new Error(
         `Direct connector search is not implemented for ${options.type}`,
       );

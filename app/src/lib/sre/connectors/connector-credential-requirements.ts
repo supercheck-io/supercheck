@@ -1,4 +1,5 @@
 import type { ConnectorCredentialValue } from "./credential-vault";
+import { providerCredentialRequirementError } from "./providers/provider-credentials";
 
 function trimmedCredentialField(
   value: ConnectorCredentialValue | null | undefined,
@@ -57,6 +58,11 @@ export function connectorCredentialRequirementError(
     return trimmedCredentialField(value, ["apiKey", "api_key", "secret"])
       ? null
       : "Notion requires an internal integration token";
+  }
+
+  const providerError = providerCredentialRequirementError(connectorType, value);
+  if (providerError) {
+    return providerError;
   }
 
   if (connectorType === "aws_cloudwatch") {

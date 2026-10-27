@@ -96,13 +96,13 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     value: "splunk",
     label: "Splunk",
     description: "Logs and operational search",
-    addable: false,
+    addable: true,
   },
   {
     value: "newrelic",
     label: "New Relic",
     description: "APM, incidents, metrics, and traces",
-    addable: false,
+    addable: true,
   },
   {
     value: "appdynamics",
@@ -114,19 +114,19 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     value: "jaeger",
     label: "Jaeger",
     description: "Distributed traces",
-    addable: false,
+    addable: true,
   },
   {
     value: "gcp_monitoring",
     label: "Google Cloud Monitoring",
     description: "Cloud metrics, alerts, and logs",
-    addable: false,
+    addable: true,
   },
   {
     value: "azure_monitor",
     label: "Azure Monitor",
     description: "Cloud metrics, alerts, and logs",
-    addable: false,
+    addable: true,
   },
   {
     value: "postgresql",

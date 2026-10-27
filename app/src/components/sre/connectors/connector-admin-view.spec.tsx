@@ -516,8 +516,8 @@ describe("ConnectorAdminView", () => {
     const setupOnlyConnector = {
       ...connector,
       id: "018f0000-0000-7000-8000-000000000020",
-      name: "Splunk logs",
-      type: "splunk" as const,
+      name: "AppDynamics APM",
+      type: "appdynamics" as const,
       executionMode: "direct" as const,
       privateAgent: null,
       endpointUrl: "https://example.atlassian.net",
@@ -548,7 +548,7 @@ describe("ConnectorAdminView", () => {
       />,
     );
 
-    openConnectorActions("Splunk logs");
+    openConnectorActions("AppDynamics APM");
     expect(
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     ).toHaveAttribute("aria-disabled", "true");
