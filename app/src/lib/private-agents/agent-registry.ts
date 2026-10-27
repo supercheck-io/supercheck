@@ -1,3 +1,5 @@
+import { PRIVATE_AGENT_CONNECTOR_TYPES } from "@/lib/sre/connectors/connector-capabilities";
+
 export type PrivateAgentStatus = "pending" | "connected" | "disconnected" | "unhealthy" | "disabled";
 export type PrivateAgentMode = "connector_proxy" | "execution_worker" | "hybrid";
 export type PrivateAgentJobClass = "sre_connector_query" | "http_monitor_check" | "playwright_run" | "k6_run" | "network_check";
@@ -22,6 +24,7 @@ export type PrivateAgentRecord = PrivateAgentCapabilities & {
   networkLabel: string | null;
   lastHeartbeatAt: Date | null;
   lastError: string | null;
+  metadata?: unknown;
 };
 
 export type PrivateAgentHealth = {
@@ -81,4 +84,35 @@ export function isPrivateAgentEligibleForJob(
   }
 
   return getPrivateAgentHealth(agent, options).healthy && agentSupportsJobClass(agent, jobClass);
+}
+
+// Every agent supported these before agents reported their own list; an agent that reports none is assumed to be that old.
+const LEGACY_AGENT_CONNECTOR_TYPES: readonly string[] = [
+  "github", "prometheus", "grafana", "kubernetes", "sentry",
+  "datadog", "loki", "elasticsearch", "tempo", "aws_cloudwatch",
+];
+
+function metadataObject(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? (metadata as Record<string, unknown>) : {};
+}
+
+/** The connector types the agent last reported, or null for agents that predate reporting. */
+export function reportedConnectorTypes(metadata: unknown): string[] | null {
+  const types = metadataObject(metadata).sreConnectorTypes;
+  return Array.isArray(types) && types.every((type) => typeof type === "string") ? types : null;
+}
+
+/** Stores (or clears, for an agent that stopped reporting) the agent's connector types without touching other metadata. */
+export function withReportedConnectorTypes(metadata: unknown, types: string[] | undefined): Record<string, unknown> {
+  const { sreConnectorTypes: _previous, ...rest } = metadataObject(metadata);
+  return types ? { ...rest, sreConnectorTypes: types } : rest;
+}
+
+export function agentSupportsConnectorType(agent: Pick<PrivateAgentRecord, "metadata">, connectorType: string): boolean {
+  return (reportedConnectorTypes(agent.metadata) ?? LEGACY_AGENT_CONNECTOR_TYPES).includes(connectorType);
+}
+
+/** Keeps only types the app can route to an agent, so a misbehaving agent cannot store arbitrary strings. */
+export function knownConnectorTypes(types: string[] | undefined): string[] | undefined {
+  return types?.filter((type) => (PRIVATE_AGENT_CONNECTOR_TYPES as readonly string[]).includes(type));
 }

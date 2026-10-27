@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { privateAgentCredentials, privateAgentHeartbeats, privateAgents } from "@/db/schema";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../jobs/auth";
+import { knownConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const heartbeatSchema = z.object({
   agentId: z.string().uuid(),
@@ -21,6 +22,7 @@ const heartbeatSchema = z.object({
       supportsPlaywright: z.boolean().default(false),
       supportsK6: z.boolean().default(false),
       supportsNetworkChecks: z.boolean().default(false),
+      sreConnectorTypes: z.array(z.string().trim().min(1).max(50)).max(100).optional(),
     })
     .default({
       supportsSreConnectors: true,
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    const capabilities = body.data.capabilities;
+    const capabilities = { ...body.data.capabilities, sreConnectorTypes: knownConnectorTypes(body.data.capabilities.sreConnectorTypes) };
 
     await db.transaction(async (tx) => {
       await tx
@@ -64,6 +66,10 @@ export async function POST(request: NextRequest) {
           lastHeartbeatAt: now,
           connectedAt: auth.agent.connectedAt ?? now,
           lastError: body.data.errorCode ?? null,
+          // Merged in SQL, not from the auth snapshot, so a concurrent token rotation's metadata is never overwritten.
+          metadata: capabilities.sreConnectorTypes
+            ? sql`coalesce(${privateAgents.metadata}, '{}'::jsonb) || jsonb_build_object('sreConnectorTypes', ${JSON.stringify(capabilities.sreConnectorTypes)}::jsonb)`
+            : sql`coalesce(${privateAgents.metadata}, '{}'::jsonb) - 'sreConnectorTypes'`,
           updatedAt: now,
         })
         .where(eq(privateAgents.id, auth.agent.id));
