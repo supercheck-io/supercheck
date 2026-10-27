@@ -118,6 +118,8 @@ Confirm the agent shows **connected**. In the same project's **Organization → 
 
 Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 
+Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network. The agent connects over Streamable HTTP, applies the same endpoint policy as other connectors, and runs only tools you allowlisted. Discovery and tool calls run as agent jobs, so the agent must be connected. Upgrade the agent to the same release as the app before adding an MCP connector: an older agent cannot parse MCP jobs and will fail them.
+
 </Step>
 <Step>
 

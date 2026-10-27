@@ -119,6 +119,11 @@ npm test
 npm run build:webpack
 ```
 
+The SRE observability provider modules in `app/src/lib/sre/connectors/providers/`
+are copied into `worker/src/private-agent/providers/` for Private Agent mode.
+Edit the app files, then run `npm run sync:sre-providers` in `app/` (needs
+`npm ci` in `worker/`); `worker-copy.spec.ts` fails when the copies drift.
+
 ### Worker
 
 ```bash

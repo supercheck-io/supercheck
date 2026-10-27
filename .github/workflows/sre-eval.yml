@@ -10,6 +10,7 @@ on:
       - "app/src/app/api/sre/**"
       - "app/src/components/sre/**"
       - "app/src/lib/sre/**"
+      - "app/src/sre/**"
       - ".github/workflows/sre-eval.yml"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "app/src/app/api/sre/**"
       - "app/src/components/sre/**"
       - "app/src/lib/sre/**"
+      - "app/src/sre/**"
       - ".github/workflows/sre-eval.yml"
 
 permissions:

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
@@ -246,25 +246,37 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { monitors: items.map((m) => ({ ...m, name: safeText(m.name, 255), target: safeTarget(m.target), lastCheckAt: iso(m.lastCheckAt) })), nextCursor };
   });
 
-  tool("list_incidents", "List incidents, newest first." + UNTRUSTED, "sre_incident", { ...page, status: z.enum(INCIDENT_STATUSES).optional() }, async ({ limit, cursor, status }) => {
+  // Lifecycle fields: ids and timestamps only. Names/emails of assignees are not exposed.
+  const incidentLifecycle = {
+    assigneeUserId: sreIncidents.assigneeUserId,
+    commanderUserId: sreIncidents.commanderUserId,
+    acknowledgedAt: sreIncidents.acknowledgedAt,
+    acknowledgedByUserId: sreIncidents.acknowledgedByUserId,
+    mitigatedAt: sreIncidents.mitigatedAt,
+  };
+  type LifecycleRow = { acknowledgedAt: Date | null; mitigatedAt: Date | null };
+  const lifecycleDto = (i: LifecycleRow) => ({ acknowledgedAt: iso(i.acknowledgedAt), mitigatedAt: iso(i.mitigatedAt) });
+
+  tool("list_incidents", "List incidents, newest first. `assignee` is `me`, `unassigned` or a user id." + UNTRUSTED, "sre_incident", { ...page, status: z.enum(INCIDENT_STATUSES).optional(), assignee: z.union([z.literal("me"), z.literal("unassigned"), z.string().uuid()]).optional() }, async ({ limit, cursor, status, assignee }) => {
+    const assigneeFilter = assignee === "unassigned" ? isNull(sreIncidents.assigneeUserId) : assignee ? eq(sreIncidents.assigneeUserId, assignee === "me" ? ctx.userId : assignee) : undefined;
     const rows = await db
-      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt })
+      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, ...incidentLifecycle })
       .from(sreIncidents)
-      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status === "open" ? ne(sreIncidents.status, "resolved") : status ? eq(sreIncidents.status, status) : undefined]))
+      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status === "open" ? ne(sreIncidents.status, "resolved") : status ? eq(sreIncidents.status, status) : undefined, assigneeFilter]))
       .orderBy(desc(sreIncidents.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
-    return { incidents: items.map((i) => ({ ...i, title: safeText(i.title, 500), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) })), nextCursor };
+    return { incidents: items.map((i) => ({ ...i, ...lifecycleDto(i), title: safeText(i.title, 500), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) })), nextCursor };
   });
 
-  tool("get_incident", "Get one incident with its root-cause summary." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
+  tool("get_incident", "Get one incident with its root-cause summary, assignment, acknowledgement and resolution summary." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
     const [i] = await db
-      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt })
+      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, resolutionSummary: sreIncidents.resolutionSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, ...incidentLifecycle })
       .from(sreIncidents)
       .where(scope(sreIncidents, [eq(sreIncidents.id, id)]))
       .limit(1);
     if (!i) throw new NotFoundError("Incident not found");
-    return { incident: { ...i, title: safeText(i.title, 500), rootCauseSummary: safeText(i.rootCauseSummary), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
+    return { incident: { ...i, ...lifecycleDto(i), title: safeText(i.title, 500), rootCauseSummary: safeText(i.rootCauseSummary), resolutionSummary: safeText(i.resolutionSummary), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
   });
 
   tool("get_job", "Get one job: schedule, linked test ids and alert on/off flags (no scripts, notification providers or trigger keys)." + UNTRUSTED, "job", { id: idArg }, async ({ id }) => {

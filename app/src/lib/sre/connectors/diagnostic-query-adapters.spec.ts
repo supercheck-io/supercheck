@@ -64,6 +64,21 @@ describe("diagnostic query adapters", () => {
         service: "checkout",
         pattern: "error",
       },
+      "jaeger-service-error-traces": { service: "checkout" },
+      "jaeger-slow-service-traces": { service: "checkout", min_duration: "1s" },
+      "newrelic-error-rate-by-transaction": { service: "checkout" },
+      "newrelic-latency-p95-by-transaction": { service: "checkout" },
+      "splunk-service-errors": { service: "checkout", pattern: "error" },
+      "splunk-error-count-by-sourcetype": { service: "checkout" },
+      "gcp-service-error-logs": { service: "checkout" },
+      "gcp-cloud-run-request-count": { service: "checkout" },
+      "azure-app-exceptions": { service: "checkout" },
+      "azure-resource-metric": {
+        resource:
+          "/subscriptions/44444444-4444-4444-4444-444444444444/resourceGroups/rg/providers/Microsoft.Web/sites/x",
+        metric: "Http5xx",
+        agg: "Total",
+      },
     };
 
     for (const recipe of diagnosticQueryAdapterRecipes) {

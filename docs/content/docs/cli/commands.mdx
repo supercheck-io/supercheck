@@ -560,10 +560,13 @@ AI SRE commands use the active project from the CLI token and preserve the same 
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `incident list` | List incidents | `--status`, `--severity` |
+| `incident list` | List incidents (assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
 | `incident timeline <ref>` | Incident timeline | — |
-| `incident resolve <ref>` | Resolve with a required comment | `--comment`, `--force` |
+| `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
+| `incident unassign <ref>` | Clear the assignee (or commander) | `--commander` |
+| `incident ack <ref>` | Acknowledge an incident | — |
+| `incident resolve <ref>` | Resolve with a required summary | `--summary` (`--comment` is an alias), `--force` |
 | `sre triage <ref>` | Classify an incident | — |
 | `sre investigate <ref>` | Start an asynchronous deep investigation | `--live-connectors` |
 | `sre brief <ref>` | Stream an evidence brief | `--idle-timeout` |
@@ -580,10 +583,13 @@ supercheck incident list --status investigating --severity sev1
 supercheck incident list --status open   # every incident that is not resolved
 supercheck incident get <incident-number-or-uuid>
 supercheck incident timeline <incident-number-or-uuid>
-supercheck incident resolve <incident-number-or-uuid> --comment "Traffic restored after rollback"
+supercheck incident list --assignee me
+supercheck incident assign <incident-number-or-uuid> --user me
+supercheck incident ack <incident-number-or-uuid>
+supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
 ```
 
-Resolution prompts for confirmation and stores the required comment in the incident timeline and audit log. Use `--force` only in reviewed automation.
+Resolution prompts for confirmation and stores the required summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
 
 ### Triage and investigation
 
