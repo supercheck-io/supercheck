@@ -425,15 +425,19 @@ export function SreIncidentsList({
             className="flex flex-wrap items-center gap-2"
             data-testid="incident-header-actions"
           >
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/alerts">Review alerts</Link>
-            </Button>
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/incidents/analytics">
-                <BarChart3 className="h-4 w-4" />
-                Trends
-              </Link>
-            </Button>
+            {incidents.length > 0 && (
+              <>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/alerts">Review alerts</Link>
+                </Button>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/incidents/analytics">
+                    <BarChart3 className="h-4 w-4" />
+                    Trends
+                  </Link>
+                </Button>
+              </>
+            )}
             {projectError && (
               <p role="status" className="text-sm text-muted-foreground">
                 Permissions unavailable. Refresh to try again.
