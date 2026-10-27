@@ -325,6 +325,8 @@ function AlertsPage() {
                       createdAt: p.createdAt,
                       updatedAt: p.updatedAt || p.createdAt,
                       lastUsed: p.lastUsed,
+                      createdByName: p.createdByName ?? null,
+                      createdByImage: p.createdByImage ?? null,
                     }))}
                     refreshTrigger={0}
                   />

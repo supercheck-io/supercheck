@@ -360,7 +360,7 @@ export async function POST(
         jobType,
         source: "api-trigger",
         // Snapshot: the key may be renamed or deleted later.
-        triggerKeyName: key.name,
+        triggerKeyName: key.name || "API key",
         ...(isPerformanceJob
           ? { executionEngine: "k6", location: resolvedLocation }
           : { executionEngine: "playwright" }),

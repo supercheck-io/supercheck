@@ -17,6 +17,8 @@ export interface NotificationProvider {
   lastUsed?: string;
   isInUse?: boolean;
   maskedFields?: string[];
+  createdByName?: string | null;
+  createdByImage?: string | null;
 }
 
 export type AlertHistory = AlertHistorySchema;

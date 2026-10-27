@@ -8300,10 +8300,6 @@
               "schedule"
             ]
           },
-          "triggeredByUserId": {
-            "type": "string",
-            "nullable": true
-          },
           "triggeredByName": {
             "type": "string",
             "nullable": true
