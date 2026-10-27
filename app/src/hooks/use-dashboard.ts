@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
-import { RECENT_FAILURES_LIMIT } from "@/lib/dashboard/recent-failures";
 
 interface ProjectStats {
   tests: number;
@@ -46,15 +45,8 @@ interface JobSummary {
   failedRuns30d: number;
   successfulRuns24h: number;
   failedRuns24h: number;
-  /** Newest failed/error runs in the last 30 days, at most RECENT_FAILURES_LIMIT. */
-  recentFailures: Array<{
-    id: string;
-    jobId: string;
-    jobName: string;
-    status: string;
-    startedAt: string;
-    trigger: string;
-  }>;
+  /** Failed/error runs in the last 7 days by trigger. */
+  failedRuns7d: { manual: number; scheduled: number; remote: number };
   /** Job runs per UTC day (last 30 days) by trigger. */
   triggerTrend: Array<{ date: string; manual: number; scheduled: number; remote: number }>;
   executionTime: {
@@ -85,17 +77,6 @@ interface K6Summary {
   period: string;
 }
 
-interface AlertHistoryItem {
-  id: string;
-  targetType: string;
-  targetName: string;
-  type: string;
-  message: string;
-  status: string;
-  timestamp: string;
-  notificationProvider: string;
-}
-
 interface SystemHealth {
   timestamp: string;
   healthy: boolean;
@@ -112,18 +93,17 @@ export interface DashboardData {
   jobs: JobSummary;
   tests: TestSummary;
   k6: K6Summary;
-  alerts: AlertHistoryItem[];
   system: SystemHealth;
 }
 
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
-// The "v2" version abandons entries written under ["dashboard", projectId] by the
+// Bump the version suffix to abandon entries written under ["dashboard", projectId] by the
 // old hover prefetch, which stored the raw /api/dashboard payload where the
 // dashboard expects normalized DashboardData. Those entries are persisted to
 // localStorage for 24h and crashed the page on every visit.
 export const getDashboardQueryKey = (projectId: string | null) =>
-  [...DASHBOARD_QUERY_KEY, projectId, "v2"] as const;
+  [...DASHBOARD_QUERY_KEY, projectId, "v3"] as const;
 
 export async function fetchDashboard(projectId: string | null = null): Promise<DashboardData> {
   const controller = new AbortController();
@@ -134,16 +114,10 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
     // dashboard hook must request the same project to share one cache entry.
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (projectId) headers["x-project-id"] = projectId;
-    const [dashboardResponse, alertsResponse] = await Promise.all([
-      fetch("/api/dashboard", {
-        signal: controller.signal,
-        headers,
-      }),
-      fetch("/api/alerts/history", {
-        signal: controller.signal,
-        headers,
-      }),
-    ]);
+    const dashboardResponse = await fetch("/api/dashboard", {
+      signal: controller.signal,
+      headers,
+    });
 
     clearTimeout(timeoutId);
 
@@ -154,9 +128,7 @@ export async function fetchDashboard(projectId: string | null = null): Promise<D
     }
 
     const data = await dashboardResponse.json();
-    const alertsData = alertsResponse.ok ? await alertsResponse.json() : [];
-
-    return transformDashboardData(data, alertsData);
+    return transformDashboardData(data);
   } catch (error) {
     clearTimeout(timeoutId);
     // fetch rejects with the abort reason (a string here), not an AbortError, so check the signal.
@@ -193,9 +165,10 @@ export function parseSystemHealth(raw: unknown): SystemHealth {
   };
 }
 
-function transformDashboardData(data: Record<string, unknown>, alertsData: unknown[]): DashboardData {
+function transformDashboardData(data: Record<string, unknown>): DashboardData {
 
   const jobsData = data.jobs as Record<string, unknown> | undefined;
+  const failed7d = jobsData?.failedRuns7d as Record<string, unknown> | undefined;
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
   const k6Data = data.k6 as Record<string, unknown> | undefined;
@@ -257,16 +230,11 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       failedRuns30d: Math.max(0, Number(jobsData?.failedRuns30d) || 0),
       successfulRuns24h: Math.max(0, Number(jobsData?.successfulRuns24h) || 0),
       failedRuns24h: Math.max(0, Number(jobsData?.failedRuns24h) || 0),
-      recentFailures: Array.isArray(jobsData?.recentFailures)
-        ? (jobsData.recentFailures as Array<Record<string, unknown>>).slice(0, RECENT_FAILURES_LIMIT).map(run => ({
-            id: String(run.id || ''),
-            jobId: String(run.jobId || ''),
-            jobName: String(run.jobName || ''),
-            status: String(run.status || ''),
-            startedAt: String(run.startedAt || ''),
-            trigger: String(run.trigger || ''),
-          }))
-        : [],
+      failedRuns7d: {
+        manual: Math.max(0, Number(failed7d?.manual) || 0),
+        scheduled: Math.max(0, Number(failed7d?.scheduled) || 0),
+        remote: Math.max(0, Number(failed7d?.remote) || 0),
+      },
       triggerTrend: Array.isArray(jobsData?.triggerTrend)
         ? (jobsData.triggerTrend as Array<Record<string, unknown>>).slice(-LOOKBACK_DAYS).map(day => ({
             date: String(day.date || ''),
@@ -310,21 +278,6 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       avgResponseTimeMs: Math.max(0, Number(k6Data?.avgResponseTimeMs) || 0),
       period: String(k6Data?.period || "last 30 days"),
     },
-    alerts: Array.isArray(alertsData) 
-      ? alertsData.slice(0, 10).map((alert: unknown) => {
-          const a = alert as Record<string, unknown>;
-          return {
-            id: String(a.id || ''),
-            targetType: String(a.targetType || ''),
-            targetName: String(a.targetName || ''),
-            type: String(a.type || ''),
-            message: String(a.message || ''),
-            status: String(a.status || ''),
-            timestamp: String(a.timestamp || ''),
-            notificationProvider: String(a.notificationProvider || ''),
-          };
-        })
-      : [],
     system: parseSystemHealth(data.system),
   };
 }

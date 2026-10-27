@@ -17,6 +17,10 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
+import {
+  isRetiredConnectorType,
+  retiredConnectorExplanation,
+} from "@/lib/sre/connectors/retired-connectors";
 
 type ConnectorTableMeta = {
   onSearch?: (connector: SreConnectorListItem) => void;
@@ -24,6 +28,7 @@ type ConnectorTableMeta = {
   onViewJob?: (connector: SreConnectorListItem) => void;
   onRotate?: (connector: SreConnectorListItem) => void;
   onDisable?: (connector: SreConnectorListItem) => void;
+  onManageMcpTools?: (connector: SreConnectorListItem) => void;
   isValidating?: boolean;
   isLoadingJobResult?: boolean;
   isDisabling?: boolean;
@@ -46,7 +51,9 @@ const riskTones: Record<SreConnectorListItem["riskLevel"], TableBadgeTone> = {
 
 function supportsEvidenceSearch(connector: SreConnectorListItem) {
   return (
-    connector.status !== "disabled" && isLiveSearchConnectorType(connector.type)
+    connector.status !== "disabled" &&
+    connector.type !== "mcp" &&
+    isLiveSearchConnectorType(connector.type)
   );
 }
 
@@ -56,6 +63,18 @@ function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
       label: "Native",
       tone: "info" as const,
     };
+  }
+
+  if (isRetiredConnectorType(connectorType)) {
+    return {
+      label: "Unsupported",
+      tone: "danger" as const,
+      title: retiredConnectorExplanation(connectorType),
+    };
+  }
+
+  if (connectorType === "mcp") {
+    return { label: "Agent tools", tone: "success" as const };
   }
 
   if (isLiveSearchConnectorType(connectorType)) {
@@ -110,7 +129,11 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
       return (
         <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap">
           <ConnectorTypeLabel type={connector.type} />
-          <TableBadge tone={capability.tone} compact>
+          <TableBadge
+            tone={capability.tone}
+            compact
+            title={"title" in capability ? capability.title : undefined}
+          >
             {capability.label}
           </TableBadge>
         </div>
@@ -220,8 +243,14 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     cell: ({ row, table }) => {
       const connector = row.original;
       const meta = table.options.meta as ConnectorTableMeta | undefined;
-      const { onSearch, onValidate, onViewJob, onRotate, onDisable } =
-        meta ?? {};
+      const {
+        onSearch,
+        onValidate,
+        onViewJob,
+        onRotate,
+        onDisable,
+        onManageMcpTools,
+      } = meta ?? {};
 
       return (
         <div className="flex items-center justify-end gap-1">
@@ -243,9 +272,16 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               >
                 Search evidence
               </DropdownMenuItem>
+              {connector.type === "mcp" && connector.status !== "disabled" && (
+                <DropdownMenuItem onClick={() => onManageMcpTools?.(connector)}>
+                  Manage MCP tools
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => onValidate?.(connector)}
-                disabled={meta?.isValidating}
+                disabled={
+                  meta?.isValidating || isRetiredConnectorType(connector.type)
+                }
               >
                 Validate connector
               </DropdownMenuItem>

@@ -30,6 +30,8 @@ beforeAll(async () => {
       id text PRIMARY KEY, organization_id text, project_id text, incident_number integer,
       title text, severity text, status text NOT NULL, primary_service_id text,
       root_cause_summary text, confidence_score numeric, resolved_at timestamptz,
+      assignee_user_id text, acknowledged_at timestamptz, acknowledged_by_user_id text,
+      commander_user_id text, mitigated_at timestamptz, resolution_summary text,
       created_at timestamptz, updated_at timestamptz
     );
     CREATE TABLE sre_services (id text PRIMARY KEY, name text);

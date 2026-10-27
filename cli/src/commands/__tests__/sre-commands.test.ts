@@ -111,9 +111,91 @@ describe('AI SRE CLI Commands', () => {
 
       await incidentCommand.parseAsync(['node', 'incident', 'resolve', '018f0000-0000-7000-8000-000000000001', '--comment', 'Fix applied', '--force'])
 
-      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { comment: 'Fix applied' }, { retries: 0 })
+      expect(mockPost).toHaveBeenCalledWith('/api/sre/incidents/018f0000-0000-7000-8000-000000000001/resolve', { resolutionSummary: 'Fix applied', comment: 'Fix applied' }, { retries: 0 })
       expect(mockSuccess).toHaveBeenCalledWith('Incident resolved')
       expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+    })
+  })
+
+  describe('incident lifecycle commands', () => {
+    const id = '018f0000-0000-7000-8000-000000000001'
+    const userId = '018f0000-0000-7000-8000-0000000000aa'
+    const assignPath = `/api/sre/incidents/${id}/assign`
+
+    it('list passes --assignee through to the API', async () => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [] } })
+      await incidentCommand.parseAsync(['node', 'incident', 'list', '--assignee', 'unassigned'])
+      expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents', expect.objectContaining({ assignee: 'unassigned' }))
+    })
+
+    it('resolve accepts --summary', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'resolve', id, '--summary', 'Rolled back', '--force'])
+      expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${id}/resolve`, { resolutionSummary: 'Rolled back', comment: 'Rolled back' }, { retries: 0 })
+    })
+
+    it('resolve requires a summary', async () => {
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'resolve', id, '--force'])).rejects.toMatchObject({ exitCode: 3 })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('assign posts the user and role', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true, message: 'Incident #1 assigned' } })
+      await incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', userId, '--commander'])
+      expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: userId, role: 'commander' }, { retries: 0 })
+      expect(mockSuccess).toHaveBeenCalledWith('Incident #1 assigned')
+    })
+
+    it('assign --user me resolves the token owner from /api/context', async () => {
+      mockGet.mockResolvedValueOnce({ data: { user: { id: userId } } })
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', 'me'])
+      expect(mockGet).toHaveBeenCalledWith('/api/context')
+      expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: userId, role: 'assignee' }, { retries: 0 })
+    })
+
+    it('assign rejects a malformed user', async () => {
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', 'bob'])).rejects.toMatchObject({ exitCode: 3 })
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('unassign posts a null assignee', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'unassign', id])
+      expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: null, role: 'assignee' }, { retries: 0 })
+    })
+
+    it('unassign --commander clears the commander role', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'unassign', id, '--commander'])
+      expect(mockPost).toHaveBeenCalledWith(assignPath, { assigneeUserId: null, role: 'commander' }, { retries: 0 })
+    })
+
+    it('assign --user me fails when the context has no user id', async () => {
+      mockGet.mockResolvedValueOnce({ data: {} })
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'assign', id, '--user', 'me'])).rejects.toThrow('Could not resolve the current user')
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('maps a bare 404 from assign/ack to a newer-server message but keeps real not-found errors', async () => {
+      const { ApiRequestError } = await import('../../utils/errors.js')
+      mockPost.mockRejectedValueOnce(new ApiRequestError('Not Found', 404, '<html>404</html>'))
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'ack', id])).rejects.toThrow('requires a newer Supercheck server')
+      mockPost.mockRejectedValueOnce(new ApiRequestError('Not Found', 404, undefined))
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'unassign', id])).rejects.toThrow('requires a newer Supercheck server')
+      const notFound = new ApiRequestError('Incident not found', 404, { error: 'Incident not found' })
+      mockPost.mockRejectedValueOnce(notFound)
+      await expect(incidentCommand.parseAsync(['node', 'incident', 'ack', id])).rejects.toBe(notFound)
+    })
+
+    it('ack acknowledges and reports repeats', async () => {
+      mockPost.mockResolvedValueOnce({ data: { success: true, alreadyAcknowledged: false } })
+      await incidentCommand.parseAsync(['node', 'incident', 'ack', id])
+      expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${id}/acknowledge`, {}, { retries: 0 })
+      expect(mockSuccess).toHaveBeenCalledWith('Incident acknowledged')
+      mockPost.mockResolvedValueOnce({ data: { success: true, alreadyAcknowledged: true, message: 'Incident #1 was already acknowledged' } })
+      await incidentCommand.parseAsync(['node', 'incident', 'ack', id])
+      expect(mockInfo).toHaveBeenCalledWith('Incident #1 was already acknowledged')
     })
   })
 
@@ -247,7 +329,7 @@ describe('AI SRE CLI Commands', () => {
       mockPost.mockResolvedValueOnce({ data: { success: true } })
       await incidentCommand.parseAsync(['node', 'incident', command, '1', ...(command === 'resolve' ? ['--comment', 'Fixed', '--force'] : [])])
       if (command === 'resolve') {
-        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { comment: 'Fixed' }, { retries: 0 })
+        expect(mockPost).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}/resolve`, { resolutionSummary: 'Fixed', comment: 'Fixed' }, { retries: 0 })
       } else {
         expect(mockGet).toHaveBeenCalledWith(`/api/sre/incidents/${incidentId}${command === 'timeline' ? '/timeline' : ''}`)
       }

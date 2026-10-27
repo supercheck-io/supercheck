@@ -674,7 +674,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             <EmptySection
               icon={<Activity className="h-8 w-8" />}
               title="No recent activity"
-              description="Incidents, alerts, and deployments linked to this service will appear here."
+              description="Incidents and alerts linked to this service will appear here. Deployment context comes from linked GitHub or GitLab connectors during investigations."
             />
           ) : (
             <>
@@ -748,7 +748,9 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                   <h2 className="mb-3 font-medium">Recent deployments</h2>
                   {detail.recentDeployments.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No deployments are linked to this service.
+                      No deployments are recorded for this service. Deployment
+                      context comes from linked GitHub or GitLab connectors
+                      during investigations.
                     </p>
                   ) : (
                     <div className="divide-y overflow-hidden rounded-md border">

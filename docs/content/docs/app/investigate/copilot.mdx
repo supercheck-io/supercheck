@@ -4,7 +4,7 @@ description: Ask operational questions using incident evidence and connected sou
 icon: Bot
 ---
 
-Open **Investigate → Copilot** to ask about your services, errors, or logs. From an incident, select **Open Copilot** to bring its saved evidence into the same chat screen.
+Open **Investigate → Copilot** to ask about your services, errors, or logs. From an incident, select **Ask Copilot** to bring its saved evidence into the same chat screen.
 
 <Callout type="info">
 Copilot is read-only. It gathers evidence and suggests checks, but cannot change your systems or apply a fix.
@@ -19,7 +19,7 @@ Copilot is read-only. It gathers evidence and suggests checks, but cannot change
 Name the service you want to check. Copilot finds available sources in your current project and asks if the service is unclear. Connector results are temporary and are not added to incident evidence
 </Card>
 <Card icon={<Siren className="text-red-500" />} title="Incident chat">
-Uses the incident's saved evidence and the connectors for its linked service. **New chat** keeps the incident context. Results are saved on the incident
+Uses the incident's saved evidence, similar past incidents, and the connectors for its linked service. Starts with three suggested questions, and answers cite the evidence they rely on. **New chat** keeps the incident context. Results are saved on the incident
 </Card>
 </Cards>
 
@@ -47,6 +47,8 @@ Ask one focused question, then review citations and any evidence gaps before act
 - "Is checkout-api healthy? Check recent errors and latency."
 - "Which evidence supports the leading hypothesis?"
 - "What should I check next to confirm this?"
+- "What changed before this started?" (incident chat)
+- "Have we seen this before?" (incident chat; past incidents may be unrelated)
 
 | Limit | Value |
 |---|---|

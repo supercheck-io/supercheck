@@ -76,6 +76,77 @@ function selectRows(rows: unknown[]) {
   };
 }
 
+describe("MCP connectors in the AI tool layer", () => {
+  const mcpRow = {
+    id: connectorId,
+    name: "Internal MCP",
+    type: "mcp",
+    status: "valid",
+    privateAgentId: "018f0000-0000-7000-8000-000000000009",
+    defaultTimeWindowMinutes: 60,
+    outputLimits: null,
+    config: {
+      endpointUrl: "https://mcp.internal/mcp",
+      mcp: {
+        allowlist: [
+          {
+            name: "get_errors",
+            description: "Read errors",
+            inputSchema: {
+              type: "object",
+              properties: { namespace: { type: "string" } },
+              required: ["namespace"],
+              additionalProperties: false,
+            },
+            fixedArguments: {},
+          },
+        ],
+      },
+    },
+  };
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.query.sreServices.findMany.mockResolvedValue([]);
+    db.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
+    db.select
+      .mockReturnValueOnce(selectRows([{ connector: mcpRow }]))
+      .mockReturnValue(selectRows([]));
+  });
+
+  it("lists only allowlisted tools with their argument names", async () => {
+    const result = await listIncidentLiveConnectors({ ...scope, serviceId });
+    expect(result.connectors[0]).toMatchObject({
+      type: "mcp",
+      executionMode: "private_agent",
+      mcpTools: [
+        { name: "get_errors", description: "Read errors", arguments: ["namespace: string (required)"] },
+      ],
+    });
+  });
+
+  it("keeps MCP connectors out of free-form evidence search", async () => {
+    await expect(
+      searchIncidentLiveConnectorEvidence(scope, { ...search, serviceId }),
+    ).rejects.toThrow("use callMcpTool");
+  });
+
+  it("returns a retryable rejection to the model for non-allowlisted tools", async () => {
+    const tools = createSreConnectorTools({ ...scope, serviceId });
+    const result = await tools.callMcpTool.execute!(
+      {
+        connectorId,
+        tool: "drop_table",
+        arguments: {},
+        maxSeconds: 5,
+      },
+      { toolCallId: "mcp", messages: [] },
+    );
+    expect(result).toMatchObject({ error: true, retryable: true, message: expect.stringContaining("allowlist") });
+  });
+});
+
 describe("Copilot connector service scope", () => {
   beforeEach(() => {
     jest.resetAllMocks();

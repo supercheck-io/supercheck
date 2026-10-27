@@ -10,7 +10,7 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, desc, gte, and, count, sql, sum, inArray } from "drizzle-orm";
+import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
@@ -18,7 +18,6 @@ import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { excludeSupersededSyntheticResults, excludeSyntheticResults } from "@/lib/monitor-result-filters";
 import { buildSystemIssues } from "@/lib/dashboard/system-health";
 import { FAILED_RUN_STATUSES } from "@/lib/dashboard/run-outcomes";
-import { RECENT_FAILURES_LIMIT } from "@/lib/dashboard/recent-failures";
 
 export async function GET() {
   try {
@@ -40,6 +39,7 @@ export async function GET() {
     const dbInstance = db;
     const now = new Date();
     const last24Hours = subHours(now, 24);
+    const last7Days = subDays(now, 7);
     const last30Days = subDays(now, 30);
 
     // Get queue statistics
@@ -115,7 +115,7 @@ export async function GET() {
       recentRuns,
       runCounts24h,
       jobsByStatus,
-      recentFailedRuns,
+      failedRuns7d,
       jobTriggerTrend,
       executionTimeData
     ] = await Promise.all([
@@ -165,23 +165,18 @@ export async function GET() {
         .where(jobBaseCondition)
         .groupBy(jobs.status),
       
-      // Newest failed runs for the Needs attention card; its count comes from failedRuns30d
+      // Failed runs in the last 7 days by trigger, for the Needs attention chart (unknown triggers count as manual)
       dbInstance.select({
-        id: runs.id,
-        jobId: runs.jobId,
-        jobName: jobs.name,
-        status: runs.status,
-        startedAt: runs.startedAt,
-        trigger: runs.trigger
+        total: count(),
+        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`,
+        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`,
       }).from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
-          gte(runs.startedAt, last30Days),
+          gte(runs.startedAt, last7Days),
           inArray(runs.status, [...FAILED_RUN_STATUSES]),
           jobBaseCondition
-        ))
-        .orderBy(desc(runs.startedAt), desc(runs.id))
-        .limit(RECENT_FAILURES_LIMIT),
+        )),
 
       // Daily job runs by trigger (last 30 days); unknown triggers count as manual
       dbInstance.select({
@@ -469,14 +464,12 @@ export async function GET() {
         successfulRuns24h: runCounts24h[0].passed,
         failedRuns24h: runCounts24h[0].failed,
         byStatus: jobsByStatus,
-        recentFailures: recentFailedRuns.map(run => ({
-          id: run.id,
-          jobId: run.jobId,
-          jobName: run.jobName,
-          status: run.status,
-          startedAt: run.startedAt?.toISOString(),
-          trigger: run.trigger
-        })),
+        failedRuns7d: (() => {
+          const total = Number(failedRuns7d[0].total) || 0;
+          const scheduled = Number(failedRuns7d[0].scheduled) || 0;
+          const remote = Number(failedRuns7d[0].remote) || 0;
+          return { manual: Math.max(0, total - scheduled - remote), scheduled, remote };
+        })(),
         triggerTrend: jobTriggerTrend.map(day => {
           const total = Number(day.total) || 0;
           const scheduled = Number(day.scheduled) || 0;
