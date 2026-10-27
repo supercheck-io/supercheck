@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
 
-import { describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
+import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 let mockQuery: { isPending: boolean; data?: unknown };
@@ -105,5 +105,15 @@ describe("IncidentTimeline", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
     expect(mockInvalidate).not.toHaveBeenCalled();
     expect(box).toHaveValue("Draft");
+  });
+});
+
+describe("aiFindingHeadline", () => {
+  it("keeps only the first paragraph as plain text", () => {
+    expect(aiFindingHeadline("**Inconclusive.** No evidence was available.\n\n**Hypotheses**\n- one")).toBe(
+      "Inconclusive. No evidence was available.",
+    );
+    expect(aiFindingHeadline(undefined)).toBeNull();
+    expect(aiFindingHeadline("   ")).toBeNull();
   });
 });

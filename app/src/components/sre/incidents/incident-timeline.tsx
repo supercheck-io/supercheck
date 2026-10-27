@@ -32,6 +32,19 @@ function str(value: unknown, max = 600) {
   return typeof value === "string" ? value.slice(0, max) : null;
 }
 
+/** First paragraph of an AI report as plain text; the full report lives in Investigation details. */
+export function aiFindingHeadline(value: unknown) {
+  if (typeof value !== "string") return null;
+  const firstParagraph = value.trim().split(/\n\s*\n/)[0] ?? "";
+  const plain = firstParagraph
+    .replace(/\*\*|__|`/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain ? plain.slice(0, 400) : null;
+}
+
 export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">): {
   title: string;
   body: string | null;
@@ -39,7 +52,7 @@ export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "even
   const data = event.eventData ?? {};
   if (event.eventType === "comment") return { title: "Update", body: str(data.text) };
   if (event.eventType === "ai_finding") {
-    return { title: "AI finding", body: str(data.summary) ?? str(data.error) };
+    return { title: "AI finding", body: aiFindingHeadline(data.summary) ?? str(data.error) };
   }
   if (event.eventType === "state_change") {
     const state = str(data.state, 80) ?? "";
