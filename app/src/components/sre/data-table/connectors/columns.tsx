@@ -1,9 +1,13 @@
 "use client";
 
+import { ConnectorTypeLabel } from "@/components/logo/connector-logos";
 import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { DateCell } from "@/components/ui/table-cells";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
-import { getSreConnectorLabel } from "@/components/sre/connectors/connector-catalog";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 import {
   isRetiredConnectorType,
@@ -52,13 +55,6 @@ function supportsEvidenceSearch(connector: SreConnectorListItem) {
     connector.type !== "mcp" &&
     isLiveSearchConnectorType(connector.type)
   );
-}
-
-function formatValidationTime(value: Date | string | null) {
-  if (!value) return "Not validated";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unavailable";
-  return date.toLocaleString();
 }
 
 function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
@@ -107,23 +103,32 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
   },
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Name" />
+    ),
     cell: ({ row }) => {
       const connector = row.original;
-      return <span className="font-medium">{connector.name}</span>;
+      return (
+        <TruncatedTextWithTooltip
+          text={connector.name}
+          maxLength={26}
+          maxWidth="200px"
+          className="font-medium"
+        />
+      );
     },
   },
   {
     accessorKey: "type",
-    header: "Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
     cell: ({ row }) => {
       const connector = row.original;
       const capability = connectorCapabilityBadge(connector.type);
       return (
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <TableBadge compact>
-            {getSreConnectorLabel(connector.type)}
-          </TableBadge>
+        <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap">
+          <ConnectorTypeLabel type={connector.type} />
           <TableBadge
             tone={capability.tone}
             compact
@@ -138,33 +143,45 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
   },
   {
     accessorKey: "executionMode",
-    header: "Execution",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Execution" />
+    ),
     cell: ({ row }) => {
       const connector = row.original;
       return (
-        <div className="min-w-0">
-          <TableBadge
-            tone={connector.executionMode === "direct" ? "info" : "purple"}
-            compact
-          >
-            {connector.executionMode === "direct" ? "Direct" : "Private Agent"}
-          </TableBadge>
-          {connector.privateAgent && (
-            <p
-              className="mt-1 max-w-40 truncate text-xs text-muted-foreground"
-              title={connector.privateAgent.name}
-            >
-              {connector.privateAgent.name}
-            </p>
-          )}
-        </div>
+        <TableBadge
+          tone={connector.executionMode === "direct" ? "info" : "purple"}
+          compact
+        >
+          {connector.executionMode === "direct" ? "Direct" : "Private Agent"}
+        </TableBadge>
       );
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
+    id: "privateAgent",
+    accessorFn: (connector) => connector.privateAgent?.name ?? "",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Private Agent" />
+    ),
+    cell: ({ row }) =>
+      row.original.privateAgent ? (
+        <TruncatedTextWithTooltip
+          text={row.original.privateAgent.name}
+          maxLength={20}
+          maxWidth="160px"
+          className="text-sm"
+        />
+      ) : (
+        <span className="text-sm text-muted-foreground">-</span>
+      ),
+  },
+  {
     id: "scope",
-    header: "Service scope",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Service scope" />
+    ),
     accessorFn: (connector) => connector.scopedServiceIds.length,
     cell: ({ row }) => {
       const count = row.original.scopedServiceIds.length;
@@ -179,7 +196,9 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
   },
   {
     accessorKey: "riskLevel",
-    header: "Risk",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Risk" />
+    ),
     cell: ({ row }) => (
       <TableBadge
         tone={riskTones[row.original.riskLevel]}
@@ -189,10 +208,13 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
         {row.original.riskLevel}
       </TableBadge>
     ),
+    filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
     cell: ({ row }) => {
       const connector = row.original;
       return (
@@ -209,18 +231,12 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
   },
   {
     accessorKey: "lastValidatedAt",
-    header: "Last validated",
-    cell: ({ row }) => {
-      const value = row.original.lastValidatedAt;
-      return (
-        <span
-          className="whitespace-nowrap text-sm text-muted-foreground"
-          title={formatValidationTime(value)}
-        >
-          {formatValidationTime(value)}
-        </span>
-      );
-    },
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Last validated" />
+    ),
+    cell: ({ row }) => (
+      <DateCell value={row.original.lastValidatedAt} empty="Not validated" />
+    ),
   },
   {
     id: "actions",
@@ -243,6 +259,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8"
                 aria-label={`Open actions for ${connector.name}`}
               >
                 <MoreHorizontal className="h-4 w-4" />

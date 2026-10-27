@@ -24,6 +24,7 @@ import {
   Mail,
   XCircle,
   FolderOpen,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   Tooltip,
@@ -37,7 +38,15 @@ import {
   TABLE_BADGE_BASE_CLASS,
   TABLE_BADGE_COMPACT_CLASS,
 } from "@/components/ui/table-badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { DateCell } from "@/components/ui/table-cells";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import React, { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -368,31 +377,32 @@ const MemberActionsCell = ({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:hover:text-blue-300"
-          onClick={handleEditAccess}
-          title="Edit Access"
-          disabled={loadingProjects}
-        >
-          {loadingProjects ? (
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <Edit3 className="h-4 w-4" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 dark:text-red-400 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:hover:text-red-300"
-          onClick={handleRemoveClick}
-          title="Remove Member"
-        >
-          <UserMinus className="h-4 w-4" />
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={`Open actions for ${member.name}`}
+            disabled={loadingProjects}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={handleEditAccess} disabled={loadingProjects}>
+            <Edit3 className="mr-2 h-3.5 w-3.5" />
+            Edit access
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={handleRemoveClick}
+          >
+            <UserMinus className="mr-2 h-3.5 w-3.5" />
+            Remove member
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <RemoveMemberConfirmDialog
         isOpen={showRemoveDialog}
@@ -546,31 +556,32 @@ const InvitationActionsCell = ({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:hover:text-blue-300"
-          onClick={handleResendInvitation}
-          disabled={resending}
-          title="Resend Invitation"
-        >
-          {resending ? (
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <Mail className="h-4 w-4" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 dark:text-red-400 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:hover:text-red-300"
-          onClick={() => setShowCancelDialog(true)}
-          title="Cancel Invitation"
-        >
-          <XCircle className="h-4 w-4" />
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={`Open actions for ${invitation.email}`}
+            disabled={resending}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={handleResendInvitation} disabled={resending}>
+            <Mail className="mr-2 h-3.5 w-3.5" />
+            Resend invitation
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setShowCancelDialog(true)}
+          >
+            <XCircle className="mr-2 h-3.5 w-3.5" />
+            Cancel invitation
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <CancelInvitationConfirmDialog
         isOpen={showCancelDialog}
@@ -594,7 +605,7 @@ export const createMemberColumns = (
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <UUIDField
             value={id}
             maxLength={8}
@@ -617,22 +628,36 @@ export const createMemberColumns = (
       const isInvitation = item.type === "invitation";
 
       return (
-        <div className="flex items-center h-10">
-          <div>
-            <div className="font-medium text-sm">
-              {isInvitation
-                ? (item as PendingInvitation).email
-                : (item as OrgMember).name}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {isInvitation
-                ? `Invited by ${(item as PendingInvitation).inviterName}`
-                : (item as OrgMember).email}
-            </div>
-          </div>
+        <div className="flex h-8 items-center text-sm">
+          {isInvitation ? (
+            <span className="truncate italic text-muted-foreground">
+              Invited by {(item as PendingInvitation).inviterName}
+            </span>
+          ) : (
+            <TruncatedTextWithTooltip
+              text={(item as OrgMember).name}
+              maxLength={28}
+              maxWidth="220px"
+              className="font-medium"
+            />
+          )}
         </div>
       );
     },
+  },
+  {
+    accessorKey: "email",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Email" />
+    ),
+    cell: ({ row }) => (
+      <TruncatedTextWithTooltip
+        text={row.original.email}
+        maxLength={32}
+        maxWidth="260px"
+        className="text-sm text-muted-foreground"
+      />
+    ),
     filterFn: (row, id, value) => {
       const item = row.original;
       const searchText =
@@ -656,7 +681,7 @@ export const createMemberColumns = (
         : (item as OrgMember).role;
 
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <RoleBadge role={role} isInvitation={isInvitation} />
         </div>
       );
@@ -689,7 +714,7 @@ export const createMemberColumns = (
           : "active";
 
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <StatusBadge
             status={status as "active" | "pending" | "expired"}
           />
@@ -708,69 +733,18 @@ export const createMemberColumns = (
   {
     accessorKey: "joinedAt",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Date" />
+      <DataTableColumnHeader column={column} title="Joined" />
     ),
     size: 140,
     cell: ({ row }) => {
       const item = row.original;
-      const isInvitation = item.type === "invitation";
-
-      const formatDateTime = (dateString: string) => {
-        const date = new Date(dateString);
-        const formattedDate = date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-        const formattedTime = date.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        return { formattedDate, formattedTime };
-      };
-
-      return (
-        <div className="flex items-center h-10">
-          {isInvitation ? (
-            <div className="text-sm">
-              <div className="text-muted-foreground text-xs">Expires:</div>
-              <div className="font-medium">
-                {(() => {
-                  const { formattedDate, formattedTime } = formatDateTime(
-                    (item as PendingInvitation).expiresAt
-                  );
-                  return (
-                    <>
-                      <span>{formattedDate}</span>
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {formattedTime}
-                      </span>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm">
-              <div className="text-muted-foreground text-xs">Joined:</div>
-              <div className="font-medium">
-                {(() => {
-                  const { formattedDate, formattedTime } = formatDateTime(
-                    (item as OrgMember).joinedAt
-                  );
-                  return (
-                    <>
-                      <span>{formattedDate}</span>
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {formattedTime}
-                      </span>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
+      return item.type === "invitation" ? (
+        <div className="flex items-center gap-1.5" title="Invitation expires">
+          <DateCell value={item.expiresAt} className="" />
+          <span className="text-xs text-muted-foreground">(expires)</span>
         </div>
+      ) : (
+        <DateCell value={item.joinedAt} />
       );
     },
   },
@@ -786,7 +760,7 @@ export const createMemberColumns = (
 
       if (isInvitation) {
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             <span className="text-muted-foreground text-sm">—</span>
           </div>
         );
@@ -802,7 +776,7 @@ export const createMemberColumns = (
         member.role === "project_viewer"
       ) {
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             <Badge
               variant="secondary"
               className={`${BADGE_BASE_CLASS} bg-muted text-foreground`}
@@ -816,7 +790,7 @@ export const createMemberColumns = (
 
       if (memberProjects.length === 0) {
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             <span className="text-muted-foreground text-sm">None</span>
           </div>
         );
@@ -827,7 +801,7 @@ export const createMemberColumns = (
       const remaining = memberProjects.length - displayProjects.length;
 
       const trigger = (
-        <div className="flex items-center h-10 gap-1">
+        <div className="flex items-center h-8 gap-1">
           {displayProjects.map((project) => (
             <Badge
               key={project.projectId}
@@ -889,7 +863,7 @@ export const createMemberColumns = (
       if (isInvitation) {
         const inv = item as PendingInvitation;
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             <InvitationActionsCell
               invitation={inv}
               onMemberUpdate={onMemberUpdate}
@@ -900,7 +874,7 @@ export const createMemberColumns = (
 
       const member = item as OrgMember;
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <MemberActionsCell
             member={member}
             onMemberUpdate={onMemberUpdate}

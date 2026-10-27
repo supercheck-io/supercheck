@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { Profiler } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import {
   getPrivateAgentConnectorJobResult,
@@ -131,8 +132,7 @@ describe("ConnectorAdminView", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Add connector" });
     expect(dialog).toHaveClass("w-[calc(100vw-1rem)]");
-    expect(dialog).toHaveClass("sm:max-w-none");
-    expect(dialog).toHaveClass("xl:min-w-[80rem]");
+    expect(dialog).toHaveClass("sm:max-w-3xl");
     expect(screen.getByText("Connection")).toBeInTheDocument();
     expect(
       screen.getByText("Endpoint and read-only access"),
@@ -204,8 +204,8 @@ describe("ConnectorAdminView", () => {
     expect(
       screen.getByRole("heading", { name: "Context links" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("PagerDuty primary")).toBeInTheDocument();
-    expect(screen.getByText(/webhook alerts/i)).toBeInTheDocument();
+    expect(screen.getByText("PagerDuty primary (webhook)")).toBeInTheDocument();
+    expect(screen.getByText("checkout")).toBeInTheDocument();
     expect(screen.queryByText(/routing key/i)).not.toBeInTheDocument();
   });
 
@@ -224,12 +224,11 @@ describe("ConnectorAdminView", () => {
       />,
     );
 
-    expect(screen.getByText("Private Agent")).toBeInTheDocument();
-    expect(screen.getByText("1 service")).toBeInTheDocument();
-    expect(screen.getByText("low")).toBeInTheDocument();
-    expect(
-      screen.getByTitle(connector.lastValidatedAt.toLocaleString()),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("Private Agent").length).toBeGreaterThan(0);
+    expect(screen.getByText("prod-vpc-agent")).toBeInTheDocument();
+    // Service scope and risk are hidden by default (available under View).
+    expect(screen.queryByText("1 service")).not.toBeInTheDocument();
+    expect(screen.getByText("Jun 27, 2026")).toBeInTheDocument();
     expect(screen.queryByText(connector.endpointUrl)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/access key|credential value/i),
@@ -552,5 +551,82 @@ describe("ConnectorAdminView", () => {
     expect(
       await screen.findByRole("menuitem", { name: /search evidence/i }),
     ).toHaveAttribute("aria-disabled", "true");
+  });
+  it("opens the evidence search dialog when a connector row is clicked or activated by keyboard", async () => {
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[connector]}
+        setupOptions={{ services: [], privateAgents: [] }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+      />,
+    );
+
+    const row = screen.getByText("CloudWatch prod").closest("tr") as HTMLElement;
+    fireEvent.click(row);
+    expect(
+      await screen.findByRole("button", { name: "Search evidence" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps secondary toolbar actions in a More menu", async () => {
+    const onOpenSavedQueries = jest.fn();
+    render(
+      <ConnectorAdminView
+        loadError={null}
+        initialConnectors={[connector]}
+        setupOptions={{ services: [], privateAgents: [] }}
+        initialBindings={[]}
+        bindingSetupOptions={{
+          notificationProviders: [],
+          connectors: [],
+          services: [],
+        }}
+        onOpenSavedQueries={onOpenSavedQueries}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /add connector/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /setup guide/i })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { name: /more/i }), {
+      key: "Enter",
+      code: "Enter",
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /saved queries/i }));
+    expect(onOpenSavedQueries).toHaveBeenCalled();
+  });
+
+  it("settles after mounting the table without re-render loops", async () => {
+    const commits = jest.fn();
+    render(
+      <Profiler id="connectors" onRender={commits}>
+        <ConnectorAdminView
+          loadError={null}
+          initialConnectors={[connector]}
+          setupOptions={{ services: [], privateAgents: [] }}
+          initialBindings={[]}
+          bindingSetupOptions={{
+            notificationProviders: [],
+            connectors: [],
+            services: [],
+          }}
+        />
+      </Profiler>,
+    );
+    await screen.findByText("CloudWatch prod");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    const settled = commits.mock.calls.length;
+    expect(settled).toBeLessThan(15);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(commits.mock.calls.length).toBe(settled);
   });
 });
