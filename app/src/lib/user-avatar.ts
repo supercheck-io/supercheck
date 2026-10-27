@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { randomBytes } from "crypto";
 
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -69,6 +69,28 @@ export async function deleteAvatar(userId: string, version: string): Promise<voi
     await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: keyOf(userId, version) }));
   } catch (error) {
     console.error("[AVATAR] Failed to delete previous avatar object:", error);
+  }
+}
+
+// An upload that is still between putAvatar and updateUser is younger than this, so pruning never removes it.
+const PRUNE_MIN_AGE_MS = 60_000;
+
+/**
+ * Deletes the user's stored avatar objects except `keep`. Covers orphans from concurrent
+ * uploads (both read the same previous version) and account deletion (keep = null, minAgeMs = 0).
+ * Best effort: failures are logged, never thrown.
+ */
+export async function pruneAvatars(userId: string, keep: string | null, minAgeMs = PRUNE_MIN_AGE_MS): Promise<void> {
+  try {
+    const prefix = `avatars/${userId}/`;
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+    const cutoff = Date.now() - minAgeMs;
+    const stale = (listed.Contents ?? []).filter(
+      (object) => object.Key && object.Key !== `${prefix}${keep}` && (object.LastModified?.getTime() ?? 0) <= cutoff,
+    );
+    await Promise.all(stale.map((object) => s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: object.Key }))));
+  } catch (error) {
+    console.error("[AVATAR] Failed to prune avatar objects:", error);
   }
 }
 
