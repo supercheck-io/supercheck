@@ -28,6 +28,8 @@ type IncidentAiSummaryCardProps = {
   feedback?: React.ReactNode;
   /** Opens the investigation details sheet. */
   onOpenDetails?: () => void;
+  /** Shows a compact "Investigate" action in the empty state. */
+  canInvestigate?: boolean;
 };
 
 export function confidenceLabel(score: string | null): {
@@ -52,6 +54,7 @@ export function IncidentAiSummaryCard({
   evidence = [],
   feedback,
   onOpenDetails,
+  canInvestigate = false,
 }: IncidentAiSummaryCardProps) {
   const [expanded, setExpanded] = useState(false);
   const running = investigationStatus === "running";
@@ -148,9 +151,21 @@ export function IncidentAiSummaryCard({
           </div>
         ) : (
           !running && !failed && (
-            <p className="text-sm text-muted-foreground">
-              No AI conclusion yet. Open Investigation details to start one; an inconclusive result is reported as such, never guessed.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">No AI analysis yet.</p>
+              {onOpenDetails && (
+                <Button
+                  type="button"
+                  variant={canInvestigate ? "outline" : "ghost"}
+                  size="sm"
+                  className="h-8"
+                  onClick={onOpenDetails}
+                >
+                  {canInvestigate ? <Sparkles className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                  {canInvestigate ? "Investigate" : "Investigation details"}
+                </Button>
+              )}
+            </div>
           )
         )}
         {citations.length > 0 && !running && (
@@ -180,6 +195,7 @@ export function IncidentAiSummaryCard({
             Summary only: this run did not return structured hypotheses. Run it again for a ranked breakdown.
           </p>
         )}
+        {(conclusion || running || failed) && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm">{feedback}</div>
           {onOpenDetails && (
@@ -189,6 +205,7 @@ export function IncidentAiSummaryCard({
             </Button>
           )}
         </div>
+        )}
       </CardContent>
     </Card>
   );

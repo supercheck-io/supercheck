@@ -30,7 +30,7 @@ describe("IncidentAiSummaryCard", () => {
 
   it("never invents a conclusion when there is none", () => {
     render(<IncidentAiSummaryCard rootCauseSummary={null} confidenceScore="0.9" investigationStatus={null} />);
-    expect(screen.getByText(/No AI conclusion yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No AI analysis yet/)).toBeInTheDocument();
     expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
   });
 

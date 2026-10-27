@@ -69,7 +69,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(signalRow).toContainText(monitor.name);
       await expect(signalRow).toContainText("sev2");
       await signalRow
-        .getByRole("button", { name: "Investigate", exact: true })
+        .getByRole("button", { name: "Open incident", exact: true })
         .click();
       await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
       await expect(

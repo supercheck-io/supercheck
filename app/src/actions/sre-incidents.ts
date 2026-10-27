@@ -37,6 +37,7 @@ import {
   user,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { createLogger } from "@/lib/logger/index";
 import {
   ALERT_CORRELATION_LIMITS,
@@ -335,11 +336,6 @@ function readStructuredSnapshot(
   };
 }
 
-function titleCase(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
 
 export async function getSreIncidentAnalytics(): Promise<
   | { success: true; analytics: SreIncidentAnalytics }
@@ -1461,7 +1457,6 @@ export async function createSreIncidentFromAlert(
         status: alertHistory.status,
         provider: alertHistory.provider,
         sentAt: alertHistory.sentAt,
-        deliveryMetadata: alertHistory.deliveryMetadata,
         monitorName: monitors.name,
         jobName: jobs.name,
       })
@@ -1504,16 +1499,10 @@ export async function createSreIncidentFromAlert(
     const severity = deriveSeverity(alert.type, alert.message);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
-    const deliveryDedupKey =
-      typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
-      alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
-        ? alert.deliveryMetadata.correlation.dedupKey.trim()
-        : undefined;
-    const dedupKey =
-      deliveryDedupKey ??
-      [project.id, sourceType, sourceId ?? targetName, alert.type].join(":");
+    // Same identity as automatic incidents: source plus alert type (not the per-channel key).
+    const dedupKey = [project.id, sourceType, sourceId ?? targetName, alert.type].join(":");
     const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
-    const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
+    const title = alertIncidentTitle(targetName, alert.type);
 
     const result = await db.transaction(async (tx) => {
       await tx.execute(

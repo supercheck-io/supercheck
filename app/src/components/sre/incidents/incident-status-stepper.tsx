@@ -8,7 +8,10 @@ export function IncidentStatusStepper({ current }: { current: IncidentDisplaySta
   const currentIndex = INCIDENT_DISPLAY_STATUSES.findIndex((status) => status.value === current);
   return (
     <nav aria-label="Incident progress" className="shrink-0 overflow-x-auto">
-      <ol className="flex min-w-max items-center gap-2 text-sm">
+      <p aria-hidden="true" className="text-sm font-medium sm:hidden">
+        Step {currentIndex + 1} of {INCIDENT_DISPLAY_STATUSES.length} · {INCIDENT_DISPLAY_STATUSES[currentIndex]?.label}
+      </p>
+      <ol className="sr-only items-center gap-2 text-sm sm:not-sr-only sm:flex sm:min-w-max">
         {INCIDENT_DISPLAY_STATUSES.map((status, index) => {
           const done = index < currentIndex || (current === "resolved" && index === currentIndex);
           const active = index === currentIndex;

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentListItem } from "@/actions/sre-incidents";
 
+import { NewIncidentAction } from "./new-incident-action";
 import { SreIncidentsList, formatAge, matchesQuickFilter } from "./sre-incidents-list";
 
 // Radix/cmdk use browser layout APIs that jsdom does not provide.
@@ -126,7 +127,7 @@ describe("SreIncidentsList", () => {
     mockRole = "";
     mockProjectLoading = true;
     const { rerender } = render(
-      <SreIncidentsList incidents={[]} loadError={null} />,
+      <NewIncidentAction />,
     );
     const button = screen.getByRole("button", { name: /new incident/i });
     expect(button).toBeDisabled();
@@ -134,13 +135,13 @@ describe("SreIncidentsList", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     mockRole = "project_editor";
     mockProjectLoading = false;
-    rerender(<SreIncidentsList incidents={[]} loadError={null} />);
+    rerender(<NewIncidentAction />);
     expect(screen.getByRole("button", { name: /new incident/i })).toBeEnabled();
   });
 
   it("explains permission failures and keeps creation unavailable", () => {
     mockProjectError = "Project fetch failed";
-    render(<SreIncidentsList incidents={[]} loadError={null} />);
+    render(<NewIncidentAction />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Permissions unavailable",
     );
@@ -151,7 +152,7 @@ describe("SreIncidentsList", () => {
 
   it("hides creation from viewers", () => {
     mockRole = "project_viewer";
-    render(<SreIncidentsList incidents={[]} loadError={null} />);
+    render(<NewIncidentAction />);
     expect(
       screen.queryByRole("button", { name: /new incident/i }),
     ).not.toBeInTheDocument();
@@ -307,12 +308,6 @@ describe("SreIncidentsList", () => {
 
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
 
-    expect(screen.getByText("Incidents")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Track, investigate, and resolve operational incidents.",
-      ),
-    ).toBeInTheDocument();
     expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
     expect(
       screen.queryByText("Checkout incident 14"),
@@ -320,7 +315,6 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
 
-    const headerActions = screen.getByTestId("incident-header-actions");
     const toolbar = screen.getByTestId("incident-toolbar");
     expect(
       within(toolbar).getByPlaceholderText("Search incidents..."),
@@ -334,12 +328,6 @@ describe("SreIncidentsList", () => {
     expect(
       within(toolbar).getByRole("button", { name: /Status/ }),
     ).toHaveClass("border-dashed");
-    expect(
-      within(headerActions).getByRole("link", { name: /trends/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(headerActions).getByRole("button", { name: /new incident/i }),
-    ).toBeInTheDocument();
 
     const table = screen.getByRole("table");
     expect(

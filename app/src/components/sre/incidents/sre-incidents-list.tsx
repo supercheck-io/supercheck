@@ -212,26 +212,6 @@ export function SreIncidentsList({
   currentUserId = null,
 }: SreIncidentsListProps) {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const {
-    projectId,
-    currentProject,
-    loading: projectLoading,
-    error: projectError,
-  } = useProjectContext();
-  const canCreate = Boolean(
-    !projectLoading &&
-      !projectError &&
-      currentProject?.userRole &&
-      checkRolePermissionsClient(currentProject.userRole, {
-        sre_incident: ["create"],
-      }),
-  );
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [severity, setSeverity] =
-    useState<SreIncidentListItem["severity"]>("sev3");
-  const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -248,52 +228,6 @@ export function SreIncidentsList({
     setLastPageSize(pageSize);
     setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
   }
-  const [isPending, startTransition] = useTransition();
-
-  const resetForm = () => {
-    setTitle("");
-    setSeverity("sev3");
-    setSummary("");
-  };
-
-  const handleCreateIncident = () => {
-    if (!canCreate || isPending) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      toast.error("Incident title is required");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await createManualSreIncident({
-        title: trimmedTitle,
-        severity,
-        summary: summary.trim() || null,
-      });
-
-      if (!result.success) {
-        toast.error(result.fieldErrors?.title?.[0] ?? result.error);
-        return;
-      }
-
-      toast.success(result.message);
-      setDialogOpen(false);
-      resetForm();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentAnalyticsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreEvidenceGraphQueryKey(projectId),
-        }),
-      ]);
-      router.push(`/incidents/${result.incident.id}`);
-    });
-  };
-
   const serviceOptions = useMemo(
     () =>
       Array.from(
@@ -405,50 +339,7 @@ export function SreIncidentsList({
   }
 
   return (
-    <div className="w-full max-w-full mt-6 space-y-4 p-2">
-      <PageHeader
-        title="Incidents"
-        description="Track, investigate, and resolve operational incidents."
-        className="mb-4 -mt-2"
-        actions={
-          <div
-            className="flex flex-wrap items-center gap-2"
-            data-testid="incident-header-actions"
-          >
-            {incidents.length > 0 && (
-              <>
-                <Button asChild type="button" variant="outline" className="h-8">
-                  <Link href="/incidents?tab=alerts">Review alerts</Link>
-                </Button>
-                <Button asChild type="button" variant="outline" className="h-8">
-                  <Link href="/incidents/analytics">
-                    <BarChart3 className="h-4 w-4" />
-                    Trends
-                  </Link>
-                </Button>
-              </>
-            )}
-            {projectError && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Permissions unavailable. Refresh to try again.
-              </p>
-            )}
-            {(canCreate || projectLoading) && (
-              <Button
-                type="button"
-                className="h-8"
-                disabled={!canCreate}
-                aria-busy={projectLoading || undefined}
-                title={projectLoading ? "Loading permissions..." : undefined}
-                onClick={() => setDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-                New incident
-              </Button>
-            )}
-          </div>
-        }
-      />
+    <div className="w-full max-w-full space-y-4">
 
       {incidents.length > 0 && (
         <div
@@ -796,85 +687,6 @@ export function SreIncidentsList({
         </>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create incident</DialogTitle>
-            <DialogDescription>
-              Use this when an incident did not start from an alert.
-              Alert-created incidents still come from the Alerts page.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-title">Title</Label>
-              <Input
-                id="manual-incident-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Checkout API failures"
-                maxLength={500}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-severity">Severity</Label>
-              <Select
-                value={severity}
-                onValueChange={(value) =>
-                  setSeverity(value as SreIncidentListItem["severity"])
-                }
-              >
-                <SelectTrigger id="manual-incident-severity">
-                  <SelectValue placeholder="Select severity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sev1">SEV1 - Critical</SelectItem>
-                  <SelectItem value="sev2">SEV2 - High</SelectItem>
-                  <SelectItem value="sev3">SEV3 - Medium</SelectItem>
-                  <SelectItem value="sev4">SEV4 - Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-summary">Initial notes</Label>
-              <Textarea
-                id="manual-incident-summary"
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-                placeholder="What is known so far?"
-                rows={4}
-                maxLength={2000}
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleCreateIncident}
-              disabled={isPending || !title.trim()}
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create incident"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

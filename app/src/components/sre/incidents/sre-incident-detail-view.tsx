@@ -356,6 +356,7 @@ export function SreIncidentDetailView({
             investigation={investigation}
             evidence={detail.evidence}
             onOpenDetails={() => openSheet()}
+            canInvestigate={permissions.canInvestigate}
             feedback={
               permissions.canUpdate && investigation?.status === "completed" ? (
                 <>

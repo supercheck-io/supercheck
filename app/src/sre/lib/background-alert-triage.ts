@@ -32,6 +32,7 @@ import {
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
+import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
@@ -85,11 +86,6 @@ export type SreBackgroundAlertTriageResult =
       investigationRunId?: string;
     };
 
-function titleCase(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
 
 function deriveSeverity(type: string, message: string): SreSeverity {
   const normalizedType = type.toLowerCase();
@@ -126,11 +122,6 @@ function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function truncate(value: string, maxLength: number) {
-  return value.length > maxLength
-    ? `${value.slice(0, maxLength - 3)}...`
-    : value;
-}
 
 async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   const [alert] = await db
@@ -234,7 +225,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   // failure delivered to Slack and a webhook open two incidents.
   const dedupKey = [projectId, sourceType, sourceId, alert.type].join(":");
   const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
-  const title = truncate(`${targetName}: ${titleCase(alert.type)}`, 500);
+  const title = alertIncidentTitle(targetName, alert.type);
 
   const result = await db.transaction(async (tx) => {
     await tx.execute(

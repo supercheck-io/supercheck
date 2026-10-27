@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,7 +10,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Info,
   SearchCheck,
   Search,
   Siren,
@@ -20,6 +18,7 @@ import { toast } from "sonner";
 
 import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
 import type { AlertHistory } from "@/components/alerts/schema";
+import { getAlertTypeLabel } from "@/components/alerts/data";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
@@ -41,12 +40,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
@@ -165,7 +158,7 @@ function deriveSreAlerts(alerts: AlertHistory[]) {
       fingerprint,
       targetName: alert.targetName,
       source: deriveSource(alert),
-      type: titleCase(alert.type),
+      type: getAlertTypeLabel(alert.type),
       message: alert.message,
       severity: deriveSeverity(alert),
       timestamp: alert.timestamp,
@@ -428,31 +421,6 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground"
-                  aria-label="Alert signal scope"
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                Repeated failures are grouped into one signal. Investigate opens
-                an incident. Delivery failures and recovery events stay in
-                History.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
-            <Link href="/incidents">View incidents</Link>
-          </Button>
-        </div>
       </div>
 
       <div className="w-full max-w-full overflow-x-auto rounded-t-lg border">
@@ -581,7 +549,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                         className="h-8"
                       >
                         <SearchCheck className="h-4 w-4" />
-                        Investigate
+                        Open incident
                       </Button>
                     ) : (
                       <span

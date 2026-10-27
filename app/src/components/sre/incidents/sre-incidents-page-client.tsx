@@ -1,6 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { BarChart3 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
+import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SreIncidentsList } from "@/components/sre/incidents/sre-incidents-list";
 import {
@@ -72,17 +77,38 @@ export function SreIncidentsPageClient() {
     });
 
   return (
-    <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-      <TabsList>
-        <TabsTrigger value="incidents">Incidents</TabsTrigger>
-        <TabsTrigger value="alerts">Alerts</TabsTrigger>
-      </TabsList>
-      <TabsContent value="incidents">
-        <IncidentsTab />
-      </TabsContent>
-      <TabsContent value="alerts">
-        <IncidentAlertsTab view={view} onViewChange={onViewChange} />
-      </TabsContent>
-    </Tabs>
+    <div className="w-full max-w-full mt-6 space-y-4 p-2">
+      <PageHeader
+        title="Incidents"
+        description="Track, investigate, and resolve operational incidents."
+        className="-mt-2"
+        actions={
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="incident-header-actions"
+          >
+            <Button asChild type="button" variant="outline" className="h-8">
+              <Link href="/incidents/analytics">
+                <BarChart3 className="h-4 w-4" />
+                Trends
+              </Link>
+            </Button>
+            <NewIncidentAction />
+          </div>
+        }
+      />
+      <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="incidents">Incidents</TabsTrigger>
+          <TabsTrigger value="alerts">Alerts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="incidents">
+          <IncidentsTab />
+        </TabsContent>
+        <TabsContent value="alerts">
+          <IncidentAlertsTab view={view} onViewChange={onViewChange} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

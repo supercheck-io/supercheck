@@ -510,7 +510,8 @@ type SourceRef = {
 // Only failures that a passing check really ends: monitor up/down and job failure/timeout.
 // Never SSL-expiry (a passing check does not renew a certificate) or custom triggers.
 const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
-const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout"];
+// Old title-cased labels and the current ones (see alert-labels.ts); webhook-keyed events match by title.
+const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Monitor down", "Job failed", "Job timed out"];
 
 const recoverableTrigger = () =>
   or(

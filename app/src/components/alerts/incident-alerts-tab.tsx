@@ -28,8 +28,8 @@ export function IncidentAlertsTab({
           </TabsList>
         </Tabs>
         <InfoTip label="About alerts">
-          Alerts are automatic: a check failed or recovered. Alerts that need a
-          person open an incident.
+          Alerts are automatic: a check failed or recovered. Repeated failures
+          group into one signal, and alerts that need a person open an incident.
         </InfoTip>
       </div>
       {view === "history" ? (
