@@ -122,6 +122,8 @@ export async function GET(request: NextRequest) {
     const total = Number(countResult[0]?.count ?? 0);
 
     const creatorOf = await loadCreators(result.map((run) => run.triggeredByUserId));
+    // The raw user id stays server-side; clients get the name and avatar.
+    const withoutTriggeredByUserId = <T extends { triggeredByUserId: unknown }>({ triggeredByUserId: _omit, ...rest }: T) => rest;
 
     // Convert dates to ISO strings and format duration
     const formattedRuns = result.map(run => {
@@ -162,7 +164,7 @@ export async function GET(request: NextRequest) {
       };
 
       return {
-        ...run,
+        ...withoutTriggeredByUserId(run),
         triggeredByName: creatorOf(run.triggeredByUserId).createdByName,
         triggeredByImage: creatorOf(run.triggeredByUserId).createdByImage,
         duration: computeDuration(),

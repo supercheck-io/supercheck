@@ -32,6 +32,7 @@ it("returns who triggered each run and the trigger key name", async () => {
   const body = await (await GET(new NextRequest("http://localhost/api/runs"))).json();
 
   expect(loadCreators).toHaveBeenCalledWith(["u1", "u1", null]);
+  expect(body.data[0]).not.toHaveProperty("triggeredByUserId");
   expect(body.data.map((run: Record<string, unknown>) => [run.triggeredByName, run.triggeredByImage, run.triggerKeyName])).toEqual([
     ["Ada", "/api/users/u1/avatar?v=x", null],
     ["Ada", "/api/users/u1/avatar?v=x", "ci-key"],

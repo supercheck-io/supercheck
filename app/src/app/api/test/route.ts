@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
             projectId: project.id,
             status: "queued", // Start as queued, updated after capacity reservation
             trigger: "manual",
-          triggeredByUserId: userId,
+            triggeredByUserId: userId,
             location: resolvedLocation,
             metadata: {
               source: "playground",
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
             projectId: project.id,
             status: "queued", // Start as queued, updated after capacity reservation
             trigger: "manual",
-          triggeredByUserId: userId,
+            triggeredByUserId: userId,
             location: null,
             metadata: {
               source: "playground",

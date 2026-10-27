@@ -160,6 +160,7 @@ export const runs = pgTable(
   (table) => ({
     // Index on job_id for listing job runs
     jobIdIdx: index("runs_job_id_idx").on(table.jobId),
+    triggeredByIdx: index("runs_triggered_by_user_id_idx").on(table.triggeredByUserId).where(sql`${table.triggeredByUserId} IS NOT NULL`),
     // Index on project_id for listing project runs
     projectIdIdx: index("runs_project_id_idx").on(table.projectId),
     // Composite index on job_id and status for filtered queries
