@@ -1989,6 +1989,12 @@ export class MonitorService {
         }
       }
 
+      // Dial the vetted address, not the name: a second lookup could rebind to a private host.
+      const { address } = await resolvePublicAddress(
+        hostname.replace(/^\[|\]$/g, ''),
+        process.env.ALLOW_INTERNAL_TARGETS === 'true',
+      );
+
       const certificateInfo = await new Promise<{
         certificate: tls.DetailedPeerCertificate;
         authorized: boolean;
@@ -1998,7 +2004,7 @@ export class MonitorService {
 
         const socket = tls.connect(
           {
-            host: hostname,
+            host: address,
             port: port,
             rejectUnauthorized: false, // Allow connection to inspect invalid/expired certificates
             servername: hostname, // SNI support for proper certificate validation

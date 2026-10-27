@@ -97,7 +97,7 @@ Execution pods default to:
 - `dnsPolicy: ClusterFirst`
 - `dnsConfig.options: ndots=1, timeout=2, attempts=3`
 
-If `EXECUTION_DNS_NAMESERVERS` is set on the worker, execution pods switch to `dnsPolicy: None` with those validated IPv4 nameservers.
+If `EXECUTION_DNS_NAMESERVERS` is set on the worker, execution pods switch to `dnsPolicy: None` with those validated IPv4 nameservers. The `execution-egress` NetworkPolicy only allows DNS to CoreDNS, so add a matching DNS rule for those nameservers or lookups in execution pods will fail.
 
 Network access is enforced by Kubernetes `NetworkPolicy`, not by Docker flags:
 

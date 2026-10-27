@@ -300,7 +300,7 @@ export function CliTokensTable() {
       if (!response.ok) {
         const errorData = await response.json();
         // Provide user-friendly error messages based on the error type
-        if (response.status === 403 || errorData.error === "Insufficient permissions") {
+        if (errorData.error === "Insufficient permissions") {
           throw new Error("You don't have permission to delete CLI tokens. Please contact a Project Admin or Organization Admin.");
         }
         throw new Error(errorData.error || "Failed to delete CLI token");

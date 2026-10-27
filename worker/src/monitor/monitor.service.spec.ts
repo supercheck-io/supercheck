@@ -931,6 +931,36 @@ describe('MonitorService', () => {
       });
     });
 
+    it('refuses an SSL check whose host resolves to a private address, without dialing', async () => {
+      const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
+      tls.connect.mockClear();
+      jest
+        .mocked(resolvePublicAddress)
+        .mockRejectedValueOnce(
+          new Error('Access to private or reserved networks is not allowed'),
+        );
+      const result = await service['executeSslCheck'](
+        'https://rebind.example.com',
+        {},
+      );
+      expect(resolvePublicAddress).toHaveBeenCalledWith(
+        'rebind.example.com',
+        false,
+      );
+      expect(result.isUp).toBe(false);
+      expect(tls.connect).not.toHaveBeenCalled();
+    });
+
+    it('dials the vetted address but keeps the hostname for SNI', async () => {
+      const tls = jest.requireMock<{ connect: jest.Mock }>('tls');
+      tls.connect.mockClear();
+      await service['executeSslCheck']('https://example.com', {});
+      expect(tls.connect.mock.calls[0][0]).toMatchObject({
+        host: '93.184.216.34',
+        servername: 'example.com',
+      });
+    });
+
     it('honors the configured warning threshold for SSL-only checks', async () => {
       tlsState.daysUntilExpiry = 45;
       const result = await service['executeSslCheck'](mockJobData.target, {
