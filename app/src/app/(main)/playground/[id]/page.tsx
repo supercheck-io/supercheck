@@ -103,9 +103,9 @@ function PlaygroundIdClientBoundary() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col overflow-hidden lg:min-h-[560px]">
       <PageBreadcrumbs items={breadcrumbs} />
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {initialTestDataMemo && (
           <Playground
             initialTestId={id}

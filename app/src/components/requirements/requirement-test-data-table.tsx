@@ -27,6 +27,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { pageSizeOptions, useFitPagination } from "@/hooks/use-fit-page-size"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { LinkedTest } from "@/actions/requirements"
@@ -84,15 +85,14 @@ export function RequirementTestDataTable({
         []
     );
 
+    // Embedded in the requirement sheet, so a fixed size rather than fit-to-window.
+    const { pagination, onPaginationChange } = useFitPagination(data.length, 10)
+
     const table = useReactTable({
         data,
         columns,
-        initialState: {
-            pagination: {
-                pageSize: 10,
-            },
-        },
         state: {
+            pagination,
             sorting,
             columnVisibility,
             rowSelection,
@@ -100,6 +100,7 @@ export function RequirementTestDataTable({
             globalFilter,
         },
         enableRowSelection: false,
+        onPaginationChange,
         onRowSelectionChange: setRowSelection,
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
@@ -183,7 +184,7 @@ export function RequirementTestDataTable({
                                     onClick={() => onRowClick?.(row.original.id)}
                                 >
                                     {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id} className="py-3">
+                                        <TableCell key={cell.id} className="py-2.5">
                                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                         </TableCell>
                                     ))}
@@ -216,7 +217,7 @@ export function RequirementTestDataTable({
                                 }}
                                 className="h-8 w-[70px] rounded border border-input bg-background px-2 py-1 text-sm"
                             >
-                                {[10, 20, 30, 40, 50].map((pageSize) => (
+                                {pageSizeOptions(table.getState().pagination.pageSize).map((pageSize) => (
                                     <option key={pageSize} value={pageSize}>
                                         {pageSize}
                                     </option>
