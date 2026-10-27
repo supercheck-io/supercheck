@@ -41,7 +41,7 @@ export function InvestigationHypotheses({
             .map((id) => evidence.find((item) => item.id === id))
             .filter((item): item is SreIncidentDetail["evidence"][number] => Boolean(item));
           return (
-            <li key={hypothesis.key} className="space-y-2 p-3" data-testid={`hypothesis-${hypothesis.key}`}>
+            <li key={hypothesis.key} className="space-y-2 px-4 py-3" data-testid={`hypothesis-${hypothesis.key}`}>
               <div className="flex flex-wrap items-start gap-2">
                 <span className="mt-0.5 text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
                 <p className="min-w-0 flex-1 break-words text-sm font-medium">{hypothesis.title}</p>
@@ -52,30 +52,34 @@ export function InvestigationHypotheses({
               {hypothesis.rationale && (
                 <p className="break-words text-sm text-muted-foreground">{hypothesis.rationale}</p>
               )}
-              {cited.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" aria-label={`Evidence for ${hypothesis.title}`}>
-                  {cited.map((item) => (
-                    <EvidenceDetailsDialog key={item.id} item={item}>
-                      <button
-                        type="button"
-                        aria-label={`View evidence: ${item.title}`}
-                        className="max-w-full truncate rounded-md border bg-muted/40 px-2 py-0.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[14rem]"
-                      >
-                        {item.title}
-                      </button>
-                    </EvidenceDetailsDialog>
-                  ))}
+              {(cited.length > 0 || canGiveFeedback) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {cited.length > 0 && (
+                    <div className="flex min-w-0 flex-wrap gap-1.5" aria-label={`Evidence for ${hypothesis.title}`}>
+                      {cited.map((item) => (
+                        <EvidenceDetailsDialog key={item.id} item={item}>
+                          <button
+                            type="button"
+                            aria-label={`View evidence: ${item.title}`}
+                            className="max-w-full truncate rounded-md border bg-muted/40 px-2 py-0.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[14rem]"
+                          >
+                            {item.title}
+                          </button>
+                        </EvidenceDetailsDialog>
+                      ))}
+                    </div>
+                  )}
+                  {canGiveFeedback && (
+                    <InvestigationFeedback
+                      incidentId={incidentId}
+                      investigationRunId={investigation.id}
+                      hypothesisKey={hypothesis.key}
+                      initial={feedbackFor(hypothesis.key)}
+                      label={hypothesis.title}
+                      compact
+                    />
+                  )}
                 </div>
-              )}
-              {canGiveFeedback && (
-                <InvestigationFeedback
-                  incidentId={incidentId}
-                  investigationRunId={investigation.id}
-                  hypothesisKey={hypothesis.key}
-                  initial={feedbackFor(hypothesis.key)}
-                  label={hypothesis.title}
-                  compact
-                />
               )}
             </li>
           );

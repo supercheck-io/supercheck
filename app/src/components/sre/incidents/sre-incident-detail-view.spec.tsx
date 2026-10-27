@@ -147,7 +147,7 @@ describe("SreIncidentDetailView", () => {
   it("uses the linked service ID even when its display name is missing", () => {
     const detail = detailFixture();
     detail.incident.primaryServiceName = null;
-    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
     expect(screen.getByText("Mock AI investigation panel")).toHaveAttribute("data-has-service", "true");
   });
   it("hides resolution after the incident is resolved", () => {
@@ -233,11 +233,17 @@ describe("SreIncidentDetailView", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
   });
-  it("renders the investigation controls and evidence section without tabs", () => {
-    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+  it("splits the incident into overview, investigation and evidence tabs", () => {
+    const view = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 
-    expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    expect(screen.getByRole("heading", { name: "Evidence & brief" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Investigation",
+      "Evidence1",
+    ]);
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    view.unmount();
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab="investigation" />);
     expect(screen.getAllByRole("link", { name: "Investigation Map" })[0]).toHaveAttribute(
       "href",
       `/copilot/evidence-graph?incident=${detailFixture().incident.id}`,
@@ -247,12 +253,12 @@ describe("SreIncidentDetailView", () => {
       "href",
       `/copilot?incident=${detailFixture().incident.id}`,
     );
-    expect(screen.getByText("Incident #42")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("#42");
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
     expect(screen.getByTestId("similar-incidents")).toHaveTextContent("Mock similar incidents");
   });
 
-  it("shows hypotheses, run feedback and a collapsed step trace for a structured investigation", () => {
+  it("shows hypotheses on the overview and run feedback with the step trace on the investigation tab", () => {
     const detail = detailFixture();
     detail.latestInvestigation = {
       ...detail.latestInvestigation!,
@@ -270,12 +276,14 @@ describe("SreIncidentDetailView", () => {
       ],
       steps: [{ index: 0, tool: "listNativeEvidence", args: "limit=10", status: "ok", resultCount: 1, durationMs: 120 }],
     };
-    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    const overview = render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.getByTestId("hypothesis-h1")).toHaveTextContent("Validated");
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
-    expect(screen.getByText("Feedback: this investigation")).toBeInTheDocument();
-    expect(screen.getByTestId("investigation-step-trace")).not.toHaveAttribute("open");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
+    overview.unmount();
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    expect(screen.getByText("Feedback: this investigation")).toBeInTheDocument();
+    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("open");
   });
 
   it("offers the post-mortem only once the incident is resolved", () => {

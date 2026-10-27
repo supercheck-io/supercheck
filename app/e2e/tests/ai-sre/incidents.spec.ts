@@ -222,11 +222,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: incidentTitle, exact: true }),
       ).toBeVisible();
 
-      await expect(page.getByRole("tab")).toHaveCount(0);
-      await expect(
-        page.getByRole("heading", { name: "Evidence & brief", exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole("tab")).toHaveCount(3);
       await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
+      await page.getByRole("tab", { name: "Investigation" }).click();
       await expect(page.getByLabel("Include live sources")).toBeDisabled();
       await expect(
         page.getByText("Link a service to use live sources.", { exact: false }),

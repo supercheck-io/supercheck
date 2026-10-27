@@ -36,7 +36,15 @@ Quick actions open **Review alerts** and **Trends**. A project with no incidents
 
 ## Incident Workspace
 
-The header shows the title, severity, status, and **assignee**, with the primary actions **Acknowledge**, **Assign**, **Investigate**, **Ask Copilot**, and **Resolve incident**. The main column leads with the **AI summary**, followed by the **timeline** with a box to post updates, the **post-mortem** once the incident is resolved, and the **Evidence & brief** section. The right sidebar shows the optional **commander**, service, linked alerts, **similar incidents**, the status-page link with **Publish update**, and timestamps with MTTA and MTTR.
+The header shows the incident number, title, severity, status, service, and when it opened, with **Ask Copilot**, **Edit incident**, **Acknowledge**, and **Resolve incident**. The page has three tabs:
+
+| Tab | Contents |
+|---|---|
+| **Overview** | The **AI summary** with hypotheses, the **post-mortem** once the incident is resolved, and the **timeline** with a box to post updates |
+| **Investigation** | Run or re-run the investigation, the **How I investigated** step log, and feedback on the whole run |
+| **Evidence** | Every evidence item for the incident, plus the **Evidence brief** to summarize or export it |
+
+The right sidebar shows the **assignee** and optional **commander**, service, linked alerts, **similar incidents**, the status-page link with **Publish update**, and timestamps with MTTA and MTTR. Open a tab directly with `?tab=investigation` or `?tab=evidence`.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
@@ -53,7 +61,7 @@ The summary card answers four questions in order.
 
 **Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs from before structured results, or runs whose output could not be validated, show a plain summary without hypotheses or a confidence rating.
 
-Under the hypotheses, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It is open and updates live while a run is in progress, and collapsed once the run finishes.
+On the **Investigation** tab, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
 
 ![Investigation Map](/screenshots/sre-investigation-map.png)
 
@@ -73,9 +81,9 @@ Your notes are hints, not evidence. The agent is told to weigh them against the 
 
 The sidebar lists up to five **resolved incidents from the last 180 days** in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. The same list, shortened, is given to the investigation as *past incidents (may be unrelated)*. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
 
-### Evidence & brief
+### Evidence
 
-This section organizes observations from Supercheck checks and connected systems.
+The **Evidence** tab organizes observations from Supercheck checks and connected systems.
 
 | Item | Contents |
 |---|---|

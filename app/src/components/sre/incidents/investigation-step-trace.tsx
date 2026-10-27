@@ -30,7 +30,7 @@ export function InvestigationStepTrace({
   const failures = steps.filter((step) => step.status === "error").length;
 
   return (
-    <details open={running} className="rounded-lg border" data-testid="investigation-step-trace">
+    <details open className="rounded-lg border" data-testid="investigation-step-trace">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         How I investigated
         <span className="text-xs font-normal text-muted-foreground">

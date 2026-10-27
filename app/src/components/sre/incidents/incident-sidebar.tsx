@@ -44,6 +44,13 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
         <CardContent className="space-y-3">
           <IncidentAssigneePicker
             incidentId={incident.id}
+            assigneeUserId={incident.assigneeUserId}
+            assigneeName={incident.assigneeName}
+            label="Assignee"
+            canUpdate={canUpdate && incident.status !== "resolved"}
+          />
+          <IncidentAssigneePicker
+            incidentId={incident.id}
             assigneeUserId={incident.commanderUserId}
             assigneeName={incident.commanderName}
             role="commander"

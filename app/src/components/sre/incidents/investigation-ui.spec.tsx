@@ -12,10 +12,10 @@ describe("InvestigationStepTrace", () => {
     { index: 1, tool: "searchLiveConnectorEvidence", args: "query=up", status: "error" as const, resultCount: null, durationMs: 2400 },
   ];
 
-  it("is collapsed when finished and summarises failures", () => {
+  it("stays open when finished and summarises failures", () => {
     render(<InvestigationStepTrace steps={steps} running={false} />);
     const details = screen.getByTestId("investigation-step-trace");
-    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveAttribute("open");
     expect(details).toHaveTextContent("2 steps, 1 failed");
     expect(details).toHaveTextContent("2 results · 120 ms");
     expect(details).toHaveTextContent("2.4 s");

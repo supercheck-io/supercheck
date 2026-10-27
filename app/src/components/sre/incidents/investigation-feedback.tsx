@@ -70,21 +70,31 @@ export function InvestigationFeedback({
       size="sm"
       aria-pressed={active === verdict}
       aria-label={`${text}: ${label}`}
-      className={cn("h-7 gap-1 px-2 text-xs", active === verdict && "ring-1 ring-border")}
+      title={compact ? text : undefined}
+      className={cn("h-7 gap-1 px-2 text-xs", compact && "w-7 px-0", active === verdict && "ring-1 ring-border")}
       onClick={() => setDraft(verdict)}
       disabled={pending}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      {text}
+      {!compact && text}
     </Button>
   );
 
   return (
-    <div className={cn("space-y-2", compact && "text-xs")}>
-      <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Feedback on ${label}`}>
+    <div className={cn("space-y-2", compact && "ml-auto text-xs", compact && draft && "basis-full")}>
+      <div
+        className={cn("flex flex-wrap items-center gap-1", compact && "justify-end")}
+        role="group"
+        aria-label={`Feedback on ${label}`}
+      >
+        {saved && !draft && compact && (
+          <span className="mr-1 text-xs text-muted-foreground" role="status" title={saved.note ?? undefined}>
+            Marked {saved.verdict}
+          </span>
+        )}
         {button("right", ThumbsUp, "Right")}
         {button("wrong", ThumbsDown, "Wrong")}
-        {saved && !draft && (
+        {saved && !draft && !compact && (
           <span className="text-xs text-muted-foreground" role="status">
             You marked this {saved.verdict}
             {saved.note ? `: ${saved.note}` : ""}
