@@ -39,7 +39,7 @@ describe("connector logos", () => {
   });
 
   it("exposes a component per type for filter options", () => {
-    const Icon = connectorTypeLogo("redis");
+    const Icon = connectorTypeLogo("prometheus");
     const { container } = render(<Icon className="h-4 w-4" />);
     expect(container.querySelector("svg")).not.toBeNull();
   });

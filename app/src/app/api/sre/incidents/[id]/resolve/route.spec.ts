@@ -13,6 +13,8 @@ jest.mock("../../../_auth", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...args: unknown[]) => mockAudit(...args) }));
 jest.mock("@/utils/db", () => ({ db: { transaction: (...args: unknown[]) => mockTransaction(...args) } }));
+// The route notifies in the background; the real notifier opens a Redis client that keeps Jest alive.
+jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 
 import { POST } from "./route";
 

@@ -309,6 +309,13 @@
       "when": 1792970000000,
       "tag": "0043_sre_incident_management",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793050000000,
+      "tag": "0044_remove_unsupported_connector_types",
+      "breakpoints": true
     }
   ]
 }
