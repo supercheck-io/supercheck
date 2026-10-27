@@ -4,8 +4,16 @@ import { INCIDENT_DISPLAY_STATUSES, type IncidentDisplayStatus } from "@/lib/sre
 import { cn } from "@/lib/utils";
 
 /** The six display statuses as a read-only progress line. The current one is highlighted. */
-export function IncidentStatusStepper({ current }: { current: IncidentDisplayStatus }) {
+export function IncidentStatusStepper({
+  current,
+  acknowledged = false,
+}: {
+  current: IncidentDisplayStatus;
+  /** Whether someone acknowledged it; a resolved incident may have skipped the middle steps. */
+  acknowledged?: boolean;
+}) {
   const currentIndex = INCIDENT_DISPLAY_STATUSES.findIndex((status) => status.value === current);
+  const lastIndex = INCIDENT_DISPLAY_STATUSES.length - 1;
   return (
     <nav aria-label="Incident progress" className="shrink-0 overflow-x-auto">
       <p aria-hidden="true" className="text-sm font-medium sm:hidden">
@@ -13,7 +21,12 @@ export function IncidentStatusStepper({ current }: { current: IncidentDisplaySta
       </p>
       <ol className="sr-only items-center gap-2 text-sm sm:not-sr-only sm:flex sm:min-w-max">
         {INCIDENT_DISPLAY_STATUSES.map((status, index) => {
-          const done = index < currentIndex || (current === "resolved" && index === currentIndex);
+          // Once resolved we only know it was triggered, maybe acknowledged, and resolved;
+          // the steps in between may never have happened, so they are not ticked.
+          const done =
+            current === "resolved"
+              ? index === 0 || index === lastIndex || (index === 1 && acknowledged)
+              : index < currentIndex;
           const active = index === currentIndex;
           return (
             <li

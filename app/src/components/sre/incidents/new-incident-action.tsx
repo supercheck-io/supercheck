@@ -131,8 +131,8 @@ export function NewIncidentAction() {
           <DialogHeader>
             <DialogTitle>Create incident</DialogTitle>
             <DialogDescription>
-              Use this when an incident did not start from an alert.
-              Alert-created incidents still come from the Alerts page.
+              For problems no alert caught, such as a customer report.
+              Failing monitors and jobs open incidents automatically.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">

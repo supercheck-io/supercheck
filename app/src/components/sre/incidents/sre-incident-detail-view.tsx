@@ -345,7 +345,7 @@ export function SreIncidentDetailView({
         )}
       </header>
 
-      <IncidentStatusStepper current={display.value} />
+      <IncidentStatusStepper current={display.value} acknowledged={Boolean(incident.acknowledgedAt)} />
 
       <div className="grid min-w-0 shrink-0 gap-4 lg:min-h-0 lg:flex-1 lg:shrink lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex min-h-0 min-w-0 flex-col gap-3">

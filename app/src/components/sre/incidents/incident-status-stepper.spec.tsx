@@ -13,8 +13,9 @@ describe("IncidentStatusStepper", () => {
     expect(screen.getByText("Monitoring").closest("li")).toHaveAttribute("data-state", "upcoming");
   });
 
-  it("marks every step done when resolved", () => {
-    render(<IncidentStatusStepper current="resolved" />);
-    expect(screen.getAllByRole("listitem").every((item) => item.getAttribute("data-state") !== "upcoming")).toBe(true);
+  it("ticks only the steps known to have happened once resolved", () => {
+    render(<IncidentStatusStepper current="resolved" acknowledged />);
+    const states = screen.getAllByRole("listitem").map((item) => item.getAttribute("data-state"));
+    expect(states).toEqual(["done", "done", "upcoming", "upcoming", "upcoming", "current"]);
   });
 });
