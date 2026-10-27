@@ -33,7 +33,7 @@ function download(filename: string, markdown: string) {
   link.href = url;
   link.download = filename;
   link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /** Editable post-mortem for a resolved incident, exportable as Markdown. */
