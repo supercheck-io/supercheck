@@ -511,47 +511,6 @@ describe("ConnectorAdminView", () => {
     );
   });
 
-  it("disables evidence search for setup-only connectors without live adapters", async () => {
-    const setupOnlyConnector = {
-      ...connector,
-      id: "018f0000-0000-7000-8000-000000000020",
-      name: "AppDynamics APM",
-      type: "appdynamics" as const,
-      executionMode: "direct" as const,
-      privateAgent: null,
-      endpointUrl: "https://example.atlassian.net",
-      latestPrivateAgentJob: null,
-    };
-
-    render(
-      <ConnectorAdminView
-        loadError={null}
-        initialConnectors={[setupOnlyConnector]}
-        setupOptions={{
-          services: [
-            {
-              id: "018f0000-0000-7000-8000-000000000003",
-              name: "checkout",
-              environment: "prod",
-              ownerTeam: "payments",
-            },
-          ],
-          privateAgents: [],
-        }}
-        initialBindings={[]}
-        bindingSetupOptions={{
-          notificationProviders: [],
-          connectors: [],
-          services: [],
-        }}
-      />,
-    );
-
-    openConnectorActions("AppDynamics APM");
-    expect(
-      await screen.findByRole("menuitem", { name: /search evidence/i }),
-    ).toHaveAttribute("aria-disabled", "true");
-  });
   it("opens the evidence search dialog when a connector row is clicked or activated by keyboard", async () => {
     render(
       <ConnectorAdminView

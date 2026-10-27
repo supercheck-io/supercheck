@@ -15,9 +15,7 @@ const MAX_TEXT_LENGTH = 1200;
 const connectorSourceTypes = [
   ...DIRECT_VALIDATION_CONNECTOR_TYPES,
   "splunk",
-  "slack",
   "mcp",
-  "webhook",
 ] as const;
 
 const evidenceToolInputSchema = z.object({

@@ -105,12 +105,6 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     addable: true,
   },
   {
-    value: "appdynamics",
-    label: "AppDynamics",
-    description: "Application performance and topology",
-    addable: false,
-  },
-  {
     value: "jaeger",
     label: "Jaeger",
     description: "Distributed traces",
@@ -127,36 +121,6 @@ export const SRE_CONNECTOR_CATALOG: SreConnectorCatalogItem[] = [
     label: "Azure Monitor",
     description: "Cloud metrics, alerts, and logs",
     addable: true,
-  },
-  {
-    value: "postgresql",
-    label: "PostgreSQL",
-    description: "Database health and query evidence",
-    addable: false,
-  },
-  {
-    value: "mysql",
-    label: "MySQL",
-    description: "Database health and query evidence",
-    addable: false,
-  },
-  {
-    value: "mongodb",
-    label: "MongoDB",
-    description: "Database health and operational evidence",
-    addable: false,
-  },
-  {
-    value: "redis",
-    label: "Redis",
-    description: "Cache health and operational evidence",
-    addable: false,
-  },
-  {
-    value: "clickhouse",
-    label: "ClickHouse",
-    description: "Analytics and observability data",
-    addable: false,
   },
   {
     value: "jira",

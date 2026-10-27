@@ -22,10 +22,6 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import {
-  isRetiredConnectorType,
-  retiredConnectorExplanation,
-} from "@/lib/sre/connectors/retired-connectors";
-import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   decryptConnectorCredential,
   encryptConnectorCredential,
@@ -36,7 +32,6 @@ import {
   hashConnectorPayload,
   isDirectValidationConnectorType,
   isPrivateAgentConnectorType,
-  isSetupOnlyConnectorType,
   connectorCredentialRequirementError,
   redactConnectorText,
   sanitizeConnectorEvidence,
@@ -938,18 +933,6 @@ export async function createSreConnector(
     const endpointUrl = isFixedEndpointProvider
       ? null
       : normalizeEndpointUrl(parsed.data.endpointUrl);
-    if (isRetiredConnectorType(parsed.data.type)) {
-      return {
-        success: false,
-        error: retiredConnectorExplanation(parsed.data.type),
-      };
-    }
-    if (isSetupOnlyConnectorType(parsed.data.type)) {
-      return {
-        success: false,
-        error: `${parsed.data.type.replace(/_/g, " ")} connectors are setup-only right now. Live investigation search is not available yet, so new setup is disabled until a read-only adapter is shipped.`,
-      };
-    }
 
     if (parsed.data.type === "mcp") {
       // Never reachable without a Private Agent: the server is in the customer's network.
@@ -1199,9 +1182,6 @@ export async function validateSreConnector(
     } else if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
-    } else if (isRetiredConnectorType(row.type)) {
-      status = "policy_blocked";
-      outputSummary = retiredConnectorExplanation(row.type);
     } else if (row.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
         where: and(
@@ -1253,14 +1233,7 @@ export async function validateSreConnector(
           (validation.status === "valid"
             ? "Connector validation passed"
             : "Connector validation failed");
-      } else if (isRetiredConnectorType(row.type)) {
-        status = "policy_blocked";
-        outputSummary = retiredConnectorExplanation(row.type);
-      } else if (isSetupOnlyConnectorType(row.type)) {
-        status = "policy_blocked";
-        outputSummary =
-          "Live validation is not implemented for this setup-only connector yet. Configuration is saved, and evidence search stays disabled until a read-only adapter is available.";
-      } else if (!url && row.type !== "github" && row.type !== "webhook") {
+      } else if (!url && row.type !== "github") {
         status = "policy_blocked";
         outputSummary =
           "Connector endpoint URL is required for direct validation";
