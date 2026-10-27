@@ -38,6 +38,7 @@ import {
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -132,6 +133,7 @@ export async function GET(request: Request) {
 
       const totalPages = Math.ceil(total / limit);
       const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
+      const creatorOf = await loadCreators(monitorsList.map((m) => m.createdByUserId));
 
       return NextResponse.json({
         data: monitorsList.map((monitor) => ({
@@ -139,6 +141,7 @@ export async function GET(request: Request) {
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
+          ...creatorOf(monitor.createdByUserId),
         })),
         pagination: {
           page,
@@ -160,6 +163,7 @@ export async function GET(request: Request) {
         .orderBy(desc(monitors.id))
         .limit(DEFAULT_LIMIT);
       const tagsByMonitor = await loadMonitorTags(monitorsList.map((m) => m.id));
+      const creatorOf = await loadCreators(monitorsList.map((m) => m.createdByUserId));
 
       // Return standardized response format for React Query hooks
       return NextResponse.json({
@@ -168,6 +172,7 @@ export async function GET(request: Request) {
           config: monitorConfigForRead(monitor.config, canUpdateMonitors),
           target: monitorTargetForRead(monitor.target, canUpdateMonitors),
           tags: tagsByMonitor.get(monitor.id) ?? [],
+          ...creatorOf(monitor.createdByUserId),
         })),
         pagination: {
           total: monitorsList.length,

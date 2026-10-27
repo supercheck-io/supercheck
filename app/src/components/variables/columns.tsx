@@ -42,6 +42,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 // Component for value with popover on truncation
 function ValueWithPopover({ value, isSecret, isVisible, decryptedValue }: { value?: string; isSecret: boolean; isVisible: boolean; decryptedValue?: string }) {
@@ -228,6 +229,7 @@ export const columns: ColumnDef<Variable>[] = [
       return <DescriptionWithPopover description={description} />;
     },
   },
+  createdByColumn<Variable>(),
   {
     accessorKey: "createdAt",
     header: ({ column }) => (

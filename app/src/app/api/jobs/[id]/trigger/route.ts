@@ -354,10 +354,13 @@ export async function POST(
       status: "queued", // Start as queued - capacity manager will update to running
       startedAt: startTime,
       trigger: "remote" as JobTrigger,
+      triggeredByUserId: key.userId,
       location: resolvedLocation,
       metadata: {
         jobType,
         source: "api-trigger",
+        // Snapshot: the key may be renamed or deleted later.
+        triggerKeyName: key.name,
         ...(isPerformanceJob
           ? { executionEngine: "k6", location: resolvedLocation }
           : { executionEngine: "playwright" }),

@@ -152,6 +152,8 @@ export const runs = pgTable(
       .$type<JobTrigger>()
       .notNull()
       .default("manual"),
+    // Who started the run: the user for manual and CLI runs, the key owner for trigger-key runs, null for schedules.
+    triggeredByUserId: uuid("triggered_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

@@ -5,6 +5,7 @@ import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { isUuid } from '@/lib/uuid';
+import { loadCreators } from "@/lib/creators";
 
 export async function GET(request: NextRequest) {
   try {
@@ -100,6 +101,8 @@ export async function GET(request: NextRequest) {
           reportUrl: reports.s3Url,
           trigger: runs.trigger,
           location: runs.location,
+          triggeredByUserId: runs.triggeredByUserId,
+          triggerKeyName: sql<string | null>`${runs.metadata}->>'triggerKeyName'`,
         })
         .from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
@@ -117,6 +120,8 @@ export async function GET(request: NextRequest) {
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);
+
+    const creatorOf = await loadCreators(result.map((run) => run.triggeredByUserId));
 
     // Convert dates to ISO strings and format duration
     const formattedRuns = result.map(run => {
@@ -158,6 +163,8 @@ export async function GET(request: NextRequest) {
 
       return {
         ...run,
+        triggeredByName: creatorOf(run.triggeredByUserId).createdByName,
+        triggeredByImage: creatorOf(run.triggeredByUserId).createdByImage,
         duration: computeDuration(),
         startedAt: run.startedAt ? run.startedAt.toISOString() : null,
         completedAt: run.completedAt ? run.completedAt.toISOString() : null,

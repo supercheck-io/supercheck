@@ -10,6 +10,8 @@ const tagSchema = z.object({
 // Schema for requirements matching the database schema and server action types
 // Note: API routes return ISO strings, server actions return Date objects
 export const requirementSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   title: z.string(),
   description: z.string().nullable(),

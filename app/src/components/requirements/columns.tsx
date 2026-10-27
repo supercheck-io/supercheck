@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { Requirement, coverageStatusConfig } from "./schema";
 import { priorities } from "./data";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 // Meta type for row actions (passed from parent)
 export interface RequirementsTableMeta {
@@ -374,6 +375,7 @@ export const columns: ColumnDef<Requirement>[] = [
     },
 
     // Created column (matching tests with CalendarIcon)
+    createdByColumn<Requirement>(),
     {
         accessorKey: "createdAt",
         header: ({ column }) => (

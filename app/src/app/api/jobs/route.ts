@@ -24,6 +24,7 @@ import type { TestType } from "@/db/schema/types";
 import { decodeStoredTestScript } from "@/lib/test-script";
 
 import { randomUUID } from "crypto";
+import { loadCreators } from "@/lib/creators";
 
 /** A non-numeric or absurdly large value (?limit=abc, ?page=1e20) would otherwise reach Postgres and fail the request with a 500. */
 function integerParam(value: string | null, fallback: number): number {
@@ -249,12 +250,14 @@ export async function GET(request: Request) {
     });
 
     // Assemble the final result using the lookup maps
+    const creatorOf = await loadCreators(jobsResult.map((job) => job.createdByUserId));
     const jobsWithTests = jobsResult.map((job) => {
       const testsForJob = jobTestsMap.get(job.id) || [];
       const lastRun = lastRunMap.get(job.id) || null;
 
       return {
         ...job,
+        ...creatorOf(job.createdByUserId),
         lastRunAt: job.lastRunAt ? job.lastRunAt.toISOString() : null,
         nextRunAt: job.nextRunAt ? job.nextRunAt.toISOString() : null,
         tests: testsForJob.map((test) => ({

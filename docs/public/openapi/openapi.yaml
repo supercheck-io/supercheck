@@ -5614,6 +5614,12 @@ components:
           type: string
           format: uuid
           nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -5656,6 +5662,18 @@ components:
             - manual
             - remote
             - schedule
+        triggeredByUserId:
+          type: string
+          nullable: true
+        triggeredByName:
+          type: string
+          nullable: true
+        triggeredByImage:
+          type: string
+          nullable: true
+        triggerKeyName:
+          type: string
+          nullable: true
         duration:
           type: string
           description: Formatted duration string
@@ -5978,6 +5996,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -6003,6 +6027,12 @@ components:
         createdByUserId:
           type: string
           format: uuid
+          nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
           nullable: true
         name:
           type: string
@@ -6211,6 +6241,12 @@ components:
         description:
           type: string
           nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         fileName:
           type: string
           nullable: true
@@ -6325,6 +6361,12 @@ components:
         lastUsed:
           type: string
           format: date-time
+          nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
           nullable: true
         createdAt:
           type: string
@@ -7428,6 +7470,12 @@ components:
           items:
             type: string
           description: Tag names.
+        createdByName:
+          type: string
+          nullable: true
+        createdByImage:
+          type: string
+          nullable: true
         externalId:
           type: string
           nullable: true

@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
       status: "queued", // Start as queued, will be updated after capacity reservation
       startedAt: startTime,
       trigger: effectiveTrigger,
+      triggeredByUserId: userId,
       location: (resolvedLocation ?? null) as K6Location | null,
       metadata: {
         jobType,
