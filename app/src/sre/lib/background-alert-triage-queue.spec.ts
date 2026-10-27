@@ -89,9 +89,7 @@ describe("enqueueSreAlertTriageJob", () => {
   it("enqueues a deterministic triage job when enabled", async () => {
     mockIsSreBackgroundAlertTriageEnabled.mockReturnValue(true);
     const alertHistoryId = "018f0000-0000-7000-8000-000000000001";
-    mockDb.select
-      .mockReturnValueOnce(selectRows([mockAlertRow()]) as never)
-      .mockReturnValueOnce(selectRows([]) as never);
+    mockDb.select.mockReturnValueOnce(selectRows([mockAlertRow()]) as never);
 
     await enqueueSreAlertTriageJob({ alertHistoryId });
 
@@ -101,34 +99,21 @@ describe("enqueueSreAlertTriageJob", () => {
     });
   });
 
-  it("skips enqueueing alerts that already have a triage run in the database", async () => {
+  it.each(["failed", "sent"])("enqueues %s firing and recovery alerts", async (status) => {
     mockIsSreBackgroundAlertTriageEnabled.mockReturnValue(true);
-    const alertHistoryId = "018f0000-0000-7000-8000-000000000001";
     mockDb.select
-      .mockReturnValueOnce(selectRows([mockAlertRow()]) as never)
-      .mockReturnValueOnce(selectRows([{
-        alertTriageRunId: "018f0000-0000-7000-8000-000000000021",
-        incidentTriageRunId: null,
-      }]) as never);
+      .mockReturnValueOnce(selectRows([mockAlertRow({ status })]) as never)
+      .mockReturnValueOnce(selectRows([mockAlertRow({ status, type: "monitor_recovery" })]) as never);
 
-    const result = await enqueueSreAlertTriageJob({ alertHistoryId });
-
-    expect(result).toBeNull();
-    expect(mockQueueConstructor).not.toHaveBeenCalled();
-    expect(mockQueueLogger.info).toHaveBeenCalledWith(
-      {
-        event: "sre_alert_triage_enqueue_skipped",
-        alertHistoryId,
-        reason: "already_triaged",
-      },
-      "SRE alert triage enqueue skipped"
-    );
+    // The queue is a module singleton, so assert on the returned job instead of the constructor.
+    expect(await enqueueSreAlertTriageJob({ alertHistoryId: "018f0000-0000-7000-8000-000000000001" })).toEqual({ id: "queued-job" });
+    expect(await enqueueSreAlertTriageJob({ alertHistoryId: "018f0000-0000-7000-8000-000000000002" })).toEqual({ id: "queued-job" });
   });
 
   it("skips non-sent alerts before they reach the background queue", async () => {
     mockIsSreBackgroundAlertTriageEnabled.mockReturnValue(true);
     const alertHistoryId = "018f0000-0000-7000-8000-000000000001";
-    mockDb.select.mockReturnValueOnce(selectRows([mockAlertRow({ status: "failed" })]) as never);
+    mockDb.select.mockReturnValueOnce(selectRows([mockAlertRow({ status: "pending" })]) as never);
 
     const result = await enqueueSreAlertTriageJob({ alertHistoryId });
 
