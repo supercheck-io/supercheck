@@ -5,6 +5,7 @@ import { z } from "zod";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -15,6 +16,7 @@ import {
 } from "@/sre/lib/session-store";
 import { createSseResponse, createSseStream } from "@/sre/lib/sse-stream";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../_auth";
 
@@ -351,6 +353,9 @@ export async function POST(request: NextRequest) {
   const subscriptionError = await requireSreSubscription(context.organizationId, { allowTrial: false });
   if (subscriptionError) return subscriptionError;
 
+  const dailyLimitResponse = await sreDailyTokenLimitResponse(context.organizationId);
+  if (dailyLimitResponse) return dailyLimitResponse;
+
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
     if (rateLimit.unavailable) {
@@ -448,6 +453,7 @@ export async function POST(request: NextRequest) {
       const liveConnectorToolsEnabled =
         parsed.data.useLiveConnectorTools && canInvestigateConnectors;
       const result = await runSreAgent({
+        organizationId: context.organizationId,
         abortSignal: signal,
         system: buildSreTriageSystemPrompt(),
         prompt: buildChatPrompt({
@@ -459,10 +465,17 @@ export async function POST(request: NextRequest) {
         }),
         tools: {
           ...(conversation.incidentId
-            ? createSreEvidenceTools({
-                ...connectorToolScope,
-                incidentId: conversation.incidentId,
-              })
+            ? {
+                ...createSreEvidenceTools({
+                  ...connectorToolScope,
+                  incidentId: conversation.incidentId,
+                }),
+                ...createSreSimilarIncidentTools({
+                  organizationId: context.organizationId,
+                  projectId: context.project.id,
+                  incidentId: conversation.incidentId,
+                }),
+              }
             : {}),
           ...(liveConnectorToolsEnabled
             ? createSreConnectorTools(connectorToolScope)

@@ -28,8 +28,8 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `list_services` | services | `limit`, `cursor` | Service catalog: `name`, `description`, `tier`, `environment`, `ownerTeam`, `tags`, `status` |
 | `get_service` | services | `id` | One service plus its dependencies in both directions, owning teams, repository host and latest health |
 | `list_variables` | variables | `limit`, `cursor` | `key`, `type`, `isSecret`, `description`, `updatedAt`. Never values |
-| `list_incidents` | incidents | `limit`, `cursor`, `status` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt` |
-| `get_incident` | incidents | `id` | One incident with its root-cause summary |
+| `list_incidents` | incidents | `limit`, `cursor`, `status`, `assignee` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt`, `assigneeUserId`, `commanderUserId`, `acknowledgedAt`, `acknowledgedByUserId`, `mitigatedAt` |
+| `get_incident` | incidents | `id` | One incident with its root-cause summary, resolution summary, assignment and acknowledgement |
 | `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
 | `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server never writes) |
@@ -52,7 +52,7 @@ Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) ret
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 
-Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
+Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`) and `assignee` (`me`, `unassigned` or a user id); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
 
 </Accordion>
 <Accordion title="AI SRE" id="ai-sre">

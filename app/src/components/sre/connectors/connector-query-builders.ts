@@ -78,11 +78,6 @@ function quotedValue(value: string) {
   return `"${escapeQuotedValue(value)}"`;
 }
 
-function slackChannel(value: string) {
-  const trimmed = value.trim().replace(/^#/, "");
-  return trimmed ? `#${trimmed}` : "";
-}
-
 const builders: Record<string, ConnectorQueryBuilder> = {
   aws_cloudwatch: {
     title: "CloudWatch query builder",
@@ -410,13 +405,13 @@ const builders: Record<string, ConnectorQueryBuilder> = {
   },
   notion: {
     title: "Notion search query builder",
-    description: "Build a conservative text query for service runbooks and postmortems before live API execution is added.",
+    description: "Build a conservative text query for service runbooks and postmortems for the live Notion adapter.",
     fields: [
       {
         id: "query",
         label: "Search text",
         placeholder: "checkout incident runbook",
-        help: "Plain text sent to Notion search once the live adapter is enabled.",
+        help: "Plain text sent to Notion search.",
       },
       {
         id: "objectType",
@@ -442,50 +437,6 @@ const builders: Record<string, ConnectorQueryBuilder> = {
         values.objectType?.trim() ? `type:${values.objectType.trim()}` : null,
         values.dataSource?.trim() ? `source:${values.dataSource.trim()}` : null,
       ]).join(" ") || "incident runbook",
-    }),
-  },
-  slack: {
-    title: "Slack message search builder",
-    description: "Build a read-only incident-channel query using Slack search syntax.",
-    fields: [
-      {
-        id: "channel",
-        label: "Channel",
-        placeholder: "#incidents",
-        help: "Optional channel filter. Include or omit the leading #.",
-      },
-      {
-        id: "serviceTerm",
-        label: "Service term",
-        placeholder: "checkout",
-        help: "Service or component keyword.",
-      },
-      {
-        id: "text",
-        label: "Text search",
-        placeholder: "latency timeout",
-        help: "Symptoms, error terms, incident IDs, or deploy keywords.",
-      },
-      {
-        id: "afterDate",
-        label: "After date",
-        placeholder: "2026-06-01",
-        help: "Optional Slack after:YYYY-MM-DD filter for bounded historical searches.",
-      },
-    ],
-    defaults: (serviceName) => ({
-      channel: "#incidents",
-      serviceTerm: serviceDefault(serviceName),
-      text: "incident",
-      afterDate: "",
-    }),
-    build: (values) => ({
-      query: compact([
-        values.channel?.trim() ? `in:${slackChannel(values.channel)}` : null,
-        values.serviceTerm?.trim(),
-        values.text?.trim(),
-        values.afterDate?.trim() ? `after:${values.afterDate.trim()}` : null,
-      ]).join(" ") || "incident",
     }),
   },
 };

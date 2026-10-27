@@ -7,6 +7,8 @@ export type SreEvalToolCall = {
 
 export type SreEvalAgentResult = {
   answer: string;
+  /** Structured outcome of the investigation, when the runner can report it. */
+  outcome?: "identified" | "inconclusive";
   evidenceIds: string[];
   toolCalls: SreEvalToolCall[];
 };
@@ -88,6 +90,7 @@ function buildFindings(input: {
   matchedToolNames: string[];
   forbiddenClaims: string[];
   duplicateToolCalls: Record<string, number>;
+  outcome?: SreEvalAgentResult["outcome"];
 }) {
   const findings: SreEvalFinding[] = [];
   const { fixture, matchedKeywords, matchedEvidenceIds, matchedToolNames, forbiddenClaims, duplicateToolCalls } = input;
@@ -110,6 +113,13 @@ function buildFindings(input: {
 
   if (forbiddenClaims.length > 0) {
     findings.push({ severity: "error", message: `Used forbidden or unsupported claims: ${forbiddenClaims.join(", ")}` });
+  }
+
+  if (fixture.expected.outcome && input.outcome !== fixture.expected.outcome) {
+    findings.push({
+      severity: "error",
+      message: `Expected outcome ${fixture.expected.outcome}, got ${input.outcome ?? "unreported"}`,
+    });
   }
 
   const duplicateNames = Object.keys(duplicateToolCalls);
@@ -160,6 +170,7 @@ export function scoreSreEvalResult(fixture: SreEvalFixture, result: SreEvalAgent
     matchedToolNames,
     forbiddenClaims,
     duplicateToolCalls,
+    outcome: result.outcome,
   });
   const hasError = findings.some((finding) => finding.severity === "error");
 
