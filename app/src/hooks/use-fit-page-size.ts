@@ -88,10 +88,9 @@ export function useFitPageSize(fixedSize?: number) {
     const scrollOffset = window.scrollY + (scroller?.scrollTop ?? 0);
     // <main> only clips on pages that opt into viewport height; elsewhere the window scrolls
     // and <main> grows with its content, so cap at the window.
-    const viewportBottom = Math.min(
-      window.innerHeight,
-      scroller ? scroller.getBoundingClientRect().bottom + window.scrollY : window.innerHeight,
-    );
+    const viewportBottom =
+      window.scrollY +
+      Math.min(window.innerHeight, scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight);
     // Single-cell rows are "No results" or loading placeholders, not data rows.
     const firstRow = body.rows[0];
     const rowHeight =
