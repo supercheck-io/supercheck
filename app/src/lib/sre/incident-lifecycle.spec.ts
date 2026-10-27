@@ -233,7 +233,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("auto-resolves an unacknowledged incident with an automatic timeline event", async () => {
-    selectQueue.push([open(null)], [{ sentAt: new Date("2026-01-01T01:00:00Z") }]);
+    selectQueue.push([open(null)], []);
     updateQueue.push([{ id: incidentId }]);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(result).toEqual({ resolved: [{ id: incidentId }], recovered: [] });
@@ -249,7 +249,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("only notes recovery on an acknowledged incident", async () => {
-    selectQueue.push([open(new Date())], [{ sentAt: null }], []);
+    selectQueue.push([open(new Date())], [], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(executor.update).not.toHaveBeenCalled();
     expect(result.recovered).toEqual([{ id: incidentId, assigneeUserId: assignee }]);
@@ -257,7 +257,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("only notes recovery when autoResolveIncident is off", async () => {
-    selectQueue.push([open(null)], [{ sentAt: null }], []);
+    selectQueue.push([open(null)], [], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: false });
     expect(executor.update).not.toHaveBeenCalled();
     expect(result.resolved).toEqual([]);
@@ -265,7 +265,7 @@ describe("applySourceRecovery", () => {
   });
 
   it("falls back to a recovered note when the guarded update loses a race", async () => {
-    selectQueue.push([open(null)], [{ sentAt: null }], []);
+    selectQueue.push([open(null)], [], []);
     updateQueue.push([]);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(result.resolved).toEqual([]);
@@ -273,14 +273,14 @@ describe("applySourceRecovery", () => {
   });
 
   it("ignores a stale recovery when a newer failure alert exists", async () => {
-    selectQueue.push([open(null)], [{ sentAt: new Date("2026-01-01T01:45:00Z") }]);
+    selectQueue.push([open(null)], [{ id: "newer-failure" }]);
     expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
     expect(executor.update).not.toHaveBeenCalled();
     expect(inserts).toHaveLength(0);
   });
 
   it("does not repeat the recovered note", async () => {
-    selectQueue.push([open(new Date())], [{ sentAt: null }], [{ state: "recovered" }]);
+    selectQueue.push([open(new Date())], [], [{ state: "recovered" }]);
     expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
     expect(inserts).toHaveLength(0);
   });

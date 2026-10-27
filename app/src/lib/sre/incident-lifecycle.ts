@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import {
   alertHistory,
@@ -560,8 +560,9 @@ export async function applySourceRecovery(
   if (open.length === 0) return { resolved: [], recovered: [] };
 
   // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
-  const [latestFailure] = await tx
-    .select({ sentAt: sql<Date | null>`max(${alertHistory.sentAt})` })
+  // Compared in SQL: sent_at is a timestamp without time zone, so parsing it in JS depends on the host TZ.
+  const [newerFailure] = await tx
+    .select({ id: alertHistory.id })
     .from(alertHistory)
     .where(
       and(
@@ -569,9 +570,11 @@ export async function applySourceRecovery(
           ? eq(alertHistory.monitorId, source.sourceId)
           : eq(alertHistory.jobId, source.sourceId),
         inArray(alertHistory.type, RECOVERABLE_ALERT_TYPES),
+        gt(alertHistory.sentAt, source.recoveredAt),
       ),
-    );
-  if (latestFailure?.sentAt && new Date(latestFailure.sentAt) > source.recoveredAt) {
+    )
+    .limit(1);
+  if (newerFailure) {
     return { resolved: [], recovered: [] };
   }
 
@@ -607,7 +610,8 @@ export async function applySourceRecovery(
           eventType: "state_change",
           eventData: { state: "resolved", comment: summary, automatic: true },
           actorType: "system",
-          createdAt: now,
+          // Wall-clock write time: timeline order must not depend on queue delay.
+          createdAt: new Date(),
         });
         resolved.push({ id: incident.id });
         continue;
@@ -633,7 +637,7 @@ export async function applySourceRecovery(
         comment: `${source.targetName} recovered; resolve when you've confirmed`,
       },
       actorType: "system",
-      createdAt: now,
+      createdAt: new Date(),
     });
     recovered.push({ id: incident.id, assigneeUserId: incident.assigneeUserId });
   }
