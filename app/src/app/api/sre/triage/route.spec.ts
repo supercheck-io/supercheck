@@ -24,6 +24,8 @@ jest.mock("@/utils/db", () => ({
 }));
 
 jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn() }));
+// The triage runner notifies in the background; the real notifier opens a Redis client that keeps Jest alive.
+jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
