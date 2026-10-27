@@ -1,12 +1,26 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { UserAvatar, UserCell, initials } from "./user-cell";
+import { UserAvatar, UserCell, avatarColor, initials } from "./user-cell";
 
 describe("initials", () => {
   it("uses the first letter of up to two words", () => {
     expect(initials("Ada Lovelace")).toBe("AL");
     expect(initials("ada byron lovelace")).toBe("AB");
     expect(initials("  ")).toBe("?");
+  });
+
+  it("uses the first two letters of a single word", () => {
+    expect(initials("krishna")).toBe("KR");
+    expect(initials(" ada@example.com ")).toBe("AD");
+    expect(initials("Q")).toBe("Q");
+  });
+});
+
+describe("avatarColor", () => {
+  it("gives the same person the same colour and spreads names across the palette", () => {
+    expect(avatarColor("Ada Lovelace")).toBe(avatarColor("Ada Lovelace"));
+    const colours = new Set(["Ada", "Grace", "Linus", "Margaret", "Alan", "Barbara", "Dennis", "Ken"].map(avatarColor));
+    expect(colours.size).toBeGreaterThan(3);
   });
 });
 
@@ -46,7 +60,7 @@ describe("UserAvatar image source", () => {
   it("never loads an arbitrary URL for someone else", () => {
     const { container } = render(<UserAvatar name="Ada" image="https://evil.example/t.png" />);
     expect(imgSrc(container)).toBeNull();
-    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByText("AD")).toBeInTheDocument();
   });
 
   it("loads an external photo only when allowed (own account)", () => {
@@ -89,5 +103,21 @@ describe("UserCell", () => {
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
     expect(container.firstElementChild).toHaveClass("text-xs");
     expect(container.querySelector("[data-slot='avatar']")).toHaveClass("h-5", "w-5");
+  });
+
+  it("avatar-only keeps the name for screen readers and in the tooltip", async () => {
+    render(<UserCell name="Ada Lovelace" email="ada@example.com" avatarOnly />);
+    const name = screen.getByText("Ada Lovelace");
+    expect(name).toHaveClass("sr-only");
+    fireEvent.focus(name.closest("[data-state]")!);
+    expect((await screen.findAllByText("ada@example.com")).length).toBeGreaterThan(0);
+  });
+
+  it("avatar-only shows the empty label in a tooltip", async () => {
+    const { container } = render(<UserCell name={null} emptyLabel="System" avatarOnly />);
+    const trigger = container.querySelector("[data-state]");
+    expect(trigger).not.toBeNull();
+    fireEvent.focus(trigger!);
+    expect((await screen.findAllByText("System")).length).toBeGreaterThan(1);
   });
 });
