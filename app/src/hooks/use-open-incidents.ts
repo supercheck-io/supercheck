@@ -50,5 +50,9 @@ export function useOpenIncidents() {
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
     retry: false,
+    // Live counts: the app-wide defaults (30 min stale, no refetch on mount, 24 h persistence)
+    // would keep showing the incidents of an earlier visit.
+    refetchOnMount: true,
+    meta: { persist: false },
   });
 }

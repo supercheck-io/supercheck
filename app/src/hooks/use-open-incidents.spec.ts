@@ -20,3 +20,15 @@ describe("open incident requests", () => {
     expect(await fetchOpenIncidents()).toEqual({ available: false });
   });
 });
+
+describe("open incident query options", () => {
+  it("is never persisted and refetches on mount so counts are live", () => {
+    jest.isolateModules(() => {
+      const useQuery = jest.fn(() => ({}));
+      jest.doMock("@tanstack/react-query", () => ({ useQuery }));
+      jest.doMock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "p" } }) }));
+      require("./use-open-incidents").useOpenIncidents();
+      expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({ refetchOnMount: true, meta: { persist: false }, queryKey: ["dashboard", "open-incidents", "p"] }));
+    });
+  });
+});

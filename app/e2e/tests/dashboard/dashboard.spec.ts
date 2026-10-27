@@ -49,8 +49,8 @@ test.describe('Dashboard contracts @dashboard', () => {
     await expect(page.getByTestId('metric-browser-minutes')).toContainText('Browser minutes');
     await expect(page.getByTestId('metric-k6-vu-minutes')).toContainText('k6 VU-minutes');
     await expect(page.getByTestId('panel-needs-attention')).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Failures/ })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Alerts/ })).toBeVisible();
+    await expect(page.getByTestId('panel-recent-failures')).toContainText('Failed runs, last 7 days');
+    await expect(page.getByRole('tab', { name: /Alerts/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Learn how project status is calculated' })).toBeVisible();
     await expect(page.getByText('Test Types', { exact: true })).toHaveCount(0);
     // The k6 / Playwright analytics tabs moved to the Runs page.
