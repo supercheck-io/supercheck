@@ -34,7 +34,7 @@ beforeAll(() => {
 
 it("prevents disabling the default location from the table and explains how to change it", async () => {
   render(<LocationsTable />);
-  const toggle = screen.getByRole("switch", { name: "Enable US East" });
+  const toggle = await screen.findByRole("switch", { name: "Enable US East" });
   expect(toggle).toBeDisabled();
   fireEvent.click(toggle);
   expect(mutateAsync).not.toHaveBeenCalled();

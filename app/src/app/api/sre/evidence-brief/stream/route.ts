@@ -21,28 +21,6 @@ const streamLogger = createLogger({ module: "sre-evidence-brief-stream" }) as {
 
 const encoder = new TextEncoder();
 
-function errorMessage(value: unknown, fallback: string) {
-  if (typeof value === "string" && value.trim()) {
-    return value;
-  }
-
-  if (value instanceof Error && value.message) {
-    return value.message;
-  }
-
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (typeof record.error === "string" && record.error.trim()) {
-      return record.error;
-    }
-    if (typeof record.message === "string" && record.message.trim()) {
-      return record.message;
-    }
-  }
-
-  return fallback;
-}
-
 function encodeData(data: unknown) {
   return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
 }
@@ -178,7 +156,7 @@ export async function POST(request: NextRequest) {
         );
         send({
           type: "error",
-          error: errorMessage(error, "Failed to generate evidence brief"),
+          error: "Failed to generate evidence brief",
         });
       } finally {
         if (!cancelled) controller.close();

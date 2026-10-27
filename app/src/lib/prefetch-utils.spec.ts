@@ -24,10 +24,7 @@ describe("dashboard hover prefetch", () => {
         const projectId = new Headers(init?.headers).get("x-project-id");
         return {
           ok: true,
-          json: async () =>
-            String(input).includes("alerts")
-              ? []
-              : { jobs: { recentRuns30d: projectId === "dash-prefetch-a" ? 12 : 7 } },
+          json: async () => ({ jobs: { recentRuns30d: projectId === "dash-prefetch-a" ? 12 : 7 } }),
         } as Response;
       });
 
@@ -39,14 +36,12 @@ describe("dashboard hover prefetch", () => {
 
     expect(client.getQueryData<DashboardData>(getDashboardQueryKey("dash-prefetch-a"))?.stats.runs).toBe(12);
     expect(client.getQueryData<DashboardData>(getDashboardQueryKey("dash-prefetch-b"))?.stats.runs).toBe(7);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const id of ["dash-prefetch-a", "dash-prefetch-b"]) {
-      for (const endpoint of ["/api/dashboard", "/api/alerts/history"]) {
-        expect(fetchMock).toHaveBeenCalledWith(
-          endpoint,
-          expect.objectContaining({ headers: expect.objectContaining({ "x-project-id": id }) }),
-        );
-      }
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/dashboard",
+        expect.objectContaining({ headers: expect.objectContaining({ "x-project-id": id }) }),
+      );
     }
     client.clear();
   });

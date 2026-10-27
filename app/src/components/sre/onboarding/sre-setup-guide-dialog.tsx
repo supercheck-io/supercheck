@@ -18,9 +18,16 @@ import { TableBadge } from "@/components/ui/table-badge";
 
 type SreSetupGuideDialogProps = {
   status: SreOnboardingStatus | null;
+  /** Controlled mode, for opening the guide from a menu. Omit to use the built-in trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
+export function SreSetupGuideDialog({
+  status,
+  open,
+  onOpenChange,
+}: SreSetupGuideDialogProps) {
   const steps = [
     {
       label: "Add a service",
@@ -48,13 +55,15 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
   const requiredSteps = status?.requiredSteps ?? 2;
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" className="w-full sm:w-auto">
-          <ListChecks className="mr-2 h-4 w-4" />
-          Setup guide
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open === undefined && (
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" className="w-full sm:w-auto">
+            <ListChecks className="mr-2 h-4 w-4" />
+            Setup guide
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0">
         <DialogHeader className="border-b px-6 py-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -66,8 +75,8 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
             </TableBadge>
           </div>
           <DialogDescription>
-            Add a service and connector for live evidence. Saved queries are
-            optional.
+            Add a service and connector for live evidence, then open an incident
+            and choose Investigate. Saved queries are optional.
           </DialogDescription>
         </DialogHeader>
 

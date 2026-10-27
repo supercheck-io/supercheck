@@ -7,6 +7,7 @@ jest.mock("@/utils/db", () => ({
     sreInvestigationReports: { findFirst: jest.fn().mockResolvedValue(null) },
   } },
 }));
+jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
@@ -17,12 +18,14 @@ jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: je
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { getSreIncidentDetails, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
     from: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
@@ -54,6 +57,14 @@ describe("getSreIncidentDetails investigation summary", () => {
     if (result.success) {
       expect(result.detail.latestInvestigation?.summary).toBe("Investigation did not finish");
     }
+  });
+
+  it("releases a stale running investigation (scoped) before reading the latest run", async () => {
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([{ id: "incident-1" }])).mockReturnValue(selectRows([]));
+    await getSreIncidentDetails("incident-1");
+    expect(failStaleSreInvestigationRunsForIncident).toHaveBeenCalledWith({
+      organizationId: "org-1", projectId: "project-1", incidentId: "incident-1",
+    });
   });
 
   it.each([

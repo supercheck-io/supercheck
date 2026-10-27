@@ -8,6 +8,23 @@ import {
   isSreAlertCorrelationEnabled,
 } from "./feature-gates";
 
+// Mirrored in worker/src/monitor/services/sre-alert-triage-queue.service.spec.ts
+// and app/src/sre/lib/feature-gates.spec.ts. Change both together.
+// [SRE_ENABLED, SRE_AUTOMATION_ENABLED, automatic triage enabled]
+const AUTOMATION_GATE_CONTRACT: Array<[string | undefined, string | undefined, boolean]> = [
+  [undefined, undefined, false],
+  [undefined, "true", true],
+  [undefined, "1", true],
+  [undefined, " TRUE ", true],
+  [undefined, "yes", false],
+  [undefined, "false", false],
+  ["true", "true", true],
+  ["false", "true", false],
+  ["0", "1", false],
+  [" FALSE ", "true", false],
+  ["", "true", true],
+];
+
 describe("AI SRE feature defaults", () => {
   const originalEnv = process.env;
   beforeEach(() => {
@@ -50,5 +67,11 @@ describe("AI SRE feature defaults", () => {
     expect(isSreAutomaticTriageEnabled()).toBe(false);
     expect(isSreBackgroundAlertTriageEnabled()).toBe(false);
     expect(isSreAlertCorrelationEnabled()).toBe(false);
+  });
+
+  it.each(AUTOMATION_GATE_CONTRACT)("automation gate contract: SRE_ENABLED=%j SRE_AUTOMATION_ENABLED=%j -> %s", (sre, automation, expected) => {
+    if (sre !== undefined) process.env.SRE_ENABLED = sre;
+    if (automation !== undefined) process.env.SRE_AUTOMATION_ENABLED = automation;
+    expect(isSreAutomaticTriageEnabled()).toBe(expected);
   });
 });

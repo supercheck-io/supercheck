@@ -66,7 +66,14 @@ jest.mock("@/components/sre/private-agents/private-agents-admin-view", () => ({
   PrivateAgentsAdminView: () => null,
 }));
 jest.mock("@/components/sre/connectors/connector-admin-view", () => ({
-  ConnectorAdminView: () => <p>Connector management</p>,
+  ConnectorAdminView: ({ onOpenSavedQueries }: { onOpenSavedQueries?: () => void }) => (
+    <div>
+      <p>Connector management</p>
+      <button type="button" onClick={onOpenSavedQueries}>
+        Open saved queries
+      </button>
+    </div>
+  ),
 }));
 jest.mock("@/components/sre/connectors/diagnostic-queries-admin-view", () => ({
   DiagnosticQueriesAdminView: () => <p>Saved query management</p>,
@@ -108,7 +115,7 @@ beforeEach(() => {
   });
 });
 
-it("keeps saved queries collapsed and loads them only when opened", async () => {
+it("loads saved queries only when their dialog is opened", async () => {
   renderPage();
   await screen.findByText("Connector management");
   expect(
@@ -119,22 +126,25 @@ it("keeps saved queries collapsed and loads them only when opened", async () => 
     "/api/sre/diagnostic-recipes",
     expect.anything(),
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Saved queries Optional" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Open saved queries" }));
   expect(mockReplace).toHaveBeenCalledWith(
     "/org-admin?tab=integrations&section=saved-queries",
     { scroll: false },
   );
+  expect(
+    await screen.findByRole("dialog", { name: "Saved queries" }),
+  ).toBeInTheDocument();
   await screen.findByText("Saved query management");
   expect(mockFetch).toHaveBeenCalledWith(
     "/api/sre/diagnostic-recipes",
     expect.anything(),
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Saved queries Optional" }),
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByText("Saved query management"),
+    ).not.toBeInTheDocument(),
   );
-  expect(screen.queryByText("Saved query management")).not.toBeInTheDocument();
   expect(mockReplace).toHaveBeenLastCalledWith("/org-admin?tab=integrations", {
     scroll: false,
   });
@@ -146,7 +156,7 @@ it.each(["diagnostic-recipes", "runbooks"])(
     mockSearchParams = new URLSearchParams(`tab=${tab}`);
     renderPage();
     await screen.findByText("Saved query management");
-    expect(screen.getByRole("tab", { name: "Integrations" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Integrations", hidden: true })).toHaveAttribute(
       "data-state",
       "active",
     );
@@ -163,7 +173,7 @@ it("opens the section from its canonical URL and clears it when changing tabs", 
   );
   renderPage();
   await screen.findByText("Saved query management");
-  fireEvent.mouseDown(screen.getByRole("tab", { name: "Projects" }), {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Projects", hidden: true }), {
     button: 0,
     ctrlKey: false,
   });

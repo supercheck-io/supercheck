@@ -55,7 +55,8 @@ test.describe("Organization project administration @admin @projects @critical", 
     await expect(row).toContainText("E2E isolated project");
     await expect(row).toContainText(/\d+ members?/);
 
-    await row.getByRole("button").last().click();
+    await row.getByRole("button", { name: /^Open actions for/ }).click();
+    await orgOwnerPage.getByRole("menuitem", { name: "Edit project" }).click();
     const dialog = orgOwnerPage.getByRole("dialog", { name: "Edit Project" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Name").fill(updatedName);

@@ -31,6 +31,7 @@ import {
 import { DataTablePagination } from "./data-table-pagination";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
+import { useFitPagination } from "@/hooks/use-fit-page-size";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -45,6 +46,8 @@ interface DataTableProps<TData, TValue> {
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
   cellClassName?: (cell: Cell<TData, unknown>) => string | undefined;
+  /** Fixed rows per page. Use inside dialogs, where fit-to-window can't measure reliably. */
+  fixedPageSize?: number;
   meta?: {
     [key: string]: unknown;
   };
@@ -108,6 +111,7 @@ export function DataTable<TData, TValue>({
   skeletonColumns = 5,
   onRowPrefetch,
   cellClassName,
+  fixedPageSize,
   meta,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
@@ -119,6 +123,7 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
+  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, fixedPageSize);
 
   // Track hover timers for debouncing
   const hoverTimersRef = React.useRef<
@@ -201,13 +206,9 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
-    initialState: {
-      pagination: {
-        pageSize: 12,
-      },
-    },
     state: mounted
       ? {
+          pagination,
           sorting,
           columnVisibility,
           rowSelection,
@@ -215,6 +216,7 @@ export function DataTable<TData, TValue>({
           globalFilter,
         }
       : {
+          pagination,
           sorting: [],
           columnVisibility: {},
           rowSelection: {},
@@ -222,6 +224,7 @@ export function DataTable<TData, TValue>({
           globalFilter: "",
         },
     enableRowSelection: true,
+    onPaginationChange,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
     onColumnFiltersChange: safeSetColumnFilters,
@@ -319,7 +322,7 @@ export function DataTable<TData, TValue>({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {isLoading ? (
               <TableRow>
                 <TableCell
@@ -344,6 +347,7 @@ export function DataTable<TData, TValue>({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className={cn(
+                      "h-[53px]",
                       onRowClick && "cursor-pointer hover:bg-muted/50",
                     )}
                     tabIndex={onRowClick ? 0 : undefined}

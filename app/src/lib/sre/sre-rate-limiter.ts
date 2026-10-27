@@ -279,3 +279,33 @@ export async function checkSreAttachmentUploadRateLimit(
     remaining: Math.min(burst.remaining, daily.remaining),
   };
 }
+
+/**
+ * Rate limit investigation feedback submissions.
+ * Per-user, per-investigation run: max 20 per 10 minutes.
+ */
+export async function checkSreFeedbackRateLimit(
+  userId: string,
+  investigationRunId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(
+    `investigation-feedback:${userId}:${investigationRunId}`,
+    20,
+    10 * 60 * 1000,
+  );
+}
+
+/**
+ * Rate limit post-mortem draft generation (one bounded model call each).
+ * Per-user, per-incident: max 5 per hour.
+ */
+export async function checkSrePostmortemRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(
+    `postmortem:${userId}:${incidentId}`,
+    5,
+    60 * 60 * 1000,
+  );
+}
