@@ -15,7 +15,9 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Runs](#runs) | `run list/get/permissions/status/wait/stream/cancel` |
 | [Tests](#tests) | `test list/get/create/update/delete/tags/validate/run/execute/status` |
 | [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete` |
-| [Variables](#variables), [Tags](#tags) | `var list/get/set/delete`, `tag list/create/delete` |
+| [Variables](#variables), [Tags](#tags) | `var list/get/set/upload/download/delete`, `tag list/create/delete` |
+| [Analytics](#analytics) | `analytics playwright/k6` |
+| [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list` |
 | [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
 | [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
 | [AI SRE](#ai-sre) | `incident`, `sre`, `service` |
@@ -315,6 +317,18 @@ supercheck dashboard --json
 
 `run stream`: failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events. `--idle-timeout` is the number of seconds to wait with no data before timing out.
 
+### Analytics
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `analytics playwright` | Historical Playwright job trends | `--job <job-id>`, `--period` (30, 60 or 90 days) |
+| `analytics k6` | Historical k6 job trends | `--job`, `--period`, `--left-run <run-id> --right-run <run-id>` (compare two runs) |
+
+```bash
+supercheck analytics playwright --period 90 --json
+supercheck analytics k6 --left-run <run-id> --right-run <run-id>
+```
+
 ---
 
 ## Tests
@@ -473,12 +487,16 @@ The `--interval` flag (seconds) is deprecated on `monitor create` and `monitor u
 | `var list` | List project variables | — |
 | `var get <key>` | Get a variable by key | — |
 | `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin`, `--description` |
+| `var upload <key> <file>` | Create a file variable (`.csv`, `.json`, `.txt`, `.tsv`, `.xml`, `.yaml`, `.yml`; max 5 MB) | `--description` |
+| `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
 | `var delete <key>` | Delete a variable | `--force` |
 
 ```bash
 supercheck var set API_KEY sk-secret-value --secret
 printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
 supercheck var set DB_URL postgres://... --description "Database connection string"
+supercheck var upload TEST_DATA ./users.csv
+supercheck var download TEST_DATA --out ./users.csv
 supercheck var delete <key> --force
 ```
 
@@ -551,6 +569,20 @@ supercheck alert history --page 2 --limit 20
 supercheck audit --page 2 --limit 50 --action "notification_provider_created"
 supercheck audit --search "deploy"
 ```
+
+---
+
+## Tokens and projects
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `token list` | List the project's CLI tokens | — |
+| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365) |
+| `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
+| `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
+| `project list` | List projects visible to the token | — |
+
+Organization administration (members, invitations, project creation) rejects CLI tokens and is available in the dashboard only. Tokens are project-scoped, so `project list` shows only the token's project.
 
 ---
 

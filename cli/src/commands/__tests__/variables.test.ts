@@ -1,9 +1,13 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import { Readable } from 'node:stream'
+import { mkdir, mkdtemp, readFile, stat, truncate, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const mockGet = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPost = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockPut = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
+const mockGetBytes = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockDelete = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockOutput = jest.fn<(...args: unknown[]) => void>()
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
@@ -15,6 +19,7 @@ const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<boolean>>()
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
   createAuthenticatedClient: () => ({
     get: mockGet,
+    getBytes: mockGetBytes,
     post: mockPost,
     put: mockPut,
     delete: mockDelete,
@@ -304,5 +309,108 @@ describe('var command', () => {
       CLIError,
     )
     expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  describe('file variables', () => {
+    it('uploads a file as multipart form data to the project route', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'var-'))
+      const file = join(dir, 'users.csv')
+      await writeFile(file, 'a,b\n1,2\n')
+      mockGet.mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockPost.mockResolvedValueOnce({ data: { success: true, data: { id: 'var-9' } } })
+
+      await varCommand.parseAsync(['node', 'var', 'upload', 'USERS', file, '--description', 'seed'])
+
+      expect(mockGet).toHaveBeenCalledWith('/api/context')
+      const [path, form] = mockPost.mock.calls[0] as [string, FormData]
+      expect(path).toBe('/api/projects/proj-1/variables')
+      expect(form.get('key')).toBe('USERS')
+      expect(form.get('description')).toBe('seed')
+      expect((form.get('file') as File).name).toBe('users.csv')
+      expect(mockOutputMutation).toHaveBeenCalledWith(expect.objectContaining({ id: 'var-9', key: 'USERS', action: 'created' }))
+    })
+
+    it('downloads a file variable to --out', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.json')
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0xef, 0xbb, 0xbf, ...Buffer.from('{"a":1}')]) })
+
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
+
+      expect(mockGetBytes).toHaveBeenCalledWith('/api/projects/proj-1/variables/var-3/download')
+      // Byte-exact: a UTF-8 BOM survives the round trip.
+      expect([...await readFile(out)].slice(0, 3)).toEqual([0xef, 0xbb, 0xbf])
+      expect((await readFile(out)).subarray(3).toString()).toBe('{"a":1}')
+      expect((await stat(out)).mode & 0o777).toBe(0o600)
+      expect(mockOutputMutation).toHaveBeenCalledWith({ id: 'var-3', key: 'UPLOAD', path: out })
+    })
+
+    it('validates the key, file type and size before reading or uploading', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'var-'))
+      const csv = join(dir, 'users.csv')
+      await writeFile(csv, 'a\n')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'users', csv])).rejects.toThrow('uppercase letter')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', join(dir, 'run.sh')])).rejects.toThrow('File type must be one of')
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', join(dir, 'missing.csv')])).rejects.toThrow('Cannot read')
+      const folder = join(dir, 'folder.csv')
+      await mkdir(folder)
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', folder])).rejects.toThrow('not a regular file')
+      const big = join(dir, 'big.csv')
+      await writeFile(big, '')
+      await truncate(big, 5 * 1024 * 1024 + 1)
+      await expect(varCommand.parseAsync(['node', 'var', 'upload', 'USERS', big])).rejects.toThrow('limited to 5 MB')
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('writes downloads owner-only and refuses to overwrite without --force', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.json')
+      await writeFile(out, 'old', { mode: 0o644 })
+      mockGet.mockResolvedValue({ data: variables })
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValue({ data: 'new' })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])).rejects.toThrow('already exists')
+      expect(await readFile(out, 'utf-8')).toBe('old')
+
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out, '--force'])
+      expect(await readFile(out, 'utf-8')).toBe('new')
+      expect((await stat(out)).mode & 0o777).toBe(0o600)
+    })
+
+    it('prints downloaded bytes to stdout without --out', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      try {
+        mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+        const bytes = new Uint8Array([0x61, 0x2c, 0x62])
+        mockGetBytes.mockResolvedValueOnce({ data: bytes })
+        await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD'])
+        expect(write).toHaveBeenCalledWith(bytes)
+        expect(mockOutputMutation).not.toHaveBeenCalled()
+      } finally {
+        write.mockRestore()
+      }
+    })
+
+    it('reports a clear error when --out cannot be written', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'missing-dir', 'out.json')
+      mockGet.mockResolvedValueOnce({ data: variables }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])).rejects.toThrow('Cannot write')
+    })
+
+    it('strips control characters from the server-provided file name', async () => {
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.csv')
+      const named = variables.map((v) => (v.key === 'UPLOAD' ? { ...v, fileName: 'a\u001b[31mb.csv' } : v))
+      mockGet.mockResolvedValueOnce({ data: named }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
+      expect(mockSuccess).toHaveBeenCalledWith(`Saved a[31mb.csv to ${out}`)
+    })
+
+    it('refuses to download a non-file variable', async () => {
+      mockGet.mockResolvedValueOnce({ data: variables })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'BASE_URL'])).rejects.toThrow('not a file variable')
+      expect(mockGetBytes).not.toHaveBeenCalled()
+    })
   })
 })
