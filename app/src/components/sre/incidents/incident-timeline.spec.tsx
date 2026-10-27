@@ -117,3 +117,10 @@ describe("aiFindingHeadline", () => {
     expect(aiFindingHeadline("   ")).toBeNull();
   });
 });
+
+it("cuts long AI headlines at a word with an ellipsis", () => {
+  const long = `${"word ".repeat(120)}end`;
+  const headline = aiFindingHeadline(long)!;
+  expect(headline.endsWith("word…")).toBe(true);
+  expect(headline.length).toBeLessThanOrEqual(401);
+});

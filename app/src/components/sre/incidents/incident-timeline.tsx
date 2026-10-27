@@ -43,7 +43,10 @@ export function aiFindingHeadline(value: unknown) {
     .replace(/^\s*[-*]\s+/gm, "")
     .replace(/\s+/g, " ")
     .trim();
-  return plain ? plain.slice(0, 400) : null;
+  if (!plain) return null;
+  if (plain.length <= 400) return plain;
+  const cut = plain.slice(0, 400);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > 300 ? cut.lastIndexOf(" ") : 400)}…`;
 }
 
 export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">): {
