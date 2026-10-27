@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectedApps } from "@/components/connected-apps/connected-apps";
+import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
 
 const AVATAR_SIZE = 256;
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
@@ -136,6 +137,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
           <Button type="submit" disabled={impersonating || saving || !dirty || !!nameError}>{saving ? "Saving..." : "Save changes"}</Button>
         </div>
       </form>
+      <LeaveOrganizationDialog />
     </div>
   );
 }
