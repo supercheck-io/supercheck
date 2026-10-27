@@ -508,6 +508,8 @@ export function ConnectorAdminView({
         <DataTable
           columns={columns}
           data={connectors}
+          // Secondary columns stay available under View so the table fits without sideways scrolling.
+          initialColumnVisibility={{ scope: false, riskLevel: false }}
           renderToolbar={(table) => (
             <ConnectorsToolbar
               table={table}

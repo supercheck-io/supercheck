@@ -152,6 +152,7 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
             <Button
               variant="ghost"
               size="icon"
+                className="h-8 w-8"
               aria-label={`Open actions for ${query.name}`}
             >
               <MoreHorizontal className="h-4 w-4" />

@@ -226,8 +226,8 @@ describe("ConnectorAdminView", () => {
 
     expect(screen.getAllByText("Private Agent").length).toBeGreaterThan(0);
     expect(screen.getByText("prod-vpc-agent")).toBeInTheDocument();
-    expect(screen.getByText("1 service")).toBeInTheDocument();
-    expect(screen.getByText("low")).toBeInTheDocument();
+    // Service scope and risk are hidden by default (available under View).
+    expect(screen.queryByText("1 service")).not.toBeInTheDocument();
     expect(screen.getByText("Jun 27, 2026")).toBeInTheDocument();
     expect(screen.queryByText(connector.endpointUrl)).not.toBeInTheDocument();
     expect(

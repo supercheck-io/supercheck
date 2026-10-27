@@ -62,8 +62,6 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
         "Type",
         "Execution",
         "Private Agent",
-        "Service scope",
-        "Risk",
         "Status",
         "Last validated",
         "",
