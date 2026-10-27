@@ -7,11 +7,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+// Whole graphemes (so emoji and accents stay intact), skipping leading symbols such as "@" or "(".
+const letters = (word: string) => Array.from(segmenter.segment(word), (s) => s.segment).filter((g) => /[\p{L}\p{N}]/u.test(g));
+
 /** First letters of the first two words; a single word gives its first two letters. */
 export function initials(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const letters = words.length > 1 ? words.slice(0, 2).map((word) => Array.from(word)[0]) : Array.from(words[0] ?? "").slice(0, 2);
-  return letters.join("").toUpperCase() || "?";
+  const words = name.trim().split(/\s+/).map(letters).filter((word) => word.length > 0);
+  const picked = words.length > 1 ? [words[0][0], words[1][0]] : (words[0] ?? []).slice(0, 2);
+  // Upper-case each letter alone and keep one character, so "ß" stays one letter, not "SS".
+  return picked.map((g) => (g.toUpperCase().length === g.length ? g.toUpperCase() : g)).join("") || "?";
 }
 
 // Literal class names so Tailwind keeps them. Each pair keeps the initials readable in light and dark mode.
@@ -99,7 +104,8 @@ export function UserCell({
   // The tooltip shows the full name (it may be truncated) and the email.
   return (
     <Tooltip>
-      <TooltipTrigger asChild tabIndex={0}>{content}</TooltipTrigger>
+      {/* Empty cells are not a tab stop: the sr-only text already carries the label. */}
+      <TooltipTrigger asChild tabIndex={label ? 0 : undefined}>{content}</TooltipTrigger>
       <TooltipContent>
         {name && email ? (
           <>

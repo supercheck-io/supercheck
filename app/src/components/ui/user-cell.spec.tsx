@@ -14,6 +14,13 @@ describe("initials", () => {
     expect(initials(" ada@example.com ")).toBe("AD");
     expect(initials("Q")).toBe("Q");
   });
+
+  it("keeps whole graphemes and skips leading symbols", () => {
+    expect(initials("@ada (lovelace)")).toBe("AL");
+    expect(initials("élodie")).toBe("ÉL");
+    expect(initials("ßa")).toBe("ßA");
+    expect(initials("👩‍💻 dev")).toBe("DE");
+  });
 });
 
 describe("avatarColor", () => {
@@ -117,6 +124,7 @@ describe("UserCell", () => {
     const { container } = render(<UserCell name={null} emptyLabel="System" avatarOnly />);
     const trigger = container.querySelector("[data-state]");
     expect(trigger).not.toBeNull();
+    expect(trigger).not.toHaveAttribute("tabindex");
     fireEvent.focus(trigger!);
     expect((await screen.findAllByText("System")).length).toBeGreaterThan(1);
   });
