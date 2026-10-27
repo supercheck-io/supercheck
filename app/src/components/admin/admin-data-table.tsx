@@ -316,7 +316,7 @@ export function AdminDataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={cn(onRowClick && "cursor-pointer")}
+                  className={cn("h-[53px]", onRowClick && "cursor-pointer")}
                   onClick={() => onRowClick?.(row)}
                 >
                   {row.getVisibleCells().map((cell) => (

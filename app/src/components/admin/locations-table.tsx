@@ -6,14 +6,6 @@ import {
   useUpdateLocation,
   useDeleteLocation,
 } from "@/hooks/use-locations";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -50,8 +42,16 @@ import { AddLocationDialog } from "@/components/admin/add-location-dialog";
 import { EditLocationDialog } from "@/components/admin/edit-location-dialog";
 import type { LocationWithStatus } from "@/app/api/admin/locations/route";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
-import { ListPagination } from "@/components/admin/list-pagination";
-import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { AdminDataTable } from "@/components/admin/admin-data-table";
+import { AdminListToolbar } from "@/components/admin/admin-list-toolbar";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import type { ColumnDef, Table as TableType } from "@tanstack/react-table";
+
+const STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "offline", label: "Offline" },
+  { value: "disabled", label: "Disabled" },
+];
 
 export function LocationsTable() {
   const { locations, unregisteredLocations, isLoading, refetch } =
@@ -97,20 +97,183 @@ export function LocationsTable() {
     }
   }, [deleteTarget, deleteLocation]);
 
-  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
-  const [page, setPage] = React.useState({ index: 0, size: pageSize });
-  // Auto-fit changes the size outside the table, so carry the page across here.
-  if (page.size !== pageSize) {
-    setPage({
-      index: repaginate(page.index, page.size, pageSize, locations.length),
-      size: pageSize,
-    });
-  }
-  const pageCount = Math.max(1, Math.ceil(locations.length / pageSize));
-  const pageIndex = Math.min(page.index, pageCount - 1);
-  const pageLocations = locations.slice(
-    pageIndex * pageSize,
-    (pageIndex + 1) * pageSize,
+  const columns = React.useMemo<ColumnDef<LocationWithStatus>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Location" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex h-8 items-center gap-2 font-medium">
+            {row.original.flag ? (
+              <span className="text-lg leading-none">{row.original.flag}</span>
+            ) : (
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="truncate">{row.original.name}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "code",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Code" />
+        ),
+        cell: ({ row }) => (
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+            {row.original.code}
+          </code>
+        ),
+      },
+      {
+        accessorKey: "region",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Region" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.region || "-"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "workerCount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Workers" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Server className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm">{row.original.workerCount}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        filterFn: (row, id, value) => value.includes(row.getValue(id)),
+      },
+      {
+        id: "capabilities",
+        header: "Capabilities",
+        cell: ({ row }) => {
+          const loc = row.original;
+          return (
+            <div className="flex items-center gap-1 whitespace-nowrap">
+              {loc.isDefault && (
+                <TableBadge tone="purple" compact>
+                  Default
+                </TableBadge>
+              )}
+              {!loc.supportsBrowser && (
+                <TableBadge tone="neutral" compact>
+                  No browser
+                </TableBadge>
+              )}
+              {!loc.supportsK6 && (
+                <TableBadge tone="neutral" compact>
+                  No k6
+                </TableBadge>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "isEnabled",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Enabled" />
+        ),
+        cell: ({ row }) => {
+          const loc = row.original;
+          const locked = loc.code === "local" || loc.isDefault;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex" tabIndex={locked ? 0 : undefined}>
+                  <Switch
+                    aria-label={`Enable ${loc.name}`}
+                    checked={loc.isEnabled}
+                    onCheckedChange={() => handleToggleEnabled(loc)}
+                    disabled={updateLocation.isPending || locked}
+                  />
+                </span>
+              </TooltipTrigger>
+              {locked && (
+                <TooltipContent>
+                  {loc.code === "local"
+                    ? "The local location cannot be disabled. It is the system fallback."
+                    : "Choose another default location or clear Default in Edit before disabling this location."}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          );
+        },
+      },
+      {
+        id: "actions",
+        cell: ({ row }) => {
+          const loc = row.original;
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={`Open actions for ${loc.name}`}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setEditLocation(loc)}>
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </DropdownMenuItem>
+                {loc.code !== "local" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteTarget(loc)}
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+    ],
+    [handleToggleEnabled, updateLocation.isPending],
+  );
+
+  const Toolbar = React.useCallback(
+    ({ table }: { table: TableType<LocationWithStatus> }) => (
+      <AdminListToolbar
+        table={table}
+        searchPlaceholder="Search locations..."
+        facets={[{ columnId: "status", title: "Status", options: STATUS_OPTIONS }]}
+      >
+        <Button variant="outline" onClick={() => refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Location
+        </Button>
+      </AdminListToolbar>
+    ),
+    [refetch],
   );
 
   if (isLoading && locations.length === 0) {
@@ -139,152 +302,14 @@ export function LocationsTable() {
         </div>
       )}
 
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Location
-          </Button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-t-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">Flag</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Region</TableHead>
-              <TableHead className="text-center">Workers</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Default</TableHead>
-              <TableHead className="text-center">Enabled</TableHead>
-              <TableHead className="w-[50px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody ref={bodyRef}>
-            {locations.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    No locations configured. Add your first location to get
-                    started.
-                  </p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              pageLocations.map((loc) => (
-                <TableRow key={loc.id}>
-                  <TableCell className="py-2.5 text-lg">
-                    {loc.flag || (
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </TableCell>
-                  <TableCell className="py-2.5 font-medium">{loc.name}</TableCell>
-                  <TableCell className="py-2.5">
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                      {loc.code}
-                    </code>
-                  </TableCell>
-                  <TableCell className="py-2.5 text-sm text-muted-foreground">
-                    {loc.region || "—"}
-                  </TableCell>
-                  <TableCell className="py-2.5 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Server className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{loc.workerCount}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-2.5 text-center">
-                    <StatusBadge status={loc.status} />
-                  </TableCell>
-                  <TableCell className="py-2.5 text-center">
-                    {loc.isDefault && (
-                      <TableBadge tone="purple" compact>
-                        Default
-                      </TableBadge>
-                    )}
-                    {!loc.supportsBrowser && (
-                      <TableBadge tone="neutral" compact>
-                        No browser
-                      </TableBadge>
-                    )}
-                    {!loc.supportsK6 && (
-                      <TableBadge tone="neutral" compact>
-                        No k6
-                      </TableBadge>
-                    )}
-                  </TableCell>
-                  <TableCell className="py-2.5 text-center">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex" tabIndex={loc.isDefault || loc.code === "local" ? 0 : undefined}>
-                          <Switch
-                            aria-label={`Enable ${loc.name}`}
-                            checked={loc.isEnabled}
-                            onCheckedChange={() => handleToggleEnabled(loc)}
-                            disabled={updateLocation.isPending || loc.code === "local" || loc.isDefault}
-                          />
-                        </span>
-                      </TooltipTrigger>
-                      {(loc.code === "local" || loc.isDefault) && (
-                        <TooltipContent>
-                          {loc.code === "local"
-                            ? "The local location cannot be disabled. It is the system fallback."
-                            : "Choose another default location or clear Default in Edit before disabling this location."}
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setEditLocation(loc)}
-                        >
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Edit
-                        </DropdownMenuItem>
-                        {loc.code !== "local" && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeleteTarget(loc)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" />
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      <ListPagination
-        total={locations.length}
+      <AdminDataTable
+        columns={columns}
+        data={locations}
+        toolbar={Toolbar}
         itemName="locations"
-        pageIndex={pageIndex}
-        pageSize={pageSize}
-        pageCount={pageCount}
-        onPageChange={(index) => setPage({ index, size: pageSize })}
-        onPageSizeChange={setPageSize}
+        emptyTitle="No locations configured"
+        emptyDescription="Add your first location to get started."
+        meta={{ globalFilterColumns: ["name", "code", "region"] }}
       />
 
       {/* Add dialog */}

@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import type { ColumnDef, Table as TableType } from "@tanstack/react-table";
+import { AdminDataTable } from "@/components/admin/admin-data-table";
+import { AdminListToolbar } from "@/components/admin/admin-list-toolbar";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { DateCell } from "@/components/ui/table-cells";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { TableBadge } from "@/components/ui/table-badge";
-import { ListPagination } from "@/components/admin/list-pagination";
-import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -44,14 +45,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import {
   Trash2,
+  MoreHorizontal,
   AlertTriangle,
   Key,
   Loader2,
@@ -90,20 +89,33 @@ interface CreatedToken {
   createdAt: string;
 }
 
+const TOKEN_STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "expiring", label: "Expiring soon" },
+  { value: "expired", label: "Expired" },
+  { value: "disabled", label: "Disabled" },
+];
+
+function getTokenStatus(token: CliToken): {
+  value: string;
+  label: string;
+  tone: TableBadgeTone;
+} {
+  if (token.expiresAt) {
+    const remaining = new Date(token.expiresAt).getTime() - Date.now();
+    if (remaining <= 0) return { value: "expired", label: "Expired", tone: "danger" };
+    const days = Math.ceil(remaining / 86_400_000);
+    if (token.enabled && days <= 7) {
+      return { value: "expiring", label: `Expires in ${days}d`, tone: "warning" };
+    }
+  }
+  return token.enabled
+    ? { value: "active", label: "Active", tone: "success" }
+    : { value: "disabled", label: "Disabled", tone: "slate" };
+}
+
 export function CliTokensTable() {
   const [tokens, setTokens] = useState<CliToken[]>([]);
-  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
-  const [page, setPage] = useState({ index: 0, size: pageSize });
-  // Auto-fit changes the size outside the table, so carry the page across here.
-  if (page.size !== pageSize) {
-    setPage({
-      index: repaginate(page.index, page.size, pageSize, tokens.length),
-      size: pageSize,
-    });
-  }
-  const pageCount = Math.max(1, Math.ceil(tokens.length / pageSize));
-  const pageIndex = Math.min(page.index, pageCount - 1);
-  const pageTokens = tokens.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -348,31 +360,141 @@ export function CliTokensTable() {
     }
   };
 
-  const getExpiryStatus = (expiresAt: string | null) => {
-    if (!expiresAt) return null;
+  const columns = useMemo<ColumnDef<CliToken>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Name" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex h-8 items-center gap-2">
+            <Key className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate font-medium">{row.original.name}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "start",
+        header: "Token",
+        cell: ({ row }) => (
+          <code className="rounded-sm bg-muted/60 px-2 py-1 font-mono text-xs dark:bg-muted">
+            {row.original.start}
+          </code>
+        ),
+        enableSorting: false,
+      },
+      {
+        id: "status",
+        accessorFn: (token) => getTokenStatus(token).value,
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => {
+          const status = getTokenStatus(row.original);
+          return (
+            <TableBadge tone={status.tone} compact>
+              {status.label}
+            </TableBadge>
+          );
+        },
+        filterFn: (row, id, value) => value.includes(row.getValue(id)),
+      },
+      {
+        accessorKey: "createdAt",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Created" />
+        ),
+        cell: ({ row }) => <DateCell value={row.original.createdAt} />,
+      },
+      {
+        accessorKey: "expiresAt",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Expires" />
+        ),
+        cell: ({ row }) => (
+          <DateCell value={row.original.expiresAt} empty="No expiry" />
+        ),
+      },
+      {
+        accessorKey: "createdByName",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Created by" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.createdByName || "-"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "lastRequest",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Last used" />
+        ),
+        cell: ({ row }) => <DateCell value={row.original.lastRequest} />,
+      },
+      {
+        id: "actions",
+        cell: ({ row }) => {
+          const token = row.original;
+          const busy = Boolean(operationLoadingStates[token.id]);
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={`Open actions for ${token.name}`}
+                  disabled={busy}
+                >
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MoreHorizontal className="h-4 w-4" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleToggleEnabled(token.id, token.enabled)}
+                >
+                  {token.enabled ? (
+                    <Ban className="mr-2 h-3.5 w-3.5" />
+                  ) : (
+                    <CheckCircle className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  {token.enabled ? "Disable token" : "Enable token"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => handleDelete(token.id)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete token
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+    ],
+    // The handlers only touch state setters and `loadTokens`, which are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [operationLoadingStates],
+  );
 
-    const now = new Date();
-    const expiry = new Date(expiresAt);
-    const daysUntilExpiry = Math.ceil(
-      (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (daysUntilExpiry < 0) {
-      return {
-        status: "expired",
-        text: "Expired",
-        className: "bg-red-500/10 text-red-500",
-      };
-    } else if (daysUntilExpiry <= 7) {
-      return {
-        status: "expiring",
-        text: `Expires in ${daysUntilExpiry}d`,
-        className: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-      };
-    }
-
-    return null;
-  };
+  const Toolbar = useCallback(
+    ({ table }: { table: TableType<CliToken> }) => (
+      <AdminListToolbar
+        table={table}
+        searchPlaceholder="Search tokens..."
+        facets={[{ columnId: "status", title: "Status", options: TOKEN_STATUS_OPTIONS }]}
+      />
+    ),
+    [],
+  );
 
   if (error) {
     return (
@@ -639,7 +761,7 @@ export function CliTokensTable() {
             </div>
           </div>
           <div>
-            {isLoading ? (
+            {isLoading && tokens.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-6">
                 <SupercheckLoading size="sm" message="Loading tokens..." />
               </div>
@@ -651,149 +773,13 @@ export function CliTokensTable() {
                 icon={<Key className="h-10 w-10" />}
               />
             ) : (
-              <>
-                <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
-                  <Table className="w-full min-w-[900px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead>Expires</TableHead>
-                        <TableHead>Created by</TableHead>
-                        <TableHead>Last used</TableHead>
-                        <TableHead className="w-[100px]" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody ref={bodyRef}>
-                      {pageTokens.map((token) => {
-                        const expiryStatus = getExpiryStatus(token.expiresAt);
-                        const isExpired = expiryStatus?.status === "expired";
-                        return (
-                          <TableRow key={token.id}>
-                            <TableCell className="py-2.5">
-                              <div className="flex items-center gap-2">
-                                <Key className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                <span className="font-medium">{token.name}</span>
-                                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                                  {token.start}
-                                </code>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-2.5">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {token.enabled && !isExpired && (
-                                  <TableBadge tone="success" compact>
-                                    Active
-                                  </TableBadge>
-                                )}
-                                {!token.enabled && (
-                                  <TableBadge tone="slate" compact>
-                                    Disabled
-                                  </TableBadge>
-                                )}
-                                {expiryStatus && (
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                                      expiryStatus.className
-                                    )}
-                                  >
-                                    {expiryStatus.text}
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-2.5 text-muted-foreground">
-                              {format(new Date(token.createdAt), "MMM d, yyyy")}
-                            </TableCell>
-                            <TableCell className="py-2.5 text-muted-foreground">
-                              {token.expiresAt
-                                ? format(new Date(token.expiresAt), "MMM d, yyyy")
-                                : "No expiry"}
-                            </TableCell>
-                            <TableCell className="py-2.5 text-muted-foreground">
-                              {token.createdByName || "-"}
-                            </TableCell>
-                            <TableCell className="py-2.5 text-muted-foreground">
-                              {token.lastRequest
-                                ? format(new Date(token.lastRequest), "MMM d, yyyy")
-                                : "Never"}
-                            </TableCell>
-                            <TableCell className="py-2.5">
-                              <div className="flex items-center justify-end gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={`h-8 w-8 ${
-                                token.enabled
-                                  ? "text-green-600 bg-green-500/10 hover:bg-green-500/20 hover:text-green-700 dark:text-green-400 dark:bg-green-500/10 dark:hover:bg-green-500/20 dark:hover:text-green-300"
-                                  : "text-muted-foreground bg-muted/50 hover:bg-muted hover:text-foreground"
-                              }`}
-                              aria-label={`${token.enabled ? "Disable" : "Enable"} token ${token.name}`}
-                              onClick={() =>
-                                handleToggleEnabled(token.id, token.enabled)
-                              }
-                              disabled={
-                                operationLoadingStates[token.id] === "toggle"
-                              }
-                            >
-                              {operationLoadingStates[token.id] === "toggle" ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : token.enabled ? (
-                                <CheckCircle className="h-4 w-4" />
-                              ) : (
-                                <Ban className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {token.enabled ? "Disable token" : "Enable token"}
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-600 bg-red-500/10 hover:bg-red-500/20 hover:text-red-700 dark:text-red-400 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:hover:text-red-300"
-                              aria-label={`Delete token ${token.name}`}
-                              onClick={() => handleDelete(token.id)}
-                              disabled={
-                                operationLoadingStates[token.id] === "delete"
-                              }
-                            >
-                              {operationLoadingStates[token.id] === "delete" ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            Delete token
-                          </TooltipContent>
-                        </Tooltip>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-                <ListPagination
-                  total={tokens.length}
-                  itemName="tokens"
-                  pageIndex={pageIndex}
-                  pageSize={pageSize}
-                  pageCount={pageCount}
-                  onPageChange={(index) => setPage({ index, size: pageSize })}
-                  onPageSizeChange={setPageSize}
-                />
-              </>
+              <AdminDataTable
+                columns={columns}
+                data={tokens}
+                toolbar={Toolbar}
+                itemName="tokens"
+                meta={{ globalFilterColumns: ["name", "start", "createdByName"] }}
+              />
             )}
           </div>
         </div>

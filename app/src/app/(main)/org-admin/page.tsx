@@ -1135,6 +1135,7 @@ function OrgAdminDashboardContent() {
             <PrivateAgentsAdminView
               initialAgents={privateAgents}
               loadError={privateAgentsLoadError}
+              connectors={integrationsLoaded ? connectors : undefined}
               onSetupChanged={handleSreSetupChanged}
             />
           )}

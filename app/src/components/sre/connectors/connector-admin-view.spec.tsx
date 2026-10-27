@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { Profiler } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import {
   getPrivateAgentConnectorJobResult,
@@ -203,8 +204,8 @@ describe("ConnectorAdminView", () => {
     expect(
       screen.getByRole("heading", { name: "Context links" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("PagerDuty primary")).toBeInTheDocument();
-    expect(screen.getByText(/webhook alerts/i)).toBeInTheDocument();
+    expect(screen.getByText("PagerDuty primary (webhook)")).toBeInTheDocument();
+    expect(screen.getByText("checkout")).toBeInTheDocument();
     expect(screen.queryByText(/routing key/i)).not.toBeInTheDocument();
   });
 
@@ -223,12 +224,11 @@ describe("ConnectorAdminView", () => {
       />,
     );
 
-    expect(screen.getByText("Private Agent")).toBeInTheDocument();
+    expect(screen.getAllByText("Private Agent").length).toBeGreaterThan(0);
+    expect(screen.getByText("prod-vpc-agent")).toBeInTheDocument();
     expect(screen.getByText("1 service")).toBeInTheDocument();
     expect(screen.getByText("low")).toBeInTheDocument();
-    expect(
-      screen.getByTitle(connector.lastValidatedAt.toLocaleString()),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Jun 27, 2026")).toBeInTheDocument();
     expect(screen.queryByText(connector.endpointUrl)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/access key|credential value/i),
@@ -599,5 +599,34 @@ describe("ConnectorAdminView", () => {
     });
     fireEvent.click(await screen.findByRole("menuitem", { name: /saved queries/i }));
     expect(onOpenSavedQueries).toHaveBeenCalled();
+  });
+
+  it("settles after mounting the table without re-render loops", async () => {
+    const commits = jest.fn();
+    render(
+      <Profiler id="connectors" onRender={commits}>
+        <ConnectorAdminView
+          loadError={null}
+          initialConnectors={[connector]}
+          setupOptions={{ services: [], privateAgents: [] }}
+          initialBindings={[]}
+          bindingSetupOptions={{
+            notificationProviders: [],
+            connectors: [],
+            services: [],
+          }}
+        />
+      </Profiler>,
+    );
+    await screen.findByText("CloudWatch prod");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    const settled = commits.mock.calls.length;
+    expect(settled).toBeLessThan(15);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(commits.mock.calls.length).toBe(settled);
   });
 });

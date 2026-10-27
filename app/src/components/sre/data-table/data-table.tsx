@@ -46,6 +46,8 @@ interface DataTableProps<TData, TValue> {
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
   cellClassName?: (cell: Cell<TData, unknown>) => string | undefined;
+  /** Fixed rows per page. Use inside dialogs, where fit-to-window can't measure reliably. */
+  fixedPageSize?: number;
   meta?: {
     [key: string]: unknown;
   };
@@ -109,6 +111,7 @@ export function DataTable<TData, TValue>({
   skeletonColumns = 5,
   onRowPrefetch,
   cellClassName,
+  fixedPageSize,
   meta,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
@@ -120,7 +123,7 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
-  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length);
+  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, fixedPageSize);
 
   // Track hover timers for debouncing
   const hoverTimersRef = React.useRef<
@@ -344,6 +347,7 @@ export function DataTable<TData, TValue>({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className={cn(
+                      "h-[53px]",
                       onRowClick && "cursor-pointer hover:bg-muted/50",
                     )}
                     tabIndex={onRowClick ? 0 : undefined}

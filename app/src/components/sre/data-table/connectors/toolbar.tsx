@@ -18,6 +18,7 @@ import {
   SquareLibrary,
 } from "lucide-react";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
+import { DataTableViewOptions } from "@/components/ui/data-table-view-options";
 import { SRE_CONNECTOR_CATALOG } from "@/components/sre/connectors/connector-catalog";
 
 interface ConnectorsToolbarProps<TData> {
@@ -62,6 +63,26 @@ export function ConnectorsToolbar<TData>({
               options={typeOptions}
             />
           )}
+          {table.getColumn("executionMode") && (
+            <DataTableFacetedFilter
+              column={table.getColumn("executionMode")}
+              title="Execution"
+              options={[
+                { value: "direct", label: "Direct" },
+                { value: "private_agent", label: "Private Agent" },
+              ]}
+            />
+          )}
+          {table.getColumn("riskLevel") && (
+            <DataTableFacetedFilter
+              column={table.getColumn("riskLevel")}
+              title="Risk"
+              options={["low", "medium", "high", "critical"].map((value) => ({
+                value,
+                label: value.charAt(0).toUpperCase() + value.slice(1),
+              }))}
+            />
+          )}
           {table.getColumn("status") && (
             <DataTableFacetedFilter
               column={table.getColumn("status")}
@@ -79,6 +100,7 @@ export function ConnectorsToolbar<TData>({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <DataTableViewOptions table={table} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="outline">

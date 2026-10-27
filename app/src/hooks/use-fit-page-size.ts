@@ -1,7 +1,7 @@
 "use client";
 
 import type { PaginationState } from "@tanstack/react-table";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
@@ -9,6 +9,9 @@ const MIN_ROWS = 5;
 const MAX_ROWS = 50;
 // Used until a real row has rendered and can be measured.
 const DEFAULT_ROW_HEIGHT = 49;
+const MAX_CHANGES_PER_SECOND = 6;
+// How long measuring stays paused after flapping; layout changes later can re-fit.
+const SETTLE_MS = 5000;
 
 /**
  * Rows that fit between the table body's top and the bottom of the visible area,
@@ -67,9 +70,16 @@ export function useFitPageSize(fixedSize?: number) {
   const [body, bodyRef] = useState<HTMLTableSectionElement | null>(null);
   const [fitted, setFitted] = useState<number>(PAGE_SIZE_OPTIONS[0]);
   const [manual, setManual] = useState<number | null>(fixedSize ?? null);
+  // Recent size changes. Row heights can depend on the page size (a scrollbar appearing
+  // reflows the cells), which would flip the size back and forth on every frame.
+  const fittedRef = useRef<number>(PAGE_SIZE_OPTIONS[0]);
+  const changes = useRef<number[]>([]);
+  const settled = useRef(0); // timestamp of the latch, 0 = measuring
 
   const measure = useCallback(() => {
     if (!body || manual !== null) return;
+    if (settled.current && Date.now() - settled.current < SETTLE_MS) return;
+    settled.current = 0;
     const bodyRect = body.getBoundingClientRect();
     // No layout (hidden, or a test DOM): keep the current size.
     if (bodyRect.height === 0) return;
@@ -94,7 +104,17 @@ export function useFitPageSize(fixedSize?: number) {
       contentBelowBody: Math.max(0, contentBottom(body, scroller) - bodyRect.bottom),
       rowHeight,
     });
-    setFitted((current) => (current === next ? current : next));
+    let size = next;
+    if (size === fittedRef.current) return;
+    const now = Date.now();
+    changes.current = [...changes.current.filter((at) => now - at < 1000), now];
+    if (changes.current.length > MAX_CHANGES_PER_SECOND) {
+      // Flapping: stop measuring at the smaller size (no page scrollbar) until the window resizes.
+      settled.current = Date.now();
+      size = Math.min(fittedRef.current, next);
+    }
+    fittedRef.current = size;
+    setFitted(size);
   }, [body, manual]);
 
   useEffect(() => {
@@ -110,12 +130,17 @@ export function useFitPageSize(fixedSize?: number) {
     const observer = new ResizeObserver(schedule);
     observer.observe(body);
     observer.observe(scroller ?? document.documentElement);
-    window.addEventListener("resize", schedule);
+    const onWindowResize = () => {
+      settled.current = 0;
+      changes.current = [];
+      schedule();
+    };
+    window.addEventListener("resize", onWindowResize);
     schedule();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
     };
   }, [body, measure]);
 

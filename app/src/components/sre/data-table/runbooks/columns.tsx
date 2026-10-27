@@ -4,6 +4,8 @@ import { ColumnDef } from "@tanstack/react-table";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,14 +41,23 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   },
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Name" />
+    ),
     cell: ({ row }) => (
-      <span className="font-medium whitespace-nowrap">{row.original.name}</span>
+      <TruncatedTextWithTooltip
+        text={row.original.name}
+        maxLength={26}
+        maxWidth="200px"
+        className="font-medium"
+      />
     ),
   },
   {
     id: "template",
-    header: "Template",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Template" />
+    ),
     cell: ({ row }) => (
       <div
         className="max-w-[200px] truncate font-mono text-xs text-muted-foreground"
@@ -58,16 +69,23 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   },
   {
     accessorKey: "connectorName",
-    header: "Connector",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Connector" />
+    ),
     cell: ({ row }) => (
-      <span className="font-medium whitespace-nowrap">
-        {row.original.connectorName}
-      </span>
+      <TruncatedTextWithTooltip
+        text={row.original.connectorName}
+        maxLength={22}
+        maxWidth="170px"
+        className="font-medium"
+      />
     ),
   },
   {
     id: "connectorType",
-    header: "Connector Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Connector Type" />
+    ),
     cell: ({ row }) => (
       <TableBadge compact>
         {getSreConnectorLabel(row.original.connectorType)}
@@ -76,7 +94,9 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   },
   {
     accessorKey: "queryType",
-    header: "Type",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
     cell: ({ row }) => {
       const queryType = row.getValue("queryType") as string;
       return (
@@ -88,7 +108,9 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   },
   {
     id: "limits",
-    header: "Limits",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Limits" />
+    ),
     cell: ({ row }) => {
       const query = row.original;
       return (
@@ -101,7 +123,9 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       return (
@@ -114,6 +138,7 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
         </TableBadge>
       );
     },
+    filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     id: "actions",

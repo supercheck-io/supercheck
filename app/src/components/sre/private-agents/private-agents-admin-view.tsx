@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  Copy,
-  KeyRound,
-  Loader2,
-  MoreHorizontal,
-  Plus,
-  RadioTower,
-} from "lucide-react";
+import { KeyRound, Loader2, Plus, RadioTower } from "lucide-react";
 import { toast } from "sonner";
 import { copyToClipboard } from "./copy-to-clipboard";
 
@@ -17,8 +10,11 @@ import {
   rotatePrivateAgentToken,
   type PrivateAgentListItem,
 } from "@/actions/private-agents";
-import { ListPagination } from "@/components/admin/list-pagination";
-import { repaginate, useFitPageSize } from "@/hooks/use-fit-page-size";
+import { DataTable } from "@/components/sre/data-table/data-table";
+import { columns } from "@/components/sre/data-table/private-agents/columns";
+import { PrivateAgentsToolbar } from "@/components/sre/data-table/private-agents/toolbar";
+import { PrivateAgentDetailsDialog } from "@/components/sre/private-agents/private-agent-details-dialog";
+import type { SreConnectorListItem } from "@/actions/sre-connectors";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { PrivateAgentFormDialog } from "@/components/sre/private-agents/private-agent-form-dialog";
 import {
@@ -31,7 +27,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,65 +36,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 type PrivateAgentsAdminViewProps = {
   initialAgents: PrivateAgentListItem[];
   loadError: string | null;
+  /** Connectors already loaded on the Integrations tab, for the details dialog. */
+  connectors?: SreConnectorListItem[];
   /** Called after an agent is created, changed, or disabled so connector options can refresh. */
   onSetupChanged?: () => void;
 };
 
-const statusTones: Record<PrivateAgentListItem["status"], TableBadgeTone> = {
-  pending: "info",
-  connected: "success",
-  disconnected: "warning",
-  unhealthy: "danger",
-  disabled: "slate",
-};
-
-function formatDate(value: Date | string | null) {
-  if (!value) return "Never";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 export function PrivateAgentsAdminView({
   initialAgents,
   loadError,
+  connectors,
   onSetupChanged,
 }: PrivateAgentsAdminViewProps) {
   const [agents, setAgents] = useState(initialAgents);
-  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
-  const [page, setPage] = useState({ index: 0, size: pageSize });
-  // Auto-fit changes the size outside the table, so carry the page across here.
-  if (page.size !== pageSize) {
-    setPage({
-      index: repaginate(page.index, page.size, pageSize, agents.length),
-      size: pageSize,
-    });
-  }
-  const pageCount = Math.max(1, Math.ceil(agents.length / pageSize));
-  const pageIndex = Math.min(page.index, pageCount - 1);
-  const pageAgents = agents.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [disablingAgent, setDisablingAgent] =
     useState<PrivateAgentListItem | null>(null);
@@ -109,6 +63,8 @@ export function PrivateAgentsAdminView({
   } | null>(null);
   const [rotatingAgent, setRotatingAgent] =
     useState<PrivateAgentListItem | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const [isMutating, startMutationTransition] = useTransition();
 
   const handleSaved = (savedAgent: PrivateAgentListItem) => {
@@ -165,10 +121,6 @@ export function PrivateAgentsAdminView({
     await copyToClipboard(rotatedToken.token, "Registration token");
   };
 
-  const copyAgentId = async (agentId: string) => {
-    await copyToClipboard(agentId, "Agent ID");
-  };
-
   if (loadError) {
     return (
       <DashboardEmptyState
@@ -182,14 +134,6 @@ export function PrivateAgentsAdminView({
 
   return (
     <div className="space-y-4">
-      {agents.length > 0 && (
-        <div className="flex justify-end">
-          <Button onClick={() => setIsRegisterOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Register agent
-          </Button>
-        </div>
-      )}
       {agents.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
@@ -204,118 +148,38 @@ export function PrivateAgentsAdminView({
           }
         />
       ) : (
-        <div className="space-y-4">
-          <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
-            <Table className="w-full min-w-[900px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Network</TableHead>
-                  <TableHead>Last heartbeat</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody ref={bodyRef}>
-                {pageAgents.map((agent) => (
-                  <TableRow key={agent.id}>
-                    <TableCell className="min-w-[240px] whitespace-normal py-2.5">
-                      <div className="space-y-1">
-                        <p className="font-medium">{agent.name}</p>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <code>{agent.id}</code>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            aria-label={`Copy Agent ID for ${agent.name}`}
-                            onClick={() => copyAgentId(agent.id)}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {agent.version ?? "Version not reported"}
-                        </p>
-                        {agent.lastError && (
-                          <p className="text-xs text-destructive">
-                            {agent.lastError}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-2.5">
-                      <TableBadge
-                        tone={statusTones[agent.status]}
-                        compact
-                        className="capitalize"
-                      >
-                        {agent.status}
-                      </TableBadge>
-                    </TableCell>
-                    <TableCell className="py-2.5">
-                      <div className="space-y-1 text-sm">
-                        <p>{agent.region ?? "No region"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {agent.networkLabel ?? "No network label"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-2.5" suppressHydrationWarning>
-                      {formatDate(agent.lastHeartbeatAt)}
-                    </TableCell>
-                    <TableCell className="py-2.5">
-                      {agent.projectScoped ? "Current project" : "Organization"}
-                    </TableCell>
-                    <TableCell className="py-2.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Open actions for ${agent.name}`}
-                            disabled={isMutating}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {agent.status !== "disabled" && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => setRotatingAgent(agent)}
-                              >
-                                Rotate token
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => setDisablingAgent(agent)}
-                              >
-                                Disable agent
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <ListPagination
-            total={agents.length}
-            itemName="agents"
-            pageIndex={pageIndex}
-            pageSize={pageSize}
-            pageCount={pageCount}
-            onPageChange={(index) => setPage({ index, size: pageSize })}
-            onPageSizeChange={setPageSize}
-          />
-        </div>
+        <DataTable
+          columns={columns}
+          data={agents}
+          entityLabel="agents"
+          renderToolbar={(table) => (
+            <PrivateAgentsToolbar
+              table={table}
+              onRegister={() => setIsRegisterOpen(true)}
+            />
+          )}
+          onRowClick={(row) => setSelectedAgentId(row.original.id)}
+          meta={{
+            onRotate: setRotatingAgent,
+            onDisable: setDisablingAgent,
+            isMutating,
+            globalFilterColumns: [
+              "id",
+              "name",
+              "status",
+              "version",
+              "region",
+              "networkLabel",
+            ],
+          }}
+        />
       )}
+
+      <PrivateAgentDetailsDialog
+        agent={selectedAgent}
+        connectors={connectors}
+        onOpenChange={(open) => !open && setSelectedAgentId(null)}
+      />
 
       {isRegisterOpen && (
         <PrivateAgentFormDialog

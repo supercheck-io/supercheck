@@ -1,7 +1,9 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Activity, User } from "lucide-react";
+import { Activity, LogIn, Pencil, Plus, Trash2, User } from "lucide-react";
+import { DateCell } from "@/components/ui/table-cells";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import {
   Tooltip,
@@ -10,7 +12,6 @@ import {
 } from "@/components/ui/tooltip";
 import {
   AuditDetailsDialog,
-  formatDate,
   getActionBadgeTone,
 } from "./audit-details-dialog";
 import { formatAuditAction } from "./audit-action-labels";
@@ -30,50 +31,24 @@ export interface AuditLog {
   user: AuditUser;
 }
 
+function ActionIcon({ action }: { action: string }) {
+  const className = "mr-1.5 h-3 w-3";
+  if (/delet|remov|revok/.test(action)) return <Trash2 className={className} />;
+  if (/creat|add|invit/.test(action)) return <Plus className={className} />;
+  if (/updat|chang|edit|rotat/.test(action)) return <Pencil className={className} />;
+  if (/login|logout|sign/.test(action)) return <LogIn className={className} />;
+  return <Activity className={className} />;
+}
+
 export const auditLogColumns: ColumnDef<AuditLog>[] = [
   {
     accessorKey: "createdAt",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Timestamp" />
     ),
-    cell: ({ row }) => {
-      const { formattedDate, formattedTime } = formatDate(
-        row.getValue("createdAt")
-      );
-      const date = new Date(row.getValue("createdAt"));
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-
-      let timeAgo = "";
-      if (diffMs < 60000) {
-        timeAgo = "just now";
-      } else if (diffMs < 3600000) {
-        const minutes = Math.floor(diffMs / 60000);
-        timeAgo = `${minutes}m ago`;
-      } else if (diffMs < 86400000) {
-        const hours = Math.floor(diffMs / 3600000);
-        timeAgo = `${hours}h ago`;
-      } else {
-        const days = Math.floor(diffMs / 86400000);
-        timeAgo = `${days}d ago`;
-      }
-
-      return (
-        <div className="flex items-center h-10 min-w-[140px]">
-          <div>
-            <div className="text-sm font-medium text-foreground">
-              <span>{formattedDate}</span>
-              <span className="text-muted-foreground ml-1 text-xs">
-                {formattedTime}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground font-medium">
-              {timeAgo}
-            </div>
-          </div>
-        </div>
-      );
-    },
+    cell: ({ row }) => (
+      <DateCell value={row.getValue("createdAt") as string} />
+    ),
   },
   {
     accessorKey: "action",
@@ -84,11 +59,11 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       const action = row.getValue("action") as string;
 
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <Tooltip>
             <TooltipTrigger asChild>
               <TableBadge tone={getActionBadgeTone(action)}>
-                <Activity className="mr-1.5 h-3 w-3" />
+                <ActionIcon action={action} />
                 {formatAuditAction(action)}
               </TableBadge>
             </TooltipTrigger>
@@ -116,24 +91,16 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       const user = row.original.user as AuditUser;
 
       return (
-        <div className="flex items-center h-10 min-w-[160px]">
-          <div className="flex items-center gap-2.5">
-            <div className="flex-shrink-0">
-              <div className="w-7 h-7 bg-muted rounded-full flex items-center justify-center">
-                <User className="h-3.5 w-3.5 text-muted-foreground" />
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-foreground truncate">
-                {user.name || "System"}
-              </div>
-              {user.email && (
-                <div className="text-xs text-muted-foreground truncate">
-                  {user.email}
-                </div>
-              )}
-            </div>
+        <div className="flex h-8 min-w-[160px] items-center gap-2.5">
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
+          <TruncatedTextWithTooltip
+            text={user.email ? `${user.name || "System"} (${user.email})` : user.name || "System"}
+            maxLength={26}
+            maxWidth="220px"
+            className="text-sm font-medium text-foreground"
+          />
         </div>
       );
     },
@@ -147,7 +114,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
     id: "actions",
     header: "",
     cell: ({ row }) => (
-      <div className="flex items-center h-10">
+      <div className="flex items-center h-8">
         <AuditDetailsDialog log={row.original} />
       </div>
     ),
