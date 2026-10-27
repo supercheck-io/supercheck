@@ -17,7 +17,7 @@ jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), que
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/logger/pino-config", () => ({ createLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }) }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 import { db } from "@/utils/db";
 
 const JOB = "0197a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
@@ -55,5 +55,29 @@ describe("POST /api/jobs/[id]/api-keys impersonation guard", () => {
     expect(mockImpersonated).not.toHaveBeenCalled();
     const body = await res.json().catch(() => ({}));
     expect(String(body.error ?? "")).not.toMatch(/impersonating/);
+  });
+});
+
+describe("GET /api/jobs/[id]/api-keys", () => {
+  it("returns the creator's avatar alongside the name", async () => {
+    mockRequireAuthContext.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: false });
+    const jobQuery = { from: () => jobQuery, where: () => jobQuery, limit: async () => [{ id: JOB, organizationId: "o1", projectId: "p1" }] };
+    const keyQuery = {
+      from: () => keyQuery,
+      leftJoin: () => keyQuery,
+      where: () => keyQuery,
+      orderBy: async () => [
+        { id: "k1", name: "ci", start: "job_ab", enabled: true, createdAt: new Date(), expiresAt: null, jobId: JOB, lastRequest: null, createdByName: "Ada", createdByImage: "/api/users/u1/avatar?v=x" },
+        { id: "k2", name: "old", start: "job_cd", enabled: true, createdAt: new Date(), expiresAt: null, jobId: JOB, lastRequest: null, createdByName: null, createdByImage: null },
+      ],
+    };
+    (db.select as jest.Mock).mockReturnValueOnce(jobQuery).mockReturnValueOnce(keyQuery);
+
+    const res = await GET(new NextRequest(`https://app.example.com/api/jobs/${JOB}/api-keys`), { params: Promise.resolve({ id: JOB }) });
+    const body = await res.json();
+    expect(body.apiKeys.map((k: Record<string, unknown>) => [k.createdByName, k.createdByImage])).toEqual([
+      ["Ada", "/api/users/u1/avatar?v=x"],
+      ["-", null],
+    ]);
   });
 });

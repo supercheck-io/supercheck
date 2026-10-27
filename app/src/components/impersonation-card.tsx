@@ -96,11 +96,13 @@ export function ImpersonationCard() {
           </Button>
         </div>
         <UserCell
-          name={impersonatedUser?.name}
-          email={impersonatedUser?.email}
+          name={impersonatedUser?.name || impersonatedUser?.email}
           className="text-xs font-medium"
           avatarClassName="h-5 w-5"
         />
+        {impersonatedUser?.name && (
+          <div className="truncate pl-7 text-xs text-muted-foreground">{impersonatedUser.email}</div>
+        )}
       </CardContent>
     </Card>
   );

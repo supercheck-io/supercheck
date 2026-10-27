@@ -56,8 +56,8 @@ export function NavUser() {
     <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button data-testid="user-menu" className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
-          <UserAvatar name={user?.name || user?.email} image={user?.image} className="h-8 w-8" />
+        <button data-testid="user-menu" aria-label={user?.name ? `Account menu for ${user.name}` : "Account menu"} className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
+          <UserAvatar name={user?.name || user?.email} image={user?.image} allowExternalImage className="h-8 w-8" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
