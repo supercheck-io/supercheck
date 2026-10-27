@@ -38,6 +38,10 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
       execute: (requestConfig: unknown) => Promise<unknown>,
     ) => execute(config),
   ),
+  resolvePublicAddress: jest.fn(async () => ({
+    address: '93.184.216.34',
+    family: 4,
+  })),
 }));
 
 // Unit tests must not dial the internet. `net` and `tls` are replaced with
@@ -111,6 +115,7 @@ jest.mock('tls', () => {
 });
 
 import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import { resolvePublicAddress } from '../common/utils/pinned-monitor-request';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
@@ -847,6 +852,50 @@ describe('MonitorService', () => {
         'Port is open but was expected to be closed',
       );
     });
+
+    it('resolves port check hosts through the private-address guard', async () => {
+      netState.behavior = 'connect';
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432 },
+      });
+
+      expect(resolvePublicAddress).toHaveBeenCalledWith(
+        'db.example.com',
+        false,
+      );
+      expect(result).toMatchObject({ status: 'up', isUp: true });
+    });
+
+    it.each(['ping_host', 'port_check'] as const)(
+      'refuses a %s target that resolves to a private address',
+      async (type) => {
+        netState.behavior = 'connect';
+        jest
+          .mocked(resolvePublicAddress)
+          .mockRejectedValue(
+            new Error('Access to private or reserved networks is not allowed'),
+          );
+
+        const result = await service.executeMonitor({
+          ...mockJobData,
+          type,
+          target: 'rebind.example.com',
+          config: { ...mockJobData.config, port: 5432 },
+        });
+
+        expect(result).toMatchObject({ isUp: false });
+        expect(result?.details?.errorMessage).toContain(
+          'private or reserved networks',
+        );
+        jest.mocked(resolvePublicAddress).mockResolvedValue({
+          address: '93.184.216.34',
+          family: 4,
+        });
+      },
+    );
 
     it('reports a refused port as down', async () => {
       netState.behavior = 'error';

@@ -9,6 +9,10 @@ import { isIP } from 'node:net';
 import { SECURITY } from '../constants';
 import { isPrivateHost } from '../utils/url-validator';
 
+// Only the exact string 'true' opts in, as in monitor.service.ts: 'false' or '0' must keep the SSRF guard on.
+const internalTargetsAllowed = () =>
+  process.env.ALLOW_INTERNAL_TARGETS === 'true';
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -52,10 +56,7 @@ export function validateTargetUrl(
     // Check for localhost/internal IPs (SSRF protection)
     if (isBlockedInternalTarget(url.hostname)) {
       // Allow if explicitly configured
-      if (
-        !options?.allowInternalTargets &&
-        !process.env.ALLOW_INTERNAL_TARGETS
-      ) {
+      if (!options?.allowInternalTargets && !internalTargetsAllowed()) {
         return {
           valid: false,
           error:
@@ -113,10 +114,7 @@ export function validatePingTarget(target: string): ValidationResult {
     }
 
     // Check if it's internal
-    if (
-      isBlockedInternalTarget(target) &&
-      !process.env.ALLOW_INTERNAL_TARGETS
-    ) {
+    if (isBlockedInternalTarget(target) && !internalTargetsAllowed()) {
       return {
         valid: false,
         error:
@@ -132,10 +130,7 @@ export function validatePingTarget(target: string): ValidationResult {
     // IPv6 literals are subject to the same SSRF policy as IPv4/hostnames:
     // loopback (::1), unspecified (::), IPv4-mapped (::ffff:10.0.0.1),
     // link-local (fe80::/10) and ULA (fc00::/7) addresses are internal.
-    if (
-      isBlockedInternalTarget(target) &&
-      !process.env.ALLOW_INTERNAL_TARGETS
-    ) {
+    if (isBlockedInternalTarget(target) && !internalTargetsAllowed()) {
       return {
         valid: false,
         error:
@@ -154,7 +149,7 @@ export function validatePingTarget(target: string): ValidationResult {
   }
 
   // Additional security check for localhost/internal IPs
-  if (isBlockedInternalTarget(target) && !process.env.ALLOW_INTERNAL_TARGETS) {
+  if (isBlockedInternalTarget(target) && !internalTargetsAllowed()) {
     return {
       valid: false,
       error: 'Internal/localhost targets are not allowed for security reasons',

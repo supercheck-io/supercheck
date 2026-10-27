@@ -4,6 +4,7 @@ import { apikey, user } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { capExpiryToCliToken } from "@/lib/auth/cli-token-expiry";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import {
@@ -146,14 +147,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { name } = validation.data;
-    let { expiresIn } = validation.data;
-    // A CLI token may create tokens, but none that outlive it: a stolen token cannot mint a longer-lived replacement.
-    if (context.isCliAuth && context.cliTokenExpiresAt) {
-      const remaining = Math.floor((context.cliTokenExpiresAt.getTime() - Date.now()) / 1000);
-      if (remaining <= 0) {
-        return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
-      }
-      expiresIn = Math.min(expiresIn ?? remaining, remaining);
+    const expiresIn = capExpiryToCliToken(context, validation.data.expiresIn);
+    if (expiresIn === null) {
+      return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
     }
 
     const issued = await issueCliApiKeyAtomically({

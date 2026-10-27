@@ -308,3 +308,31 @@ describe('network-validators', () => {
     });
   });
 });
+
+describe('ALLOW_INTERNAL_TARGETS', () => {
+  const original = process.env.ALLOW_INTERNAL_TARGETS;
+  afterEach(() => {
+    if (original === undefined) delete process.env.ALLOW_INTERNAL_TARGETS;
+    else process.env.ALLOW_INTERNAL_TARGETS = original;
+  });
+
+  it.each(['false', '0', ''])(
+    'keeps the SSRF guard on when set to %p',
+    (value) => {
+      process.env.ALLOW_INTERNAL_TARGETS = value;
+      expect(validatePingTarget('10.0.0.5').valid).toBe(false);
+      expect(validatePingTarget('::1').valid).toBe(false);
+      expect(validatePingTarget('localhost').valid).toBe(false);
+      expect(validatePortCheckTarget('192.168.1.1', 22, 'tcp').valid).toBe(
+        false,
+      );
+      expect(validateTargetUrl('http://169.254.169.254/').valid).toBe(false);
+    },
+  );
+
+  it("opts in only on 'true'", () => {
+    process.env.ALLOW_INTERNAL_TARGETS = 'true';
+    expect(validatePingTarget('10.0.0.5').valid).toBe(true);
+    expect(validateTargetUrl('http://169.254.169.254/').valid).toBe(true);
+  });
+});

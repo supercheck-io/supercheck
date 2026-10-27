@@ -8,6 +8,7 @@ import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/mi
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { capExpiryToCliToken } from "@/lib/auth/cli-token-expiry";
 import crypto from "crypto";
 
 const logger = createLogger({ module: 'api-keys' });
@@ -166,7 +167,11 @@ export async function POST(
       );
     }
 
-    const { name, expiresIn } = validation.data;
+    const { name } = validation.data;
+    const expiresIn = capExpiryToCliToken(authCtx, validation.data.expiresIn);
+    if (expiresIn === null) {
+      return NextResponse.json({ error: "The CLI token has expired" }, { status: 401 });
+    }
 
     const canCreate = checkPermissionWithContext("apiKey", "create", authCtx);
     if (!canCreate) {

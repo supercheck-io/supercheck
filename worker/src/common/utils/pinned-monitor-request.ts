@@ -32,21 +32,14 @@ const SENSITIVE_REDIRECT_HEADERS = [
   'proxy-authorization',
 ];
 
-async function pinRequestConfig(
-  input: AxiosRequestConfig<unknown>,
+/**
+ * Resolve a monitor host once and refuse private or reserved destinations. Callers connect to the
+ * returned address, never the hostname again, so DNS rebinding cannot swap in an internal address.
+ */
+export async function resolvePublicAddress(
+  hostname: string,
   allowInternalTargets: boolean,
-): Promise<PinnedConfig> {
-  if (!input.url) throw new Error('Monitor URL is required');
-
-  const url = new URL(input.url);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Monitor URL must use HTTP or HTTPS');
-  }
-  if (url.username || url.password) {
-    throw new Error('Monitor URLs cannot include credentials');
-  }
-
-  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+): Promise<{ address: string; family: number }> {
   const literalFamily = isIP(hostname);
   const addresses = literalFamily
     ? [{ address: hostname, family: literalFamily }]
@@ -64,7 +57,27 @@ async function pinRequestConfig(
 
   // Prefer IPv4 where available to preserve existing monitor behavior in
   // regions without reliable IPv6 routing, while still supporting IPv6-only hosts.
-  const selected = addresses.find(({ family }) => family === 4) ?? addresses[0];
+  return addresses.find(({ family }) => family === 4) ?? addresses[0];
+}
+
+async function pinRequestConfig(
+  input: AxiosRequestConfig<unknown>,
+  allowInternalTargets: boolean,
+): Promise<PinnedConfig> {
+  if (!input.url) throw new Error('Monitor URL is required');
+
+  const url = new URL(input.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Monitor URL must use HTTP or HTTPS');
+  }
+  if (url.username || url.password) {
+    throw new Error('Monitor URLs cannot include credentials');
+  }
+
+  const selected = await resolvePublicAddress(
+    url.hostname.replace(/^\[|\]$/g, ''),
+    allowInternalTargets,
+  );
   const pinnedLookup = createPinnedLookup(selected);
 
   const httpAgent = new HttpAgent({ lookup: pinnedLookup });

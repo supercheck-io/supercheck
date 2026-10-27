@@ -77,6 +77,13 @@ export async function PATCH(request: NextRequest) {
         
         // Use direct database update since we have our own RBAC admin check
         // Better Auth's admin plugin requires specific user IDs, but we use RBAC system
+        // 0 or no duration means a permanent ban; a negative one would be an already-expired, silent no-op.
+        if (duration !== undefined && duration !== null && !(Number.isFinite(duration) && duration >= 0)) {
+          return NextResponse.json(
+            { success: false, error: 'Ban duration must be a non-negative number of milliseconds' },
+            { status: 400 }
+          );
+        }
         const banExpires = duration ? new Date(Date.now() + duration) : null;
         
         await suspendAccount(userId, reason, banExpires);

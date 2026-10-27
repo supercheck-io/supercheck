@@ -22,6 +22,29 @@ class InstallerTests(unittest.TestCase):
                 self.assertTrue(any(ipaddress.ip_address(address) in network for network in networks))
         self.assertFalse(any(ipaddress.ip_address('1.1.1.1') in network for network in networks))
 
+    def _execution_policy(self):
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        return source.split('name: execution-egress', 1)[1].split('\nYAML', 1)[0]
+
+    def test_execution_tcp_egress_blocks_mail_and_host_control_plane_ports(self):
+        import re
+        public_rule = self._execution_policy().split('except:', 1)[1]
+        allowed = set()
+        for start, end in re.findall(r'port: (\d+)(?:\n\s+endPort: (\d+))?', public_rule):
+            allowed.update(range(int(start), int(end or start) + 1))
+        for port in (25, 465, 587, 2525, 2379, 2380, 6443, 9100, 9345, 10250, 10255):
+            with self.subTest(blocked=port):
+                self.assertNotIn(port, allowed)
+        for port in (1, 22, 80, 443, 3306, 5432, 8080, 8443, 65535):
+            with self.subTest(allowed=port):
+                self.assertIn(port, allowed)
+
+    def test_execution_dns_only_reaches_the_cluster_resolver(self):
+        dns_rule = self._execution_policy().split('egress:', 1)[1].split('ipBlock:', 1)[0]
+        self.assertIn('kubernetes.io/metadata.name: kube-system', dns_rule)
+        self.assertIn('k8s-app: kube-dns', dns_rule)
+        self.assertIn('port: 53', dns_rule)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

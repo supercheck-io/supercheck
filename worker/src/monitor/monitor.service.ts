@@ -63,7 +63,10 @@ import {
   getErrorMessage,
 } from '../common/validation';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
-import { requestPinnedMonitorTarget } from '../common/utils/pinned-monitor-request';
+import {
+  requestPinnedMonitorTarget,
+  resolvePublicAddress,
+} from '../common/utils/pinned-monitor-request';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -1609,9 +1612,14 @@ export class MonitorService {
 
       for (const port of tcpPorts) {
         try {
+          // Resolved per attempt so a lookup failure still reports the host as down.
+          const { address: pingAddress } = await resolvePublicAddress(
+            target,
+            process.env.ALLOW_INTERNAL_TARGETS === 'true',
+          );
           await new Promise<void>((resolve, reject) => {
             const socket = createConnection({
-              host: target,
+              host: pingAddress,
               port: port,
               timeout: timeout,
             });
@@ -1738,6 +1746,10 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
+      const resolved = await resolvePublicAddress(
+        target,
+        process.env.ALLOW_INTERNAL_TARGETS === 'true',
+      );
       if (protocol === 'tcp') {
         // TCP port check using net module
         const net = await import('net');
@@ -1750,7 +1762,7 @@ export class MonitorService {
             reject(new Error(`Connection timeout after ${timeout}ms`));
           }, timeout);
 
-          socket.connect(port, target, () => {
+          socket.connect(port, resolved.address, () => {
             clearTimeout(timeoutHandle);
             socket.destroy();
             resolve();
@@ -1793,11 +1805,7 @@ export class MonitorService {
       } else if (protocol === 'udp') {
         // UDP port check using dgram module
         const dgram = await import('dgram');
-        const net = await import('net');
-
-        // Determine socket type based on IP version
-        const isIPv6 = net.isIPv6(target);
-        const socketType = isIPv6 ? 'udp6' : 'udp4';
+        const socketType = resolved.family === 6 ? 'udp6' : 'udp4';
 
         await new Promise<void>((resolve, reject) => {
           const client = dgram.createSocket(socketType);
@@ -1818,7 +1826,7 @@ export class MonitorService {
           // Send a small test packet
           const message = Buffer.from('ping');
 
-          client.send(message, port, target, (error) => {
+          client.send(message, port, resolved.address, (error) => {
             if (!isResolved) {
               isResolved = true;
               clearTimeout(timeoutHandle);
