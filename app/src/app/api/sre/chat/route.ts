@@ -5,6 +5,7 @@ import { z } from "zod";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { runSreAgent } from "@/sre/lib/agent-runner";
@@ -351,6 +352,9 @@ export async function POST(request: NextRequest) {
   const subscriptionError = await requireSreSubscription(context.organizationId, { allowTrial: false });
   if (subscriptionError) return subscriptionError;
 
+  const dailyLimitResponse = await sreDailyTokenLimitResponse(context.organizationId);
+  if (dailyLimitResponse) return dailyLimitResponse;
+
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
     if (rateLimit.unavailable) {
@@ -448,6 +452,7 @@ export async function POST(request: NextRequest) {
       const liveConnectorToolsEnabled =
         parsed.data.useLiveConnectorTools && canInvestigateConnectors;
       const result = await runSreAgent({
+        organizationId: context.organizationId,
         abortSignal: signal,
         system: buildSreTriageSystemPrompt(),
         prompt: buildChatPrompt({

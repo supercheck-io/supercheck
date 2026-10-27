@@ -57,6 +57,7 @@ import {
   isSreInvestigationAgentEnabled,
 } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
+import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 
 const logger = createLogger({ module: "sre-incidents" }) as {
   error: (data: unknown, message?: string) => void;
@@ -806,6 +807,9 @@ export async function getSreIncidentDetails(
         detail: null,
       };
     }
+
+    // A run whose process died stays "running" and would lock the Investigate button; release it on read.
+    await failStaleSreInvestigationRunsForIncident({ organizationId, projectId: project.id, incidentId }).catch(() => undefined);
 
     const [latestBrief] = await db
       .select({

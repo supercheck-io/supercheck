@@ -25,7 +25,10 @@ import {
   withSreInvestigationAdmission,
   SreInvestigationBillingError,
 } from "@/lib/sre/investigation-billing";
+import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { createLogger } from "@/lib/logger/index";
+import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
+import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 
 const investigationLogger = createLogger({
   module: "sre-investigation-runner",
@@ -138,6 +141,8 @@ export async function startSreIncidentInvestigation(
     };
   }
 
+  await failStaleSreInvestigationRunsForIncident(input);
+
   const initialModelId = getActualModelName();
   const liveConnectorsEnabled = input.enableLiveConnectors === true;
   let run: typeof sreInvestigationRuns.$inferSelect;
@@ -169,7 +174,7 @@ export async function startSreIncidentInvestigation(
       .returning());
   } catch (error) {
     if (error instanceof SreInvestigationBillingError) {
-      return { success: false, status: 402, error: error.message };
+      return { success: false, status: 402, error: sreBillingErrorMessage(error.code) };
     }
     if (isActiveIncidentRunConflict(error)) {
       return {
@@ -231,6 +236,7 @@ export async function executeSreIncidentInvestigation(
       investigationRunId,
     };
     const result = await runSreAgent({
+      organizationId: input.organizationId,
       system: buildSreInvestigationSystemPrompt(),
       prompt: buildSreInvestigationPrompt({
         incidentTitle: incident.title,
@@ -246,7 +252,7 @@ export async function executeSreIncidentInvestigation(
       tools: {
         ...createSreEvidenceTools(toolScope),
         ...(liveConnectorsEnabled ? createSreConnectorTools(toolScope) : {}),
-        ...(liveConnectorsEnabled ? createSreInvestigationSubagentTools() : {}),
+        ...(liveConnectorsEnabled ? createSreInvestigationSubagentTools({ organizationId: input.organizationId }) : {}),
       },
       budget: {
         maxSteps: liveConnectorsEnabled ? 8 : 5,
@@ -328,6 +334,7 @@ export async function executeSreIncidentInvestigation(
     const errorCode = finishReason === "tool-calls" ? "step_limit_exceeded"
       : finishReason === "length" ? "token_limit_exceeded"
       : finishReason === "content-filter" ? "content_filter"
+      : error instanceof SreDailyTokenLimitError ? (error.unavailable ? "limit_unavailable" : "daily_limit")
       : error instanceof SreAgentEmptyResponseError ? "empty_response"
       : error !== null && typeof error === "object" && "name" in error && error.name === "TimeoutError" ? "timed_out"
       : "provider_error";
@@ -339,6 +346,10 @@ export async function executeSreIncidentInvestigation(
           ? "The AI provider filtered the investigation response. Review the evidence before trying again."
           : errorCode === "empty_response"
             ? "The AI provider returned no investigation report. Try again."
+            : errorCode === "limit_unavailable"
+              ? "AI usage limit check is temporarily unavailable. Please try again shortly."
+            : errorCode === "daily_limit"
+              ? "Daily AI usage limit reached for your organization. It resets at 00:00 UTC."
             : errorCode === "timed_out"
               ? "Investigation timed out before completing. Try again with a narrower scope."
               : "SRE investigation failed";

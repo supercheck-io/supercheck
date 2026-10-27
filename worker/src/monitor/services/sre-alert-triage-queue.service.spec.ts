@@ -12,6 +12,25 @@ jest.mock('bullmq', () => ({
 
 const mockQueueConstructor = Queue as unknown as jest.Mock;
 
+// Mirrored in worker/src/monitor/services/sre-alert-triage-queue.service.spec.ts
+// and app/src/sre/lib/feature-gates.spec.ts. Change both together.
+// [SRE_ENABLED, SRE_AUTOMATION_ENABLED, automatic triage enabled]
+const AUTOMATION_GATE_CONTRACT: Array<
+  [string | undefined, string | undefined, boolean]
+> = [
+  [undefined, undefined, false],
+  [undefined, 'true', true],
+  [undefined, '1', true],
+  [undefined, ' TRUE ', true],
+  [undefined, 'yes', false],
+  [undefined, 'false', false],
+  ['true', 'true', true],
+  ['false', 'true', false],
+  ['0', '1', false],
+  [' FALSE ', 'true', false],
+  ['', 'true', true],
+];
+
 describe('SreAlertTriageQueueService', () => {
   const config = new Map<string, string | number>();
   const configService = {
@@ -95,6 +114,19 @@ describe('SreAlertTriageQueueService', () => {
         configService,
       ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
       expect(mockQueueConstructor).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(AUTOMATION_GATE_CONTRACT)(
+    'automation gate contract: SRE_ENABLED=%j SRE_AUTOMATION_ENABLED=%j -> %s',
+    async (sre, automation, expected) => {
+      if (sre !== undefined) config.set('SRE_ENABLED', sre);
+      if (automation !== undefined)
+        config.set('SRE_AUTOMATION_ENABLED', automation);
+      await new SreAlertTriageQueueService(
+        configService,
+      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
+      expect(mockQueueConstructor).toHaveBeenCalledTimes(expected ? 1 : 0);
     },
   );
 });
