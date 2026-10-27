@@ -30,6 +30,7 @@ flowchart LR
 ## Tool and provider behavior
 
 - Tool schemas validate inputs and bound output size. Treat provider/tool output as untrusted evidence.
+- Jira, Confluence, and Notion are read-only knowledge connectors (Notion is direct only; Jira and Confluence also run on a Private Agent in `worker/src/private-agent/private-agent-knowledge.ts`). Page text is redacted, size-capped, fenced as untrusted document evidence, and fetched for top results only. Slack, Teams, Webhook, Kafka, and RabbitMQ are not evidence sources; unsupported records show as Unsupported and must be disableable.
 - Cancellation and timeout propagate through model streams, tools, polling, persistence, and UI state.
 - Retry only transient/idempotent operations; prevent duplicate messages, actions, tool records, usage events, and charges.
 - Provider fallback (including deterministic evidence-brief fallbacks) must preserve tenant scope, safety policy, configured model selection, usage accounting, and error semantics.
