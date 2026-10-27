@@ -288,21 +288,20 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               Services
             </Link>
           </Button>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <h1 className="break-words text-2xl font-semibold">
+            {detail.service.name}
+          </h1>
+          {/* Meta line, like the incident header: status (when not active), tier and environment. */}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {detail.service.status !== "active" && (
               <TableBadge tone="warning" className="capitalize">
                 {detail.service.status}
               </TableBadge>
             )}
-            {detail.service.environment && (
-              <span className="text-sm text-muted-foreground">
-                {detail.service.environment}
-              </span>
-            )}
+            {[detail.service.tier ? `Tier ${detail.service.tier}` : null, detail.service.environment]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
-          <h1 className="break-words text-2xl font-semibold">
-            {detail.service.name}
-          </h1>
           {detail.service.description && (
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               {detail.service.description}
@@ -365,7 +364,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             Service details
           </summary>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-            <span>Tier {detail.service.tier}</span>
             {detail.service.ownerTeam && (
               <span>Owner: {detail.service.ownerTeam}</span>
             )}
