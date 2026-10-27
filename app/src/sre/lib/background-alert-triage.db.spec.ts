@@ -274,6 +274,30 @@ it("alert history links each alert to the incident it belonged to", async () => 
   ]);
 });
 
+it("alert history does not link alerts to unrelated or later incidents", async () => {
+  // An SSL alert never belongs to an up/down incident, and an old alert with no incident stays unlinked.
+  await mockDatabase.update(schema.monitors).set({ alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, incidentEnabled: false } }).where(eq(schema.monitors.id, monitorId));
+  await alert("monitor_failure", new Date(base - 3 * 60 * 60_000));
+  await mockDatabase.update(schema.monitors).set({ alertConfig: null }).where(eq(schema.monitors.id, monitorId));
+  await alert("monitor_failure", minutes(0));
+  await mockDatabase.insert(schema.alertHistory).values({ message: "ssl", type: "ssl_expiring", target: "Checkout API", targetType: "monitor", monitorId, provider: "slack", status: "sent", sentAt: minutes(1) });
+  jest.mocked(requireAuthContext).mockResolvedValue({ organizationId: orgId, project: { id: projectId } } as never);
+  const rows = (await (await getAlertHistory(new Request("http://localhost/api/alerts/history") as never)).json()) as Array<{ type: string; timestamp: string; incident: { number: number } | null }>;
+  const [only] = await incidents();
+  expect(rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((row) => [row.type, row.incident?.number ?? null])).toEqual([
+    ["monitor_failure", null],
+    ["monitor_failure", only.number],
+    ["ssl_expiring", null],
+  ]);
+});
+
+it("leaves a late failure open when the recovery threshold needs more than one check", async () => {
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5), alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 3 } }).where(eq(schema.monitors.id, monitorId));
+  await alert("monitor_failure", minutes(0));
+  const [row] = await incidents();
+  expect(row.status).toBe("triggered");
+});
+
 it("never auto-resolves an SSL expiry incident from an up/down recovery", async () => {
   await alert("ssl_expiring", minutes(0));
   await alert("monitor_recovery", minutes(5));

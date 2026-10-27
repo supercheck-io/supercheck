@@ -22,11 +22,15 @@ export function IncidentAlertsTab({
     <Tabs value={view} onValueChange={(v) => onViewChange(v as AlertsView)}>
       <TabsList
         className="ml-auto h-8"
+        aria-describedby="alerts-view-help"
         title="Signals group repeated failures; History lists every notification sent."
       >
         <TabsTrigger value="signals">Signals</TabsTrigger>
         <TabsTrigger value="history">History</TabsTrigger>
       </TabsList>
+      <span id="alerts-view-help" className="sr-only">
+        Signals group repeated failures; History lists every notification sent.
+      </span>
     </Tabs>
   );
 

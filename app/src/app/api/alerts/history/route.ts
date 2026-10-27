@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(request: NextRequest) {
   try {
@@ -158,8 +159,15 @@ export async function GET(request: NextRequest) {
             JOIN sre_incident_alerts ia ON ia.alert_event_id = e.id
             JOIN sre_incidents i ON i.id = ia.incident_id
             WHERE ah.id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+              -- Same alert type, or a recovery matched to the up/down failure it recovers.
+              AND (
+                e.dedup_key LIKE '%:' || ah.type
+                OR (ah.type IN ('monitor_recovery', 'job_success') AND e.dedup_key ~ ':(monitor_failure|job_failed|job_timeout)$')
+              )
+              -- Open when the alert was sent; an hour of slack covers a queue backlog.
+              AND i.created_at <= ah.sent_at + interval '1 hour'
               AND (i.resolved_at IS NULL OR i.resolved_at >= ah.sent_at - interval '1 minute')
-            ORDER BY ah.id, (e.dedup_key LIKE '%:' || ah.type) DESC, i.created_at ASC
+            ORDER BY ah.id, i.created_at ASC
           `)) as unknown as Array<{ alertId: string; incidentId: string; incidentNumber: number }>)
         : [];
       const incidentByAlert = new Map(
@@ -324,7 +332,7 @@ export async function POST(request: NextRequest) {
     // The row can open or resolve an incident for its source, so the source must be in the caller's project.
     const sourceId = body.targetType === "monitor" ? body.monitorId : body.jobId;
     const otherId = body.targetType === "monitor" ? body.jobId : body.monitorId;
-    if (typeof sourceId !== "string" || otherId) {
+    if (typeof sourceId !== "string" || !isUuid(sourceId) || otherId) {
       return NextResponse.json(
         { error: `${body.targetType}Id is required and must match targetType` },
         { status: 400 }

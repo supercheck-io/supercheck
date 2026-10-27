@@ -82,6 +82,7 @@ describe("POST /api/alerts/history", () => {
     mockInsert();
     expect((await post({ jobId: MONITOR_ID })).status).toBe(400);
     expect((await post({ monitorId: MONITOR_ID, jobId: MONITOR_ID })).status).toBe(400);
+    expect((await post({ monitorId: "not-a-uuid" })).status).toBe(400);
     expect(db.select).not.toHaveBeenCalled();
   });
 

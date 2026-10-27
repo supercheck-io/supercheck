@@ -207,8 +207,8 @@ async function processSourceRecovery(recovery: {
 /**
  * When the source is already back up after this failure fired, the time it recovered.
  * Covers a failure processed after its recovery (a retry, or a queue backlog).
- * shortcut: a monitor flips to up on its first passing check, ignoring recoveryThreshold > 1;
- * compare consecutive successes if early resolves in backlogs become a problem.
+ * Used only when recoveryThreshold is 1: a monitor flips to up and a job run passes on the first
+ * success, so a longer threshold is left to the worker's recovery signal.
  */
 async function sourceRecoveredSince(
   sourceType: SreAlertSourceType,
@@ -705,7 +705,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   }
 
   // The source already came back: keep the incident as a record, resolve it now and skip AI triage.
-  if (!result.skipped && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+  // Only with a one-check recovery threshold: source state alone cannot tell a longer streak apart.
+  if (!result.skipped && RECOVERABLE_FAILURE_TYPES.has(alert.type) && (alertConfig?.recoveryThreshold ?? 1) <= 1) {
     const recoveredAt = await sourceRecoveredSince(sourceType, sourceId, firedAt);
     if (recoveredAt) {
       await handleSourceRecovery({

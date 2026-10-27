@@ -33,7 +33,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { type ComponentType, useMemo, useState } from "react";
+import { type ComponentType, useMemo, useRef, useState } from "react";
 
 import { SreEvidenceGraphSidePanel } from "@/components/sre/evidence-graph-side-panel";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -639,6 +639,7 @@ export function SreEvidenceGraph({
     Boolean(normalizedQuery) ||
     topologyView !== "essentials" ||
     incidentFocusId !== "all";
+  const searchRef = useRef<HTMLInputElement>(null);
   const countLabel = `${visibleNodes.length} nodes · ${visibleEdges.length} relationships${
     matchingNodes.length > visibleNodes.length
       ? ` · ${matchingNodes.length - visibleNodes.length} hidden by limit`
@@ -680,10 +681,18 @@ export function SreEvidenceGraph({
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
-          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)] lg:[&:has(>button)]:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)_auto]">
+          <div
+            className={cn(
+              "grid min-w-0 gap-3",
+              hasActiveFilters
+                ? "lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)_auto]"
+                : "lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)]",
+            )}
+          >
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                ref={searchRef}
                 aria-label="Search topology"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -742,6 +751,8 @@ export function SreEvidenceGraph({
                   setTopologyView("essentials");
                   setIncidentFocusId("all");
                   setSelectedEdgeId(null);
+                  // The button unmounts once filters clear; keep keyboard focus in the toolbar.
+                  searchRef.current?.focus();
                 }}
               >
                 Clear
