@@ -9,7 +9,7 @@ import {
   leaseJob,
   processLeasedJob,
   SUPPORTED_SRE_CONNECTOR_TYPES,
-  unsupportedConnectorJob,
+  unrunnableLeasedJob,
   type PrivateAgentConfig,
 } from './private-agent-runner';
 
@@ -768,15 +768,40 @@ describe('unsupported connector types', () => {
     global.fetch = originalFetch;
   });
 
-  it('flags only leased jobs whose type this agent does not know', () => {
-    expect(unsupportedConnectorJob(lease('servicenow'))).toEqual({
+  it('flags leased jobs this agent cannot run', () => {
+    expect(unrunnableLeasedJob(lease('servicenow'))).toEqual({
       jobId,
       leaseToken: 'lease-token',
+      errorCode: 'unsupported_connector_type',
     });
     expect(
-      unsupportedConnectorJob(lease(SUPPORTED_SRE_CONNECTOR_TYPES[0])),
+      unrunnableLeasedJob(lease(SUPPORTED_SRE_CONNECTOR_TYPES[0])),
+    ).toEqual({
+      jobId,
+      leaseToken: 'lease-token',
+      errorCode: 'invalid_job_spec',
+    });
+    expect(unrunnableLeasedJob({ job: null })).toBeNull();
+    expect(
+      unrunnableLeasedJob({ job: { id: 'not-a-uuid' }, leaseToken: 'x' }),
     ).toBeNull();
-    expect(unsupportedConnectorJob({ job: null })).toBeNull();
+  });
+
+  it('keeps the agent loop running when the failure report itself fails', async () => {
+    const warnSpy = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => lease('servicenow'),
+      })
+      .mockRejectedValueOnce(new Error('network down'));
+    await expect(leaseJob(config)).resolves.toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('fails an unknown-type job instead of throwing, so it is not leased again', async () => {

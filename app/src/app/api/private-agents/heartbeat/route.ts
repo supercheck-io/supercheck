@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { privateAgentCredentials, privateAgentHeartbeats, privateAgents } from "@/db/schema";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../jobs/auth";
-import { withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
+import { knownConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const heartbeatSchema = z.object({
   agentId: z.string().uuid(),
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    const capabilities = body.data.capabilities;
+    const capabilities = { ...body.data.capabilities, sreConnectorTypes: knownConnectorTypes(body.data.capabilities.sreConnectorTypes) };
 
     await db.transaction(async (tx) => {
       await tx
@@ -66,7 +66,10 @@ export async function POST(request: NextRequest) {
           lastHeartbeatAt: now,
           connectedAt: auth.agent.connectedAt ?? now,
           lastError: body.data.errorCode ?? null,
-          metadata: withReportedConnectorTypes(auth.agent.metadata, capabilities.sreConnectorTypes),
+          // Merged in SQL, not from the auth snapshot, so a concurrent token rotation's metadata is never overwritten.
+          metadata: capabilities.sreConnectorTypes
+            ? sql`coalesce(${privateAgents.metadata}, '{}'::jsonb) || jsonb_build_object('sreConnectorTypes', ${JSON.stringify(capabilities.sreConnectorTypes)}::jsonb)`
+            : sql`coalesce(${privateAgents.metadata}, '{}'::jsonb) - 'sreConnectorTypes'`,
           updatedAt: now,
         })
         .where(eq(privateAgents.id, auth.agent.id));

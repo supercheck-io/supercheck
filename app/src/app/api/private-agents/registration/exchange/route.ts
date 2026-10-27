@@ -12,7 +12,7 @@ import {
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 import { getBearerToken, unauthorized } from "../../jobs/auth";
-import { withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
+import { knownConnectorTypes, withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const exchangeSchema = z.object({
   agentId: z.string().uuid(),
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
           lastError: null,
           metadata: withReportedConnectorTypes(
             markPrivateAgentRegistrationExchanged(agent.metadata, now),
-            body.data.capabilities.sreConnectorTypes,
+            knownConnectorTypes(body.data.capabilities.sreConnectorTypes),
           ),
           updatedAt: now,
         })

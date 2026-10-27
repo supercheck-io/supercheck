@@ -1928,24 +1928,37 @@ async function sendHeartbeat(
   });
 }
 
-/** The job id and lease token when the leased job names a connector type this agent does not support. */
-export function unsupportedConnectorJob(
+/**
+ * A leased job this agent cannot run: an unknown connector type or a spec it cannot parse.
+ * Returns what is needed to fail it, or null when the response is a runnable job (or no job).
+ */
+export function unrunnableLeasedJob(
   raw: unknown,
-): { jobId: string; leaseToken: string } | null {
-  const parsed = z
+): { jobId: string; leaseToken: string; errorCode: string } | null {
+  const ids = z
     .object({
-      job: z.object({
-        id: z.string().uuid(),
-        jobSpec: z.object({ connectorType: z.string() }),
-      }),
+      job: z.object({ id: z.string().uuid() }),
       leaseToken: z.string(),
     })
     .safeParse(raw);
-  if (!parsed.success) return null;
-  const type = parsed.data.job.jobSpec.connectorType;
-  if ((SUPPORTED_SRE_CONNECTOR_TYPES as readonly string[]).includes(type))
-    return null;
-  return { jobId: parsed.data.job.id, leaseToken: parsed.data.leaseToken };
+  if (!ids.success) return null;
+  const type = z
+    .object({
+      job: z.object({ jobSpec: z.object({ connectorType: z.string() }) }),
+    })
+    .safeParse(raw);
+  const errorCode =
+    type.success &&
+    !(SUPPORTED_SRE_CONNECTOR_TYPES as readonly string[]).includes(
+      type.data.job.jobSpec.connectorType,
+    )
+      ? 'unsupported_connector_type'
+      : leaseResponseSchema.safeParse(raw).success
+        ? null
+        : 'invalid_job_spec';
+  return errorCode
+    ? { jobId: ids.data.job.id, leaseToken: ids.data.leaseToken, errorCode }
+    : null;
 }
 
 export async function leaseJob(
@@ -1954,16 +1967,25 @@ export async function leaseJob(
   const raw = await postJson(config, '/api/private-agents/jobs/lease', {
     waitMs: config.leaseWaitMs,
   });
-  const unsupported = unsupportedConnectorJob(raw);
-  if (unsupported) {
+  const unrunnable = unrunnableLeasedJob(raw);
+  if (unrunnable) {
     // Fail the job instead of throwing: a parse error would re-lease it forever and jam the queue.
-    await postJson(config, '/api/private-agents/jobs/result', {
-      ...unsupported,
-      status: 'failed',
-      evidence: [],
-      truncated: false,
-      errorCode: 'unsupported_connector_type',
-    });
+    const { errorCode, ...lease } = unrunnable;
+    try {
+      await postJson(config, '/api/private-agents/jobs/result', {
+        ...lease,
+        status: 'failed',
+        evidence: [],
+        truncated: false,
+        errorCode,
+      });
+    } catch (error) {
+      // The lease expires and the job is retried later; keep the agent loop running.
+      console.warn(
+        `[private-agent] Could not report ${errorCode} for job ${lease.jobId}:`,
+        error,
+      );
+    }
     return null;
   }
   const payload = leaseResponseSchema.parse(raw);

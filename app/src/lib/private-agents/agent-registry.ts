@@ -1,3 +1,5 @@
+import { PRIVATE_AGENT_CONNECTOR_TYPES } from "@/lib/sre/connectors/connector-capabilities";
+
 export type PrivateAgentStatus = "pending" | "connected" | "disconnected" | "unhealthy" | "disabled";
 export type PrivateAgentMode = "connector_proxy" | "execution_worker" | "hybrid";
 export type PrivateAgentJobClass = "sre_connector_query" | "http_monitor_check" | "playwright_run" | "k6_run" | "network_check";
@@ -108,4 +110,9 @@ export function withReportedConnectorTypes(metadata: unknown, types: string[] | 
 
 export function agentSupportsConnectorType(agent: Pick<PrivateAgentRecord, "metadata">, connectorType: string): boolean {
   return (reportedConnectorTypes(agent.metadata) ?? LEGACY_AGENT_CONNECTOR_TYPES).includes(connectorType);
+}
+
+/** Keeps only types the app can route to an agent, so a misbehaving agent cannot store arbitrary strings. */
+export function knownConnectorTypes(types: string[] | undefined): string[] | undefined {
+  return types?.filter((type) => (PRIVATE_AGENT_CONNECTOR_TYPES as readonly string[]).includes(type));
 }
