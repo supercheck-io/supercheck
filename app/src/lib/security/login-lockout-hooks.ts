@@ -27,35 +27,40 @@ const signInEmail = (body: unknown): string | null => {
 };
 
 // Only credential outcomes may convert a reservation into a recorded failure.
-export const loginLockoutHooks = {
-  before: createAuthMiddleware(async (ctx) => {
-    if (ctx.path !== "/sign-in/email") return;
-    const email = signInEmail(ctx.body);
-    if (!email) return;
+export type AuthHookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
-    const ip = getClientIP(ctx.headers ?? new Headers());
-    const identifiers = blockingLockoutIdentifiers(email, ip);
-    if (identifiers.length === 0) {
-      if (shouldRejectUnknownClientIp()) {
-        throw new APIError("SERVICE_UNAVAILABLE", {
-          message: CLIENT_IP_UNAVAILABLE_MESSAGE,
-        });
-      }
-      warnUnknownClientIp();
-      return;
-    }
+/** The lockout check as a plain function, so auth.ts can run it alongside other before-hooks in one middleware. */
+export async function loginLockoutBefore(ctx: AuthHookContext) {
+  if (ctx.path !== "/sign-in/email") return;
+  const email = signInEmail(ctx.body);
+  if (!email) return;
 
-    // Reserve before the password check so a parallel burst cannot all pass
-    // the check before any failure is counted.
-    const reservation = await reserveLoginAttempt(identifiers);
-    pendingReservations.set(ctx.context, reservation);
-
-    if (reservation.isLocked) {
-      throw new APIError("TOO_MANY_REQUESTS", {
-        message: LOGIN_LOCKOUT_MESSAGE,
+  const ip = getClientIP(ctx.headers ?? new Headers());
+  const identifiers = blockingLockoutIdentifiers(email, ip);
+  if (identifiers.length === 0) {
+    if (shouldRejectUnknownClientIp()) {
+      throw new APIError("SERVICE_UNAVAILABLE", {
+        message: CLIENT_IP_UNAVAILABLE_MESSAGE,
       });
     }
-  }),
+    warnUnknownClientIp();
+    return;
+  }
+
+  // Reserve before the password check so a parallel burst cannot all pass
+  // the check before any failure is counted.
+  const reservation = await reserveLoginAttempt(identifiers);
+  pendingReservations.set(ctx.context, reservation);
+
+  if (reservation.isLocked) {
+    throw new APIError("TOO_MANY_REQUESTS", {
+      message: LOGIN_LOCKOUT_MESSAGE,
+    });
+  }
+}
+
+export const loginLockoutHooks = {
+  before: createAuthMiddleware(loginLockoutBefore),
   after: createAuthMiddleware(async (ctx) => {
     if (ctx.path !== "/sign-in/email") return;
     const email = signInEmail(ctx.body);
