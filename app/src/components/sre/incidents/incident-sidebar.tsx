@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { SimilarIncidentsCard } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
-import { formatAge } from "@/components/sre/incidents/incident-age";
+import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TableBadge } from "@/components/ui/table-badge";
 
@@ -74,7 +74,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
         />
         {incident.acknowledgedAt && (
           <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-            Acknowledged {formatAge(incident.acknowledgedAt)} ago
+            Acknowledged {formatAgo(incident.acknowledgedAt)}
           </p>
         )}
         {incident.commanderUserId || showCommander ? (

@@ -6,3 +6,9 @@ export function formatAge(from: Date | string, to: Date | string | number = Date
   if (hours < 48) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
 }
+
+/** Relative time for sentences: "just now", "5m ago", "3h ago". */
+export function formatAgo(from: Date | string, to: Date | string | number = Date.now()) {
+  const age = formatAge(from, to);
+  return age === "0m" ? "just now" : `${age} ago`;
+}

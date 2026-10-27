@@ -19,7 +19,7 @@ import { InvestigationHypotheses } from "@/components/sre/incidents/investigatio
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
 import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
-import { formatAge } from "@/components/sre/incidents/incident-age";
+import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-brief-panel";
 import { SreInvestigationPanel, SreReportSnapshotControl } from "@/components/sre/incidents/sre-investigation-panel";
 import { Button } from "@/components/ui/button";
@@ -294,7 +294,7 @@ export function SreIncidentDetailView({
               {incident.primaryServiceName && <span>{incident.primaryServiceName}</span>}
               <span aria-hidden="true">·</span>
               <span suppressHydrationWarning title={formatDate(incident.createdAt)}>
-                opened {formatAge(incident.createdAt)} ago
+                opened {formatAgo(incident.createdAt)}
               </span>
             </div>
           </div>
