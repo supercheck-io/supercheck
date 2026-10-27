@@ -27,6 +27,11 @@ describe("AccountDialog", () => {
     expect(screen.queryByRole("button", { name: "Remove photo" })).not.toBeInTheDocument();
   });
 
+  it("always offers the source code link", () => {
+    render(<AccountDialog open onOpenChange={jest.fn()} />);
+    expect(screen.getByRole("link", { name: "Source code" })).toHaveAttribute("target", "_blank");
+  });
+
   it("validates the name and saves it trimmed", async () => {
     render(<AccountDialog open onOpenChange={jest.fn()} />);
     const input = screen.getByLabelText("Name");

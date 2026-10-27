@@ -164,6 +164,18 @@ export function AccountDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <TabsContent value="connected-apps" className="pt-4 max-h-[60vh] overflow-y-auto"><ConnectedApps /></TabsContent>
           </Tabs>
         ) : profile}
+        {/* AGPL-3.0 section 13: offer the source to every user of the hosted service. */}
+        <p className="border-t pt-3 text-xs text-muted-foreground">
+          Supercheck is open source under AGPL-3.0.{" "}
+          <a
+            href={process.env.NEXT_PUBLIC_SOURCE_URL || "https://github.com/supercheck-io/supercheck"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Source code
+          </a>
+        </p>
       </DialogContent>
     </Dialog>
   );
