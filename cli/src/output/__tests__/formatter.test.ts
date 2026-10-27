@@ -27,12 +27,36 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
 }))
 
 const { output, outputDetail, setOutputFormat, getOutputFormat, setWideOutput, outputNarrative } = await import('../formatter.js')
+const { setRevealSecrets } = await import('../../utils/redact.js')
 
 describe('Formatter', () => {
   beforeEach(() => {
     mockOutput.mockClear()
     mockInfo.mockClear()
     setOutputFormat('table')
+  })
+
+  describe('one-time CLI token keys', () => {
+    const token = { id: 't1', name: 'ci', key: 'sck_live_0123456789abcdef0123456789abcdef' }
+
+    it('redacts the key by default', () => {
+      setOutputFormat('json')
+      outputDetail(token)
+      expect(String(mockOutput.mock.calls[0][0])).not.toContain(token.key)
+    })
+
+    it('prints the key in table and JSON output under --show-secrets', () => {
+      setRevealSecrets(true)
+      try {
+        outputDetail(token)
+        setOutputFormat('json')
+        outputDetail(token)
+        expect(mockOutput.mock.calls.map(([line]) => String(line)).join('\n')).toContain(token.key)
+        expect(String(mockOutput.mock.calls.at(-1)?.[0])).toContain(token.key)
+      } finally {
+        setRevealSecrets(false)
+      }
+    })
   })
 
   describe('setOutputFormat / getOutputFormat', () => {

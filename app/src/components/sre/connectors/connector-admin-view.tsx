@@ -8,7 +8,6 @@ import {
   Loader2,
   Plus,
   ShieldCheck,
-  Unlink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,6 +31,7 @@ import type { SreOnboardingStatus } from "@/actions/sre-onboarding";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ConnectorCredentialDialog } from "@/components/sre/connectors/connector-credential-dialog";
 import { ConnectorFormDialog } from "@/components/sre/connectors/connector-form-dialog";
+import { McpToolsDialog } from "@/components/sre/connectors/mcp-tools-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +71,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable } from "@/components/sre/data-table/data-table";
+import { columns as contextLinkColumns } from "@/components/sre/data-table/context-links/columns";
 import { columns } from "@/components/sre/data-table/connectors/columns";
 import { ConnectorsToolbar } from "@/components/sre/data-table/connectors/toolbar";
 import { canBindIntegrationToConnector } from "@/lib/sre/integration-bindings";
@@ -87,6 +88,8 @@ type ConnectorAdminViewProps = {
   loadError: string | null;
   setupStatus?: SreOnboardingStatus | null;
   onSetupChanged?: () => void;
+  /** Opens the saved queries dialog owned by the page. */
+  onOpenSavedQueries?: () => void;
 };
 
 const statusClasses: Record<SreConnectorListItem["status"], string> = {
@@ -133,9 +136,17 @@ const evidenceSearchConnectorTypes = new Set([
   "elasticsearch",
   "tempo",
   "aws_cloudwatch",
+  "jaeger",
+  "newrelic",
+  "splunk",
+  "gcp_monitoring",
+  "azure_monitor",
   "gitlab",
   "pagerduty",
   "opsgenie",
+  "jira",
+  "confluence",
+  "notion",
 ]);
 
 const connectorSearchWindows = [
@@ -193,11 +204,13 @@ export function ConnectorAdminView({
   loadError,
   setupStatus = null,
   onSetupChanged,
+  onOpenSavedQueries,
 }: ConnectorAdminViewProps) {
   const [connectors, setConnectors] = useState(initialConnectors);
   const [bindings, setBindings] = useState(initialBindings);
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isSetupGuideOpen, setIsSetupGuideOpen] = useState(false);
   const [isBindingDialogOpen, setIsBindingDialogOpen] = useState(false);
   const [bindingProviderId, setBindingProviderId] = useState("");
   const [bindingConnectorId, setBindingConnectorId] = useState("");
@@ -205,6 +218,8 @@ export function ConnectorAdminView({
   const [disablingBinding, setDisablingBinding] =
     useState<SreIntegrationBindingListItem | null>(null);
   const [rotatingCredentialConnector, setRotatingCredentialConnector] =
+    useState<SreConnectorListItem | null>(null);
+  const [mcpToolsConnector, setMcpToolsConnector] =
     useState<SreConnectorListItem | null>(null);
   const [disablingConnector, setDisablingConnector] =
     useState<SreConnectorListItem | null>(null);
@@ -504,14 +519,22 @@ export function ConnectorAdminView({
         <DataTable
           columns={columns}
           data={connectors}
+          // Secondary columns stay available under View so the table fits without sideways scrolling.
+          initialColumnVisibility={{ scope: false, riskLevel: false }}
           renderToolbar={(table) => (
             <ConnectorsToolbar
               table={table}
               onAddConnector={() => setIsCreateOpen(true)}
               onAddBinding={() => setIsBindingDialogOpen(true)}
-              setupGuide={<SreSetupGuideDialog status={setupStatus} />}
+              onOpenSetupGuide={() => setIsSetupGuideOpen(true)}
+              onOpenSavedQueries={onOpenSavedQueries}
             />
           )}
+          onRowClick={(row) =>
+            supportsEvidenceSearch(row.original)
+              ? openSearchDialog(row.original)
+              : setRotatingCredentialConnector(row.original)
+          }
           entityLabel="connectors"
           meta={{
             onSearch: openSearchDialog,
@@ -519,6 +542,7 @@ export function ConnectorAdminView({
             onViewJob: viewLatestJobResult,
             onRotate: setRotatingCredentialConnector,
             onDisable: setDisablingConnector,
+            onManageMcpTools: setMcpToolsConnector,
             isValidating,
             isLoadingJobResult,
             isDisabling,
@@ -528,6 +552,7 @@ export function ConnectorAdminView({
               "type",
               "status",
               "executionMode",
+              "privateAgent",
               "riskLevel",
               "lastValidationStatus",
             ],
@@ -536,68 +561,31 @@ export function ConnectorAdminView({
       )}
 
       {bindings.length > 0 && (
-        <div className="rounded-lg border bg-muted/10 p-3">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold">Context links</h3>
             <Badge variant="outline" className="rounded-full">
               {bindings.length}
             </Badge>
           </div>
-          <div className="grid gap-2 lg:grid-cols-2">
-            {bindings.map((binding) => (
-              <div
-                key={binding.id}
-                className={cn(
-                  "rounded-md border bg-background p-3",
-                  !binding.enabled && "opacity-60",
-                )}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">
-                        {formatIntegrationKey(binding.integrationKey)}
-                      </Badge>
-                      <Badge variant="outline">
-                        {binding.correlationStrategy.replace(/_/g, " ")}
-                      </Badge>
-                      {!binding.enabled && (
-                        <Badge variant="outline">Disabled</Badge>
-                      )}
-                    </div>
-                    <div className="text-sm">
-                      <p className="font-medium">
-                        {binding.notificationProvider.name}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {binding.notificationProvider.type} alerts →{" "}
-                        {binding.externalConnector.name} (
-                        {formatConnectorType(binding.externalConnector.type)})
-                      </p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {binding.services.length > 0
-                        ? `Scoped to ${binding.services.map((service) => service.name).join(", ")}`
-                        : "Project-wide when the connector scope allows it"}
-                    </p>
-                  </div>
-                  {binding.enabled && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDisablingBinding(binding)}
-                    >
-                      <Unlink className="mr-2 h-4 w-4" />
-                      Disable
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <DataTable
+            columns={contextLinkColumns}
+            data={bindings}
+            entityLabel="context links"
+            fixedPageSize={5}
+            meta={{
+              onDisable: setDisablingBinding,
+              globalFilterColumns: ["provider", "connector"],
+            }}
+          />
         </div>
       )}
+
+      <SreSetupGuideDialog
+        status={setupStatus}
+        open={isSetupGuideOpen}
+        onOpenChange={setIsSetupGuideOpen}
+      />
 
       {isCreateOpen && (
         <ConnectorFormDialog
@@ -605,6 +593,14 @@ export function ConnectorAdminView({
           onOpenChange={setIsCreateOpen}
           setupOptions={setupOptions}
           onSaved={handleSaved}
+        />
+      )}
+
+      {mcpToolsConnector && (
+        <McpToolsDialog
+          connector={mcpToolsConnector}
+          open={Boolean(mcpToolsConnector)}
+          onOpenChange={(open) => !open && setMcpToolsConnector(null)}
         />
       )}
 

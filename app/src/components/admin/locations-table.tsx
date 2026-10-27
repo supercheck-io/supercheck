@@ -6,14 +6,6 @@ import {
   useUpdateLocation,
   useDeleteLocation,
 } from "@/hooks/use-locations";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -50,6 +42,16 @@ import { AddLocationDialog } from "@/components/admin/add-location-dialog";
 import { EditLocationDialog } from "@/components/admin/edit-location-dialog";
 import type { LocationWithStatus } from "@/app/api/admin/locations/route";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
+import { AdminDataTable } from "@/components/admin/admin-data-table";
+import { AdminListToolbar } from "@/components/admin/admin-list-toolbar";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import type { ColumnDef, Table as TableType } from "@tanstack/react-table";
+
+const STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "offline", label: "Offline" },
+  { value: "disabled", label: "Disabled" },
+];
 
 export function LocationsTable() {
   const { locations, unregisteredLocations, isLoading, refetch } =
@@ -95,6 +97,185 @@ export function LocationsTable() {
     }
   }, [deleteTarget, deleteLocation]);
 
+  const columns = React.useMemo<ColumnDef<LocationWithStatus>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Location" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex h-8 items-center gap-2 font-medium">
+            {row.original.flag ? (
+              <span className="text-lg leading-none">{row.original.flag}</span>
+            ) : (
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="truncate">{row.original.name}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "code",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Code" />
+        ),
+        cell: ({ row }) => (
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+            {row.original.code}
+          </code>
+        ),
+      },
+      {
+        accessorKey: "region",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Region" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.region || "-"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "workerCount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Workers" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Server className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm">{row.original.workerCount}</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        filterFn: (row, id, value) => value.includes(row.getValue(id)),
+      },
+      {
+        id: "capabilities",
+        header: "Capabilities",
+        cell: ({ row }) => {
+          const loc = row.original;
+          return (
+            <div className="flex items-center gap-1 whitespace-nowrap">
+              {loc.isDefault && (
+                <TableBadge tone="purple" compact>
+                  Default
+                </TableBadge>
+              )}
+              {!loc.supportsBrowser && (
+                <TableBadge tone="neutral" compact>
+                  No browser
+                </TableBadge>
+              )}
+              {!loc.supportsK6 && (
+                <TableBadge tone="neutral" compact>
+                  No k6
+                </TableBadge>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "isEnabled",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Enabled" />
+        ),
+        cell: ({ row }) => {
+          const loc = row.original;
+          const locked = loc.code === "local" || loc.isDefault;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex" tabIndex={locked ? 0 : undefined}>
+                  <Switch
+                    aria-label={`Enable ${loc.name}`}
+                    checked={loc.isEnabled}
+                    onCheckedChange={() => handleToggleEnabled(loc)}
+                    disabled={updateLocation.isPending || locked}
+                  />
+                </span>
+              </TooltipTrigger>
+              {locked && (
+                <TooltipContent>
+                  {loc.code === "local"
+                    ? "The local location cannot be disabled. It is the system fallback."
+                    : "Choose another default location or clear Default in Edit before disabling this location."}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          );
+        },
+      },
+      {
+        id: "actions",
+        cell: ({ row }) => {
+          const loc = row.original;
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={`Open actions for ${loc.name}`}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setEditLocation(loc)}>
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </DropdownMenuItem>
+                {loc.code !== "local" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteTarget(loc)}
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+    ],
+    [handleToggleEnabled, updateLocation.isPending],
+  );
+
+  const Toolbar = React.useCallback(
+    ({ table }: { table: TableType<LocationWithStatus> }) => (
+      <AdminListToolbar
+        table={table}
+        searchPlaceholder="Search locations..."
+        facets={[{ columnId: "status", title: "Status", options: STATUS_OPTIONS }]}
+      >
+        <Button variant="outline" onClick={() => refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Location
+        </Button>
+      </AdminListToolbar>
+    ),
+    [refetch],
+  );
+
   if (isLoading && locations.length === 0) {
     return <TabLoadingSpinner message="Loading locations..." />;
   }
@@ -121,149 +302,15 @@ export function LocationsTable() {
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-muted-foreground" />
-          <span className="text-sm font-medium">
-            {locations.length} location{locations.length !== 1 && "s"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Location
-          </Button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">Flag</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Region</TableHead>
-              <TableHead className="text-center">Workers</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Default</TableHead>
-              <TableHead className="text-center">Enabled</TableHead>
-              <TableHead className="w-[50px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {locations.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    No locations configured. Add your first location to get
-                    started.
-                  </p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              locations.map((loc) => (
-                <TableRow key={loc.id}>
-                  <TableCell className="text-lg">
-                    {loc.flag || "📍"}
-                  </TableCell>
-                  <TableCell className="font-medium">{loc.name}</TableCell>
-                  <TableCell>
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                      {loc.code}
-                    </code>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {loc.region || "—"}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Server className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{loc.workerCount}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <StatusBadge status={loc.status} />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {loc.isDefault && (
-                      <TableBadge tone="purple" compact>
-                        Default
-                      </TableBadge>
-                    )}
-                    {!loc.supportsBrowser && (
-                      <TableBadge tone="neutral" compact>
-                        No browser
-                      </TableBadge>
-                    )}
-                    {!loc.supportsK6 && (
-                      <TableBadge tone="neutral" compact>
-                        No k6
-                      </TableBadge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex" tabIndex={loc.isDefault || loc.code === "local" ? 0 : undefined}>
-                          <Switch
-                            aria-label={`Enable ${loc.name}`}
-                            checked={loc.isEnabled}
-                            onCheckedChange={() => handleToggleEnabled(loc)}
-                            disabled={updateLocation.isPending || loc.code === "local" || loc.isDefault}
-                          />
-                        </span>
-                      </TooltipTrigger>
-                      {(loc.code === "local" || loc.isDefault) && (
-                        <TooltipContent>
-                          {loc.code === "local"
-                            ? "The local location cannot be disabled. It is the system fallback."
-                            : "Choose another default location or clear Default in Edit before disabling this location."}
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setEditLocation(loc)}
-                        >
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Edit
-                        </DropdownMenuItem>
-                        {loc.code !== "local" && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeleteTarget(loc)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" />
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <AdminDataTable
+        columns={columns}
+        data={locations}
+        toolbar={Toolbar}
+        itemName="locations"
+        emptyTitle="No locations configured"
+        emptyDescription="Add your first location to get started."
+        meta={{ globalFilterColumns: ["name", "code", "region"] }}
+      />
 
       {/* Add dialog */}
       <AddLocationDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -295,7 +342,7 @@ export function LocationsTable() {
               <code>{deleteTarget?.code}</code>)?
               {deleteTarget?.workerCount && deleteTarget.workerCount > 0 ? (
                 <span className="mt-2 block text-amber-600 dark:text-amber-400">
-                  ⚠️ This location has {deleteTarget.workerCount} active
+                  This location has {deleteTarget.workerCount} active
                   worker(s). Jobs in its queue will be drained before deletion.
                 </span>
               ) : null}

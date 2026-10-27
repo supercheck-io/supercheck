@@ -143,11 +143,31 @@
                 "sev4"
               ]
             }
+          },
+          {
+            "name": "assignee",
+            "in": "query",
+            "description": "Filter by assignee: `me`, `unassigned`, or a user ID.",
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "me",
+                    "unassigned"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Tenant-scoped incident list"
+            "description": "Tenant-scoped incident list including assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt and resolutionSummary"
           },
           "400": {
             "description": "Invalid filters"
@@ -181,7 +201,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Incident details"
+            "description": "Incident details including assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt and resolutionSummary"
           },
           "404": {
             "description": "Incident not found in the active project"
@@ -220,7 +240,7 @@
     "/api/sre/incidents/{id}/resolve": {
       "post": {
         "operationId": "resolveSreIncident",
-        "summary": "Resolve an incident with an audit comment",
+        "summary": "Resolve an incident with a resolution summary",
         "tags": [
           "AI SRE"
         ],
@@ -241,26 +261,42 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "comment"
-                ],
+                "description": "Send `resolutionSummary` (preferred) or the original `comment` field. The text is stored as the incident's resolution summary and recorded on the timeline.",
                 "properties": {
-                  "comment": {
+                  "resolutionSummary": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 2000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "description": "Original field name; equivalent to `resolutionSummary`."
                   }
-                }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "resolutionSummary"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "comment"
+                    ]
+                  }
+                ]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Incident resolved; timeline and audit events recorded"
+            "description": "Incident resolved; timeline and audit events recorded, assignee and project notification channels notified"
           },
           "400": {
-            "description": "Invalid ID or comment"
+            "description": "Invalid ID or missing/oversized resolution summary"
           },
           "403": {
             "description": "Insufficient permission"
@@ -338,6 +374,11 @@
                   "useLiveConnectors": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "guidance": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "description": "Optional one-line note for a re-run. Treated as untrusted guidance and truncated to 500 characters."
                   }
                 }
               }
@@ -7837,6 +7878,110 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/sre/incidents/{id}/acknowledge": {
+      "post": {
+        "operationId": "acknowledgeSreIncident",
+        "summary": "Acknowledge an incident",
+        "description": "Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Repeating the call is a no-op.",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incident acknowledged, or already acknowledged"
+          },
+          "400": {
+            "description": "Invalid ID"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
+          },
+          "409": {
+            "description": "Incident is already resolved"
+          }
+        }
+      }
+    },
+    "/api/sre/incidents/{id}/assign": {
+      "post": {
+        "operationId": "assignSreIncident",
+        "summary": "Assign an incident",
+        "description": "Sets the assignee, or the optional commander. The user must be an organization owner/admin or a project admin/editor of the active project. The new assignee is notified.",
+        "tags": [
+          "AI SRE"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assigneeUserId"
+                ],
+                "properties": {
+                  "assigneeUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "description": "User ID, or null to unassign."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "assignee",
+                      "commander"
+                    ],
+                    "default": "assignee"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assignment saved"
+          },
+          "400": {
+            "description": "Invalid ID or the user cannot be assigned in this project"
+          },
+          "403": {
+            "description": "Insufficient permission"
+          },
+          "404": {
+            "description": "Incident not found in the active project"
           }
         }
       }

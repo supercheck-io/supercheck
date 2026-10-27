@@ -30,6 +30,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { IncidentPersonAvatar } from "@/components/sre/incidents/incident-person-avatar";
+import { IncidentsFirstRunChecklist } from "@/components/sre/incidents/incidents-first-run-checklist";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -69,7 +72,38 @@ import { cn } from "@/lib/utils";
 type SreIncidentsListProps = {
   incidents: SreIncidentListItem[];
   loadError: string | null;
+  currentUserId?: string | null;
 };
+
+type QuickFilter = "active" | "mine" | "unassigned" | "all";
+
+const QUICK_FILTERS: Array<{ value: QuickFilter; label: string }> = [
+  { value: "active", label: "Active" },
+  { value: "mine", label: "Assigned to me" },
+  { value: "unassigned", label: "Unassigned" },
+  { value: "all", label: "All" },
+];
+
+export function matchesQuickFilter(
+  incident: Pick<SreIncidentListItem, "status" | "assigneeUserId">,
+  filter: QuickFilter,
+  currentUserId: string | null | undefined,
+) {
+  if (filter === "all") return true;
+  if (incident.status === "resolved") return false;
+  if (filter === "mine") return Boolean(currentUserId) && incident.assigneeUserId === currentUserId;
+  if (filter === "unassigned") return !incident.assigneeUserId;
+  return true;
+}
+
+/** Compact age such as 5m, 3h, 2d. */
+export function formatAge(from: Date | string, to: Date | string | number = Date.now()) {
+  const minutes = Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
 
 type IncidentSortKey =
   | "incidentNumber"
@@ -77,11 +111,12 @@ type IncidentSortKey =
   | "severity"
   | "status"
   | "primaryServiceName"
+  | "assigneeName"
   | "latestInvestigationStatus"
+  | "createdAt"
   | "updatedAt";
 type SortDirection = "asc" | "desc";
 
-const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
 const severityTones: Record<SreIncidentListItem["severity"], TableBadgeTone> = {
   sev1: "danger",
@@ -128,7 +163,8 @@ function getIncidentSortValue(
   incident: SreIncidentListItem,
   key: IncidentSortKey,
 ) {
-  if (key === "updatedAt") return new Date(incident.updatedAt).getTime();
+  if (key === "updatedAt" || key === "createdAt") return new Date(incident[key]).getTime();
+  if (key === "assigneeName") return incident.assigneeName ?? "\uffff";
   if (key === "primaryServiceName")
     return incident.primaryServiceName ?? "No service linked";
   if (key === "latestInvestigationStatus")
@@ -182,6 +218,7 @@ function SortableHead({
 export function SreIncidentsList({
   incidents,
   loadError,
+  currentUserId = null,
 }: SreIncidentsListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -207,12 +244,19 @@ export function SreIncidentsList({
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>(["active"]);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("active");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(12);
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [lastPageSize, setLastPageSize] = useState(pageSize);
+  // Auto-fit changes the size outside the pager, so keep the first visible row on screen.
+  if (lastPageSize !== pageSize) {
+    setLastPageSize(pageSize);
+    setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
+  }
   const [isPending, startTransition] = useTransition();
 
   const resetForm = () => {
@@ -288,12 +332,13 @@ export function SreIncidentsList({
         severityFilter.length === 0 ||
         severityFilter.includes(incident.severity);
       const matchesStatus =
-        statusFilter.length === 0 ||
-        statusFilter.some((status) =>
-          status === "active"
-            ? incident.status !== "resolved"
-            : incident.status === status,
-        );
+        // Picking a status overrides the default Active view so "Resolved" is reachable.
+        matchesQuickFilter(
+          incident,
+          statusFilter.length > 0 && quickFilter === "active" ? "all" : quickFilter,
+          currentUserId,
+        ) &&
+        (statusFilter.length === 0 || statusFilter.includes(incident.status));
       const matchesService =
         serviceFilter.length === 0 ||
         serviceFilter.includes(incident.primaryServiceId ?? "unlinked");
@@ -302,6 +347,7 @@ export function SreIncidentsList({
         String(incident.incidentNumber),
         incident.title,
         incident.primaryServiceName ?? "No service linked",
+        incident.assigneeName ?? "unassigned",
         incident.severity,
         incident.status,
         incident.latestInvestigationStatus ?? "not started",
@@ -332,6 +378,8 @@ export function SreIncidentsList({
   }, [
     deferredSearch,
     incidents,
+    quickFilter,
+    currentUserId,
     severityFilter,
     serviceFilter,
     sortDirection,
@@ -352,7 +400,7 @@ export function SreIncidentsList({
     } else {
       setSortKey(key);
       setSortDirection(
-        key === "updatedAt" || key === "incidentNumber" ? "desc" : "asc",
+        key === "updatedAt" || key === "createdAt" || key === "incidentNumber" ? "desc" : "asc",
       );
     }
   };
@@ -379,15 +427,19 @@ export function SreIncidentsList({
             className="flex flex-wrap items-center gap-2"
             data-testid="incident-header-actions"
           >
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/alerts">Review alerts</Link>
-            </Button>
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/incidents/analytics">
-                <BarChart3 className="h-4 w-4" />
-                Trends
-              </Link>
-            </Button>
+            {incidents.length > 0 && (
+              <>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/alerts">Review alerts</Link>
+                </Button>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/incidents/analytics">
+                    <BarChart3 className="h-4 w-4" />
+                    Trends
+                  </Link>
+                </Button>
+              </>
+            )}
             {projectError && (
               <p role="status" className="text-sm text-muted-foreground">
                 Permissions unavailable. Refresh to try again.
@@ -441,6 +493,28 @@ export function SreIncidentsList({
             </button>
           )}
         </div>
+        <div
+          role="group"
+          aria-label="Quick filters"
+          className="flex flex-wrap items-center gap-1"
+        >
+          {QUICK_FILTERS.map((filter) => (
+            <Button
+              key={filter.value}
+              type="button"
+              size="sm"
+              variant={quickFilter === filter.value ? "secondary" : "ghost"}
+              className="h-8"
+              aria-pressed={quickFilter === filter.value}
+              onClick={() => {
+                setQuickFilter(filter.value);
+                setPageIndex(0);
+              }}
+            >
+              {filter.label}
+            </Button>
+          ))}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <DataTableFacetedFilter
             title="Severity"
@@ -467,46 +541,32 @@ export function SreIncidentsList({
             title="Status"
             value={statusFilter}
             onValueChange={(values) => {
-              // The active shortcut is exclusive so a specific status narrows the list.
-              setStatusFilter(
-                values.includes("active") &&
-                  !statusFilter.includes("active")
-                  ? ["active"]
-                  : values.filter((value) => value !== "active"),
-              );
+              setStatusFilter(values);
               setPageIndex(0);
             }}
-            options={[
-              { value: "active", label: "Active incidents" },
-              ...Array.from(new Set([...statusOptions, "resolved"])).map(
-                (value) => ({ value, label: formatStatus(value) }),
-              ),
-            ]}
+            options={Array.from(new Set([...statusOptions, "resolved"])).map(
+              (value) => ({ value, label: formatStatus(value) }),
+            )}
           />
         </div>
         </div>
       )}
 
       {incidents.length === 0 ? (
-        <DashboardEmptyState
-          className="min-h-[260px]"
-          title="No incidents yet"
-          description="Review an alert to open an incident, or create one for an issue you found elsewhere. Services and the map are optional context."
-          icon={<Siren className="h-10 w-10" />}
-        />
+        <IncidentsFirstRunChecklist />
       ) : (
         <>
           <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
-            <Table className="w-full min-w-[900px]">
+            <Table className="w-full min-w-[1000px]">
               <TableHeader>
                 <TableRow>
                   <SortableHead
-                    label="Incident ID"
+                    label="#"
                     sortKey="incidentNumber"
                     activeKey={sortKey}
                     direction={sortDirection}
                     onSort={handleSort}
-                    className="w-32"
+                    className="w-24"
                   />
                   <SortableHead
                     label="Title"
@@ -541,28 +601,36 @@ export function SreIncidentsList({
                     className="w-36"
                   />
                   <SortableHead
-                    label="Investigation"
-                    sortKey="latestInvestigationStatus"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                    className="w-36"
-                  />
-                  <SortableHead
-                    label="Updated"
-                    sortKey="updatedAt"
+                    label="Assignee"
+                    sortKey="assigneeName"
                     activeKey={sortKey}
                     direction={sortDirection}
                     onSort={handleSort}
                     className="w-44"
                   />
+                  <SortableHead
+                    label="Age"
+                    sortKey="createdAt"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-24"
+                  />
+                  <SortableHead
+                    label="AI"
+                    sortKey="latestInvestigationStatus"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={bodyRef}>
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="h-24 text-center text-muted-foreground"
                     >
                       No incidents match the current filters.
@@ -572,7 +640,7 @@ export function SreIncidentsList({
                   pagedIncidents.map((incident) => (
                     <TableRow
                       key={incident.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="h-13 cursor-pointer hover:bg-muted/50"
                       tabIndex={0}
                       onClick={() => router.push(`/incidents/${incident.id}`)}
                       onKeyDown={(event) => {
@@ -581,7 +649,7 @@ export function SreIncidentsList({
                           router.push(`/incidents/${incident.id}`);
                         }
                       }}
-                      aria-label={`View incident ${incident.id}: ${incident.title}`}
+                      aria-label={`View incident #${incident.incidentNumber}: ${incident.title}`}
                     >
                       <TableCell className="py-2.5">
                         {/* Same badge style as the UUID columns in other tables. */}
@@ -624,6 +692,20 @@ export function SreIncidentsList({
                         {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
+                        <div className={cn("flex items-center gap-2", !incident.assigneeName && "text-muted-foreground")}>
+                          <IncidentPersonAvatar name={incident.assigneeName} image={incident.assigneeImage} />
+                          <span className="truncate text-sm">{incident.assigneeName ?? "Unassigned"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2.5 text-sm tabular-nums">
+                        <span
+                          suppressHydrationWarning
+                          title={formatDate(incident.createdAt)}
+                        >
+                          {formatAge(incident.createdAt, incident.resolvedAt ?? undefined)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-2.5">
                         {incident.latestInvestigationStatus ? (
                           <TableBadge
                             tone={
@@ -639,14 +721,6 @@ export function SreIncidentsList({
                         ) : (
                           <TableBadge compact>Not started</TableBadge>
                         )}
-                      </TableCell>
-                      <TableCell className="py-2.5">
-                        <div className="inline-flex items-center gap-1 whitespace-nowrap text-sm">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span suppressHydrationWarning>
-                            {formatDate(incident.updatedAt)}
-                          </span>
-                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -674,7 +748,7 @@ export function SreIncidentsList({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent side="top">
-                    {PAGE_SIZE_OPTIONS.map((option) => (
+                    {pageSizeOptions(pageSize).map((option) => (
                       <SelectItem key={option} value={`${option}`}>
                         {option}
                       </SelectItem>

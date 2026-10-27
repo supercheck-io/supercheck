@@ -74,8 +74,8 @@ beforeAll(async () => {
   const run = (jobId: string, status: schema.TestRunStatus, startedAt: Date, trigger: schema.JobTrigger = "manual") =>
     ({ jobId, status, startedAt, trigger });
   await mockDatabase.insert(schema.runs).values([
-    // Seven failures over the last week; only the newest five are listed.
-    ...Array.from({ length: 7 }, (_, i) => run(job.id, i % 2 ? "error" : "failed", daysAgo(i + 1))),
+    // Six failures in the last week and one older, so the 7-day window has a clear edge.
+    ...Array.from({ length: 7 }, (_, i) => run(job.id, i % 2 ? "error" : "failed", daysAgo(i < 6 ? i + 1 : 10))),
     run(job.id, "blocked", daysAgo(0)),
     run(job.id, "passed", daysAgo(2), "schedule"),
     run(job.id, "passed", daysAgo(2), "schedule"),
@@ -94,17 +94,14 @@ afterAll(async () => {
   }
 });
 
-it("returns the project's newest failures and daily trigger counts without other tenants' runs", async () => {
+it("returns the project's 7-day failures and daily trigger counts without other tenants' runs", async () => {
   const response = await GET();
   expect(response.status).toBe(200);
   const { jobs } = await response.json();
 
   expect(jobs.failedRuns30d).toBe(7);
-  expect(jobs.recentFailures).toHaveLength(5);
-  expect(jobs.recentFailures.map((r: { startedAt: string }) => dayKey(new Date(r.startedAt))))
-    .toEqual([1, 2, 3, 4, 5].map((d) => dayKey(daysAgo(d))));
-  expect(jobs.recentFailures.every((r: { jobName: string; status: string }) =>
-    r.jobName === "Nightly" && ["failed", "error"].includes(r.status))).toBe(true);
+  // Failed and error runs count; the 10-day, 40-day and other tenants' runs are excluded.
+  expect(jobs.failedRuns7d).toEqual({ manual: 6, scheduled: 0, remote: 0 });
   expect(jobs).not.toHaveProperty("recentRuns");
 
   const byDay = new Map(jobs.triggerTrend.map((d: { date: string }) => [d.date, d]));

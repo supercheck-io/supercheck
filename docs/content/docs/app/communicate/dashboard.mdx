@@ -4,7 +4,7 @@ description: Project overview, real-time metrics, and recent activity
 icon: ChartColumn
 ---
 
-The Dashboard gives you a single view of your project's health: requirements coverage, tests, jobs, monitors, usage, recent failures, open incidents, and recent alerts. The status pill in the header shows **Operational** or **Issues Detected** and lists every current issue (down monitors, failed runs in the last 24 hours, and execution queue capacity).
+The Dashboard gives you a single view of your project's health: requirements coverage, tests, jobs, monitors, usage, failed runs, and open incidents. The status pill in the header shows **Operational** or **Issues Detected** and lists every current issue (down monitors, failed runs in the last 24 hours, and execution queue capacity).
 
 Looking for k6 or Playwright job analytics? They now live on the [Runs](/docs/app/automate/runs#job-analytics) page.
 
@@ -25,11 +25,9 @@ Usage cards are estimated from this project's recorded run durations and link to
 
 Execution queue capacity reflects your organization's running and queued executions across its projects.
 
-## Activity Panels
+## Needs Attention
 
-- **Recent failures** — Failed or errored job runs from the last 30 days, newest first, each linking to the run
-- **Open incidents** — Unresolved AI SRE incidents for the project (hidden when incidents are unavailable or you lack access)
-- **Recent alerts** — The latest monitor and job notifications
+A card with a **Runs** tab (failed job runs from the last 7 days, by trigger) and an **Incidents** tab (open incidents by severity). The **Incidents** tab is hidden when incidents are unavailable or you lack access. Each tab links to the full list.
 
 ## Charts
 

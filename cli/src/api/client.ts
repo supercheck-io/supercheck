@@ -113,6 +113,8 @@ export class ApiClient {
       timeout?: number
       /** Return the raw response text as `data` instead of parsing JSON (e.g. CSV exports). */
       text?: boolean
+      /** Return the raw response bytes as `data` (byte-exact file downloads). */
+      binary?: boolean
     },
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
@@ -121,6 +123,8 @@ export class ApiClient {
     // configured target without exposing URL credentials, paths, or query data.
     const targetOrigin = parsedUrl.origin
     const headers = this.buildHeaders(options?.headers)
+    // Multipart bodies need fetch to set the boundary-bearing Content-Type itself.
+    if (options?.body instanceof FormData) headers.delete('Content-Type')
     const maxRetries = options?.retries ?? MAX_RETRIES
     const timeout = options?.timeout ?? this.timeout
     const attemptCount = maxRetries + 1
@@ -144,7 +148,7 @@ export class ApiClient {
         const fetchOptions: RequestInit & { dispatcher?: unknown } = {
           method,
           headers,
-          body: options?.body ? JSON.stringify(options.body) : undefined,
+          body: options?.body instanceof FormData ? options.body : options?.body ? JSON.stringify(options.body) : undefined,
           signal: controller.signal,
         }
 
@@ -184,6 +188,7 @@ export class ApiClient {
           continue
         }
 
+        if (options?.binary && response.ok) return { data: new Uint8Array(await response.arrayBuffer()) as T, status: response.status, headers: response.headers }
         // Read response body as text first to safely handle empty/non-JSON responses (e.g. 204 No Content)
         const text = await response.text()
 
@@ -257,6 +262,11 @@ export class ApiClient {
   /** GET a non-JSON body (e.g. CSV) as text. */
   async getText(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<ApiResponse<string>> {
     return this.request<string>('GET', path, { params, text: true })
+  }
+
+  /** GET a file body as raw bytes. */
+  async getBytes(path: string): Promise<ApiResponse<Uint8Array>> {
+    return this.request<Uint8Array>('GET', path, { binary: true })
   }
 
   async post<T = unknown>(

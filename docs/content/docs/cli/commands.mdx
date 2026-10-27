@@ -15,7 +15,9 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Runs](#runs) | `run list/get/permissions/status/wait/stream/cancel` |
 | [Tests](#tests) | `test list/get/create/update/delete/tags/validate/run/execute/status` |
 | [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete` |
-| [Variables](#variables), [Tags](#tags) | `var list/get/set/delete`, `tag list/create/delete` |
+| [Variables](#variables), [Tags](#tags) | `var list/get/set/upload/download/delete`, `tag list/create/delete` |
+| [Analytics](#analytics) | `analytics playwright/k6` |
+| [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list` |
 | [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
 | [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
 | [AI SRE](#ai-sre) | `incident`, `sre`, `service` |
@@ -315,6 +317,18 @@ supercheck dashboard --json
 
 `run stream`: failed, cancelled, blocked, or missing runs return a nonzero exit code. Ctrl-C cancels the client stream; `--json` emits NDJSON events. `--idle-timeout` is the number of seconds to wait with no data before timing out.
 
+### Analytics
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `analytics playwright` | Historical Playwright job trends | `--job <job-id>`, `--period` (30, 60 or 90 days) |
+| `analytics k6` | Historical k6 job trends | `--job`, `--period`, `--left-run <run-id> --right-run <run-id>` (compare two runs) |
+
+```bash
+supercheck analytics playwright --period 90 --json
+supercheck analytics k6 --left-run <run-id> --right-run <run-id>
+```
+
 ---
 
 ## Tests
@@ -473,12 +487,16 @@ The `--interval` flag (seconds) is deprecated on `monitor create` and `monitor u
 | `var list` | List project variables | — |
 | `var get <key>` | Get a variable by key | — |
 | `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin`, `--description` |
+| `var upload <key> <file>` | Create a file variable (`.csv`, `.json`, `.txt`, `.tsv`, `.xml`, `.yaml`, `.yml`; max 5 MB) | `--description` |
+| `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
 | `var delete <key>` | Delete a variable | `--force` |
 
 ```bash
 supercheck var set API_KEY sk-secret-value --secret
 printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
 supercheck var set DB_URL postgres://... --description "Database connection string"
+supercheck var upload TEST_DATA ./users.csv
+supercheck var download TEST_DATA --out ./users.csv
 supercheck var delete <key> --force
 ```
 
@@ -554,16 +572,33 @@ supercheck audit --search "deploy"
 
 ---
 
+## Tokens and projects
+
+| Command | What it does | Key flags |
+|---|---|---|
+| `token list` | List the project's CLI tokens | — |
+| `token create <name>` | Create a CLI token; the key is shown once, so this requires the global `--show-secrets` flag and does not accept `--quiet` | `--expires-in <days>` (1-365) |
+| `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
+| `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
+| `project list` | List projects visible to the token | — |
+
+Organization administration (members, invitations, project creation) rejects CLI tokens and is available in the dashboard only. Tokens are project-scoped, so `project list` shows only the token's project.
+
+---
+
 ## AI SRE
 
 AI SRE commands use the active project from the CLI token and preserve the same tenant and RBAC boundaries as the dashboard. Plural aliases `incidents` and `services` are also supported.
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `incident list` | List incidents | `--status`, `--severity` |
+| `incident list` | List incidents (assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
 | `incident timeline <ref>` | Incident timeline | — |
-| `incident resolve <ref>` | Resolve with a required comment | `--comment`, `--force` |
+| `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
+| `incident unassign <ref>` | Clear the assignee (or commander) | `--commander` |
+| `incident ack <ref>` | Acknowledge an incident | — |
+| `incident resolve <ref>` | Resolve with a required summary | `--summary` (`--comment` is an alias), `--force` |
 | `sre triage <ref>` | Classify an incident | — |
 | `sre investigate <ref>` | Start an asynchronous deep investigation | `--live-connectors` |
 | `sre brief <ref>` | Stream an evidence brief | `--idle-timeout` |
@@ -580,10 +615,13 @@ supercheck incident list --status investigating --severity sev1
 supercheck incident list --status open   # every incident that is not resolved
 supercheck incident get <incident-number-or-uuid>
 supercheck incident timeline <incident-number-or-uuid>
-supercheck incident resolve <incident-number-or-uuid> --comment "Traffic restored after rollback"
+supercheck incident list --assignee me
+supercheck incident assign <incident-number-or-uuid> --user me
+supercheck incident ack <incident-number-or-uuid>
+supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
 ```
 
-Resolution prompts for confirmation and stores the required comment in the incident timeline and audit log. Use `--force` only in reviewed automation.
+Resolution prompts for confirmation and stores the required summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
 
 ### Triage and investigation
 

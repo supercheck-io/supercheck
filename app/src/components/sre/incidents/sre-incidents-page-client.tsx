@@ -33,6 +33,7 @@ export function SreIncidentsPageClient() {
     <SreIncidentsList
       incidents={query.data.incidents}
       loadError={query.data.success ? null : query.data.error}
+      currentUserId={query.data.success ? query.data.currentUserId : null}
     />
   );
 }

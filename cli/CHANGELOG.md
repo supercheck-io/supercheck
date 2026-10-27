@@ -20,6 +20,7 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Added
 
+- `analytics playwright|k6` (`GET /api/analytics/<type>`), `var upload`/`var download` for file variables (multipart `POST /api/projects/<id>/variables`), `token list/create/enable/disable/revoke` (`/api/cli-tokens`, revoke confirms unless `--force`) and `project list`. Not included: service create/update/delete and requirement document upload (no REST route), organization members and project creation (the server rejects CLI tokens).
 - `run delete <id>` (`DELETE /api/runs/<id>`, confirms unless `--force`) and `dashboard` (`GET /api/dashboard`) for project metrics. Status-page incident create/update/delete is not included: the app exposes it only as server actions, not a REST route.
 - A requirement's `priority` can be cleared from config with `priority: ""`. This needs a server that accepts a null priority (the release after 1.4.0); an older server rejects that write with a 400.
 

@@ -43,6 +43,11 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
 }));
 
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null),
+  recordSreTokenUsage: jest.fn(),
+}));
+
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({
   checkSreChatRateLimit: jest.fn(),
 }));
@@ -79,6 +84,12 @@ jest.mock("@/sre/tools/evidence-tools", () => ({
   createSreEvidenceTools: jest.fn(() => ({
     listNativeEvidence: { description: "native evidence tool" },
     listConnectorEvidence: { description: "connector evidence tool" },
+  })),
+}));
+
+jest.mock("@/sre/tools/similar-incident-tools", () => ({
+  createSreSimilarIncidentTools: jest.fn(() => ({
+    findSimilarIncidents: { description: "similar incidents tool" },
   })),
 }));
 
@@ -488,6 +499,7 @@ describe("Copilot assistant-ui chat API", () => {
           system: expect.stringContaining("Incident-scoped Copilot chat rules"),
           tools: expect.objectContaining({
             listNativeEvidence: expect.any(Object),
+            findSimilarIncidents: expect.any(Object),
             listIncidentConnectors: expect.any(Object),
           }),
         }),

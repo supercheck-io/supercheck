@@ -496,7 +496,7 @@ export const MonacoEditorClient = memo(
             </div>
 
             <Editor
-              height="calc(100vh - 10rem)"
+              height="100%"
               defaultLanguage="typescript"
               value={value}
               onChange={handleEditorChange}
