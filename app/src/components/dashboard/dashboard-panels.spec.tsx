@@ -17,16 +17,16 @@ describe("chart data", () => {
 describe("NeedsAttentionCard", () => {
   const openIncidents = { available: true as const, incidents: [incident("sev1"), incident("sev2")] };
 
-  it("shows failed runs first, then incidents on the Incidents tab", () => {
+  it("shows open incidents first, then failed runs on the Runs tab", () => {
     render(<NeedsAttentionCard failedRuns={failedRuns} incidentsResult={openIncidents} incidentsLoading={false} />);
-    expect(screen.getByTestId("panel-recent-failures")).toBeTruthy();
-    expect(screen.getByText("3 failed runs by trigger, last 7 days")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "All runs" }).getAttribute("href")).toBe("/runs");
-
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Incidents" }));
     expect(screen.getByTestId("panel-open-incidents")).toBeTruthy();
     expect(screen.getByText("2 open incidents by severity")).toBeTruthy();
     expect(screen.getByRole("link", { name: "All incidents" }).getAttribute("href")).toBe("/incidents");
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Runs" }));
+    expect(screen.getByTestId("panel-recent-failures")).toBeTruthy();
+    expect(screen.getByText("3 failed runs by trigger, last 7 days")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "All runs" }).getAttribute("href")).toBe("/runs");
   });
 
   it("omits the incidents tab when the incidents API is unavailable", () => {
