@@ -17,10 +17,6 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { type SreConnectorListItem } from "@/actions/sre-connectors";
 import { isLiveSearchConnectorType } from "@/lib/sre/connectors/connector-capabilities";
-import {
-  isRetiredConnectorType,
-  retiredConnectorExplanation,
-} from "@/lib/sre/connectors/retired-connectors";
 
 type ConnectorTableMeta = {
   onSearch?: (connector: SreConnectorListItem) => void;
@@ -65,28 +61,13 @@ function connectorCapabilityBadge(connectorType: SreConnectorListItem["type"]) {
     };
   }
 
-  if (isRetiredConnectorType(connectorType)) {
-    return {
-      label: "Unsupported",
-      tone: "danger" as const,
-      title: retiredConnectorExplanation(connectorType),
-    };
-  }
-
   if (connectorType === "mcp") {
     return { label: "Agent tools", tone: "success" as const };
   }
 
-  if (isLiveSearchConnectorType(connectorType)) {
-    return {
-      label: "Live search",
-      tone: "success" as const,
-    };
-  }
-
   return {
-    label: "Setup only",
-    tone: "warning" as const,
+    label: "Live search",
+    tone: "success" as const,
   };
 }
 
@@ -129,11 +110,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
       return (
         <div className="flex min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap">
           <ConnectorTypeLabel type={connector.type} />
-          <TableBadge
-            tone={capability.tone}
-            compact
-            title={"title" in capability ? capability.title : undefined}
-          >
+          <TableBadge tone={capability.tone} compact>
             {capability.label}
           </TableBadge>
         </div>
@@ -279,9 +256,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
               )}
               <DropdownMenuItem
                 onClick={() => onValidate?.(connector)}
-                disabled={
-                  meta?.isValidating || isRetiredConnectorType(connector.type)
-                }
+                disabled={meta?.isValidating}
               >
                 Validate connector
               </DropdownMenuItem>

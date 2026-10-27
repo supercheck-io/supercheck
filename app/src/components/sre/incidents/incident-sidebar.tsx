@@ -46,6 +46,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
             incidentId={incident.id}
             assigneeUserId={incident.assigneeUserId}
             assigneeName={incident.assigneeName}
+            assigneeImage={incident.assigneeImage}
             label="Assignee"
             canUpdate={canUpdate && incident.status !== "resolved"}
           />
@@ -53,6 +54,7 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
             incidentId={incident.id}
             assigneeUserId={incident.commanderUserId}
             assigneeName={incident.commanderName}
+            assigneeImage={incident.commanderImage}
             role="commander"
             label="Commander (optional)"
             canUpdate={canUpdate && incident.status !== "resolved"}

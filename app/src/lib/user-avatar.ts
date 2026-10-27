@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { randomBytes } from "crypto";
 
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -32,20 +32,7 @@ export function detectAvatarType(b: Uint8Array): AvatarExt | null {
   return null;
 }
 
-const VERSION = /^[a-f0-9]{32}\.(png|jpg|webp)$/;
-
-/** The app route stored in user.image. The version names the object, so every change busts caches. */
-export function avatarPath(userId: string, version: string): string {
-  return `/api/users/${userId}/avatar?v=${version}`;
-}
-
-/** Returns the stored object version when `image` is this user's avatar route, otherwise null (e.g. an OAuth URL). */
-export function avatarVersionOf(userId: string, image: string | null | undefined): string | null {
-  const prefix = `/api/users/${userId}/avatar?v=`;
-  if (!image?.startsWith(prefix)) return null;
-  const version = image.slice(prefix.length);
-  return VERSION.test(version) ? version : null;
-}
+export { avatarPath, avatarVersionOf } from "./user-avatar-path";
 
 const keyOf = (userId: string, version: string) => `avatars/${userId}/${version}`;
 
@@ -69,6 +56,37 @@ export async function deleteAvatar(userId: string, version: string): Promise<voi
     await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: keyOf(userId, version) }));
   } catch (error) {
     console.error("[AVATAR] Failed to delete previous avatar object:", error);
+  }
+}
+
+// An upload that is still between putAvatar and updateUser is younger than this, so pruning never removes it.
+const PRUNE_MIN_AGE_MS = 60_000;
+
+/**
+ * Deletes the user's stored avatar objects except `keep`. Covers orphans from concurrent
+ * uploads (both read the same previous version) and account deletion (keep = null, minAgeMs = 0).
+ * Best effort: failures are logged, never thrown.
+ */
+export async function pruneAvatars(userId: string, keep: string | null, minAgeMs = PRUNE_MIN_AGE_MS): Promise<void> {
+  try {
+    const prefix = `avatars/${userId}/`;
+    const objects: { Key?: string; LastModified?: Date }[] = [];
+    let token: string | undefined;
+    do {
+      const page = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, ContinuationToken: token }));
+      objects.push(...(page.Contents ?? []));
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+    const cutoff = Date.now() - minAgeMs;
+    const stale = objects.filter(
+      (object) => object.Key && (keep === null || object.Key !== `${prefix}${keep}`) && (object.LastModified?.getTime() ?? 0) <= cutoff,
+    );
+    // Sequential: the upload rate limit keeps this list short, and it never floods S3 with parallel requests.
+    for (const object of stale) {
+      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: object.Key }));
+    }
+  } catch (error) {
+    console.error("[AVATAR] Failed to prune avatar objects:", error);
   }
 }
 

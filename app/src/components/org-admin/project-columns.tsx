@@ -16,13 +16,14 @@ import { Edit3, FolderOpen, MapPin, MoreHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { UserAvatar } from "@/components/ui/user-cell";
 
 export interface ProjectMember {
   id: string;
   name: string;
   email: string;
   role: string;
-  avatar?: string;
+  image?: string | null;
 }
 
 export interface Project {
@@ -132,14 +133,13 @@ export function createProjectColumns(
                 <>
                   <div className="flex -space-x-2">
                     {displayMembers.map((member, index) => (
-                      <div
+                      <span
                         key={member.id}
-                        className="w-6 h-6 rounded-full bg-blue-100 border-2 border-background flex items-center justify-center text-xs font-medium text-blue-600"
-                        title={`${member.name} (${member.role})`}
+                        title={member.name}
                         style={{ zIndex: displayMembers.length - index }}
                       >
-                        {member.name.charAt(0).toUpperCase()}
-                      </div>
+                        <UserAvatar name={member.name} image={member.image} className="border-2 border-background" />
+                      </span>
                     ))}
                     {remainingCount > 0 && (
                       <div

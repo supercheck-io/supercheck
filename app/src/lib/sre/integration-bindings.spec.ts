@@ -1,4 +1,5 @@
 import {
+  canBindIntegrationToConnector,
   describeIntegrationBindingCompatibility,
   getDefaultCorrelationStrategy,
   getNotificationProviderIntegrationKey,
@@ -67,5 +68,14 @@ describe("integration-bindings", () => {
       bindable: false,
       integrationKey: "pagerduty",
     });
+  });
+
+  it("cannot bind chat or generic webhook integrations to any connector", () => {
+    for (const integrationKey of ["slack", "teams", "better_stack", "incident_io", "generic_webhook"] as const) {
+      for (const connectorType of ["pagerduty", "opsgenie", "splunk", "webhook", "slack"]) {
+        expect(canBindIntegrationToConnector(integrationKey, connectorType)).toBe(false);
+      }
+    }
+    expect(canBindIntegrationToConnector("splunk_on_call", "splunk")).toBe(true);
   });
 });

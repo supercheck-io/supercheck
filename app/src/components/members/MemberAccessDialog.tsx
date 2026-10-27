@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FormInput } from "@/components/ui/form-input";
+import { UserAvatar } from "@/components/ui/user-cell";
 import {
   inviteMemberSchema,
   updateMemberSchema,
@@ -47,6 +48,7 @@ interface MemberData {
   id?: string;
   name?: string;
   email: string;
+  image?: string | null;
   role: string;
   selectedProjects: string[];
 }
@@ -395,10 +397,7 @@ export function MemberAccessDialog({
             <div className="space-y-2">
               <Label className="text-sm font-medium">Member</Label>
               <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
-                  {member.name?.charAt(0).toUpperCase() ||
-                    member.email.charAt(0).toUpperCase()}
-                </div>
+                <UserAvatar name={member.name || member.email} image={member.image} className="h-10 w-10" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{member.name}</div>
                   <div className="text-sm text-muted-foreground truncate">

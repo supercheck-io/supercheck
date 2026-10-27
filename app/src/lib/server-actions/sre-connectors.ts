@@ -22,10 +22,6 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import {
-  isRetiredConnectorType,
-  retiredConnectorExplanation,
-} from "@/lib/sre/connectors/retired-connectors";
-import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   decryptConnectorCredential,
   encryptConnectorCredential,
@@ -36,7 +32,6 @@ import {
   hashConnectorPayload,
   isDirectValidationConnectorType,
   isPrivateAgentConnectorType,
-  isSetupOnlyConnectorType,
   connectorCredentialRequirementError,
   redactConnectorText,
   sanitizeConnectorEvidence,
@@ -400,30 +395,6 @@ function directConnectorCredential(value: ConnectorCredentialValue | null) {
     fields: flatCredentialFields(value),
     email: credentialString(value, ["email", "username"]),
   };
-}
-
-function validationUrl(
-  connectorType: SreConnectorType,
-  endpointUrl: string | null,
-) {
-  if (connectorType === "github") {
-    return "https://api.github.com/rate_limit";
-  }
-
-  if (!endpointUrl) {
-    return null;
-  }
-
-  switch (connectorType) {
-    case "grafana":
-      return `${endpointUrl}/api/search?limit=1`;
-    case "prometheus":
-      return `${endpointUrl}/api/v1/status/runtimeinfo`;
-    case "kubernetes":
-      return `${endpointUrl}/version`;
-    default:
-      return endpointUrl;
-  }
 }
 
 function buildConnectorDefinition(
@@ -938,18 +909,6 @@ export async function createSreConnector(
     const endpointUrl = isFixedEndpointProvider
       ? null
       : normalizeEndpointUrl(parsed.data.endpointUrl);
-    if (isRetiredConnectorType(parsed.data.type)) {
-      return {
-        success: false,
-        error: retiredConnectorExplanation(parsed.data.type),
-      };
-    }
-    if (isSetupOnlyConnectorType(parsed.data.type)) {
-      return {
-        success: false,
-        error: `${parsed.data.type.replace(/_/g, " ")} connectors are setup-only right now. Live investigation search is not available yet, so new setup is disabled until a read-only adapter is shipped.`,
-      };
-    }
 
     if (parsed.data.type === "mcp") {
       // Never reachable without a Private Agent: the server is in the customer's network.
@@ -1199,9 +1158,6 @@ export async function validateSreConnector(
     } else if (!credentialRow && connectorRequiresCredentials(row.type)) {
       status = "invalid_credentials";
       outputSummary = "Connector is missing credentials";
-    } else if (isRetiredConnectorType(row.type)) {
-      status = "policy_blocked";
-      outputSummary = retiredConnectorExplanation(row.type);
     } else if (row.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
         where: and(
@@ -1231,7 +1187,6 @@ export async function validateSreConnector(
       }
     } else {
       await assertEndpointAllowedForExecution(endpointUrl, false);
-      const url = validationUrl(row.type, endpointUrl);
 
       if (isDirectValidationConnectorType(row.type)) {
         const credential = credentialRow
@@ -1253,52 +1208,10 @@ export async function validateSreConnector(
           (validation.status === "valid"
             ? "Connector validation passed"
             : "Connector validation failed");
-      } else if (isRetiredConnectorType(row.type)) {
+      } else {
+        // Only rows of a removed type can reach this; never send them anywhere.
         status = "policy_blocked";
-        outputSummary = retiredConnectorExplanation(row.type);
-      } else if (isSetupOnlyConnectorType(row.type)) {
-        status = "policy_blocked";
-        outputSummary =
-          "Live validation is not implemented for this setup-only connector yet. Configuration is saved, and evidence search stays disabled until a read-only adapter is available.";
-      } else if (!url && row.type !== "github" && row.type !== "webhook") {
-        status = "policy_blocked";
-        outputSummary =
-          "Connector endpoint URL is required for direct validation";
-      } else if (url) {
-        const credential = credentialRow
-          ? decryptConnectorCredential(credentialRow.encryptedCredential, {
-              organizationId,
-              projectId: project.id,
-              connectorId: row.id,
-            })
-          : null;
-
-        const secret = credentialSecret(credential);
-        const response = await fetch(url, {
-          method: "GET",
-          headers: secret
-            ? {
-                Authorization: `Bearer ${secret}`,
-                Accept: "application/json",
-              }
-            : { Accept: "application/json" },
-          signal: AbortSignal.timeout(
-            Math.min(
-              (normalizeOutputLimits(row.outputLimits).maxSeconds || 10) * 1000,
-              30_000,
-            ),
-          ),
-          cache: "no-store",
-          redirect: "error",
-        });
-
-        if (response.status === 401 || response.status === 403) {
-          status = "invalid_credentials";
-          outputSummary = `Connector credential rejected with HTTP ${response.status}`;
-        } else if (!response.ok) {
-          status = "unreachable";
-          outputSummary = `Connector validation failed with HTTP ${response.status}`;
-        }
+        outputSummary = "This connector type is not supported";
       }
     }
 

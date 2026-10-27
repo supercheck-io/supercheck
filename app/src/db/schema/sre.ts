@@ -92,9 +92,7 @@ type SreEvidenceSourceType =
   | "gcp_monitoring"
   | "azure_monitor"
   | "splunk"
-  | "slack"
-  | "mcp"
-  | "webhook";
+  | "mcp";
 type SreEvidenceType = "metric" | "log" | "trace" | "artifact" | "deployment" | "event" | "document" | "topology";
 type SreAgentType = "triage" | "investigation" | "background" | "sre_ai";
 type SreRunStatus = "running" | "completed" | "failed" | "aborted" | "timed_out";
@@ -149,34 +147,22 @@ type ExternalConnectorType =
   | "grafana"
   | "datadog"
   | "splunk"
-  | "appdynamics"
   | "newrelic"
   | "sentry"
   | "loki"
   | "elasticsearch"
   | "tempo"
   | "jaeger"
-  | "opentelemetry"
   | "aws_cloudwatch"
   | "gcp_monitoring"
   | "azure_monitor"
-  | "postgresql"
-  | "mysql"
-  | "mongodb"
-  | "redis"
-  | "clickhouse"
-  | "kafka"
-  | "rabbitmq"
   | "gitlab"
   | "confluence"
   | "notion"
-  | "slack"
-  | "teams"
   | "pagerduty"
   | "opsgenie"
   | "jira"
   | "mcp"
-  | "webhook"
   | "supercheck_native";
 
 const uuidPk = () =>

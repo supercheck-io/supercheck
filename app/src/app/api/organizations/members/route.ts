@@ -39,6 +39,7 @@ export async function GET() {
           id: userTable.id,
           name: userTable.name,
           email: userTable.email,
+          image: userTable.image,
           role: member.role,
           joinedAt: member.createdAt
         })

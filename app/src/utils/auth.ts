@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
-import { loginLockoutHooks } from "@/lib/security/login-lockout-hooks";
+import { createAuthMiddleware } from "better-auth/api";
+import { loginLockoutBefore, loginLockoutHooks } from "@/lib/security/login-lockout-hooks";
+import { guardProfileUpdate } from "@/lib/security/profile-update-guard";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/utils/db";
@@ -141,7 +143,13 @@ async function deliverPasswordResetEmail({
 }
 
 export const auth = betterAuth({
-  hooks: loginLockoutHooks,
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      await guardProfileUpdate(ctx);
+      await loginLockoutBefore(ctx);
+    }),
+    after: loginLockoutHooks.after,
+  },
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL,
   // Trusted origins for CORS and CSRF protection
@@ -376,6 +384,18 @@ export const auth = betterAuth({
   advanced: {
     database: {
       generateId: () => uuidv7(),
+    },
+  },
+  databaseHooks: {
+    user: {
+      delete: {
+        // Covers Better Auth's own deletion paths (e.g. admin remove-user); the custom admin route prunes itself.
+        // Dynamic import keeps the S3 client out of every module that imports auth.
+        after: async (deleted) => {
+          const { pruneAvatars } = await import("@/lib/user-avatar");
+          await pruneAvatars(deleted.id, null, 0);
+        },
+      },
     },
   },
   session: {

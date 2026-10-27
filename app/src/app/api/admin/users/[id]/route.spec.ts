@@ -5,10 +5,12 @@ jest.mock("@/utils/auth", () => ({ auth: {} }));
 jest.mock("@/lib/audit-logger", () => ({ logAdminEvent: jest.fn(), logImpersonationEvent: jest.fn() }));
 jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
+jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { getCurrentUser } from "@/lib/session";
 import { logAdminEvent } from "@/lib/audit-logger";
+import { pruneAvatars } from "@/lib/user-avatar";
 import { DELETE, PUT } from "./route";
 beforeEach(() => {
   jest.clearAllMocks();
@@ -24,6 +26,7 @@ it("records the administrator and deleted account inside the deletion transactio
   const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
   expect(response.status).toBe(200);
   // The audit row is written through the transaction handle, not the shared pool.
+  expect(pruneAvatars).toHaveBeenCalledWith("0c11ab1e-7460-5139-b3b8-920f69f95082", null, 0);
   expect(logAdminEvent).toHaveBeenCalledWith("admin", "user_deleted", "0c11ab1e-7460-5139-b3b8-920f69f95082", "user", "0c11ab1e-7460-5139-b3b8-920f69f95082", { targetEmail: "target@example.test" }, expect.objectContaining({ delete: expect.any(Function) }));
 });
 it("does not claim deletion when the transaction fails", async () => {
@@ -31,6 +34,7 @@ it("does not claim deletion when the transaction fails", async () => {
   const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
   expect(response.status).toBe(500);
   expect(logAdminEvent).not.toHaveBeenCalled();
+  expect(pruneAvatars).not.toHaveBeenCalled();
 });
 
 describe("PUT validation and audit", () => {
