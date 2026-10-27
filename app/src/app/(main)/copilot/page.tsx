@@ -18,7 +18,6 @@ export default async function SreAiPage({
         <PageBreadcrumbs
           items={[
             { label: "Home", href: "/" },
-            { label: "Respond", href: "/incidents" },
             { label: "Copilot", isCurrentPage: true },
           ]}
         />

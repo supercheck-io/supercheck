@@ -337,14 +337,11 @@ function buildTopology(
     const ids = ranks
       .get(x)!
       .sort((a, b) => layout.node(a).y - layout.node(b).y);
-    const top = layout.node(ids[0]).y;
+    // Every rank starts at the same top edge, so the canvas stays a compact band.
     ids.forEach((id, index) => {
       positions.set(id, {
         x: x + shift + Math.floor(index / MAX_ROWS_PER_COLUMN) * COLUMN_STEP,
-        y:
-          ids.length > MAX_ROWS_PER_COLUMN
-            ? top + (index % MAX_ROWS_PER_COLUMN) * (NODE_HEIGHT + 34)
-            : layout.node(id).y,
+        y: (index % MAX_ROWS_PER_COLUMN) * (NODE_HEIGHT + 34),
       });
     });
     shift += (Math.ceil(ids.length / MAX_ROWS_PER_COLUMN) - 1) * COLUMN_STEP;
@@ -410,7 +407,13 @@ function buildTopology(
     };
   });
 
-  return { nodes, edges };
+  // Open on the leftmost columns (services and alerts); the rest is a pan away.
+  const left = Math.min(...nodes.map((node) => node.position.x));
+  const initialFocus = nodes
+    .filter((node) => node.position.x < left + 3 * (NODE_WIDTH + 34))
+    .map((node) => ({ id: node.id }));
+
+  return { nodes, edges, initialFocus };
 }
 
 type TopologyViewportProps = {
@@ -504,7 +507,7 @@ function TopologyViewport({
               edges={topology.edges}
               nodeTypes={topologyNodeTypes}
               fitView
-              fitViewOptions={{ padding: 0.18, minZoom: 0.55, maxZoom: 1.15 }}
+              fitViewOptions={{ padding: 0.18, minZoom: 0.55, maxZoom: 1.15, nodes: topology.initialFocus }}
               minZoom={0.2}
               maxZoom={1.8}
               nodesConnectable={false}
