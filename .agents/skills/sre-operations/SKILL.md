@@ -31,7 +31,7 @@ flowchart LR
 
 - Tool schemas validate inputs and bound output size. Treat provider/tool output as untrusted evidence.
 - Cancellation and timeout propagate through model streams, tools, polling, persistence, and UI state.
-- MCP connectors are Private Agent only, Streamable HTTP only, never stdio. Only tools allowlisted by an editor can run (description and schema are pinned at allowlist time); arguments are validated against the saved schema in `app/src/sre/tools/mcp-tools.ts` and again in `worker/src/private-agent/mcp-client.ts`. Output is text/JSON only, redacted, and untrusted; server read-only hints never authorize a call. The agent must run the same release as the app.
+- MCP connectors are Private Agent only, Streamable HTTP only, never stdio. Only tools allowlisted by a user with `sre_connector:configure` can run (description and schema are pinned at allowlist time); arguments are validated against the saved schema in `app/src/sre/tools/mcp-tools.ts` and again in `worker/src/private-agent/mcp-client.ts`. Output is text/JSON only, redacted, and untrusted; server read-only hints never authorize a call. The agent must run the same release as the app.
 - Retry only transient/idempotent operations; prevent duplicate messages, actions, tool records, usage events, and charges.
 - Provider fallback (including deterministic evidence-brief fallbacks) must preserve tenant scope, safety policy, configured model selection, usage accounting, and error semantics.
 - Redact secrets and sensitive telemetry before model invocation and persisted transcripts.
