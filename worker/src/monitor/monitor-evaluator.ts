@@ -322,6 +322,11 @@ export class MonitorEvaluator {
       const recoveryThreshold =
         (monitorAlertConfig?.recoveryThreshold as number) || 1;
 
+      // Once per recovery, before the alert toggle, channels or maintenance can drop it.
+      if (consecutiveSuccessCount === recoveryThreshold) {
+        await this.monitorAlertService.signalRecovery(monitorId, new Date());
+      }
+
       shouldSendAlert =
         consecutiveSuccessCount >= recoveryThreshold &&
         alertsSentForRecovery === 0 &&

@@ -1,12 +1,13 @@
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createHash } from "crypto";
-import { and, desc, eq, gte, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   alertHistory,
   jobs,
   monitors,
+  runs,
   sreAlertEvents,
   sreIncidentAlerts,
   sreIncidents,
@@ -43,9 +44,17 @@ const logger = createLogger({ module: "sre-background-alert-triage" }) as {
   warn: (data: unknown, message?: string) => void;
 };
 
-const backgroundTriageJobSchema = z.object({
-  alertHistoryId: z.string().uuid(),
-});
+// Keep in sync with SreAlertTriageQueueJob in worker/src/monitor/services/sre-alert-triage-queue.service.ts.
+const backgroundTriageJobSchema = z.union([
+  z.object({ alertHistoryId: z.string().uuid() }),
+  z.object({
+    sourceRecovery: z.object({
+      sourceType: z.enum(["monitor", "job"]),
+      sourceId: z.string().uuid(),
+      recoveredAt: z.string().datetime(),
+    }),
+  }),
+]);
 
 type SreSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 type SreAlertStatus = "firing" | "resolved";
@@ -77,6 +86,7 @@ export type SreBackgroundAlertTriageResult =
         | "unsupported_source"
         | "incident_disabled"
         | "recovery_handled"
+        | "recovered_before_triage"
         | "ai_disabled"
         | "ai_not_configured";
     }
@@ -125,6 +135,103 @@ function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+
+type SourceRecoveryInput = {
+  organizationId: string;
+  projectId: string;
+  sourceType: SreAlertSourceType;
+  sourceId: string;
+  targetName: string;
+  autoResolve: boolean;
+  recoveredAt: Date;
+  /** Dedupes the notification for this recovery. */
+  discriminator: string;
+};
+
+async function handleSourceRecovery(input: SourceRecoveryInput) {
+  const { discriminator, ...source } = input;
+  const recovery = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${source.organizationId}))`,
+    );
+    return applySourceRecovery(tx, source);
+  });
+  for (const { id } of recovery.resolved) {
+    await announceSystemTransition(source.organizationId, source.projectId, id, "resolved", {
+      discriminator,
+    });
+  }
+  for (const { id, assigneeUserId } of recovery.recovered) {
+    await announceSystemTransition(source.organizationId, source.projectId, id, "recovered", {
+      assigneeUserId,
+      discriminator,
+    });
+  }
+  return recovery;
+}
+
+/** A recovery the worker sends on every up-transition, delivered or not. */
+async function processSourceRecovery(recovery: {
+  sourceType: SreAlertSourceType;
+  sourceId: string;
+  recoveredAt: string;
+}) {
+  // Org, project and settings come from the source row, never from the payload.
+  const table = recovery.sourceType === "monitor" ? monitors : jobs;
+  const [source] = await db
+    .select({
+      organizationId: table.organizationId,
+      projectId: table.projectId,
+      name: table.name,
+      alertConfig: table.alertConfig,
+    })
+    .from(table)
+    .where(eq(table.id, recovery.sourceId))
+    .limit(1);
+  if (!source?.organizationId || !source.projectId) {
+    return { skipped: true as const, reason: "unsupported_source" as const };
+  }
+  await handleSourceRecovery({
+    organizationId: source.organizationId,
+    projectId: source.projectId,
+    sourceType: recovery.sourceType,
+    sourceId: recovery.sourceId,
+    targetName: source.name,
+    autoResolve: source.alertConfig?.autoResolveIncident !== false,
+    recoveredAt: new Date(recovery.recoveredAt),
+    discriminator: `${recovery.sourceType}:${recovery.sourceId}:${recovery.recoveredAt}`,
+  });
+  return { skipped: true as const, reason: "recovery_handled" as const };
+}
+
+/**
+ * When the source is already back up after this failure fired, the time it recovered.
+ * Covers a failure processed after its recovery (a retry, or a queue backlog).
+ * shortcut: a monitor flips to up on its first passing check, ignoring recoveryThreshold > 1;
+ * compare consecutive successes if early resolves in backlogs become a problem.
+ */
+async function sourceRecoveredSince(
+  sourceType: SreAlertSourceType,
+  sourceId: string,
+  firedAt: Date,
+): Promise<Date | null> {
+  // Compared in SQL: these are timestamps without time zone.
+  if (sourceType === "monitor") {
+    const [row] = await db
+      .select({ at: monitors.lastStatusChangeAt })
+      .from(monitors)
+      .where(and(eq(monitors.id, sourceId), eq(monitors.status, "up"), gt(monitors.lastStatusChangeAt, firedAt)))
+      .limit(1);
+    return row?.at ?? null;
+  }
+  const [latest] = await db
+    .select({ status: runs.status, at: runs.completedAt })
+    .from(runs)
+    .where(and(eq(runs.jobId, sourceId), gt(runs.completedAt, firedAt)))
+    .orderBy(desc(runs.completedAt))
+    .limit(1);
+  return latest?.status === "passed" ? latest.at : null;
+}
 
 async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   const [alert] = await db
@@ -186,31 +293,16 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
 
   if (alertStatus !== "firing") {
     // Recovery: resolve (or flag) open incidents of the same source, regardless of alert type.
-    const recovery = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${organizationId}))`,
-      );
-      return applySourceRecovery(tx, {
-        organizationId,
-        projectId,
-        sourceType,
-        sourceId,
-        targetName,
-        autoResolve: alertConfig?.autoResolveIncident !== false,
-        recoveredAt: firedAt,
-      });
+    await handleSourceRecovery({
+      organizationId,
+      projectId,
+      sourceType,
+      sourceId,
+      targetName,
+      autoResolve: alertConfig?.autoResolveIncident !== false,
+      recoveredAt: firedAt,
+      discriminator: alert.id,
     });
-    for (const { id } of recovery.resolved) {
-      await announceSystemTransition(organizationId, projectId, id, "resolved", {
-        discriminator: alert.id,
-      });
-    }
-    for (const { id, assigneeUserId } of recovery.recovered) {
-      await announceSystemTransition(organizationId, projectId, id, "recovered", {
-        assigneeUserId,
-        discriminator: alert.id,
-      });
-    }
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
 
@@ -612,6 +704,24 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     });
   }
 
+  // The source already came back: keep the incident as a record, resolve it now and skip AI triage.
+  if (!result.skipped && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+    const recoveredAt = await sourceRecoveredSince(sourceType, sourceId, firedAt);
+    if (recoveredAt) {
+      await handleSourceRecovery({
+        organizationId,
+        projectId,
+        sourceType,
+        sourceId,
+        targetName,
+        autoResolve: alertConfig?.autoResolveIncident !== false,
+        recoveredAt,
+        discriminator: `${alert.id}:late-recovery`,
+      });
+      return { skipped: true as const, reason: "recovered_before_triage" as const };
+    }
+  }
+
   return result;
 }
 
@@ -625,6 +735,11 @@ export async function processSreBackgroundAlertTriageJob(
   const parsed = backgroundTriageJobSchema.safeParse(jobData);
   if (!parsed.success) {
     return { success: true, skipped: true, reason: "invalid_job" };
+  }
+
+  if ("sourceRecovery" in parsed.data) {
+    const recovery = await processSourceRecovery(parsed.data.sourceRecovery);
+    return { success: true, skipped: true, reason: recovery.reason };
   }
 
   const incident = await createOrGetIncidentForAlertHistory(

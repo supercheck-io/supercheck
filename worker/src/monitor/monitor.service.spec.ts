@@ -189,6 +189,7 @@ describe('MonitorService', () => {
     checkAndSendAlerts: jest.fn().mockResolvedValue(undefined),
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
     sendNotification: jest.fn().mockResolvedValue(undefined),
+    signalRecovery: jest.fn().mockResolvedValue(undefined),
     sendSslExpirationNotification: jest.fn().mockResolvedValue(undefined),
   };
 
@@ -1173,6 +1174,49 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Multi-location Alert Thresholds', () => {
+    it.each([false, true])(
+      'signals recovery once at the threshold with recovery alerts off (multi-location=%s)',
+      async (multiLocation) => {
+        mockAlertService.sendNotification.mockClear();
+        mockAlertService.signalRecovery.mockClear();
+        let state = service['readAggregatedAlertState'](null);
+        let previousStatus = 'down';
+        for (let success = 1; success <= 4; success++) {
+          mockDbService.db.query.monitorResults.findFirst.mockResolvedValue({
+            id: 'recovered-result',
+            consecutiveSuccessCount: success,
+            alertsSentForRecovery: 0,
+            details: { recoverySequence: true },
+          });
+          await service['evaluateAndSendAlert']({
+            monitorId: mockMonitor.id,
+            monitor: {
+              ...mockMonitor,
+              status: previousStatus,
+              config: { aggregatedAlertState: state },
+              alertConfig: {
+                enabled: true,
+                alertOnRecovery: false,
+                recoveryThreshold: 2,
+              },
+            } as unknown as typeof schema.monitors.$inferSelect,
+            previousStatus,
+            currentStatus: 'up',
+            reason: 'Recovered',
+            metadata: { locationResults: multiLocation ? [{}, {}] : [{}] },
+          });
+          state = service['getNextAggregatedAlertState'](
+            state,
+            previousStatus,
+            'up',
+          );
+          previousStatus = 'up';
+        }
+        expect(mockAlertService.signalRecovery).toHaveBeenCalledTimes(1);
+        expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+      },
+    );
+
     it.each([1, 2, 3, 4, 5])(
       'sends recovery at threshold %i after a failure, including later up results',
       async (recoveryThreshold) => {

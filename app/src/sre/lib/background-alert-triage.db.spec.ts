@@ -204,6 +204,56 @@ it("ignores a recovery that is older than the latest failure", async () => {
   expect(row.status).toBe("triggered");
 });
 
+const sourceRecovery = (at: Date, job = false) =>
+  processSreBackgroundAlertTriageJob({
+    sourceRecovery: { sourceType: job ? "job" : "monitor", sourceId: job ? jobId : monitorId, recoveredAt: at.toISOString() },
+  });
+
+it("auto-resolves on a worker recovery signal with no recovery alert recorded", async () => {
+  await alert("monitor_failure", minutes(0));
+  expect(await sourceRecovery(minutes(5))).toEqual({ success: true, skipped: true, reason: "recovery_handled" });
+  const [row] = await incidents();
+  expect(row.status).toBe("resolved");
+  // A recovery alert for the same recovery afterwards changes nothing.
+  await alert("monitor_recovery", minutes(5));
+  expect(await incidents()).toHaveLength(1);
+});
+
+it("ignores a worker recovery signal older than the latest failure", async () => {
+  await alert("monitor_failure", minutes(0));
+  await alert("monitor_failure", minutes(12));
+  await sourceRecovery(minutes(10));
+  const [row] = await incidents();
+  expect(row.status).toBe("triggered");
+});
+
+it("records and resolves a failure processed after the monitor already recovered", async () => {
+  // A retry or a queue backlog: the monitor was back up at 5 before the failure from 0 is processed.
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5) }).where(eq(schema.monitors.id, monitorId));
+  expect(await alert("monitor_failure", minutes(0))).toEqual({ success: true, skipped: true, reason: "recovered_before_triage" });
+  const rows = await incidents();
+  expect(rows).toHaveLength(1);
+  expect(rows[0].status).toBe("resolved");
+});
+
+it("keeps a failure open when the monitor went up only before it fired", async () => {
+  await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(-5) }).where(eq(schema.monitors.id, monitorId));
+  await alert("monitor_failure", minutes(0));
+  const [row] = await incidents();
+  expect(row.status).toBe("triggered");
+});
+
+it("resolves a job failure processed after a later passing run, and job recovery signals", async () => {
+  await mockDatabase.insert(schema.runs).values({ jobId, projectId, status: "passed", completedAt: minutes(6) } as never);
+  await alert("job_failed", minutes(0), { job: true });
+  expect((await incidents())[0].status).toBe("resolved");
+
+  await alert("job_failed", minutes(60), { job: true });
+  await sourceRecovery(minutes(70), true);
+  const rows = await incidents();
+  expect(rows.at(-1)!.status).toBe("resolved");
+});
+
 it("never auto-resolves an SSL expiry incident from an up/down recovery", async () => {
   await alert("ssl_expiring", minutes(0));
   await alert("monitor_recovery", minutes(5));

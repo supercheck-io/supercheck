@@ -5,9 +5,16 @@ import { Queue } from 'bullmq';
 
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
 
-export type SreAlertTriageQueueJob = {
-  alertHistoryId: string;
+// Keep in sync with backgroundTriageJobSchema in app/src/sre/lib/background-alert-triage.ts.
+export type SreSourceRecovery = {
+  sourceType: 'monitor' | 'job';
+  sourceId: string;
+  /** ISO timestamp of the recovery. */
+  recoveredAt: string;
 };
+
+export type SreAlertTriageQueueJob =
+  { alertHistoryId: string } | { sourceRecovery: SreSourceRecovery };
 
 export type AlertHistoryTriageCandidate = {
   id: string;
@@ -49,6 +56,28 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       );
     } catch (error) {
       this.logger.error('Failed to enqueue SRE alert triage jobs', error);
+    }
+  }
+
+  /**
+   * Tell the app a monitor or job recovered, so its open incident can auto-resolve.
+   * Sent on every recovery, even when no recovery alert is delivered.
+   */
+  async enqueueSourceRecovery(recovery: SreSourceRecovery): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+    try {
+      await this.getQueue().add(
+        'source-recovery',
+        { sourceRecovery: recovery },
+        // One job per recovery; a fixed id would be dropped while the last one is retained.
+        {
+          jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
+        },
+      );
+    } catch (error) {
+      this.logger.error('Failed to enqueue SRE source recovery job', error);
     }
   }
 

@@ -312,8 +312,7 @@ export async function POST(request: NextRequest) {
         eq(table.organizationId, projectContext.organizationId),
         eq(table.projectId, projectContext.project.id),
       ))
-      .limit(1)
-      .catch(() => []);
+      .limit(1);
     if (!source) {
       return NextResponse.json({ error: `${body.targetType} not found` }, { status: 404 });
     }

@@ -68,6 +68,35 @@ export class JobNotificationService {
     private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
 
+  /** Signal a recovery once: when the pass streak reaches the threshold right after a failed run. */
+  private async signalRecoveryIfRecovered(
+    jobId: string,
+    runId: string,
+    recoveryThreshold: number,
+  ): Promise<void> {
+    const recentRuns = await this.dbService.getRecentRunsForJob(
+      jobId,
+      recoveryThreshold + 1,
+    );
+    let passes = 1;
+    let afterFailure = false;
+    for (const run of recentRuns) {
+      if (run.id === runId) continue;
+      if (run.status === 'passed') {
+        passes++;
+        continue;
+      }
+      afterFailure = run.status === 'failed' || run.status === 'error';
+      break;
+    }
+    if (passes !== recoveryThreshold || !afterFailure) return;
+    await this.sreAlertTriageQueueService.enqueueSourceRecovery({
+      sourceType: 'job',
+      sourceId: jobId,
+      recoveredAt: new Date().toISOString(),
+    });
+  }
+
   async handleJobNotifications({
     jobId,
     organizationId,
@@ -105,6 +134,15 @@ export class JobNotificationService {
           customMessage?: string;
         } | null;
       } | null;
+
+      // Before the alert checks: an open incident must auto-resolve even with alerts or channels off.
+      if (job && finalStatus === 'passed') {
+        await this.signalRecoveryIfRecovered(
+          jobId,
+          runId,
+          job.alertConfig?.recoveryThreshold || 1,
+        );
+      }
 
       if (!job || !job.alertConfig?.enabled) {
         this.logger.debug(

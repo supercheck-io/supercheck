@@ -66,6 +66,7 @@ describe('JobNotificationService', () => {
     };
     const sreAlertTriageQueueService = {
       enqueueAlertHistoryRows: jest.fn().mockResolvedValue(undefined),
+      enqueueSourceRecovery: jest.fn().mockResolvedValue(undefined),
     };
 
     const service = new JobNotificationService(
@@ -282,6 +283,38 @@ describe('JobNotificationService', () => {
       expect(
         notificationService.sendNotificationToMultipleProviders,
       ).toHaveBeenCalledTimes(sends ? 1 : 0);
+    });
+
+    it('signals a recovery once, right after a failed run, even with alerts off', async () => {
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        alertConfig: { enabled: false, recoveryThreshold: 2 },
+      });
+      const passAfter = async (history: string[]) => {
+        dbService.getRecentRunsForJob.mockResolvedValueOnce(
+          history.map((status, i) => ({ id: `r${i}`, status })),
+        );
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-new',
+          finalStatus: 'passed',
+          durationSeconds: 1,
+        });
+      };
+      await passAfter(['failed']); // 1 pass, threshold 2: not yet
+      await passAfter(['passed', 'failed']); // 2 passes after a failure: recovered
+      await passAfter(['passed', 'passed']); // already recovered earlier
+      expect(
+        sreAlertTriageQueueService.enqueueSourceRecovery,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        sreAlertTriageQueueService.enqueueSourceRecovery,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: 'job', sourceId: 'job-1' }),
+      );
     });
 
     it('requests enough history to see the last capped alert', async () => {

@@ -52,6 +52,32 @@ describe('SreAlertTriageQueueService', () => {
     );
   });
 
+  it('enqueues a source recovery with a per-recovery job id, and not when SRE is off', async () => {
+    const recovery = {
+      sourceType: 'monitor' as const,
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    };
+    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+      recovery,
+    );
+    const queue = mockQueueConstructor.mock.results[0].value;
+    expect(queue.add).toHaveBeenCalledWith(
+      'source-recovery',
+      { sourceRecovery: recovery },
+      {
+        jobId: `sre-recovery-monitor-m1-${Date.parse(recovery.recoveredAt)}`,
+      },
+    );
+
+    config.set('SRE_ENABLED', 'false');
+    mockQueueConstructor.mockClear();
+    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+      recovery,
+    );
+    expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
+
   it('enqueues failed deliveries but not pending ones', async () => {
     await new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows(
       [
