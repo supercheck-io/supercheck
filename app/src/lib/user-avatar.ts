@@ -79,7 +79,7 @@ export async function pruneAvatars(userId: string, keep: string | null, minAgeMs
     } while (token);
     const cutoff = Date.now() - minAgeMs;
     const stale = objects.filter(
-      (object) => object.Key && object.Key !== `${prefix}${keep}` && (object.LastModified?.getTime() ?? 0) <= cutoff,
+      (object) => object.Key && (keep === null || object.Key !== `${prefix}${keep}`) && (object.LastModified?.getTime() ?? 0) <= cutoff,
     );
     // Sequential: the upload rate limit keeps this list short, and it never floods S3 with parallel requests.
     for (const object of stale) {
