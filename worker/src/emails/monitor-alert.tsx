@@ -172,7 +172,7 @@ const messageBox = {
   backgroundColor: "#f9fafb",
   borderLeft: "4px solid",
   padding: "16px 24px",
-  margin: "0 32px 32px",
+  margin: "0 0 32px",
   borderRadius: "0 4px 4px 0",
 };
 
