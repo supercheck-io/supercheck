@@ -29,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { InfoTip } from "@/components/ui/info-tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -264,7 +264,7 @@ export function SreIncidentDetailView({
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden lg:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden">
       <header className="shrink-0 space-y-2">
         <Button asChild variant="link" className="h-auto p-0 text-muted-foreground">
           <Link href="/incidents">
@@ -279,20 +279,20 @@ export function SreIncidentDetailView({
               {incident.title}
             </h1>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <TableBadge tone={severityTones[incident.severity]} className="uppercase">
-                  {incident.severity}
-                </TableBadge>
-                <InfoTip label="About severity">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <TableBadge tone={severityTones[incident.severity]} className="uppercase">
+                      {incident.severity}
+                    </TableBadge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-xs">
                   SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.
-                </InfoTip>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <TableBadge tone={display.tone}>{display.label}</TableBadge>
-                <InfoTip label="About status">{display.description}</InfoTip>
-              </span>
+                </TooltipContent>
+              </Tooltip>
               {incident.primaryServiceName && <span>{incident.primaryServiceName}</span>}
-              <span aria-hidden="true">·</span>
+              {incident.primaryServiceName && <span aria-hidden="true">·</span>}
               <span suppressHydrationWarning title={formatDate(incident.createdAt)}>
                 opened {formatAgo(incident.createdAt)}
               </span>
@@ -345,10 +345,10 @@ export function SreIncidentDetailView({
         )}
       </header>
 
-      <IncidentStatusStepper current={display.value} acknowledged={Boolean(incident.acknowledgedAt)} />
+      <IncidentStatusStepper current={display.value} acknowledged={Boolean(incident.acknowledgedAt)} description={display.description} />
 
-      <div className="grid min-w-0 shrink-0 gap-4 lg:min-h-0 lg:flex-1 lg:shrink lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+      <div className="grid min-w-0 shrink-0 gap-4 lg:items-start lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="flex min-w-0 flex-col gap-3">
           <IncidentAiSummaryCard
             rootCauseSummary={incident.rootCauseSummary}
             confidenceScore={incident.confidenceScore}

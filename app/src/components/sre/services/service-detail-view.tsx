@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Activity,
   ArrowDownLeft,
   ArrowUpRight,
@@ -278,9 +279,15 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto overflow-x-hidden">
       <header className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
+          <Button asChild variant="link" className="mb-1 h-auto p-0 text-muted-foreground">
+            <Link href="/services">
+              <ArrowLeft className="h-4 w-4" />
+              Services
+            </Link>
+          </Button>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {detail.service.status !== "active" && (
               <TableBadge tone="warning" className="capitalize">
@@ -374,7 +381,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
       <Tabs
         defaultValue="context"
-        className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-hidden"
+        className="flex flex-col gap-4"
       >
         <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
           <TabsTrigger value="context">Activity</TabsTrigger>
@@ -391,7 +398,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="dependencies"
-          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
+          className="space-y-4"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -576,7 +583,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="resources"
-          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
+          className="space-y-4"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -666,7 +673,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="context"
-          className="min-h-0 flex-1 space-y-6 lg:overflow-y-auto"
+          className="space-y-6"
         >
           {detail.recentIncidents.length === 0 &&
           detail.recentAlerts.length === 0 &&

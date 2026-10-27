@@ -236,7 +236,7 @@ export function CommandSearch({
 
               {canInvestigateSre && (
                 <>
-                  <CommandGroup heading="Investigate">
+                  <CommandGroup heading="Respond">
                     <CommandItem
                       onSelect={() => handleCommand("investigation-chat")}
                     >

@@ -29,13 +29,15 @@ export function formatDuration(from: Date | string | null, to: Date | string | n
   return `${Math.floor(hours / 24)} d ${hours % 24} h`;
 }
 
-function Section({ title, tip, tipLabel, aside, children }: { title: string; tip: string; tipLabel: string; aside?: React.ReactNode; children: React.ReactNode }) {
+// One link style for every in-panel link.
+export const PANEL_LINK = "font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
+
+function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="space-y-2 border-t pt-3 first:border-t-0 first:pt-0">
-      <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
         {title}
-        <InfoTip label={tipLabel}>{tip}</InfoTip>
-        {aside !== undefined && <span className="ml-auto tabular-nums normal-case tracking-normal">{aside}</span>}
+        {aside !== undefined && <span className="ml-auto text-xs font-normal tabular-nums text-muted-foreground">{aside}</span>}
       </h3>
       {children}
     </section>
@@ -61,15 +63,14 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
 
   return (
-    <aside aria-label="Incident details" className="min-h-0 space-y-3 lg:overflow-y-auto lg:pr-1">
-      <Section title="Owner" tipLabel="About the owner" tip="The person responsible for this incident. Acknowledging tells the team you're on it.">
+    <aside aria-label="Incident details" className="min-w-0 space-y-3">
+      <Section title="People">
         <IncidentAssigneePicker
           incidentId={incident.id}
           assigneeUserId={incident.assigneeUserId}
           assigneeName={incident.assigneeName}
           assigneeImage={incident.assigneeImage}
-          label="Owner"
-          hideLabel
+          label="Assignee"
           canUpdate={editable}
         />
         {incident.acknowledgedAt && (
@@ -96,28 +97,28 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
             >
               + Add commander
             </button>
-            <InfoTip label="About the commander">Optional. Coordinates a large incident; the owner does the work.</InfoTip>
+            <InfoTip label="About the commander">Optional. Coordinates a large incident; the assignee does the work.</InfoTip>
           </span>
         ) : null}
-        <dl>
+        <dl className="space-y-1.5">
           <Row label="Service">
             {incident.primaryServiceId ? (
-              <Link className="underline underline-offset-4" href={`/services/${incident.primaryServiceId}`}>
+              <Link className={PANEL_LINK} href={`/services/${incident.primaryServiceId}`}>
                 {incident.primaryServiceName ?? "Service"}
               </Link>
             ) : canUpdate ? (
-              <Link className="underline underline-offset-4" href={`/incidents/${incident.id}?edit=service`}>Link service</Link>
+              <Link className={PANEL_LINK} href={`/incidents/${incident.id}?edit=service`}>Link service</Link>
             ) : "None"}
           </Row>
         </dl>
       </Section>
 
-      <Section title="Status page" tipLabel="About the status page" tip="What customers see. Internal updates stay private unless you post them on the status page.">
-        <div className="flex items-center justify-between gap-2 text-sm">
+      <Section title="Status page">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
           {detail.publicIncident ? (
             <>
               <span>Public: <span className="capitalize">{detail.publicIncident.status.replace(/_/g, " ")}</span></span>
-              <Link className="underline underline-offset-4" href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}>
+              <Link className={PANEL_LINK} href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}>
                 View
               </Link>
             </>
@@ -125,14 +126,14 @@ export function IncidentSidebar({ detail }: { detail: SreIncidentDetail }) {
             <span className="text-muted-foreground">Not published</span>
           )}
           {canUpdate && (
-            <Link className="underline underline-offset-4" href={detail.publicIncident ? `/status-pages/${detail.publicIncident.statusPageId}` : "/status-pages"}>
+            <Link className={PANEL_LINK} href={detail.publicIncident ? `/status-pages/${detail.publicIncident.statusPageId}` : "/status-pages"}>
               Post update
             </Link>
           )}
         </div>
       </Section>
 
-      <Section title="Alerts" aside={detail.linkedAlerts.length} tipLabel="About alerts" tip="Failed or recovered checks grouped into this incident.">
+      <Section title="Alerts" aside={detail.linkedAlerts.length}>
         {detail.linkedAlerts.length === 0 ? (
           <p className="text-sm text-muted-foreground">No alerts linked.</p>
         ) : (

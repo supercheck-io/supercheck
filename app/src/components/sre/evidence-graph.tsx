@@ -88,6 +88,8 @@ type TopologyView =
 const NODE_WIDTH = 228;
 const NODE_HEIGHT = 84;
 const MAX_CANVAS_NODES = 160;
+// Long same-rank lists (e.g. many incidents under one service) wrap into columns.
+const MAX_ROWS_PER_COLUMN = 6;
 
 const TOPOLOGY_VIEWS: Array<{
   value: TopologyView;
@@ -322,6 +324,32 @@ function buildTopology(
   }
   dagre.layout(layout);
 
+  // Wrap tall ranks into several columns, shifting later ranks right.
+  const positions = new Map<string, { x: number; y: number }>();
+  const ranks = new Map<number, string[]>();
+  for (const node of graphNodes) {
+    const x = layout.node(node.id).x;
+    ranks.set(x, [...(ranks.get(x) ?? []), node.id]);
+  }
+  const COLUMN_STEP = NODE_WIDTH + 34;
+  let shift = 0;
+  for (const x of [...ranks.keys()].sort((a, b) => a - b)) {
+    const ids = ranks
+      .get(x)!
+      .sort((a, b) => layout.node(a).y - layout.node(b).y);
+    const top = layout.node(ids[0]).y;
+    ids.forEach((id, index) => {
+      positions.set(id, {
+        x: x + shift + Math.floor(index / MAX_ROWS_PER_COLUMN) * COLUMN_STEP,
+        y:
+          ids.length > MAX_ROWS_PER_COLUMN
+            ? top + (index % MAX_ROWS_PER_COLUMN) * (NODE_HEIGHT + 34)
+            : layout.node(id).y,
+      });
+    });
+    shift += (Math.ceil(ids.length / MAX_ROWS_PER_COLUMN) - 1) * COLUMN_STEP;
+  }
+
   const selectedEdge = graphEdges.find((edge) => edge.id === selectedEdgeId);
   const connectedNodeIds = new Set<string>();
   if (selectedNodeId) {
@@ -336,7 +364,7 @@ function buildTopology(
   }
 
   const nodes: TopologyNode[] = graphNodes.map((graphNode) => {
-    const position = layout.node(graphNode.id);
+    const position = positions.get(graphNode.id)!;
     const isConnected = connectedNodeIds.has(graphNode.id);
     return {
       id: graphNode.id,
@@ -396,6 +424,7 @@ type TopologyViewportProps = {
   selectedEdgeId: string | null;
   selectedNodeId: string | null;
   titleId: string;
+  countLabel: string;
 };
 
 function TopologyViewport({
@@ -409,6 +438,7 @@ function TopologyViewport({
   selectedEdgeId,
   selectedNodeId,
   titleId,
+  countLabel,
 }: TopologyViewportProps) {
   const topology = useMemo(
     () => buildTopology(graphNodes, graphEdges, selectedNodeId, selectedEdgeId),
@@ -432,9 +462,9 @@ function TopologyViewport({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <TableBadge tone="slate" compact>
-            {graphEdges.length} relationships
-          </TableBadge>
+          <p className="text-xs text-muted-foreground" data-testid="graph-count">
+            {countLabel}
+          </p>
           {isExpanded ? (
             <Button
               variant="ghost"
@@ -474,7 +504,7 @@ function TopologyViewport({
               edges={topology.edges}
               nodeTypes={topologyNodeTypes}
               fitView
-              fitViewOptions={{ padding: 0.18, maxZoom: 1.15 }}
+              fitViewOptions={{ padding: 0.18, minZoom: 0.55, maxZoom: 1.15 }}
               minZoom={0.2}
               maxZoom={1.8}
               nodesConnectable={false}
@@ -606,7 +636,11 @@ export function SreEvidenceGraph({
     Boolean(normalizedQuery) ||
     topologyView !== "essentials" ||
     incidentFocusId !== "all";
-  const isTruncated = matchingNodes.length > visibleNodes.length;
+  const countLabel = `${visibleNodes.length} nodes · ${visibleEdges.length} relationships${
+    matchingNodes.length > visibleNodes.length
+      ? ` · ${matchingNodes.length - visibleNodes.length} hidden by limit`
+      : ""
+  }`;
 
   if (loadError) {
     return (
@@ -640,18 +674,10 @@ export function SreEvidenceGraph({
                 incident, investigation, and change context.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2 text-sm">
-              <TableBadge tone="info">{visibleNodes.length} visible</TableBadge>
-              {isTruncated && (
-                <TableBadge tone="warning">
-                  {matchingNodes.length - visibleNodes.length} hidden by limit
-                </TableBadge>
-              )}
-            </div>
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
-          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)_auto]">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)] lg:[&:has(>button)]:grid-cols-[minmax(0,1fr)_190px_minmax(0,220px)_auto]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -704,19 +730,20 @@ export function SreEvidenceGraph({
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setQuery("");
-                setTopologyView("essentials");
-                setIncidentFocusId("all");
-                setSelectedEdgeId(null);
-              }}
-              disabled={!hasActiveFilters}
-            >
-              Clear
-            </Button>
+            {hasActiveFilters && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setQuery("");
+                  setTopologyView("essentials");
+                  setIncidentFocusId("all");
+                  setSelectedEdgeId(null);
+                }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
 
           {focusedIncident && (
@@ -745,6 +772,7 @@ export function SreEvidenceGraph({
             selectedEdgeId={effectiveSelectedEdgeId}
             selectedNodeId={effectiveSelectedNodeId}
             titleId="evidence-topology-title"
+            countLabel={countLabel}
           />
         </CardContent>
       </Card>
@@ -799,6 +827,7 @@ export function SreEvidenceGraph({
               selectedEdgeId={effectiveSelectedEdgeId}
               selectedNodeId={effectiveSelectedNodeId}
               titleId="expanded-evidence-topology-title"
+              countLabel={countLabel}
             />
           </div>
         </DialogContent>

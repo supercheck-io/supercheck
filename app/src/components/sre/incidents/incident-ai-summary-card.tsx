@@ -101,7 +101,7 @@ export function IncidentAiSummaryCard({
           )
         )}
       </CardHeader>
-      <CardContent className="space-y-3 px-4">
+      <CardContent className="space-y-3 px-4 pb-0">
         {running && (
           <p role="status" className="text-sm text-muted-foreground">
             {stepCount > 0

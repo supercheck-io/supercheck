@@ -7,10 +7,13 @@ import { cn } from "@/lib/utils";
 export function IncidentStatusStepper({
   current,
   acknowledged = false,
+  description,
 }: {
   current: IncidentDisplayStatus;
   /** Whether someone acknowledged it; a resolved incident may have skipped the middle steps. */
   acknowledged?: boolean;
+  /** Explains the current status; shown as a tooltip on the highlighted step. */
+  description?: string;
 }) {
   const currentIndex = INCIDENT_DISPLAY_STATUSES.findIndex((status) => status.value === current);
   const lastIndex = INCIDENT_DISPLAY_STATUSES.length - 1;
@@ -32,6 +35,7 @@ export function IncidentStatusStepper({
             <li
               key={status.value}
               aria-current={active ? "step" : undefined}
+              title={active ? description : undefined}
               data-state={active ? "current" : done ? "done" : "upcoming"}
               className="flex items-center gap-2"
             >

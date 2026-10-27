@@ -101,12 +101,22 @@ describe("IncidentSidebar", () => {
 
   it("hides Similar when empty and shows it when there are matches", () => {
     const view = render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.queryByText("Similar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Similar incidents")).not.toBeInTheDocument();
     view.unmount();
     mockSimilar = [{ id: "s1", incidentNumber: 3, title: "Old outage", matchedOn: ["service"], rootCauseSummary: null, resolutionSummary: null }];
     render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.getByText("Similar")).toBeInTheDocument();
+    expect(screen.getByText("Similar incidents")).toBeInTheDocument();
     expect(screen.getByText("#3 Old outage")).toBeInTheDocument();
+  });
+
+  it("shows the top 3 similar incidents with a Show more control", () => {
+    mockSimilar = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, incidentNumber: i + 1, title: `Outage ${i + 1}`, matchedOn: ["service"], rootCauseSummary: null, resolutionSummary: null }));
+    render(<IncidentSidebar detail={detailFixture()} />);
+    expect(screen.queryByText("#4 Outage 4")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show more (2)" }));
+    expect(screen.getByText("#5 Outage 5")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.queryByText("#4 Outage 4")).not.toBeInTheDocument();
   });
 
   it("shows MTTA and MTTR durations and the acknowledger", () => {

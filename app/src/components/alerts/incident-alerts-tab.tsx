@@ -1,7 +1,6 @@
 "use client";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { InfoTip } from "@/components/ui/info-tip";
 import { SreAlertsView } from "@/components/alerts/sre-alerts-view";
 import { AlertHistoryPanel } from "@/components/alerts/alert-history-panel";
 import { useAlertHistory } from "@/hooks/use-alerts";
@@ -18,25 +17,25 @@ export function IncidentAlertsTab({
 }) {
   const { alertHistory, isLoading } = useAlertHistory();
 
-  return (
+  // Lives in the toolbar row; the tooltip replaces the old (i) icon.
+  const viewSwitch = (
+    <Tabs value={view} onValueChange={(v) => onViewChange(v as AlertsView)}>
+      <TabsList
+        className="ml-auto h-8"
+        title="Signals group repeated failures; History lists every notification sent."
+      >
+        <TabsTrigger value="signals">Signals</TabsTrigger>
+        <TabsTrigger value="history">History</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
+  return view === "history" ? (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs value={view} onValueChange={(v) => onViewChange(v as AlertsView)}>
-          <TabsList>
-            <TabsTrigger value="signals">Signals</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <InfoTip label="About alerts">
-          Alerts are automatic: a check failed or recovered. Repeated failures
-          group into one signal, and alerts that need a person open an incident.
-        </InfoTip>
-      </div>
-      {view === "history" ? (
-        <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} />
-      ) : (
-        <SreAlertsView alerts={alertHistory} isLoading={isLoading} />
-      )}
+      <div className="flex justify-end">{viewSwitch}</div>
+      <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} />
     </div>
+  ) : (
+    <SreAlertsView alerts={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
   );
 }

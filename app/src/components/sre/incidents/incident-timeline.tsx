@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { UserAvatar } from "@/components/ui/user-cell";
+import { UserCell } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
@@ -97,11 +97,11 @@ export function IncidentTimeline({
   };
 
   return (
-    <Card data-testid="incident-timeline" className="flex min-h-0 flex-1 flex-col gap-3 py-4">
+    <Card data-testid="incident-timeline" className="flex flex-col gap-3 py-4">
       <CardHeader className="shrink-0 px-4 py-0">
         <CardTitle className="text-sm">Timeline</CardTitle>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 px-4">
+      <CardContent className="flex flex-col gap-3 px-4 pb-0">
         {canUpdate && (
           <div className="flex shrink-0 items-end gap-2">
             <Label htmlFor={id} className="sr-only">
@@ -123,7 +123,7 @@ export function IncidentTimeline({
             </Button>
           </div>
         )}
-        <div className="max-h-96 min-h-0 flex-1 overflow-y-auto pr-1 lg:max-h-none">
+        <div className="max-h-[32rem] overflow-y-auto pr-1">
           {query.isPending ? (
             <p className="text-sm text-muted-foreground">Loading timeline...</p>
           ) : query.data && !query.data.success ? (
@@ -137,11 +137,14 @@ export function IncidentTimeline({
                 return (
                   <li key={event.id} className="relative">
                     <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
-                    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
                       <span className="font-medium">{title}</span>
                       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {event.actorName && <UserAvatar name={event.actorName} image={event.actorImage} className="h-4 w-4" />}
-                        {event.actorName ?? (event.actorType === "agent" ? "AI" : "System")}
+                        {event.actorName ? (
+                          <UserCell name={event.actorName} image={event.actorImage} avatarClassName="h-4 w-4" className="text-xs" />
+                        ) : (
+                          event.actorType === "agent" ? "AI" : "System"
+                        )}
                         {" · "}
                         <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>
                           {formatTime(event.createdAt)}

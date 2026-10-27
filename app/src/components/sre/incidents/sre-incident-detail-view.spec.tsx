@@ -303,7 +303,10 @@ describe("SreIncidentDetailView", () => {
     expect(
       summary.compareDocumentPosition(screen.getByText("Mock timeline")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByText("Owner: Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Assignee: Ada Lovelace")).toBeInTheDocument();
+    // Status is shown once, by the stepper; the header keeps only severity.
+    expect(screen.getAllByText("Triggered")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "About status" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Post update" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ Add commander" })).toBeInTheDocument();

@@ -77,7 +77,7 @@ export function SreIncidentsPageClient() {
     });
 
   return (
-    <div className="w-full max-w-full mt-6 space-y-4 p-2">
+    <Tabs value={tab} onValueChange={onTabChange} className="mt-6 w-full max-w-full space-y-4 p-2">
       <PageHeader
         title="Incidents"
         description="Track, investigate, and resolve operational incidents."
@@ -87,6 +87,10 @@ export function SreIncidentsPageClient() {
             className="flex flex-wrap items-center gap-2"
             data-testid="incident-header-actions"
           >
+            <TabsList className="h-8">
+              <TabsTrigger value="incidents">Incidents</TabsTrigger>
+              <TabsTrigger value="alerts">Alerts</TabsTrigger>
+            </TabsList>
             <Button asChild type="button" variant="outline" className="h-8">
               <Link href="/incidents/analytics">
                 <BarChart3 className="h-4 w-4" />
@@ -97,18 +101,12 @@ export function SreIncidentsPageClient() {
           </div>
         }
       />
-      <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="incidents">Incidents</TabsTrigger>
-          <TabsTrigger value="alerts">Alerts</TabsTrigger>
-        </TabsList>
-        <TabsContent value="incidents">
-          <IncidentsTab />
-        </TabsContent>
-        <TabsContent value="alerts">
-          <IncidentAlertsTab view={view} onViewChange={onViewChange} />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <TabsContent value="incidents">
+        <IncidentsTab />
+      </TabsContent>
+      <TabsContent value="alerts">
+        <IncidentAlertsTab view={view} onViewChange={onViewChange} />
+      </TabsContent>
+    </Tabs>
   );
 }

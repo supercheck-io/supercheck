@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
+import type { ReactNode } from "react";
 import type { AlertHistory } from "@/components/alerts/schema";
 import { getAlertTypeLabel } from "@/components/alerts/data";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -62,6 +63,8 @@ type DerivedSreAlert = {
 type SreAlertsViewProps = {
   alerts: AlertHistory[];
   isLoading: boolean;
+  /** Right-aligned control in the toolbar row (the Signals/History switch). */
+  toolbarEnd?: ReactNode;
 };
 
 type AlertSortKey =
@@ -229,7 +232,7 @@ function SortableHead({
   );
 }
 
-export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
+export function SreAlertsView({ alerts, isLoading, toolbarEnd }: SreAlertsViewProps) {
   const isMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -350,20 +353,26 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
 
   if (!isMounted || (isLoading && alerts.length === 0)) {
     return (
-      <div className="flex min-h-[360px] items-center justify-center">
-        <SupercheckLoading size="md" message="Loading alert signals..." />
+      <div>
+        {toolbarEnd && <div className="flex justify-end">{toolbarEnd}</div>}
+        <div className="flex min-h-[360px] items-center justify-center">
+          <SupercheckLoading size="md" message="Loading alert signals..." />
+        </div>
       </div>
     );
   }
 
   if (derivedAlerts.length === 0) {
     return (
-      <DashboardEmptyState
-        className="min-h-[360px]"
-        title="No alert signals yet"
-        description="Only sent failure alerts appear here. Notification delivery failures stay in alert history."
-        icon={<Siren className="h-12 w-12" />}
-      />
+      <div>
+        {toolbarEnd && <div className="flex justify-end">{toolbarEnd}</div>}
+        <DashboardEmptyState
+          className="min-h-[360px]"
+          title="No alert signals yet"
+          description="Only sent failure alerts appear here. Notification delivery failures stay in alert history."
+          icon={<Siren className="h-12 w-12" />}
+        />
+      </div>
     );
   }
 
@@ -422,6 +431,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             </SelectContent>
           </Select>
         </div>
+        {toolbarEnd}
       </div>
 
       <div className="w-full max-w-full overflow-x-auto rounded-t-lg border">
