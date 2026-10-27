@@ -26,9 +26,8 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 function authErrorResponse(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  void error; // never echo the underlying error to the client
+  return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 }
 
 function sanitizeFileName(value: string) {

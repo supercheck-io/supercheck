@@ -4,9 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Skeleton Component
 export function PlaygroundSkeleton() {
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col overflow-hidden lg:min-h-[560px]">
 
-      <div className="relative max-h-[calc(100vh-5rem)] flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden md:max-h-[calc(100svh-5rem)] lg:max-h-none">
         <div className="absolute inset-0 bg-background z-10 p-4 overflow-hidden">
           <div className="hidden h-full flex-col md:flex overflow-hidden">
             <div className="flex h-full">

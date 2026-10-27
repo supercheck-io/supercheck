@@ -1368,7 +1368,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     <div className="h-full">
       <div className="h-full">
         <div className="md:hidden">{/* Mobile view */}</div>
-        <div className="hidden flex-col flex-1 md:flex p-4  h-[calc(100vh-5rem)]">
+        <div className="hidden flex-col flex-1 md:flex p-4  h-[calc(100svh-5rem)] lg:h-full">
           <ResizablePanelGroup direction="horizontal">
             <ResizablePanel defaultSize={70} minSize={30}>
               <div className="flex h-full flex-col border rounded-tl-lg rounded-bl-lg">
@@ -1587,7 +1587,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                           </div>
                         )}
 
-                        <div className="flex-1">
+                        <div className="flex min-h-0 flex-1 flex-col">
                           <CodeEditor
                             value={editorContent}
                             onChange={(value) => {

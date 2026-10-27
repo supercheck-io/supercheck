@@ -1,4 +1,5 @@
-export type SreEvalMilestone = "topology" | "native_evidence" | "connector_investigation";
+export type SreEvalMilestone = "topology" | "native_evidence" | "connector_investigation" | "synthetic_monitor";
+export type SreEvalOutcome = "identified" | "inconclusive";
 export type SreEvalConnectorType =
   | "prometheus"
   | "kubernetes"
@@ -14,6 +15,8 @@ export type SreEvalFixture = {
   milestone: SreEvalMilestone;
   title: string;
   prompt: string;
+  /** Deterministic-only fixture; not part of the default seeded live run. */
+  offlineOnly?: boolean;
   seededLive?: {
     connectorTypes: SreEvalConnectorType[];
     requiredSeedData: string[];
@@ -24,9 +27,102 @@ export type SreEvalFixture = {
     requiredToolNames?: string[];
     forbiddenClaims: string[];
     maxDuplicateToolCalls?: number;
+    /** Whether a correct investigation names a cause or reports it as inconclusive. */
+    outcome?: SreEvalOutcome;
     minScore: number;
   };
 };
+
+const syntheticMonitorForbidden = ["applied fix", "rolled back", "restarted service", "changed dns", "renewed certificate"];
+
+/** Synthetic-monitor failure cases. Evidence ids are the native evidence a brief would cite. */
+const syntheticMonitorFixtures: SreEvalFixture[] = [
+  {
+    id: "synthetic-playwright-failure-after-deploy",
+    milestone: "synthetic_monitor",
+    offlineOnly: true,
+    title: "Playwright check starts failing right after a deploy",
+    prompt:
+      "A Playwright checkout check began failing two minutes after deployment 2026.10.27-1. Identify the likely cause from the check failure, screenshot and deployment evidence.",
+    expected: {
+      requiredKeywords: ["playwright", "deployment", "selector", "root cause"],
+      requiredEvidenceIds: ["ev-playwright-selector-timeout", "ev-deploy-checkout-2026-10-27"],
+      requiredToolNames: ["listNativeEvidence"],
+      forbiddenClaims: [...syntheticMonitorForbidden, "network outage"],
+      maxDuplicateToolCalls: 1,
+      outcome: "identified",
+      minScore: 0.85,
+    },
+  },
+  {
+    id: "synthetic-ssl-expiry",
+    milestone: "synthetic_monitor",
+    offlineOnly: true,
+    title: "Website monitor fails on an expiring certificate",
+    prompt:
+      "The website monitor reports the TLS certificate for api.example.test expires in 2 days and the handshake fails from all regions. Identify the cause.",
+    expected: {
+      requiredKeywords: ["ssl", "certificate", "expire", "root cause"],
+      requiredEvidenceIds: ["ev-ssl-expiry-check"],
+      requiredToolNames: ["listNativeEvidence"],
+      forbiddenClaims: [...syntheticMonitorForbidden, "application bug", "database"],
+      maxDuplicateToolCalls: 1,
+      outcome: "identified",
+      minScore: 0.85,
+    },
+  },
+  {
+    id: "synthetic-dns-failure",
+    milestone: "synthetic_monitor",
+    offlineOnly: true,
+    title: "HTTP monitor fails with a DNS resolution error",
+    prompt:
+      "The HTTP monitor for www.example.test fails with ENOTFOUND in every region while the origin health check is green. Identify the cause.",
+    expected: {
+      requiredKeywords: ["dns", "resolution", "every region", "root cause"],
+      requiredEvidenceIds: ["ev-dns-enotfound", "ev-origin-health-green"],
+      requiredToolNames: ["listNativeEvidence"],
+      forbiddenClaims: [...syntheticMonitorForbidden, "origin is down", "deployment caused"],
+      maxDuplicateToolCalls: 1,
+      outcome: "identified",
+      minScore: 0.85,
+    },
+  },
+  {
+    id: "synthetic-regional-only-failure",
+    milestone: "synthetic_monitor",
+    offlineOnly: true,
+    title: "Failure only in one monitoring region with no other signal",
+    prompt:
+      "The API monitor fails only from the ap-southeast region for 10 minutes; other regions pass and no logs, deploys or metrics are available. State what can and cannot be concluded.",
+    expected: {
+      requiredKeywords: ["inconclusive", "ap-southeast", "other regions", "missing"],
+      requiredEvidenceIds: ["ev-region-ap-southeast-failures", "ev-region-others-passing"],
+      requiredToolNames: ["listNativeEvidence"],
+      forbiddenClaims: [...syntheticMonitorForbidden, "root cause is", "the cause is", "origin outage", "bgp"],
+      maxDuplicateToolCalls: 1,
+      outcome: "inconclusive",
+      minScore: 0.85,
+    },
+  },
+  {
+    id: "synthetic-slow-api",
+    milestone: "synthetic_monitor",
+    offlineOnly: true,
+    title: "API monitor slow but passing, with a latency trend",
+    prompt:
+      "The API monitor response time rose from 300 ms to 2.4 s over 40 minutes without errors and a database connection pool metric is saturated. Identify the likely cause and keep it a hypothesis if the evidence is correlational.",
+    expected: {
+      requiredKeywords: ["latency", "connection pool", "saturated", "hypothesis", "root cause"],
+      requiredEvidenceIds: ["ev-api-latency-trend", "ev-db-pool-saturation"],
+      requiredToolNames: ["listNativeEvidence"],
+      forbiddenClaims: [...syntheticMonitorForbidden, "scaled database", "increased pool"],
+      maxDuplicateToolCalls: 1,
+      outcome: "identified",
+      minScore: 0.85,
+    },
+  },
+];
 
 export const sreEvalFixtures: SreEvalFixture[] = [
   {
@@ -66,7 +162,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "latency", "kubernetes", "restart", "prometheus", "root cause"],
       requiredEvidenceIds: ["ev-prometheus-latency-spike", "ev-kubernetes-checkout-restarts"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["applied fix", "restarted pod", "scaled deployment", "modified kubernetes", "pushed commit"],
       maxDuplicateToolCalls: 2,
       minScore: 0.88,
@@ -88,7 +184,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "sentry", "exception", "regression", "root cause"],
       requiredEvidenceIds: ["ev-sentry-checkout-exception"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["applied fix", "resolved issue", "ignored sentry alert", "changed release"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -112,7 +208,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "prometheus", "loki", "tempo", "500", "trace"],
       requiredEvidenceIds: ["ev-oss-lab-prometheus-5xx", "ev-oss-lab-loki-checkout-error", "ev-oss-lab-tempo-slow-span"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["applied fix", "restarted service", "changed alertmanager", "muted alert", "deleted logs"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -134,7 +230,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "datadog", "event", "latency", "deployment"],
       requiredEvidenceIds: ["ev-datadog-checkout-latency-event"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["rolled back deployment", "muted monitor", "applied fix", "changed datadog"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -156,7 +252,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "loki", "log", "error", "upstream"],
       requiredEvidenceIds: ["ev-loki-checkout-upstream-errors"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["deleted logs", "changed log level", "restarted service", "applied fix"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -178,7 +274,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "elasticsearch", "log", "payment", "failure"],
       requiredEvidenceIds: ["ev-elasticsearch-checkout-payment-error"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["deleted index", "changed mapping", "reindexed data", "applied fix"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -200,7 +296,7 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "cloudwatch", "alarm", "metric", "degradation"],
       requiredEvidenceIds: ["ev-cloudwatch-checkout-alarm"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["changed alarm", "scaled aws resource", "applied fix", "modified cloudwatch"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
@@ -222,12 +318,13 @@ export const sreEvalFixtures: SreEvalFixture[] = [
     expected: {
       requiredKeywords: ["checkout", "tempo", "trace", "span", "latency"],
       requiredEvidenceIds: ["ev-tempo-checkout-slow-trace"],
-      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence", "telemetryInvestigator"],
+      requiredToolNames: ["listIncidentConnectors", "searchLiveConnectorEvidence"],
       forbiddenClaims: ["dropped traces", "changed sampler", "restarted service", "applied fix"],
       maxDuplicateToolCalls: 2,
       minScore: 0.86,
     },
   },
+  ...syntheticMonitorFixtures,
 ];
 
 export function getSreEvalFixture(id: string) {

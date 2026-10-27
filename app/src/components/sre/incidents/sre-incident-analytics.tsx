@@ -1,22 +1,43 @@
 "use client";
 
 import { format } from "date-fns";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Activity, Boxes, Siren } from "lucide-react";
+import { Area, AreaChart, Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 
 import type { SreIncidentAnalytics as Analytics } from "@/actions/sre-incidents";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { PageHeader } from "@/components/shared/page-header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { PageHeader } from "@/components/shared/page-header";
-import { TableBadge } from "@/components/ui/table-badge";
 
 const chartConfig = {
   created: { label: "Created", color: "var(--chart-1)" },
   resolved: { label: "Resolved", color: "var(--chart-2)" },
+  count: { label: "Incidents", color: "var(--chart-1)" },
 } satisfies ChartConfig;
+
+// Same severity colors as the dashboard's open-incidents chart.
+const SEVERITY_FILL: Record<string, string> = {
+  sev1: "var(--failure)",
+  sev2: "var(--warning)",
+  sev3: "var(--chart-1)",
+  sev4: "var(--chart-2)",
+};
+
+const DAY_AXIS = {
+  interval: "preserveStartEnd" as const,
+  minTickGap: 24,
+  tickLine: false,
+  fontSize: 11,
+};
+
+const mutedIcon = "h-4 w-4 text-muted-foreground";
+const chartClass = "h-44 w-full lg:h-full lg:min-h-20";
 
 function formatResolutionTime(minutes: number | null) {
   if (minutes === null) return "-";
@@ -34,71 +55,117 @@ export function formatTrendDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : format(date, "MMM d");
 }
 
-export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
+// Same card as the dashboard's chart cards.
+function ChartCard({
+  title,
+  description,
+  icon,
+  className,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="space-y-6">
+    <Card className={`flex h-full min-h-0 flex-col ${className ?? ""}`}>
+      <CardHeader className="space-y-1 px-4 pb-2 pt-4">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          {icon}
+          {title}
+        </CardTitle>
+        <CardDescription className="line-clamp-1 text-xs [@media(max-height:760px)]:hidden" title={description}>
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 pt-2 lg:min-h-0 lg:flex-1">{children}</CardContent>
+    </Card>
+  );
+}
+
+function ChartEmpty({ message }: { message: string }) {
+  return (
+    <div className="flex h-44 items-center justify-center text-sm text-muted-foreground lg:h-full">{message}</div>
+  );
+}
+
+function StatusBars({ data, empty }: { data: Array<{ name: string; count: number; fill: string }>; empty: string }) {
+  if (data.length === 0) return <ChartEmpty message={empty} />;
+  return (
+    <ChartContainer config={chartConfig} className={chartClass}>
+      <BarChart data={data} accessibilityLayer>
+        <XAxis dataKey="name" fontSize={11} tickLine={false} interval={0} />
+        <YAxis fontSize={11} allowDecimals={false} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+          {data.map((entry) => (
+            <Cell key={entry.name} fill={entry.fill} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
+export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
+  const { summary, windowDays } = analytics;
+  const severityData = analytics.severities.map((item) => ({
+    name: item.severity.toUpperCase(),
+    count: item.count,
+    fill: SEVERITY_FILL[item.severity] ?? "var(--chart-3)",
+  }));
+  const serviceData = analytics.topServices.map((item) => ({
+    name: item.serviceName,
+    count: item.count,
+    fill: "var(--chart-1)",
+  }));
+  const hasFlow = analytics.daily.some((day) => day.created > 0 || day.resolved > 0);
+
+  return (
+    <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
       <PageHeader
         title="Incident trends"
-        description={`Response volume and resolution performance for the last ${analytics.windowDays} days.`}
+        description={`Incident volume and resolution over the last ${windowDays} days.`}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["Created", analytics.summary.created],
-          ["Resolved", analytics.summary.resolved],
-          ["Resolution rate", `${analytics.summary.resolutionRate}%`],
-          ["Average resolution", formatResolutionTime(analytics.summary.averageResolutionMinutes)],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-lg border bg-card p-4">
-            <p className="text-sm font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-          </div>
-        ))}
+        <MetricCard title="Created" value={String(summary.created)} caption={`Last ${windowDays} days`} href="/incidents" />
+        <MetricCard title="Resolved" value={String(summary.resolved)} caption={`Last ${windowDays} days`} />
+        <MetricCard title="Resolution rate" value={`${summary.resolutionRate}%`} caption="Resolved of created" />
+        <MetricCard
+          title="Average resolution"
+          value={formatResolutionTime(summary.averageResolutionMinutes)}
+          caption="From created to resolved"
+        />
       </div>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-semibold">Created and resolved</h2>
-          <p className="text-sm text-muted-foreground">Daily incident flow in the selected project.</p>
-        </div>
-        <ChartContainer config={chartConfig} className="h-64 w-full">
-          <LineChart data={analytics.daily} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={28} tickFormatter={(value) => formatTrendDate(String(value))} />
-            <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-            <ChartTooltip content={<ChartTooltipContent labelFormatter={(value) => formatTrendDate(String(value))} />} />
-            <Line type="monotone" dataKey="created" stroke="var(--color-created)" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="resolved" stroke="var(--color-resolved)" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ChartContainer>
-      </section>
+      <div className="grid gap-4 lg:min-h-0 lg:flex-[1.3] lg:grid-rows-[minmax(0,1fr)]">
+        <ChartCard title="Created and resolved" description="Daily incidents created and resolved" icon={<Activity className={mutedIcon} />}>
+          {hasFlow ? (
+            <ChartContainer config={chartConfig} className={chartClass}>
+              <AreaChart data={analytics.daily} accessibilityLayer>
+                <XAxis dataKey="date" {...DAY_AXIS} tickFormatter={(value) => formatTrendDate(String(value))} />
+                <YAxis fontSize={11} allowDecimals={false} />
+                <ChartTooltip content={<ChartTooltipContent labelFormatter={(value) => formatTrendDate(String(value))} />} />
+                <Area type="monotone" dataKey="created" stroke="var(--color-created)" fill="var(--color-created)" fillOpacity={0.3} />
+                <Area type="monotone" dataKey="resolved" stroke="var(--color-resolved)" fill="var(--color-resolved)" fillOpacity={0.3} />
+              </AreaChart>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty message="No incidents in this window" />
+          )}
+        </ChartCard>
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold">Severity mix</h2>
-          <div className="divide-y rounded-lg border">
-            {analytics.severities.length ? analytics.severities.map((item) => (
-              <div key={item.severity} className="flex items-center justify-between px-4 py-3">
-                <TableBadge tone={item.severity === "sev1" ? "danger" : item.severity === "sev2" || item.severity === "sev3" ? "warning" : "slate"} className="uppercase">
-                  {item.severity}
-                </TableBadge>
-                <span className="text-sm font-semibold tabular-nums">{item.count}</span>
-              </div>
-            )) : <p className="px-4 py-6 text-sm text-muted-foreground">No incidents in this window.</p>}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold">Most affected services</h2>
-          <div className="divide-y rounded-lg border">
-            {analytics.topServices.length ? analytics.topServices.map((item) => (
-              <div key={item.serviceId ?? "unmapped"} className="flex items-center justify-between gap-4 px-4 py-3">
-                <span className="truncate text-sm font-medium">{item.serviceName}</span>
-                <span className="text-sm font-semibold tabular-nums">{item.count}</span>
-              </div>
-            )) : <p className="px-4 py-6 text-sm text-muted-foreground">No service impact recorded.</p>}
-          </div>
-        </section>
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
+        <ChartCard title="Severity" description="Incidents by severity" icon={<Siren className={mutedIcon} />}>
+          <StatusBars data={severityData} empty="No incidents in this window" />
+        </ChartCard>
+        <ChartCard title="Most affected services" description="Incidents per service" icon={<Boxes className={mutedIcon} />}>
+          <StatusBars data={serviceData} empty="No service impact recorded" />
+        </ChartCard>
       </div>
     </div>
   );

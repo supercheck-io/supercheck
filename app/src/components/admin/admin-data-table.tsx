@@ -30,6 +30,7 @@ import {
 import { AdminDataTablePagination } from "@/components/admin/admin-data-table-pagination";
 import { UserTableToolbar } from "./user-table-toolbar";
 import { cn } from "@/lib/utils";
+import { useFitPagination } from "@/hooks/use-fit-page-size";
 
 interface AdminDataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -125,6 +126,7 @@ export function AdminDataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
+  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length);
 
   // Set mounted to true after initial render
   React.useEffect(() => {
@@ -219,15 +221,9 @@ export function AdminDataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
-    initialState: {
-      pagination: {
-         
-        pageSize: (meta as any)?.initialPageSize || 8,
-        pageIndex: 0,
-      },
-    },
     state: mounted
       ? {
+          pagination,
           sorting,
           columnVisibility,
           rowSelection,
@@ -235,12 +231,14 @@ export function AdminDataTable<TData, TValue>({
           globalFilter,
         }
       : {
+          pagination,
           sorting: [],
           columnVisibility: {},
           rowSelection: {},
           columnFilters: [],
           globalFilter: "",
         },
+    onPaginationChange,
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -260,17 +258,6 @@ export function AdminDataTable<TData, TValue>({
       ...meta,
     } as ExtendedTableMeta<TData>,
   });
-
-  // Use useEffect to set proper pagination after the component has mounted
-  React.useEffect(() => {
-    if (mounted && table) {
-      // Set page size based on meta or default to 7
-       
-      const pageSize = (meta as any)?.initialPageSize || 8;
-      table.setPageSize(pageSize);
-      table.setPageIndex(0);
-    }
-  }, [mounted, table, meta]);
 
   // Don't render the table until the component is mounted
   if (!mounted) {
@@ -302,7 +289,7 @@ export function AdminDataTable<TData, TValue>({
         </div>
       )}
       <ToolbarComponent table={table} />
-      <div className="rounded-t-lg border relative w-full">
+      <div className="relative max-w-full overflow-x-auto rounded-t-lg border">
         <Table className="w-full">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -310,39 +297,30 @@ export function AdminDataTable<TData, TValue>({
                 key={headerGroup.id}
                 className="hover:bg-transparent border-b"
               >
-                {headerGroup.headers.map((header, headerIndex) => {
-                  const isFirst = headerIndex === 0;
-                  const isLast = headerIndex === headerGroup.headers.length - 1;
-                  return (
-                    <TableHead
-                      key={header.id}
-                      className={`h-12 px-4 text-left align-middle font-semibold text-muted-foreground ${
-                        isFirst ? "rounded-tl-lg" : ""
-                      } ${isLast ? "rounded-tr-lg" : ""}`}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </TableHead>
-                  );
-                })}
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                ))}
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={cn(onRowClick && "cursor-pointer")}
+                  className={cn("h-[53px]", onRowClick && "cursor-pointer")}
                   onClick={() => onRowClick?.(row)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-4 py-3 align-middle">
+                    <TableCell key={cell.id} className="py-2.5">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
