@@ -20,29 +20,32 @@ const credentialValueSchema = z
   .nullable()
   .optional();
 
+// Connector types this agent can run. Reported in heartbeats so the app never routes it a type it cannot parse.
+export const SUPPORTED_SRE_CONNECTOR_TYPES = [
+  'github',
+  'prometheus',
+  'grafana',
+  'kubernetes',
+  'sentry',
+  'datadog',
+  'loki',
+  'elasticsearch',
+  'tempo',
+  'aws_cloudwatch',
+  'jaeger',
+  'newrelic',
+  'splunk',
+  'gcp_monitoring',
+  'azure_monitor',
+  'jira',
+  'confluence',
+  'mcp',
+] as const;
+
 const connectorJobSpecSchema = z.object({
   jobClass: z.literal('sre_connector_query'),
   connectorId: z.string().min(1),
-  connectorType: z.enum([
-    'github',
-    'prometheus',
-    'grafana',
-    'kubernetes',
-    'sentry',
-    'datadog',
-    'loki',
-    'elasticsearch',
-    'tempo',
-    'aws_cloudwatch',
-    'jaeger',
-    'newrelic',
-    'splunk',
-    'gcp_monitoring',
-    'azure_monitor',
-    'jira',
-    'confluence',
-    'mcp',
-  ]),
+  connectorType: z.enum(SUPPORTED_SRE_CONNECTOR_TYPES),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
   query: z.string().min(1).max(500),
@@ -596,6 +599,7 @@ function parseCloudWatchQuery(query: string): CloudWatchQueryShape {
 
 function privateAgentCapabilities() {
   return {
+    sreConnectorTypes: [...SUPPORTED_SRE_CONNECTOR_TYPES],
     supportsSreConnectors: true,
     supportsHttpMonitoring: false,
     supportsPlaywright: false,
@@ -1924,14 +1928,45 @@ async function sendHeartbeat(
   });
 }
 
-async function leaseJob(
+/** The job id and lease token when the leased job names a connector type this agent does not support. */
+export function unsupportedConnectorJob(
+  raw: unknown,
+): { jobId: string; leaseToken: string } | null {
+  const parsed = z
+    .object({
+      job: z.object({
+        id: z.string().uuid(),
+        jobSpec: z.object({ connectorType: z.string() }),
+      }),
+      leaseToken: z.string(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) return null;
+  const type = parsed.data.job.jobSpec.connectorType;
+  if ((SUPPORTED_SRE_CONNECTOR_TYPES as readonly string[]).includes(type))
+    return null;
+  return { jobId: parsed.data.job.id, leaseToken: parsed.data.leaseToken };
+}
+
+export async function leaseJob(
   config: PrivateAgentConfig,
 ): Promise<{ job: LeasedJob; leaseToken: string } | null> {
-  const payload = leaseResponseSchema.parse(
-    await postJson(config, '/api/private-agents/jobs/lease', {
-      waitMs: config.leaseWaitMs,
-    }),
-  );
+  const raw = await postJson(config, '/api/private-agents/jobs/lease', {
+    waitMs: config.leaseWaitMs,
+  });
+  const unsupported = unsupportedConnectorJob(raw);
+  if (unsupported) {
+    // Fail the job instead of throwing: a parse error would re-lease it forever and jam the queue.
+    await postJson(config, '/api/private-agents/jobs/result', {
+      ...unsupported,
+      status: 'failed',
+      evidence: [],
+      truncated: false,
+      errorCode: 'unsupported_connector_type',
+    });
+    return null;
+  }
+  const payload = leaseResponseSchema.parse(raw);
   if (!payload.job) return null;
   if (!payload.leaseToken)
     throw new Error('Lease response omitted lease token');

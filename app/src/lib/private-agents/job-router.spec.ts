@@ -128,4 +128,29 @@ describe("routeSreConnectorQuery", () => {
 
     expect(decision).toMatchObject({ routed: false, code: "private_agent_unhealthy" });
   });
+
+  it("tells the user to upgrade an older agent instead of routing a type it cannot run", () => {
+    const decision = routeSreConnectorQuery({
+      organizationId: "org_1",
+      projectId: "project_1",
+      connector: { ...connector, type: "jira" },
+      params,
+      agents: [agent],
+      now: new Date("2026-06-21T10:10:00.000Z"),
+    });
+    expect(decision).toMatchObject({ routed: false, code: "private_agent_outdated" });
+    if (!decision.routed) expect(decision.reason).toContain("Upgrade");
+  });
+
+  it("routes any type the agent reported in its heartbeat", () => {
+    const decision = routeSreConnectorQuery({
+      organizationId: "org_1",
+      projectId: "project_1",
+      connector: { ...connector, type: "jira" },
+      params,
+      agents: [{ ...agent, metadata: { sreConnectorTypes: ["jira", "prometheus"] } }],
+      now: new Date("2026-06-21T10:10:00.000Z"),
+    });
+    expect(decision).toMatchObject({ routed: true });
+  });
 });

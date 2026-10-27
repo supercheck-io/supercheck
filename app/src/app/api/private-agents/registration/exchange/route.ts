@@ -12,6 +12,7 @@ import {
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 import { getBearerToken, unauthorized } from "../../jobs/auth";
+import { withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const exchangeSchema = z.object({
   agentId: z.string().uuid(),
@@ -24,6 +25,7 @@ const exchangeSchema = z.object({
       supportsPlaywright: z.boolean().default(false),
       supportsK6: z.boolean().default(false),
       supportsNetworkChecks: z.boolean().default(false),
+      sreConnectorTypes: z.array(z.string().trim().min(1).max(50)).max(100).optional(),
     })
     .default({
       supportsSreConnectors: true,
@@ -121,7 +123,10 @@ export async function POST(request: NextRequest) {
           connectedAt: now,
           lastHeartbeatAt: now,
           lastError: null,
-          metadata: markPrivateAgentRegistrationExchanged(agent.metadata, now),
+          metadata: withReportedConnectorTypes(
+            markPrivateAgentRegistrationExchanged(agent.metadata, now),
+            body.data.capabilities.sreConnectorTypes,
+          ),
           updatedAt: now,
         })
         .where(and(eq(privateAgents.id, agent.id), eq(privateAgents.registrationTokenHash, registrationTokenHash)))

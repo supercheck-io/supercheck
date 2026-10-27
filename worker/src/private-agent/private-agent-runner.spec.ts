@@ -6,7 +6,10 @@ import {
   assertSecureApiUrl,
   exchangeRegistrationToken,
   executePrivateAgentConnectorJob,
+  leaseJob,
   processLeasedJob,
+  SUPPORTED_SRE_CONNECTOR_TYPES,
+  unsupportedConnectorJob,
   type PrivateAgentConfig,
 } from './private-agent-runner';
 
@@ -739,5 +742,64 @@ describe('assertSecureApiUrl', () => {
     );
     const result = await executePrivateAgentConnectorJob(jiraJob);
     expect(result.evidence[0].title).toContain('OPS-1');
+  });
+});
+
+describe('unsupported connector types', () => {
+  const originalFetch = global.fetch;
+  const config: PrivateAgentConfig = {
+    apiUrl: 'https://app.supercheck.io',
+    agentId: '018f0000-0000-7000-8000-000000000001',
+    token: 'scpac_runtime_1234567890',
+    tokenSource: 'env',
+    credentialFile: null,
+    agentVersion: '1.3.6',
+    retryIntervalMs: 5_000,
+    leaseWaitMs: 25_000,
+    heartbeatIntervalMs: 30_000,
+  };
+  const jobId = '018f0000-0000-7000-8000-0000000000aa';
+  const lease = (connectorType: string) => ({
+    job: { id: jobId, jobSpec: { connectorType } },
+    leaseToken: 'lease-token',
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('flags only leased jobs whose type this agent does not know', () => {
+    expect(unsupportedConnectorJob(lease('servicenow'))).toEqual({
+      jobId,
+      leaseToken: 'lease-token',
+    });
+    expect(
+      unsupportedConnectorJob(lease(SUPPORTED_SRE_CONNECTOR_TYPES[0])),
+    ).toBeNull();
+    expect(unsupportedConnectorJob({ job: null })).toBeNull();
+  });
+
+  it('fails an unknown-type job instead of throwing, so it is not leased again', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => lease('servicenow'),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+
+    await expect(leaseJob(config)).resolves.toBeNull();
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[1];
+    expect(url).toBe(
+      'https://app.supercheck.io/api/private-agents/jobs/result',
+    );
+    expect(JSON.parse(init.body)).toMatchObject({
+      jobId,
+      leaseToken: 'lease-token',
+      status: 'failed',
+      errorCode: 'unsupported_connector_type',
+    });
   });
 });

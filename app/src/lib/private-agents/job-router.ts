@@ -5,6 +5,7 @@ import {
 } from "@/lib/sre/connectors";
 import { isPrivateAgentConnectorType } from "@/lib/sre/connectors/connector-capabilities";
 import {
+  agentSupportsConnectorType,
   isPrivateAgentEligibleForJob,
   type PrivateAgentRecord,
 } from "./agent-registry";
@@ -36,7 +37,8 @@ export type PrivateAgentRouteDecision =
         | "direct_connector"
         | "private_agent_not_found"
         | "private_agent_unhealthy"
-        | "private_agent_unsupported";
+        | "private_agent_unsupported"
+        | "private_agent_outdated";
       reason: string;
     };
 
@@ -122,6 +124,14 @@ export function routeSreConnectorQuery(
       reason: supportsJob
         ? "Configured private agent is not healthy"
         : "Configured private agent does not support SRE connectors",
+    };
+  }
+
+  if (!agentSupportsConnectorType(agent, request.connector.type)) {
+    return {
+      routed: false,
+      code: "private_agent_outdated",
+      reason: `Private Agent "${agent.name}" does not support ${request.connector.type.replace(/_/g, " ")} connectors. Upgrade it to the latest version.`,
     };
   }
 

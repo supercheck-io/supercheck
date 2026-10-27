@@ -5,6 +5,7 @@ import { z } from "zod";
 import { privateAgentCredentials, privateAgentHeartbeats, privateAgents } from "@/db/schema";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../jobs/auth";
+import { withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const heartbeatSchema = z.object({
   agentId: z.string().uuid(),
@@ -21,6 +22,7 @@ const heartbeatSchema = z.object({
       supportsPlaywright: z.boolean().default(false),
       supportsK6: z.boolean().default(false),
       supportsNetworkChecks: z.boolean().default(false),
+      sreConnectorTypes: z.array(z.string().trim().min(1).max(50)).max(100).optional(),
     })
     .default({
       supportsSreConnectors: true,
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
           lastHeartbeatAt: now,
           connectedAt: auth.agent.connectedAt ?? now,
           lastError: body.data.errorCode ?? null,
+          metadata: withReportedConnectorTypes(auth.agent.metadata, capabilities.sreConnectorTypes),
           updatedAt: now,
         })
         .where(eq(privateAgents.id, auth.agent.id));
