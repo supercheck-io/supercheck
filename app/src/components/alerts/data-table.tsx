@@ -122,6 +122,7 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean;
   onRowClick?: (row: Row<TData>) => void;
   meta?: TableMeta;
+  toolbarEnd?: React.ReactNode;
 }
 
 export function DataTable<TData extends AlertHistory, TValue>({
@@ -130,6 +131,7 @@ export function DataTable<TData extends AlertHistory, TValue>({
   isLoading,
   onRowClick,
   meta,
+  toolbarEnd,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({});
   const [columnVisibility, setColumnVisibility] =
@@ -252,7 +254,7 @@ export function DataTable<TData extends AlertHistory, TValue>({
 
   return (
     <div className="space-y-4">
-      <DataTableToolbar table={table} />
+      <DataTableToolbar table={table} toolbarEnd={toolbarEnd} />
       <div className="rounded-t-lg border relative">
         <Table>
           <TableHeader>

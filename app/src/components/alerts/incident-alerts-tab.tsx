@@ -31,10 +31,7 @@ export function IncidentAlertsTab({
   );
 
   return view === "history" ? (
-    <div className="space-y-4">
-      <div className="flex justify-end">{viewSwitch}</div>
-      <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} />
-    </div>
+    <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
   ) : (
     <SreAlertsView alerts={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { Table } from "@tanstack/react-table";
 import { X, Search } from "lucide-react";
 
@@ -12,10 +13,13 @@ import { DataTableProviderFilter } from "./data-table-provider-filter";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
+  /** Extra control at the right end of the toolbar (the Signals/History switch). */
+  toolbarEnd?: ReactNode;
 }
 
 export function DataTableToolbar<TData>({
   table,
+  toolbarEnd,
 }: DataTableToolbarProps<TData>) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -61,7 +65,10 @@ export function DataTableToolbar<TData>({
           />
         )}
       </div>
-      <DataTableViewOptions table={table} />
+      <div className="flex items-center gap-2">
+        <DataTableViewOptions table={table} />
+        {toolbarEnd}
+      </div>
     </div>
   );
 }

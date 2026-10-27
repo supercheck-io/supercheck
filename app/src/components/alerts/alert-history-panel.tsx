@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { BellRing } from "lucide-react";
 import { DataTable } from "@/components/alerts/data-table";
 import { columns } from "@/components/alerts/columns";
@@ -10,9 +11,11 @@ import type { AlertHistory } from "@/components/alerts/schema";
 export function AlertHistoryPanel({
   alertHistory,
   isLoading,
+  toolbarEnd,
 }: {
   alertHistory: AlertHistory[];
   isLoading: boolean;
+  toolbarEnd?: ReactNode;
 }) {
   return (
     <div className="h-full flex-1 flex-col md:flex">
@@ -24,7 +27,7 @@ export function AlertHistoryPanel({
           icon={<BellRing className="h-12 w-12" />}
         />
       ) : (
-        <DataTable columns={columns} data={alertHistory} isLoading={isLoading} />
+        <DataTable columns={columns} data={alertHistory} isLoading={isLoading} toolbarEnd={toolbarEnd} />
       )}
     </div>
   );
