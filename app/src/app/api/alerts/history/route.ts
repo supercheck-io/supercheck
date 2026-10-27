@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
-import { alertHistory, type AlertDeliveryMetadata } from "@/db/schema";
-import { sql } from "drizzle-orm";
+import { alertHistory, jobs, monitors, type AlertDeliveryMetadata } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
@@ -294,6 +294,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The row can open or resolve an incident for its source, so the source must be in the caller's project.
+    const sourceId = body.targetType === "monitor" ? body.monitorId : body.jobId;
+    const otherId = body.targetType === "monitor" ? body.jobId : body.monitorId;
+    if (typeof sourceId !== "string" || otherId) {
+      return NextResponse.json(
+        { error: `${body.targetType}Id is required and must match targetType` },
+        { status: 400 }
+      );
+    }
+    const table = body.targetType === "monitor" ? monitors : jobs;
+    const [source] = await dbInstance
+      .select({ id: table.id })
+      .from(table)
+      .where(and(
+        eq(table.id, sourceId),
+        eq(table.organizationId, projectContext.organizationId),
+        eq(table.projectId, projectContext.project.id),
+      ))
+      .limit(1)
+      .catch(() => []);
+    if (!source) {
+      return NextResponse.json({ error: `${body.targetType} not found` }, { status: 404 });
+    }
+
     // Insert new alert history entry
     const [result] = await dbInstance
       .insert(alertHistory)
@@ -302,8 +326,8 @@ export async function POST(request: NextRequest) {
         message: body.message,
         target: body.target,
         targetType: body.targetType,
-        monitorId: body.monitorId || null,
-        jobId: body.jobId || null,
+        monitorId: body.targetType === "monitor" ? sourceId : null,
+        jobId: body.targetType === "job" ? sourceId : null,
         provider: body.provider,
         status: body.status,
         errorMessage: body.errorMessage || null,
