@@ -1,9 +1,9 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Activity, LogIn, Pencil, Plus, Trash2, User } from "lucide-react";
+import { Activity, LogIn, Pencil, Plus, Trash2 } from "lucide-react";
 import { DateCell } from "@/components/ui/table-cells";
-import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { UserCell } from "@/components/ui/user-cell";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import {
   Tooltip,
@@ -21,6 +21,7 @@ export interface AuditUser {
   id: string | null;
   name: string | null;
   email: string | null;
+  image?: string | null;
 }
 
 export interface AuditLog {
@@ -91,17 +92,13 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       const user = row.original.user as AuditUser;
 
       return (
-        <div className="flex h-8 min-w-[160px] items-center gap-2.5">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted">
-            <User className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <TruncatedTextWithTooltip
-            text={user.email ? `${user.name || "System"} (${user.email})` : user.name || "System"}
-            maxLength={26}
-            maxWidth="220px"
-            className="text-sm font-medium text-foreground"
-          />
-        </div>
+        <UserCell
+          name={user.name}
+          email={user.email}
+          image={user.image}
+          emptyLabel="System"
+          className="h-8 min-w-[160px] max-w-[220px]"
+        />
       );
     },
     filterFn: (row, id, value) => {

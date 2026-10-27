@@ -55,6 +55,7 @@ export type SreIncidentTimelineItem = {
   eventData: Record<string, unknown> | null;
   actorType: string;
   actorName: string | null;
+  actorImage: string | null;
   createdAt: Date;
 };
 
@@ -209,6 +210,7 @@ export async function getSreIncidentTimeline(
         eventData: sreIncidentTimelineEvents.eventData,
         actorType: sreIncidentTimelineEvents.actorType,
         actorName: user.name,
+        actorImage: user.image,
         createdAt: sreIncidentTimelineEvents.createdAt,
       })
       .from(sreIncidentTimelineEvents)

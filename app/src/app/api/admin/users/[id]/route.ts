@@ -17,6 +17,7 @@ import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
+import { pruneAvatars } from '@/lib/user-avatar';
 
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -203,6 +204,9 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       }, tx);
     });
     
+    // After commit: the stored photos belong to an account that no longer exists.
+    await pruneAvatars(userId, null, 0);
+
     return NextResponse.json({
       success: true,
       data: { message: 'User deleted successfully' }

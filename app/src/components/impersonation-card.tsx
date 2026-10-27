@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { UserCell } from '@/components/ui/user-cell';
 import { UserX, User } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -54,7 +55,7 @@ export function ImpersonationCard() {
     return null;
   }
 
-  const tooltipText = `Impersonating: ${impersonatedUser?.name || ''} (${impersonatedUser?.email || ''})`;
+  const tooltipText = `Impersonating ${impersonatedUser?.name || impersonatedUser?.email || 'a user'}`;
 
   // Show compact button when sidebar is collapsed
   if (state === 'collapsed') {
@@ -94,12 +95,12 @@ export function ImpersonationCard() {
             <UserX className="h-4 w-4" /> Stop
           </Button>
         </div>
-        <div className="text-xs font-medium truncate">
-          {impersonatedUser?.name}
-        </div>
-        <div className="text-xs truncate">
-          {impersonatedUser?.email}
-        </div>
+        <UserCell
+          name={impersonatedUser?.name}
+          email={impersonatedUser?.email}
+          className="text-xs font-medium"
+          avatarClassName="h-5 w-5"
+        />
       </CardContent>
     </Card>
   );

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
@@ -117,7 +118,8 @@ export function IncidentTimeline({
                   <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
                   <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
                     <span className="font-medium">{title}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {event.actorName && <UserAvatar name={event.actorName} image={event.actorImage} className="h-4 w-4" />}
                       {event.actorName ?? (event.actorType === "agent" ? "AI" : "System")}
                       {" · "}
                       <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>

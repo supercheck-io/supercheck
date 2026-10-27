@@ -6,7 +6,7 @@ import { db } from "@/utils/db";
 import { user } from "@/db/schema";
 import { checkAdminRateLimit } from "@/lib/session-security";
 import {
-  AVATAR_MAX_BYTES, avatarPath, avatarVersionOf, deleteAvatar, detectAvatarType, newAvatarVersion, putAvatar,
+  AVATAR_MAX_BYTES, avatarPath, avatarVersionOf, deleteAvatar, detectAvatarType, newAvatarVersion, pruneAvatars, putAvatar,
 } from "@/lib/user-avatar";
 
 const err = (error: string, status: number, extra?: HeadersInit) =>
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     return err("Failed to upload image", 500);
   }
   if (previous) await deleteAvatar(s.userId, previous);
+  await pruneAvatars(s.userId, version);
   return NextResponse.json({ image: avatarPath(s.userId, version) });
 }
 
@@ -78,5 +79,6 @@ export async function DELETE() {
     return err("Failed to remove image", 500);
   }
   if (previous) await deleteAvatar(s.userId, previous);
+  await pruneAvatars(s.userId, null);
   return NextResponse.json({ image: null });
 }

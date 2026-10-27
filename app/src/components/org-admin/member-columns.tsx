@@ -50,11 +50,13 @@ import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-to
 import React, { useState } from "react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
+import { UserCell } from "@/components/ui/user-cell";
 
 export interface OrgMember {
   id: string;
   name: string;
   email: string;
+  image?: string | null;
   role:
     | "org_owner"
     | "org_admin"
@@ -419,6 +421,7 @@ const MemberActionsCell = ({
           member={{
             id: member.id,
             name: member.name,
+            image: member.image,
             email: memberData.email,
             role: memberData.role,
             selectedProjects: memberData.selectedProjects,
@@ -634,11 +637,11 @@ export const createMemberColumns = (
               Invited by {(item as PendingInvitation).inviterName}
             </span>
           ) : (
-            <TruncatedTextWithTooltip
-              text={(item as OrgMember).name}
-              maxLength={28}
-              maxWidth="220px"
-              className="font-medium"
+            <UserCell
+              name={(item as OrgMember).name}
+              email={(item as OrgMember).email}
+              image={(item as OrgMember).image}
+              className="max-w-[220px] font-medium"
             />
           )}
         </div>

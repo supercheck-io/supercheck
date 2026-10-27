@@ -24,7 +24,6 @@ import {
   PencilLine,
   Send,
   ShieldCheck,
-  UserRound,
   RefreshCw,
   Copy,
   BarChart3,
@@ -43,8 +42,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { UserAvatar } from "@/components/ui/user-cell";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
+import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
 
@@ -234,6 +235,7 @@ function AssistantMessage() {
 }
 
 function UserMessage() {
+  const user = useSession().data?.user;
   return (
     <MessagePrimitive.Root
       className="group mb-5 flex justify-end gap-3"
@@ -255,9 +257,7 @@ function UserMessage() {
           <BranchPickerPrimitive.Next aria-label="Next response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
         </BranchPickerPrimitive.Root>
       </div>
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
-        <UserRound className="h-4 w-4 text-muted-foreground" />
-      </div>
+      <UserAvatar name={user?.name || user?.email || "You"} image={user?.image} allowExternalImage className="mt-1 h-8 w-8 border shadow-sm" />
     </MessagePrimitive.Root>
   );
 }
