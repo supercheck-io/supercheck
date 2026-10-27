@@ -40,6 +40,10 @@ export const alertConfigSchema = z.object({
   failureThreshold: z.number().int().positive().optional(),
   recoveryThreshold: z.number().int().positive().optional(),
   customMessage: z.string().optional(),
+  // Incidents: open one when this alerts (default on), its severity, and auto-resolve on recovery (default on).
+  incidentEnabled: z.boolean().optional(),
+  incidentSeverity: z.enum(['sev1', 'sev2', 'sev3', 'sev4']).optional(),
+  autoResolveIncident: z.boolean().optional(),
 }).passthrough()
 
 // --- Playwright & k6 ---
