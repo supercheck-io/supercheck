@@ -93,6 +93,13 @@ export const test = crxTest.extend<{
 
             await page.bringToFront();
             await extensionServiceWorker.evaluate(async () => {
+              // the hooks are assigned when the background module finishes loading,
+              // which can be after the worker reports as activated
+              for (let attempt = 0; typeof (globalThis as any)._setUnderTest !== 'function'; attempt++) {
+                if (attempt >= 200)
+                  throw new Error('_setUnderTest was not exposed by the background worker within 10s');
+                await new Promise(resolve => setTimeout(resolve, 50));
+              }
               // ensure we're in test mode
               _setUnderTest();
 
@@ -104,16 +111,16 @@ export const test = crxTest.extend<{
 
             const locator = page.locator('x-pw-glass').first();
             try {
-              await locator.waitFor({ state: 'attached', timeout: 100 });
+              await locator.waitFor({ state: 'attached', timeout: 500 });
             } catch (e) {
-              if (await recorderPage.getByTitle('Record').evaluate(e => e.classList.contains('toggled'))) {
-                await recorderPage.getByTitle('Record').click();
+              if (await recorderPage.getByTitle('Record', { exact: true }).evaluate(e => e.classList.contains('toggled'))) {
+                await recorderPage.getByTitle('Record', { exact: true }).click();
                 await page.reload();
-                await recorderPage.getByTitle('Record').click();
+                await recorderPage.getByTitle('Record', { exact: true }).click();
               } else {
                 await page.reload();
               }
-              await locator.waitFor({ state: 'attached', timeout: 100 });
+              await locator.waitFor({ state: 'attached', timeout: 5000 });
             }
 
             return recorderPage;

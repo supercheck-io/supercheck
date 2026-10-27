@@ -87,7 +87,7 @@ test('should inspect element', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
   await page.goto(`${baseURL}/input/textarea.html`);
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
   await recorderPage.getByTitle('Pick locator').click();
 
   await page.locator('textarea').click();
@@ -105,7 +105,7 @@ test('should record popups', async ({ page, attachRecorder, baseURL, mockPaths, 
   await recordAction(() => page.goto(`${baseURL}/popup/root.html`));
   await recordAction(() => page.locator('button').click());
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const code = `import { test, expect } from '@playwright/test';
 
@@ -172,7 +172,7 @@ test('should record with all supported actions and assertions', async ({ context
   await recordAssertion(page.locator('div'), 'assertVisible');
   await recordAssertion(page.locator('body'), 'assertSnapshot');
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const code = `import { test, expect } from '@playwright/test';
 
@@ -222,7 +222,7 @@ test('should record with custom testid', async ({ page, attachRecorder, recordAc
   await page.waitForTimeout(1000);
   await recordAction(() => page.locator('button').nth(1).click());
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const code = `import { test, expect } from '@playwright/test';
 
@@ -240,7 +240,7 @@ test('should record oopif frames', async ({ page, attachRecorder, recordAction, 
   await recordAction(() => page.goto(server.PREFIX + '/dynamic-oopif.html'));
   await recordAction(() => page.locator('iframe').contentFrame().locator('div:nth-child(21)').click({ position: { x: 0, y: 0 } }));
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const code = `import { test, expect } from '@playwright/test';
 
@@ -323,7 +323,7 @@ for (const [lang, [suggestedFilename, filename]] of Object.entries(langs)) {
     await recordAction(() => page.locator('textarea').click());
     await recordAction(() => page.locator('textarea').fill('test'));
 
-    await recorderPage.getByTitle('Record').click();
+    await recorderPage.getByTitle('Record', { exact: true }).click();
     await recorderPage.getByTitle('Save').click();
 
     const filenameFld = recorderPage.getByRole('dialog').getByPlaceholder('Enter file name');

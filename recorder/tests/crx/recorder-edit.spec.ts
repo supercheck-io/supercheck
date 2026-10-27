@@ -20,7 +20,7 @@ import { editCode, editorLine, getCode, moveCursorToLine } from './utils';
 
 test('should edit @smoke', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -34,7 +34,7 @@ test('test', async ({ page }) => {
 
 test('should show action parsing error', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -49,7 +49,7 @@ test('test', async ({ page }) => {
 
 test('should show assertion parsing error', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -64,7 +64,7 @@ test('test', async ({ page }) => {
 
 test('should show syntax error', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -83,9 +83,11 @@ test('test', async ({ page }) => {
   await expect(recorderPage.locator('.source-line-error-widget')).toHaveText('Unterminated string constant (5:45)');
 });
 
-test('should reflect code changes on other sources', async ({ page, attachRecorder, baseURL }) => {
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should reflect code changes on other sources', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -102,7 +104,7 @@ test('test', async ({ page }) => {
 
 test('should run modified code', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
 
@@ -127,12 +129,14 @@ test('test', async ({ page }) => {
   await expect(page.locator('textarea')).toHaveValue('modified test');
 });
 
-test('should reset code with errors if file changed', async ({ page, recordAction, attachRecorder, baseURL }) => {
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should reset code with errors if file changed', async ({ page, recordAction, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
 
   await recordAction(() => page.goto(`${baseURL}/input/textarea.html`));
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   // introduce an error in the code
   await editCode(recorderPage, `import { test, expect } from '@playwright/test';
@@ -157,9 +161,11 @@ test('test', async ({ page }) => {
   await expect(editorLine(recorderPage, 4)).toHaveText(`  await page.goto('${baseURL}/input/textarea.html');`);
 });
 
-test('should keep playwright test formatting', async ({ page, attachRecorder, baseURL }) => {
+// Skipped at declaration so fixtures never run: Target selector is hidden; only Playwright Test output is supported.
+
+test.skip('should keep playwright test formatting', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const reformattedCode = `import { test, expect } from '@playwright/test';
 
@@ -212,7 +218,7 @@ def test_example(page: Page) -> None:
 
 test('should load script using api', async ({ page, attachRecorder, extensionServiceWorker, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   const code = `import { test, expect } from '@playwright/test';
 
@@ -242,7 +248,7 @@ test('test', async ({ page }) => {
 
 test('should highlight selector at cursor line', async ({ page, attachRecorder, baseURL }) => {
   const recorderPage = await attachRecorder(page);
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   // ensure locator tab is selected
   await recorderPage.getByRole('tab', { name: 'Locator' }).click();

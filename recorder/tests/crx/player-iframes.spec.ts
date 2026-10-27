@@ -26,7 +26,7 @@ test('should resume with iframes', async ({ recorderPage, recordAction, baseURL,
   await recordAction(() => page.locator('iframe').contentFrame().getByRole('button', { name: 'Button1' }).click());
   await recordAction(() => page.locator('iframe').contentFrame().frameLocator('iframe').getByRole('button', { name: 'Button2' }).click());
 
-  await recorderPage.getByTitle('Record').click();
+  await recorderPage.getByTitle('Record', { exact: true }).click();
 
   await page.goto('about:blank');
 
