@@ -10,6 +10,17 @@
 export async function register() {
   // Only run on server-side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Cloud-only error monitoring. The gate does not import the SDK, so disabled
+    // and self-hosted deployments never load @sentry/*.
+    try {
+      const { getSentryDsn } = await import('@/lib/sentry-gate');
+      if (getSentryDsn()) {
+        const { initSentry, flushOnSigterm } = await import('@/lib/sentry');
+        if (initSentry()) flushOnSigterm();
+      }
+    } catch (error) {
+      console.error('[Instrumentation] Sentry init failed:', error);
+    }
     console.log('[Instrumentation] Starting - Loading background services...');
 
     const { initializeMcpOAuthCleanup } = await import('@/lib/mcp/cleanup');
@@ -131,5 +142,19 @@ export async function register() {
     }
 
     console.log('[Instrumentation] ✨ Background services startup complete');
+  }
+}
+
+// Forwards unhandled request errors to Sentry. Checks the gate first so the SDK
+// is never loaded when disabled; the request itself is not attached.
+export async function onRequestError(error: unknown) {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  try {
+    const { getSentryDsn } = await import('@/lib/sentry-gate');
+    if (!getSentryDsn()) return;
+    const { captureRequestError } = await import('@/lib/sentry');
+    captureRequestError(error);
+  } catch {
+    // Error reporting must never throw.
   }
 }

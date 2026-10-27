@@ -15,7 +15,7 @@ export default function PrivacyPage() {
 
             <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 md:py-16">
                 <h1 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">Privacy Policy</h1>
-                <p className="text-fd-muted-foreground mb-8">Last updated: <time dateTime="2026-10-16">October 16, 2026</time></p>
+                <p className="text-fd-muted-foreground mb-8">Last updated: <time dateTime="2026-10-27">October 27, 2026</time></p>
 
                 <div className="leading-7">
                     <section className="mb-10">
@@ -105,6 +105,14 @@ export default function PrivacyPage() {
                             <li><strong>Payment processor:</strong> For subscription billing</li>
                             <li><strong>Notification services:</strong> Email, Slack, Discord, Telegram, Microsoft Teams, and webhooks for alerts you configure</li>
                             <li><strong>Support tools:</strong> Account details and support conversations when support chat is enabled</li>
+                            <li><strong>Error monitoring:</strong> Sentry receives technical error reports from the hosted cloud
+                                service. A report contains the error type, a shortened error message that is
+                                scrubbed to remove secrets, URLs, email addresses, quoted text, and database values,
+                                a stack trace, the service (app or worker), release, and environment, the operating
+                                system and runtime versions, and internal IDs. Hostnames and IP addresses in error
+                                messages may be included. We do not
+                                attach request contents, headers, cookies, form inputs, test scripts, or run logs.
+                                Scrubbing is automated and best effort.</li>
                         </ul>
                         <p className="mb-4">
                             We do not sell your personal information to third parties.
@@ -117,6 +125,7 @@ export default function PrivacyPage() {
                             Self-hosted operators control their deployment and storage. Enabled integrations send
                             selected data to the AI, authentication, notification, or support providers they configure.
                             We do not have access to self-hosted application data unless it is shared with us for support.
+                            Self-hosted deployments send nothing to Sentry.
                         </p>
                     </section>
 

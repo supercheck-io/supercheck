@@ -28,6 +28,7 @@ import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { getDatabasePoolMax } from '../../db/db-pool';
+import { captureJobFailure } from '../../common/sentry-reporter';
 
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
@@ -190,6 +191,7 @@ export class MonitorDynamicWorkerService
         `[${queueName}] monitor job ${job?.id || 'unknown'} failed: ${error.message}`,
         error.stack,
       );
+      captureJobFailure(job, error);
 
       // When the job has exhausted all retries and is part of a distributed
       // execution group, generate an error MonitorResult so the aggregation
