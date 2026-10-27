@@ -81,7 +81,10 @@ export async function pruneAvatars(userId: string, keep: string | null, minAgeMs
     const stale = objects.filter(
       (object) => object.Key && object.Key !== `${prefix}${keep}` && (object.LastModified?.getTime() ?? 0) <= cutoff,
     );
-    await Promise.all(stale.map((object) => s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: object.Key }))));
+    // Sequential: the upload rate limit keeps this list short, and it never floods S3 with parallel requests.
+    for (const object of stale) {
+      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: object.Key }));
+    }
   } catch (error) {
     console.error("[AVATAR] Failed to prune avatar objects:", error);
   }
