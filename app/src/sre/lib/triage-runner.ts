@@ -10,6 +10,7 @@ import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 export type RunSreIncidentTriageInput = {
   organizationId: string;
@@ -172,6 +173,14 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         agentRunId: run.id,
         createdAt: new Date(),
       });
+    });
+
+    void notifyIncidentEvent({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: incident.id,
+      event: "ai_finding",
+      dedupeDiscriminator: run.id,
     });
 
     return {

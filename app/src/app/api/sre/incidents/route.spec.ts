@@ -9,7 +9,7 @@ jest.mock("@/utils/db", () => ({ db: { select: (...args: unknown[]) => mockSelec
 jest.mock("../_auth", () => ({
   requireSreApiPermissions: jest.fn(async () => ({
     success: true,
-    context: { organizationId: "org-1", project: { id: "project-1" } },
+    context: { organizationId: "org-1", userId: "user-1", project: { id: "project-1" } },
   })),
 }));
 
@@ -57,5 +57,14 @@ describe("incident number lookup", () => {
   it("rejects unknown statuses before querying", async () => {
     expect((await GET(new NextRequest("https://example.com/api/sre/incidents?status=invalid"))).status).toBe(400);
     expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("filters by assignee with tenant scope, resolving me and unassigned", async () => {
+    const me = "https://example.com/api/sre/incidents?assignee=me";
+    expect((await GET(new NextRequest(me))).status).toBe(200);
+    expect(new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]).params).toEqual(["org-1", "project-1", "user-1"]);
+    expect((await GET(new NextRequest("https://example.com/api/sre/incidents?assignee=unassigned"))).status).toBe(200);
+    expect(new PgDialect().sqlToQuery(mockWhere.mock.calls[1][0]).sql).toContain("is null");
+    expect((await GET(new NextRequest("https://example.com/api/sre/incidents?assignee=someone"))).status).toBe(400);
   });
 });

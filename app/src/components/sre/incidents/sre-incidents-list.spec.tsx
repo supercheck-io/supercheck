@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentListItem } from "@/actions/sre-incidents";
 
-import { SreIncidentsList } from "./sre-incidents-list";
+import { SreIncidentsList, formatAge, matchesQuickFilter } from "./sre-incidents-list";
 
 // Radix/cmdk use browser layout APIs that jsdom does not provide.
 beforeAll(() => {
@@ -58,6 +58,10 @@ function incidentFixture(
         ? `018f0000-0000-7000-8001-${String(index).padStart(12, "0")}`
         : null,
     primaryServiceName: index % 2 === 0 ? "checkout-api" : null,
+    assigneeUserId: null,
+    assigneeName: null,
+    assigneeImage: null,
+    acknowledgedAt: null,
     alertCount: index,
     evidenceCount: index + 1,
     investigationCount: index % 2 === 0 ? 1 : 0,
@@ -94,7 +98,7 @@ describe("SreIncidentsList", () => {
 
   it("shows the incident number in its own column and no per-row evidence summary", () => {
     render(<SreIncidentsList incidents={[incidentFixture(7)]} loadError={null} />);
-    expect(screen.getByRole("columnheader", { name: /Incident ID/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^#$/ })).toBeInTheDocument();
     const row = screen.getByRole("row", { name: /Checkout incident 7/ });
     const cells = within(row).getAllByRole("cell");
     expect(cells[0]).toHaveTextContent(/^#7$/);
@@ -102,7 +106,7 @@ describe("SreIncidentsList", () => {
     expect(within(row).queryByText(/evidence item/)).not.toBeInTheDocument();
   });
 
-  it("sorts by incident number from the Incident ID header", () => {
+  it("sorts by incident number from the # header", () => {
     render(
       <SreIncidentsList
         incidents={[incidentFixture(2), incidentFixture(3), incidentFixture(1)]}
@@ -111,7 +115,7 @@ describe("SreIncidentsList", () => {
     );
     const firstNumber = () =>
       within(screen.getAllByRole("row")[1]).getAllByRole("cell")[0].textContent;
-    const header = screen.getByRole("button", { name: /Incident ID/ });
+    const header = screen.getByRole("button", { name: /^#$/ });
     fireEvent.click(header);
     expect(firstNumber()).toBe("#3");
     fireEvent.click(header);
@@ -153,57 +157,77 @@ describe("SreIncidentsList", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("replaces the active shortcut when a specific status is selected", () => {
+  it("defaults to Active and switches between quick filters", () => {
     render(
       <SreIncidentsList
-        incidents={[incidentFixture(1), incidentFixture(2)]}
-        loadError={null}
-      />,
-    );
-    const actions = within(screen.getByTestId("incident-toolbar"));
-    fireEvent.click(actions.getByRole("button", { name: /Status/ }));
-    fireEvent.click(screen.getByRole("option", { name: "investigating" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
-    expect(screen.getByText("Checkout incident 2")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
-  });
-
-  it("clears the active shortcut by toggling it and can restore it from a specific status", () => {
-    render(
-      <SreIncidentsList
+        currentUserId="me"
         incidents={[
-          incidentFixture(1),
-          incidentFixture(2),
-          incidentFixture(3, { status: "resolved" }),
+          incidentFixture(1, { assigneeUserId: "me", assigneeName: "Ada Lovelace" }),
+          incidentFixture(2, { assigneeUserId: "other", assigneeName: "Grace Hopper" }),
+          incidentFixture(3),
+          incidentFixture(4, { status: "resolved", assigneeUserId: "me", assigneeName: "Ada Lovelace" }),
         ]}
         loadError={null}
       />,
     );
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
-    fireEvent.click(
-      within(screen.getByTestId("incident-toolbar")).getByRole(
-        "button",
-        { name: /Status/ },
-      ),
-    );
-    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
+    const group = screen.getByRole("group", { name: "Quick filters" });
+    expect(within(group).getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Clear filters" }),
-    ).not.toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("button", { name: "Assigned to me" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("button", { name: "Unassigned" }));
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("button", { name: "All" }));
+    expect(screen.getByText("Total 4 incidents")).toBeInTheDocument();
+  });
+
+  it("lets the Status facet reach resolved incidents without switching quick filters", () => {
+    render(
+      <SreIncidentsList
+        incidents={[incidentFixture(1), incidentFixture(3, { status: "resolved" })]}
+        loadError={null}
+      />,
+    );
+    fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
     fireEvent.click(screen.getByRole("option", { name: "resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Checkout incident 3"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
-    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: "Active incidents" }));
-    fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
-    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
+  });
+
+  it("shows assignee and AI state columns", () => {
+    render(
+      <SreIncidentsList
+        incidents={[incidentFixture(2, { assigneeUserId: "u1", assigneeName: "Ada Lovelace" }), incidentFixture(3)]}
+        loadError={null}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /Assignee/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Age/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /AI/ })).toBeInTheDocument();
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Unassigned", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("matches quick filters by assignee and ignores resolved incidents outside All", () => {
+    expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "unassigned", "me")).toBe(false);
+    expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "all", "me")).toBe(true);
+    expect(matchesQuickFilter({ status: "triggered", assigneeUserId: "me" }, "mine", null)).toBe(false);
+  });
+
+  it("formats compact ages", () => {
+    const from = new Date("2026-07-01T00:00:00Z");
+    expect(formatAge(from, new Date("2026-07-01T00:05:00Z"))).toBe("5m");
+    expect(formatAge(from, new Date("2026-07-01T03:00:00Z"))).toBe("3h");
+    expect(formatAge(from, new Date("2026-07-04T00:00:00Z"))).toBe("3d");
+  });
+
+  it("shows the empty state with setup links when there are no incidents", () => {
+    render(<SreIncidentsList incidents={[]} loadError={null} />);
+    expect(screen.getByTestId("incidents-first-run")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/alerts");
+    expect(screen.getByRole("heading", { name: "No incidents" })).toBeInTheDocument();
   });
 
   it("combines faceted selections, retains active-by-default, and clears filters", () => {
@@ -248,9 +272,6 @@ describe("SreIncidentsList", () => {
         { name: /Status/ },
       ),
     );
-    fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
-    expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
@@ -322,18 +343,18 @@ describe("SreIncidentsList", () => {
 
     const table = screen.getByRole("table");
     expect(
-      within(table).getByRole("columnheader", { name: /^Incident ID$/ }),
+      within(table).getByRole("columnheader", { name: /^#$/ }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("columnheader", { name: /^Title$/ }),
     ).toBeInTheDocument();
     expect(
-      within(table).getByRole("columnheader", { name: /Investigation/ }),
+      within(table).getByRole("columnheader", { name: /^AI$/ }),
     ).toBeInTheDocument();
     expect(
       within(table).queryByRole("columnheader", { name: /Evidence/ }),
     ).not.toBeInTheDocument();
-    expect(within(table).getAllByRole("row")).toHaveLength(13);
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
     expect(within(table).getAllByRole("row")[1]).not.toHaveClass("h-[72px]");
 
     fireEvent.change(screen.getByPlaceholderText("Search incidents..."), {

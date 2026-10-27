@@ -19,18 +19,31 @@ Both paths open the incident workspace.
 
 ## Incident Queue
 
-Active incidents appear first, ordered by recency. Filter by severity (`SEV1` through `SEV4`), resolution status, or title. Quick actions open **Review alerts** and **Trends**.
+The queue opens on **Active** incidents. Use the quick filters **Active**, **Assigned to me**, **Unassigned**, and **All**, or narrow by severity (`SEV1` through `SEV4`), status, service, or title.
+
+| Column | Shows |
+|---|---|
+| **#** | Incident number |
+| **Title**, **Severity**, **Status** | What happened and how urgent it is |
+| **Service** | The linked catalog service |
+| **Assignee** | The person responsible, or *Unassigned* |
+| **Age** | Time since detection (detection to resolution once resolved) |
+| **AI** | State of the latest AI investigation |
+
+Quick actions open **Review alerts** and **Trends**. A project with no incidents yet explains how incidents open and links to alert setup.
 
 ![Incident Queue](/screenshots/sre-incidents-queue.png)
 
 ## Incident Workspace
 
-The workspace has two tabs.
+The header shows the title, severity, status, and **assignee**, with the primary actions **Acknowledge**, **Assign**, **Investigate**, and **Resolve incident**. The main column leads with the **AI summary** (conclusion and confidence, or *Inconclusive* when the evidence does not support a cause), followed by the **timeline** with a box to post updates. The right sidebar shows the optional **commander**, service, linked alerts, the status-page link with **Publish update**, and timestamps with MTTA and MTTR.
 
-<Tabs items={['Overview', 'Evidence & brief']}>
-<Tab value="Overview">
+Below the timeline are two tabs, **Investigation** and **Evidence & brief**.
 
-The **Overview** tab holds the header, metadata, investigation controls, and findings.
+<Tabs items={['Investigation', 'Evidence & brief']}>
+<Tab value="Investigation">
+
+The **Investigation** tab holds the investigation controls and findings.
 
 | Control | What it does |
 |---|---|
@@ -87,6 +100,27 @@ If the evidence cannot determine a root cause, the report states the gap instead
 
 Use **Save report** to keep the findings of a completed investigation. Generate an **Evidence brief** separately for a shorter summary. Download either to share with your team. Review evidence gaps and incomplete results first. Credentials and raw connector responses are excluded.
 
+## Ownership and Acknowledgement
+
+| Action | Behavior |
+|---|---|
+| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
+| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
+| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
+| **Commander** | Optional single incident commander, set from the sidebar |
+
+Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
+
+## Notifications
+
+Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, and when it is **resolved**.
+
+- The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
+- Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
+- Email, Slack, Teams, Discord, Telegram and webhook channels are supported. A webhook that uses a preset or a custom body template is skipped for incident messages, because they use a fixed JSON body; attach a plain webhook channel to receive them.
+- Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-generated text; open the incident to read the AI finding.
+- The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
+
 ## Incident Lifecycle
 
 | Stage | Who | Action |
@@ -95,9 +129,14 @@ Use **Save report** to keep the findings of a completed investigation. Generate 
 | **Investigate** | AI SRE agent | Reads native evidence and authorized connectors, then generates cited hypotheses |
 | **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
 | **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |
-| **Resolve** | Responder | Select **Resolve incident** and record fix details and passing checks in the timeline |
+| **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
+| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the AI root cause when one exists. Edit it to state the fix and the checks that confirmed recovery |
 
-Resolving records your decision and the recovery checks you list. It does not run checks or apply remediation.
+Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
+
+<Callout type="info">
+A post-mortem draft generated from the timeline is planned. Today the resolution summary and timeline are the written record.
+</Callout>
 
 ## Incident Trends
 
@@ -125,10 +164,12 @@ Open **Investigate → Copilot**, or select **Open Copilot** on an incident. See
 
 ## Permissions
 
-| Role | View | Investigate stored evidence | Live sources | Resolve |
+| Role | View | Investigate stored evidence | Live sources | Assign, acknowledge, resolve, post updates |
 |---|:---:|:---:|:---:|:---:|
 | Org Owner, Org Admin, Project Admin | ✓ | ✓ | ✓ | ✓ |
 | Project Editor | ✓ | ✓ | — | ✓ |
 | Project Viewer | ✓ | — | — | — |
+
+The same `sre_incident:update` permission covers assign, acknowledge, resolve, and updates over the API (`POST /api/sre/incidents/{id}/assign`, `/acknowledge`, `/resolve`).
 
 If investigations are disabled, existing evidence and results stay readable, but run and live-source controls are unavailable.

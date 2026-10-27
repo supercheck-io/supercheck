@@ -13,6 +13,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import {
@@ -33,6 +34,7 @@ import {
   sreServiceDependencies,
   sreServiceResources,
   sreServices,
+  user,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -56,6 +58,10 @@ import {
   isSreAlertCorrelationEnabled,
   isSreInvestigationAgentEnabled,
 } from "@/sre/lib/feature-gates";
+import {
+  getDefaultAssigneeId,
+} from "@/lib/sre/incident-lifecycle";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 
@@ -171,6 +177,10 @@ export type SreIncidentListItem = {
     | "resolved";
   primaryServiceId: string | null;
   primaryServiceName: string | null;
+  assigneeUserId: string | null;
+  assigneeName: string | null;
+  assigneeImage: string | null;
+  acknowledgedAt: Date | null;
   alertCount: number;
   evidenceCount: number;
   investigationCount: number;
@@ -199,7 +209,21 @@ export type SreIncidentDetail = {
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
     confidenceScore: string | null;
+    resolutionSummary: string | null;
+    mitigatedAt: Date | null;
+    acknowledgedByName: string | null;
+    commanderUserId: string | null;
+    commanderName: string | null;
   };
+  linkedAlerts: Array<{
+    id: string;
+    title: string;
+    severity: SreSeverity;
+    status: string;
+    role: string;
+    firedAt: Date;
+  }>;
+  currentUserId: string;
   latestBrief: {
     id: string;
     modelId: string;
@@ -538,7 +562,7 @@ async function getConversationHistory(input: {
 }
 
 export async function getSreIncidents(): Promise<
-  | { success: true; incidents: SreIncidentListItem[] }
+  | { success: true; incidents: SreIncidentListItem[]; currentUserId: string }
   | { success: false; error: string; incidents: [] }
 > {
   try {
@@ -557,6 +581,7 @@ export async function getSreIncidents(): Promise<
       };
     }
 
+    const assignee = alias(user, "assignee");
     const rows = await db
       .select({
         id: sreIncidents.id,
@@ -566,6 +591,10 @@ export async function getSreIncidents(): Promise<
         status: sreIncidents.status,
         primaryServiceId: sreIncidents.primaryServiceId,
         primaryServiceName: sreServices.name,
+        assigneeUserId: sreIncidents.assigneeUserId,
+        assigneeName: assignee.name,
+        assigneeImage: assignee.image,
+        acknowledgedAt: sreIncidents.acknowledgedAt,
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
         resolvedAt: sreIncidents.resolvedAt,
@@ -573,6 +602,7 @@ export async function getSreIncidents(): Promise<
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
+      .leftJoin(assignee, eq(assignee.id, sreIncidents.assigneeUserId))
       .leftJoin(
         sreIncidentAlerts,
         eq(sreIncidentAlerts.incidentId, sreIncidents.id),
@@ -591,6 +621,10 @@ export async function getSreIncidents(): Promise<
         sreIncidents.status,
         sreIncidents.primaryServiceId,
         sreServices.name,
+        sreIncidents.assigneeUserId,
+        assignee.name,
+        assignee.image,
+        sreIncidents.acknowledgedAt,
         sreIncidents.createdAt,
         sreIncidents.updatedAt,
         sreIncidents.resolvedAt,
@@ -600,7 +634,7 @@ export async function getSreIncidents(): Promise<
     const incidentIds = rows.map((row) => row.id);
 
     if (incidentIds.length === 0) {
-      return { success: true, incidents: [] };
+      return { success: true, incidents: [], currentUserId: userId };
     }
 
     const [evidenceCounts, investigationCounts, investigationRows] =
@@ -685,6 +719,7 @@ export async function getSreIncidents(): Promise<
 
     return {
       success: true,
+      currentUserId: userId,
       incidents: rows.map((row) => {
         const latestInvestigation = latestInvestigationByIncidentId.get(row.id);
 
@@ -754,6 +789,9 @@ export async function getSreIncidentDetails(
       };
     }
 
+    const assignee = alias(user, "assignee");
+    const acker = alias(user, "acker");
+    const commander = alias(user, "commander");
     const [incident] = await db
       .select({
         id: sreIncidents.id,
@@ -762,8 +800,17 @@ export async function getSreIncidentDetails(
         severity: sreIncidents.severity,
         status: sreIncidents.status,
         statusPageIncidentId: sreIncidents.statusPageIncidentId,
-      primaryServiceId: sreIncidents.primaryServiceId,
+        primaryServiceId: sreIncidents.primaryServiceId,
         primaryServiceName: sreServices.name,
+        assigneeUserId: sreIncidents.assigneeUserId,
+        assigneeName: assignee.name,
+        assigneeImage: assignee.image,
+        acknowledgedAt: sreIncidents.acknowledgedAt,
+        acknowledgedByName: acker.name,
+        commanderUserId: sreIncidents.commanderUserId,
+        commanderName: commander.name,
+        mitigatedAt: sreIncidents.mitigatedAt,
+        resolutionSummary: sreIncidents.resolutionSummary,
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
         resolvedAt: sreIncidents.resolvedAt,
@@ -773,6 +820,9 @@ export async function getSreIncidentDetails(
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
+      .leftJoin(assignee, eq(assignee.id, sreIncidents.assigneeUserId))
+      .leftJoin(acker, eq(acker.id, sreIncidents.acknowledgedByUserId))
+      .leftJoin(commander, eq(commander.id, sreIncidents.commanderUserId))
       .leftJoin(
         sreIncidentAlerts,
         eq(sreIncidentAlerts.incidentId, sreIncidents.id),
@@ -797,6 +847,15 @@ export async function getSreIncidentDetails(
         sreIncidents.resolvedAt,
         sreIncidents.rootCauseSummary,
         sreIncidents.confidenceScore,
+        sreIncidents.assigneeUserId,
+        assignee.name,
+        assignee.image,
+        sreIncidents.acknowledgedAt,
+        acker.name,
+        sreIncidents.commanderUserId,
+        commander.name,
+        sreIncidents.mitigatedAt,
+        sreIncidents.resolutionSummary,
       )
       .limit(1);
 
@@ -984,6 +1043,26 @@ export async function getSreIncidentDetails(
       ),
     );
     const chatHistory = chatHistories[0] ?? null;
+    const linkedAlerts = await db
+      .select({
+        id: sreAlertEvents.id,
+        title: sreAlertEvents.title,
+        severity: sreAlertEvents.severity,
+        status: sreAlertEvents.status,
+        role: sreIncidentAlerts.role,
+        firedAt: sreAlertEvents.firedAt,
+      })
+      .from(sreIncidentAlerts)
+      .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
+      .where(
+        and(
+          eq(sreIncidentAlerts.incidentId, incidentId),
+          eq(sreAlertEvents.organizationId, organizationId),
+          eq(sreAlertEvents.projectId, project.id),
+        ),
+      )
+      .orderBy(desc(sreAlertEvents.firedAt))
+      .limit(20);
     const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
 
@@ -991,6 +1070,8 @@ export async function getSreIncidentDetails(
       success: true,
       detail: {
         publicIncident: publicIncident ?? null,
+        linkedAlerts,
+        currentUserId: userId,
         incident: {
           ...incident,
           evidenceCount: evidence.length,
@@ -1261,6 +1342,14 @@ export async function updateSreIncident(
       return { success: false, error: "Incident not found or access denied" };
     }
 
+    if (parsed.data.status === "resolved" && current.status !== "resolved") {
+      return {
+        success: false,
+        error: "Use Resolve to close an incident with a resolution summary",
+        fieldErrors: { status: ["Use Resolve to close an incident"] },
+      };
+    }
+
     if (parsed.data.primaryServiceId) {
       const service = await db.query.sreServices.findFirst({
         where: and(
@@ -1292,9 +1381,12 @@ export async function updateSreIncident(
             parsed.data.status === "resolved"
               ? (current.resolvedAt ?? now)
               : null,
+          ...(parsed.data.status === "verifying" && !current.mitigatedAt
+            ? { mitigatedAt: now }
+            : {}),
           // A reopened incident is no longer verified.
           ...(parsed.data.status !== "resolved" && current.status === "resolved"
-            ? { verifiedAt: null }
+            ? { verifiedAt: null, resolutionSummary: null }
             : {}),
           updatedAt: now,
         })
@@ -1719,6 +1811,11 @@ export async function createSreIncidentFromAlert(
           severity,
           status: alertStatus === "resolved" ? "resolved" : "triggered",
           primaryServiceId: mappedService?.id ?? null,
+          assigneeUserId: await getDefaultAssigneeId(tx, {
+            organizationId,
+            projectId: project.id,
+            serviceId: mappedService?.id ?? null,
+          }),
           resolvedAt: alertStatus === "resolved" ? firedAt : null,
           createdByUserId: userId,
           createdAt: new Date(),
@@ -1728,6 +1825,7 @@ export async function createSreIncidentFromAlert(
           id: sreIncidents.id,
           incidentNumber: sreIncidents.incidentNumber,
           title: sreIncidents.title,
+          assigneeUserId: sreIncidents.assigneeUserId,
         });
 
       await tx.insert(sreIncidentAlerts).values({
@@ -1786,6 +1884,17 @@ export async function createSreIncidentFromAlert(
       },
       success: true,
     });
+
+    if (!result.existing && !correlation && alertStatus !== "resolved") {
+      void notifyIncidentEvent({
+        organizationId,
+        projectId: project.id,
+        incidentId: result.incident.id,
+        event: "created",
+        actorUserId: userId,
+        assigneeUserId: (result.incident as { assigneeUserId?: string | null }).assigneeUserId ?? null,
+      });
+    }
 
     const triage = await maybeRunAutomaticSreTriage({
       userId,

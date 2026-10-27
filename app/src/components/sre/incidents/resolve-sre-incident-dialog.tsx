@@ -21,19 +21,23 @@ import {
   getSreEvidenceGraphQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentDetailQueryKey,
+  getSreIncidentTimelineQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
 
 export function ResolveSreIncidentDialog({
   incidentId,
+  defaultSummary = "",
 }: {
   incidentId: string;
+  /** Pre-fills the summary, for example from the AI root cause. The user still confirms it. */
+  defaultSummary?: string;
 }) {
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
   const commentId = useId();
   const [open, setOpen] = useState(false);
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(defaultSummary.slice(0, 2000));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -65,11 +69,12 @@ export function ResolveSreIncidentDialog({
           return;
         }
         setOpen(false);
-        setComment("");
+        setComment(defaultSummary.slice(0, 2000));
         toast.success(body.message ?? "Incident resolved");
         await Promise.allSettled(
           [
             getSreIncidentDetailQueryKey(projectId, incidentId),
+            getSreIncidentTimelineQueryKey(projectId, incidentId),
             getSreIncidentsQueryKey(projectId),
             getSreIncidentAnalyticsQueryKey(projectId),
             getSreEvidenceGraphQueryKey(projectId),
@@ -103,8 +108,9 @@ export function ResolveSreIncidentDialog({
         <DialogHeader>
           <DialogTitle>Resolve incident</DialogTitle>
           <DialogDescription>
-            Confirm recovery with your tests or monitors first. Resolving
-            records your decision; it does not apply a fix or run a check.
+            A resolution summary is required. It is saved on the incident and
+            shared with the team. Resolving records your decision; it does not
+            apply a fix or run a check.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

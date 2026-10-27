@@ -18,6 +18,20 @@ jest.mock("@/components/sre/incidents/resolve-sre-incident-dialog", () => ({
   ResolveSreIncidentDialog: () => <button>Resolve incident</button>,
 }));
 
+jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
+  IncidentAssigneePicker: ({ label = "Assignee", assigneeName }: { label?: string; assigneeName: string | null }) => (
+    <div>{label}: {assigneeName ?? "Unassigned"}</div>
+  ),
+}));
+
+jest.mock("@/components/sre/incidents/acknowledge-sre-incident-button", () => ({
+  AcknowledgeSreIncidentButton: () => <button type="button">Acknowledge</button>,
+}));
+
+jest.mock("@/components/sre/incidents/incident-timeline", () => ({
+  IncidentTimeline: () => <div>Mock timeline</div>,
+}));
+
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
   SreInvestigationPanel: ({ hasPrimaryService }: { hasPrimaryService: boolean }) => <div data-has-service={hasPrimaryService}>Mock AI investigation panel</div>,
 }));
@@ -34,6 +48,15 @@ function detailFixture(): SreIncidentDetail {
       status: "investigating",
       primaryServiceId: "018f0000-0000-7000-8000-000000000010",
       primaryServiceName: "checkout-api",
+      assigneeUserId: "018f0000-0000-7000-8000-0000000000a1",
+      assigneeName: "Ada Lovelace",
+      assigneeImage: null,
+      acknowledgedAt: null,
+      acknowledgedByName: null,
+      commanderUserId: null,
+      commanderName: null,
+      mitigatedAt: null,
+      resolutionSummary: null,
       alertCount: 2,
       evidenceCount: 1,
       investigationCount: 1,
@@ -46,6 +69,10 @@ function detailFixture(): SreIncidentDetail {
       rootCauseSummary: "Latency correlates with monitor failures.",
       confidenceScore: "0.7000",
     },
+    linkedAlerts: [
+      { id: "alert-1", title: "Checkout monitor down", severity: "sev2", status: "firing", role: "trigger", firedAt: now },
+    ],
+    currentUserId: "018f0000-0000-7000-8000-0000000000a1",
     latestBrief: {
       id: "018f0000-0000-7000-8000-000000000002",
       modelId: "test-model",
@@ -192,20 +219,54 @@ describe("SreIncidentDetailView", () => {
   it("renders simplified incident tabs and default investigation panel", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
 
-    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Investigation" })).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Evidence & brief" }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(screen.getByRole("link", { name: "View map" })).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: "View map" })[0]).toHaveAttribute(
       "href",
       `/copilot/evidence-graph?incident=${detailFixture().incident.id}`,
     );
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
-    expect(screen.getByText("2 alerts")).toBeInTheDocument();
+    expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
     expect(
       screen.queryByText("Investigation workspace"),
     ).not.toBeInTheDocument();
+  });
+
+  it("leads with the AI summary, then the timeline, with ownership actions in the header", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    const summary = screen.getByTestId("incident-ai-summary");
+    expect(summary).toHaveTextContent("Latency correlates with monitor failures.");
+    expect(summary).toHaveTextContent("Medium confidence");
+    expect(
+      summary.compareDocumentPosition(screen.getByText("Mock timeline")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText("Assignee: Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Publish update" })).toBeInTheDocument();
+  });
+
+  it("hides acknowledge once acknowledged and shows MTTA in the sidebar", () => {
+    const detail = detailFixture();
+    detail.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
+    detail.incident.acknowledgedByName = "Ada Lovelace";
+    detail.incident.createdAt = new Date("2026-06-24T12:00:00Z");
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
+    expect(screen.getByText("10 min")).toBeInTheDocument();
+  });
+
+  it("hides ownership actions for read-only users and shows the resolution summary when resolved", () => {
+    const detail = detailFixture();
+    detail.permissions.canUpdate = false;
+    detail.incident.status = "resolved";
+    detail.incident.resolutionSummary = "Rolled back the deploy.";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Publish update" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Rolled back the deploy.");
   });
 });

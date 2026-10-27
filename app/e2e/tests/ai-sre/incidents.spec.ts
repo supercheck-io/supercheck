@@ -207,13 +207,14 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
-        "Incident ID",
+        "#",
         "Title",
         "Severity",
         "Status",
         "Service",
-        "Investigation",
-        "Updated",
+        "Assignee",
+        "Age",
+        "AI",
       ]);
       await page
         .getByRole("button", { name: "New incident", exact: true })
@@ -234,7 +235,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       const tabs = page.getByRole("tab");
       await expect(tabs).toHaveCount(2);
       await expect(
-        page.getByRole("tab", { name: "Overview", exact: true }),
+        page.getByRole("tab", { name: "Investigation", exact: true }),
       ).toBeVisible();
       await expect(
         page.getByRole("tab", { name: "Evidence & brief", exact: true }),
@@ -276,7 +277,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
 
-      await page.getByRole("tab", { name: "Overview", exact: true }).click();
+      await page.getByRole("tab", { name: "Investigation", exact: true }).click();
       const investigationResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&

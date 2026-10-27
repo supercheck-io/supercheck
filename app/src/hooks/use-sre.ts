@@ -9,13 +9,19 @@ import {
   getSreIncidentDetails,
   getSreIncidents,
 } from "@/actions/sre-incidents";
+import {
+  getSreIncidentAssignees,
+  getSreIncidentTimeline,
+} from "@/actions/sre-incident-lifecycle";
 import { getSreServiceDetail, getSreServices } from "@/actions/sre-services";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreEvidenceGraphQueryKey,
   getSreCopilotHistoriesQueryKey,
   getSreIncidentAnalyticsQueryKey,
+  getSreIncidentAssigneesQueryKey,
   getSreIncidentDetailQueryKey,
+  getSreIncidentTimelineQueryKey,
   getSreIncidentsQueryKey,
   getSreServiceDetailQueryKey,
 } from "@/lib/sre/query-keys";
@@ -62,6 +68,28 @@ export function useSreIncidentPageData(incidentId: string) {
       "running"
         ? 5_000
         : false,
+    meta: MEMORY_ONLY_QUERY,
+  });
+}
+
+export function useSreIncidentTimeline(incidentId: string) {
+  const { projectId } = useProjectContext();
+  return useQuery({
+    queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId),
+    queryFn: () => getSreIncidentTimeline(incidentId),
+    enabled: Boolean(projectId && incidentId),
+    staleTime: 15_000,
+    meta: MEMORY_ONLY_QUERY,
+  });
+}
+
+export function useSreIncidentAssignees(enabled = true) {
+  const { projectId } = useProjectContext();
+  return useQuery({
+    queryKey: getSreIncidentAssigneesQueryKey(projectId),
+    queryFn: getSreIncidentAssignees,
+    enabled: Boolean(projectId) && enabled,
+    staleTime: 60_000,
     meta: MEMORY_ONLY_QUERY,
   });
 }

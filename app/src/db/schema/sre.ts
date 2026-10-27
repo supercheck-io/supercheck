@@ -59,6 +59,13 @@ type SreTimelineEventType =
   | "recommendation_added"
   | "verification_result"
   | "user_action";
+export type SrePostmortemSection = "summary" | "impact" | "timeline" | "root_cause" | "contributing_factors" | "follow_ups";
+export type SrePostmortem = {
+  sections: Partial<Record<SrePostmortemSection, string>>;
+  generatedAt?: string;
+  updatedAt?: string;
+};
+type SreInvestigationFeedbackVerdict = "right" | "wrong";
 type SreActorType = "user" | "agent" | "system";
 type SreVerificationResourceType = "monitor" | "test" | "k6";
 type SreVerificationStatus = "pending" | "running" | "passed" | "failed";
@@ -400,6 +407,14 @@ export const sreIncidents = pgTable(
     resolvedAt: timestamp("resolved_at"),
     verifiedAt: timestamp("verified_at"),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    assigneeUserId: uuid("assignee_user_id").references(() => user.id, { onDelete: "set null" }),
+    acknowledgedAt: timestamp("acknowledged_at"),
+    acknowledgedByUserId: uuid("acknowledged_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    commanderUserId: uuid("commander_user_id").references(() => user.id, { onDelete: "set null" }),
+    /** First move into verifying, or resolve time when the incident was never verified. */
+    mitigatedAt: timestamp("mitigated_at"),
+    resolutionSummary: text("resolution_summary"),
+    postmortem: jsonb("postmortem").$type<SrePostmortem>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -409,6 +424,10 @@ export const sreIncidents = pgTable(
     projectSeverityIdx: index("sre_incidents_project_severity_idx").on(table.projectId, table.severity),
     primaryServiceStatusIdx: index("sre_incidents_primary_service_status_idx").on(table.primaryServiceId, table.status),
     activeStatusIdx: index("sre_incidents_active_status_idx").on(table.status).where(sql`status != 'resolved'`),
+    projectAssigneeActiveIdx: index("sre_incidents_project_assignee_active_idx")
+      .on(table.projectId, table.assigneeUserId)
+      .where(sql`status <> 'resolved'`),
+    resolutionSummaryLengthCheck: check("sre_incidents_resolution_summary_length_check", sql`${table.resolutionSummary} IS NULL OR char_length(${table.resolutionSummary}) <= 4000`),
   })
 );
 
@@ -789,6 +808,10 @@ export const sreInvestigationRuns = pgTable(
     confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
     rootCauseHypothesis: text("root_cause_hypothesis"),
     agentStateSnapshot: jsonb("agent_state_snapshot").$type<Record<string, unknown>>(),
+    /** Bounded step/tool trace of the run; populated by the investigation runner. */
+    steps: jsonb("steps").$type<Array<Record<string, unknown>>>(),
+    /** Hypotheses with states (validated, ruled_out, inconclusive); populated by the investigation runner. */
+    hypotheses: jsonb("hypotheses").$type<Array<Record<string, unknown>>>(),
     promptInput: jsonb("prompt_input").$type<Record<string, unknown>>(),
     startedAt: timestamp("started_at").defaultNow().notNull(),
     completedAt: timestamp("completed_at"),
@@ -809,6 +832,29 @@ export const sreInvestigationRuns = pgTable(
     lowConfidenceIdx: index("sre_investigation_runs_low_confidence_idx").on(table.confidenceScore).where(sql`confidence_score < 0.5`),
     createdAtIdx: index("sre_investigation_runs_created_at_idx").on(table.createdAt),
     billingTierCheck: check("sre_investigation_runs_billing_tier_check", sql`${table.billingTier} IN ('paid', 'trial')`),
+  })
+);
+
+export const sreInvestigationFeedback = pgTable(
+  "sre_investigation_feedback",
+  {
+    id: uuidPk(),
+    organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    incidentId: uuid("incident_id").notNull().references(() => sreIncidents.id, { onDelete: "cascade" }),
+    investigationRunId: uuid("investigation_run_id").notNull().references(() => sreInvestigationRuns.id, { onDelete: "cascade" }),
+    hypothesisKey: varchar("hypothesis_key", { length: 100 }),
+    userId: uuid("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    verdict: varchar("verdict", { length: 10 }).$type<SreInvestigationFeedbackVerdict>().notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    incidentCreatedIdx: index("sre_investigation_feedback_incident_created_idx").on(table.incidentId, table.createdAt),
+    runIdx: index("sre_investigation_feedback_run_idx").on(table.investigationRunId),
+    projectCreatedIdx: index("sre_investigation_feedback_project_created_idx").on(table.projectId, table.createdAt),
+    verdictCheck: check("sre_investigation_feedback_verdict_check", sql`${table.verdict} IN ('right', 'wrong')`),
+    noteLengthCheck: check("sre_investigation_feedback_note_length_check", sql`${table.note} IS NULL OR char_length(${table.note}) <= 500`),
   })
 );
 
@@ -1214,6 +1260,7 @@ const sreTables = {
   sreChatMessages,
   sreInvestigationReports,
   sreInvestigationReportFeedback,
+  sreInvestigationFeedback,
   sreEvidenceGraphFocusedViews,
 };
 
@@ -1249,5 +1296,7 @@ export type SreInvestigationReport = typeof sreInvestigationReports.$inferSelect
 export type SreInvestigationReportInsert = typeof sreInvestigationReports.$inferInsert;
 export type SreInvestigationReportFeedback = typeof sreInvestigationReportFeedback.$inferSelect;
 export type SreInvestigationReportFeedbackInsert = typeof sreInvestigationReportFeedback.$inferInsert;
+export type SreInvestigationFeedback = typeof sreInvestigationFeedback.$inferSelect;
+export type SreInvestigationFeedbackInsert = typeof sreInvestigationFeedback.$inferInsert;
 export type SreEvidenceGraphFocusedView = typeof sreEvidenceGraphFocusedViews.$inferSelect;
 export type SreEvidenceGraphFocusedViewInsert = typeof sreEvidenceGraphFocusedViews.$inferInsert;
