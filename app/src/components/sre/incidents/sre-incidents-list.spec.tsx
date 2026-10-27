@@ -223,12 +223,11 @@ describe("SreIncidentsList", () => {
     expect(formatAge(from, new Date("2026-07-04T00:00:00Z"))).toBe("3d");
   });
 
-  it("shows the first-run checklist when there are no incidents", () => {
+  it("shows the empty state with setup links when there are no incidents", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} />);
     expect(screen.getByTestId("incidents-first-run")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Connect a source" })).toHaveAttribute("href", "/connected-apps");
     expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/alerts");
-    expect(screen.getByRole("link", { name: "Open Copilot" })).toHaveAttribute("href", "/copilot");
+    expect(screen.getByRole("heading", { name: "No incidents" })).toBeInTheDocument();
   });
 
   it("combines faceted selections, retains active-by-default, and clears filters", () => {
@@ -355,7 +354,7 @@ describe("SreIncidentsList", () => {
     expect(
       within(table).queryByRole("columnheader", { name: /Evidence/ }),
     ).not.toBeInTheDocument();
-    expect(within(table).getAllByRole("row")).toHaveLength(13);
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
     expect(within(table).getAllByRole("row")[1]).not.toHaveClass("h-[72px]");
 
     fireEvent.change(screen.getByPlaceholderText("Search incidents..."), {

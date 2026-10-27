@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { assignSreIncident } from "@/actions/sre-incident-lifecycle";
+import { IncidentPersonAvatar } from "@/components/sre/incidents/incident-person-avatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -49,7 +50,10 @@ export function IncidentAssigneePicker({
     return (
       <div className="space-y-1">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <p className="text-sm">{assigneeName ?? "Unassigned"}</p>
+        <div className="flex items-center gap-2 text-sm">
+          <IncidentPersonAvatar name={assigneeName} className="h-5 w-5" />
+          {assigneeName ?? "Unassigned"}
+        </div>
       </div>
     );
   }
@@ -87,9 +91,16 @@ export function IncidentAssigneePicker({
       >
         <SelectTrigger id={id} className="h-8 w-full">
           <SelectValue placeholder="Unassigned">
-            {assigneeUserId
-              ? (people.find((p) => p.id === assigneeUserId)?.name ?? assigneeName ?? "Assigned")
-              : "Unassigned"}
+            {(() => {
+              const person = assigneeUserId ? people.find((p) => p.id === assigneeUserId) : undefined;
+              const name = assigneeUserId ? (person?.name ?? assigneeName ?? "Assigned") : null;
+              return (
+                <span className="flex items-center gap-2">
+                  <IncidentPersonAvatar name={name} image={person?.image} className="h-5 w-5" />
+                  {name ?? "Unassigned"}
+                </span>
+              );
+            })()}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
