@@ -8,6 +8,7 @@ jest.mock("@/utils/auth-client", () => ({
   authClient: { updateUser: (...a: unknown[]) => mockUpdateUser(...a), $store: { notify: jest.fn() } },
 }));
 jest.mock("@/components/connected-apps/connected-apps", () => ({ ConnectedApps: () => <div>apps list</div> }));
+jest.mock("@/components/leave-organization-dialog", () => ({ LeaveOrganizationDialog: () => <div>leave organization row</div> }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 import { AccountDialog } from "./account-dialog";
@@ -25,6 +26,7 @@ describe("AccountDialog", () => {
     expect(screen.getByLabelText("Email")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Change photo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove photo" })).not.toBeInTheDocument();
+    expect(screen.getByText("leave organization row")).toBeInTheDocument();
   });
 
   it("always offers the source code link", () => {

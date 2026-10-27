@@ -17,7 +17,6 @@ import { Moon, Sun, User, UserCog, Monitor } from "lucide-react";
 import { AccountDialog } from "@/components/account/account-dialog";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 import { resetChatwootSession } from "@/components/support/chatwoot-widget";
-import { LeaveOrganizationDialog } from "@/components/leave-organization-dialog";
 import { clearQueryCache } from "@/lib/query-provider";
 
 export function NavUser() {
@@ -109,7 +108,6 @@ export function NavUser() {
         <DropdownMenuItem onSelect={() => setAccountOpen(true)} data-testid="account-menu-item">
           <UserCog className="h-4 w-4 mr-2" />Account
         </DropdownMenuItem>
-        <LeaveOrganizationDialog />
         <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

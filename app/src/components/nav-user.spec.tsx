@@ -10,7 +10,6 @@ jest.mock("@/utils/auth-client", () => ({
 jest.mock("next-themes", () => ({ useTheme: () => ({ theme: "system", setTheme: jest.fn() }) }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContextSafe: () => null, clearProjectsCache: jest.fn() }));
 jest.mock("@/components/support/chatwoot-widget", () => ({ resetChatwootSession: jest.fn() }));
-jest.mock("@/components/leave-organization-dialog", () => ({ LeaveOrganizationDialog: () => null }));
 jest.mock("@/lib/query-provider", () => ({ clearQueryCache: jest.fn() }));
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -47,6 +46,7 @@ describe("NavUser", () => {
     render(<NavUser />);
     expect(screen.queryByTestId("connected-apps-link")).not.toBeInTheDocument();
     expect(screen.queryByText("Source code")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Leave organization/)).not.toBeInTheDocument();
   });
 
   it("keeps the rest of the menu unchanged", () => {
