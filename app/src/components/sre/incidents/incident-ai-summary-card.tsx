@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 type IncidentAiSummaryCardProps = {
   rootCauseSummary: string | null;
@@ -62,7 +63,9 @@ export function IncidentAiSummaryCard({
   const structured = investigation?.structured ?? null;
   // Runs without structured output keep their full report, which is longer than the stored headline.
   const fullReport = !structured && investigationStatus === "completed" ? investigation?.summary : null;
-  const conclusion = structured?.conclusion ?? fullReport ?? rootCauseSummary;
+  const rawConclusion = structured?.conclusion ?? fullReport ?? rootCauseSummary;
+  // Runs stored before ids were stripped at parse time still carry inline id lists.
+  const conclusion = rawConclusion ? stripEvidenceIdLists(rawConclusion) : rawConclusion;
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.

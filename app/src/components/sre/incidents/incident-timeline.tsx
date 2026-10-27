@@ -14,6 +14,7 @@ import { UserAvatar } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
+import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 const STATE_LABELS: Record<string, string> = {
   assigned: "Assignment changed",
@@ -35,7 +36,7 @@ function str(value: unknown, max = 600) {
 /** First paragraph of an AI report as plain text; the full report lives in Investigation details. */
 export function aiFindingHeadline(value: unknown) {
   if (typeof value !== "string") return null;
-  const firstParagraph = value.trim().split(/\n\s*\n/)[0] ?? "";
+  const firstParagraph = stripEvidenceIdLists(value.trim().split(/\n\s*\n/)[0] ?? "");
   const plain = firstParagraph
     .replace(/\*\*|__|`/g, "")
     .replace(/^#+\s*/gm, "")

@@ -122,19 +122,28 @@ export function parseInvestigationOutput(
   const topEvidenceIds = [
     ...new Set(hypotheses.filter((hypothesis) => hypothesis.state === "validated").flatMap((h) => h.evidenceIds)),
   ].slice(0, MAX_TOP_EVIDENCE);
+  // Inconclusive runs still show what was reviewed, so the user can check the same evidence.
+  const reviewedEvidenceIds = [...new Set(hypotheses.flatMap((h) => h.evidenceIds))].slice(0, MAX_TOP_EVIDENCE);
 
   return {
     ok: true,
     output: {
       outcome: identified ? "identified" : "inconclusive",
       confidence: identified ? Math.round(parsed.data.confidence * 10_000) / 10_000 : 0,
-      conclusion: parsed.data.conclusion,
-      hypotheses,
+      conclusion: stripEvidenceIdLists(parsed.data.conclusion),
+      hypotheses: hypotheses.map((h) => ({ ...h, rationale: stripEvidenceIdLists(h.rationale) })),
       nextChecks: parsed.data.nextChecks,
-      topEvidenceIds: identified ? topEvidenceIds : [],
+      topEvidenceIds: identified ? topEvidenceIds : reviewedEvidenceIds,
       downgraded: parsed.data.outcome === "identified" && !identified,
     },
   };
+}
+
+const EVIDENCE_ID_LIST = /\s*[[(](?:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[;,]?)+\s*[\])]/gi;
+
+/** Removes bracketed evidence-id lists the model inlines; citations are shown as chips instead. */
+export function stripEvidenceIdLists(text: string) {
+  return text.replace(EVIDENCE_ID_LIST, "").replace(/[ \t]{2,}/g, " ").trim();
 }
 
 const STATE_LABEL: Record<SreHypothesisState, string> = {

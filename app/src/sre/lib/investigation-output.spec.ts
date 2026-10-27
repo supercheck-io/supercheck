@@ -115,3 +115,19 @@ describe("formatInvestigationMarkdown / readStoredHypotheses", () => {
     expect(readStoredHypotheses([{ key: "h1", title: "t", state: "validated" }, { nope: 1 }])).toHaveLength(1);
   });
 });
+
+describe("evidence id lists in text", () => {
+  it("strips inline id lists and still lists reviewed evidence for inconclusive runs", () => {
+    const text = JSON.stringify({
+      ...base,
+      outcome: "inconclusive",
+      confidence: 0,
+      conclusion: `Both regions returned 503 [${E1}; ${E1}]. Cause undetermined.`,
+      hypotheses: [{ title: "Gateway", state: "inconclusive", rationale: `503 seen (${E1})`, evidenceIds: [E1] }],
+    });
+    const result = parseInvestigationOutput(text, known);
+    expect(result.ok && result.output.conclusion).toBe("Both regions returned 503. Cause undetermined.");
+    expect(result.ok && result.output.hypotheses[0].rationale).toBe("503 seen");
+    expect(result.ok && result.output.topEvidenceIds).toEqual([E1]);
+  });
+});
