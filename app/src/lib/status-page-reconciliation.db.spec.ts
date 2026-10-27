@@ -600,3 +600,34 @@ it("locks the automatic component before its incident to avoid deadlocking recon
   });
   await expect(action).resolves.toMatchObject({ success: true });
 });
+
+it("links an automatic status update to the open incident for its monitor", async () => {
+  const page = await mockDatabase.query.statusPages.findFirst({ where: eq(schema.statusPages.id, pageId) });
+  const scope = { organizationId: page!.organizationId, projectId: page!.projectId! };
+  const [sre] = await mockDatabase
+    .insert(schema.sreIncidents)
+    .values({ ...scope, incidentNumber: 1, title: "API: Monitor Failure", severity: "sev2", status: "triggered" })
+    .returning();
+  const [event] = await mockDatabase
+    .insert(schema.sreAlertEvents)
+    .values({
+      ...scope,
+      fingerprintHash: randomUUID(),
+      dedupKey: `${scope.projectId}:monitor:${monitorId}:monitor_failure`,
+      severity: "sev2",
+      status: "firing",
+      sourceType: "monitor",
+      sourceId: monitorId,
+      title: "API: Monitor Failure",
+      firedAt: new Date(),
+    })
+    .returning();
+  await mockDatabase.insert(schema.sreIncidentAlerts).values({ incidentId: sre.id, alertEventId: event.id, role: "trigger" });
+  await mockDatabase.update(schema.statusPageComponents).set({ autoCreateIncidents: true, updatedAt: new Date() }).where(eq(schema.statusPageComponents.id, componentId));
+  await mockDatabase.update(schema.monitors).set({ status: "down", lastCheckAt: new Date() }).where(eq(schema.monitors.id, monitorId));
+  await reconcileStatusPages();
+  const [publicIncident] = await mockDatabase.query.incidents.findMany();
+  expect(publicIncident.sreIncidentId).toBe(sre.id);
+  const linked = await mockDatabase.query.sreIncidents.findFirst({ where: eq(schema.sreIncidents.id, sre.id) });
+  expect(linked?.statusPageIncidentId).toBe(publicIncident.id);
+});
