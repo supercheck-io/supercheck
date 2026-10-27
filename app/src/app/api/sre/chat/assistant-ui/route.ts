@@ -17,6 +17,7 @@ import {
 import { requireProjectContext } from "@/lib/project-context";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { recordSreTokenUsage, sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import {
@@ -30,6 +31,7 @@ import {
   SreSessionStoreError,
 } from "@/sre/lib/session-store";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
+import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../../_auth";
 
@@ -102,9 +104,8 @@ const assistantUiChatRequestSchema = z.object({
 });
 
 function authErrorResponse(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Authentication required";
-  return NextResponse.json({ error: message }, { status: 401 });
+  void error; // never echo the underlying error to the client
+  return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 }
 
 function getTextFromUiMessage(message: SreAssistantUiMessage) {
@@ -166,7 +167,7 @@ function buildAssistantUiSystemPrompt(input: {
     input.incidentId ? `- Scoped incident ID: ${input.incidentId}` : null,
     "- This chat is read-only. Do not suggest production mutations or destructive commands.",
     input.incidentId
-      ? "- Use available stored evidence tools before making incident-specific claims."
+      ? "- Use available stored evidence tools before making incident-specific claims. Cite the evidence ids you rely on, written as evidence <id>. For \"have we seen this before\" questions call findSimilarIncidents and say that past incidents may be unrelated."
       : "- If no incident is scoped, do not claim incident evidence was inspected.",
     !input.liveConnectorToolsEnabled
       ? "- Live connector tools are not available for this chat; explain that verification is based on stored evidence and user-provided context only."
@@ -244,6 +245,9 @@ export async function POST(request: NextRequest) {
 
   const subscriptionError = await requireSreSubscription(context.organizationId);
   if (subscriptionError) return subscriptionError;
+
+  const dailyLimitResponse = await sreDailyTokenLimitResponse(context.organizationId);
+  if (dailyLimitResponse) return dailyLimitResponse;
 
   const rateLimit = await checkSreChatRateLimit(context.userId);
   if (!rateLimit.allowed) {
@@ -427,10 +431,17 @@ export async function POST(request: NextRequest) {
     messages: await convertToModelMessages(modelMessages),
     tools: {
       ...(conversation.incidentId
-        ? createSreEvidenceTools({
-            ...connectorToolScope,
-            incidentId: conversation.incidentId,
-          })
+        ? {
+            ...createSreEvidenceTools({
+              ...connectorToolScope,
+              incidentId: conversation.incidentId,
+            }),
+            ...createSreSimilarIncidentTools({
+              organizationId: context.organizationId,
+              projectId: context.project.id,
+              incidentId: conversation.incidentId,
+            }),
+          }
         : {}),
       ...(liveConnectorToolsEnabled
         ? createSreConnectorTools(connectorToolScope)
@@ -438,6 +449,7 @@ export async function POST(request: NextRequest) {
     },
     stopWhen: stepCountIs(budget.maxSteps),
     maxOutputTokens: budget.maxOutputTokens,
+    onStepFinish: (event) => recordSreTokenUsage(context.organizationId, event.usage),
     // Stop the model when the client disconnects, not only on the time budget.
     abortSignal: AbortSignal.any([
       AbortSignal.timeout(budget.timeoutMs),

@@ -23,6 +23,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn() }));
+
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
@@ -30,6 +32,13 @@ jest.mock("@/lib/auth-context", () => ({
 
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
+}));
+
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
+  sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null),
+  recordSreTokenUsage: jest.fn(),
+  assertSreDailyTokenLimit: jest.fn(),
+  checkSreDailyTokenLimit: jest.fn().mockResolvedValue({ allowed: true, resetTime: 0 }),
 }));
 
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({

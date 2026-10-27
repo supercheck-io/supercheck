@@ -7,7 +7,10 @@ import { buildSreTriagePrompt, buildSreTriageSystemPrompt } from "@/sre/agents/t
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
+import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 export type RunSreIncidentTriageInput = {
   organizationId: string;
@@ -67,6 +70,8 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
     return { success: false, status: 404, error: "Incident not found or access denied" };
   }
 
+  await failStaleSreInvestigationRunsForIncident(input);
+
   const startedAt = Date.now();
   const initialModelId = getActualModelName();
   let run: typeof sreInvestigationRuns.$inferSelect;
@@ -94,7 +99,7 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       .returning());
   } catch (error) {
     if (error instanceof SreInvestigationBillingError) {
-      return { success: false, status: 402, error: error.message };
+      return { success: false, status: 402, error: sreBillingErrorMessage(error.code) };
     }
     if (isActiveIncidentRunConflict(error)) {
       return { success: false, status: 409, error: "An investigation is already running for this incident" };
@@ -104,6 +109,7 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
 
   try {
     const result = await runSreAgent({
+      organizationId: input.organizationId,
       system: buildSreTriageSystemPrompt(),
       prompt: buildSreTriagePrompt({
         incidentTitle: incident.title,
@@ -167,6 +173,14 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         agentRunId: run.id,
         createdAt: new Date(),
       });
+    });
+
+    void notifyIncidentEvent({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: incident.id,
+      event: "ai_finding",
+      dedupeDiscriminator: run.id,
     });
 
     return {

@@ -53,7 +53,7 @@ export function parseSreLiveEvalEnvironment(env: Partial<NodeJS.ProcessEnv> = pr
 
 export function selectSreLiveEvalFixtures(config: SreLiveEvalEnvironment, fixtures: SreEvalFixture[] = sreEvalFixtures) {
   if (config.fixtureIds.length === 0) {
-    return fixtures;
+    return fixtures.filter((fixture) => !fixture.offlineOnly);
   }
 
   const selected = fixtures.filter((fixture) => config.fixtureIds.includes(fixture.id));

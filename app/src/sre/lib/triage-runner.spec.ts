@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), update: jest.fn() } }));
 jest.mock("@/lib/ai/ai-provider", () => ({ getActualModelName: () => "test-model" }));
 jest.mock("@/sre/lib/agent-runner", () => ({ runSreAgent: jest.fn() }));
 jest.mock("@/sre/tools/evidence-tools", () => ({ createSreEvidenceTools: jest.fn() }));
@@ -31,6 +31,7 @@ describe("incident triage admission", () => {
       limit: jest.fn().mockResolvedValue([{ id: input.incidentId }]),
     };
     (db.select as jest.Mock).mockReturnValue(chain);
+    (db.update as jest.Mock).mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [] }) }) });
   });
 
   it("returns 409 for the active-incident database constraint before calling the provider", async () => {

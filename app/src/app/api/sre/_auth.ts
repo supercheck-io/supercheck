@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
@@ -20,7 +21,7 @@ export async function requireSreSubscription(
     return null;
   } catch (error) {
     if (error instanceof SubscriptionAccessDeniedError) {
-      return NextResponse.json({ error: error.message, code: error.reason }, { status: 402 });
+      return NextResponse.json({ error: sreBillingErrorMessage(error.reason), code: error.reason }, { status: 402 });
     }
     return NextResponse.json(
       { error: "Unable to verify SRE subscription. Please try again shortly." },
