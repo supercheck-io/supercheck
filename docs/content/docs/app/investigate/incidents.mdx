@@ -30,7 +30,7 @@ The queue opens on **Active** incidents. Use the quick filters **Active**, **Ass
 | **Age** | Time since detection (detection to resolution once resolved) |
 | **AI** | State of the latest AI investigation |
 
-Quick actions open **Review alerts** and **Trends**. A project with no incidents yet shows a short checklist: connect a source, enable alerts, run a sample investigation.
+Quick actions open **Review alerts** and **Trends**. A project with no incidents yet explains how incidents open and links to alert setup.
 
 ![Incident Queue](/screenshots/sre-incidents-queue.png)
 
@@ -38,12 +38,12 @@ Quick actions open **Review alerts** and **Trends**. A project with no incidents
 
 The header shows the title, severity, status, and **assignee**, with the primary actions **Acknowledge**, **Assign**, **Investigate**, and **Resolve incident**. The main column leads with the **AI summary** (conclusion and confidence, or *Inconclusive* when the evidence does not support a cause), followed by the **timeline** with a box to post updates. The right sidebar shows the optional **commander**, service, linked alerts, the status-page link with **Publish update**, and timestamps with MTTA and MTTR.
 
-Below the timeline, the workspace has two tabs.
+Below the timeline are two tabs, **Investigation** and **Evidence & brief**.
 
-<Tabs items={['Overview', 'Evidence & brief']}>
-<Tab value="Overview">
+<Tabs items={['Investigation', 'Evidence & brief']}>
+<Tab value="Investigation">
 
-The **Overview** tab holds the header, metadata, investigation controls, and findings.
+The **Investigation** tab holds the investigation controls and findings.
 
 | Control | What it does |
 |---|---|
@@ -117,6 +117,7 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 
 - The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
 - Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
+- Email, Slack, Teams, Discord, Telegram and webhook channels are supported. A webhook that uses a preset or a custom body template is skipped for incident messages, because they use a fixed JSON body; attach a plain webhook channel to receive them.
 - Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-generated text; open the incident to read the AI finding.
 - The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
 

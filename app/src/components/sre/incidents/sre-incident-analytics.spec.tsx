@@ -4,7 +4,12 @@ jest.mock("recharts", () => {
   const React = jest.requireActual("react");
   const passthrough = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
   return {
+    Area: passthrough,
+    AreaChart: passthrough,
+    Bar: passthrough,
+    BarChart: passthrough,
     CartesianGrid: passthrough,
+    Cell: passthrough,
     Line: passthrough,
     LineChart: passthrough,
     ResponsiveContainer: passthrough,
@@ -34,7 +39,8 @@ describe("SreIncidentAnalytics", () => {
     expect(screen.getByText("Incident trends")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("1h 35m")).toBeInTheDocument();
-    expect(screen.getByText("checkout-api")).toBeInTheDocument();
+    expect(screen.getByText("Most affected services")).toBeInTheDocument();
+    expect(screen.getByText("Severity")).toBeInTheDocument();
   });
 
   it("formats trend dates as MMM d without a timezone shift", () => {

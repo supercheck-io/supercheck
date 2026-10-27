@@ -13,9 +13,13 @@ ALTER TABLE "sre_incidents" ADD COLUMN IF NOT EXISTS "resolution_summary" text;
 --> statement-breakpoint
 ALTER TABLE "sre_incidents" ADD COLUMN IF NOT EXISTS "postmortem" jsonb;
 --> statement-breakpoint
-ALTER TABLE "sre_incidents" DROP CONSTRAINT IF EXISTS "sre_incidents_resolution_summary_length_check";
---> statement-breakpoint
-ALTER TABLE "sre_incidents" ADD CONSTRAINT "sre_incidents_resolution_summary_length_check" CHECK ("resolution_summary" IS NULL OR char_length("resolution_summary") <= 4000);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sre_incidents_resolution_summary_length_check') THEN
+    ALTER TABLE "sre_incidents" ADD CONSTRAINT "sre_incidents_resolution_summary_length_check" CHECK ("resolution_summary" IS NULL OR char_length("resolution_summary") <= 4000);
+  END IF;
+END
+$$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "sre_incidents_project_assignee_active_idx" ON "sre_incidents" ("project_id", "assignee_user_id") WHERE "status" <> 'resolved';
 --> statement-breakpoint

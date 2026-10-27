@@ -25,6 +25,7 @@ flowchart LR
 - Prefer read-only evidence gathering. Mutations require explicit user authority, least-privilege credentials, bounded targets, audit records, and observable outcomes.
 - Kubernetes access uses namespace-scoped service accounts and allowed resources/actions; never grant `cluster-admin`.
 - Preserve stable assistant/user message identity through streaming, persistence, polling/reconciliation, retries, and reloads.
+- Incident lifecycle (assign, unassign, acknowledge, commander, resolve) is in `app/src/actions/sre-incident-lifecycle.ts` and `/api/sre/incidents/{id}/assign|acknowledge|resolve`, all gated by `sre_incident:update`. Resolve needs a summary (max 2000 characters); assignees must be org owner/admin or project admin/editor. Incident notifications use a fixed body and never include AI text or raw evidence.
 - Connector and private-agent credentials stay encrypted/server-side and are never placed in prompts, browser payloads, logs, or model-visible errors.
 
 ## Tool and provider behavior
@@ -78,6 +79,7 @@ flowchart LR
 - Use semantic project versions and immutable image tags/digests; never deploy `main`, another branch name, or `latest` to production.
 - Release tags must be annotated and signed with a key listed in `.github/release-allowed-signers`; unsigned, lightweight, or unlisted-key tags fail the publish gate. Agents never create, move, or delete tags or dispatch publish workflows (`docs/releasing.md`).
 - Review database compatibility before rollout and order app/worker/migration changes for version skew.
+- Migration `0043_sre_incident_management.sql` (incident assignee, acknowledgement, commander, resolution summary, post-mortem columns) is forward-only and must be applied before the app that reads it is deployed.
 - CI must not use `pull_request_target` with untrusted contributor code or expose secrets to fork builds.
 - A successful build/deploy workflow is not release acceptance. Verify deployed SHA, health, migrations, browser flows, RBAC/flags, workers/control plane, provider/billing gates, and cleanup.
 - Keep changelog, package versions, deployment defaults, docs, and release evidence synchronized.

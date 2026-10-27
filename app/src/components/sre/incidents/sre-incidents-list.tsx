@@ -30,8 +30,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { IncidentPersonAvatar } from "@/components/sre/incidents/incident-person-avatar";
 import { IncidentsFirstRunChecklist } from "@/components/sre/incidents/incidents-first-run-checklist";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -104,10 +105,6 @@ export function formatAge(from: Date | string, to: Date | string | number = Date
   return `${Math.floor(hours / 24)}d`;
 }
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?";
-}
-
 type IncidentSortKey =
   | "incidentNumber"
   | "title"
@@ -120,7 +117,6 @@ type IncidentSortKey =
   | "updatedAt";
 type SortDirection = "asc" | "desc";
 
-const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
 const severityTones: Record<SreIncidentListItem["severity"], TableBadgeTone> = {
   sev1: "danger",
@@ -254,7 +250,13 @@ export function SreIncidentsList({
   const [sortKey, setSortKey] = useState<IncidentSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(12);
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
+  const [lastPageSize, setLastPageSize] = useState(pageSize);
+  // Auto-fit changes the size outside the pager, so keep the first visible row on screen.
+  if (lastPageSize !== pageSize) {
+    setLastPageSize(pageSize);
+    setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
+  }
   const [isPending, startTransition] = useTransition();
 
   const resetForm = () => {
@@ -425,15 +427,19 @@ export function SreIncidentsList({
             className="flex flex-wrap items-center gap-2"
             data-testid="incident-header-actions"
           >
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/alerts">Review alerts</Link>
-            </Button>
-            <Button asChild type="button" variant="outline" className="h-8">
-              <Link href="/incidents/analytics">
-                <BarChart3 className="h-4 w-4" />
-                Trends
-              </Link>
-            </Button>
+            {incidents.length > 0 && (
+              <>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/alerts">Review alerts</Link>
+                </Button>
+                <Button asChild type="button" variant="outline" className="h-8">
+                  <Link href="/incidents/analytics">
+                    <BarChart3 className="h-4 w-4" />
+                    Trends
+                  </Link>
+                </Button>
+              </>
+            )}
             {projectError && (
               <p role="status" className="text-sm text-muted-foreground">
                 Permissions unavailable. Refresh to try again.
@@ -620,7 +626,7 @@ export function SreIncidentsList({
                   />
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={bodyRef}>
                 {pagedIncidents.length === 0 ? (
                   <TableRow>
                     <TableCell
@@ -634,7 +640,7 @@ export function SreIncidentsList({
                   pagedIncidents.map((incident) => (
                     <TableRow
                       key={incident.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="h-13 cursor-pointer hover:bg-muted/50"
                       tabIndex={0}
                       onClick={() => router.push(`/incidents/${incident.id}`)}
                       onKeyDown={(event) => {
@@ -686,21 +692,10 @@ export function SreIncidentsList({
                         {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
-                        {incident.assigneeName ? (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              {incident.assigneeImage && (
-                                <AvatarImage src={incident.assigneeImage} alt="" />
-                              )}
-                              <AvatarFallback className="text-[10px]">
-                                {initials(incident.assigneeName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate text-sm">{incident.assigneeName}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Unassigned</span>
-                        )}
+                        <div className={cn("flex items-center gap-2", !incident.assigneeName && "text-muted-foreground")}>
+                          <IncidentPersonAvatar name={incident.assigneeName} image={incident.assigneeImage} />
+                          <span className="truncate text-sm">{incident.assigneeName ?? "Unassigned"}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="py-2.5 text-sm tabular-nums">
                         <span
@@ -753,7 +748,7 @@ export function SreIncidentsList({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent side="top">
-                    {PAGE_SIZE_OPTIONS.map((option) => (
+                    {pageSizeOptions(pageSize).map((option) => (
                       <SelectItem key={option} value={`${option}`}>
                         {option}
                       </SelectItem>
