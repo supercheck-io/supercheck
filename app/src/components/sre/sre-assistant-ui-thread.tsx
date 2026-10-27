@@ -64,20 +64,21 @@ const STANDALONE_STARTERS = [
   },
 ] as const;
 
-const INCIDENT_STARTERS = [
+export const INCIDENT_STARTERS = [
   {
-    label: "Review stored evidence",
+    label: "What changed before this started?",
     prompt:
-      "Summarize the strongest stored evidence for this incident and call out any gaps.",
+      "What changed before this incident started? Check deployments, config changes and alerts around the start time, and cite the evidence you rely on.",
   },
   {
-    label: "Check a hypothesis",
-    prompt: "Evaluate this hypothesis against the incident evidence: ",
+    label: "Have we seen this before?",
+    prompt:
+      "Have we seen this before? Check similar past incidents and say how closely they match and what resolved them.",
   },
   {
-    label: "Choose next checks",
+    label: "What should I check next?",
     prompt:
-      "List the next read-only checks for this incident and explain what each result would confirm or rule out.",
+      "What should I check next? List the next read-only checks in priority order and what each result would confirm or rule out.",
   },
 ] as const;
 
@@ -304,12 +305,12 @@ function EmptyThread({
             icon={<Bot className="h-10 w-10 text-muted-foreground" />}
             title={
               incidentId
-                ? "Investigate this incident"
+                ? "Ask about this incident"
                 : "What do you need to investigate?"
             }
             description={
               incidentId
-                ? "Review incident evidence, check live sources, or test a hypothesis."
+                ? "Answers use this incident's saved evidence and cite it. Pick a question or ask your own."
                 : "Ask about a service, describe a symptom, or paste evidence. Copilot can check available sources and suggest next steps."
             }
             className="min-h-[320px]"

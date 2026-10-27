@@ -109,18 +109,6 @@ describe("SreInvestigationPanel", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it.each(["Investigation reached its step limit before completing.", null])(
-    "shows an informative failure instead of an empty report (%s)", (summary) => {
-      render(<SreInvestigationPanel incidentId="incident-1" hasPrimaryService={false}
-        serviceMappingHref="/incidents/incident-1?edit=service" canInvestigate={true}
-        latestInvestigation={{ id: "failed-run", status: "failed", summary, completedAt: "2026-10-01T00:00:00Z" }} />);
-      expect(screen.getByRole("alert")).toHaveTextContent(summary ?? "Review the saved evidence before trying again");
-      expect(screen.queryByText("No investigation summary was returned.")).not.toBeInTheDocument();
-      expect(screen.getByText(/^Ended /)).toBeInTheDocument();
-      expect(screen.queryByText("Save report & feedback")).not.toBeInTheDocument();
-    },
-  );
-
   it("renders a simplified investigation action panel without embedded chat", () => {
     render(
       <SreInvestigationPanel
@@ -253,7 +241,7 @@ describe("SreInvestigationPanel", () => {
     );
   });
 
-  it("renders the latest investigation result persistently", () => {
+  it("does not render the result itself (the AI summary card owns it)", () => {
     render(
       <SreInvestigationPanel
         incidentId="018f0000-0000-7000-8000-000000000001"
@@ -269,10 +257,33 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Latest result")).toBeInTheDocument();
-    expect(
-      screen.getByText("Dependency latency is the leading hypothesis."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Latest result")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dependency latency is the leading hypothesis.")).not.toBeInTheDocument();
+  });
+
+  it("re-runs with the user's note as untrusted guidance", async () => {
+    render(
+      <SreInvestigationPanel
+        incidentId="incident-1"
+        hasPrimaryService={true}
+        serviceMappingHref="/x"
+        canInvestigate={true}
+        latestInvestigation={{ id: "run-1", status: "completed", summary: "s", completedAt: "2026-06-24T12:00:00.000Z" }}
+      />,
+    );
+    const rerun = screen.getByRole("button", { name: "Re-run with my note" });
+    expect(rerun).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Re-run with my note"), { target: { value: "check the CDN" } });
+    fireEvent.click(rerun);
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/sre/investigate",
+        expect.objectContaining({
+          body: JSON.stringify({ incidentId: "incident-1", useLiveConnectors: false, guidance: "check the CDN" }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByLabelText("Re-run with my note")).toHaveValue(""));
   });
 
   it("saves a completed investigation snapshot and then feedback", async () => {

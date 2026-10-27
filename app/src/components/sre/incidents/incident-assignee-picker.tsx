@@ -89,7 +89,7 @@ export function IncidentAssigneePicker({
         onValueChange={change}
         disabled={pending}
       >
-        <SelectTrigger id={id} className="h-8 w-full min-w-40 sm:w-52">
+        <SelectTrigger id={id} className="h-8 w-full">
           <SelectValue placeholder="Unassigned">
             {(() => {
               const person = assigneeUserId ? people.find((p) => p.id === assigneeUserId) : undefined;

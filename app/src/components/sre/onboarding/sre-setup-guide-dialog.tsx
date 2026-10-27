@@ -66,8 +66,8 @@ export function SreSetupGuideDialog({ status }: SreSetupGuideDialogProps) {
             </TableBadge>
           </div>
           <DialogDescription>
-            Add a service and connector for live evidence. Saved queries are
-            optional.
+            Add a service and connector for live evidence, then open an incident
+            and choose Investigate. Saved queries are optional.
           </DialogDescription>
         </DialogHeader>
 

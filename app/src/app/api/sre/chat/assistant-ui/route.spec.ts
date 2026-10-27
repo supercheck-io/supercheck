@@ -87,6 +87,12 @@ jest.mock("@/sre/tools/evidence-tools", () => ({
   })),
 }));
 
+jest.mock("@/sre/tools/similar-incident-tools", () => ({
+  createSreSimilarIncidentTools: jest.fn(() => ({
+    findSimilarIncidents: { description: "similar incidents tool" },
+  })),
+}));
+
 jest.mock("@/sre/tools/connector-tools", () => ({
   createSreConnectorTools: jest.fn(() => ({
     listIncidentConnectors: { description: "connector list tool" },
@@ -493,6 +499,7 @@ describe("Copilot assistant-ui chat API", () => {
           system: expect.stringContaining("Incident-scoped Copilot chat rules"),
           tools: expect.objectContaining({
             listNativeEvidence: expect.any(Object),
+            findSimilarIncidents: expect.any(Object),
             listIncidentConnectors: expect.any(Object),
           }),
         }),
