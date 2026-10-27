@@ -4,7 +4,10 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
+import { executeObservabilityProviderJob } from './providers/provider-executor';
+import { executeMcpJob, McpError, mcpOperationSchema } from './mcp-client';
 import { isIP } from 'node:net';
+import { executeKnowledgeJob } from './private-agent-knowledge';
 
 const PROTOCOL_VERSION = '2026-06-22';
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
@@ -31,6 +34,14 @@ const connectorJobSpecSchema = z.object({
     'elasticsearch',
     'tempo',
     'aws_cloudwatch',
+    'jaeger',
+    'newrelic',
+    'splunk',
+    'gcp_monitoring',
+    'azure_monitor',
+    'jira',
+    'confluence',
+    'mcp',
   ]),
   endpointUrl: z.string().url().nullable(),
   serviceId: z.string().min(1),
@@ -1515,6 +1526,105 @@ async function executeCloudWatch(
   return executeCloudWatchAlarms(job, query);
 }
 
+const KNOWLEDGE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/** requestPrivateAgentEndpoint does not cap bodies; knowledge pages are third-party sized. */
+async function fetchBoundedJson(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<unknown> {
+  assertAgentEndpointAllowed(url);
+  return requestPrivateAgentEndpoint(
+    url,
+    {
+      method: 'GET',
+      headers: { Accept: 'application/json', ...headers },
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'error',
+    },
+    async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`credentials rejected with HTTP ${response.status}`);
+      }
+      if (!response.ok) {
+        throw new Error(
+          `connector request failed with HTTP ${response.status}`,
+        );
+      }
+      const reader = response.body?.getReader();
+      if (!reader) return {};
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > KNOWLEDGE_MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error('connector response too large');
+        }
+        chunks.push(value);
+      }
+      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    },
+  );
+}
+
+async function executeKnowledge(
+  job: LeasedJob,
+): Promise<ConnectorExecutionResult> {
+  const spec = job.jobSpec;
+  if (spec.connectorType !== 'jira' && spec.connectorType !== 'confluence') {
+    throw new Error('Unsupported knowledge connector');
+  }
+  const items = await executeKnowledgeJob(
+    {
+      connectorType: spec.connectorType,
+      connectorId: spec.connectorId,
+      endpoint: normalizedEndpoint(spec),
+      query: spec.query,
+      windowStart: spec.timeWindow.start,
+      windowEnd: spec.timeWindow.end,
+      maxRows: spec.budget.maxRows,
+      timeoutMs: Math.min(spec.budget.maxSeconds, 30) * 1000,
+      email: credentialString(job, ['email', 'username']),
+      token: apiKeyFromCredential(job),
+    },
+    {
+      getJson: (url, headers, timeoutMs) =>
+        fetchBoundedJson(url, headers, timeoutMs),
+      evidenceId,
+      hash: hashPayload,
+    },
+  );
+  return bounded(items, spec.budget.maxRows);
+}
+
+async function executeMcp(job: LeasedJob): Promise<ConnectorExecutionResult> {
+  const spec = job.jobSpec;
+  const operation = mcpOperationSchema.safeParse(spec.filters.mcp);
+  if (!operation.success) throw new McpError('mcp_operation_invalid');
+  const credential = job.credential?.value ?? null;
+  const result = await executeMcpJob({
+    connectorId: spec.connectorId,
+    endpointUrl: spec.endpointUrl,
+    credential,
+    operation: operation.data,
+    maxRows: spec.budget.maxRows,
+    maxBytes: spec.budget.maxBytes,
+    maxSeconds: spec.budget.maxSeconds,
+  });
+  return {
+    evidence: result.evidence,
+    truncated: result.truncated,
+    resultHash: hashPayload({
+      evidence: result.evidence,
+      truncated: result.truncated,
+    }),
+  };
+}
+
 export async function executePrivateAgentConnectorJob(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -1539,6 +1649,25 @@ export async function executePrivateAgentConnectorJob(
       return executeTempo(job);
     case 'aws_cloudwatch':
       return executeCloudWatch(job);
+    case 'jaeger':
+    case 'newrelic':
+    case 'splunk':
+    case 'gcp_monitoring':
+    case 'azure_monitor':
+      return executeObservabilityProviderJob({
+        connectorId: job.jobSpec.connectorId,
+        connectorType: job.jobSpec.connectorType,
+        endpointUrl: job.jobSpec.endpointUrl,
+        query: job.jobSpec.query,
+        timeWindow: job.jobSpec.timeWindow,
+        budget: job.jobSpec.budget,
+        credential: job.credential?.value ?? null,
+      });
+    case 'jira':
+    case 'confluence':
+      return executeKnowledge(job);
+    case 'mcp':
+      return executeMcp(job);
   }
 }
 

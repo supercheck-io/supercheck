@@ -41,6 +41,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "jest",
     "test:db": "jest -c jest.db.config.js",
+    "sync:sre-providers": "node scripts/sync-sre-providers.mjs",
     "test:sre-eval": "jest src/sre/eval",
     "test:sre-eval:live": "jest src/sre/eval/live-api.spec.ts",
     "test:sre-eval:model": "jest src/sre/eval/model-release.spec.ts",

@@ -626,6 +626,59 @@ describe('private agent connector execution', () => {
   });
 });
 
+describe('private agent observability connectors', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('executes Splunk jobs through the shared provider module', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ result: { _raw: 'ERROR down', index: 'main' } }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'splunk' as const,
+        endpointUrl: 'https://splunk.internal:8089',
+        query: 'index=main error',
+      },
+    });
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(String(url)).toBe(
+      'https://splunk.internal:8089/services/search/jobs/export',
+    );
+    expect(init.headers.Authorization).toBe('Bearer token');
+    expect(result.evidence).toHaveLength(1);
+    expect(result.evidence[0].evidenceType).toBe('log');
+  });
+
+  it('rejects write verbs without calling the network', async () => {
+    global.fetch = jest.fn();
+    await expect(
+      executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: {
+          ...baseJob.jobSpec,
+          connectorType: 'splunk' as const,
+          endpointUrl: 'https://splunk.internal:8089',
+          query: 'index=main | outputlookup x',
+        },
+      }),
+    ).rejects.toThrow(/not allowed/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe('assertSecureApiUrl', () => {
   it.each([
     'https://app.supercheck.io',
@@ -653,5 +706,38 @@ describe('assertSecureApiUrl', () => {
     'ftp://app',
   ])('rejects %s', (url) => {
     expect(() => assertSecureApiUrl(url)).toThrow('must use https://');
+  });
+
+  it('rejects oversized Jira responses and reads small ones', async () => {
+    const jiraJob = {
+      ...baseJob,
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'jira' as const,
+        endpointUrl: 'https://jira.internal',
+        query: 'checkout',
+      },
+    };
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ issues: [], pad: 'x'.repeat(3 * 1024 * 1024) }),
+        {
+          status: 200,
+        },
+      ),
+    );
+    await expect(executePrivateAgentConnectorJob(jiraJob)).rejects.toThrow(
+      'too large',
+    );
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          issues: [{ key: 'OPS-1', fields: { summary: 'Disk' } }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await executePrivateAgentConnectorJob(jiraJob);
+    expect(result.evidence[0].title).toContain('OPS-1');
   });
 });

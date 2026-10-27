@@ -7,10 +7,13 @@ const mockLimit = jest.fn();
 const mockSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue(undefined) }));
 const mockValues = jest.fn(() => ({ returning: jest.fn().mockResolvedValue([{ id: "brief-run" }]) }));
 jest.mock("@/utils/db", () => ({ db: {
-  select: () => ({ from: () => ({ where: (condition: unknown) => {
-    mockWhere(condition);
-    return { orderBy: () => ({ limit: mockLimit }), limit: mockLimit };
-  } }) }),
+  select: () => {
+    const from = { where: (condition: unknown) => {
+      mockWhere(condition);
+      return { orderBy: () => ({ limit: mockLimit }), limit: mockLimit };
+    } };
+    return { from: () => ({ ...from, innerJoin: () => from }) };
+  },
   insert: () => ({ values: mockValues }),
   transaction: async (callback: (tx: unknown) => unknown) => callback({
     update: () => ({ set: mockSet }),
@@ -55,5 +58,20 @@ describe("evidence brief stored evidence", () => {
     const generateBrief = jest.fn().mockResolvedValue({ provider: "fallback", summary: "No evidence", modelId: "test-model", confidenceScore: 0.2, suspectedFailureDomain: "Unknown", citedEvidenceIds: [] });
     expect(await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief })).toMatchObject({ success: true, evidenceCount: 0, connectorEvidenceCount: 0 });
     expect(generateBrief.mock.calls[0][0].evidence).toEqual([]);
+  });
+
+  it("filters private agent jobs by service and window in SQL before the row cap", async () => {
+    jest.mocked(collectNativeEvidence).mockResolvedValue({
+      incident: { id: "incident-a", title: "Checkout", severity: "sev2", status: "investigating", primaryServiceId: "service-a", createdAt: observedAt },
+      window: { since: new Date("2026-09-08T08:00:00Z"), until: new Date("2026-09-08T09:10:00Z"), source: "incident.createdAt", confidence: 0.5 },
+      evidence: [],
+    });
+    mockLimit.mockResolvedValue([]);
+    const generateBrief = jest.fn().mockResolvedValue({ provider: "fallback", summary: "Brief", modelId: "test-model", confidenceScore: 0.5, suspectedFailureDomain: "Unknown", citedEvidenceIds: [] });
+    await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
+    const jobQuery = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
+    expect(jobQuery.sql).toContain("->>'serviceId'");
+    expect(jobQuery.params).toEqual(expect.arrayContaining(["service-a", "2026-09-08T08:00:00.000Z"]));
+    expect(mockLimit).toHaveBeenCalledWith(25);
   });
 });

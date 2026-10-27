@@ -1,6 +1,7 @@
 import { streamText, stepCountIs, type LanguageModel, type ToolSet } from "ai";
 
 import { getActualModelName, getProviderModel, validateAIConfiguration } from "@/lib/ai/ai-provider";
+import { assertSreDailyTokenLimit, recordSreTokenUsage } from "@/lib/sre/sre-daily-token-limit";
 import { isSreEnabled } from "./feature-gates";
 import { logger } from "@/lib/logger/index";
 import { assertSreAgentPromptWithinBudget, resolveSreAgentBudget, type SreAgentBudgetInput } from "./budget-manager";
@@ -20,6 +21,8 @@ export type RunSreAgentInput<TTools extends ToolSet = ToolSet> = {
   model?: LanguageModel;
   validateConfiguration?: boolean;
   onStepFinish?: (event: SreAgentRunEvent) => void | Promise<void>;
+  /** When set, the run is refused over the organization daily token limit and its usage is counted. */
+  organizationId?: string;
   /** Aborts the run early, for example when the requesting client disconnects. */
   abortSignal?: AbortSignal;
 };
@@ -52,6 +55,8 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
     validateAIConfiguration();
   }
 
+  if (input.organizationId) await assertSreDailyTokenLimit(input.organizationId);
+
   const startedAt = Date.now();
   let stepIndex = 0;
   const modelId = getActualModelName();
@@ -81,6 +86,7 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
         totalTokens: event.usage.totalTokens ?? null,
         finishReason: event.finishReason,
       }, "SRE model step usage");
+      if (input.organizationId) await recordSreTokenUsage(input.organizationId, event.usage);
       await input.onStepFinish?.({
         modelId,
         stepIndex,

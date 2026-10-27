@@ -1,12 +1,5 @@
 import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Clock,
-  Bot,
-  Database,
-  Network,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Clock, Bot, Database } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -14,6 +7,14 @@ import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incid
 import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-brief-panel";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
+import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
+import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
+import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
+import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
+import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
+import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
+import { IncidentSidebar } from "@/components/sre/incidents/incident-sidebar";
+import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,7 +38,7 @@ import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-detai
 type SreIncidentDetailViewProps = {
   detail: SreIncidentDetail;
   services: SreServiceListItem[];
-  initialTab?: "investigation" | "evidence" | "brief";
+  initialTab?: "overview" | "investigation" | "evidence" | "brief";
 };
 
 const severityTones: Record<
@@ -170,17 +171,29 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
   );
 }
 
+type IncidentTab = "overview" | "investigation" | "evidence";
+
+function tabFor(
+  initialTab: SreIncidentDetailViewProps["initialTab"],
+): IncidentTab {
+  if (initialTab === "evidence" || initialTab === "brief") return "evidence";
+  return initialTab === "investigation" ? "investigation" : "overview";
+}
+
 export function SreIncidentDetailView({
   detail,
   services,
-  initialTab = "investigation",
+  initialTab = "overview",
 }: SreIncidentDetailViewProps) {
   const summary = getBriefSummary(detail);
   const provider = getBriefProvider(detail);
+  const { incident, permissions } = detail;
+  const open = incident.status !== "resolved";
+  const investigation = detail.latestInvestigation;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto overflow-x-hidden lg:overflow-hidden">
-      <div className="shrink-0 space-y-4">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto overflow-x-hidden">
+      <header className="shrink-0 space-y-3">
         <Button
           asChild
           variant="link"
@@ -191,159 +204,215 @@ export function SreIncidentDetailView({
             Incidents
           </Link>
         </Button>
-        {detail.publicIncident && <Button asChild variant="outline" size="sm"><Link href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}>View public status update</Link></Button>}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <TableBadge tone="info">
-                Incident #{detail.incident.incidentNumber}
-              </TableBadge>
+            <h1 className="break-words text-2xl font-semibold leading-tight">
+              <span className="mr-2 text-muted-foreground">
+                #{incident.incidentNumber}
+              </span>
+              {incident.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <TableBadge
-                tone={severityTones[detail.incident.severity]}
+                tone={severityTones[incident.severity]}
                 className="uppercase"
               >
-                {detail.incident.severity}
+                {incident.severity}
               </TableBadge>
               <TableBadge
-                tone={statusTones[detail.incident.status]}
+                tone={statusTones[incident.status]}
                 className="capitalize"
               >
-                {formatStatus(detail.incident.status)}
+                {formatStatus(incident.status)}
               </TableBadge>
+              <span suppressHydrationWarning>
+                Opened {formatDate(incident.createdAt)}
+              </span>
+              {incident.primaryServiceName && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{incident.primaryServiceName}</span>
+                </>
+              )}
+              {incident.acknowledgedAt && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>Acknowledged</span>
+                </>
+              )}
             </div>
-            <h1 className="max-w-5xl break-words text-xl font-semibold leading-snug md:text-2xl">
-              {detail.incident.title}
-            </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {detail.permissions.canInvestigate && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {permissions.canInvestigate && (
               <Button asChild variant="outline" size="sm">
-                <Link href={`/copilot?incident=${detail.incident.id}`}>
+                <Link href={`/copilot?incident=${incident.id}`}>
                   <Bot className="h-4 w-4" />
-                  Open Copilot
+                  Ask Copilot
                 </Link>
               </Button>
             )}
             <EditSreIncidentDialog
-              incident={detail.incident}
+              incident={incident}
               services={services}
-              canUpdate={detail.permissions.canUpdate}
+              canUpdate={permissions.canUpdate}
             />
-            {detail.permissions.canUpdate &&
-              detail.incident.status !== "resolved" && (
-                <ResolveSreIncidentDialog incidentId={detail.incident.id} />
-              )}
+            {permissions.canUpdate && open && !incident.acknowledgedAt && (
+              <AcknowledgeSreIncidentButton incidentId={incident.id} />
+            )}
+            {permissions.canUpdate && open && (
+              <ResolveSreIncidentDialog
+                incidentId={incident.id}
+                defaultSummary={incident.rootCauseSummary ?? ""}
+              />
+            )}
           </div>
         </div>
+        {incident.resolutionSummary && (
+          <p
+            className="rounded-md border bg-muted/40 p-3 text-sm"
+            data-testid="resolution-summary"
+          >
+            <span className="font-medium">Resolution: </span>
+            {incident.resolutionSummary}
+          </p>
+        )}
+      </header>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-          {detail.incident.primaryServiceId ? (
-            <Link
-              className="text-foreground underline underline-offset-4"
-              href={`/services/${detail.incident.primaryServiceId}`}
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <Tabs defaultValue={tabFor(initialTab)} className="min-w-0">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="investigation">Investigation</TabsTrigger>
+            <TabsTrigger value="evidence">
+              Evidence
+              {detail.evidence.length > 0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  {detail.evidence.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="mt-4 space-y-6">
+            <IncidentAiSummaryCard
+              rootCauseSummary={incident.rootCauseSummary}
+              confidenceScore={incident.confidenceScore}
+              investigationStatus={investigation?.status ?? null}
+              investigation={investigation}
+              evidence={detail.evidence}
+              incidentId={incident.id}
             >
-              {detail.incident.primaryServiceName ?? "Service"}
-            </Link>
-          ) : detail.permissions.canUpdate ? (
-            <Link
-              className="underline underline-offset-4"
-              href={`/incidents/${detail.incident.id}?edit=service`}
-            >
-              Link service (optional)
-            </Link>
-          ) : (
-            <span>No service linked</span>
-          )}
-          <span>
-            {detail.incident.alertCount} alert
-            {detail.incident.alertCount === 1 ? "" : "s"}
-          </span>
-          <span>
-            {detail.evidence.length} evidence item
-            {detail.evidence.length === 1 ? "" : "s"}
-          </span>
-          <span suppressHydrationWarning>
-            Updated {formatDate(detail.incident.updatedAt)}
-          </span>
-          <Button asChild variant="ghost" size="sm" className="h-7">
-            <Link
-              href={`/copilot/evidence-graph?incident=${detail.incident.id}`}
-            >
-              <Network className="h-4 w-4" />
-              View map
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <Tabs
-        defaultValue={initialTab === "brief" ? "evidence" : initialTab}
-        className="flex shrink-0 flex-col gap-4 lg:min-h-0 lg:flex-1 lg:overflow-hidden"
-      >
-        <TabsList className="shrink-0 justify-start self-start">
-          <TabsTrigger value="investigation">Overview</TabsTrigger>
-          <TabsTrigger value="evidence">Evidence &amp; brief</TabsTrigger>
-        </TabsList>
-
-        <TabsContent
-          value="investigation"
-          className="overflow-x-hidden lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
-        >
-          <SreInvestigationPanel
-            key={detail.latestInvestigation?.id ?? "no-investigation"}
-            incidentId={detail.incident.id}
-            hasPrimaryService={Boolean(detail.incident.primaryServiceId)}
-            serviceMappingHref={`/incidents/${detail.incident.id}?edit=service`}
-            canMapService={detail.permissions.canUpdate}
-            evidenceReferences={detail.evidence.map((item) => ({
-              id: item.id,
-              title: item.title,
-              evidenceType: item.evidenceType,
-            }))}
-            toolMetrics={detail.toolMetrics}
-            latestInvestigation={detail.latestInvestigation}
-            latestReportSnapshot={detail.latestReportSnapshot}
-            myReportFeedback={detail.myReportFeedback}
-            canInvestigate={detail.permissions.canInvestigate}
-            canUseLiveConnectors={detail.permissions.canUseLiveConnectors}
-            investigationEnabled={detail.capabilities.investigationEnabled}
-          />
-        </TabsContent>
-
-        <TabsContent
-          value="evidence"
-          className="space-y-4 overflow-x-hidden lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
-        >
-          <details className="rounded-lg border" open={initialTab === "brief"}>
-            <summary className="cursor-pointer rounded-lg px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              Evidence brief · Summarize or export evidence
-            </summary>
-            <div className="h-[min(40rem,75svh)] min-h-96 p-3">
-              <SreIncidentBriefPanel
-                key={`${detail.incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
-                incidentId={detail.incident.id}
-                incidentNumber={detail.incident.incidentNumber}
-                incidentTitle={detail.incident.title}
-                initialSummary={summary}
-                initialProvider={provider}
-                initialConfidenceScore={
-                  detail.latestBrief?.confidenceScore ?? null
-                }
-                hasBrief={Boolean(detail.latestBrief)}
-                canGenerate={detail.permissions.canInvestigate}
-                totalEvidenceCount={detail.evidence.length}
-                evidenceCount={
-                  typeof detail.latestBrief?.agentStateSnapshot
-                    ?.evidenceCount === "number"
-                    ? detail.latestBrief.agentStateSnapshot.evidenceCount
-                    : null
-                }
+              {investigation && (
+                <InvestigationHypotheses
+                  incidentId={incident.id}
+                  investigation={investigation}
+                  evidence={detail.evidence}
+                  canGiveFeedback={permissions.canUpdate}
+                />
+              )}
+            </IncidentAiSummaryCard>
+            {!open && (
+              <PostmortemCard
+                key={incident.postmortem?.updatedAt ?? "none"}
+                incidentId={incident.id}
+                incidentNumber={incident.incidentNumber}
+                title={incident.title}
+                postmortem={incident.postmortem}
+                canEdit={permissions.canUpdate}
               />
-            </div>
-          </details>
-          <NativeEvidenceCard detail={detail} />
-        </TabsContent>
-      </Tabs>
+            )}
+            <IncidentTimeline
+              incidentId={incident.id}
+              canUpdate={permissions.canUpdate && open}
+            />
+          </TabsContent>
+
+          <TabsContent
+            value="investigation"
+            className="mt-4 space-y-6"
+            id="incident-investigation"
+          >
+            <SreInvestigationPanel
+              key={investigation?.id ?? "no-investigation"}
+              incidentId={incident.id}
+              hasPrimaryService={Boolean(incident.primaryServiceId)}
+              serviceMappingHref={`/incidents/${incident.id}?edit=service`}
+              canMapService={permissions.canUpdate}
+              evidenceReferences={detail.evidence.map((item) => ({
+                id: item.id,
+                title: item.title,
+                evidenceType: item.evidenceType,
+              }))}
+              toolMetrics={detail.toolMetrics}
+              latestInvestigation={investigation}
+              latestReportSnapshot={detail.latestReportSnapshot}
+              myReportFeedback={detail.myReportFeedback}
+              canInvestigate={permissions.canInvestigate}
+              canUseLiveConnectors={permissions.canUseLiveConnectors}
+              investigationEnabled={detail.capabilities.investigationEnabled}
+            />
+            {investigation && (
+              <InvestigationStepTrace
+                steps={investigation.steps}
+                running={investigation.status === "running"}
+              />
+            )}
+            {permissions.canUpdate && investigation?.status === "completed" && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3">
+                <span className="text-sm font-medium">
+                  Was this investigation right?
+                </span>
+                <InvestigationFeedback
+                  key={`feedback:${investigation.id}`}
+                  incidentId={incident.id}
+                  investigationRunId={investigation.id}
+                  initial={
+                    investigation.myFeedback.find(
+                      (entry) => entry.hypothesisKey === null,
+                    ) ?? null
+                  }
+                  label="this investigation"
+                />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="evidence" className="mt-4 space-y-6">
+            <NativeEvidenceCard detail={detail} />
+            <details
+              className="rounded-lg border"
+              open={initialTab === "brief"}
+            >
+              <summary className="cursor-pointer rounded-lg px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Evidence brief · Summarize or export evidence
+              </summary>
+              <div className="h-[min(40rem,75svh)] min-h-96 p-3">
+                <SreIncidentBriefPanel
+                  key={`${incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
+                  incidentId={incident.id}
+                  incidentNumber={incident.incidentNumber}
+                  incidentTitle={incident.title}
+                  initialSummary={summary}
+                  initialProvider={provider}
+                  initialConfidenceScore={
+                    detail.latestBrief?.confidenceScore ?? null
+                  }
+                  hasBrief={Boolean(detail.latestBrief)}
+                  canGenerate={permissions.canInvestigate}
+                  totalEvidenceCount={detail.evidence.length}
+                  evidenceCount={
+                    typeof detail.latestBrief?.agentStateSnapshot
+                      ?.evidenceCount === "number"
+                      ? detail.latestBrief.agentStateSnapshot.evidenceCount
+                      : null
+                  }
+                />
+              </div>
+            </details>
+          </TabsContent>
+        </Tabs>
+        <IncidentSidebar detail={detail} />
+      </div>
     </div>
   );
 }

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 
 import { DataTablePagination } from "./data-table-pagination";
+import { useFitPagination } from "@/hooks/use-fit-page-size";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
@@ -64,9 +65,10 @@ export function DataTable<TData, TValue>({
   meta,
   hideToolbar = false,
   hidePagination = false,
-  pageSize = 12,
+  pageSize,
 }: DataTableProps<TData, TValue>) {
   const [mounted, setMounted] = React.useState(false);
+  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, pageSize);
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
     updatedAt: false,
@@ -129,12 +131,8 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
-    initialState: {
-      pagination: {
-        pageSize: pageSize,
-      },
-    },
     state: {
+      pagination,
       sorting,
       columnVisibility,
       rowSelection,
@@ -147,6 +145,7 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: safeSetColumnFilters,
     onColumnVisibilityChange: safeSetColumnVisibility,
     onGlobalFilterChange: safeSetGlobalFilter,
+    onPaginationChange,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -203,7 +202,7 @@ export function DataTable<TData, TValue>({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {isLoading ? (
               <TableRow>
                 <TableCell

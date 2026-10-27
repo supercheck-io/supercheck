@@ -80,9 +80,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       const promotedIncidentId = page.url().split("/").pop();
       expect(promotedIncidentId).toMatch(/^[0-9a-f-]{36}$/i);
       await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
-      await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,
         })
@@ -101,10 +98,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       expect(briefDownload.suggestedFilename()).toMatch(
         /^incident-\d+-.+-brief\.md$/,
       );
-
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       const evidenceRows = page.locator('tr[id^="sre-evidence-"]');
       await expect(evidenceRows.first()).toBeVisible();
       const evidenceId = (
@@ -136,9 +129,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
           `/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}$`,
         ),
       );
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
       await expect(
@@ -207,13 +197,14 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
-        "Incident ID",
+        "#",
         "Title",
         "Severity",
         "Status",
         "Service",
-        "Investigation",
-        "Updated",
+        "Assignee",
+        "Age",
+        "AI",
       ]);
       await page
         .getByRole("button", { name: "New incident", exact: true })
@@ -231,22 +222,13 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("heading", { name: incidentTitle, exact: true }),
       ).toBeVisible();
 
-      const tabs = page.getByRole("tab");
-      await expect(tabs).toHaveCount(2);
-      await expect(
-        page.getByRole("tab", { name: "Overview", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("tab", { name: "Evidence & brief", exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole("tab")).toHaveCount(3);
+      await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
+      await page.getByRole("tab", { name: "Investigation" }).click();
       await expect(page.getByLabel("Include live sources")).toBeDisabled();
       await expect(
         page.getByText("Link a service to use live sources.", { exact: false }),
       ).toBeVisible();
-
-      await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
       await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,
@@ -265,9 +247,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
 
       await page.reload();
       await page
-        .getByRole("tab", { name: "Evidence & brief", exact: true })
-        .click();
-      await page
         .getByText("Evidence brief · Summarize or export evidence", {
           exact: true,
         })
@@ -276,7 +255,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
 
-      await page.getByRole("tab", { name: "Overview", exact: true }).click();
+      await page.getByRole("tab", { name: "Investigation", exact: true }).click();
       const investigationResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&

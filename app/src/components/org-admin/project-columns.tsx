@@ -4,13 +4,15 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { TableBadge } from "@/components/ui/table-badge";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DateCell } from "@/components/ui/table-cells";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-import { Edit3, FolderOpen, Users, Calendar, MapPin } from "lucide-react";
+import { Edit3, FolderOpen, MapPin, MoreHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -35,20 +37,6 @@ export interface Project {
   isDefault: boolean;
 }
 
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  const formattedDate = date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  const formattedTime = date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return { formattedDate, formattedTime };
-};
-
 export function createProjectColumns(
   onEditProject?: (project: Project) => void,
   canManageProject?: boolean,
@@ -67,7 +55,7 @@ export function createProjectColumns(
       cell: ({ row }) => {
         const id = row.getValue("id") as string;
         return (
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-8">
             <UUIDField
               value={id}
               maxLength={8}
@@ -88,29 +76,14 @@ export function createProjectColumns(
         const project = row.original;
 
         return (
-          <div className="flex items-center h-10 min-w-[200px]">
-            <div className="flex items-center gap-2.5">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <FolderOpen className="h-4 w-4 text-blue-600" />
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <span className="truncate">{project.name}</span>
-                  {project.isDefault && (
-                    <TableBadge compact>
-                      Default
-                    </TableBadge>
-                  )}
-                </div>
-                {project.description && (
-                  <div className="text-xs text-muted-foreground truncate mt-0.5">
-                    {project.description}
-                  </div>
-                )}
-              </div>
+          <div className="flex h-8 min-w-[200px] items-center gap-2.5">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-500/10">
+              <FolderOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
+            <span className="truncate text-sm font-medium text-foreground">
+              {project.name}
+            </span>
+            {project.isDefault && <TableBadge compact>Default</TableBadge>}
           </div>
         );
       },
@@ -120,6 +93,23 @@ export function createProjectColumns(
         const searchText = `${project} ${description}`;
         return searchText.toLowerCase().includes(value.toLowerCase());
       },
+    },
+    {
+      accessorKey: "description",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Description" />
+      ),
+      cell: ({ row }) =>
+        row.original.description ? (
+          <TruncatedTextWithTooltip
+            text={row.original.description}
+            maxLength={40}
+            maxWidth="260px"
+            className="text-sm text-muted-foreground"
+          />
+        ) : (
+          <span className="text-sm text-muted-foreground">No description</span>
+        ),
     },
     {
       accessorKey: "membersCount",
@@ -136,7 +126,7 @@ export function createProjectColumns(
         const remainingCount = Math.max(0, count - displayMembers.length);
 
         return (
-          <div className="flex items-center h-10 gap-2" title="Assigned members plus organization owners and admins">
+          <div className="flex items-center h-8 gap-2" title="Assigned members plus organization owners and admins">
             <div className="flex items-center">
               {displayMembers.length > 0 ? (
                 <>
@@ -182,21 +172,7 @@ export function createProjectColumns(
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Created" />
       ),
-      cell: ({ row }) => {
-        const { formattedDate, formattedTime } = formatDate(
-          row.getValue("createdAt")
-        );
-
-        return (
-          <div className="flex items-center h-10 text-sm">
-            <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-            <span>{formattedDate}</span>
-            <span className="text-muted-foreground ml-1 text-xs">
-              {formattedTime}
-            </span>
-          </div>
-        );
-      },
+      cell: ({ row }) => <DateCell value={row.original.createdAt} />,
     },
     {
       id: "actions",
@@ -206,47 +182,35 @@ export function createProjectColumns(
 
         if (!canManageProject) {
           return (
-            <div className="flex items-center h-10">
-              <span className="text-xs text-muted-foreground">View only</span>
-            </div>
+            <span className="text-xs text-muted-foreground">View only</span>
           );
         }
 
         return (
-          <div className="flex items-center h-10 gap-1">
-            <TooltipProvider>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={`Open actions for ${project.name}`}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEditProject?.(project)}>
+                <Edit3 className="mr-2 h-3.5 w-3.5" />
+                Edit project
+              </DropdownMenuItem>
               {onManageLocations && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 hover:text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300"
-                      onClick={() => onManageLocations(project)}
-                      aria-label={`Location restrictions for ${project.name}`}
-                    >
-                      <MapPin className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Location restrictions</TooltipContent>
-                </Tooltip>
+                <DropdownMenuItem onClick={() => onManageLocations(project)}>
+                  <MapPin className="mr-2 h-3.5 w-3.5" />
+                  Location restrictions
+                </DropdownMenuItem>
               )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:hover:text-blue-300"
-                    onClick={() => onEditProject?.(project)}
-                    aria-label={`Edit ${project.name}`}
-                  >
-                    <Edit3 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Edit project</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       },
     },

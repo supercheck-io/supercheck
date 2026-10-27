@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Crown, Shield, User, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { DateCell } from "@/components/ui/table-cells";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UserActions } from "./user-actions";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -75,7 +76,7 @@ export const createUserColumns = (
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <UUIDField
             value={id}
             maxLength={8}
@@ -93,7 +94,7 @@ export const createUserColumns = (
       <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
-      <div className="flex items-center h-10 font-medium">
+      <div className="flex items-center h-8 font-medium">
         {row.getValue("name")}
       </div>
     ),
@@ -104,7 +105,7 @@ export const createUserColumns = (
       <DataTableColumnHeader column={column} title="Email" />
     ),
     cell: ({ row }) => (
-      <div className="flex items-center h-10 text-sm text-muted-foreground">
+      <div className="flex items-center h-8 text-sm text-muted-foreground">
         {row.getValue("email")}
       </div>
     ),
@@ -137,7 +138,7 @@ export const createUserColumns = (
       };
 
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <TableBadge tone={getRoleTone(role)}>
             {getRoleIcon(role)}
             {getDisplayRole(role)}
@@ -161,7 +162,7 @@ export const createUserColumns = (
     cell: ({ row }) => {
       const banned = row.original.banned as boolean;
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           {banned ? (
             <TableBadge tone="danger">
               Banned
@@ -191,7 +192,7 @@ export const createUserColumns = (
 
       if (organizations.length === 0) {
         return (
-          <div className="flex items-center h-10 text-sm text-muted-foreground">
+          <div className="flex items-center h-8 text-sm text-muted-foreground">
             <span className="italic">No organization</span>
           </div>
         );
@@ -202,7 +203,7 @@ export const createUserColumns = (
       const remainingCount = organizations.length - 1;
 
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -261,30 +262,7 @@ export const createUserColumns = (
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
-    cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) return null;
-
-      const date = new Date(createdAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center h-10 text-sm">
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("createdAt") as string} />,
   },
   {
     id: "actions",
@@ -292,7 +270,7 @@ export const createUserColumns = (
     cell: ({ row }) => {
       const user = row.original;
       return (
-        <div className="flex items-center h-10">
+        <div className="flex items-center h-8">
           <UserActions user={user} onUserUpdate={onUserUpdate} />
         </div>
       );

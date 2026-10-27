@@ -260,6 +260,7 @@ export function DiagnosticQueriesAdminView({
             />
           )}
           entityLabel="saved queries"
+          fixedPageSize={6}
           meta={{
             onDelete,
             isDisabling,

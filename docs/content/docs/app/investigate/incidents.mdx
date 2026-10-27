@@ -19,38 +19,71 @@ Both paths open the incident workspace.
 
 ## Incident Queue
 
-Active incidents appear first, ordered by recency. Filter by severity (`SEV1` through `SEV4`), resolution status, or title. Quick actions open **Review alerts** and **Trends**.
+The queue opens on **Active** incidents. Use the quick filters **Active**, **Assigned to me**, **Unassigned**, and **All**, or narrow by severity (`SEV1` through `SEV4`), status, service, or title.
+
+| Column | Shows |
+|---|---|
+| **#** | Incident number |
+| **Title**, **Severity**, **Status** | What happened and how urgent it is |
+| **Service** | The linked catalog service |
+| **Assignee** | The person responsible, or *Unassigned* |
+| **Age** | Time since detection (detection to resolution once resolved) |
+| **AI** | State of the latest AI investigation |
+
+Quick actions open **Review alerts** and **Trends**. A project with no incidents yet explains how incidents open and links to alert setup.
 
 ![Incident Queue](/screenshots/sre-incidents-queue.png)
 
 ## Incident Workspace
 
-The workspace has two tabs.
+The header shows the incident number, title, severity, status, service, and when it opened, with **Ask Copilot**, **Edit incident**, **Acknowledge**, and **Resolve incident**. The page has three tabs:
 
-<Tabs items={['Overview', 'Evidence & brief']}>
-<Tab value="Overview">
-
-The **Overview** tab holds the header, metadata, investigation controls, and findings.
-
-| Control | What it does |
+| Tab | Contents |
 |---|---|
-| **Run investigation** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors |
-| **Include live sources** | Off by default. Needs a linked service and connector investigation permission |
-| **Link service**, **View map** | Connect the incident to a catalog service and view its dependency topology |
-| **Save report & feedback** | Snapshot an immutable report and rate findings accuracy |
+| **Overview** | The **AI summary** with hypotheses, the **post-mortem** once the incident is resolved, and the **timeline** with a box to post updates |
+| **Investigation** | Run or re-run the investigation, the **How I investigated** step log, and feedback on the whole run |
+| **Evidence** | Every evidence item for the incident, plus the **Evidence brief** to summarize or export it |
+
+The right sidebar shows the **assignee** and optional **commander**, service, linked alerts, **similar incidents**, the status-page link with **Publish update**, and timestamps with MTTA and MTTR. Open a tab directly with `?tab=investigation` or `?tab=evidence`.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
-Follow the status on the page and wait for completion before saving a report. If a run fails or times out, review the error and available evidence before retrying. Failed runs cannot be saved as completed reports.
+### AI summary
 
-Select **View map** to explore the linked service, related alerts, and evidence. Select a node to inspect it.
+The summary card answers four questions in order.
+
+| Part | What it tells you |
+|---|---|
+| **Conclusion** | One paragraph: what changed, the blast radius, the strongest signals, and the likely cause |
+| **Confidence** | **High**, **Medium**, **Low**, or **Inconclusive** |
+| **Cited evidence** | Up to three evidence items the conclusion rests on. Select one to read it, or open the **Investigation Map** |
+| **Hypotheses** | Ranked explanations, each marked **Validated**, **Ruled out**, or **Inconclusive**, with a short rationale and its evidence |
+
+**Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs from before structured results, or runs whose output could not be validated, show a plain summary without hypotheses or a confidence rating.
+
+On the **Investigation** tab, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
 
 ![Investigation Map](/screenshots/sre-investigation-map.png)
 
-</Tab>
-<Tab value="Evidence & brief">
+### Run, re-run, and give feedback
 
-The **Evidence & brief** tab organizes observations from Supercheck checks and connected systems.
+| Control | What it does |
+|---|---|
+| **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors |
+| **Include live sources** | Off by default. Needs a linked service and connector investigation permission |
+| **Right** / **Wrong** | On the whole investigation or on any single hypothesis, with an optional one-line note (up to 500 characters). Needs permission to update incidents |
+| **Re-run with my note** | Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
+| **Save report & feedback** | Snapshot an immutable report and rate findings accuracy |
+
+Your notes are hints, not evidence. The agent is told to weigh them against the stored evidence and to ignore any instructions inside them. Recent notes on other incidents of the same service are also passed to future investigations as hints. If a run fails or times out, review the error and available evidence before retrying.
+
+### Similar incidents
+
+The sidebar lists up to five **resolved incidents from the last 180 days** in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. The same list, shortened, is given to the investigation as *past incidents (may be unrelated)*. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
+
+### Evidence
+
+The **Evidence** tab organizes observations from Supercheck checks and connected systems.
 
 | Item | Contents |
 |---|---|
@@ -59,33 +92,39 @@ The **Evidence & brief** tab organizes observations from Supercheck checks and c
 
 ![Evidence and Brief](/screenshots/incident-evidence-brief.png)
 
-Select **View map** to see the incident and its evidence relationships.
+Select **Investigation Map** to see the incident and its evidence relationships. Select a node to inspect it.
 
 ![Evidence Graph](/screenshots/sre-evidence-graph.png)
-
-</Tab>
-</Tabs>
 
 <Callout type="info">
 Stored evidence stays available when a connector is disabled. Disabling a connector stops new live searches but does not remove evidence already collected.
 </Callout>
 
-## Investigation Report
 
-Reports label statements as **Fact**, **Inference**, or **Hypothesis**.
+## Saving and Sharing
 
-| Section | Contents |
+Use **Save report** to keep the findings of a completed investigation, and the **Evidence brief** for a shorter summary. Download either to share. Credentials and raw connector responses are excluded.
+
+## Ownership and Acknowledgement
+
+| Action | Behavior |
 |---|---|
-| **What changed** | Recent commits, deployments, or configuration updates |
-| **Blast radius** | Affected endpoints, services, and downstream dependencies |
-| **Strongest signals** | High-confidence failure patterns and error messages |
-| **Likely cause & confidence** | Root cause hypothesis with rationale |
-| **Evidence gaps** | Missing data or unchecked systems |
-| **Next safe checks** | Recommended read-only checks to verify state |
+| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
+| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
+| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
+| **Commander** | Optional single incident commander, set from the sidebar |
 
-If the evidence cannot determine a root cause, the report states the gap instead of guessing.
+Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
 
-Use **Save report** to keep the findings of a completed investigation. Generate an **Evidence brief** separately for a shorter summary. Download either to share with your team. Review evidence gaps and incomplete results first. Credentials and raw connector responses are excluded.
+## Notifications
+
+Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, and when it is **resolved**.
+
+- The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
+- Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
+- Email, Slack, Teams, Discord, Telegram and webhook channels are supported. A webhook that uses a preset or a custom body template is skipped for incident messages, because they use a fixed JSON body; attach a plain webhook channel to receive them.
+- Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-written conclusions. An AI finding adds only a confidence label (*AI confidence: High* or *AI result: inconclusive*); open the incident to read the finding.
+- The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
 
 ## Incident Lifecycle
 
@@ -95,9 +134,22 @@ Use **Save report** to keep the findings of a completed investigation. Generate 
 | **Investigate** | AI SRE agent | Reads native evidence and authorized connectors, then generates cited hypotheses |
 | **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
 | **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |
-| **Resolve** | Responder | Select **Resolve incident** and record fix details and passing checks in the timeline |
+| **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
+| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the AI root cause when one exists. Edit it to state the fix and the checks that confirmed recovery |
 
-Resolving records your decision and the recovery checks you list. It does not run checks or apply remediation.
+Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
+
+## Post-mortem
+
+When an incident is resolved, the **Post-mortem** card offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
+
+- One bounded AI call writes the draft. If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, you get a template filled from the incident record instead, with placeholders where facts are missing. Nothing is invented.
+- Every section is editable. Follow-ups are a simple list you can add to and remove from. Select **Save post-mortem** to keep your edits.
+- **Regenerate draft** replaces the current text after you confirm. **Export Markdown** downloads the post-mortem as a `.md` file.
+- Drafting is limited to five drafts per person per incident per hour. It needs permission to update incidents; people with view access can read and export it.
+
+Review the draft before sharing it. The incident timeline and resolution summary remain the record of what happened.
+
 
 ## Incident Trends
 
@@ -114,7 +166,7 @@ Select **Trends** in the queue to see metrics for the last 30 days.
 
 ## Copilot Assistance
 
-Open **Investigate → Copilot**, or select **Open Copilot** on an incident. See [Copilot Chat](/docs/app/investigate/copilot) for modes, live sources, and limits.
+Open **Investigate → Copilot**, or select **Ask Copilot** on an incident to chat with that incident's evidence in scope. Suggested questions: *What changed before this started?*, *Have we seen this before?*, and *What should I check next?*. See [Copilot Chat](/docs/app/investigate/copilot) for modes, live sources, and limits.
 
 ## Alerts vs. Incidents
 
@@ -125,10 +177,12 @@ Open **Investigate → Copilot**, or select **Open Copilot** on an incident. See
 
 ## Permissions
 
-| Role | View | Investigate stored evidence | Live sources | Resolve |
+| Role | View | Investigate stored evidence | Live sources | Assign, acknowledge, resolve, post updates |
 |---|:---:|:---:|:---:|:---:|
 | Org Owner, Org Admin, Project Admin | ✓ | ✓ | ✓ | ✓ |
 | Project Editor | ✓ | ✓ | — | ✓ |
 | Project Viewer | ✓ | — | — | — |
+
+The same `sre_incident:update` permission covers assign, acknowledge, resolve, and updates over the API (`POST /api/sre/incidents/{id}/assign`, `/acknowledge`, `/resolve`).
 
 If investigations are disabled, existing evidence and results stay readable, but run and live-source controls are unavailable.

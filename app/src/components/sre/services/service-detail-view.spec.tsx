@@ -132,6 +132,7 @@ describe("ServiceDetailView", () => {
         "true",
       );
       expect(screen.getByText("No recent activity")).toBeInTheDocument();
+      expect(screen.getByText(/GitHub or GitLab connectors/)).toBeInTheDocument();
       fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), {
         button: 0,
         ctrlKey: false,
