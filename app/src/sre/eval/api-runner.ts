@@ -86,6 +86,8 @@ function defaultExtractAgentResult(fixture: SreEvalFixture, responseBody: unknow
 
   return {
     answer,
+    // formatInvestigationMarkdown prefixes inconclusive reports with this marker.
+    outcome: answer.startsWith("**Inconclusive.**") ? "inconclusive" : "identified",
     evidenceIds: getStringArrayField(responseBody, "evidenceIds") ?? extractRequiredEvidenceIdsFromAnswer(fixture, answer),
     toolCalls: extractToolCalls(responseBody),
   };
