@@ -157,6 +157,16 @@ describe("UsageNotificationService", () => {
     );
   });
 
+  it("does not send the limit-reached alert before the limit is reached", async () => {
+    (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValueOnce({
+      ...(await (polarUsageService.getUsageMetrics as jest.Mock)()),
+      totalOverageCostCents: 9_996,
+    });
+    await usageNotificationService.checkAndNotify("org_123");
+    const keys = (billingSettingsService.markNotificationSent as jest.Mock).mock.calls.map(c => c[1]);
+    expect(keys).toEqual(["spending_90"]);
+  });
+
   it("does not send the same spending threshold notification twice", async () => {
     (billingSettingsService.hasNotificationBeenSent as jest.Mock)
       .mockResolvedValueOnce(false)
