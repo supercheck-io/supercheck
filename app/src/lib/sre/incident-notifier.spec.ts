@@ -188,7 +188,7 @@ it("keeps the incident link when Telegram text is clipped", async () => {
 it("never throws when delivery fails", async () => {
   fetchPublicEndpoint.mockRejectedValueOnce(new Error("boom"));
   selectQueue.push([incident], people, [{ sourceType: "job", sourceId: "job-1" }], [{ id: "p1", type: "discord", config: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } }]);
-  await expect(notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null })).resolves.toBeUndefined();
+  await expect(notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null })).resolves.toBeUndefined();
 });
 
 it("logs a delivery failure when the endpoint answers with a non-2xx status", async () => {
