@@ -117,7 +117,7 @@ export function canAutoConnect(savedInstanceUrl: string, pageOrigin: string): bo
 export async function autoConnect(payload: AutoConnectPayload): Promise<void> {
   const { instanceUrl: saved } = await getConfig();
   if (!canAutoConnect(saved, payload.instanceUrl))
-    throw new Error(`The recorder is set to ${new URL(saved).origin}. Change the instance in the extension options to connect to another one.`);
+    throw new Error(`The recorder is set to ${URL.canParse(saved) ? new URL(saved).origin : 'an unrecognised instance'}. Change the instance in the extension options to connect to another one.`);
   await replaceConfig({ ...payload, autoConnected: true });
 }
 
