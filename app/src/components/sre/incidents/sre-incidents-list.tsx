@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -76,6 +76,11 @@ type SreIncidentsListProps = {
   incidents: SreIncidentListItem[];
   loadError: string | null;
   currentUserId?: string | null;
+  truncated?: boolean;
+  /** False only when the project has never had an incident (shows the first-run checklist). */
+  hasIncidents?: boolean;
+  /** Reports which server scope the current filters need. */
+  onScopeChange?: (scope: "active" | "all") => void;
 };
 
 type QuickFilter = "active" | "mine" | "unassigned" | "all";
@@ -210,6 +215,9 @@ export function SreIncidentsList({
   incidents,
   loadError,
   currentUserId = null,
+  truncated = false,
+  hasIncidents = false,
+  onScopeChange,
 }: SreIncidentsListProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -228,6 +236,11 @@ export function SreIncidentsList({
     setLastPageSize(pageSize);
     setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
   }
+  // Resolved incidents are only fetched when the All or a Status filter asks for them.
+  const needsResolved = quickFilter === "all" || statusFilter.length > 0;
+  useEffect(() => {
+    onScopeChange?.(needsResolved ? "all" : "active");
+  }, [needsResolved, onScopeChange]);
   const serviceOptions = useMemo(
     () =>
       Array.from(
@@ -341,7 +354,7 @@ export function SreIncidentsList({
   return (
     <div className="w-full max-w-full space-y-4">
 
-      {incidents.length > 0 && (
+      {(incidents.length > 0 || hasIncidents) && (
         <div
           className="flex flex-wrap items-center gap-2"
           data-testid="incident-toolbar"
@@ -432,7 +445,7 @@ export function SreIncidentsList({
         </div>
       )}
 
-      {incidents.length === 0 ? (
+      {incidents.length === 0 && !hasIncidents ? (
         <IncidentsFirstRunChecklist />
       ) : (
         <>
@@ -616,6 +629,7 @@ export function SreIncidentsList({
             <div className="flex-1 text-sm text-muted-foreground">
               Total {filteredIncidents.length}{" "}
               {filteredIncidents.length === 1 ? "incident" : "incidents"}
+              {truncated && " (showing latest 500)"}
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
               <div className="flex items-center space-x-2">
