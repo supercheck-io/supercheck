@@ -1166,6 +1166,10 @@ export async function setupCapacityManagement(
  * - Network issues causing missed events
  * - Counter corruption
  */
+// A drift is corrected only when the previous pass saw the same one: a single pass compares a BullMQ
+// snapshot with a later Redis read, so a job admitted or finished in between would look like drift.
+const pendingDrift = new Map<string, string>();
+
 export async function reconcileCapacityCounters(
   queues?: QueueParameters,
   autoCorrect: boolean = true
@@ -1247,7 +1251,18 @@ export async function reconcileCapacityCounters(
       const stored = redisRunningByOrg[orgId] || 0;
       const drift = stored - actual;
 
-      if (drift !== 0 && autoCorrect) {
+      if (drift === 0) {
+        pendingDrift.delete(orgId);
+        continue;
+      }
+      const seen = `${stored}:${actual}`;
+      if (autoCorrect && pendingDrift.get(orgId) !== seen) {
+        pendingDrift.set(orgId, seen);
+        continue;
+      }
+      pendingDrift.delete(orgId);
+
+      if (autoCorrect) {
         logger.warn({ 
           organizationId: orgId,
           redis: stored, 

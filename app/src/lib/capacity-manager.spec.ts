@@ -1062,7 +1062,15 @@ describe('Reconciliation', () => {
       return Promise.resolve('0');
     });
 
-    // Run reconciliation
+    // Run reconciliation: a drift is corrected once the next pass confirms it.
+    const arm = () => mockQueue.getJobs.mockResolvedValueOnce([
+      { id: 'job-1', data: { organizationId: 'org-1' } },
+      { id: 'job-2', data: { organizationId: 'org-1' } },
+    ]).mockResolvedValueOnce([
+      { id: 'job-3', data: { organizationId: 'org-3' } },
+    ]);
+    await reconcileCapacityCounters(mockQueues, true);
+    arm();
     await reconcileCapacityCounters(mockQueues, true);
 
     // Expect fixes
@@ -1086,8 +1094,22 @@ describe('Reconciliation', () => {
     );
   });
 
+  it('only corrects a drift that is still there on the next pass', async () => {
+    // A single pass compares a BullMQ snapshot with a later Redis read, so a job admitted or finished in
+    // between looks like drift. Dropping its slot would let the org over-admit.
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-race' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-race']]);
+    mockRedisGet.mockResolvedValue('3');
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisSet).not.toHaveBeenCalled();
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisSet).toHaveBeenCalledTimes(1);
+  });
+
   it('pages large queues and deduplicates jobs that move across mutable pages', async () => {
     const page = Array.from({ length: 250 }, (_, id) => ({ id: String(id), data: { organizationId: 'org-1' } }));
+    mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
     mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
     await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
     expect(mockQueue.getJobs).toHaveBeenNthCalledWith(2, expect.any(Array), 250, 499);
