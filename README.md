@@ -79,7 +79,7 @@ See the [CLI guide](cli/) and [command reference](https://supercheck.io/docs/cli
 
 ### Install the recorder
 
-Record browser interactions and save Playwright tests directly to Supercheck:
+Record browser interactions as Playwright code and send them to the Supercheck Playground:
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 - [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)

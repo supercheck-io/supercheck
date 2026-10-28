@@ -1,10 +1,10 @@
 ---
 title: Recorder
-description: Record browser interactions and save Playwright tests directly to Supercheck
+description: Record browser interactions as Playwright code and send them to the Supercheck Playground
 icon: MousePointerClick
 ---
 
-The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. Review or edit the generated test, then save it to a Supercheck project.
+The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. Review or edit the generated test, then send it to the Supercheck Playground.
 
 ## Install
 
@@ -58,7 +58,7 @@ Press `Shift+Alt+C` to inspect elements without recording actions.
 
 ## Permissions and data
 
-The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and save tests to Supercheck. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
+The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and hand the code to the Playground. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
 
 The extension injects its page API only on the origins listed under [Supercheck-hosted sites](#supercheck-hosted-sites) and on the instance URL saved in Options. Other pages cannot use the recorder API, read the stored credential, or start a recording.
 

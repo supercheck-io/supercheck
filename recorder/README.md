@@ -14,8 +14,8 @@ The Supercheck Recorder turns real browser interactions into maintainable Playwr
 ## What Supercheck Recorder includes
 
 - **In-Browser Recording**: Leverages [`chrome.debugger`](https://developer.chrome.com/docs/extensions/reference/debugger/) to capture clicks, navigation, inputs, form fills, and assertions without installing local Node.js or Python environments.
-- **1-Click Sync to Supercheck**: Saves generated scripts directly into cloud or self-hosted Supercheck projects, ready for scheduled execution and alerting.
-- **Playwright Test Output**: Generates recorded flows as Playwright Test (JavaScript); tests saved to Supercheck use the same format.
+- **Playground Hand-off**: Sends the generated script back to the Supercheck Playground editor that started the recording.
+- **Playwright Test Output**: Generates recorded flows as Playwright Test (JavaScript), the same format the Playground runs.
 - **Intelligent Selector Engine**: Prioritizes `getByTestId` (`data-testid`), accessible role locators, text, and resilient CSS attributes.
 - **Built-in Player & Step Execution**: Replays recorded instructions directly within the extension tab, highlighting lines as they execute.
 - **Playwright Trace Viewer Compatible**: Captures standard `.zip` traces compatible with [Playwright Trace Viewer](https://trace.playwright.dev).
@@ -79,7 +79,7 @@ Then load the unpacked extension in your browser:
 3. The recorder side panel opens.
 4. Interact with the page: clicks, typing, navigation, and dropdown selections are captured in real time.
 5. Review and customize the generated code in the side panel editor.
-6. Click **Save to Supercheck**, select your target project, and save the test.
+6. Click **Save** in the recorder to insert the code into the originating Supercheck Playground editor, then save the test there.
 
 ### Keyboard shortcuts
 

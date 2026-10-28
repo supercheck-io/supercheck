@@ -15,34 +15,6 @@ export function isRetryableRequestMethod(method = 'GET'): boolean {
   return RETRYABLE_METHODS.has(method.toUpperCase());
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  organizationId: string | null;
-  organizationName?: string;
-}
-
-export interface RecordingMetadata {
-  recordedAt: string;
-  duration: number;
-  stepsCount: number;
-  baseUrl: string;
-  browserInfo?: string;
-  extensionVersion: string;
-}
-
-export interface SaveRecordingRequest {
-  projectId: string;
-  name: string;
-  script: string;
-  metadata: RecordingMetadata;
-}
-
-export interface SaveRecordingResponse {
-  testId: string;
-  redirectUrl: string;
-}
-
 export interface UserInfo {
   id: string;
   email: string;
@@ -305,28 +277,6 @@ class SupercheckApiClient {
     return body?.success === true
       ? { valid: true }
       : { valid: false, reason: 'server_error' };
-  }
-
-  /**
-   * Get list of user's projects
-   */
-  async getProjects(): Promise<Project[]> {
-    const response = await this.request<{ success: boolean; data: Project[] }>('/api/extension/projects');
-    return response.data;
-  }
-
-  /**
-   * Save a recording as a test
-   */
-  async saveRecording(request: SaveRecordingRequest): Promise<SaveRecordingResponse> {
-    const response = await this.request<{ success: boolean; data: SaveRecordingResponse }>(
-        '/api/recordings',
-        {
-          method: 'POST',
-          body: JSON.stringify(request),
-        }
-    );
-    return response.data;
   }
 
   /**
