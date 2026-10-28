@@ -5,6 +5,7 @@ import { jobs as jobsTable, jobsSelectSchema } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { scheduleJob } from "../lib/job-scheduler";
 import { z } from "zod";
+import { validateJobCron } from "@/lib/job-cron-validation";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
@@ -92,12 +93,15 @@ export async function scheduleCronJob(
     }
 
     // Validate cron expression
-    if (!cronExpression) {
+    if (typeof cronExpression !== "string" || !cronExpression.trim()) {
       return {
         success: false,
         error: "Cron expression is required",
       };
     }
+    cronExpression = cronExpression.trim();
+    const cronError = validateJobCron(cronExpression);
+    if (cronError) return { success: false, error: cronError };
 
     // Get job details with project scoping
     const jobResult = await getJob(jobId, project.id, organizationId);

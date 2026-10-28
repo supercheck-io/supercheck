@@ -198,3 +198,8 @@ export function maskSecret(value: string, visible: number = 4): string {
 
   return `${prefix}${"*".repeat(stars)}${suffix}`;
 }
+
+/** Context-separated key for HMAC signing (never used for encryption). */
+export function deriveSigningKey(context: string): Buffer {
+  return deriveKey(getBaseKey(), context);
+}

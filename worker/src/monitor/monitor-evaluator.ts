@@ -277,10 +277,13 @@ export class MonitorEvaluator {
         (monitorAlertConfig?.failureThreshold as number) || 1;
 
       if (
-        consecutiveFailureCount === failureThreshold &&
+        consecutiveFailureCount >= failureThreshold &&
+        // Bounded, so an undeliverable first alert is not retried for the whole outage.
+        consecutiveFailureCount <
+          failureThreshold + Math.max(5, failureThreshold * 2) &&
         alertsSentForFailure === 0
       ) {
-        // First alert: threshold just reached
+        // First alert: threshold reached (>= so a skipped pending observation cannot miss it)
         shouldSendAlert =
           (monitorAlertConfig?.alertOnFailure as boolean) || false;
       } else if (

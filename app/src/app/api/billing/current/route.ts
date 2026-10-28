@@ -11,8 +11,9 @@ import {
   statusPages,
   projects,
   member,
+  invitation,
 } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { getPlanPricing, isCloudHosted } from "@/lib/feature-flags";
 
 /**
@@ -61,7 +62,7 @@ export async function GET() {
     const usage = await subscriptionService.getUsageSafe(organizationId);
 
     // Get current resource counts
-    const [monitorCount, statusPageCount, projectCount, memberCount] =
+    const [monitorCount, statusPageCount, projectCount, memberCount, pendingInviteCount] =
       await Promise.all([
         db
           .select({ count: sql<number>`count(*)` })
@@ -79,12 +80,24 @@ export async function GET() {
           .select({ count: sql<number>`count(*)` })
           .from(member)
           .where(eq(member.organizationId, organizationId)),
+        // Pending invitations reserve a seat, as in the invite limit check.
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(invitation)
+          .where(
+            and(
+              eq(invitation.organizationId, organizationId),
+              eq(invitation.status, "pending"),
+              gte(invitation.expiresAt, new Date()),
+            ),
+          ),
       ]);
 
     const monitorsTotal = Number(monitorCount[0]?.count || 0);
     const statusPagesTotal = Number(statusPageCount[0]?.count || 0);
     const projectsTotal = Number(projectCount[0]?.count || 0);
-    const membersTotal = Number(memberCount[0]?.count || 0);
+    const membersTotal =
+      Number(memberCount[0]?.count || 0) + Number(pendingInviteCount[0]?.count || 0);
 
     // Use the same access decision as API enforcement and the subscription
     // guard; expired cancellations must not look like an active paid plan.

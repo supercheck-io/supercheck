@@ -61,7 +61,7 @@ export class MonitorAlertService {
 
     if (!monitor) {
       this.logger.error(`[NOTIFY] Monitor not found: ${monitorId}`);
-      return { delivered: false };
+      return { delivered: false, suppressed: true };
     }
 
     // Get project information
@@ -152,7 +152,8 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
-      return { delivered: false };
+      // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
+      return { delivered: false, suppressed: true };
     }
 
     // Determine notification details
@@ -283,7 +284,11 @@ export class MonitorAlertService {
         createdRows,
       );
     }
-    return { delivered: successCount > 0 };
+    // A provider that reached some recipients (partial email) counts as delivered: a retry would resend to them.
+    return {
+      delivered:
+        successCount > 0 || deliveryResults.results.some((r) => r.partial),
+    };
   }
 
   async sendSslExpirationNotification(

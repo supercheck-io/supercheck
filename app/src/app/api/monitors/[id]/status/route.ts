@@ -2,8 +2,9 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { requireUserAuthContext } from "@/lib/auth-context";
+import { and, eq } from "drizzle-orm";
+import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
+import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -76,6 +77,10 @@ export async function PATCH(
       }
     }
 
+    // A trial that ended pauses monitors; only subscribing may undo that.
+    const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, { status });
+    if (resumeBlocked) return resumeBlocked;
+
     // Update the monitor status in the database
     const [updatedMonitor] = await db
       .update(monitors)
@@ -83,7 +88,13 @@ export async function PATCH(
         status: status,
         updatedAt: new Date(),
       })
-      .where(eq(monitors.id, id))
+      .where(
+        and(
+          eq(monitors.id, id),
+          eq(monitors.organizationId, currentMonitor.organizationId),
+          eq(monitors.projectId, currentMonitor.projectId),
+        ),
+      )
       .returning();
 
     if (!updatedMonitor) {
@@ -125,6 +136,10 @@ export async function PATCH(
     });
     
   } catch (error) {
+    if (isAuthError(error)) {
+      const status = (error as { status?: number }).status === 403 ? 403 : 401;
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Authentication required" }, { status });
+    }
     logger.error({ err: error }, "Error updating monitor status");
     return NextResponse.json(
       { error: "Failed to update monitor status" },

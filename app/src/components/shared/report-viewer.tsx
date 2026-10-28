@@ -17,6 +17,7 @@ import {
   CancellationErrorInfo,
 } from "./cancellation-error-page";
 import { useTheme } from "next-themes";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 // Static error page component - defined outside to avoid recreation each render
 function StaticErrorPage({
@@ -164,8 +165,117 @@ export function ReportViewer({
     return true;
   }, [clearRetryTimer, currentReportUrl, retryAttempt]);
 
+  // Applies a JSON error body from the report API. Returns true when it was handled as an error.
+  const applyErrorBody = useCallback(
+    (bodyText: string): boolean => {
+      try {
+        const errorData = JSON.parse(bodyText);
+        const errorMessage =
+          errorData.message ||
+          errorData.details ||
+          errorData.error ||
+          "Unknown error";
+
+        if (isTransientReportError(errorMessage)) {
+          if (scheduleTransientRetry()) {
+            return true;
+          }
+        }
+
+        // Check if this is a cancellation error
+        if (
+          errorData.cancellationInfo &&
+          errorData.cancellationInfo.isCancelled
+        ) {
+          setCancellationInfo(errorData.cancellationInfo);
+        }
+        // Check if this is a timeout error based on the API response
+        else if (
+          errorData.timeoutInfo &&
+          errorData.timeoutInfo.isTimeout
+        ) {
+          setTimeoutInfo(errorData.timeoutInfo);
+        } else {
+          setReportError(errorMessage);
+        }
+
+        setIframeError(true);
+        setIsValidationError(false);
+        setIsReportLoading(false);
+        return true;
+      } catch (e) {
+        // Not valid JSON, continue with normal display
+        console.error("ReportViewer: Error parsing JSON:", e);
+      }
+      return false;
+    },
+    [scheduleTransientRetry]
+  );
+
+  // With REPORTS_ORIGIN the report loads from a cookieless origin through a short-lived signed URL.
+  // The parent cannot read that iframe, so the status check the onLoad handler does on the DOM is done
+  // here on the response (the reports origin allows this app's origin via CORS).
+  const { config: appConfig, isFetched: configReady } = useAppConfig();
+  const separateOrigin = !!appConfig.reports?.separateOrigin;
+  const [signedUrl, setSignedUrl] = useState<{ source: string; url: string } | null>(null);
+
+  // Read through a ref so a retry-state change does not re-run the effect before its backoff delay.
+  const applyErrorBodyRef = useRef(applyErrorBody);
+  useEffect(() => {
+    applyErrorBodyRef.current = applyErrorBody;
+  });
+
+  useEffect(() => {
+    // Nothing is requested while the run is still going; the report does not exist yet.
+    if (!separateOrigin || !currentReportUrl || isRunning) return;
+    const source = currentReportUrl;
+    let cancelled = false;
+    const fail = (message: string) => {
+      if (cancelled) return;
+      setReportError(message);
+      setIframeError(true);
+      setIsValidationError(false);
+      setIsReportLoading(false);
+    };
+    (async () => {
+      try {
+        const mint = await fetch("/api/report-urls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: source }),
+        });
+        const minted = await mint.json().catch(() => null);
+        if (!mint.ok || !minted?.url) {
+          return fail(minted?.error || "The test report could not be found.");
+        }
+        const res = await fetch(minted.url, { cache: "no-store" });
+        const text = await res.text();
+        if (cancelled) return;
+        if ((res.headers.get("content-type") || "").includes("json")) {
+          if (applyErrorBodyRef.current(text)) return;
+        } else if (!res.ok) {
+          return fail("The test report could not be found.");
+        } else if (text.includes("Test Validation Failed")) {
+          setIsValidationError(true);
+        }
+        setSignedUrl({ source, url: minted.url });
+      } catch {
+        fail("Failed to load test report. The report server might be unreachable.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [separateOrigin, currentReportUrl, retryNonce, isRunning]);
+
   const iframeSrc = useMemo(() => {
     if (!currentReportUrl) {
+      return undefined;
+    }
+    if (separateOrigin) {
+      return signedUrl?.source === currentReportUrl ? signedUrl.url : undefined;
+    }
+    if (!configReady) {
       return undefined;
     }
     if (retryNonce === 0) {
@@ -173,7 +283,7 @@ export function ReportViewer({
     }
     const separator = currentReportUrl.includes("?") ? "&" : "?";
     return `${currentReportUrl}${separator}rvRetry=${retryNonce}`;
-  }, [currentReportUrl, retryNonce]);
+  }, [currentReportUrl, retryNonce, separateOrigin, signedUrl, configReady]);
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -515,7 +625,7 @@ export function ReportViewer({
             </div>
           )}
 
-        {!isRunning && currentReportUrl && (
+        {currentReportUrl && iframeSrc && (
           <iframe
             ref={iframeRef}
             key={iframeSrc}
@@ -534,6 +644,11 @@ export function ReportViewer({
             title="Report"
             onLoad={(e) => {
               const iframe = e.target as HTMLIFrameElement;
+              if (separateOrigin) {
+                // Cross-origin: nothing in the iframe is readable; the response was checked before it loaded.
+                setIsReportLoading(false);
+                return;
+              }
               try {
                 // Verify we can access the contentWindow - if not, it's likely a CORS issue
                 if (!iframe.contentWindow) {
@@ -588,45 +703,7 @@ export function ReportViewer({
                     (bodyText.includes('"message"') ||
                       bodyText.includes('"details"'))
                   ) {
-                    try {
-                      const errorData = JSON.parse(bodyText);
-                      const errorMessage =
-                        errorData.message ||
-                        errorData.details ||
-                        errorData.error ||
-                        "Unknown error";
-
-                      if (isTransientReportError(errorMessage)) {
-                        if (scheduleTransientRetry()) {
-                          return;
-                        }
-                      }
-
-                      // Check if this is a cancellation error
-                      if (
-                        errorData.cancellationInfo &&
-                        errorData.cancellationInfo.isCancelled
-                      ) {
-                        setCancellationInfo(errorData.cancellationInfo);
-                      }
-                      // Check if this is a timeout error based on the API response
-                      else if (
-                        errorData.timeoutInfo &&
-                        errorData.timeoutInfo.isTimeout
-                      ) {
-                        setTimeoutInfo(errorData.timeoutInfo);
-                      } else {
-                        setReportError(errorMessage);
-                      }
-
-                      setIframeError(true);
-                      setIsValidationError(false);
-                      setIsReportLoading(false);
-                      return;
-                    } catch (e) {
-                      // Not valid JSON, continue with normal display
-                      console.error("ReportViewer: Error parsing JSON:", e);
-                    }
+                    if (applyErrorBody(bodyText)) return;
                   }
                 }
 

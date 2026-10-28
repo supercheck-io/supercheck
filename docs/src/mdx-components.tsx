@@ -8,6 +8,7 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { Mermaid } from "./components/mdx/mermaid";
 import { DiagramEmbed } from "./components/mdx/diagram-embed";
 import { APIPage } from "./components/api-page";
+import { Brand, BrandMark, Brands } from "./components/mdx/brands";
 import * as icons from "lucide-react";
 
 // use this function to get MDX components, you will need it for rendering MDX
@@ -28,6 +29,9 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     DiagramEmbed,
     APIPage,
     OpenAPIPage: APIPage,
+    Brand,
+    BrandMark,
+    Brands,
     ...components,
   };
 }
