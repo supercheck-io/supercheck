@@ -252,8 +252,8 @@ export async function PUT(
 
     const body = await request.json();
     const result = await updateJob({
+      ...body,
       jobId: params.id,
-      ...body
     }, {
       userId: context.userId,
       project: context.project,

@@ -59,3 +59,9 @@ it("proceeds to the job lookup once both subscription checks pass", async () => 
   expect(mockSelect).toHaveBeenCalled();
   expect(result).toEqual(expect.objectContaining({ success: false }));
 });
+
+it("accepts an alertConfig that omits fields the CLI pull strips (server defaults apply)", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
+  expect(mockSelect).toHaveBeenCalled();
+});

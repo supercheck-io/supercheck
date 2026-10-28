@@ -38,13 +38,14 @@ const updateJobSchema = z.object({
     .optional(),
   alertConfig: z
     .object({
-      enabled: z.boolean(),
-      notificationProviders: z.array(z.string()),
-      alertOnFailure: z.boolean(),
+      // Defaults mirror the create route; `supercheck pull` omits fields equal to them.
+      enabled: z.boolean().default(false),
+      notificationProviders: z.array(z.string()).default([]),
+      alertOnFailure: z.boolean().default(true),
       alertOnSuccess: z.boolean().optional(),
       alertOnTimeout: z.boolean().optional(),
-      failureThreshold: z.number(),
-      recoveryThreshold: z.number(),
+      failureThreshold: z.number().default(1),
+      recoveryThreshold: z.number().default(1),
       customMessage: z.string().optional(),
       incidentEnabled: z.boolean().optional(),
       incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),

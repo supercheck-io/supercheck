@@ -35,6 +35,30 @@ describe('ApiClient', () => {
     client = new ApiClient({ baseUrl: 'https://api.test.com', token: 'sck_live_test123' })
   })
 
+  it.each(['http://app.example.com', 'http://10.0.0.5:3000'])('refuses to send the token over plain http to %s', async (baseUrl) => {
+    const insecure = new ApiClient({ baseUrl, token: 'sck_live_test123' })
+    await expect(insecure.get('/api/jobs')).rejects.toThrow(/Refusing to send the API token/)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('allows plain http to loopback hosts', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    const local = new ApiClient({ baseUrl: 'http://127.0.0.1:3000', token: 'sck_live_test123' })
+    await expect(local.get('/api/jobs')).resolves.toBeDefined()
+  })
+
+  it('treats a DELETE that 404s after a failed attempt as already deleted', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 500 }))
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 404 }))
+    await expect(client.delete('/api/jobs/1')).resolves.toMatchObject({ status: 404 })
+  })
+
+  it('does not treat a 404 after a 429 retry as a completed DELETE', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '0.001' } }))
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 404 }))
+    await expect(client.delete('/api/jobs/1')).rejects.toMatchObject({ statusCode: 404 })
+  })
+
   it('does not retain an HTML error document in API diagnostics', async () => {
     mockFetch.mockResolvedValueOnce(new Response('<html>' + 'secret'.repeat(3000) + '</html>', { status: 404 }))
     await expect(client.get('/api/jobs/missing')).rejects.toMatchObject({ statusCode: 404, responseBody: undefined })
