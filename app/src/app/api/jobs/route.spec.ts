@@ -342,6 +342,28 @@ describe("Jobs route regressions", () => {
     expect((updateJob as jest.Mock).mock.calls[0][0]).not.toHaveProperty("status");
   });
 
+  it("POST /api/jobs rejects a k6 job with more than one test", async () => {
+    const T2 = "00000000-0000-4000-8000-0000000000a2";
+    const rows = [{ id: TEST_ID, type: "performance" }, { id: T2, type: "performance" }];
+    const chain: Record<string, unknown> = {};
+    for (const method of ["from", "where", "orderBy", "limit"]) chain[method] = () => chain;
+    chain.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(rows).then(resolve);
+    mockDb.select.mockReturnValue(chain);
+
+    const response = await POST(new NextRequest("http://localhost/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Load", description: "Load", cronSchedule: "0 * * * *", jobType: "k6",
+        tests: [{ id: TEST_ID }, { id: T2 }],
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("exactly one");
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
   describe("nested test ids", () => {
     // A string that is not a uuid would reach `inArray(tests.id, ...)` and fail in Postgres with a 500.
     it.each(["test-1", "not-a-uuid", "12345"])("POST /api/jobs answers 400 for the test id %s", async (id) => {

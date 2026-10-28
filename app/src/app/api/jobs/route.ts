@@ -514,6 +514,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Only the first test of a k6 job runs, so extra tests would be silently ignored.
+    if (resolvedJobType === "k6" && jobData.tests && jobData.tests.length > 1) {
+      return NextResponse.json(
+        { success: false, error: "A k6 job runs exactly one performance test." },
+        { status: 400 }
+      );
+    }
+
     // Generate a unique ID for the job
     const jobId = randomUUID();
 
@@ -600,6 +608,7 @@ export async function POST(request: NextRequest) {
 
     // If a cronSchedule is provided, set up the job scheduler
     let scheduledJobId = null;
+    let scheduleWarning: string | undefined;
     if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
       try {
         scheduledJobId = await scheduleJob({
@@ -620,8 +629,10 @@ export async function POST(request: NextRequest) {
         console.log(`Job ${jobId} scheduled with scheduler ID ${scheduledJobId}`);
       } catch (scheduleError) {
         console.error("Failed to schedule job:", scheduleError);
-        // Continue anyway - the job exists but without background scheduling
-        // Manual execution will still work
+        // The job exists and can be run manually, but nothing will run it on schedule.
+        scheduleWarning = "Job created, but its schedule could not be registered.";
+        nextRunAt = null;
+        await db.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, jobId));
       }
     }
 
@@ -635,6 +646,7 @@ export async function POST(request: NextRequest) {
         nextRunAt: nextRunAt ? nextRunAt.toISOString() : null,
         scheduledJobId,
         jobType: jobData.jobType === "k6" ? "k6" : "playwright",
+        ...(scheduleWarning ? { warning: scheduleWarning } : {}),
       },
     });
   } catch (error) {
@@ -836,7 +848,10 @@ export async function PUT(request: Request) {
       { userId: context.userId, project, organizationId },
     );
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.message }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: result.message ?? "Failed to update job" },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({
