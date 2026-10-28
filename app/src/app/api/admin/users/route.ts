@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
     await requireAdmin();
     
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50') || 50, 1), 200);
+    const offset = Math.max(parseInt(searchParams.get('offset') || '0') || 0, 0);
     
     const users = await getAllUsers(limit, offset);
     
@@ -104,7 +104,7 @@ export async function PATCH(request: NextRequest) {
       case 'unban':
         // Use direct database update since we have our own RBAC admin check  
         // Better Auth's admin plugin requires specific user IDs, but we use RBAC system
-        await db
+        const [unbanned] = await db
           .update(user)
           .set({
             banned: false,
@@ -112,7 +112,15 @@ export async function PATCH(request: NextRequest) {
             banExpires: null,
             updatedAt: new Date()
           })
-          .where(eq(user.id, userId));
+          .where(eq(user.id, userId))
+          .returning({ id: user.id });
+        if (!unbanned) {
+          return NextResponse.json(
+            { success: false, error: 'User not found' },
+            { status: 404 }
+          );
+        }
+        await logAdminEvent((await getCurrentUser())?.id ?? 'unknown', 'user_unbanned', userId, 'user', userId);
 
         result = { success: true, userId, action: 'unbanned' };
         break;
@@ -132,7 +140,7 @@ export async function PATCH(request: NextRequest) {
     console.error('Admin users PATCH error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },
-      { status: 500 }
+      { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
     );
   }
 }
