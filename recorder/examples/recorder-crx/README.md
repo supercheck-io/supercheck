@@ -78,8 +78,8 @@ The list lives in `src/supercheck/message-security.ts` (`SUPERCHECK_CLOUD_ORIGIN
 
 #### Self-Hosted Supercheck
 1. Right-click the extension icon and select **Options**.
-2. Enter the HTTPS origin of your Supercheck instance (or `http://localhost:3000` for local development).
-3. Click **Save URL and open Supercheck**.
+2. Expand **Self-hosted instance** and enter the HTTPS origin of your instance (or `http://localhost:3000` for local development).
+3. Click **Save URL and sign in**.
 4. Sign in to your deployment; the extension connects automatically.
 
 Self-hosted origins are not trusted until you save the URL: that explicit action is the trust decision for the origin. Changing the URL clears the credential saved for the previous instance so a key is never sent to a host it was not created for.

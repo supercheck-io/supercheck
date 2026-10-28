@@ -35,14 +35,14 @@ The list is the extension's trust boundary and ships in the extension build. A n
 Self-hosted deployments are not trusted automatically: saving the URL once is the explicit trust decision, and the extension only talks to that exact origin.
 
 1. Open the extension's **Options** page.
-2. Enter the HTTPS URL of your deployment and select **Save URL and open Supercheck**.
+2. Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save URL and sign in**.
 3. Sign in to that instance in the same browser profile. The extension connects automatically and stays connected on later visits.
 
 Changing the URL clears the credential saved for the previous instance. Keys are scoped to one instance and are never sent to another host.
 
 ### Manual API key (advanced)
 
-Use a recorder-scoped API key when you cannot sign in on the instance — for example, an automated browser profile. Open **Options → Advanced: connect with an API key**, paste a key created on that instance, and select **Connect with API key**. Auto-connect is the normal path; the key field is not required.
+Use a recorder-scoped API key when you cannot sign in on the instance — for example, an automated browser profile. Open **Options → Connect with an API key**, paste a key created on that instance, and select **Connect**. Auto-connect is the normal path; the key field is not required.
 
 ## Record a test
 
