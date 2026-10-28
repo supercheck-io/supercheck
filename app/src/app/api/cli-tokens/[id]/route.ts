@@ -109,11 +109,15 @@ export async function PATCH(
         await lockProjectForKeyIssuance(tx, context.project.id);
         // Re-read under the lock: the pre-read may be stale.
         const [current] = await tx.select({ enabled: apikey.enabled }).from(apikey).where(eq(apikey.id, tokenId)).limit(1);
-        if (current?.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        if (!current) return "gone" as const;
+        if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
       }
       const [row] = await tx.update(apikey).set(updateData).where(eq(apikey.id, tokenId)).returning();
       return row;
     });
+    if (updated === "gone") {
+      return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
+    }
     if (!updated) {
       return NextResponse.json(
         { error: `This project already has ${MAX_CLI_TOKENS_PER_PROJECT} active CLI tokens. Revoke one before re-enabling.` },

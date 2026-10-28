@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 let tokenRows: unknown[] = [];
 let usableCount = 0;
+let lockedRow: { enabled: boolean } | null | undefined;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
 
@@ -17,7 +18,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => [{ enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }] }) }) }) }),
+      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => (lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }]) }) }) }) }),
   };
   return { db };
 });
@@ -47,6 +48,7 @@ const patch = (body: unknown) =>
 beforeEach(() => {
   updates.length = 0;
   usableCount = 0;
+  lockedRow = undefined;
   mockRequireAuth.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: true });
 });
 
@@ -68,6 +70,13 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true }];
     usableCount = 20;
     expect((await patch({ enabled: true })).status).toBe(200);
+  });
+
+  it("returns 404, not the cap error, when the token disappears before the locked re-read", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: false }];
+    lockedRow = null;
+    expect((await patch({ enabled: true })).status).toBe(404);
+    expect(updates).toHaveLength(0);
   });
 
   it("refuses to re-enable another member's revoked token", async () => {
