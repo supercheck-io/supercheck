@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 
 const evidenceTypes = ["metric", "log", "trace", "artifact", "deployment", "event", "document", "topology"] as const;
@@ -39,7 +40,7 @@ export function normalizePrivateAgentEvidenceSummaries(
     const { sourceUri, title, summary } = parsed.data;
     return [{
       ...parsed.data,
-      sourceUri: redactConnectorText(sourceUri),
+      sourceUri: safeEvidenceSourceUri(redactConnectorText(sourceUri)),
       title: redactConnectorText(title),
       summary: redactConnectorText(summary),
       observedAtDate,
