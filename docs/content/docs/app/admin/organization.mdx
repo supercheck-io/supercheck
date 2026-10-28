@@ -10,7 +10,7 @@ Manage your organization's projects, members, CLI tokens, AI SRE setup, and audi
 
 ## Your default organization
 
-Signup assigns one default organization and a default project. There is no organization creation or switching menu. Create and switch projects using the project selector and **Admin → Projects**.
+Signup assigns one default organization and a default project. There is no organization creation or switching menu. Create and switch projects using the project selector and **Settings → Organization → Projects**.
 
 You can accept invitations to projects in other organizations while keeping your default organization. Those projects appear in the project selector with their team name. All active projects in a joined team are visible and selectable with read-only access. Project editor and project admin assignments grant additional permissions only in the selected projects; they do not hide other team projects. Owning your default organization does not grant administrative access to another team.
 
@@ -26,7 +26,7 @@ Organization administrators can create and manage projects. Project admins can u
 
 Create a new project to organize your tests, jobs, and monitors.
 
-1. Go to **Admin → Projects**
+1. Go to **Settings → Organization → Projects**
 2. Click **Create Project**
 3. Enter project name and description
 4. Configure project settings
@@ -41,7 +41,7 @@ Invite and manage team members with role-based access control.
 <Tabs items={['Invite Member', 'Email Invitation', 'Accept Invitation', 'Signup']}>
 <Tab value="Invite Member">
 
-1. Go to **Admin → Members**
+1. Go to **Settings → Organization → Members**
 2. Click **Invite Member**
 3. Enter email and select role
 4. Send invitation
@@ -115,14 +115,14 @@ Only the organization owner can request deletion. Organizations with projects or
 
 Create project-scoped CLI tokens for API access and automation. Tokens inherit their owner's permissions; use a separate token for each pipeline or integration.
 
-1. Go to **Admin → CLI Tokens**
+1. Go to **Settings → Organization → CLI Tokens**
 2. Click **Create Token**
 3. Enter a name and optional expiry date for a token in the current project
 4. Copy the generated token securely
 
 ## AI SRE Setup
 
-Administrators configure project-level AI SRE setup from **Admin** so responders do not need to manage setup screens during an incident.
+Administrators configure project-level AI SRE setup from **Settings → Organization** so responders do not need to manage setup screens during an incident.
 
 The section tabs sit in the page header next to the title, and become a menu on narrow screens. The setup tabs are:
 
