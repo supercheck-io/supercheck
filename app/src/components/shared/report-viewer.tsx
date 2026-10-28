@@ -625,7 +625,7 @@ export function ReportViewer({
             </div>
           )}
 
-        {!isRunning && currentReportUrl && iframeSrc && (
+        {currentReportUrl && iframeSrc && (
           <iframe
             ref={iframeRef}
             key={iframeSrc}

@@ -258,7 +258,9 @@ function isReportsOriginRequest(request: NextRequest): boolean {
   const raw = process.env.REPORTS_ORIGIN?.trim();
   if (!raw) return false;
   try {
-    const reportsHost = new URL(raw).host.toLowerCase();
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const reportsHost = parsed.host.toLowerCase();
     // Mirrors getReportsOrigin(): a value equal to the app host is ignored, never a lockout.
     const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
     if (appUrl && new URL(appUrl).host.toLowerCase() === reportsHost) return false;

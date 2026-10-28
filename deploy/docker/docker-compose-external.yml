@@ -52,7 +52,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-true}
 
   # App Configuration
-  APP_URL: ${APP_URL}
+  APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL}}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   # Hide the public status page branding footer globally when set to true
