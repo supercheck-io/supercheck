@@ -100,6 +100,15 @@ async function requireConnectorConfigurationPermission() {
   return { ...context, allowed: true as const };
 }
 
+// Org-wide agents serve every project, so managing them needs org-level rights.
+function canManageOrgWide(context: { userId: string; organizationId: string; project: ProjectAuthContext["project"] }) {
+  return checkPermissionWithContext("organization", "update", {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    project: context.project,
+  });
+}
+
 export async function getPrivateAgents(requestContext?: ProjectAuthContext): Promise<
   | { success: true; agents: PrivateAgentListItem[] }
   | { success: false; error: string; agents: [] }
@@ -144,6 +153,10 @@ export async function registerPrivateAgent(input: z.infer<typeof privateAgentInp
     // The registration token outlives the session and is attributed to the impersonated user.
     if (await isImpersonatedSession()) {
       return { success: false, error: "Private Agents cannot be registered while impersonating a user" };
+    }
+
+    if (!parsed.data.projectScoped && !canManageOrgWide(context)) {
+      return { success: false, error: "Organization-level permission is required to register org-wide Private Agents" };
     }
 
     const token = generateRegistrationToken();
@@ -230,6 +243,10 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
       return { success: false, error: "Private Agent not found or disabled" };
     }
 
+    if (!current.projectId && !canManageOrgWide(context)) {
+      return { success: false, error: "Organization-level permission is required to rotate org-wide Private Agents" };
+    }
+
     const token = generateRegistrationToken();
     const tokenHash = hashApiKey(token);
     const now = new Date();
@@ -300,7 +317,9 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
           and(
             eq(privateAgents.id, parsed.data.id),
             eq(privateAgents.organizationId, context.organizationId),
-            or(eq(privateAgents.projectId, context.project.id), isNull(privateAgents.projectId))
+            canManageOrgWide(context)
+              ? or(eq(privateAgents.projectId, context.project.id), isNull(privateAgents.projectId))
+              : eq(privateAgents.projectId, context.project.id)
           )
         )
         .returning();

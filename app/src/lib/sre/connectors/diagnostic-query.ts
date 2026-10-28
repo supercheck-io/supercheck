@@ -1,7 +1,7 @@
 import { hashConnectorPayload } from "./connector-base";
 import { redactConnectorText } from "./output-sanitizer";
 
-export type DiagnosticQueryType = "sql" | "promql" | "logql" | "traceql" | "http_get";
+export type DiagnosticQueryType = "promql" | "logql" | "traceql" | "http_get";
 export type DiagnosticQueryParameterValue = string | number | boolean | null;
 export type DiagnosticQueryParameters = Record<string, DiagnosticQueryParameterValue>;
 export type DiagnosticQueryParameterType = "string" | "number" | "boolean" | "date" | "duration";
@@ -32,8 +32,6 @@ export type RenderedDiagnosticQuery = {
 
 const TEMPLATE_PARAM_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}|\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
 const PARAMETER_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-const SQL_WRITE_PATTERN = /\b(insert|update|delete|drop|alter|create|truncate|merge|grant|revoke|copy|call|execute|vacuum|analyze|refresh|lock)\b/i;
-const SQL_READ_PREFIX_PATTERN = /^\s*(select|with|show|explain)\b/i;
 const DURATION_PARAMETER_PATTERN = /^[1-9]\d{0,5}(ms|s|m|h|d|w)$/;
 const SUPPORTED_PARAMETER_TYPES = new Set<DiagnosticQueryParameterType>(["string", "number", "boolean", "date", "duration"]);
 const SUPPORTED_SCHEMA_KEYS = new Set(["type", "enum", "default", "required", "min", "max", "maxLength", "pattern"]);
@@ -344,6 +342,16 @@ function formatParameterValue(value: DiagnosticQueryParameterValue) {
   return String(value);
 }
 
+// Values are spliced into the template verbatim, so free-text strings (no pattern, enum or allowlist)
+// must not carry query syntax that could escape the template's label/field constraints.
+const UNSAFE_FREE_TEXT = /["'`{}\\\n\r;]/;
+function rejectUnsafeFreeText(name: string, value: DiagnosticQueryParameterValue, schemaValue: unknown, allowlistValue: unknown) {
+  if (typeof value !== "string" || !UNSAFE_FREE_TEXT.test(value)) return;
+  const schema = normalizeParameterSchemaEntry(name, schemaValue);
+  if (schema?.pattern || schema?.enum || (Array.isArray(allowlistValue) && allowlistValue.length > 0)) return;
+  throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
+}
+
 function parameterDefault(name: string, schemaValue: unknown): DiagnosticQueryParameterValue | undefined {
   const schema = normalizeParameterSchemaEntry(name, schemaValue);
   if (!schema || !("default" in schema)) {
@@ -353,88 +361,7 @@ function parameterDefault(name: string, schemaValue: unknown): DiagnosticQueryPa
   return schema.default;
 }
 
-function stripSqlCommentsAndLiterals(query: string) {
-  let sanitized = "";
-  let index = 0;
-
-  const appendSpace = (count: number) => {
-    sanitized += " ".repeat(Math.max(count, 0));
-  };
-
-  while (index < query.length) {
-    const current = query[index];
-    const next = query[index + 1];
-
-    if (current === "-" && next === "-") {
-      const end = query.indexOf("\n", index + 2);
-      const stop = end === -1 ? query.length : end;
-      appendSpace(stop - index);
-      index = stop;
-      continue;
-    }
-
-    if (current === "/" && next === "*") {
-      const end = query.indexOf("*/", index + 2);
-      const stop = end === -1 ? query.length : end + 2;
-      appendSpace(stop - index);
-      index = stop;
-      continue;
-    }
-
-    if (current === "'") {
-      const start = index;
-      index += 1;
-      while (index < query.length) {
-        if (query[index] === "'" && query[index + 1] === "'") {
-          index += 2;
-          continue;
-        }
-        if (query[index] === "'") {
-          index += 1;
-          break;
-        }
-        index += 1;
-      }
-      appendSpace(index - start);
-      continue;
-    }
-
-    if (current === "\"") {
-      const start = index;
-      index += 1;
-      while (index < query.length) {
-        if (query[index] === "\"" && query[index + 1] === "\"") {
-          index += 2;
-          continue;
-        }
-        if (query[index] === "\"") {
-          index += 1;
-          break;
-        }
-        index += 1;
-      }
-      appendSpace(index - start);
-      continue;
-    }
-
-    if (current === "$") {
-      const tagMatch = query.slice(index).match(/^\$[a-zA-Z_][a-zA-Z0-9_]*\$|^\$\$/);
-      if (tagMatch) {
-        const tag = tagMatch[0];
-        const start = index;
-        const end = query.indexOf(tag, index + tag.length);
-        index = end === -1 ? query.length : end + tag.length;
-        appendSpace(index - start);
-        continue;
-      }
-    }
-
-    sanitized += current;
-    index += 1;
-  }
-
-  return sanitized;
-}
+const SUPPORTED_QUERY_TYPES: ReadonlySet<string> = new Set<DiagnosticQueryType>(["promql", "logql", "traceql", "http_get"]);
 
 export function assertReadOnlyDiagnosticQuery(queryType: DiagnosticQueryType, renderedQuery: string) {
   const trimmed = renderedQuery.trim();
@@ -442,16 +369,9 @@ export function assertReadOnlyDiagnosticQuery(queryType: DiagnosticQueryType, re
     throw new Error("Diagnostic query rendered to an empty query");
   }
 
-  if (queryType === "sql") {
-    const executableSql = stripSqlCommentsAndLiterals(trimmed).trim();
-
-    if (!SQL_READ_PREFIX_PATTERN.test(executableSql)) {
-      throw new Error("SQL diagnostic queries must be read-only SELECT/WITH/SHOW/EXPLAIN statements");
-    }
-
-    if (SQL_WRITE_PATTERN.test(executableSql) || executableSql.includes(";")) {
-      throw new Error("SQL diagnostic query contains a disallowed write or multi-statement token");
-    }
+  // Rows saved before "sql" was removed must fail closed rather than run unvalidated.
+  if (!SUPPORTED_QUERY_TYPES.has(queryType)) {
+    throw new Error(`Unsupported diagnostic query type "${queryType}"`);
   }
 }
 
@@ -469,6 +389,7 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name]);
     referencedParameters.add(name);
     return formatParameterValue(value);
   });

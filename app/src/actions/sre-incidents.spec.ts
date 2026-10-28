@@ -20,7 +20,7 @@ import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
-import { createSreIncidentFromAlert, getSreIncidentDetails, updateSreIncident } from "./sre-incidents";
+import { createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
@@ -116,6 +116,52 @@ describe("getSreIncidentDetails investigation summary", () => {
       .map(([, column]) => render(column))
       .filter((name) => !name.startsWith('"sre_incidents".') && !grouped.has(name));
     expect(missing).toEqual([]);
+  });
+});
+
+describe("getSreIncidents scope and cap", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "user-1", organizationId: "org-1",
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+  });
+
+  async function whereSql(scope?: "active" | "all") {
+    const { sql } = jest.requireActual("drizzle-orm");
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const query = selectRows([]);
+    (db.select as jest.Mock).mockReturnValueOnce(query);
+    await getSreIncidents(scope ? { scope } : undefined);
+    return new PgDialect().sqlToQuery(sql`${query.where.mock.calls[0][0]}`).params as unknown[];
+  }
+
+  it("filters resolved incidents in SQL only for the active scope", async () => {
+    expect(await whereSql("active")).toContain("resolved");
+    expect(await whereSql("all")).not.toContain("resolved");
+  });
+
+  it("caps at 500 rows and reports truncation", async () => {
+    const row = (i: number) => ({ id: `incident-${i}` });
+    const many = Array.from({ length: 501 }, (_, i) => row(i));
+    const query = selectRows(many);
+    (db.select as jest.Mock).mockReturnValueOnce(query).mockReturnValue(selectRows([]));
+    const result = await getSreIncidents({ scope: "all" });
+    expect(query.limit).toHaveBeenCalledWith(501);
+    expect(result).toMatchObject({ success: true, truncated: true });
+    if (result.success) expect(result.incidents).toHaveLength(500);
+
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows(many.slice(0, 3))).mockReturnValue(selectRows([]));
+    expect(await getSreIncidents({ scope: "all" })).toMatchObject({ truncated: false });
+  });
+
+  it("tells an all-resolved project apart from an empty one when the active list is empty", async () => {
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([{ id: "i1" }]));
+    expect(await getSreIncidents({ scope: "active" })).toMatchObject({ incidents: [], hasIncidents: true });
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([]));
+    expect(await getSreIncidents({ scope: "active" })).toMatchObject({ hasIncidents: false });
   });
 });
 
