@@ -116,6 +116,7 @@ a:hover { color: var(--fg); }
 
 .disclosure-panel { margin-top: 12px; padding-left: 20px; }
 .hint { margin-bottom: 12px; color: var(--fg-muted); font-size: 0.8125rem; }
+.hint a { text-decoration: underline; text-underline-offset: 2px; }
 
 /* Forms */
 .form-group { margin-bottom: 16px; }

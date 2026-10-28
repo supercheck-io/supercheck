@@ -409,10 +409,11 @@ function OptionsPage() {
               <div className='actions'>
                 <button
                   className='btn btn-primary'
-                  onClick={() => void chrome.tabs.create({ url: savedInstanceUrl })}
-                  disabled={saving}
+                  // An edited, unsaved URL is saved first so sign-in never silently targets a different instance.
+                  onClick={() => urlChanged ? void handleSaveInstance() : void chrome.tabs.create({ url: savedInstanceUrl })}
+                  disabled={saving || (urlChanged && Boolean(urlError))}
                 >
-                  {saving ? 'Opening…' : 'Sign in to Supercheck'}
+                  Sign in to Supercheck
                 </button>
               </div>
 
@@ -459,9 +460,14 @@ function OptionsPage() {
                     <button
                       className='btn btn-secondary'
                       onClick={handleSaveInstance}
-                      disabled={saving || !customUrl.trim() || Boolean(urlError)}
+                      // An empty field means Supercheck Cloud, so clearing it is how a self-hosted user switches back.
+                      disabled={saving || Boolean(urlError) || (!customUrl.trim() && !urlChanged)}
                     >
-                      {saving ? 'Saving…' : urlChanged ? 'Save URL and sign in' : 'Open your instance'}
+                      {saving
+                        ? 'Saving…'
+                        : !customUrl.trim()
+                          ? 'Switch to Supercheck Cloud'
+                          : urlChanged ? 'Save URL and sign in' : 'Open your instance'}
                     </button>
                   </div>
                 )}
@@ -496,7 +502,10 @@ function OptionsPage() {
                         placeholder='Paste your recorder key'
                       />
                       <span className='field-hint'>
-                        Keys only work with the instance that issued them. For a self-hosted instance, enter its URL first.
+                        Keys only work with the instance that issued them.{' '}
+                        {customUrl.trim()
+                          ? 'This key is checked against the self-hosted URL entered above.'
+                          : 'For a self-hosted instance, enter its URL first.'}
                       </span>
                     </div>
                     <button
