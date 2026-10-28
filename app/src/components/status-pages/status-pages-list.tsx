@@ -416,7 +416,7 @@ export default function StatusPagesList() {
 
       <div className="flex-1 overflow-y-auto min-h-0">
         <ListCapNote count={statusPages.length} cap={STATUS_PAGES_LIST_CAP} />
-        {error ? (
+        {error && statusPages.length === 0 ? (
           <ListErrorState title="Failed to fetch status pages" error={error} onRetry={() => refetch()} />
         ) : statusPages.length === 0 ? (
           <DashboardEmptyState

@@ -51,7 +51,7 @@ export default function MonitorsList() {
     );
   }
 
-  if (error) {
+  if (error && monitors.length === 0) {
     return <ListErrorState title="Failed to fetch monitors" error={error} onRetry={() => refetch()} />;
   }
 

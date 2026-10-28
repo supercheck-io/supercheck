@@ -351,7 +351,7 @@ export default function Jobs() {
     );
   }
 
-  if (error) {
+  if (error && jobs.length === 0) {
     return <ListErrorState title="Failed to fetch jobs" error={error} onRetry={() => refetch()} />;
   }
 

@@ -58,6 +58,7 @@ export default function Variables() {
   // mountedRef is used for async callbacks to prevent state updates after unmount
   const mountedRef = useRef(true);
   const fetchingRef = useRef(false);
+  const loadedProjectRef = useRef<string | null>(null);
 
   // Set mounted ref on mount/unmount (for async callback safety)
   useEffect(() => {
@@ -68,12 +69,20 @@ export default function Variables() {
   }, []);
 
   // Keep any rows already loaded; only the first load shows the error panel.
-  const reportLoadError = (message?: string) => {
+  const reportLoadError = useCallback((message?: string) => {
     if (!mountedRef.current) return;
     const text = message || "The variables could not be loaded.";
+    // Rows from another project must not stay visible under this one
+    if (loadedProjectRef.current !== currentProjectId) {
+      setVariables([]);
+      setCanManage(false);
+      setCanCreateEdit(false);
+      setCanDelete(false);
+      setCanViewSecrets(false);
+    }
     setLoadError(text);
     toast.error("Failed to load variables", { description: text });
-  };
+  }, [currentProjectId]);
 
   // Fetch variables from the database
   const fetchVariables = useCallback(async () => {
@@ -112,6 +121,7 @@ export default function Variables() {
         setCanDelete(data.canDelete || false);
         setCanViewSecrets(data.canViewSecrets || false);
         setLoadError(null);
+        loadedProjectRef.current = currentProjectId;
       } else {
         console.error("Failed to fetch variables:", data.error);
         reportLoadError(data.error);
@@ -126,7 +136,7 @@ export default function Variables() {
       }
       fetchingRef.current = false;
     }
-  }, [currentProjectId, projectLoading]);
+  }, [currentProjectId, projectLoading, reportLoadError]);
 
   // Fetch when project changes or refresh is triggered
   useEffect(() => {
@@ -198,7 +208,7 @@ export default function Variables() {
     );
   }
 
-  if (loadError && variables.length === 0 && !isLoading) {
+  if (loadError && variables.length === 0) {
     return (
       <ListErrorState
         title="Failed to fetch variables"

@@ -257,7 +257,7 @@ export default function RequirementsPage() {
                 />
 
                 <TabsContent value="requirements" className="mt-0 pt-4">
-                    {error ? (
+                    {error && requirements.length === 0 ? (
                         <ListErrorState title="Failed to fetch requirements" error={error} onRetry={() => refetch()} />
                     ) : (<>
                     <ListCapNote count={requirements.length} cap={REQUIREMENTS_LIST_CAP} />

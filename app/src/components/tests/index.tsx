@@ -70,7 +70,7 @@ export default function Tests() {
     );
   }
 
-  if (error) {
+  if (error && tests.length === 0) {
     return <ListErrorState title="Failed to fetch tests" error={error} onRetry={() => invalidate()} />;
   }
 
