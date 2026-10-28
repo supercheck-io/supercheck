@@ -507,6 +507,14 @@ export async function GET(request: Request) {
         );
       }
 
+      // A generated document opened as a top-level page (a link someone sent, not the in-app viewer)
+      // runs on the app origin, and the test code that produced it is user-authored. Give it an opaque
+      // origin so it cannot act with the viewer's session. The embedded viewer is unchanged: it needs
+      // same-origin access to load trace data.
+      if (isGeneratedDocument && request.headers.get("sec-fetch-dest") === "document") {
+        headers.set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads");
+      }
+
       const buffer = await s3Response.arrayBuffer();
 
       return new NextResponse(buffer, {

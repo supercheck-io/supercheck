@@ -147,6 +147,22 @@ describe("report artifact response security", () => {
     },
   );
 
+  it.each(["report/index.html", "report/trace/index.html", "report.html"])(
+    "isolates a generated document opened as a top-level page at %s",
+    async (file) => {
+      entityType = "k6_job";
+      const response = await GET(
+        new Request(`https://app.example/api/test-results/run-id/${file}`, {
+          headers: { "Sec-Fetch-Dest": "document" },
+        }),
+      );
+      const csp = response.headers.get("content-security-policy") ?? "";
+      // Opaque origin: test-authored script cannot use the viewer's session.
+      expect(csp).toContain("sandbox allow-scripts");
+      expect(csp).not.toContain("allow-same-origin");
+    },
+  );
+
   it.each([
     ["data/screenshot.png", "image/png"],
     ["data/video.webm", "video/webm"],
