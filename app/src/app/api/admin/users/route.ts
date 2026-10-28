@@ -4,6 +4,7 @@ import { getAllUsers, requireAdmin } from '@/lib/admin';
 import { db } from '@/utils/db';
 import { user } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { isUuid } from '@/lib/uuid';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
 
@@ -12,8 +13,8 @@ export async function GET(request: NextRequest) {
     await requireAdmin();
     
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50') || 50, 1), 200);
+    const offset = Math.max(parseInt(searchParams.get('offset') || '0') || 0, 0);
     
     const users = await getAllUsers(limit, offset);
     
@@ -101,10 +102,17 @@ export async function PATCH(request: NextRequest) {
         result = { success: true, userId, action: 'banned', banReason: reason, sessionsInvalidated: true };
         break;
       
-      case 'unban':
+      case 'unban': {
+        if (typeof userId !== 'string' || !isUuid(userId)) {
+          return NextResponse.json({ success: false, error: 'Invalid user ID' }, { status: 400 });
+        }
+        const actor = await getCurrentUser();
+        if (!actor) {
+          return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+        }
         // Use direct database update since we have our own RBAC admin check  
         // Better Auth's admin plugin requires specific user IDs, but we use RBAC system
-        await db
+        const [unbanned] = await db
           .update(user)
           .set({
             banned: false,
@@ -112,10 +120,19 @@ export async function PATCH(request: NextRequest) {
             banExpires: null,
             updatedAt: new Date()
           })
-          .where(eq(user.id, userId));
+          .where(eq(user.id, userId))
+          .returning({ id: user.id });
+        if (!unbanned) {
+          return NextResponse.json(
+            { success: false, error: 'User not found' },
+            { status: 404 }
+          );
+        }
+        await logAdminEvent(actor.id, 'user_unbanned', userId, 'user', userId);
 
         result = { success: true, userId, action: 'unbanned' };
         break;
+      }
       
       default:
         return NextResponse.json(
@@ -132,7 +149,7 @@ export async function PATCH(request: NextRequest) {
     console.error('Admin users PATCH error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },
-      { status: 500 }
+      { status: error instanceof Error && error.message === 'Admin privileges required' ? 403 : 500 }
     );
   }
 }

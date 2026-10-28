@@ -383,7 +383,7 @@ export default function PricingPage() {
                 <section aria-labelledby="trial-heading" className="mt-6 rounded-xl border border-fd-border p-6 sm:p-8">
                     <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
                     <p className="mt-1 text-sm text-fd-muted-foreground">
-                        Most of the product, with limits that keep the trial safe for everyone. Custom domains and single sign-on are on paid plans. Trials start when Cloud signups open.
+                        Most of the product, with limits that keep the trial safe for everyone. Custom domains are on paid plans. Trials start when Cloud signups open.
                     </p>
                     <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
                         {trialHighlights().map((highlight) => (

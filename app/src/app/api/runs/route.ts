@@ -6,6 +6,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { isUuid } from '@/lib/uuid';
 import { loadCreators } from "@/lib/creators";
+import { RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,6 +99,8 @@ export async function GET(request: NextRequest) {
           completedAt: runs.completedAt,
           // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
           // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
+          // A user cancellation is stored as status 'error'; flag it without shipping the details.
+          cancelled: sql<boolean>`coalesce(${runs.errorDetails} = ${RUN_CANCELLATION_MARKER}, false)`,
           reportUrl: reports.s3Url,
           trigger: runs.trigger,
           location: runs.location,

@@ -4,6 +4,7 @@ import {
   JobNotificationService,
   maxFailureAlertStreak,
 } from './job-notification.service';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 describe('JobNotificationService', () => {
   function createService() {
@@ -191,7 +192,11 @@ describe('JobNotificationService', () => {
           title: 'Job Timeout - Checkout smoke test',
           message: expect.stringContaining('timed out after 90 seconds'),
           targetId: 'job-1',
-          metadata: expect.objectContaining({ runId: 'run-1', duration: 90 }),
+          metadata: expect.objectContaining({
+            runId: 'run-1',
+            duration: 90,
+            status: 'timeout',
+          }),
         }),
       );
       expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
@@ -200,9 +205,50 @@ describe('JobNotificationService', () => {
       }
     });
 
-    it('does not notify on timeout when alertOnTimeout is off', async () => {
+    it.each([
+      [0, false],
+      [1, false],
+      [2, true], // third consecutive failed/timed-out run reaches threshold 3
+      [3, false],
+      [8, true], // reminder at threshold + 6
+      [14, true], // second reminder
+      [20, false], // capped at 3 alerts
+    ])(
+      'applies the failure threshold, cadence and cap to timeouts (%i prior failed runs -> %s)',
+      async (priorFailed, notifies) => {
+        const { service, dbService, notificationService } = createService();
+        (await dbService.getJobById()).alertConfig.failureThreshold = 3;
+        dbService.getRecentRunsForJob.mockResolvedValue(
+          Array.from({ length: priorFailed }, (_, i) => ({
+            id: `old-${i}`,
+            status: i % 2 ? 'error' : 'failed',
+          })),
+        );
+        await service.handleJobNotifications(params);
+        const calls =
+          notificationService.sendNotificationToMultipleProviders.mock.calls;
+        expect(calls).toHaveLength(notifies ? 1 : 0);
+        if (notifies) expect(calls[0][1].type).toBe('job_timeout');
+      },
+    );
+
+    it('treats a timeout as an ordinary failure when alertOnTimeout is off', async () => {
       const { service, dbService, notificationService } = createService();
       (await dbService.getJobById()).alertConfig.alertOnTimeout = false;
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ type: 'job_failed' }),
+      );
+    });
+
+    it('does not notify on timeout when both alertOnTimeout and alertOnFailure are off', async () => {
+      const { service, dbService, notificationService } = createService();
+      const { alertConfig } = await dbService.getJobById();
+      alertConfig.alertOnTimeout = false;
+      alertConfig.alertOnFailure = false;
       await service.handleJobNotifications(params);
       expect(
         notificationService.sendNotificationToMultipleProviders,
@@ -315,6 +361,52 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: 'job', sourceId: 'job-1' }),
       );
+    });
+
+    it('does not alert for a run the user cancelled', async () => {
+      const { service, notificationService } = createService();
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'error',
+        cancelled: true,
+        durationSeconds: 1,
+      });
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('skips cancelled runs when counting the failure streak', async () => {
+      const { service, dbService, notificationService } = createService();
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        projectId: 'project-1',
+        alertConfig: {
+          enabled: true,
+          notificationProviders: ['provider-1'],
+          failureThreshold: 2,
+          recoveryThreshold: 1,
+          alertOnFailure: true,
+          alertOnSuccess: false,
+          alertOnTimeout: false,
+        },
+      });
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        { id: 'r1', status: 'error', errorDetails: RUN_CANCELLATION_MARKER },
+        { id: 'r0', status: 'failed', errorDetails: null },
+      ]);
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-new',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      // current + r0 = 2 consecutive failures (threshold 2); the cancelled r1 must not count.
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('requests enough history to see the last capped alert', async () => {

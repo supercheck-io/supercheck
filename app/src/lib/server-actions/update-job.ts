@@ -263,6 +263,11 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       }
     }
 
+    // Only when the caller supplies tests: a legacy multi-test k6 job must stay editable otherwise.
+    if (jobType === "k6" && validatedData.tests && testIds.length > 1) {
+      return { success: false, message: "A k6 job runs exactly one performance test." };
+    }
+
     const currentTestIds = currentTests.map((test) => test.id);
     const testsChanged =
       currentTestIds.length !== testIds.length ||
@@ -279,7 +284,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
     try {
       // Calculate next run date if cron schedule is provided
-      let nextRunAt = null;
+      let nextRunAt: Date | null = null;
       try {
         if (validatedData.cronSchedule) {
           nextRunAt = getNextRunDate(validatedData.cronSchedule);
@@ -288,77 +293,80 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         console.error(`Failed to calculate next run date: ${error}`);
       }
 
-      // Update the job basic information
-      await dbInstance
-        .update(jobs)
-        .set({
-          name: validatedData.name,
-          description: validatedData.description || "",
-          cronSchedule: validatedData.cronSchedule || null,
-          nextRunAt: nextRunAt,
-          alertConfig: validatedData.alertConfig
-            ? {
-                ...validatedData.alertConfig,
-                notificationProviders: validatedNotificationProviderIds,
-              }
-            : null,
-          updatedAt: new Date(),
-        })
-        .where(eq(jobs.id, validatedData.jobId));
+      // The job row, notification links and tests change together or not at all; BullMQ scheduling follows the commit.
+      await db.transaction(async (dbInstance) => {
+        // Update the job basic information
+        await dbInstance
+          .update(jobs)
+          .set({
+            name: validatedData.name,
+            description: validatedData.description || "",
+            cronSchedule: validatedData.cronSchedule || null,
+            nextRunAt: nextRunAt,
+            alertConfig: validatedData.alertConfig
+              ? {
+                  ...validatedData.alertConfig,
+                  notificationProviders: validatedNotificationProviderIds,
+                }
+              : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(jobs.id, validatedData.jobId));
 
-      // Update notification provider links if alert config is enabled
-      if (
-        validatedData.alertConfig?.enabled &&
-        Array.isArray(validatedData.alertConfig.notificationProviders)
-      ) {
-        const currentProviderLinks = await dbInstance
-          .select({ id: jobNotificationSettings.notificationProviderId })
-          .from(jobNotificationSettings)
-          .where(eq(jobNotificationSettings.jobId, validatedData.jobId));
-
-        const currentProviderIds = currentProviderLinks
-          .map((provider) => provider.id)
-          .sort();
-        const nextProviderIds = [...validatedNotificationProviderIds].sort();
-
-        const providersChanged =
-          currentProviderIds.length !== nextProviderIds.length ||
-          currentProviderIds.some((providerId, index) => nextProviderIds[index] !== providerId);
-
-        if (providersChanged) {
-          await dbInstance
-            .delete(jobNotificationSettings)
+        // Update notification provider links if alert config is enabled
+        if (
+          validatedData.alertConfig?.enabled &&
+          Array.isArray(validatedData.alertConfig.notificationProviders)
+        ) {
+          const currentProviderLinks = await dbInstance
+            .select({ id: jobNotificationSettings.notificationProviderId })
+            .from(jobNotificationSettings)
             .where(eq(jobNotificationSettings.jobId, validatedData.jobId));
 
-          if (validatedNotificationProviderIds.length > 0) {
+          const currentProviderIds = currentProviderLinks
+            .map((provider) => provider.id)
+            .sort();
+          const nextProviderIds = [...validatedNotificationProviderIds].sort();
+
+          const providersChanged =
+            currentProviderIds.length !== nextProviderIds.length ||
+            currentProviderIds.some((providerId, index) => nextProviderIds[index] !== providerId);
+
+          if (providersChanged) {
             await dbInstance
-              .insert(jobNotificationSettings)
-              .values(
-                validatedNotificationProviderIds.map((providerId) => ({
-                  jobId: validatedData.jobId,
-                  notificationProviderId: providerId,
-                }))
-              )
-              .onConflictDoNothing();
+              .delete(jobNotificationSettings)
+              .where(eq(jobNotificationSettings.jobId, validatedData.jobId));
+
+            if (validatedNotificationProviderIds.length > 0) {
+              await dbInstance
+                .insert(jobNotificationSettings)
+                .values(
+                  validatedNotificationProviderIds.map((providerId) => ({
+                    jobId: validatedData.jobId,
+                    notificationProviderId: providerId,
+                  }))
+                )
+                .onConflictDoNothing();
+            }
           }
         }
-      }
 
-      if (testsChanged) {
-        await dbInstance
-          .delete(jobTests)
-          .where(eq(jobTests.jobId, validatedData.jobId));
+        if (testsChanged) {
+          await dbInstance
+            .delete(jobTests)
+            .where(eq(jobTests.jobId, validatedData.jobId));
 
-        const testRelations = testsToUse.map((test, index) => ({
-          jobId: validatedData.jobId,
-          testId: test.id,
-          orderPosition: index,
-        }));
+          const testRelations = testsToUse.map((test, index) => ({
+            jobId: validatedData.jobId,
+            testId: test.id,
+            orderPosition: index,
+          }));
 
-        if (testRelations.length > 0) {
-          await dbInstance.insert(jobTests).values(testRelations);
+          if (testRelations.length > 0) {
+            await dbInstance.insert(jobTests).values(testRelations);
+          }
         }
-      }
+      });
 
       // Handle scheduling changes
       const previousSchedule = job.cronSchedule;
@@ -396,6 +404,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
       // Case 2: New schedule added or schedule changed
       let scheduledJobId = null;
+      let scheduleWarning: string | undefined;
       if (
         newSchedule &&
         newSchedule.trim() !== "" &&
@@ -418,7 +427,10 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
             .where(eq(jobs.id, validatedData.jobId));
         } catch (scheduleError) {
           console.error(`Failed to schedule job:`, scheduleError);
-          // Continue anyway - the job is updated but schedule failed
+          // The job is saved, but nothing will run it: say so and drop the next run time it cannot honour.
+          scheduleWarning = "Job saved, but its schedule could not be registered. Save it again to retry.";
+          nextRunAt = null;
+          await dbInstance.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, validatedData.jobId));
         }
       } else if (
         newSchedule &&
@@ -470,6 +482,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           nextRunAt: nextRunAt?.toISOString() || null,
           scheduledJobId,
           testCount: testsToUse.length,
+          ...(scheduleWarning ? { warning: scheduleWarning } : {}),
         },
       };
     } catch (dbError) {

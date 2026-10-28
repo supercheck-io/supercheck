@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getActiveTrial } from "@/lib/execution/trial-limits";
+import { getActiveTrial, hasPaidAccess } from "@/lib/execution/trial-limits";
 import { db } from '@/utils/db';
 import { invitation, member, organization, planLimits, projects, projectMembers, session, user as userTable } from '@/db/schema';
 import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
@@ -234,7 +234,10 @@ export async function POST(
       // Plan limits only exist when Polar billing is active; cloud mode without
       // Polar (dev, staging, e2e) has no plans to enforce.
       if (isPolarEnabled()) {
-        const [org] = await tx.select({ plan: organization.subscriptionPlan }).from(organization)
+        const [org] = await tx.select({
+          subscriptionPlan: organization.subscriptionPlan, polarCustomerId: organization.polarCustomerId,
+          subscriptionStatus: organization.subscriptionStatus, subscriptionEndsAt: organization.subscriptionEndsAt,
+        }).from(organization)
           .where(eq(organization.id, invite.organizationId)).limit(1).for("update");
         const [existingMember] = await tx.select({ id: member.id }).from(member)
           .where(and(eq(member.organizationId, invite.organizationId), eq(member.userId, currentUser.id))).limit(1);
@@ -242,9 +245,9 @@ export async function POST(
           if (!org) throw new Error("INVITE_MEMBER_LIMIT");
           // A paid plan sets the cap; an organization on a free trial has no plan and uses its trial's cap.
           let maxMembers: number | undefined;
-          if (org.plan === "plus" || org.plan === "pro") {
+          if (hasPaidAccess(org, new Date())) {
             const [limits] = await tx.select({ max: planLimits.maxTeamMembers }).from(planLimits)
-              .where(eq(planLimits.plan, org.plan)).limit(1);
+              .where(eq(planLimits.plan, org.subscriptionPlan as "plus" | "pro")).limit(1);
             maxMembers = limits?.max;
           } else {
             maxMembers = (await getActiveTrial(invite.organizationId, tx))?.maxTeamMembers;

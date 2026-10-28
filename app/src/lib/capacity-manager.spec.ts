@@ -50,6 +50,7 @@ const mockRedisZcard = jest.fn();
 const mockRedisZrange = jest.fn();
 const mockRedisZrem = jest.fn();
 const mockRedisZrank = jest.fn();
+const mockRedisZscore = jest.fn();
 
 const mockRedis: Record<string, unknown> = {
   eval: mockRedisEval,
@@ -67,6 +68,7 @@ const mockRedis: Record<string, unknown> = {
   zrange: mockRedisZrange,
   zrem: mockRedisZrem,
   zrank: mockRedisZrank,
+  zscore: mockRedisZscore,
   status: 'ready',
 };
 
@@ -216,6 +218,24 @@ describe('CapacityManager', () => {
         expect(mockRedisZrem).toHaveBeenCalledWith(expect.stringContaining(testOrgId), queued.jobId);
         expect(db.update).toHaveBeenCalled();
         expect(mockRedisEval).not.toHaveBeenCalled();
+      });
+
+      it('fails the run when the payload is missing, instead of leaving it queued forever', async () => {
+        mockRedisGet.mockResolvedValue(null);
+        mockRedisZscore.mockResolvedValue(String(Date.now() - 10 * 60_000));
+        const { db } = jest.requireMock('@/utils/db');
+        db.update.mockClear();
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(db.update).toHaveBeenCalled();
+      });
+
+      it('leaves a just-queued entry alone while its payload is still being written', async () => {
+        mockRedisGet.mockResolvedValue(null);
+        mockRedisZscore.mockResolvedValue(String(Date.now() - 1000));
+        const { db } = jest.requireMock('@/utils/db');
+        db.update.mockClear();
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(db.update).not.toHaveBeenCalled();
       });
 
       it('is left alone when another promoter already removed it', async () => {
@@ -1054,7 +1074,15 @@ describe('Reconciliation', () => {
       return Promise.resolve('0');
     });
 
-    // Run reconciliation
+    // Run reconciliation: a drift is corrected once the next pass confirms it.
+    const arm = () => mockQueue.getJobs.mockResolvedValueOnce([
+      { id: 'job-1', data: { organizationId: 'org-1' } },
+      { id: 'job-2', data: { organizationId: 'org-1' } },
+    ]).mockResolvedValueOnce([
+      { id: 'job-3', data: { organizationId: 'org-3' } },
+    ]);
+    await reconcileCapacityCounters(mockQueues, true);
+    arm();
     await reconcileCapacityCounters(mockQueues, true);
 
     // Expect fixes
@@ -1078,8 +1106,33 @@ describe('Reconciliation', () => {
     );
   });
 
+  it('only corrects a drift that is still there on the next pass', async () => {
+    // A single pass compares a BullMQ snapshot with a later Redis read, so a job admitted or finished in
+    // between looks like drift. Dropping its slot would let the org over-admit.
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-race' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-race']]);
+    mockRedisGet.mockResolvedValue('3');
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisSet).not.toHaveBeenCalled();
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisSet).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs a leaked slot even when the counters keep moving between passes', async () => {
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-leak' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-leak']]);
+    mockRedisGet.mockResolvedValueOnce('4');
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-leak' } }, { id: 'k', data: { organizationId: 'org-leak' } }]);
+    mockRedisGet.mockResolvedValueOnce('5');
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
+    expect(mockRedisSet).toHaveBeenCalledWith('capacity:running:org-leak', '2', expect.any(String), expect.any(Number));
+  });
+
   it('pages large queues and deduplicates jobs that move across mutable pages', async () => {
     const page = Array.from({ length: 250 }, (_, id) => ({ id: String(id), data: { organizationId: 'org-1' } }));
+    mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
     mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
     await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
     expect(mockQueue.getJobs).toHaveBeenNthCalledWith(2, expect.any(Array), 250, 499);

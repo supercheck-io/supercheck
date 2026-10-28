@@ -213,6 +213,14 @@ describe("PolarUsageService retry idempotency", () => {
     expect(spending).toMatchObject({ currentSpendingCents: 7, isAtLimit: false });
   });
 
+  it("does not report 100% spending before the limit is reached", async () => {
+    const spy = jest.spyOn(polarUsageService, "getUsageMetrics").mockResolvedValue({ totalOverageCostCents: 996 } as never);
+    const database = { query: { billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 1000 }) } } } as unknown as Pick<typeof db, "query">;
+    const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 0 });
+    spy.mockRestore();
+    expect(spending).toMatchObject({ percentageUsed: 99, isAtLimit: false });
+  });
+
   it("reuses the usage ledger ID as external_id after a failed ingestion", async () => {
     const event = {
       id: "usage-event-1",
