@@ -294,8 +294,8 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
       staleTime: STALE_TIME,
     },
     "/incidents": {
-      queryKey: getSreIncidentsQueryKey(projectId),
-      queryFn: getSreIncidents,
+      queryKey: [...getSreIncidentsQueryKey(projectId), "active"],
+      queryFn: () => getSreIncidents({ scope: "active" }),
       staleTime: 30_000,
       persist: false,
     },

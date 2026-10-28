@@ -57,6 +57,8 @@ describe("aggregate period precedence", () => {
         avgResponseMs: 100,
         p95ResponseMs: 150,
         totalChecks: 40,
+        // Newest daily row starts 2026-10-02, so aggregates reach the end of that day.
+        coveredTo: new Date("2026-10-03T00:00:00Z"),
       });
     },
   );

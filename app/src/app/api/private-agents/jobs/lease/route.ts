@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { externalConnectorCredentials, privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
@@ -11,6 +11,7 @@ import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
 
 const LEASE_TTL_MS = 5 * 60_000;
+const MAX_QUEUED_AGE_MS = 10 * 60_000;
 const MAX_LONG_POLL_MS = 25_000;
 const LONG_POLL_INTERVAL_MS = 1_000;
 const logger = createLogger({ module: "private-agent-job-lease" }) as {
@@ -89,6 +90,22 @@ export async function POST(request: NextRequest) {
             )
           );
 
+        // Never hand work or credentials to an agent for a disabled connector or a job that waited too long.
+        const queued = and(
+          eq(privateAgentJobs.privateAgentId, auth.agent.id),
+          eq(privateAgentJobs.organizationId, auth.agent.organizationId),
+          eq(privateAgentJobs.jobClass, "sre_connector_query"),
+          eq(privateAgentJobs.status, "queued")
+        );
+        await tx
+          .update(privateAgentJobs)
+          .set({ status: "timed_out", completedAt: now, errorCode: "queued_too_long" })
+          .where(and(queued, lt(privateAgentJobs.createdAt, new Date(now.getTime() - MAX_QUEUED_AGE_MS))));
+        await tx
+          .update(privateAgentJobs)
+          .set({ status: "failed", completedAt: now, errorCode: "connector_disabled" })
+          .where(and(queued, sql`${privateAgentJobs.connectorId} IN (SELECT id FROM external_connectors WHERE status = 'disabled')`));
+
         const [job] = await tx
           .select()
           .from(privateAgentJobs)
@@ -150,6 +167,7 @@ export async function POST(request: NextRequest) {
     const credentialRow = leasedJob.connectorId
       ? await db.query.externalConnectorCredentials.findFirst({
           where: eq(externalConnectorCredentials.connectorId, leasedJob.connectorId),
+          orderBy: desc(externalConnectorCredentials.updatedAt),
         })
       : null;
     if (credentialRow?.expiresAt && credentialRow.expiresAt <= new Date()) {

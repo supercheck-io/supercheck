@@ -8,7 +8,7 @@ import { projects, projectMembers } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { withMemberCounts } from "@/lib/project-member-counts";
 import {
   subscriptionService,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
         const [row] = await tx
           .select({ count: sql<number>`count(*)` })
           .from(projects)
-          .where(eq(projects.organizationId, targetOrgId));
+          .where(and(eq(projects.organizationId, targetOrgId), ne(projects.status, "deleted")));
         return Number(row?.count || 0);
       },
       insert: async (executor) => {

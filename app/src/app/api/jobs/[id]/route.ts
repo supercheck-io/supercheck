@@ -195,7 +195,12 @@ export async function PATCH(
       alertConfig: rawData.alertConfig !== undefined ? rawData.alertConfig : (existingJob.alertConfig || undefined),
     } as any; // Cast as any to bypass strict UpdateJobData if needed, though structure matches
 
-    const result = await updateJob(updateData, { userId, project, organizationId });
+    const result = await updateJob(updateData, {
+      userId,
+      project,
+      organizationId,
+      inherited: { cronSchedule: rawData.cronSchedule === undefined, alertConfig: rawData.alertConfig === undefined },
+    });
 
     if (result.success) {
       return NextResponse.json(result.job);

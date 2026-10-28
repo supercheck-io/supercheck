@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { scheduleJob } from "@/lib/job-scheduler";
 import crypto from "crypto";
+import { validateJobCron } from "@/lib/job-cron-validation";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
@@ -57,6 +58,9 @@ export async function createJob(data: CreateJobData) {
 
     // Validate the data
     const validatedData = createJobSchema.parse(data);
+
+    const cronError = validateJobCron(validatedData.cronSchedule);
+    if (cronError) return { success: false, message: cronError };
 
     if (!validatedData.tests || validatedData.tests.length === 0) {
       return {

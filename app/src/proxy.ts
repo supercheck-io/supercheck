@@ -253,8 +253,33 @@ function getMainAppHostname(): string | null {
   return cachedMainAppHostname;
 }
 
+/** True when REPORTS_ORIGIN is set and this request arrived on that host. */
+function isReportsOriginRequest(request: NextRequest): boolean {
+  const raw = process.env.REPORTS_ORIGIN?.trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const reportsHost = parsed.host.toLowerCase();
+    // Mirrors getReportsOrigin(): a value equal to the app host is ignored, never a lockout.
+    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+    if (appUrl && new URL(appUrl).host.toLowerCase() === reportsHost) return false;
+    // Fail closed: Host or X-Forwarded-Host naming the reports host is enough.
+    return [request.headers.get('x-forwarded-host'), request.headers.get('host')]
+      .flatMap((h) => (h ? h.split(',') : []))
+      .some((h) => h.trim().toLowerCase() === reportsHost);
+  } catch {
+    return false;
+  }
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // The reports origin serves report assets only; nothing else of the app is reachable there.
+  if (isReportsOriginRequest(request) && !pathname.startsWith('/api/test-results/')) {
+    return new NextResponse('Not found', { status: 404 });
+  }
 
   // Fast path: Skip proxy for internal Next.js routes
   if (pathname.startsWith("/_next/")) {

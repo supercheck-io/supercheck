@@ -4,7 +4,7 @@ description: Configure services, read-only integrations, saved queries, and Priv
 icon: Wrench
 ---
 
-Project Admins and organization-level administrators configure AI SRE from **Organization**. Responders start from **Respond → Incidents** (alerts are on its **Alerts** tab). **Copilot** and **Services** sit under **Respond**.
+Organization owners and admins configure AI SRE from **Settings → Organization** (Project Admins do not see this page). Responders start from **Respond → Incidents** (alerts are on its **Alerts** tab). **Copilot** and **Services** sit under **Respond**.
 
 Open **Setup guide** (under **More** on Integrations, or beside **Add service** and **Add query**) to review setup status.
 
@@ -48,7 +48,7 @@ Suggested relationships do not enter the Investigation Map until an authorized u
 
 ## Integrations
 
-Use **Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits. Select **Add connector** to connect providers such as Prometheus, Grafana, Loki, or GitHub.
+Use **Settings → Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits. Select **Add connector** to connect providers such as Prometheus, Grafana, Loki, or GitHub.
 
 Use the narrowest credential and service scope that supports your queries, and validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
@@ -58,14 +58,14 @@ Connectors are optional. Start with stored Supercheck evidence, then add externa
 
 Saved queries are named templates for read-only questions your team repeats, such as a service's 5xx rate over the last five minutes. You do not need one to investigate stored evidence or run supported live connector searches.
 
-In **Organization → Integrations**, choose **More → Saved queries** to open the saved queries dialog, then select **Add query**.
+In **Settings → Organization → Integrations**, choose **More → Saved queries** to open the saved queries dialog, then select **Add query**.
 
 | Property | Behavior |
 |---|---|
 | **Connector** | Each query is tied to one enabled connector |
 | **Validation** | Parameters and allowlist are validated |
 | **Limits** | Returned rows, output size, and runtime are limited |
-| **Query types** | Depend on the connector. Include SQL, PromQL, LogQL, TraceQL, and HTTP GET |
+| **Query types** | Depend on the connector. Include PromQL, LogQL, TraceQL, and HTTP GET |
 | **Disabling** | Prevents future executions. Evidence already collected stays |
 
 ![Saved queries under Integrations](/screenshots/sre-integrations-saved-queries.png)
@@ -79,7 +79,7 @@ Use a Private Agent when a supported provider is reachable only inside your netw
 
 ### Register the agent
 
-Go to **Organization → Private Agents** and register it. Search and filter the list by status, scope, or network, and select a row to see its version, last heartbeat, and the connectors that use it.
+Go to **Settings → Organization → Private Agents** and register it. Search and filter the list by status, scope, or network, and select a row to see its version, last heartbeat, and the connectors that use it.
 
 </Step>
 <Step>
@@ -93,7 +93,7 @@ Go to **Organization → Private Agents** and register it. Search and filter the
 
 ### Add a connector
 
-In **Organization → Integrations**, add a connector, choose **Private Agent**, and select the registered agent.
+In **Settings → Organization → Integrations**, add a connector, choose **Private Agent**, and select the registered agent.
 
 </Step>
 <Step>
