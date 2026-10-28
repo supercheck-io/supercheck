@@ -27,7 +27,8 @@ export const StatusPageVerificationEmail = ({
     <BaseLayout
       preview={`${t.emailSubjectVerify} ${statusPageName}`}
       title={t.emailVerifySubscription}
-      headerColor="#3b82f6"
+      headerColor="#1d4ed8"
+      showBrand={false}
       showStandardFooter={false}
       footer={
         <>
@@ -174,7 +175,7 @@ const buttonSection = {
 };
 
 const ctaButton = {
-  backgroundColor: "#3b82f6",
+  backgroundColor: "#111827",
   borderRadius: "8px",
   color: "#ffffff",
   fontSize: "15px",
