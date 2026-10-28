@@ -623,6 +623,7 @@ export class PlaywrightExecutionProcessor
         projectId: jobData.projectId,
         runId,
         finalStatus,
+        cancelled: !result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER),
         durationSeconds,
         results: result.results ?? [],
         jobType: jobData.jobType ?? 'playwright',

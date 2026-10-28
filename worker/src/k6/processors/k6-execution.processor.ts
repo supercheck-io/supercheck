@@ -553,6 +553,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           projectId: taskData.projectId,
           runId,
           finalStatus,
+          cancelled: wasCancelled,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',

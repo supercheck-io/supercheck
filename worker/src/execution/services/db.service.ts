@@ -475,6 +475,7 @@ export class DbService implements OnModuleInit {
         .select({
           id: schema.runs.id,
           status: schema.runs.status,
+          errorDetails: schema.runs.errorDetails,
           createdAt: schema.runs.createdAt,
         })
         .from(schema.runs)
