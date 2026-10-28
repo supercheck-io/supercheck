@@ -26,8 +26,6 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  CalendarIcon,
-  ClockIcon,
   FileText,
   Download
 } from "lucide-react";
@@ -43,6 +41,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { createdByColumn } from "@/components/ui/created-by-column";
+import { DateCell } from "@/components/ui/table-cells";
 
 // Component for value with popover on truncation
 function ValueWithPopover({ value, isSecret, isVisible, decryptedValue }: { value?: string; isSecret: boolean; isVisible: boolean; decryptedValue?: string }) {
@@ -235,29 +234,7 @@ export const columns: ColumnDef<Variable>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
-    cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) return null;
-
-      const date = new Date(createdAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("createdAt") as Date | string | null} empty="—" />,
   },
   {
     accessorKey: "updatedAt",
@@ -265,37 +242,9 @@ export const columns: ColumnDef<Variable>[] = [
       <DataTableColumnHeader column={column} title="Updated" />
     ),
     cell: ({ row }) => {
-      const updatedAt = row.getValue("updatedAt") as string;
-      const createdAt = row.getValue("createdAt") as string;
-      
-      // Check if updatedAt is the same as createdAt (never updated)
-      if (!updatedAt || updatedAt === createdAt) {
-        return (
-          <div className="flex items-center w-[170px]">
-            <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground text-sm">Not updated</span>
-          </div>
-        );
-      }
-
-      const date = new Date(updatedAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
-        </div>
-      );
+      const updatedAt = row.getValue("updatedAt") as Date | string | null;
+      // A fresh row has updatedAt equal to createdAt, which is not an edit.
+      return <DateCell value={updatedAt !== row.getValue("createdAt") ? updatedAt : null} empty="Not updated" />;
     },
   },
   {

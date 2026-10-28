@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getNotificationProviderConfig } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
-import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { DateCell } from "@/components/ui/table-cells";
 import { createdByColumn } from "@/components/ui/created-by-column";
 
 interface TableMeta {
@@ -90,9 +90,9 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     ),
     cell: ({ row }) => {
       return (
-        <DateTimeCell
+        <DateCell
           value={row.getValue("createdAt") as string}
-          emptyLabel="Unknown"
+          empty="Unknown"
         />
       );
     },
@@ -104,9 +104,9 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     ),
     cell: ({ row }) => {
       return (
-        <DateTimeCell
+        <DateCell
           value={row.getValue("lastUsed") as string}
-          emptyLabel="Never"
+          empty="Never"
         />
       );
     },

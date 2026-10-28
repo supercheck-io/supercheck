@@ -1,8 +1,10 @@
-import { CalendarIcon } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
-/** Date cell shared by every table: calendar icon, short date, muted time, one line. */
+/**
+ * Date cell shared by every table, kept narrow so text columns get the room:
+ * "Sep 16 6:47 PM" this year, "Mar 21, 2025 6:47 PM" otherwise, and the full
+ * timestamp with time zone on hover.
+ */
 export function DateCell({
   value,
   empty = "Never",
@@ -22,27 +24,31 @@ export function DateCell({
       </span>
     );
   }
+  const sameYear = date.getFullYear() === new Date().getFullYear();
   return (
-    <div
-      className={cn("flex items-center whitespace-nowrap text-sm", className)}
+    <time
+      dateTime={date.toISOString()}
+      title={date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      })}
+      className={cn("whitespace-nowrap text-sm tabular-nums", className)}
       suppressHydrationWarning
     >
-      <CalendarIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-      <span>
-        {date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
-      </span>
+      {date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        ...(sameYear ? {} : { year: "numeric" }),
+      })}
       {showTime && (
-        <span className="ml-1 text-xs text-muted-foreground">
-          {date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+        <span className="ml-1.5 text-xs text-muted-foreground" suppressHydrationWarning>
+          {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
         </span>
       )}
-    </div>
+    </time>
   );
 }

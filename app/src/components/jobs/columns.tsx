@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { TimerIcon, Loader2, Zap, Clock, X } from "lucide-react";
+import { TimerIcon, Loader2, Zap, X } from "lucide-react";
 import { useRef, useCallback, useEffect, useState } from "react";
 import {
   Tooltip,
@@ -39,6 +39,7 @@ import {
   isBillingBlockedStatus,
 } from "@/lib/billing-errors";
 import { createdByColumn } from "@/components/ui/created-by-column";
+import { DateCell } from "@/components/ui/table-cells";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
@@ -548,81 +549,16 @@ export const columns: ColumnDef<Job>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Last Run" />
     ),
-    cell: ({ row }) => {
-      const lastRunAt = row.getValue("lastRunAt") as string | null;
-      if (!lastRunAt) {
-        return (
-          <div className="flex items-center max-w-[120px]">
-            <Clock className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0" />
-            <span className="text-muted-foreground truncate">Never</span>
-          </div>
-        );
-      }
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center">
-            <Clock className="mr-2 h-4 w-4 text-muted-foreground self-center" />
-            <div className="flex items-center">
-              <span>
-                {new Date(lastRunAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-            <span className="text-muted-foreground ml-1 text-xs">
-              {new Date(lastRunAt).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("lastRunAt") as string | null} />,
   },
   {
     accessorKey: "nextRunAt",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Next Run" />
     ),
-    cell: ({ row }) => {
-      const nextRunAt = row.getValue("nextRunAt") as string | null;
-      const cronSchedule = row.getValue("cronSchedule") as string | null;
-
-      if (!cronSchedule || !nextRunAt) {
-        return (
-          <div className="flex items-center max-w-[120px]">
-            <Clock className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0" />
-            <span className="text-muted-foreground truncate">Never</span>
-          </div>
-        );
-      }
-
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center">
-            <Clock className="mr-2 h-4 w-4 text-muted-foreground self-center" />
-            <div className="flex items-center">
-              <span>
-                {new Date(nextRunAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-            <span className="text-muted-foreground ml-1 text-xs">
-              {new Date(nextRunAt).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
-        </div>
-      );
-    },
+    cell: ({ row }) => (
+      <DateCell value={row.getValue("cronSchedule") ? (row.getValue("nextRunAt") as string | null) : null} />
+    ),
   },
   createdByColumn<Job>(),
   {
@@ -630,31 +566,7 @@ export const columns: ColumnDef<Job>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
-    cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) return null;
-
-      const date = new Date(createdAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("createdAt") as Date | string | null} empty="—" />,
   },
   {
     accessorKey: "updatedAt",
@@ -662,39 +574,9 @@ export const columns: ColumnDef<Job>[] = [
       <DataTableColumnHeader column={column} title="Updated" />
     ),
     cell: ({ row }) => {
-      const updatedAt = row.getValue("updatedAt") as string;
-      const createdAt = row.getValue("createdAt") as string;
-
-      // Only show updatedAt if it's different from createdAt (indicating an actual update)
-      if (!updatedAt || updatedAt === createdAt) {
-        return (
-          <div className="flex items-center w-[170px]">
-            <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground text-sm">Not updated</span>
-          </div>
-        );
-      }
-
-      const date = new Date(updatedAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
+      const updatedAt = row.getValue("updatedAt") as Date | string | null;
+      // A fresh row has updatedAt equal to createdAt, which is not an edit.
+      return <DateCell value={updatedAt !== row.getValue("createdAt") ? updatedAt : null} empty="Not updated" />;
     },
   },
   {

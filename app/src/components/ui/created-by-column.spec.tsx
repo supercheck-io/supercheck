@@ -17,9 +17,11 @@ describe("createdByColumn", () => {
     expect(accessor({ createdByName: null })).toBe("");
   });
 
-  it("shows the creator, or Unknown when the user was deleted", () => {
+  it("shows the creator's initials with the name for screen readers, or Unknown when the user was deleted", () => {
     renderCell(column, { createdByName: "Ada Lovelace" });
-    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    // Initials appear twice: in the avatar fallback and as the visible label.
+    expect(screen.getAllByText("AL")).toHaveLength(2);
+    expect(screen.getByText("Ada Lovelace")).toHaveClass("sr-only");
     renderCell(column, { createdByName: null });
     expect(screen.getByText("Unknown")).toBeInTheDocument();
   });

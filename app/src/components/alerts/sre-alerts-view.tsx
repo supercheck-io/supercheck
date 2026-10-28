@@ -23,7 +23,7 @@ import type { AlertHistory } from "@/components/alerts/schema";
 import { getAlertTypeLabel } from "@/components/alerts/data";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
-import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { DateCell } from "@/components/ui/table-cells";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -540,7 +540,7 @@ export function SreAlertsView({ alerts, isLoading, toolbarEnd }: SreAlertsViewPr
                   </TableCell>
                   <TableCell className="py-2.5">{alert.source}</TableCell>
                   <TableCell className="py-2.5">
-                    <DateTimeCell value={alert.timestamp} />
+                    <DateCell value={alert.timestamp} empty="—" />
                   </TableCell>
                   <TableCell className="py-2.5">
                     {isPending && pendingFingerprint === alert.fingerprint ? (

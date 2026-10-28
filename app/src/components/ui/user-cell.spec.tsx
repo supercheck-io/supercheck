@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { UserAvatar, UserCell, avatarColor, initials } from "./user-cell";
+import { UserAvatar, UserCell, avatarColor, initials, isSafeAvatarUrl } from "./user-cell";
 
 describe("initials", () => {
   it("uses the first letter of up to two words", () => {
@@ -71,9 +71,37 @@ describe("UserAvatar image source", () => {
   });
 
   it("loads an external photo only when allowed (own account)", () => {
-    const { container } = render(<UserAvatar name="Ada" image="https://lh3.googleusercontent.com/a/x" allowExternalImage />);
-    expect(imgSrc(container)).toBe("https://lh3.googleusercontent.com/a/x");
+    const { container } = render(<UserAvatar name="Ada" image="https://evil.example/t.png" allowExternalImage />);
+    expect(imgSrc(container)).toBe("https://evil.example/t.png");
   });
+
+  it("shows a GitHub or Google sign-in photo to everyone, without a referrer", () => {
+    const { container } = render(<UserAvatar name="Ada" image="https://avatars.githubusercontent.com/u/1?v=4" />);
+    expect(imgSrc(container)).toBe("https://avatars.githubusercontent.com/u/1?v=4");
+    expect(container.querySelector("img")).toHaveAttribute("referrerpolicy", "no-referrer");
+  });
+});
+
+describe("isSafeAvatarUrl", () => {
+  it.each([
+    "/api/users/018f0000-0000-7000-8000-000000000001/avatar?v=0123456789abcdef0123456789abcdef.webp",
+    "https://avatars.githubusercontent.com/u/12345?v=4",
+    "https://lh3.googleusercontent.com/a/ACg8ocK=s96-c",
+    "https://lh5.googleusercontent.com/a-/AOh14Gi",
+  ])("allows %s", (url) => expect(isSafeAvatarUrl(url)).toBe(true));
+
+  it.each([
+    "http://avatars.githubusercontent.com/u/1",
+    "https://avatars.githubusercontent.com.evil.example/u/1",
+    "https://avatars.githubusercontent.com/gist/1",
+    "https://lh3.googleusercontent.com/d/arbitrary-drive-file",
+    "https://lh3.googleusercontent.com.evil.example/a/x",
+    "https://user:pass@lh3.googleusercontent.com/a/x",
+    "https://avatars.githubusercontent.com:8443/u/1",
+    "//avatars.githubusercontent.com/u/1",
+    "javascript:alert(1)",
+    "/api/users/me/avatar",
+  ])("rejects %s", (url) => expect(isSafeAvatarUrl(url)).toBe(false));
 });
 
 describe("UserCell", () => {
@@ -113,7 +141,7 @@ describe("UserCell", () => {
   });
 
   it("avatar-only keeps the name for screen readers and in the tooltip", async () => {
-    render(<UserCell name="Ada Lovelace" email="ada@example.com" avatarOnly />);
+    render(<UserCell name="Ada Lovelace" email="ada@example.com" compact />);
     const name = screen.getByText("Ada Lovelace");
     expect(name).toHaveClass("sr-only");
     fireEvent.focus(name.closest("[data-state]")!);
@@ -121,7 +149,7 @@ describe("UserCell", () => {
   });
 
   it("avatar-only shows the empty label in a tooltip", async () => {
-    const { container } = render(<UserCell name={null} emptyLabel="System" avatarOnly />);
+    const { container } = render(<UserCell name={null} emptyLabel="System" compact />);
     const trigger = container.querySelector("[data-state]");
     expect(trigger).not.toBeNull();
     expect(trigger).not.toHaveAttribute("tabindex");

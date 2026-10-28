@@ -41,6 +41,24 @@ export function avatarColor(name: string) {
 // Only the app's own avatar route: user.image can be any URL a user sets, which would make viewers' browsers fetch it.
 const APP_AVATAR = /^\/api\/users\/[0-9a-f-]{36}\/avatar\?v=[a-f0-9]{32}\.(png|jpg|webp)$/;
 
+/**
+ * True for an image every viewer may load: the app's avatar route, or the profile photo
+ * that GitHub or Google sign-in stored (exact host and photo path, https only).
+ */
+export function isSafeAvatarUrl(image: string): boolean {
+  if (APP_AVATAR.test(image)) return true;
+  let url: URL;
+  try {
+    url = new URL(image);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+  if (url.hostname === "avatars.githubusercontent.com") return url.pathname.startsWith("/u/");
+  // googleusercontent.com also hosts arbitrary user files; /a/ and /a-/ are profile photos only.
+  return /^lh[3-6]\.googleusercontent\.com$/.test(url.hostname) && /^\/a-?\//.test(url.pathname);
+}
+
 /** Round avatar: the photo, else initials, else a dashed person icon when nobody is set. */
 export function UserAvatar({
   name,
@@ -55,11 +73,12 @@ export function UserAvatar({
   allowExternalImage?: boolean;
   className?: string;
 } & Omit<React.ComponentProps<typeof Avatar>, "children">) {
-  const src = name && image && (allowExternalImage || APP_AVATAR.test(image)) ? image : null;
+  const src = name && image && (allowExternalImage || isSafeAvatarUrl(image)) ? image : null;
   return (
     // Initials scale with the avatar size (container query), so one component fits 16px to 64px.
     <Avatar className={cn("@container h-6 w-6", className)} {...props}>
-      {src ? <AvatarImage src={src} alt="" /> : null}
+      {/* No referrer: app URLs never reach GitHub or Google, and Google photos can refuse requests that send one. */}
+      {src ? <AvatarImage src={src} alt="" referrerPolicy="no-referrer" /> : null}
       <AvatarFallback className={cn("text-[max(8px,40cqw)] font-medium", name ? avatarColor(name) : "border border-dashed bg-transparent text-muted-foreground")}>
         {name ? initials(name) : <UserRound className="h-3/5 w-3/5" aria-hidden="true" />}
       </AvatarFallback>
@@ -76,7 +95,7 @@ export function UserCell({
   email,
   image,
   emptyLabel = "Unassigned",
-  avatarOnly = false,
+  compact = false,
   className,
   avatarClassName,
 }: {
@@ -84,8 +103,8 @@ export function UserCell({
   email?: string | null;
   image?: string | null;
   emptyLabel?: string;
-  /** Table columns: only the avatar is visible; the name stays in the tooltip and for screen readers. */
-  avatarOnly?: boolean;
+  /** Table columns: avatar plus initials ("KK"); the full name stays in the tooltip and for screen readers. */
+  compact?: boolean;
   className?: string;
   avatarClassName?: string;
 }) {
@@ -93,14 +112,15 @@ export function UserCell({
   const content = (
     <div className={cn("flex min-w-0 items-center gap-2 text-sm", !label && "text-muted-foreground", className)}>
       <UserAvatar name={label} image={image} className={avatarClassName} />
-      <span className={avatarOnly ? "sr-only" : "truncate"}>
+      {compact && label ? <span aria-hidden="true" className="font-medium">{initials(label)}</span> : null}
+      <span className={compact ? "sr-only" : "truncate"}>
         {label ?? emptyLabel}
         {name && email ? <span className="sr-only">, {email}</span> : null}
       </span>
     </div>
   );
-  // Avatar-only cells keep a tooltip even when empty, so "System" or "Unassigned" is still readable.
-  if (!label && !avatarOnly) return content;
+  // Compact cells keep a tooltip even when empty, so "System" or "Unassigned" is still readable.
+  if (!label && !compact) return content;
   // The tooltip shows the full name (it may be truncated) and the email.
   return (
     <Tooltip>

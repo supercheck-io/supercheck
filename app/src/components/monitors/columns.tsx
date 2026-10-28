@@ -2,7 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableRowActions } from "./data-table-row-actions";
 import type { Monitor } from "./schema";
-import { CalendarIcon, ClockIcon } from "lucide-react";
+import { ClockIcon } from "lucide-react";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ import { maskUrlPassword } from "@/lib/mask-url-password";
 import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { createdByColumn } from "@/components/ui/created-by-column";
+import { DateCell } from "@/components/ui/table-cells";
 
 // Type definition for the extended meta object used in this table
 interface MonitorTableMeta {
@@ -159,31 +160,7 @@ export const columns: ColumnDef<Monitor>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
-    cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) return null;
-
-      const date = new Date(createdAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("createdAt") as Date | string | null} empty="—" />,
   },
   {
     accessorKey: "updatedAt",
@@ -191,39 +168,9 @@ export const columns: ColumnDef<Monitor>[] = [
       <DataTableColumnHeader column={column} title="Updated" />
     ),
     cell: ({ row }) => {
-      const updatedAt = row.getValue("updatedAt") as string;
-      const createdAt = row.getValue("createdAt") as string;
-
-      // Only show updatedAt if it's different from createdAt (indicating an actual update)
-      if (!updatedAt || updatedAt === createdAt) {
-        return (
-          <div className="flex items-center w-[170px]">
-            <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground text-sm">Not updated</span>
-          </div>
-        );
-      }
-
-      const date = new Date(updatedAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
+      const updatedAt = row.getValue("updatedAt") as Date | string | null;
+      // A fresh row has updatedAt equal to createdAt, which is not an edit.
+      return <DateCell value={updatedAt !== row.getValue("createdAt") ? updatedAt : null} empty="Not updated" />;
     },
   },
   {
