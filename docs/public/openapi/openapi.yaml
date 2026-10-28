@@ -6514,7 +6514,8 @@ components:
           type: string
         cronSchedule:
           type: string
-          description: Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400.
+          description: Standard five-field cron expression (one-minute minimum interval).
+            Six-field and invalid expressions are rejected with 400.
           example: 0 2 * * *
         tests:
           type: array
@@ -6573,7 +6574,8 @@ components:
           type: string
         cronSchedule:
           type: string
-          description: Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400.
+          description: Standard five-field cron expression (one-minute minimum interval).
+            Six-field and invalid expressions are rejected with 400.
         tests:
           type: array
           items:

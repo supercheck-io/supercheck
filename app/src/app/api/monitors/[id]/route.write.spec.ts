@@ -141,6 +141,11 @@ describe("switching to a synthetic monitor re-checks the stored testId", () => {
   });
 });
 
+it("a stored legacy assertion key does not block an unrelated edit", async () => {
+  findFirst.mockResolvedValue({ ...stored, config: { ...stored.config, checkExpiration: true } });
+  expect((await call(PATCH, "PATCH", { enabled: false })).status).toBe(200);
+});
+
 describe("monitor PATCH alertConfig (c12)", () => {
   it("replaces the delivery rows when providers change", async () => {
     providerRows = [{ id: "p1" }];

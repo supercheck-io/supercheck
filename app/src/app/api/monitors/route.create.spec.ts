@@ -2,7 +2,10 @@
 import { NextRequest } from "next/server";
 
 const dbSelect = jest.fn();
-jest.mock("@/utils/db", () => ({ db: { select: (...a: unknown[]) => dbSelect(...a) } }));
+const dbDeleteWhere = jest.fn();
+jest.mock("@/utils/db", () => ({
+  db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }) },
+}));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false })),
   isAuthError: jest.fn(() => false),
@@ -76,4 +79,13 @@ it("bulk PUT refuses to resume a paused monitor without a plan", async () => {
   );
   expect(res.status).toBe(402);
   expect(monitorResumeBlockedResponse).toHaveBeenCalledWith("org-1", "paused", expect.objectContaining({ enabled: true }));
+});
+
+it("removes the new monitor when it cannot be scheduled, so a retry does not duplicate it", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockRejectedValue(new Error("redis down"));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(500);
+  expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });

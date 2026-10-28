@@ -141,7 +141,7 @@ export async function GET(
         })
         .from(monitorResults)
         .where(eq(monitorResults.monitorId, id))
-        .orderBy(monitorResults.location, desc(monitorResults.checkedAt)),
+        .orderBy(desc(monitorResults.location), desc(monitorResults.checkedAt)),
     ]);
 
     // Calculate uptime percentage for each location

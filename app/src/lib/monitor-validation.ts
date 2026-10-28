@@ -15,6 +15,8 @@ type MonitorValidationInput = {
   type: unknown;
   target: unknown;
   config: unknown;
+  /** The config the client sent, if any. Unsupported keys are rejected there only, so a stored legacy key never blocks an unrelated edit. */
+  incomingConfig?: unknown;
 };
 
 export type MonitorValidationResult =
@@ -77,6 +79,7 @@ export function validateMonitorConfiguration({
   type,
   target,
   config,
+  incomingConfig,
 }: MonitorValidationInput): MonitorValidationResult {
   const parsedType = monitorTypeSchema.safeParse(type);
   if (!parsedType.success) {
@@ -95,7 +98,9 @@ export function validateMonitorConfiguration({
   const timeoutResult = validateTimeout(monitorConfig);
   if (!timeoutResult.success) return timeoutResult;
 
-  const unevaluated = UNEVALUATED_CONFIG_KEYS.find((key) => monitorConfig[key] != null);
+  const unevaluated = isRecord(incomingConfig)
+    ? UNEVALUATED_CONFIG_KEYS.find((key) => incomingConfig[key] != null)
+    : undefined;
   if (unevaluated) {
     return invalid("Invalid monitor configuration", `config.${unevaluated} is not supported: no check evaluates it`);
   }

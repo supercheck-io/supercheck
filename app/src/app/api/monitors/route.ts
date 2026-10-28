@@ -400,6 +400,7 @@ export async function POST(req: NextRequest) {
       type: rawData.type,
       target: rawData.target,
       config: rawData.config,
+      incomingConfig: rawData.config,
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
@@ -591,7 +592,14 @@ export async function POST(req: NextRequest) {
         )
         .onConflictDoNothing();
     }
-    const newMonitor = await scheduleCreatedMonitor(createdMonitor, inserted.row.enabled);
+    let newMonitor;
+    try {
+      newMonitor = await scheduleCreatedMonitor(createdMonitor, inserted.row.enabled);
+    } catch (scheduleError) {
+      // A monitor that never runs would still count against the plan and invite a duplicate on retry.
+      await db.delete(monitors).where(eq(monitors.id, createdMonitor.id));
+      throw scheduleError;
+    }
 
     // Log the audit event for monitor creation
     await logAuditEvent({
@@ -735,6 +743,7 @@ export async function PUT(req: NextRequest) {
       type: updateData.type ?? monitorData[0].type,
       target: updateData.target ?? monitorData[0].target,
       config: updateData.config ?? monitorData[0].config,
+      incomingConfig: updateData.config,
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });

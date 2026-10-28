@@ -9391,11 +9391,13 @@
           },
           "failureThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "recoveryThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "customMessage": {
             "type": "string"
@@ -9484,6 +9486,7 @@
           },
           "cronSchedule": {
             "type": "string",
+            "description": "Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400.",
             "example": "0 2 * * *"
           },
           "tests": {
@@ -9565,7 +9568,8 @@
             "type": "string"
           },
           "cronSchedule": {
-            "type": "string"
+            "type": "string",
+            "description": "Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400."
           },
           "tests": {
             "type": "array",
@@ -9828,15 +9832,6 @@
           "keywordInBodyShouldBePresent": {
             "type": "boolean"
           },
-          "responseBodyJsonPath": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string"
-              },
-              "expectedValue": {}
-            }
-          },
           "auth": {
             "type": "object",
             "properties": {
@@ -9885,18 +9880,6 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
-          },
-          "sslCheckOnStatusChange": {
-            "type": "boolean"
-          },
-          "checkExpiration": {
-            "type": "boolean"
-          },
-          "daysUntilExpirationWarning": {
-            "type": "integer"
-          },
-          "checkRevocation": {
-            "type": "boolean"
           },
           "timeoutSeconds": {
             "type": "integer",
@@ -9978,11 +9961,13 @@
           },
           "failureThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "recoveryThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "customMessage": {
             "type": "string"

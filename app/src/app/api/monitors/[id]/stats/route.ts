@@ -66,6 +66,7 @@ async function withUnaggregatedTail(
     // Weighted by check count: close enough, since the aggregate does not expose its response-time sample size.
     avgResponseMs: weight === 0 ? null : Math.round(parts.reduce((sum, [v, w]) => sum + v * w, 0) / weight),
     p95ResponseMs: aggregated.p95ResponseMs,
+    coveredTo: aggregated.coveredTo,
   };
 }
 
@@ -143,12 +144,12 @@ export async function GET(
       monitorAggregationService
         .getAggregatedMetrics(id, "hourly", last24Hours, now, locationParam)
         .then((agg) =>
-          withUnaggregatedTail(id, agg, last24Hours, ceilToHour(last24Hours), floorToHour(now), locationFilter),
+          withUnaggregatedTail(id, agg, last24Hours, ceilToHour(last24Hours), agg.coveredTo ?? floorToHour(now), locationFilter),
         ),
       monitorAggregationService
         .getAggregatedMetrics(id, "daily", last30Days, now, locationParam)
         .then((agg) =>
-          withUnaggregatedTail(id, agg, last30Days, ceilToDay(last30Days), floorToDay(now), locationFilter),
+          withUnaggregatedTail(id, agg, last30Days, ceilToDay(last30Days), agg.coveredTo ?? floorToDay(now), locationFilter),
         ),
     ]);
 

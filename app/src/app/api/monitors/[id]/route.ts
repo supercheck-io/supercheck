@@ -218,6 +218,7 @@ export async function PUT(
       type: updateData.type ?? currentMonitor.type,
       target: updateData.target ?? currentMonitor.target,
       config: updateData.config ?? currentMonitor.config,
+      incomingConfig: updateData.config,
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
@@ -780,6 +781,7 @@ export async function PATCH(
       type: updatePayload.type ?? currentMonitor.type,
       target: updatePayload.target ?? currentMonitor.target,
       config: updatePayload.config ?? currentMonitor.config,
+      incomingConfig: rawData.config,
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
