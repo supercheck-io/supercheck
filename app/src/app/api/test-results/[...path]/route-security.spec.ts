@@ -10,6 +10,8 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/report-results-utils", () => ({}));
 jest.mock("@/lib/test-results-access", () => ({
+  getPermissionResource: (t: string) =>
+    t === "test" ? "test" : t === "monitor" ? "monitor" : "run",
   getReportCacheControl: () => "private, no-store, no-cache, must-revalidate",
   resolveAccessContext: jest.fn(),
 }));
