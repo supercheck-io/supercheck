@@ -37,9 +37,7 @@ export function CheckList({ items, className = "" }: { items: string[]; classNam
 
 // Intrinsic sizes of the 1600px WebP copies in public/screenshots/site.
 const SHOT_HEIGHTS: Record<string, number> = {
-  "status-page-public": 922,
   "incident-workspace-overview": 1000,
-  dashboard: 1000,
   "notification-channels": 1000,
 };
 
