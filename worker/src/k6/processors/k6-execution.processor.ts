@@ -555,6 +555,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           // A timeout makes finalStatus 'error' above, so map it directly (cancellation stays 'error').
           finalStatus:
             result.timedOut && !wasCancelled ? 'timeout' : finalStatus,
+          cancelled: wasCancelled,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',
@@ -733,6 +734,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           projectId: taskData.projectId,
           runId,
           finalStatus: 'failed',
+          cancelled:
+            message.includes('cancelled') || message.includes('cancellation'),
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: false }],
           jobType: taskData.jobType ?? 'k6',

@@ -767,6 +767,38 @@ describe("Execution route regressions", () => {
     expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
   });
 
+  it("POST /api/jobs/[id]/trigger still triggers a job whose aggregate status is error", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000012";
+    mockDb.select
+      .mockReturnValueOnce(triggerKeySelect(jobId))
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([
+              {
+                id: jobId, name: "Nightly", status: "error", createdByUserId: "user-1",
+                organizationId: "org-1", projectId: "project-1", jobType: "playwright",
+              },
+            ]),
+          }),
+        }),
+      });
+    mockDb.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
+    mockDb.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
+    mockAddJobToQueue.mockResolvedValue({ status: "queued", position: 1 });
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it.each([
     ["banned with no expiry", { banned: true, banExpires: null }],
     ["banned until a future date", { banned: true, banExpires: new Date(Date.now() + 3_600_000) }],

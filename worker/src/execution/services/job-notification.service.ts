@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
 import { DbService } from './db.service';
 import {
@@ -23,6 +24,13 @@ export interface JobNotificationParams {
   jobType?: string;
   location?: string | null;
   errorMessage?: string | null;
+  /** The user cancelled the run: it is neither a failure to alert on nor part of a streak. */
+  cancelled?: boolean;
+}
+
+// A user-cancelled run is stored as 'error'; it must not count toward or reset a streak.
+function isCancelledRun(run: { errorDetails?: string | null }) {
+  return run.errorDetails === RUN_CANCELLATION_MARKER;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -81,7 +89,7 @@ export class JobNotificationService {
     let passes = 1;
     let afterFailure = false;
     for (const run of recentRuns) {
-      if (run.id === runId) continue;
+      if (run.id === runId || isCancelledRun(run)) continue;
       if (run.status === 'passed') {
         passes++;
         continue;
@@ -108,9 +116,10 @@ export class JobNotificationService {
     jobType,
     location,
     errorMessage,
+    cancelled,
   }: JobNotificationParams): Promise<void> {
     try {
-      if (!jobId) {
+      if (!jobId || cancelled) {
         this.logger.debug('No jobId provided for notification handling');
         return;
       }
@@ -197,7 +206,7 @@ export class JobNotificationService {
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
 
       for (const run of recentRuns) {
-        if (run.id === runId) continue;
+        if (run.id === runId || isCancelledRun(run)) continue;
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;

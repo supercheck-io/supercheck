@@ -3,6 +3,8 @@ import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { hasOrganizationWideAccess, type Role } from '@/lib/rbac/permissions-client';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
 import { ExecutionWorkloadError } from '@/lib/execution/execution-policy';
 import { SubscriptionAccessDeniedError } from '@/lib/services/subscription-service';
@@ -25,7 +27,8 @@ interface ExecutionItem {
 export async function GET() {
   try {
     // robustly get organizationId from project context
-    const { organizationId } = await requireAuthContext();
+    const authCtx = await requireAuthContext();
+    const { organizationId, project } = authCtx;
 
     if (!organizationId) {
       return NextResponse.json(
@@ -34,7 +37,12 @@ export async function GET() {
       );
     }
 
-    // console.log(`[API] Querying database for running/queued runs in org ${organizationId}`);
+    if (!checkPermissionWithContext('run', 'view', authCtx)) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    // Org-level roles see every project; project-level roles only their own.
+    const isOrgLevelRole = hasOrganizationWideAccess(project.userRole as Role);
 
     // Capacity is display-only here. An organization with no active plan or trial
     // (for example after a trial ends) must still see its runs, with no capacity.
@@ -61,6 +69,7 @@ export async function GET() {
       .where(
         and(
           eq(projects.organizationId, organizationId),
+          isOrgLevelRole ? undefined : eq(runs.projectId, project.id),
           or(
             eq(runs.status, 'running'),
             eq(runs.status, 'queued')

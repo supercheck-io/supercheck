@@ -4,6 +4,7 @@ import {
   JobNotificationService,
   maxFailureAlertStreak,
 } from './job-notification.service';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 describe('JobNotificationService', () => {
   function createService() {
@@ -360,6 +361,52 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: 'job', sourceId: 'job-1' }),
       );
+    });
+
+    it('does not alert for a run the user cancelled', async () => {
+      const { service, notificationService } = createService();
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'error',
+        cancelled: true,
+        durationSeconds: 1,
+      });
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('skips cancelled runs when counting the failure streak', async () => {
+      const { service, dbService, notificationService } = createService();
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        projectId: 'project-1',
+        alertConfig: {
+          enabled: true,
+          notificationProviders: ['provider-1'],
+          failureThreshold: 2,
+          recoveryThreshold: 1,
+          alertOnFailure: true,
+          alertOnSuccess: false,
+          alertOnTimeout: false,
+        },
+      });
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        { id: 'r1', status: 'error', errorDetails: RUN_CANCELLATION_MARKER },
+        { id: 'r0', status: 'failed', errorDetails: null },
+      ]);
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-new',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      // current + r0 = 2 consecutive failures (threshold 2); the cancelled r1 must not count.
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('requests enough history to see the last capped alert', async () => {
