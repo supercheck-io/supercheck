@@ -30,6 +30,7 @@ import {
 } from "@/lib/status-page-uptime";
 import { StatusPageBranding } from "./status-page-branding";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
+import { resolveBranding } from "@/lib/status-page-branding";
 
 type ComponentStatus =
   | "operational"
@@ -66,6 +67,11 @@ type StatusPage = {
   cssOranges: string | null;
   cssBlues: string | null;
   cssReds: string | null;
+  cssBodyBackgroundColor?: string | null;
+  cssFontColor?: string | null;
+  cssLightFontColor?: string | null;
+  cssBorderColor?: string | null;
+  cssNoData?: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   language: string | null;
@@ -99,6 +105,22 @@ type Incident = {
     name: string;
   }>;
 };
+
+// Banner severity of an open incident, so an incident with no visible components still shows.
+const IMPACT_BANNER_STATUS: Record<IncidentImpact, ComponentStatus> = {
+  critical: "major_outage",
+  major: "partial_outage",
+  minor: "degraded_performance",
+  none: "degraded_performance",
+};
+
+// Overrides the themed Tailwind colours when the owner configured a custom background.
+const BRANDED_CSS = `
+[data-sp-branded] .sp-fg{color:var(--sp-fg)!important}
+[data-sp-branded] .sp-muted{color:var(--sp-muted)!important}
+[data-sp-branded] .sp-card{background-color:transparent!important}
+[data-sp-branded] .sp-border,[data-sp-branded] .sp-divide>*{border-color:var(--sp-border)!important}
+`;
 
 type PublicStatusPageProps = {
   statusPage: StatusPage;
@@ -145,10 +167,17 @@ export function PublicStatusPage({
   useStatusPageFavicon(statusPage.faviconLogo);
 
   // Calculate overall system status from components
-  const calculateSystemStatus = () => {
-    if (components.length === 0) return "operational";
+  // Every unresolved incident, of any age, is "active"; maintenance never degrades the banner.
+  const activeIncidents = incidents.filter((i) => i.status !== "resolved");
+  const openIssueStatuses = activeIncidents
+    .filter((i) => i.status !== "scheduled" && !(i.scheduledFor && i.scheduledUntil))
+    .map((i) => IMPACT_BANNER_STATUS[i.impact]);
 
-    const statuses = components.filter((c) => c.showcase).map((c) => c.status);
+  const calculateSystemStatus = () => {
+    const statuses = [
+      ...components.filter((c) => c.showcase).map((c) => c.status),
+      ...openIssueStatuses,
+    ];
 
     if (statuses.includes("major_outage")) return "major_outage";
     if (statuses.includes("partial_outage")) return "partial_outage";
@@ -169,6 +198,9 @@ export function PublicStatusPage({
     blue: statusPage.cssBlues || "#3498db",
     red: statusPage.cssReds || "#e74c3c",
   };
+
+  const branding = resolveBranding(statusPage);
+  const brandedPage = branding.page;
 
   const getSystemStatusDisplay = () => {
     switch (systemStatus) {
@@ -317,7 +349,7 @@ export function PublicStatusPage({
               className="h-6 sm:h-8 md:h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
                 backgroundColor:
-                  day.status === "nodata" ? "#9ca3af" : getBarColor(day),
+                  day.status === "nodata" ? branding.noData || "#9ca3af" : getBarColor(day),
               }}
               onMouseEnter={() => setHoveredDay(index)}
               onMouseLeave={() => setHoveredDay(null)}
@@ -366,12 +398,118 @@ export function PublicStatusPage({
     );
   };
 
+  const renderIncident = (incident: Incident) => {
+    // Status color mapping for badges
+    const getStatusColor = (status: IncidentStatus) => {
+      switch (status) {
+        case "resolved":
+          return "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100";
+        case "investigating":
+        case "identified":
+        case "monitoring":
+          return "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100";
+        case "scheduled":
+          return "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-100";
+        default:
+          return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
+      }
+  };
+
+  // Impact badge color mapping
+  const getImpactBadgeColor = (
+    impact: IncidentImpact,
+  ) => {
+    switch (impact) {
+      case "critical":
+        return "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100";
+      case "major":
+        return "bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-100";
+      case "minor":
+        return "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100";
+      default:
+        return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
+    }
+  };
+
+  const incidentLinkBase = isPublicView
+    ? isCustomDomain
+      ? `${customDomainRoutePrefix}/incidents`
+      : `/status/${idOrSubdomain}/incidents`
+    : `/status-pages/${statusPage.id}/public/incidents`;
+
+  return (
+    <Link
+      key={incident.id}
+      href={`${incidentLinkBase}/${incident.id}`}
+      className="block px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm sm:text-base sp-fg text-gray-900 dark:text-gray-100 truncate">
+            {incident.name}
+          </h4>
+          {incident.scheduledFor && incident.scheduledUntil && (
+            <p className="flex items-center gap-1.5 text-xs sm:text-sm sp-muted text-gray-600 dark:text-gray-300 mt-0.5 sm:mt-1">
+              <Wrench className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>
+                {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+              </span>
+            </p>
+          )}
+          {incident.latestUpdate && (
+            <p className="text-xs sm:text-sm sp-muted text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1">
+              {incident.latestUpdate.body}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:flex-nowrap sm:flex-shrink-0">
+          <span
+            className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getImpactBadgeColor(
+              incident.impact,
+            )}`}
+          >
+            {translateIncidentImpact(
+              incident.impact,
+              t,
+            )}
+          </span>
+          <span
+            className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getStatusColor(
+              incident.status,
+            )}`}
+          >
+            {translateIncidentStatus(
+              incident.status,
+              t,
+            )}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+  };
+
   return (
     <div
       dir={activeLanguage === "ar" ? "rtl" : "ltr"}
       lang={activeLanguage}
       className="min-h-screen bg-gray-50 dark:bg-gray-950"
+      data-sp-branded={brandedPage ? "" : undefined}
+      style={
+        brandedPage
+          ? ({
+              backgroundColor: brandedPage.background,
+              color: brandedPage.font,
+              "--sp-fg": brandedPage.font,
+              "--sp-muted": brandedPage.lightFont,
+              "--sp-border":
+                brandedPage.border ??
+                `color-mix(in srgb, ${brandedPage.font} 20%, transparent)`,
+            } as React.CSSProperties)
+          : undefined
+      }
     >
+      {brandedPage && <style>{BRANDED_CSS}</style>}
       {/* Header */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
@@ -386,11 +524,11 @@ export function PublicStatusPage({
                 unoptimized
               />
             )}
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold sp-fg text-gray-900 dark:text-gray-100 tracking-tight">
               {statusPage.headline || statusPage.name}
             </h1>
             {statusPage.pageDescription && (
-              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1.5 sm:mt-2 max-w-2xl">
+              <p className="text-sm sm:text-base sp-muted text-gray-600 dark:text-gray-400 mt-1.5 sm:mt-2 max-w-2xl">
                 {statusPage.pageDescription}
               </p>
             )}
@@ -452,31 +590,41 @@ export function PublicStatusPage({
           </div>
         </div>
 
+        {/* Active incidents and maintenance: every unresolved incident of any age */}
+        {activeIncidents.length > 0 && (
+          <div className="space-y-3" data-testid="active-incidents">
+            <h2 className="text-base sm:text-lg font-semibold sp-fg text-gray-900 dark:text-gray-100">
+              {t.activeIncidents}
+            </h2>
+            <div className="space-y-2">{activeIncidents.map(renderIncident)}</div>
+          </div>
+        )}
+
         {/* Components Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+            <h2 className="text-base sm:text-lg font-semibold sp-fg text-gray-900 dark:text-gray-100">
               {t.systemStatus}
             </h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-right flex-shrink-0">
+            <span className="text-xs sm:text-sm sp-muted text-gray-500 dark:text-gray-400 text-right flex-shrink-0">
               {t.uptimeOverPast90Days}
             </span>
           </div>
 
           {visibleComponents.length === 0 ? (
-            <div className="bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl p-12 text-center shadow-sm">
+            <div className="sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 rounded-xl p-12 text-center shadow-sm">
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
                 <CheckCircle2 className="h-7 w-7 text-gray-400" />
               </div>
-              <p className="text-gray-500 dark:text-gray-400 font-medium">
+              <p className="sp-muted text-gray-500 dark:text-gray-400 font-medium">
                 {t.noComponentsConfigured}
               </p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-sm sp-muted text-gray-400 dark:text-gray-500 mt-1">
                 {t.componentsWillAppearHere}
               </p>
             </div>
           ) : (
-            <div className="space-y-0 bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 shadow-sm">
+            <div className="space-y-0 sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 sp-divide shadow-sm">
               {visibleComponents.map((component) => {
                 const componentStatus = getComponentStatusDisplay(
                   component.status,
@@ -491,11 +639,11 @@ export function PublicStatusPage({
                   <div key={component.id} className="p-3 sm:p-5">
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
+                        <h3 className="font-semibold text-sm sm:text-base sp-fg text-gray-900 dark:text-gray-100 truncate">
                           {component.name}
                         </h3>
                         {component.description && (
-                          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1 sm:line-clamp-none">
+                          <p className="text-xs sm:text-sm sp-muted text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1 sm:line-clamp-none">
                             {component.description}
                           </p>
                         )}
@@ -524,7 +672,7 @@ export function PublicStatusPage({
                     {/* 90-day uptime bar */}
                     <div className="space-y-1.5 sm:space-y-2">
                       <UptimeBar data={uptimeData} />
-                      <div className="flex items-center justify-between text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center justify-between text-[10px] sm:text-xs sp-muted text-gray-500 dark:text-gray-400">
                         <span>{t.daysAgo}</span>
                         <span>
                           {uptimePercentage === null
@@ -543,14 +691,15 @@ export function PublicStatusPage({
 
         {/* Past Incidents Section */}
         <div className="space-y-6">
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+          <h2 className="text-lg sm:text-xl font-bold sp-fg text-gray-900 dark:text-gray-100 tracking-tight">
             {t.pastIncidents}
           </h2>
 
           {(() => {
             // Group incidents by date
             const incidentsByDate = new Map<string, Incident[]>();
-            incidents.forEach((incident) => {
+            // Unresolved incidents are listed above, not here.
+            incidents.filter((i) => i.status === "resolved").forEach((incident) => {
               if (incident.createdAt) {
                 const dateKey = format(
                   new Date(incident.createdAt),
@@ -584,112 +733,23 @@ export function PublicStatusPage({
                   {paginatedDays.map(({ date, incidents: dayIncidents }) => (
                     <div
                       key={format(date, "yyyy-MM-dd")}
-                      className="pb-5 border-b dark:border-gray-800 last:border-b-0"
+                      className="pb-5 sp-border border-b dark:border-gray-800 last:border-b-0"
                     >
                       <h3
-                        className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 mb-3"
+                        className="text-sm sm:text-base font-semibold sp-fg text-gray-900 dark:text-gray-100 mb-3"
                         suppressHydrationWarning
                       >
                         {fullDateFormatter.format(date)}
                       </h3>
 
                       {dayIncidents.length === 0 ? (
-                        <p className="text-gray-500 dark:text-gray-400 text-sm">
+                        <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
                           {t.noIncidentsReported}
                           {isSameDay(date, new Date()) ? ` ${t.today}` : ""}.
                         </p>
                       ) : (
                         <div className="space-y-2">
-                          {dayIncidents.map((incident) => {
-                            // Status color mapping for badges
-                            const getStatusColor = (status: IncidentStatus) => {
-                              switch (status) {
-                                case "resolved":
-                                  return "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100";
-                                case "investigating":
-                                case "identified":
-                                case "monitoring":
-                                  return "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100";
-                                case "scheduled":
-                                  return "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-100";
-                                default:
-                                  return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
-                              }
-                            };
-
-                            // Impact badge color mapping
-                            const getImpactBadgeColor = (
-                              impact: IncidentImpact,
-                            ) => {
-                              switch (impact) {
-                                case "critical":
-                                  return "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100";
-                                case "major":
-                                  return "bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-100";
-                                case "minor":
-                                  return "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100";
-                                default:
-                                  return "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100";
-                              }
-                            };
-
-                            const incidentLinkBase = isPublicView
-                              ? isCustomDomain
-                                ? `${customDomainRoutePrefix}/incidents`
-                                : `/status/${idOrSubdomain}/incidents`
-                              : `/status-pages/${statusPage.id}/public/incidents`;
-
-                            return (
-                              <Link
-                                key={incident.id}
-                                href={`${incidentLinkBase}/${incident.id}`}
-                                className="block px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg bg-white dark:bg-gray-900 border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
-                              >
-                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <h4 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
-                                      {incident.name}
-                                    </h4>
-                                    {incident.scheduledFor && incident.scheduledUntil && (
-                                      <p className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-0.5 sm:mt-1">
-                                        <Wrench className="h-3.5 w-3.5 flex-shrink-0" />
-                                        <span>
-                                          {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
-                                        </span>
-                                      </p>
-                                    )}
-                                    {incident.latestUpdate && (
-                                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1">
-                                        {incident.latestUpdate.body}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:flex-nowrap sm:flex-shrink-0">
-                                    <span
-                                      className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getImpactBadgeColor(
-                                        incident.impact,
-                                      )}`}
-                                    >
-                                      {translateIncidentImpact(
-                                        incident.impact,
-                                        t,
-                                      )}
-                                    </span>
-                                    <span
-                                      className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${getStatusColor(
-                                        incident.status,
-                                      )}`}
-                                    >
-                                      {translateIncidentStatus(
-                                        incident.status,
-                                        t,
-                                      )}
-                                    </span>
-                                  </div>
-                                </div>
-                              </Link>
-                            );
-                          })}
+                          {dayIncidents.map(renderIncident)}
                         </div>
                       )}
                     </div>
@@ -713,7 +773,7 @@ export function PublicStatusPage({
                           <ChevronLeft className="h-4 w-4" />
                         </button>
 
-                        <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400">
+                        <span className="px-3 py-1 text-sm sp-muted text-gray-600 dark:text-gray-400">
                           {currentPage} / {totalPages}
                         </span>
 
