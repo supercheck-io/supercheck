@@ -29,24 +29,34 @@ jest.mock("@/lib/rbac/middleware", () => ({
 }));
 
 jest.mock("@/utils/db", () => {
-  // The route reaches the apikey table two ways:
-  //   POST's fast path  -> .orderBy(createdAt).limit(1)
-  //   the shared lookup -> .orderBy(createdAt)   (awaited directly)
-  // so the value orderBy returns has to be awaitable and also carry limit().
-  let persistedRows: unknown[] = [];
+  // Every apikey read ends in .orderBy(createdAt), which is awaited directly.
   let lookupRows: unknown[] = [];
 
-  const limit = jest.fn(() => Promise.resolve(persistedRows));
+  const limit = jest.fn(() => Promise.resolve([]));
   const orderBy = jest.fn(() => Object.assign(Promise.resolve(lookupRows), { limit }));
   const where = jest.fn(() => ({ orderBy }));
   const from = jest.fn(() => ({ where }));
 
+  // db.transaction emulates pg_advisory_xact_lock: the first tx.execute waits for the
+  // previous transaction to finish, and the lock is released when the callback ends.
+  const update = jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn(async () => []) })) }));
+  let lockTail: Promise<void> = Promise.resolve();
+  const transaction = jest.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
+    let release!: () => void;
+    const mine = new Promise<void>((resolve) => { release = resolve; });
+    const previous = lockTail;
+    lockTail = mine;
+    const tx = { select: jest.fn(() => ({ from })), update, execute: jest.fn(async () => { await previous; }) };
+    try {
+      return await callback(tx);
+    } finally {
+      release();
+    }
+  });
+
   return {
-    db: { select: jest.fn(() => ({ from })), update: jest.fn() },
+    db: { select: jest.fn(() => ({ from })), update, transaction },
     __where: where,
-    __setPersistedRows: (rows: unknown[]) => {
-      persistedRows = rows;
-    },
     __setLookupRows: (rows: unknown[]) => {
       lookupRows = rows;
     },
@@ -76,9 +86,8 @@ const { checkPermissionWithContext: mockCanCreateKey, isImpersonatedSession: moc
   isImpersonatedSession: jest.Mock;
 };
 
-const { __setPersistedRows, __setLookupRows, __where } = jest.requireMock("@/utils/db") as {
+const { __setLookupRows, __where } = jest.requireMock("@/utils/db") as {
   __where: jest.Mock;
-  __setPersistedRows: (rows: unknown[]) => void;
   __setLookupRows: (rows: unknown[]) => void;
 };
 
@@ -123,7 +132,6 @@ describe("Extension auth route", () => {
   });
   beforeEach(() => {
     jest.clearAllMocks();
-    __setPersistedRows([]);
     __setLookupRows([]);
     mockRequireAuthContext.mockResolvedValue({
       userId: "user-1", organizationId: "org-1", project: { id: "project-1", userRole: "project_editor" },
@@ -159,7 +167,6 @@ describe("Extension auth route", () => {
     });
 
     // No key matches by prefix or name, so this exercises the shared lookup.
-    __setPersistedRows([]);
     __setLookupRows([
       {
         id: "key-1",
@@ -177,7 +184,7 @@ describe("Extension auth route", () => {
     expect(body.success).toBe(true);
     expect(body.data.message).toBe("Extension already connected");
     expect(body.data.keyId).toBe("key-1");
-    const query = new PgDialect().sqlToQuery(__where.mock.calls[1][0]);
+    const query = new PgDialect().sqlToQuery(__where.mock.calls[0][0]);
     expect(query.params).toEqual(["user-1", "default", true]);
     expect(query.sql).not.toMatch(/"(?:prefix|name)"/);
     expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
@@ -192,7 +199,6 @@ describe("Extension auth route", () => {
       },
     });
 
-    __setPersistedRows([]);
     __setLookupRows([
       {
         id: "key-legacy",
@@ -229,7 +235,6 @@ describe("Extension auth route", () => {
       },
     });
 
-    __setPersistedRows([]);
     __setLookupRows([]);
 
     mockAuth.api.createApiKey.mockResolvedValue({
@@ -268,7 +273,6 @@ describe("Extension auth route", () => {
       },
     });
 
-    __setPersistedRows([]);
     __setLookupRows([]);
 
     mockAuth.api.createApiKey.mockResolvedValue({
@@ -301,7 +305,6 @@ describe("Extension auth route", () => {
       },
     });
 
-    __setPersistedRows([]);
     __setLookupRows([]);
 
     const error = Object.assign(new Error("server-only property"), {
@@ -317,6 +320,62 @@ describe("Extension auth route", () => {
     expect(response.status).toBe(400);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Server-only property");
+  });
+
+  describe("key hand-off", () => {
+    const session = { user: { id: "user-1", email: "user@example.com", name: "User One" } };
+    const stored = (id: string, day: number) => ({
+      id,
+      name: "Recorder: Supercheck Recorder Ex",
+      prefix: "ext",
+      permissions: { recorder: ["save"] },
+      createdAt: new Date(Date.UTC(2026, 0, day)),
+    });
+    const minted = { id: "key-new", key: "extNEWKEY", name: "n", prefix: "ext", enabled: true };
+
+    beforeEach(() => {
+      mockAuth.api.getSession.mockResolvedValue(session);
+      mockAuth.api.createApiKey.mockResolvedValue(minted);
+    });
+
+    it.each([
+      ["holds no key", null],
+      ["holds a key the server no longer has", "key-gone"],
+    ])("mints a new key when the extension %s", async (_label, clientKeyId) => {
+      __setLookupRows([stored("key-old", 1)]);
+      const body = await (await POST(postRequest({ clientKeyId }))).json();
+      expect(body.data.apiKey).toBe("extNEWKEY");
+      expect(mockAuth.api.createApiKey).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the connection when the extension holds a live key, or is an older client that reports none", async () => {
+      __setLookupRows([stored("key-old", 1)]);
+      for (const payload of [{ clientKeyId: "key-old" }, {}]) {
+        const body = await (await POST(postRequest(payload))).json();
+        expect(body.data.message).toBe("Extension already connected");
+        expect(body.data.keyId).toBe("key-old");
+      }
+      expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
+    });
+
+    it("disables the oldest keys beyond the per-user cap when minting", async () => {
+      __setLookupRows([1, 2, 3, 4, 5].map((day) => stored(`key-${day}`, day)));
+      await POST(postRequest({ clientKeyId: null }));
+      expect(db.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("serialises concurrent connects per user so only one key is minted", async () => {
+      __setLookupRows([]);
+      mockAuth.api.createApiKey.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        __setLookupRows([stored("key-new", 1)]);
+        return minted;
+      });
+      const responses = await Promise.all([POST(postRequest({ clientKeyId: null })), POST(postRequest())]);
+      const bodies = await Promise.all(responses.map((response) => response.json()));
+      expect(mockAuth.api.createApiKey).toHaveBeenCalledTimes(1);
+      expect(bodies.filter((body) => body.data.apiKey)).toHaveLength(1);
+    });
   });
 
   it("revokes every enabled extension key", async () => {

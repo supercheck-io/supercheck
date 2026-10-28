@@ -19,11 +19,14 @@ import type { CrxApplication } from 'playwright-crx';
 import playwright, { crx, _debug, _setUnderTest, _isUnderTest as isUnderTest } from 'playwright-crx';
 import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings } from './settings';
-import { clearConfig } from './supercheck/config';
+import { autoConnect, clearConfig } from './supercheck/config';
+import { assertSourceTab } from './supercheck/recorded-code';
 import type { RecordingContextPayload } from './supercheck/message-security';
 
 type StoredRecordingContext = RecordingContextPayload & {
   sourceTabId?: number;
+  sourceOrigin?: string;
+  startedAt?: number;
   pendingStart?: boolean;
 };
 
@@ -187,10 +190,9 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     const { recordingContext } = await chrome.storage.session.get<{ recordingContext?: StoredRecordingContext }>('recordingContext');
     let targetUrl = 'about:blank';
 
-    if (recordingContext?.pendingStart) {
-      await chrome.storage.session.set({
-        recordingContext: { ...recordingContext, pendingStart: false }
-      });
+    // A start request older than this is stale (e.g. the user never clicked the icon).
+    const pendingStart = !!recordingContext?.pendingStart && Date.now() - (recordingContext.startedAt ?? 0) < 5 * 60_000;
+    if (recordingContext && pendingStart) {
       if (recordingContext.targetUrl && recordingContext.targetUrl !== 'about:blank')
         targetUrl = recordingContext.targetUrl;
 
@@ -226,6 +228,14 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     });
 
     await crxApp.attach(tab.id!);
+
+    // Consume the pending start only once recording is attached, so a failed attach can be retried.
+    // Re-read so a context stored meanwhile is never overwritten with the old snapshot.
+    if (pendingStart) {
+      const { recordingContext: latest } = await chrome.storage.session.get<{ recordingContext?: StoredRecordingContext }>('recordingContext');
+      if (latest?.startedAt === recordingContext?.startedAt)
+        await chrome.storage.session.set({ recordingContext: { ...latest, pendingStart: false } });
+    }
 
     if (mode)
       await crxApp.recorder.setMode(mode);
@@ -283,6 +293,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const recordingContext = {
       ...message.payload,
       sourceTabId: senderTabId,
+      sourceOrigin: sender.url ? new URL(sender.url).origin : undefined,
       startedAt: Date.now(),
       pendingStart: true,
     };
@@ -318,9 +329,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle AUTO_CONNECT from content script
   if (message.type === 'INTERNAL_AUTO_CONNECT') {
-    chrome.storage.sync.set({
-      supercheckConfig: { ...message.payload, autoConnected: true }
-    }).then(() => {
+    autoConnect(message.payload).then(() => {
       sendResponse({ success: true });
     }).catch(error => {
       console.error('[Supercheck] Failed to save config:', error);
@@ -354,51 +363,27 @@ async function sendCodeToPlayground(payload: { code: string }): Promise<void> {
     throw new Error('No source tab found - recording was not started from Supercheck');
 
 
-  // Check if the tab still exists
+  let tab: chrome.tabs.Tab;
   try {
-    await chrome.tabs.get(context.sourceTabId);
+    tab = await chrome.tabs.get(context.sourceTabId);
   } catch {
     throw new Error('Source tab was closed');
   }
+  assertSourceTab(tab, context.sourceOrigin);
 
-  // Send the code to the source tab's content script
-  try {
-    await chrome.tabs.sendMessage(context.sourceTabId, {
-      type: 'SUPERCHECK_RECORDED_CODE',
-      payload: {
-        code: payload.code,
-        projectId: context.projectId,
-        requirementId: context.requirementId,
-        testName: context.testName,
-      }
-    });
-  } catch {
-    // Fallback: Inject script to notify the page
-    await chrome.storage.session.set({
-      pendingRecordedCode: {
-        code: payload.code,
-        projectId: context.projectId,
-        requirementId: context.requirementId,
-        testName: context.testName,
-      }
-    });
-    await chrome.scripting.executeScript({
-      target: { tabId: context.sourceTabId },
-      func: (data: unknown) => {
-        window.postMessage({
-          type: 'SUPERCHECK_RECORDED_CODE',
-          payload: data,
-          source: 'supercheck-recorder'
-        }, window.location.origin);
-      },
-      args: [{
-        code: payload.code,
-        projectId: context.projectId,
-        requirementId: context.requirementId,
-        testName: context.testName,
-      }]
-    });
-  }
+  // The content script only delivers to the recorded origin and reports whether the page took the code.
+  const response = await chrome.tabs.sendMessage(context.sourceTabId, {
+    type: 'SUPERCHECK_RECORDED_CODE',
+    targetOrigin: context.sourceOrigin,
+    payload: {
+      code: payload.code,
+      projectId: context.projectId,
+      requirementId: context.requirementId,
+      testName: context.testName,
+    }
+  }).catch(() => undefined);
+  if (!response?.success)
+    throw new Error(response?.error || 'Could not reach the Supercheck page. Refresh it and try again.');
 
   // Focus the source tab
   await chrome.tabs.update(context.sourceTabId, { active: true });

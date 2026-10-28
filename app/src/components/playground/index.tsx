@@ -696,6 +696,8 @@ const Playground: React.FC<PlaygroundProps> = ({
 
       setEditorContent(code);
       setTestCase((prev) => ({ ...prev, script: code }));
+      // Lets the recorder know the code arrived before it closes its window.
+      window.postMessage({ type: "SUPERCHECK_RECORDED_CODE_ACK" }, window.location.origin);
       setShowRecordingBanner(false);
       toast.success("Recording saved to editor");
     };

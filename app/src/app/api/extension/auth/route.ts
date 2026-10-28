@@ -9,7 +9,7 @@ import { headers } from "next/headers";
 import { createLogger } from "@/lib/logger/pino-config";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
-import { and, eq, like, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 
@@ -25,9 +25,16 @@ const EXTENSION_API_KEY_PERMISSIONS: Record<string, string[]> = {
 };
 const EXTENSION_PERMISSION_STATEMENT = "recorder:save";
 
+// Each browser holds its own key, so reinstalls and extra devices leave older ones
+// behind. Minting beyond this cap disables the oldest.
+const MAX_ENABLED_EXTENSION_KEYS = 5;
+
 const authRequestSchema = z.object({
   name: z.string().optional().default("Supercheck Recorder Extension"),
   extensionVersion: z.string().optional(),
+  // undefined: older extension that does not report its key; null: it holds none;
+  // string: the key id it holds.
+  clientKeyId: z.string().nullable().optional(),
 });
 
 type ApiKeyServerApi = Pick<
@@ -92,8 +99,10 @@ function isExtensionKey(key: {
 }
 
 // Read without Better Auth’s list cap; classify permission-only keys in the caller.
-async function findEnabledExtensionKeys(userId: string) {
-  return db
+type Executor = Pick<typeof db, "select">;
+
+async function findEnabledExtensionKeys(executor: Executor, userId: string) {
+  return executor
     .select({
       id: apikey.id,
       name: apikey.name,
@@ -201,92 +210,72 @@ export async function POST(request: NextRequest) {
     const data = validation.data;
     const apiKeyName = normalizeExtensionKeyName(data.name);
 
-    const [persistedExtensionKey] = await db
-      .select({ id: apikey.id })
-      .from(apikey)
-      .where(
-        and(
-          eq(apikey.referenceId, userId),
-          eq(apikey.configId, EXTENSION_API_KEY_CONFIG_ID),
-          eq(apikey.enabled, true),
-          or(
-            eq(apikey.prefix, EXTENSION_API_KEY_PREFIX),
-            like(apikey.name, `${EXTENSION_API_KEY_NAME_PREFIX}%`),
-          ),
-        ),
-      )
-      .orderBy(apikey.createdAt)
-      .limit(1);
+    // One transaction per user: the advisory lock makes check-then-mint atomic
+    // across tabs and instances, so concurrent connects cannot each mint a key.
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
 
-    if (persistedExtensionKey) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          message: "Extension already connected",
-          keyId: persistedExtensionKey.id,
-          user: {
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.name,
-          },
+      // listApiKeys cannot be used here: its adapter caps unpaginated reads, so
+      // the newest key is invisible past 100 API keys.
+      const existingKeys = (await findEnabledExtensionKeys(tx, userId)).filter(
+        isExtensionKey
+      );
+      const heldKey = data.clientKeyId === undefined
+        ? existingKeys[0]
+        : existingKeys.find((key) => key.id === data.clientKeyId);
+
+      if (heldKey) {
+        // The raw key is only returned at creation, never again.
+        return { keyId: heldKey.id, apiKey: undefined };
+      }
+
+      // The extension holds no usable key (reinstall, new profile, lost response):
+      // mint a new one and retire the oldest beyond the cap.
+      const stale = existingKeys.slice(
+        0,
+        Math.max(0, existingKeys.length - (MAX_ENABLED_EXTENSION_KEYS - 1))
+      );
+      if (stale.length > 0) {
+        await tx
+          .update(apikey)
+          .set({ enabled: false })
+          .where(inArray(apikey.id, stale.map((key) => key.id)));
+      }
+      const newKey = await apiKeyServerApi.createApiKey({
+        // Do not pass request headers: Better Auth treats permissions as a
+        // server-only property whenever headers/request context are present.
+        body: {
+          userId,
+          configId: EXTENSION_API_KEY_CONFIG_ID,
+          name: apiKeyName,
+          prefix: EXTENSION_API_KEY_PREFIX,
+          permissions: EXTENSION_API_KEY_PERMISSIONS,
         },
       });
-    }
-
-    // Fall back to the direct read for keys that match by permissions rather
-    // than by prefix or name. listApiKeys cannot be used here: its adapter caps
-    // unpaginated reads, so the newest key is invisible past 100 API keys.
-    const existingExtensionKey = (await findEnabledExtensionKeys(userId)).find(
-      isExtensionKey
-    );
-
-    if (existingExtensionKey) {
-      // Return existing key info (but not the key itself for security)
-      return NextResponse.json({
-        success: true,
-        data: {
-          message: "Extension already connected",
-          keyId: existingExtensionKey.id,
-          user: {
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.name,
-          },
-        },
-      });
-    }
-
-    // Create a new extension-scoped key using Better Auth's supported API key flow.
-    // Do not pass request headers here: Better Auth treats permissions as a
-    // server-only property whenever headers/request context are present. The
-    // route already authenticated the session above, so binding the key to that
-    // user ID is the intended server-side flow.
-    const newKey = await apiKeyServerApi.createApiKey({
-      body: {
-        userId,
-        configId: EXTENSION_API_KEY_CONFIG_ID,
-        name: apiKeyName,
-        prefix: EXTENSION_API_KEY_PREFIX,
-        permissions: EXTENSION_API_KEY_PERMISSIONS,
-      },
+      return { keyId: newKey.id, apiKey: newKey.key };
     });
 
+    const user = {
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.name,
+    };
+
+    if (!result.apiKey) {
+      return NextResponse.json({
+        success: true,
+        data: { message: "Extension already connected", keyId: result.keyId, user },
+      });
+    }
+
     logger.info(
-      { userId, keyId: newKey.id, extensionVersion: data.extensionVersion },
+      { userId, keyId: result.keyId, extensionVersion: data.extensionVersion },
       "Extension API key generated"
     );
 
     return NextResponse.json({
       success: true,
-      data: {
-        apiKey: newKey.key, // Only returned once, user must save it
-        keyId: newKey.id,
-        user: {
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.name,
-        },
-      },
+      data: { apiKey: result.apiKey, keyId: result.keyId, user }, // apiKey is only returned once
     });
   } catch (error) {
     logger.error({ err: error }, "Failed to generate extension API key");
@@ -329,7 +318,7 @@ export async function DELETE(request: NextRequest) {
 
     const userId = session.user.id;
 
-    const extensionKeys = (await findEnabledExtensionKeys(userId)).filter(
+    const extensionKeys = (await findEnabledExtensionKeys(db, userId)).filter(
       isExtensionKey
     );
     let revokedCount = 0;

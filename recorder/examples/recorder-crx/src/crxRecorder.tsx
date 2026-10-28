@@ -21,6 +21,7 @@ import { Recorder } from '@recorder/recorder';
 import type { CrxSettings } from './settings';
 import { addSettingsChangedListener, defaultSettings, loadSettings, removeSettingsChangedListener } from './settings';
 import { RecorderHelp } from './recorderHelp';
+import { sendRecordedCode } from './supercheck/recorded-code';
 import './crxRecorder.css';
 import './form.css';
 
@@ -226,13 +227,8 @@ export const CrxRecorder: React.FC = ({
 
     setSavingToPlayground(true);
     try {
-      // If we have a sourceTabId, send code back to the original tab
-      if (recordingContext?.sourceTabId) {
-        await chrome.runtime.sendMessage({
-          type: 'INTERNAL_SEND_CODE_TO_PLAYGROUND',
-          payload: { code: source.text }
-        });
-      }
+      // Throws when the hand-off fails, so the recording and this window stay open.
+      await sendRecordedCode(message => chrome.runtime.sendMessage(message), recordingContext?.sourceTabId, source.text);
 
       // Clear recording context so next recording starts fresh
       await chrome.storage.session.remove('recordingContext');
@@ -248,7 +244,7 @@ export const CrxRecorder: React.FC = ({
       window.close();
     } catch (error) {
       console.error('[Supercheck] Failed to save to playground:', error);
-      alert('Failed to save to playground. Please try again.');
+      alert(`Failed to save to Supercheck: ${error instanceof Error ? error.message : 'unknown error'}. Your recording is still open; fix the issue and try again.`);
     } finally {
       setSavingToPlayground(false);
     }
