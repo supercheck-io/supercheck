@@ -9,12 +9,13 @@
  * page to refresh.
  */
 
-import { getConfig } from './supercheck/config';
+import { canAutoConnect, getConfig } from './supercheck/config';
 import {
   isAllowedAppOrigin,
   isValidAutoConnectPayload,
   isValidRecordingContextPayload,
 } from './supercheck/message-security';
+import { RECORDED_CODE, relayRecordedCode } from './supercheck/recorded-code';
 
 const MESSAGE_TYPES = {
   CHECK_EXTENSION: 'SUPERCHECK_CHECK_EXTENSION',
@@ -97,7 +98,9 @@ async function announceExtension(): Promise<void> {
 
   if (canReachBackground) {
     const version = chrome.runtime?.getManifest?.()?.version || '1.0.0';
-    sendMessageToApp(MESSAGE_TYPES.EXTENSION_READY, { version });
+    const { apiKey, keyId, instanceUrl } = await getConfig();
+    // Lets the app tell whether this browser still holds the key the server issued.
+    sendMessageToApp(MESSAGE_TYPES.EXTENSION_READY, { version, hasKey: !!apiKey, keyId, connectable: canAutoConnect(instanceUrl, window.location.origin) });
   } else {
     sendMessageToApp(MESSAGE_TYPES.REFRESH_REQUIRED, {
       reason: 'Extension was updated. Please refresh the page.'
@@ -171,10 +174,9 @@ window.addEventListener('message', handleMessage);
 
 // Listen for messages from background script (e.g., recorded code)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'SUPERCHECK_RECORDED_CODE') {
-    sendMessageToApp('SUPERCHECK_RECORDED_CODE', message.payload);
-    sendResponse({ success: true });
-  }
+  if (message.type !== RECORDED_CODE)
+    return false;
+  relayRecordedCode(window, message, sendResponse);
   return true;
 });
 

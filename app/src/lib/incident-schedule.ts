@@ -29,3 +29,21 @@ export function incidentScheduleFields(
 
   return { scheduledFor: null, scheduledUntil: null };
 }
+
+/** "Jan 5, 2030, 02:00 UTC – Jan 5, 2030, 04:00 UTC"; UTC keeps server and client renders identical. */
+export function formatMaintenanceWindow(
+  locale: string,
+  scheduledFor: Date | string,
+  scheduledUntil: Date | string,
+): string {
+  const fmt = new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  });
+  return `${fmt.format(new Date(scheduledFor))} – ${fmt.format(new Date(scheduledUntil))}`;
+}

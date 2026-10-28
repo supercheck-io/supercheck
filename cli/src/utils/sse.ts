@@ -2,6 +2,7 @@ import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
 import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { CLI_VERSION } from '../version.js'
 import { ApiRequestError, CLIError, ExitCode, networkErrorMessage } from './errors.js'
+import { isTokenSafeUrl } from './api-url.js'
 import { getProxyAgent, getProxyEnv } from './proxy.js'
 
 import { createSpinner } from './spinner.js'
@@ -29,6 +30,9 @@ async function streamSse(
   const token = requireAuth()
   const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
   const url = new URL(`${baseUrl.replace(/\/+$/, '')}${path}`)
+  if (!isTokenSafeUrl(url.href)) {
+    throw new CLIError(`Refusing to send the API token to ${url.origin}: use https, or http only for localhost/127.0.0.1, and no credentials in the URL.`, ExitCode.ConfigError)
+  }
   const controller = new AbortController()
   let interrupted = false
   const onInterrupt = () => { interrupted = true; controller.abort() }

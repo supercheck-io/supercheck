@@ -263,17 +263,6 @@ export async function POST(
       return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });
     }
 
-    // Additional validation: ensure job is not in an error state that prevents triggering
-    if (job.status === "error") {
-      return NextResponse.json(
-        {
-          error: "Job not available",
-          message: `Job is currently in error state and cannot be triggered`,
-        },
-        { status: 400 }
-      );
-    }
-
     const jobType = (job.jobType || "playwright") as JobType;
     const isPerformanceJob = jobType === "k6";
     const locationParam = isPerformanceJob
@@ -354,10 +343,13 @@ export async function POST(
       status: "queued", // Start as queued - capacity manager will update to running
       startedAt: startTime,
       trigger: "remote" as JobTrigger,
+      triggeredByUserId: key.userId,
       location: resolvedLocation,
       metadata: {
         jobType,
         source: "api-trigger",
+        // Snapshot: the key may be renamed or deleted later.
+        triggerKeyName: key.name || "API key",
         ...(isPerformanceJob
           ? { executionEngine: "k6", location: resolvedLocation }
           : { executionEngine: "playwright" }),

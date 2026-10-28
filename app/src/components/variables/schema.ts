@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const variableSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   key: z.string(),
   value: z.string().optional(),

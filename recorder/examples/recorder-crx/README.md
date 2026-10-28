@@ -1,6 +1,6 @@
 <h1><img src="https://raw.githubusercontent.com/supercheck-io/supercheck/main/supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck Recorder (Extension)</h1>
 
-**Chrome and Edge extension for recording browser interactions and saving Playwright tests directly to Supercheck.**
+**Chrome and Edge extension for recording browser interactions and handing Playwright tests to the Supercheck Playground.**
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Supercheck_Recorder-blue?logo=googlechrome)](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 [![Edge Add-ons](https://img.shields.io/badge/Microsoft_Edge-Supercheck_Recorder-0078D7?logo=microsoftedge)](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
@@ -12,10 +12,9 @@
 ## Features
 
 - **Record Browser Interactions**: Capture clicks, typing, navigation, form inputs, and assertions in real time.
-- **Save to Supercheck**: One-click upload of recorded scripts directly into your Supercheck projects.
-- **Project Selection**: Easily choose destination projects from your Supercheck organizations.
+- **Send to Playground**: Recording started from Supercheck hands the generated script back to the originating Playground editor.
 - **Seamless Authentication**: Automatically connects to Supercheck dashboard sessions without manual API key copying.
-- **Playwright Test Output**: Recorded flows are generated and displayed as Playwright Test (JavaScript), the same format saved to Supercheck.
+- **Playwright Test Output**: Recorded flows are generated and displayed as Playwright Test (JavaScript), the same format the Playground runs.
 - **Resilient Locators**: Automatically generates `data-testid` and accessible role-based selectors.
 - **Self-Hosted Support**: Full compatibility with Supercheck Cloud and self-hosted instances.
 
@@ -58,7 +57,7 @@
 2. The recorder side panel opens.
 3. Navigate to the page you want to test and perform your user journey.
 4. Review and edit the generated Playwright code in the side panel editor.
-5. Click **Save to Supercheck**, select the target project, and save your test.
+5. Click **Save** in the recorder to insert the code into the originating Supercheck Playground editor, then save the test there.
 
 ### Connecting to Supercheck
 
@@ -86,7 +85,7 @@ The list lives in `src/supercheck/message-security.ts` (`SUPERCHECK_CLOUD_ORIGIN
 
 Self-hosted origins are not trusted until you save the URL: that explicit action is the trust decision for the origin. Changing the URL clears the credential saved for the previous instance so a key is never sent to a host it was not created for.
 
-> The API-key field in Options is strictly reserved for existing recorder-scoped credentials (`ext_*`). CLI tokens and trigger keys cannot upload recordings.
+> The API-key field in Options is strictly reserved for existing recorder-scoped credentials (`ext_*`). CLI tokens and trigger keys cannot be used by the recorder.
 
 ---
 
@@ -110,7 +109,7 @@ Recorded flows are always generated as Playwright Test (JavaScript); the recorde
 
 ## Security
 
-- Recorder-scoped credentials are stored in Chrome sync storage; treat the browser profile and installed extensions as trusted because extension storage is not a general-purpose secret vault.
+- Recorder-scoped credentials are stored in local extension storage (never synced to the browser account); treat the browser profile and installed extensions as trusted because extension storage is not a general-purpose secret vault.
 - All network traffic uses HTTPS (except `localhost` development).
 - Origin validation pins cloud communication to the exact first-party origins listed above plus the instance URL saved in Options; lookalike and non-HTTPS origins are rejected.
 - Form inputs may be captured during recording; always inspect generated code before saving to avoid recording secrets.
@@ -195,7 +194,6 @@ Communication between the web app and extension uses origin-validated `window.po
 ### Backend API endpoints
 
 - `GET /api/extension/projects` - List accessible projects for current user
-- `POST /api/recordings` - Save recorded test script
 - `POST /api/auth/verify-key` - Validate API key
 - `POST /api/extension/auth` - Create or reuse a recorder-scoped key for an authenticated dashboard session
 - `DELETE /api/extension/auth` - Revoke recorder-scoped keys for the authenticated session

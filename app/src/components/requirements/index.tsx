@@ -1,5 +1,6 @@
 "use client";
 
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import React, { useState, useCallback, useMemo, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Row } from "@tanstack/react-table";
@@ -73,6 +74,8 @@ import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
 
+// GET /api/requirements caps pageSize at this value and the list sends none.
+const REQUIREMENTS_LIST_CAP = 500;
 
 const statusConfig = {
     covered: { label: "Covered", icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-500/10" },
@@ -100,7 +103,7 @@ export default function RequirementsPage() {
     );
 
     // Fetch requirements with React Query
-    const { requirements: rawRequirements, isLoading, isRestoring: reqIsRestoring } = useRequirements();
+    const { requirements: rawRequirements, isLoading, isRestoring: reqIsRestoring, error, refetch } = useRequirements();
     const { deleteRequirement: deleteMutation } = useRequirementMutations();
 
     // Fetch available tags for coloring (used for fallback if tag doesn't have color)
@@ -254,6 +257,10 @@ export default function RequirementsPage() {
                 />
 
                 <TabsContent value="requirements" className="mt-0 pt-4">
+                    {error && requirements.length === 0 ? (
+                        <ListErrorState title="Failed to fetch requirements" error={error} onRetry={() => refetch()} />
+                    ) : (<>
+                    <ListCapNote count={requirements.length} cap={REQUIREMENTS_LIST_CAP} />
                     <DataTable
                         columns={columns}
                         data={requirements}
@@ -266,6 +273,7 @@ export default function RequirementsPage() {
                             canDelete: canDeleteRequirement,
                         }}
                     />
+                    </>)}
                 </TabsContent>
 
                 <TabsContent value="documents" className="mt-0 pt-4">

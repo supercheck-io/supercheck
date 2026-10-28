@@ -53,6 +53,8 @@ export interface Job {
   projectId?: string;
   organizationId?: string;
   createdByUserId?: string;
+  createdByName?: string | null;
+  createdByImage?: string | null;
   tests?: JobTest[];
   alertConfig?: JobAlertConfig | null;
   lastRun?: JobLastRun | null;

@@ -4,7 +4,7 @@ description: Add read-only evidence sources for AI SRE investigations
 icon: Plug
 ---
 
-Add a connector when an investigation should use evidence from a tool your team already operates. Configure connectors under **Organization → Integrations** with a role that can configure connectors.
+Add a connector when an investigation should use evidence from a tool your team already operates. Configure connectors under **Settings → Organization → Integrations** with a role that can configure connectors.
 
 A connector gives access to a provider. [Saved queries](/docs/app/admin/ai-sre-setup#saved-queries-optional) are optional reusable questions that run through one enabled connector. You can search a connector during an investigation without saving a query first.
 
@@ -16,17 +16,17 @@ Choose one of these in **Add connector**.
 
 | Category | Providers |
 |---|---|
-| **Metrics and dashboards** | Prometheus, Grafana, AWS CloudWatch, Google Cloud Monitoring, Azure Monitor |
-| **Operational events** | Datadog |
-| **Logs and search** | Loki, Elasticsearch / OpenSearch, Splunk, Google Cloud Logging, Azure Log Analytics |
-| **Distributed traces** | Grafana Tempo, Jaeger |
-| **Application performance (NRQL)** | New Relic |
-| **Cloud and orchestration** | Kubernetes |
-| **Error tracking** | Sentry |
-| **Code and deployments** | GitHub, GitLab |
-| **Incident management** | PagerDuty, Opsgenie |
-| **Tickets and knowledge** | Jira, Confluence, Notion |
-| **Custom tools** | MCP servers in your network (Private Agent only) |
+| **Metrics and dashboards** | <Brands names={["prometheus", "grafana", "aws-cloudwatch", "google-cloud", "azure"]} labels={{ "google-cloud": "Google Cloud Monitoring" }} /> |
+| **Operational events** | <Brand name="datadog" /> |
+| **Logs and search** | <Brands names={["loki", "elasticsearch", "opensearch", "splunk", "google-cloud", "azure"]} labels={{ "google-cloud": "Google Cloud Logging", azure: "Azure Log Analytics" }} /> |
+| **Distributed traces** | <Brands names={["tempo", "jaeger"]} labels={{ tempo: "Grafana Tempo" }} /> |
+| **Application performance (NRQL)** | <Brand name="new-relic" /> |
+| **Cloud and orchestration** | <Brand name="kubernetes" /> |
+| **Error tracking** | <Brand name="sentry" /> |
+| **Code and deployments** | <Brands names={["github", "gitlab"]} /> |
+| **Incident management** | <Brands names={["pagerduty", "opsgenie"]} /> |
+| **Tickets and knowledge** | <Brands names={["jira", "confluence", "notion"]} /> |
+| **Custom tools** | <Brand name="mcp" label="MCP servers in your network (Private Agent only)" /> |
 
 For OpenTelemetry, connect the backend your collector exports to (Tempo, Jaeger, Loki, Prometheus, and so on). Slack, Teams and webhooks are notification channels, not connectors.
 
@@ -92,7 +92,7 @@ flowchart LR
 
 ### Open Integrations
 
-Go to **Organization → Integrations** and select **Add connector**.
+Go to **Settings → Organization → Integrations** and select **Add connector**.
 
 </Step>
 <Step>
@@ -106,7 +106,7 @@ Select the provider type and give it a recognizable name, such as `Production Gi
 
 ### Choose the mode
 
-Choose **Direct** or **Private Agent**. For Private Agent, first register an agent under **Organization → Private Agents**, then select it in the dialog.
+Choose **Direct** or **Private Agent**. For Private Agent, first register an agent under **Settings → Organization → Private Agents**, then select it in the dialog.
 
 </Step>
 <Step>

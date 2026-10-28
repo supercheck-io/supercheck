@@ -1,7 +1,7 @@
 {
   "name": "Supercheck Recorder",
   "version": "1.0.2",
-  "description": "Record browser interactions and save them as Playwright tests directly to Supercheck",
+  "description": "Record browser interactions as Playwright code and send them to the Supercheck Playground",
   "manifest_version": 3,
   "minimum_chrome_version": "114",
   "icons": {

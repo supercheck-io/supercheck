@@ -184,8 +184,11 @@ export async function GET(
           .join(", ");
 
         const startDate = incident.scheduledFor || incident.createdAt || new Date();
-        // Use resolvedAt as end date, or current time if still active
-        const endDate = incident.scheduledUntil || incident.resolvedAt || new Date();
+        // Open incidents get a stable one-hour DTEND; "now" would change on every poll.
+        const endDate =
+          incident.scheduledUntil ||
+          incident.resolvedAt ||
+          new Date(startDate.getTime() + 60 * 60 * 1000);
 
         // Build description
         const descriptionParts: string[] = [];

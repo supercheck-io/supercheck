@@ -10,6 +10,7 @@ import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { z } from "zod";
+import { loadCreators } from "@/lib/creators";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
@@ -53,17 +54,21 @@ export async function GET(
       .where(eq(projectVariables.projectId, projectId))
       .orderBy(projectVariables.id);
 
+    const creatorOf = await loadCreators(variables.map((variable) => variable.createdByUserId));
+
     // Process variables - never send secret values in list API
     const processedVariables = variables.map((variable) => {
       if (variable.isSecret) {
         return {
           ...variable,
+          ...creatorOf(variable.createdByUserId),
           value: undefined,
           encryptedValue: undefined,
         };
       } else {
         return {
           ...variable,
+          ...creatorOf(variable.createdByUserId),
           encryptedValue: undefined,
         };
       }

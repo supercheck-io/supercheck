@@ -1,7 +1,7 @@
 import { getExecutionPolicy, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, JobTrigger, tests, jobs } from "@/db/schema";
+import { runs, JobTrigger, tests, jobs, jobTests } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import crypto from "crypto";
@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
       status: "queued", // Start as queued, will be updated after capacity reservation
       startedAt: startTime,
       trigger: effectiveTrigger,
+      triggeredByUserId: userId,
       location: (resolvedLocation ?? null) as K6Location | null,
       metadata: {
         jobType,
@@ -214,7 +215,15 @@ export async function POST(request: NextRequest) {
 
     const testScripts: Array<{ id: string; name: string; script: string; type?: string }> = [];
     
-    for (const test of testData) {
+    // The job's saved tests are authoritative; the request's `tests` is accepted for
+    // backward compatibility but never decides what runs.
+    const savedTests = await db
+      .select({ id: jobTests.testId })
+      .from(jobTests)
+      .where(eq(jobTests.jobId, jobId))
+      .orderBy(jobTests.orderPosition);
+
+    for (const test of savedTests as Array<{ id: string; name?: string; title?: string; type?: string }>) {
       let testScript: string | undefined;
       let testName = test.name || test.title || `Test ${test.id}`;
       let testType: string | undefined = test.type;

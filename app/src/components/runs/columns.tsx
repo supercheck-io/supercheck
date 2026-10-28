@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { CalendarIcon, ClockIcon } from "lucide-react";
+import { CalendarIcon, ClockIcon, KeyRound } from "lucide-react";
 
 import { runStatuses, triggerTypes } from "./data";
 import type { TestRun } from "./schema";
@@ -23,11 +23,13 @@ import {
   isBillingBlockedError,
   isBillingBlockedStatus,
 } from "@/lib/billing-errors";
+import { UserCell } from "@/components/ui/user-cell";
 
 // Helper to validate status is one of the allowed values
 function mapDbStatusToDisplayStatus(
   dbStatus: string,
-  errorDetails?: string | null
+  errorDetails?: string | null,
+  cancelled?: boolean | null
 ): string {
   // Convert the dbStatus to lowercase for case-insensitive comparison
   const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
@@ -42,6 +44,8 @@ function mapDbStatusToDisplayStatus(
 
   // Only return one of the allowed status values
   switch (status) {
+    case "queued":
+      return "queued";
     case "running":
       return "running";
     case "passed":
@@ -49,7 +53,8 @@ function mapDbStatusToDisplayStatus(
     case "failed":
       return "failed";
     case "error":
-      return "error";
+      // A user cancellation is stored as an error run; the list API flags it.
+      return cancelled ? "cancelled" : "error";
     case "blocked":
       return "blocked";
     default:
@@ -198,11 +203,36 @@ export const createColumns = (
       enableSorting: true,
     },
     {
+      id: "triggeredBy",
+      accessorFn: (row) =>
+        row.trigger === "schedule" ? "Schedule" : (row.triggerKeyName ?? row.triggeredByName ?? ""),
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Triggered by" />
+      ),
+      cell: ({ row }) => {
+        const run = row.original;
+        if (run.trigger === "schedule") {
+          return <span className="text-sm text-muted-foreground">Schedule</span>;
+        }
+        if (run.triggerKeyName) {
+          return (
+            <div className="flex w-[150px] items-center gap-2 text-sm" title={run.triggeredByName ? `Key owner: ${run.triggeredByName}` : undefined}>
+              <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{run.triggerKeyName}</span>
+            </div>
+          );
+        }
+        return (
+          <UserCell name={run.triggeredByName} image={run.triggeredByImage} emptyLabel="Unknown" className="h-8 w-[150px]" />
+        );
+      },
+    },
+    {
       id: "status",
       // Use accessorFn to return the mapped status (including cancelled)
       // This ensures facet counts are correct
       accessorFn: (row) =>
-        mapDbStatusToDisplayStatus(row.status, row.errorDetails),
+        mapDbStatusToDisplayStatus(row.status, row.errorDetails, row.cancelled),
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),

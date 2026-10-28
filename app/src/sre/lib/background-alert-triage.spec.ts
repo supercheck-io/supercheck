@@ -211,6 +211,22 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(notifyIncidentEvent).not.toHaveBeenCalled();
     });
 
+    it("does not reopen an auto-resolved incident for a non-recoverable alert type", async () => {
+      (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
+      selectQueue.push([alertRow({ type: "ssl_expiring" })]);
+      selectQueue.push([], [{ id: "ae-1" }], []);
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
+    });
+
+    it("refreshes a reused alert event with the latest failure", async () => {
+      selectQueue.push([alertRow()]);
+      selectQueue.push([{ id: "svc-1" }], [{ id: "ae-1" }], []);
+      await processSreBackgroundAlertTriageJob(JOB);
+      const sets = (tx.update as jest.Mock).mock.results.flatMap((r) => (r.value.set as jest.Mock).mock.calls.map((c) => c[0]));
+      expect(sets).toContainEqual(expect.objectContaining({ status: "firing", serviceId: "svc-1", resolvedAt: null, firedAt: expect.any(Date), description: expect.any(String) }));
+    });
+
     it("resolves open incidents on a recovery alert and announces them", async () => {
       (applySourceRecovery as jest.Mock).mockResolvedValue({
         resolved: [{ id: "inc-1" }],

@@ -605,9 +605,12 @@ async function handleEmailSubscription(
     }
     
     if (existingSubscriber.verifiedAt) {
+      // Changing a verified subscriber's scope would let anyone who knows the address edit it,
+      // and a distinct reply would reveal who is subscribed, so the wording stays neutral.
       return {
         success: true,
-        message: "Please check your email to verify your subscription.",
+        message:
+          "Please check your email. If you are already subscribed, use the unsubscribe link in your notification emails.",
         requiresVerification: true,
       };
     } else {
@@ -767,19 +770,30 @@ async function handleWebhookSubscription(
         ),
     });
 
-    if (existingSubscriber && existingSubscriber.verifiedAt) {
+    // Resubscribing a healthy, active endpoint is a no-op; a quarantined one
+    // is re-enabled below, and one in its unsubscribe grace period is revived.
+    if (
+      existingSubscriber &&
+      existingSubscriber.verifiedAt &&
+      !existingSubscriber.purgeAt &&
+      !existingSubscriber.quarantinedAt
+    ) {
       return {
         success: false,
         message: "This webhook endpoint is already subscribed to updates",
       };
     }
 
-    // Retry verification for an existing pending webhook.
-    if (existingSubscriber && !existingSubscriber.verifiedAt) {
+    // Retry verification for an existing pending, quarantined or unsubscribed webhook.
+    if (existingSubscriber) {
       await db
         .update(statusPageSubscribers)
         .set({
           unsubscribeToken: generateHexToken(),
+          verifiedAt: null, // always re-prove endpoint ownership via the challenge
+          purgeAt: null,
+          quarantinedAt: null,
+          webhookFailures: 0,
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));
@@ -912,20 +926,41 @@ async function handleSlackSubscription(
         ),
     });
 
-    if (existingSubscriber && existingSubscriber.verifiedAt) {
+    if (
+      existingSubscriber &&
+      existingSubscriber.verifiedAt &&
+      !existingSubscriber.purgeAt &&
+      !existingSubscriber.quarantinedAt
+    ) {
       return {
         success: false,
         message: "This Slack webhook is already subscribed to updates",
       };
     }
 
-    // Delete old unverified Slack subscription if exists
-    if (existingSubscriber && !existingSubscriber.verifiedAt) {
+    // Reactivate an existing pending, quarantined or unsubscribed Slack subscription.
+    if (existingSubscriber) {
+      if (existingSubscriber.purgeAt) {
+        // An unsubscribed row no longer counts toward the plan limit, so re-check it.
+        const limitCheck = await enforceSubscriberLimit({
+          statusPageId: statusPage.id as string,
+          organizationId: statusPage.organizationId as string | null,
+        });
+        if (!limitCheck.allowed) {
+          return {
+            success: false,
+            message: limitCheck.error || "Subscriber limit reached for this status page.",
+          };
+        }
+      }
       await db
         .update(statusPageSubscribers)
         .set({
           unsubscribeToken: generateHexToken(),
           verifiedAt: new Date(),
+          purgeAt: null,
+          quarantinedAt: null,
+          webhookFailures: 0,
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));

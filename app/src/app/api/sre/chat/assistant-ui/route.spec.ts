@@ -228,6 +228,14 @@ describe("Copilot assistant-ui chat API", () => {
     },
   );
 
+  it("does not allow trial orgs to chat", async () => {
+    await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+      method: "POST", body: JSON.stringify({ messages: [{ role: "user", parts: [{ type: "text", text: "check" }] }] }),
+    }));
+    expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith(expect.anything(), { allowTrial: false });
+    expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith(expect.anything(), { allowTrial: false });
+  });
+
   it("creates a persisted conversation and returns an AI SDK UI stream response", async () => {
     const response = await POST(
       new NextRequest("http://localhost/api/sre/chat/assistant-ui", {

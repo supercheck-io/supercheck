@@ -229,7 +229,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Chronological incident timeline"
+            "description": "Incident timeline, oldest first. For incidents with more than 1000 events this is the newest 1000."
           },
           "404": {
             "description": "Incident not found in the active project"
@@ -8237,6 +8237,14 @@
             "format": "uuid",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -8291,6 +8299,18 @@
               "remote",
               "schedule"
             ]
+          },
+          "triggeredByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "triggeredByImage": {
+            "type": "string",
+            "nullable": true
+          },
+          "triggerKeyName": {
+            "type": "string",
+            "nullable": true
           },
           "duration": {
             "type": "string",
@@ -8749,6 +8769,14 @@
               "$ref": "#/components/schemas/Tag"
             }
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -8781,6 +8809,14 @@
           "createdByUserId": {
             "type": "string",
             "format": "uuid",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
             "nullable": true
           },
           "name": {
@@ -9075,6 +9111,14 @@
             "type": "string",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "fileName": {
             "type": "string",
             "nullable": true
@@ -9232,6 +9276,14 @@
             "format": "date-time",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -9339,11 +9391,13 @@
           },
           "failureThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "recoveryThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "customMessage": {
             "type": "string"
@@ -9432,6 +9486,7 @@
           },
           "cronSchedule": {
             "type": "string",
+            "description": "Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400.",
             "example": "0 2 * * *"
           },
           "tests": {
@@ -9513,7 +9568,8 @@
             "type": "string"
           },
           "cronSchedule": {
-            "type": "string"
+            "type": "string",
+            "description": "Standard five-field cron expression (one-minute minimum interval). Six-field and invalid expressions are rejected with 400."
           },
           "tests": {
             "type": "array",
@@ -9776,15 +9832,6 @@
           "keywordInBodyShouldBePresent": {
             "type": "boolean"
           },
-          "responseBodyJsonPath": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string"
-              },
-              "expectedValue": {}
-            }
-          },
           "auth": {
             "type": "object",
             "properties": {
@@ -9833,18 +9880,6 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
-          },
-          "sslCheckOnStatusChange": {
-            "type": "boolean"
-          },
-          "checkExpiration": {
-            "type": "boolean"
-          },
-          "daysUntilExpirationWarning": {
-            "type": "integer"
-          },
-          "checkRevocation": {
-            "type": "boolean"
           },
           "timeoutSeconds": {
             "type": "integer",
@@ -9926,11 +9961,13 @@
           },
           "failureThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "recoveryThreshold": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 100
           },
           "customMessage": {
             "type": "string"
@@ -10735,6 +10772,14 @@
             "nullable": true
           },
           "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
             "type": "string",
             "nullable": true
           },

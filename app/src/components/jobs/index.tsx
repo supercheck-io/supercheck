@@ -46,6 +46,7 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs, canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useJobs, useJobMutations } from "@/hooks/use-jobs";
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+// GET /api/jobs returns at most this many rows and the list has no pagination.
+const JOBS_LIST_CAP = 100;
 
 // Helper function to map incoming types to the valid Test["type"]
 function mapToTestType(type: string | undefined): Test["type"] {
@@ -87,7 +91,7 @@ export default function Jobs() {
   const { currentProject } = useProjectContext();
 
   // Use React Query hook for jobs data (cached, handles loading/error)
-  const { jobs: rawJobs, isLoading, isRestoring } = useJobs();
+  const { jobs: rawJobs, isLoading, isRestoring, error, refetch } = useJobs();
 
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
@@ -161,6 +165,8 @@ export default function Jobs() {
         tests,
         alertConfig: job.alertConfig as Job["alertConfig"],
         lastRun,
+        createdByName: job.createdByName ?? null,
+        createdByImage: job.createdByImage ?? null,
       };
     });
   }, [rawJobs]);
@@ -345,8 +351,13 @@ export default function Jobs() {
     );
   }
 
+  if (error && jobs.length === 0) {
+    return <ListErrorState title="Failed to fetch jobs" error={error} onRetry={() => refetch()} />;
+  }
+
   return (
     <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
+      <ListCapNote count={jobs.length} cap={JOBS_LIST_CAP} />
       <DataTable
         data={jobs}
         columns={columns}

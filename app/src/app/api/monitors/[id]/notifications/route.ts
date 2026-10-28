@@ -6,7 +6,7 @@ import {
   notificationProviders,
   monitors,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
@@ -180,6 +180,24 @@ export async function POST(
       return NextResponse.json(
         { error: "Monitor is already linked to this notification provider" },
         { status: 409 }
+      );
+    }
+
+    // Same per-monitor channel cap as monitor create/update
+    const maxMonitorChannels = parseInt(
+      process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
+      10,
+    );
+    const currentLinks = await db
+      .select({ value: count() })
+      .from(monitorNotificationSettings)
+      .where(eq(monitorNotificationSettings.monitorId, id));
+    if ((currentLinks[0]?.value ?? 0) + 1 > maxMonitorChannels) {
+      return NextResponse.json(
+        {
+          error: `You can only select up to ${maxMonitorChannels} notification channels`,
+        },
+        { status: 400 },
       );
     }
 

@@ -636,7 +636,7 @@ supercheck sre brief <incident-number-or-uuid> --idle-timeout 120
 supercheck sre status <runId>
 ```
 
-Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`, or `sre status <runId>` (requires a matching app release with the investigation-status endpoint). `--live-connectors` enables configured read-only telemetry tools only when the caller also has `sre_connector:investigate` permission.
+Deep investigation is asynchronous: a successful command returns an accepted investigation-run ID. Follow progress with `incident get` and `incident timeline`, or `sre status <runId>` (requires a matching app release with the investigation-status endpoint). `--live-connectors` enables configured read-only telemetry tools and requires the `sre_connector:investigate` permission; without it the request is rejected with 403.
 
 ### Copilot
 

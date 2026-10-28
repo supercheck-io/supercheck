@@ -20,6 +20,7 @@ import {
   validateProviderConfig,
 } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
+import { loadCreators } from "@/lib/creators";
 
 export async function GET() {
   try {
@@ -55,6 +56,8 @@ export async function GET() {
     if (providers.length === 0) {
       return NextResponse.json([]);
     }
+
+    const creatorOf = await loadCreators(providers.map((p) => p.createdByUserId));
 
     // OPTIMIZED: Batch fetch last used dates for all providers in one query
     const providerIds = providers.map((p) => p.id);
@@ -95,6 +98,7 @@ export async function GET() {
 
       return {
         ...provider,
+        ...creatorOf(provider.createdByUserId),
         config: sanitizedConfig,
         maskedFields,
         configUnavailable,

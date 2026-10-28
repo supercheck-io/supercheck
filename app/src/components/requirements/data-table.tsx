@@ -62,7 +62,7 @@ function requirementGlobalFilterFn(row: Row<unknown>, _columnId: string, filterV
     if (!filterValue) return true;
     const search = String(filterValue).toLowerCase();
     // Use default columns for filtering (matching tests approach)
-    const columns = ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags"];
+    const columns = ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags", "createdBy"];
     return columns.some((id: string) => {
         const value = row.getValue(id);
         if (typeof value === "string" || typeof value === "number") {
@@ -192,7 +192,7 @@ export function DataTable<TData, TValue>({
         getFacetedUniqueValues: getFacetedUniqueValues(),
         globalFilterFn: requirementGlobalFilterFn,
         meta: {
-            globalFilterColumns: ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags"],
+            globalFilterColumns: ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags", "createdBy"],
             ...meta,
         } as ExtendedTableMeta<TData>,
     });

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { isTestPriority, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
-import { desc, eq, and, inArray, like, count } from "drizzle-orm";
+import { desc, eq, and, inArray, ilike, count } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
+import { loadCreators } from "@/lib/creators";
 
 /**
  * GET /api/tests
@@ -47,8 +48,13 @@ export async function GET(request: NextRequest) {
     // Parse query parameters for pagination and filtering
     const { searchParams } = new URL(request.url);
     const includeScript = searchParams.get("includeScript") === "true";
-    const limitParam = parseInt(searchParams.get("limit") || "200", 10);
-    const pageParam = parseInt(searchParams.get("page") || "1", 10);
+    // A non-numeric value (?limit=abc) would otherwise become NaN and fail in Postgres with a 500.
+    const safeInt = (value: string | null, fallback: number) => {
+      const parsed = Number.parseInt(value ?? "", 10);
+      return Number.isSafeInteger(parsed) ? parsed : fallback;
+    };
+    const limitParam = safeInt(searchParams.get("limit"), 200);
+    const pageParam = safeInt(searchParams.get("page"), 1);
     const searchQuery = searchParams.get("search") || "";
     const typeFilter = searchParams.get("type") || "";
     const priorityFilter = searchParams.get("priority");
@@ -73,7 +79,8 @@ export async function GET(request: NextRequest) {
 
     // Add search filter if provided (search by title)
     if (searchQuery.trim()) {
-      whereConditions.push(like(tests.title, `%${searchQuery.trim()}%`));
+      // Escape LIKE wildcards so the search is a literal, case-insensitive substring match.
+      whereConditions.push(ilike(tests.title, `%${searchQuery.trim().replace(/[\\%_]/g, "\\$&")}%`));
     }
 
     // Add type filter if provided
@@ -136,6 +143,8 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    const creatorOf = await loadCreators(allTests.map((test) => test.createdByUserId));
+
     // Map the database results to the expected format
     // PERFORMANCE OPTIMIZATION: Only decode scripts when explicitly requested
     // This significantly reduces payload size for list views (KB vs MB)
@@ -157,6 +166,7 @@ export async function GET(request: NextRequest) {
           // Only include script field when requested (reduces payload significantly)
           ...(includeScript && { script }),
           tags: testTagsMap.get(test.id) || [], // Include tags
+          ...creatorOf(test.createdByUserId),
           createdAt: test.createdAt
             ? new Date(test.createdAt).toISOString()
             : null,

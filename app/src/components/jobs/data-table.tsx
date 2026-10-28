@@ -26,10 +26,10 @@ export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
     <GenericDataTable
       {...props}
       entityLabel="jobs"
-      initialColumnVisibility={{ createdAt: false, updatedAt: false }}
+      initialColumnVisibility={{ createdAt: false, updatedAt: false, createdBy: false }}
       skeletonColumns={6}
       meta={{
-        globalFilterColumns: ["id", "name", "description", "status"],
+        globalFilterColumns: ["id", "name", "description", "status", "createdBy"],
         ...props.meta,
       }}
       renderToolbar={(table) => <DataTableToolbar table={table} />}

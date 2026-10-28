@@ -9,9 +9,17 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   assignIncident: (...a: unknown[]) => lifecycle.assignIncident(...a),
 }));
 let allowed = true;
+let rateLimit: { allowed: boolean; resetTime?: number } = { allowed: true };
+jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
 const requirePermissions = jest.fn();
 jest.mock("../../_auth", () => ({
   requireSreSameOriginRequest: jest.fn(() => null),
+  requireSreIncidentUpdateRateLimit: () =>
+    Promise.resolve(
+      rateLimit.allowed
+        ? null
+        : NextResponse.json({ error: "Too many" }, { status: 429, headers: { "Retry-After": "12" } }),
+    ),
   requireSreApiPermissions: (...args: unknown[]) => {
     requirePermissions(...args);
     return allowed
@@ -33,6 +41,7 @@ const scope = { organizationId: "org-1", projectId: "project-1", userId: "user-1
 beforeEach(() => {
   jest.clearAllMocks();
   allowed = true;
+  rateLimit = { allowed: true };
 });
 
 describe("incident lifecycle routes", () => {
@@ -43,6 +52,33 @@ describe("incident lifecycle routes", () => {
     expect((await assign(post({ assigneeUserId: null }), params)).status).toBe(403);
     expect(requirePermissions).toHaveBeenCalledWith([{ resource: "sre_incident", action: "update" }]);
     expect(Object.values(lifecycle).every((fn) => fn.mock.calls.length === 0)).toBe(true);
+  });
+
+  it("returns 429 with Retry-After and skips the write when rate limited", async () => {
+    rateLimit = { allowed: false, resetTime: Date.now() + 12_000 };
+    for (const response of [
+      await resolve(post({ comment: "ok" }), params),
+      await acknowledge(post(), params),
+      await assign(post({ assigneeUserId: null }), params),
+    ]) {
+      expect(response.status).toBe(429);
+      expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
+    }
+    expect(Object.values(lifecycle).every((fn) => fn.mock.calls.length === 0)).toBe(true);
+  });
+
+  it("returns a JSON 500 when the write throws", async () => {
+    lifecycle.acknowledgeIncident.mockRejectedValueOnce(new Error("db down"));
+    lifecycle.resolveIncident.mockRejectedValueOnce(new Error("db down"));
+    lifecycle.assignIncident.mockRejectedValueOnce(new Error("db down"));
+    for (const response of [
+      await acknowledge(post(), params),
+      await resolve(post({ comment: "ok" }), params),
+      await assign(post({ assigneeUserId: null }), params),
+    ]) {
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Failed to update incident" });
+    }
   });
 
   it("resolve accepts the legacy comment field and the new resolutionSummary field", async () => {

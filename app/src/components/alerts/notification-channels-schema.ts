@@ -2,6 +2,8 @@ import { z } from "zod";
 
 // Define the schema for notification channels
 export const notificationChannelSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   name: z.string(),
   type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"]),

@@ -44,13 +44,31 @@ export type IssueCliKeyResult =
  * Dashboard and device-flow issuance both go through here so the count and
  * name checks plus the insert cannot interleave across requests.
  */
-async function lockProjectForKeyIssuance(
+export async function lockProjectForKeyIssuance(
   tx: DbTransaction,
   projectId: string,
 ): Promise<void> {
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`cli-key:${projectId}`}, 0))`,
   );
+}
+
+/** CLI keys that are enabled and unexpired: the ones that count toward the per-project cap. */
+export async function countUsableCliKeys(tx: DbTransaction, projectId: string): Promise<number> {
+  const [{ count }] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(apikey)
+    .where(
+      and(
+        eq(apikey.projectId, projectId),
+        isNull(apikey.jobId),
+        // Only usable keys count toward the cap: expired or disabled ones must not lock a project out
+        // (every browser login mints a new key, so old ones accumulate).
+        or(isNull(apikey.enabled), eq(apikey.enabled, true)),
+        or(isNull(apikey.expiresAt), gt(apikey.expiresAt, new Date())),
+      ),
+    );
+  return count;
 }
 
 /**
@@ -64,19 +82,7 @@ export async function issueCliApiKey(
 ): Promise<IssueCliKeyResult> {
   await lockProjectForKeyIssuance(tx, input.projectId);
 
-  const [{ count }] = await tx
-    .select({ count: sql<number>`count(*)::int` })
-    .from(apikey)
-    .where(
-      and(
-        eq(apikey.projectId, input.projectId),
-        isNull(apikey.jobId),
-        // Only usable keys count toward the cap: expired or disabled ones must not lock a project out
-        // (every browser login mints a new key, so old ones accumulate).
-        or(isNull(apikey.enabled), eq(apikey.enabled, true)),
-        or(isNull(apikey.expiresAt), gt(apikey.expiresAt, new Date())),
-      ),
-    );
+  const count = await countUsableCliKeys(tx, input.projectId);
   if (count >= MAX_CLI_TOKENS_PER_PROJECT) {
     return { ok: false, reason: "limit_reached" };
   }

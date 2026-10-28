@@ -112,6 +112,11 @@ export default async function CustomDomainStatusPage({
   const componentsResult = await getPublicComponents(statusPage.id);
   const incidentsResult = await getPublicIncidents(statusPage.id);
 
+  // An empty list on a failed fetch would render a false "All Systems Operational".
+  if (!componentsResult.success || !incidentsResult.success) {
+    throw new Error("Status page data is temporarily unavailable");
+  }
+
   return (
     <PublicStatusPage
       statusPage={statusPage}

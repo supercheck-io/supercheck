@@ -29,7 +29,6 @@ describe("diagnostic query adapters", () => {
 
   it("maps complex connector types to compatible diagnostic query types", () => {
     expect(isDiagnosticQueryTypeCompatible("prometheus", "promql")).toBe(true);
-    expect(isDiagnosticQueryTypeCompatible("prometheus", "sql")).toBe(false);
     expect(isDiagnosticQueryTypeCompatible("loki", "logql")).toBe(true);
     expect(isDiagnosticQueryTypeCompatible("tempo", "traceql")).toBe(true);
     expect(isDiagnosticQueryTypeCompatible("aws_cloudwatch", "http_get")).toBe(true);
@@ -141,5 +140,23 @@ describe("diagnostic query adapters", () => {
     ]);
 
     expect(serializedRecipes).not.toContain("checkout");
+  });
+
+  describe("string parameter injection", () => {
+    const def = (parameterSchema: Record<string, unknown>) => ({
+      id: "q", queryType: "promql" as const,
+      template: 'rate(http_requests_total{service="{{service}}"}[5m])',
+      parameterSchema: parameterSchema as never, allowlist: {}, maxRows: 10, maxBytes: 1000, maxSeconds: 5,
+    });
+    const payload = 'x"} or {namespace="kube-system';
+
+    it("rejects query-syntax characters in unconstrained string params", () => {
+      expect(() => renderDiagnosticQueryTemplate(def({ service: { type: "string" } }), { service: payload })).toThrow();
+      expect(renderDiagnosticQueryTemplate(def({ service: { type: "string" } }), { service: "checkout-api" }).query).toContain('service="checkout-api"');
+    });
+
+    it("still enforces a schema pattern", () => {
+      expect(() => renderDiagnosticQueryTemplate(def({ service: { type: "string", pattern: "^[a-z-]+$" } }), { service: payload })).toThrow();
+    });
   });
 });

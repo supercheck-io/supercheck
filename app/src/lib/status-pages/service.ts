@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
   monitors,
@@ -19,6 +19,7 @@ import {
   statusPages,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
 import { checkStatusPageLimit, checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { statusAggregationService } from "@/lib/status-aggregation.service";
@@ -37,6 +38,8 @@ import {
   SubscriptionAccessDeniedError,
 } from "@/lib/services/subscription-service";
 import { generateProxyUrl } from "@/lib/asset-proxy";
+
+const UNVERIFIED_DOMAIN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface StatusPageServiceContext {
   userId: string;
@@ -449,6 +452,22 @@ export async function updateStatusPageSettings(
             `Custom domain cannot use ${baseDomain} or its subdomains. Use a separate hostname and point its CNAME to ${customDomainCnameTarget}.`
           );
         }
+
+        // An unverified claim must not block the real owner forever: release
+        // reservations untouched for UNVERIFIED_DOMAIN_TTL_MS. shortcut: updatedAt
+        // is the only timestamp without a migration, so any edit by the squatter
+        // renews the claim; add a dedicated reserved-at column to harden this.
+        await db
+          .update(statusPages)
+          .set({ customDomain: null })
+          .where(
+            and(
+              eq(statusPages.customDomain, settings.customDomain),
+              ne(statusPages.id, statusPageId),
+              eq(statusPages.customDomainVerified, false),
+              lt(statusPages.updatedAt, new Date(Date.now() - UNVERIFIED_DOMAIN_TTL_MS))
+            )
+          );
 
         const existingDomain = await db.query.statusPages.findFirst({
           where: and(
@@ -921,14 +940,17 @@ export async function deleteComponent(
     });
     if (!component) return fail("not_found", "Component not found or access denied");
 
-    await db
-      .delete(statusPageComponents)
-      .where(
-        and(
-          eq(statusPageComponents.id, componentId),
-          eq(statusPageComponents.statusPageId, statusPageId)
-        )
-      );
+    await db.transaction(async (tx) => {
+      await retireOrphanedSubscribers({ componentId }, tx);
+      await tx
+        .delete(statusPageComponents)
+        .where(
+          and(
+            eq(statusPageComponents.id, componentId),
+            eq(statusPageComponents.statusPageId, statusPageId)
+          )
+        );
+    });
 
     await logAuditEvent({
       userId,

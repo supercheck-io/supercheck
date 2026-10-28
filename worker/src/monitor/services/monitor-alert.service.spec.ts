@@ -140,6 +140,48 @@ describe('MonitorAlertService', () => {
     ).toEqual({ delivered: true });
   });
 
+  it('counts a partially delivered provider as delivered so the alert is not resent', async () => {
+    const { service, notificationService } = createService();
+    notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+      {
+        success: 0,
+        failed: 1,
+        results: [
+          {
+            provider: { id: 'provider-1' },
+            success: false,
+            partial: true,
+            error: 'reached 1/2',
+          },
+        ],
+      },
+    );
+    expect(
+      await service.sendNotification('monitor-1', 'failure', 'Down'),
+    ).toEqual({ delivered: true });
+  });
+
+  it('reports a monitor with no enabled providers as suppressed, not as a delivery failure', async () => {
+    const { service, db } = createService();
+    (db.select as jest.Mock).mockImplementation((fields) =>
+      Object.keys(fields).length === 1
+        ? {
+            from: jest.fn().mockReturnThis(),
+            innerJoin: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([]),
+          }
+        : {
+            from: () => ({
+              innerJoin: () => ({ where: jest.fn().mockResolvedValue([]) }),
+            }),
+          },
+    );
+    expect(
+      await service.sendNotification('monitor-1', 'failure', 'Down'),
+    ).toMatchObject({ suppressed: true });
+  });
+
   it('suppresses monitor notifications during a scheduled maintenance window', async () => {
     const { service, valuesMock, sreAlertTriageQueueService } =
       createService(true);

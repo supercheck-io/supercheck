@@ -21,7 +21,7 @@ import { apikey, projects, member, projectMembers, organization, user } from "@/
 import { eq, and, isNull, or, gt } from "drizzle-orm";
 import { hashApiKey, isCliToken } from "@/lib/security/api-key-hash";
 import { Role } from "@/lib/rbac/permissions-client";
-import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { resolveEffectiveProjectRole } from "@/lib/rbac/effective-project-role";
 import { requireProjectContext, type ProjectContext } from "@/lib/project-context";
 import { requireAuth as requireSessionAuth } from "@/lib/rbac/middleware";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
@@ -224,7 +224,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
         eq(member.userId, matchedKey.userId)
       )
     )
-    .where(eq(projects.id, matchedKey.projectId))
+    .where(and(eq(projects.id, matchedKey.projectId), eq(projects.status, "active")))
     .limit(1);
 
   const ctx = contextResult[0];
@@ -248,24 +248,9 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     throw new AuthError("The token's owner no longer has access to this project", 403);
   }
 
-  const orgRole = ctx.orgRole ? normalizeRole(ctx.orgRole) : null;
-  const projectRole = ctx.projectRole ? normalizeRole(ctx.projectRole) : null;
-
-  // Match requireProjectContext(): org owners/admins are org-wide, while
-  // project-scoped roles require the project_members assignment for this project.
-  const effectiveRole = (() => {
-    if (isTokenOwnerSuperAdmin) return Role.SUPER_ADMIN;
-    if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) return orgRole;
-    if (projectRole) return projectRole;
-    if (
-      orgRole === Role.PROJECT_ADMIN ||
-      orgRole === Role.PROJECT_EDITOR ||
-      orgRole === Role.PROJECT_VIEWER
-    ) {
-      return Role.PROJECT_VIEWER;
-    }
-    return null;
-  })();
+  const effectiveRole = isTokenOwnerSuperAdmin
+    ? Role.SUPER_ADMIN
+    : resolveEffectiveProjectRole(ctx.orgRole, ctx.projectRole);
 
   if (!effectiveRole) {
     logger.warn(

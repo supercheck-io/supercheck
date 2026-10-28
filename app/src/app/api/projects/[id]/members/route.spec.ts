@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
-import { POST } from "./route";
+import { DELETE, POST, PUT } from "./route";
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -43,4 +43,11 @@ it("inserts only while holding a valid organization membership lock", async () =
   insert.mockReturnValue({ values: () => ({ returning: async () => [{ id: "assignment-1" }] }) });
   expect((await post()).status).toBe(201);
   expect(insert).toHaveBeenCalledTimes(1);
+});
+
+it.each([["POST", POST], ["PUT", PUT], ["DELETE", DELETE]] as const)("%s is refused for project-scoped CLI auth", async (method, handler) => {
+  (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "admin-1", isCliAuth: true });
+  const res = await handler(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=target-user", { method, headers: { "content-type": "application/json" }, body: method === "DELETE" ? undefined : JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
+  expect(res.status).toBe(403);
+  expect(db.transaction).not.toHaveBeenCalled();
 });

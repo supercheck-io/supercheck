@@ -228,7 +228,7 @@ describe('fetchRemoteResources', () => {
       if (path === '/api/tests?includeScript=true') {
         return createPageResponse(
           [
-            { id: 't-1', title: 'API test', type: 'api', script: 'console.log(1)' },
+            { id: 't-1', title: 'API test', type: 'api', script: 'console.log(1)', createdByName: 'Ada', createdByImage: '/api/users/u1/avatar?v=x' },
             { id: 't-2', title: 'K6 test', type: 'performance', script: "import http from 'k6/http'" },
           ],
           { total: 2, page: 1, limit: 200, totalPages: 1, hasNextPage: false, hasPrevPage: false },
@@ -265,6 +265,9 @@ describe('fetchRemoteResources', () => {
     expect(apiTest?.raw.type).toBeUndefined()
     expect(perfTest?.raw.testType).toBe('k6')
     expect(perfTest?.raw.type).toBeUndefined()
+    // Read-only creator fields never reach config or diffs.
+    expect(apiTest?.raw).not.toHaveProperty('createdByName')
+    expect(apiTest?.raw).not.toHaveProperty('createdByImage')
   })
 })
 
@@ -282,7 +285,6 @@ describe('buildLocalResources', () => {
           id: '01912345-abcd-7000-8000-000000000001',
           name: 'Nightly',
           tests: ['01912345-abcd-7000-8000-000000000010'],
-          status: 'paused',
         },
       ],
     }, cwd)

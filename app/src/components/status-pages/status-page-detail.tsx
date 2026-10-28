@@ -168,6 +168,7 @@ export function StatusPageDetail({
             : "Your status page is now publicly accessible",
         });
         router.refresh();
+        onDataChange?.();
       } else {
         toast.error("Failed to publish status page", {
           description: result.message,
@@ -200,6 +201,7 @@ export function StatusPageDetail({
           },
         );
         router.refresh();
+        onDataChange?.();
         return true;
       }
 
@@ -609,7 +611,7 @@ export function StatusPageDetail({
         </TabsContent>
 
         <TabsContent value="subscribers" className="space-y-4">
-          <SubscribersTab statusPageId={statusPage.id} />
+          <SubscribersTab statusPageId={statusPage.id} canUpdate={canUpdate} />
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4">

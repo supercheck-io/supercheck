@@ -16,7 +16,7 @@ async function withStorage(
   let written: SupercheckConfig | undefined;
   apiClient.clearCache();
   try {
-    globalThis.chrome = { storage: { sync: {
+    globalThis.chrome = { storage: { local: {
       get: async () => ({ supercheckConfig: initial }),
       set: async (values: Record<string, unknown>) => {
         written = values.supercheckConfig as SupercheckConfig;

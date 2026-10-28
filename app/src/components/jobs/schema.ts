@@ -79,6 +79,8 @@ export type LastRun = z.infer<typeof lastRunSchema>;
 
 // Job schema matching the database schema
 export const jobSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),

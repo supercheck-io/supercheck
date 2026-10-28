@@ -84,6 +84,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid SRE investigation request" }, { status: 400 });
   }
 
+  const canInvestigateConnectors = checkPermissionWithContext("sre_connector", "investigate", permissionContext);
+  if (parsed.data.useLiveConnectors && !canInvestigateConnectors) {
+    return NextResponse.json(
+      { error: "Insufficient permissions to use live connectors in an investigation" },
+      { status: 403 },
+    );
+  }
+
   const rateLimit = await checkSreInvestigationRateLimit(
     context.userId,
     parsed.data.incidentId,
@@ -118,8 +126,7 @@ export async function POST(request: NextRequest) {
     throw error;
   }
 
-  const canInvestigateConnectors = checkPermissionWithContext("sre_connector", "investigate", permissionContext);
-  const enableLiveConnectors = parsed.data.useLiveConnectors && canInvestigateConnectors;
+  const enableLiveConnectors = parsed.data.useLiveConnectors;
   const startResult = await startSreIncidentInvestigation({
     userId: context.userId,
     organizationId: context.organizationId,

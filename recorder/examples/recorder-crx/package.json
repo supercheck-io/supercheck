@@ -1,7 +1,7 @@
 {
   "name": "supercheck-recorder",
   "version": "1.0.2",
-  "description": "Supercheck Recorder - Record browser interactions and save them as Playwright tests",
+  "description": "Supercheck Recorder - Record browser interactions as Playwright code",
   "type": "module",
   "keywords": [
     "supercheck",

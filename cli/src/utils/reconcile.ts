@@ -2,6 +2,7 @@ import { redact } from './redact.js'
 import pc from './colors.js'
 import { logger } from './logger.js'
 import { diffComponents } from './status-pages.js'
+import { normalizeLocalAlertConfig } from './alert-config.js'
 
 /**
  * Represents a resource defined in the local config file.
@@ -166,7 +167,7 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
   for (const [key, localVal] of Object.entries(local)) {
     if (localVal === undefined) continue
     // Skip internal/metadata fields
-    if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
+    if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', 'createdByName', 'createdByImage', '__maskedFields'].includes(key)) continue
     // Read-only, server-generated: pulled but never compared.
     if (resourceType === 'statusPage' && key === 'subdomain') continue
     if (resourceType === 'statusPage' && key === 'components') {
@@ -192,6 +193,8 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
       ? [foldTags(localVal), foldTags(remoteVal)]
       : key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
+      : key === 'alertConfig' && (resourceType === 'job' || resourceType === 'monitor') && localVal && typeof localVal === 'object'
+      ? [normalizeLocalAlertConfig(localVal as Record<string, unknown>, remoteVal, resourceType), remoteVal]
       : [localVal, remoteVal]
     if (stableStringify(comparableLocal) !== stableStringify(comparableRemote)) {
       diffs.push(`${key}: ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableRemote })[key])} -> ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableLocal })[key])}`)

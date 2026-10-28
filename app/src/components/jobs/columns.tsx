@@ -38,6 +38,7 @@ import {
   isBillingBlockedError,
   isBillingBlockedStatus,
 } from "@/lib/billing-errors";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
@@ -623,6 +624,7 @@ export const columns: ColumnDef<Job>[] = [
       );
     },
   },
+  createdByColumn<Job>(),
   {
     accessorKey: "createdAt",
     header: ({ column }) => (

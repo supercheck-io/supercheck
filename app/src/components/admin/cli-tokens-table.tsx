@@ -428,7 +428,7 @@ export function CliTokensTable() {
             name={row.original.createdByName}
             image={row.original.createdByImage}
             emptyLabel="Unknown"
-            className="max-w-[180px]"
+            avatarOnly
           />
         ),
       },

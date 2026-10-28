@@ -17,6 +17,8 @@ export interface NotificationProvider {
   lastUsed?: string;
   isInUse?: boolean;
   maskedFields?: string[];
+  createdByName?: string | null;
+  createdByImage?: string | null;
 }
 
 export type AlertHistory = AlertHistorySchema;
@@ -44,13 +46,16 @@ export async function fetchNotificationProviders(projectId?: string | null): Pro
   return response.json();
 }
 
+/** Matches the history route's MAX_LIMIT. */
+export const ALERT_HISTORY_LIMIT = 200;
+
 export async function fetchAlertHistory(projectId?: string | null): Promise<AlertHistory[]> {
   const headers: Record<string, string> = {};
   if (projectId) {
     headers["x-project-id"] = projectId;
   }
 
-  const response = await fetch("/api/alerts/history", {
+  const response = await fetch(`/api/alerts/history?limit=${ALERT_HISTORY_LIMIT}`, {
     headers
   });
 

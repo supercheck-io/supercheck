@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Video, Download, ExternalLink, RefreshCw, MousePointerClick, Circle, Chrome, Copy, Check } from "lucide-react";
 import {
@@ -147,7 +148,7 @@ export function RecordButton({
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error("[RecordButton] Failed to prepare recording:", error);
-      setShowInstallDialog(true);
+      toast.error(error instanceof Error ? error.message : "Failed to prepare recording");
     } finally {
       setIsStarting(false);
     }
@@ -166,7 +167,7 @@ export function RecordButton({
         size={size}
         onClick={handleClick}
         className={className}
-        disabled={isStarting}
+        disabled={isStarting || !projectId}
       >
         {children || (
           <>

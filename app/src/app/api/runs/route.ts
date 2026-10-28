@@ -5,6 +5,8 @@ import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { isUuid } from '@/lib/uuid';
+import { loadCreators } from "@/lib/creators";
+import { RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -97,9 +99,13 @@ export async function GET(request: NextRequest) {
           completedAt: runs.completedAt,
           // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
           // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
+          // A user cancellation is stored as status 'error'; flag it without shipping the details.
+          cancelled: sql<boolean>`coalesce(${runs.errorDetails} = ${RUN_CANCELLATION_MARKER}, false)`,
           reportUrl: reports.s3Url,
           trigger: runs.trigger,
           location: runs.location,
+          triggeredByUserId: runs.triggeredByUserId,
+          triggerKeyName: sql<string | null>`${runs.metadata}->>'triggerKeyName'`,
         })
         .from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
@@ -117,6 +123,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);
+
+    const creatorOf = await loadCreators(result.map((run) => run.triggeredByUserId));
+    // The raw user id stays server-side; clients get the name and avatar.
+    const withoutTriggeredByUserId = <T extends { triggeredByUserId: unknown }>({ triggeredByUserId: _omit, ...rest }: T) => rest;
 
     // Convert dates to ISO strings and format duration
     const formattedRuns = result.map(run => {
@@ -157,7 +167,9 @@ export async function GET(request: NextRequest) {
       };
 
       return {
-        ...run,
+        ...withoutTriggeredByUserId(run),
+        triggeredByName: creatorOf(run.triggeredByUserId).createdByName,
+        triggeredByImage: creatorOf(run.triggeredByUserId).createdByImage,
         duration: computeDuration(),
         startedAt: run.startedAt ? run.startedAt.toISOString() : null,
         completedAt: run.completedAt ? run.completedAt.toISOString() : null,

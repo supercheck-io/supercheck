@@ -5,12 +5,12 @@ type FetchImpl = typeof fetch;
 
 test('notifies config changes and rejects missing or malformed stored values', () => {
   const originalChrome = globalThis.chrome;
-  type ChangeListener = Parameters<typeof chrome.storage.sync.onChanged.addListener>[0];
+  type ChangeListener = Parameters<typeof chrome.storage.local.onChanged.addListener>[0];
   let handler: ChangeListener | undefined;
   let removed: ChangeListener | undefined;
   const values: (SupercheckConfig | null)[] = [];
   try {
-    globalThis.chrome = { storage: { sync: { onChanged: {
+    globalThis.chrome = { storage: { local: { onChanged: {
       addListener: (listener: ChangeListener) => { handler = listener; },
       removeListener: (listener: ChangeListener) => { removed = listener; },
     } } } } as unknown as typeof chrome;
@@ -37,10 +37,11 @@ async function withConfiguredStorage(
   const originalFetch = globalThis.fetch;
   let removed = false;
   try {
-    globalThis.chrome = { storage: { sync: {
+    const area = {
       get: async () => ({ supercheckConfig: { instanceUrl: 'https://app.example.test', apiKey: 'ext-test' } }),
       remove: async () => { removed = true; },
-    } } } as unknown as typeof chrome;
+    };
+    globalThis.chrome = { storage: { local: area, sync: area } } as unknown as typeof chrome;
     globalThis.fetch = fetchImpl;
     await run({ removed: () => removed });
   } finally {

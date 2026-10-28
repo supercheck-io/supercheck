@@ -59,3 +59,32 @@ describe("validateMonitorConfiguration", () => {
     }
   });
 });
+
+describe("location policy and unsupported assertions", () => {
+  const site = (config: object) => validateMonitorConfiguration({ type: "website", target: "https://example.com", config, incomingConfig: config });
+  const locations = (extra: object) => ({ locationConfig: { enabled: true, locations: ["eu-central"], threshold: 50, strategy: "majority", ...extra } });
+
+  it.each([0, -1, 101, 50.5, "50"])("rejects locationConfig.threshold %p (c17)", (threshold) => {
+    expect(site(locations({ threshold })).success).toBe(false);
+  });
+  it("rejects an unknown strategy (c17)", () => {
+    expect(site(locations({ strategy: "most" })).success).toBe(false);
+  });
+  it.each([1, 50, 100])("accepts threshold %p", (threshold) => {
+    expect(site(locations({ threshold }))).toEqual({ success: true });
+  });
+  it.each(["responseBodyJsonPath", "checkExpiration", "daysUntilExpirationWarning", "checkRevocation", "sslCheckOnStatusChange"])(
+    "rejects %s, which no probe evaluates (c15)",
+    (key) => {
+      expect(site({ [key]: { path: "$.a", expectedValue: 1 } }).success).toBe(false);
+    },
+  );
+  it("does not reject a stored legacy key when the client sent no config", () => {
+    expect(
+      validateMonitorConfiguration({ type: "website", target: "https://example.com", config: { checkExpiration: true }, incomingConfig: undefined }),
+    ).toEqual({ success: true });
+  });
+  it("lets a client clear an unsupported key with null", () => {
+    expect(site({ responseBodyJsonPath: null })).toEqual({ success: true });
+  });
+});
