@@ -15,11 +15,18 @@ jest.mock("@/lib/rbac/middleware", () => ({
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
 const mockFindFirst = jest.fn();
-jest.mock("@/utils/db", () => ({ db: { transaction: (...a: unknown[]) => mockTransaction(...a), query: { privateAgents: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } } } }));
+let mockRows: unknown[] = [];
+jest.mock("@/utils/db", () => ({
+  db: {
+    transaction: (...a: unknown[]) => mockTransaction(...a),
+    query: { privateAgents: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } },
+    select: () => ({ from: () => ({ where: () => ({ orderBy: async () => mockRows }) }) }),
+  },
+}));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
-import { disablePrivateAgent, registerPrivateAgent, rotatePrivateAgentToken } from "./private-agents";
+import { disablePrivateAgent, getPrivateAgents, registerPrivateAgent, rotatePrivateAgentToken } from "./private-agents";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -75,5 +82,17 @@ describe("org-wide Private Agents", () => {
     await disablePrivateAgent({ id: "00000000-0000-4000-8000-000000000001" });
     const text = new PgDialect().sqlToQuery(condition as SQL).sql;
     expect(/is null/i.test(text)).toBe(includesOrgWide);
+  });
+});
+
+describe("getPrivateAgents", () => {
+  it("reports a connected agent with a stale heartbeat as disconnected", async () => {
+    const base = { name: "a", version: "1", agentMode: "sre", supportsSreConnectors: true, region: null, networkLabel: null, lastError: null, projectId: null };
+    mockRows = [
+      { ...base, id: "stale", status: "connected", lastHeartbeatAt: new Date(Date.now() - 10 * 60_000) },
+      { ...base, id: "fresh", status: "connected", lastHeartbeatAt: new Date() },
+    ];
+    const result = await getPrivateAgents();
+    expect(result.agents.map((a) => [a.id, a.status])).toEqual([["stale", "disconnected"], ["fresh", "connected"]]);
   });
 });

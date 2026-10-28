@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { privateAgentCredentials, privateAgents } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getPrivateAgentHealth } from "@/lib/private-agents/agent-registry";
 import { buildPrivateAgentRegistrationMetadata } from "@/lib/private-agents/registration-token";
 import { requireProjectContext, type ProjectAuthContext } from "@/lib/project-context";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
@@ -69,7 +70,8 @@ function normalizeAgent(row: typeof privateAgents.$inferSelect): PrivateAgentLis
   return {
     id: row.id,
     name: row.name,
-    status: row.status,
+    // Nothing writes "disconnected", so a silent agent would otherwise stay "connected" forever.
+    status: row.status === "connected" && getPrivateAgentHealth(row).stale ? "disconnected" : row.status,
     version: row.version,
     agentMode: row.agentMode,
     supportsSreConnectors: row.supportsSreConnectors,
