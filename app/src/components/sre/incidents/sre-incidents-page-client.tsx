@@ -48,7 +48,7 @@ function IncidentsTab() {
       loadError={query.data.success ? null : query.data.error}
       currentUserId={query.data.success ? query.data.currentUserId : null}
       truncated={query.data.success && query.data.truncated}
-      hasIncidents={query.data.success ? query.data.hasIncidents : true}
+      hasIncidents={query.data.success ? query.data.hasIncidents : false}
       onScopeChange={setScope}
     />
   );
