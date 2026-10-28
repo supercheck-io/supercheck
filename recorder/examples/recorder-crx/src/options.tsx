@@ -177,7 +177,8 @@ function OptionsPage() {
       // updates the instance this extension is paired with.
       if (next.apiKey) {
         setCustomUrl(customUrlFor(next.instanceUrl));
-        if (customUrlFor(next.instanceUrl)) setShowSelfHosted(true);
+        if (customUrlFor(next.instanceUrl))
+          setShowSelfHosted(true);
         setConnectionState({ status: 'connected', email: next.userEmail });
         setApiKey('');
         return;
