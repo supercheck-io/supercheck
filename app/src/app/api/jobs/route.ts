@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { updateJob } from "@/lib/server-actions/update-job";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -819,33 +820,24 @@ export async function PUT(request: Request) {
       }
     }
 
-    await db.transaction(async (tx) => {
-      await tx
-        .update(jobs)
-        .set({
-          name: jobData.name,
-          description: jobData.description || "",
-          cronSchedule: jobData.cronSchedule,
-          status: jobData.status as JobStatus,
-          alertConfig: jobData.alertConfig
-            ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
-            : null,
-          updatedAt: new Date(),
-        })
-        .where(eq(jobs.id, targetJobId));
-
-      await tx.delete(jobTests).where(eq(jobTests.jobId, targetJobId));
-
-      if (jobData.tests && jobData.tests.length > 0) {
-        const jobTestValues = jobData.tests.map((test, index) => ({
-          jobId: targetJobId,
-          testId: test.id,
-          orderPosition: index,
-        }));
-
-        await tx.insert(jobTests).values(jobTestValues);
-      }
-    });
+    // Same path as PATCH/PUT /api/jobs/[id]: validates the cron, reschedules, syncs notifications. A
+    // client-supplied status is never written.
+    const result = await updateJob(
+      {
+        jobId: targetJobId,
+        name: jobData.name,
+        description: jobData.description || "",
+        cronSchedule: jobData.cronSchedule,
+        tests: jobData.tests.map((test) => ({ id: test.id })),
+        alertConfig: jobData.alertConfig
+          ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
+          : undefined,
+      },
+      { userId: context.userId, project, organizationId },
+    );
+    if (!result.success) {
+      return NextResponse.json({ success: false, error: result.message }, { status: 400 });
+    }
 
     return NextResponse.json({
       success: true,
