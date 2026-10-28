@@ -95,7 +95,7 @@ export function UserCell({
   email,
   image,
   emptyLabel = "Unassigned",
-  avatarOnly = false,
+  compact = false,
   className,
   avatarClassName,
 }: {
@@ -103,8 +103,8 @@ export function UserCell({
   email?: string | null;
   image?: string | null;
   emptyLabel?: string;
-  /** Table columns: only the avatar is visible; the name stays in the tooltip and for screen readers. */
-  avatarOnly?: boolean;
+  /** Table columns: avatar plus initials ("KK"); the full name stays in the tooltip and for screen readers. */
+  compact?: boolean;
   className?: string;
   avatarClassName?: string;
 }) {
@@ -112,14 +112,15 @@ export function UserCell({
   const content = (
     <div className={cn("flex min-w-0 items-center gap-2 text-sm", !label && "text-muted-foreground", className)}>
       <UserAvatar name={label} image={image} className={avatarClassName} />
-      <span className={avatarOnly ? "sr-only" : "truncate"}>
+      {compact && label ? <span aria-hidden="true" className="font-medium">{initials(label)}</span> : null}
+      <span className={compact ? "sr-only" : "truncate"}>
         {label ?? emptyLabel}
         {name && email ? <span className="sr-only">, {email}</span> : null}
       </span>
     </div>
   );
-  // Avatar-only cells keep a tooltip even when empty, so "System" or "Unassigned" is still readable.
-  if (!label && !avatarOnly) return content;
+  // Compact cells keep a tooltip even when empty, so "System" or "Unassigned" is still readable.
+  if (!label && !compact) return content;
   // The tooltip shows the full name (it may be truncated) and the email.
   return (
     <Tooltip>

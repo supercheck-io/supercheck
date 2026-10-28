@@ -141,7 +141,7 @@ describe("UserCell", () => {
   });
 
   it("avatar-only keeps the name for screen readers and in the tooltip", async () => {
-    render(<UserCell name="Ada Lovelace" email="ada@example.com" avatarOnly />);
+    render(<UserCell name="Ada Lovelace" email="ada@example.com" compact />);
     const name = screen.getByText("Ada Lovelace");
     expect(name).toHaveClass("sr-only");
     fireEvent.focus(name.closest("[data-state]")!);
@@ -149,7 +149,7 @@ describe("UserCell", () => {
   });
 
   it("avatar-only shows the empty label in a tooltip", async () => {
-    const { container } = render(<UserCell name={null} emptyLabel="System" avatarOnly />);
+    const { container } = render(<UserCell name={null} emptyLabel="System" compact />);
     const trigger = container.querySelector("[data-state]");
     expect(trigger).not.toBeNull();
     expect(trigger).not.toHaveAttribute("tabindex");

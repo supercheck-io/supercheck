@@ -97,7 +97,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
           email={user.email}
           image={user.image}
           emptyLabel="System"
-          avatarOnly
+          compact
           className="h-8"
         />
       );

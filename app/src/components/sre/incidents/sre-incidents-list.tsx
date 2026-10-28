@@ -591,7 +591,7 @@ export function SreIncidentsList({
                         {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <UserCell name={incident.assigneeName} image={incident.assigneeImage} avatarOnly />
+                        <UserCell name={incident.assigneeName} image={incident.assigneeImage} compact />
                       </TableCell>
                       <TableCell className="py-2.5 text-sm tabular-nums">
                         <span

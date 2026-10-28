@@ -8,7 +8,7 @@ import { UserCell } from "@/components/ui/user-cell";
 export type CreatedByFields = { createdByName?: string | null; createdByImage?: string | null };
 
 /**
- * The "Created by" list column: just the photo or initials, so text columns keep their width.
+ * The "Created by" list column: photo (or initials badge) plus initials, so text columns keep their width.
  * The full name is in the tooltip and still drives sorting and filtering.
  */
 export function createdByColumn<T extends CreatedByFields>(): ColumnDef<T> {
@@ -21,7 +21,7 @@ export function createdByColumn<T extends CreatedByFields>(): ColumnDef<T> {
         name={row.original.createdByName}
         image={row.original.createdByImage}
         emptyLabel="Unknown"
-        avatarOnly
+        compact
         className="h-8"
       />
     ),
