@@ -155,7 +155,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Chronological incident timeline
+          description: Incident timeline, oldest first. For incidents with more than 1000 events this is the newest 1000.
         "404":
           description: Incident not found in the active project
   /api/sre/incidents/{id}/resolve:

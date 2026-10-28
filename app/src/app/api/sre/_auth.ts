@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
+import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
@@ -91,4 +92,18 @@ export async function requireSreApiPermissions(
   }
 
   return { success: true, context };
+}
+
+/** 429 when the caller is writing to one incident too fast; null when allowed (including when Redis is down). */
+export async function requireSreIncidentUpdateRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<NextResponse | null> {
+  const limit = await checkSreIncidentUpdateRateLimit(userId, incidentId);
+  if (limit.allowed) return null;
+  const retryAfter = limit.resetTime ? Math.max(1, Math.ceil((limit.resetTime - Date.now()) / 1000)) : 60;
+  return NextResponse.json(
+    { error: "Too many incident updates. Try again shortly." },
+    { status: 429, headers: { "Retry-After": String(retryAfter) } },
+  );
 }

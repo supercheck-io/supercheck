@@ -1,16 +1,11 @@
-import { Link, Section, Text } from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout, EmailButton } from "./base-layout";
-
-interface AlertField {
-  title: string;
-  value: string;
-}
+import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
 
 interface MonitorAlertEmailProps {
   title: string;
   message: string;
-  fields: AlertField[];
+  fields: DetailField[];
   footer: string;
   type: "failure" | "success" | "warning";
   color?: string;
@@ -18,8 +13,21 @@ interface MonitorAlertEmailProps {
   incidentsUrl?: string;
 }
 
+/** Header colours: dark enough for white text, shared with the incident emails. */
+const HEADER_TITLE = {
+  failure: "Alert",
+  success: "Recovered",
+  warning: "Warning",
+} as const;
+
+const HEADER_COLOR = {
+  failure: "#b91c1c",
+  success: "#15803d",
+  warning: "#b45309",
+} as const;
+
 /**
- * Get status color for visual indicators
+ * Accent colour for the message border (the channels' alert palette)
  */
 const getStatusColor = (type: string): string => {
   switch (type) {
@@ -48,23 +56,13 @@ export const MonitorAlertEmail = ({
   incidentsUrl,
 }: MonitorAlertEmailProps) => {
   const statusColor = color ?? getStatusColor(type);
-
-  // Helper to check if a string is a URL
-  // Only http(s) values become links; other schemes (javascript:, data:) stay text.
-  const isUrl = (str: string) => {
-    try {
-      const { protocol } = new URL(str);
-      return protocol === "http:" || protocol === "https:";
-    } catch {
-      return false;
-    }
-  };
+  const headerColor = HEADER_COLOR[type] ?? "#1f2937";
 
   return (
     <BaseLayout
       preview={title}
-      title="Supercheck Notification"
-      headerColor={statusColor}
+      title={HEADER_TITLE[type] ?? "Alert"}
+      headerColor={headerColor}
       // We use the standard footer from BaseLayout, but append the custom footer text if needed
       // or just rely on the standard one. The prompt asked for a proper footer consistent across all templates.
       // The BaseLayout now has a standard footer. We can pass this custom footer as null to use the default,
@@ -89,32 +87,7 @@ export const MonitorAlertEmail = ({
         <Text style={messageText}>{message}</Text>
       </Section>
 
-      {/* Details Table */}
-      <Section style={detailsSection}>
-        <Text style={detailsTitle}>Alert Details</Text>
-        <table style={detailsTable}>
-          <tbody>
-            {fields.map((field, index) => {
-              const isLink = isUrl(field.value);
-              
-              return (
-                <tr key={index}>
-                  <td style={detailsLabelCell}>{field.title}</td>
-                  <td style={detailsValueCell}>
-                    {isLink ? (
-                      <Link href={field.value} style={linkStyle}>
-                        {field.value}
-                      </Link>
-                    ) : (
-                      field.value
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Section>
+      <DetailsTable heading="Alert details" fields={fields} />
 
       {/* Incident follow-up (failure/warning only) */}
       {type !== "success" && incidentsUrl && (
@@ -184,51 +157,11 @@ const messageText = {
   whiteSpace: "pre-wrap" as const,
 };
 
-const detailsSection = {
-  padding: "0 32px 32px",
-};
 
-const detailsTitle = {
-  color: "#374151",
-  fontSize: "16px",
-  fontWeight: "600" as const,
-  margin: "0 0 16px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
 
-const detailsTable = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-};
 
-const detailsLabelCell = {
-  padding: "12px 16px",
-  fontWeight: "600" as const,
-  verticalAlign: "top" as const,
-  borderBottom: "1px solid #e5e7eb",
-  color: "#6b7280",
-  fontSize: "14px",
-  width: "30%",
-  backgroundColor: "#f9fafb",
-  textAlign: "left" as const,
-};
 
-const detailsValueCell = {
-  padding: "12px 16px",
-  verticalAlign: "top" as const,
-  borderBottom: "1px solid #e5e7eb",
-  color: "#111827",
-  fontSize: "14px",
-  textAlign: "left" as const,
-  wordBreak: "break-all" as const,
-};
 
-const linkStyle = {
-  color: "#2563eb",
-  textDecoration: "none",
-  fontWeight: "500" as const,
-};
 
 const customFooterText = {
   color: "#6b7280",
