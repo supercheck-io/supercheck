@@ -11,6 +11,7 @@ import {
 import { eq, and, gte, lt, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { combineMonitorDay, type MonitorDayCounts } from "@/lib/status-page-uptime";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 // UUID validation schema
@@ -77,6 +78,8 @@ export async function getPublicComponents(statusPageId: string) {
         onlyShowIfDegraded: true,
         position: true,
         startDate: true,
+        aggregationMethod: true,
+        failureThreshold: true,
         createdAt: true,
         updatedAt: true,
         // EXCLUDED: statusPageId (redundant), automationEmail (internal)
@@ -99,6 +102,8 @@ export async function getPublicComponents(statusPageId: string) {
         : await db
             .select({
               componentId: statusPageComponentMonitors.componentId,
+              monitorId: statusPageComponentMonitors.monitorId,
+              weight: statusPageComponentMonitors.weight,
               date: sql<string>`to_char(${monitorAggregates.periodStart}, 'YYYY-MM-DD')`,
               totalChecks: sql<number>`sum(${monitorAggregates.totalChecks})::integer`,
               successfulChecks: sql<number>`sum(${monitorAggregates.successfulChecks})::integer`,
@@ -134,6 +139,8 @@ export async function getPublicComponents(statusPageId: string) {
             )
             .groupBy(
               statusPageComponentMonitors.componentId,
+              statusPageComponentMonitors.monitorId,
+              statusPageComponentMonitors.weight,
               monitorAggregates.periodStart,
             );
     const current =
@@ -142,6 +149,8 @@ export async function getPublicComponents(statusPageId: string) {
         : await db
             .select({
               componentId: statusPageComponentMonitors.componentId,
+              monitorId: statusPageComponentMonitors.monitorId,
+              weight: statusPageComponentMonitors.weight,
               date: sql<string>`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
               totalChecks: sql<number>`count(*)::integer`,
               successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp})::integer`,
@@ -163,21 +172,31 @@ export async function getPublicComponents(statusPageId: string) {
             )
             .groupBy(
               statusPageComponentMonitors.componentId,
+              statusPageComponentMonitors.monitorId,
+              statusPageComponentMonitors.weight,
               sql`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
             );
     const dailyMetrics = [...historical, ...current];
 
     // Linked monitor names/ids/status are internal; only the aggregated metrics are public.
-    const publicComponents = components.map((component) => ({
-      ...component,
-      dailyMetrics: dailyMetrics
-        .filter((metric) => metric.componentId === component.id)
-        .map(({ date, totalChecks, successfulChecks }) => ({
-          date,
-          totalChecks,
-          successfulChecks,
-        })),
-    }));
+    const publicComponents = components.map(
+      ({ aggregationMethod, failureThreshold, ...component }) => {
+        const byDate = new Map<string, MonitorDayCounts[]>();
+        for (const metric of dailyMetrics) {
+          if (metric.componentId !== component.id) continue;
+          const day = byDate.get(metric.date) ?? [];
+          day.push(metric);
+          byDate.set(metric.date, day);
+        }
+        return {
+          ...component,
+          dailyMetrics: [...byDate].map(([date, monitors]) => ({
+            date,
+            ...combineMonitorDay(monitors, aggregationMethod, failureThreshold),
+          })),
+        };
+      },
+    );
 
     return {
       success: true,

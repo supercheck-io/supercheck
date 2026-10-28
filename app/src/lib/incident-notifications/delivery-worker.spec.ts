@@ -26,20 +26,3 @@ describe("delivery retention window", () => {
     },
   );
 });
-
-describe("subscriber sweep", () => {
-  it("also drops unverified rows that never completed verification", async () => {
-    const where = jest.fn();
-    jest.resetModules();
-    jest.doMock("@/utils/db", () => ({
-      db: { delete: () => ({ where: (w: unknown) => (where(w), Promise.resolve()) }) },
-    }));
-    const { purgeStaleSubscribers } = await import("./delivery-worker");
-    await purgeStaleSubscribers();
-    const { PgDialect } = await import("drizzle-orm/pg-core");
-    const { sql: text } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
-    expect(text).toMatch(/"purge_at" < \$\d/);
-    expect(text).toMatch(/"verified_at" is null/);
-    expect(text).toMatch(/"updated_at" < \$\d/);
-  });
-});

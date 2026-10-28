@@ -66,9 +66,6 @@ type StatusPage = {
   cssOranges: string | null;
   cssBlues: string | null;
   cssReds: string | null;
-  cssBodyBackgroundColor?: string | null;
-  cssFontColor?: string | null;
-  cssNoData?: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   language: string | null;
@@ -320,7 +317,7 @@ export function PublicStatusPage({
               className="h-6 sm:h-8 md:h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
                 backgroundColor:
-                  day.status === "nodata" ? statusPage.cssNoData || "#9ca3af" : getBarColor(day),
+                  day.status === "nodata" ? "#9ca3af" : getBarColor(day),
               }}
               onMouseEnter={() => setHoveredDay(index)}
               onMouseLeave={() => setHoveredDay(null)}
@@ -374,10 +371,6 @@ export function PublicStatusPage({
       dir={activeLanguage === "ar" ? "rtl" : "ltr"}
       lang={activeLanguage}
       className="min-h-screen bg-gray-50 dark:bg-gray-950"
-      style={{
-        backgroundColor: statusPage.cssBodyBackgroundColor || undefined,
-        color: statusPage.cssFontColor || undefined,
-      }}
     >
       {/* Header */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">

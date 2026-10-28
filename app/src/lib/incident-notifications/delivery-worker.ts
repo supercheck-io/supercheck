@@ -115,35 +115,15 @@ export async function enqueuePendingDeliveries(queue: Queue) {
       .set({ enqueuedAt: new Date() })
       .where(inArray(deliveries.id, queuedIds));
   }
-  await purgeStaleSubscribers();
+  // Completed unsubscribe grace periods have no remaining delivery entitlement.
+  await db
+    .delete(statusPageSubscribers)
+    .where(lt(statusPageSubscribers.purgeAt, new Date()));
   // The scheduler ticks every 10 seconds; retention only needs an hourly pass.
   if (Date.now() - lastRetentionRunAt >= RETENTION_INTERVAL_MS) {
     lastRetentionRunAt = Date.now();
     await deleteExpiredDeliveries(resolveDeliveryRetentionDays());
   }
-}
-
-/** Unverified rows past their verification window are dead weight and a mail-bomb target. */
-const UNVERIFIED_SUBSCRIBER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-export async function purgeStaleSubscribers() {
-  const now = new Date();
-  await db
-    .delete(statusPageSubscribers)
-    .where(
-      or(
-        // Completed unsubscribe grace periods have no remaining delivery entitlement.
-        lt(statusPageSubscribers.purgeAt, now),
-        and(
-          isNull(statusPageSubscribers.verifiedAt),
-          isNull(statusPageSubscribers.purgeAt),
-          lt(
-            statusPageSubscribers.updatedAt,
-            new Date(now.getTime() - UNVERIFIED_SUBSCRIBER_TTL_MS),
-          ),
-        ),
-      ),
-    );
 }
 
 async function expandPendingEvents(limit: number): Promise<number> {

@@ -25,11 +25,3 @@ it("renders the maintenance window of a scheduled incident", () => {
   render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident]} idOrSubdomain="page" />);
   expect(screen.getByText(/Jan 5, 2030, 02:00 AM UTC.*04:00 AM UTC/)).toBeInTheDocument();
 });
-
-it("applies the stored body background, font and no-data colours", () => {
-  const { container } = render(<PublicStatusPage statusPage={{ ...page, cssBodyBackgroundColor: "#112233", cssFontColor: "#445566", cssNoData: "#778899" }} components={[component]} incidents={[]} idOrSubdomain="page" />);
-  const root = container.firstChild as HTMLElement;
-  expect(root.style.backgroundColor).toBe("rgb(17, 34, 51)");
-  expect(root.style.color).toBe("rgb(68, 85, 102)");
-  expect(container.querySelector('[style*="rgb(119, 136, 153)"]')).not.toBeNull();
-});
