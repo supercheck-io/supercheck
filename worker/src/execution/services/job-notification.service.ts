@@ -187,10 +187,9 @@ export class JobNotificationService {
         ),
       );
 
-      // A timeout still counts as a failed run unless the job has its own timeout alert.
+      // A timeout is a failed run for the streak; alertOnTimeout only picks the alert type.
       const normalizedStatus =
-        finalStatus === 'error' ||
-        (finalStatus === 'timeout' && !alertConfig.alertOnTimeout)
+        finalStatus === 'error' || finalStatus === 'timeout'
           ? 'failed'
           : finalStatus;
 
@@ -226,9 +225,11 @@ export class JobNotificationService {
         normalizedStatus === 'passed' &&
         consecutiveSuccesses >= alertConfig.recoveryThreshold;
 
-      // With alertOnTimeout, timeouts are not counted in the failure streak above, so they are not capped here.
+      // Same threshold, cadence and cap as failures; only the alert type differs.
       const shouldNotifyTimeout =
-        alertConfig.alertOnTimeout && finalStatus === 'timeout';
+        alertConfig.alertOnTimeout &&
+        finalStatus === 'timeout' &&
+        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
 
       if (
         !shouldNotifyFailure &&
@@ -267,7 +268,7 @@ export class JobNotificationService {
         alertType = 'job_timeout';
         severity = 'warning';
         title = `Job Timeout - ${job.name}`;
-        message = `Job "${job.name}" timed out after ${safeDuration} seconds. No ping received within expected interval.`;
+        message = `Job "${job.name}" timed out after ${safeDuration} seconds.`;
       } else if (shouldNotifyFailure) {
         payloadType = 'job_failed';
         alertType = 'job_failed';

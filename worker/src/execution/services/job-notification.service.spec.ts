@@ -200,6 +200,33 @@ describe('JobNotificationService', () => {
       }
     });
 
+    it.each([
+      [0, false],
+      [1, false],
+      [2, true], // third consecutive failed/timed-out run reaches threshold 3
+      [3, false],
+      [8, true], // reminder at threshold + 6
+      [14, true], // second reminder
+      [20, false], // capped at 3 alerts
+    ])(
+      'applies the failure threshold, cadence and cap to timeouts (%i prior failed runs -> %s)',
+      async (priorFailed, notifies) => {
+        const { service, dbService, notificationService } = createService();
+        (await dbService.getJobById()).alertConfig.failureThreshold = 3;
+        dbService.getRecentRunsForJob.mockResolvedValue(
+          Array.from({ length: priorFailed }, (_, i) => ({
+            id: `old-${i}`,
+            status: i % 2 ? 'error' : 'failed',
+          })),
+        );
+        await service.handleJobNotifications(params);
+        const calls =
+          notificationService.sendNotificationToMultipleProviders.mock.calls;
+        expect(calls).toHaveLength(notifies ? 1 : 0);
+        if (notifies) expect(calls[0][1].type).toBe('job_timeout');
+      },
+    );
+
     it('treats a timeout as an ordinary failure when alertOnTimeout is off', async () => {
       const { service, dbService, notificationService } = createService();
       (await dbService.getJobById()).alertConfig.alertOnTimeout = false;
