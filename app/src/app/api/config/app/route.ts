@@ -5,6 +5,7 @@ import {
   isSignupEnabled,
   isStatusPageBrandingHidden,
 } from "@/lib/feature-flags";
+import { getReportsOrigin } from "@/lib/reports-origin";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
 import {
   getStatusPageRuntimeConfig,
@@ -54,6 +55,9 @@ export async function GET(request: NextRequest) {
 
     // Remote MCP server (off by default): lets the UI offer "Connected apps" only where it exists
     mcp: { enabled: isMcpServerEnabled() },
+
+    // Reports are served from a separate cookieless origin (REPORTS_ORIGIN)
+    reports: { separateOrigin: getReportsOrigin() !== null },
 
     // Demo mode flag
     demoMode: process.env.DEMO_MODE === "true",

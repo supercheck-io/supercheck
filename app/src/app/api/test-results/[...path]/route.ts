@@ -16,9 +16,17 @@ import {
   resolveExecutionErrorDetails,
 } from "@/lib/report-results-utils";
 import {
+  getPermissionResource,
   getReportCacheControl,
   resolveAccessContext,
 } from "@/lib/test-results-access";
+import {
+  getAppOrigin,
+  getReportsOrigin,
+  isReportToken,
+  isReportsHost,
+  verifyReportToken,
+} from "@/lib/reports-origin";
 
 const DEFAULT_REPORT_ASSET_MAX_RETRIES = 2;
 const DEFAULT_REPORT_ASSET_RETRY_DELAY_MS = 250;
@@ -126,42 +134,58 @@ async function fetchReportAssetWithRecovery(
   }
 }
 
-function getPermissionResource(entityType: string): "test" | "monitor" | "run" | null {
-  if (entityType === "test") return "test";
-  if (entityType === "monitor") return "monitor";
-  if (entityType === "job" || entityType === "k6_test" || entityType === "k6_job") return "run";
-  return null;
-}
-
 export async function GET(request: Request) {
-  // Require authentication (supports both Bearer tokens and session cookies)
-  let userId: string;
-  let authContext: Awaited<ReturnType<typeof requireUserAuthContext>>;
-  try {
-    authContext = await requireUserAuthContext();
-    userId = authContext.userId;
-  } catch (error) {
-    if (isAuthError(error)) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
-      );
-    }
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
-  }
-
   // Extract path parameters from the URL
   const url = new URL(request.url);
   // Remove the initial part of the path to get the dynamic part
   const fullPath = url.pathname;
   const basePath = "/api/test-results/";
-  const path = fullPath
+  let path = fullPath
     .slice(basePath.length)
     .split("/")
     .filter((segment) => segment.length > 0);
+
+  // With REPORTS_ORIGIN set, report documents are served only from that cookieless host, authorized
+  // by a short-lived signed token in the first path segment instead of the session.
+  const reportsOrigin = getReportsOrigin();
+  let tokenGrant: { projectId: string } | null = null;
+  if (reportsOrigin) {
+    if (isReportsHost(request)) {
+      // The reports host never takes a session; the token is the only credential.
+      const [token, ...rest] = path;
+      const signedEntityId = rest[0] === "jobs" || rest[0] === "tests" ? rest[1] : rest[0];
+      tokenGrant =
+        isReportToken(token) && signedEntityId ? verifyReportToken(token, signedEntityId) : null;
+      if (!tokenGrant) {
+        return NextResponse.json({ error: "Invalid or expired report link" }, { status: 401 });
+      }
+      path = rest;
+    } else if (isReportToken(path[0])) {
+      // The app host never takes a token.
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
+  // Require authentication (supports both Bearer tokens and session cookies)
+  let userId: string | null = null;
+  let authContext: Awaited<ReturnType<typeof requireUserAuthContext>> | null = null;
+  if (!tokenGrant) {
+    try {
+      authContext = await requireUserAuthContext();
+      userId = authContext.userId;
+    } catch (error) {
+      if (isAuthError(error)) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Authentication required" },
+          { status: 401 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+  }
 
   // Extract URL parameters including our special forceIframe parameter
   const forceIframe = url.searchParams.get("forceIframe") === "true";
@@ -245,15 +269,17 @@ export async function GET(request: Request) {
           return notFound();
         }
 
-        if (!organizationId || !run.projectId || (authContext.isCliAuth && authContext.projectId !== run.projectId)) {
+        if (!organizationId || !run.projectId || (authContext?.isCliAuth && authContext.projectId !== run.projectId)) {
           return notFound();
         }
 
         try {
-          const authorized = await hasPermissionForUser(userId, "run", "view", {
-            organizationId,
-            projectId: run.projectId,
-          });
+          const authorized = tokenGrant
+            ? tokenGrant.projectId === run.projectId
+            : await hasPermissionForUser(userId!, "run", "view", {
+                organizationId,
+                projectId: run.projectId,
+              });
 
           if (!authorized) {
             return NextResponse.json(
@@ -331,14 +357,16 @@ export async function GET(request: Request) {
       entityId
     );
 
-    if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId || (authContext.isCliAuth && authContext.projectId !== accessContext.projectId)) {
+    if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId || (authContext?.isCliAuth && authContext.projectId !== accessContext.projectId)) {
       return notFound();
     }
 
-    const authorized = await hasPermissionForUser(userId, permissionResource, "view", {
-      organizationId: accessContext.organizationId,
-      projectId: accessContext.projectId,
-    });
+    const authorized = tokenGrant
+      ? tokenGrant.projectId === accessContext.projectId
+      : await hasPermissionForUser(userId!, permissionResource, "view", {
+          organizationId: accessContext.organizationId,
+          projectId: accessContext.projectId,
+        });
 
     if (!authorized) {
       return NextResponse.json(
@@ -465,6 +493,13 @@ export async function GET(request: Request) {
       headers.set("Cache-Control", getReportCacheControl());
       headers.set("X-Content-Type-Options", "nosniff");
 
+      if (tokenGrant) {
+        // Only the app may embed a report served from the reports origin.
+        const appOrigin = getAppOrigin();
+        headers.set("Content-Security-Policy", `frame-ancestors ${appOrigin ?? "'none'"}`);
+        headers.set("Referrer-Policy", "no-referrer");
+      }
+
       // Only include Content-Disposition for downloads if not forcing iframe display
       const contentType = (headers.get("Content-Type") || "application/octet-stream")
         .split(";")[0]
@@ -478,6 +513,19 @@ export async function GET(request: Request) {
         headers.set(
           "Content-Disposition",
           `inline; filename="${targetFile.split("/").pop()}"`
+        );
+      }
+
+      // With a reports origin, the app host must not serve documents that can run script.
+      if (
+        reportsOrigin &&
+        !tokenGrant &&
+        (/^(?:text\/(?:html|xml)|application\/(?:xhtml\+xml|xml)|image\/svg\+xml)$/.test(contentType) ||
+          /\.(?:html?|xhtml|svg|xml)$/i.test(targetFile))
+      ) {
+        return NextResponse.json(
+          { error: "Report documents are served from the reports origin" },
+          { status: 404 }
         );
       }
 

@@ -81,6 +81,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # migration 0036 and BETTER_AUTH_URL set to the public HTTPS URL.
   MCP_SERVER_ENABLED: ${MCP_SERVER_ENABLED:-false}
   MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+  REPORTS_ORIGIN: ${REPORTS_ORIGIN:-}
   MCP_DYNAMIC_CLIENT_REGISTRATION: ${MCP_DYNAMIC_CLIENT_REGISTRATION:-true}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)
