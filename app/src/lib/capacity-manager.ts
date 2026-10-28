@@ -639,6 +639,10 @@ export class CapacityManager {
       const limits = await checkCapacityLimits(organizationId);
       const raw = await redis.get(jobDataKey);
       if (!raw) {
+        // addToQueue writes the payload just after the atomic reservation adds the member: a fresh entry is
+        // not lost yet.
+        const queuedAt = Number(await redis.zscore(queuedKey, jobId));
+        if (Number.isFinite(queuedAt) && Date.now() - queuedAt < 60_000) return false;
         // The payload expired or was lost: leaving the run 'queued' would block its schedule forever.
         await this.discardUnreadableJob(organizationId, jobId, 'The queued run payload was lost and the run was discarded');
         return false;
@@ -1255,7 +1259,8 @@ export async function reconcileCapacityCounters(
         pendingDrift.delete(orgId);
         continue;
       }
-      const seen = `${stored}:${actual}`;
+      // The sign, not the exact values: counters move between passes, a leaked slot does not.
+      const seen = drift > 0 ? 'over' : 'under';
       if (autoCorrect && pendingDrift.get(orgId) !== seen) {
         pendingDrift.set(orgId, seen);
         continue;

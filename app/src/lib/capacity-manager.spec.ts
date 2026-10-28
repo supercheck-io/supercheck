@@ -50,6 +50,7 @@ const mockRedisZcard = jest.fn();
 const mockRedisZrange = jest.fn();
 const mockRedisZrem = jest.fn();
 const mockRedisZrank = jest.fn();
+const mockRedisZscore = jest.fn();
 
 const mockRedis: Record<string, unknown> = {
   eval: mockRedisEval,
@@ -67,6 +68,7 @@ const mockRedis: Record<string, unknown> = {
   zrange: mockRedisZrange,
   zrem: mockRedisZrem,
   zrank: mockRedisZrank,
+  zscore: mockRedisZscore,
   status: 'ready',
 };
 
@@ -220,10 +222,20 @@ describe('CapacityManager', () => {
 
       it('fails the run when the payload is missing, instead of leaving it queued forever', async () => {
         mockRedisGet.mockResolvedValue(null);
+        mockRedisZscore.mockResolvedValue(String(Date.now() - 10 * 60_000));
         const { db } = jest.requireMock('@/utils/db');
         db.update.mockClear();
         expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
         expect(db.update).toHaveBeenCalled();
+      });
+
+      it('leaves a just-queued entry alone while its payload is still being written', async () => {
+        mockRedisGet.mockResolvedValue(null);
+        mockRedisZscore.mockResolvedValue(String(Date.now() - 1000));
+        const { db } = jest.requireMock('@/utils/db');
+        db.update.mockClear();
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(db.update).not.toHaveBeenCalled();
       });
 
       it('is left alone when another promoter already removed it', async () => {
@@ -1104,6 +1116,17 @@ describe('Reconciliation', () => {
     expect(mockRedisSet).not.toHaveBeenCalled();
     await reconcileCapacityCounters(mockQueues, true);
     expect(mockRedisSet).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs a leaked slot even when the counters keep moving between passes', async () => {
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-leak' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-leak']]);
+    mockRedisGet.mockResolvedValueOnce('4');
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-leak' } }, { id: 'k', data: { organizationId: 'org-leak' } }]);
+    mockRedisGet.mockResolvedValueOnce('5');
+    await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
+    expect(mockRedisSet).toHaveBeenCalledWith('capacity:running:org-leak', '2', expect.any(String), expect.any(Number));
   });
 
   it('pages large queues and deduplicates jobs that move across mutable pages', async () => {

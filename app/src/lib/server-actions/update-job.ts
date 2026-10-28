@@ -263,7 +263,8 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       }
     }
 
-    if (jobType === "k6" && testIds.length > 1) {
+    // Only when the caller supplies tests: a legacy multi-test k6 job must stay editable otherwise.
+    if (jobType === "k6" && validatedData.tests && testIds.length > 1) {
       return { success: false, message: "A k6 job runs exactly one performance test." };
     }
 

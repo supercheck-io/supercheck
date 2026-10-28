@@ -291,6 +291,7 @@ describe("scheduled job bookkeeping", () => {
     organizationId: "org-1",
     jobType: "playwright",
     cronSchedule: "*/5 * * * *",
+    status: "idle",
   };
   const sets: Array<Record<string, unknown>> = [];
 
@@ -317,7 +318,7 @@ describe("scheduled job bookkeeping", () => {
     expect(sets).toContainEqual(expect.objectContaining({ nextRunAt: expect.any(Date) }));
   });
 
-  it("does not leave the job 'running' when enqueueing fails", async () => {
+  it("restores the job status when enqueueing fails", async () => {
     const { prepareJobTestScripts } = jest.requireMock("@/lib/job-execution-utils");
     prepareJobTestScripts.mockResolvedValue({
       testScripts: [{ id: "t1", name: "T", script: "x", type: "browser" }],
@@ -329,6 +330,6 @@ describe("scheduled job bookkeeping", () => {
     const { addJobToQueue } = jest.requireMock("@/lib/queue");
     addJobToQueue.mockRejectedValue(new Error("queue down"));
     await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: false });
-    expect(sets).not.toContainEqual(expect.objectContaining({ status: "running" }));
+    expect(sets).toContainEqual({ status: "idle" });
   });
 });

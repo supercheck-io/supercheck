@@ -849,7 +849,7 @@ export async function PUT(request: Request) {
     );
     if (!result.success) {
       return NextResponse.json(
-        { success: false, error: result.message ?? "Failed to update job" },
+        { success: false, error: result.message ?? (typeof result.error === "string" ? result.error : "Failed to update job") },
         { status: 400 }
       );
     }
@@ -861,6 +861,8 @@ export async function PUT(request: Request) {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
+        nextRunAt: result.job?.nextRunAt ?? null,
+        ...(result.job?.warning ? { warning: result.job.warning } : {}),
       },
     });
   } catch (error) {

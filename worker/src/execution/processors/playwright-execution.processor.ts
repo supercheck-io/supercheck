@@ -738,6 +738,7 @@ export class PlaywrightExecutionProcessor
           projectId: jobData.projectId,
           runId,
           finalStatus: 'error',
+          cancelled: isCancellation,
           durationSeconds: elapsedSeconds,
           results: [{ success: false }],
           jobType: jobData.jobType ?? 'playwright',

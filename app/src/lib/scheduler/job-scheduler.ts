@@ -294,6 +294,8 @@ export async function processScheduledJob(
       };
 
       try {
+        // Before enqueueing: a fast worker may finish and set the final status before we return.
+        await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, jobId));
         const result = await addK6JobToQueue(k6Task, 'k6-job-execution');
         logger.info(
           { jobId, runId, status: result.status, position: result.position },
@@ -307,6 +309,7 @@ export async function processScheduledJob(
         // If 'queued', status is already 'queued'
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue k6 job');
+        await db.update(jobs).set({ status: jobRecord.status }).where(eq(jobs.id, jobId));
         await db
           .update(runs)
           .set({
@@ -333,6 +336,8 @@ export async function processScheduledJob(
       };
 
       try {
+        // Before enqueueing: a fast worker may finish and set the final status before we return.
+        await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, jobId));
         const result = await addJobToQueue(playwrightTask);
         logger.info(
           { jobId, runId, status: result.status, position: result.position },
@@ -345,6 +350,7 @@ export async function processScheduledJob(
         }
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue Playwright job');
+        await db.update(jobs).set({ status: jobRecord.status }).where(eq(jobs.id, jobId));
         await db
           .update(runs)
           .set({
@@ -356,9 +362,6 @@ export async function processScheduledJob(
         return { success: false };
       }
     }
-
-    // Only now is there a run in flight; setting this earlier left the job 'running' after a failed enqueue.
-    await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, jobId));
 
     return { success: true };
   } catch (error) {

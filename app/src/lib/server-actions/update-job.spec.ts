@@ -97,6 +97,15 @@ describe("saving a job", () => {
     expect(result).toEqual(expect.objectContaining({ success: false, message: expect.stringContaining("exactly one") }));
   });
 
+  it("still lets a legacy multi-test k6 job be edited when its tests are not changed", async () => {
+    mockSelect
+      .mockReturnValueOnce(rows([{ id: input.jobId, jobType: "k6", cronSchedule: null, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(rows([{ id: TEST_A }, { id: TEST_B }]))
+      .mockReturnValueOnce(rows([{ id: TEST_A, type: "performance" }, { id: TEST_B, type: "performance" }]));
+    const result = await updateJob(input, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+  });
+
   it("writes the job and its tests in one transaction", async () => {
     arrange("playwright", [{ id: TEST_A, type: "browser" }]);
     const result = await updateJob({ ...input, tests: [{ id: TEST_A }] }, context);

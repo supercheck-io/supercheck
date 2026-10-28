@@ -482,6 +482,11 @@ export class DbService implements OnModuleInit {
         .where(
           and(
             eq(schema.runs.jobId, jobId),
+            // A user-cancelled run is neither a failure nor a pass for streaks.
+            or(
+              isNull(schema.runs.errorDetails),
+              ne(schema.runs.errorDetails, RUN_CANCELLATION_MARKER),
+            ),
             inArray(sql<string>`${schema.runs.status}`, [
               'passed',
               'failed',
