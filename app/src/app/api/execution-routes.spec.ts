@@ -871,6 +871,8 @@ describe("Execution route regressions", () => {
       const testId = "b6c7d749-56f1-509f-96c4-8234bc8c0244";
       mockDb.select
         .mockReturnValueOnce(rows([{ organizationId: "org-1", projectId: "project-1", jobType: "playwright", name: "Nightly" }]))
+        // The job's saved tests are read from job_tests before each test is ownership-checked.
+        .mockReturnValueOnce({ from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ orderBy: jest.fn().mockResolvedValue([{ id: testId }]) }) }) })
         .mockReturnValueOnce(rows([{ id: testId, title: "Test 1", type: "playwright", script: Buffer.from("test('x', () => {})").toString("base64") }]));
       const jobUtils = jest.requireMock("@/lib/job-execution-utils") as { decodeTestScript: jest.Mock; applyVariablesToTestScripts: jest.Mock };
       jobUtils.decodeTestScript.mockResolvedValue("test('x', () => {})");
