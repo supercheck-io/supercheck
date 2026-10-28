@@ -1,4 +1,5 @@
 import './global.css';
+import { OG_IMAGE } from "../lib/assets";
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import { Inter } from 'next/font/google';
 import SearchDialogWrapper from '../components/search';
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/screenshots/playground-editor.png',
+        url: OG_IMAGE,
         width: 1200,
         height: 630,
         alt: 'Supercheck - Open-source testing, monitoring, and AI SRE — as code',
@@ -36,7 +37,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Supercheck',
     description: 'Open-source testing, monitoring, and AI SRE — as code',
-    images: ['/screenshots/playground-editor.png'],
+    images: [OG_IMAGE],
   },
 };
 
@@ -47,7 +48,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
         <RootProvider
           search={{ SearchDialog: SearchDialogWrapper }}
           theme={{
-            defaultTheme: 'system',
+            defaultTheme: 'light',
             enableSystem: true,
           }}
         >{children}</RootProvider>

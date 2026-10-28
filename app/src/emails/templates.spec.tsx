@@ -24,7 +24,7 @@ const cases: Array<[string, React.ReactElement, string[]]> = [
   ["status-page-welcome", <StatusPageWelcomeEmail key="e" statusPageName="Acme Status" statusPageUrl="https://s.io" unsubscribeUrl="https://s.io/unsub" />, ["https://s.io/unsub", "Acme Status"]],
   ["incident-notification", <IncidentNotificationEmail key="f" statusPageName="Acme Status" statusPageUrl="https://s.io" incidentName="DB down" incidentStatus="investigating" incidentImpact="major" incidentDescription="Looking" affectedComponents={["API"]} updateTimestamp="now" unsubscribeUrl="https://s.io/unsub" />, ["DB down", "https://s.io/unsub", "API"]],
   ["monitor-alert", <MonitorAlertEmail key="g" title="Down" message="API down" fields={[{ title: "Monitor", value: "API" }]} footer="Supercheck Monitoring System" type="failure" incidentsUrl="https://app.io/incidents" />, ["API down", "View incidents", "https://app.io/incidents"]],
-  ["incident-update", <IncidentUpdateEmail key="h" event="created" incidentNumber={7} title="Checkout failing" severity="sev1" statusLabel="Open" serviceName="Checkout" detail="<b>x</b>" incidentUrl="https://app.io/incidents/7" />, ["Open incident #7", "SEV1", "Checkout failing", "&lt;b&gt;x&lt;/b&gt;", "https://app.io/incidents/7"]],
+  ["incident-update", <IncidentUpdateEmail key="h" event="created" incidentNumber={7} title="Checkout failing" severity="sev1" statusLabel="Open" serviceName="Checkout" detail="<b>x</b>" incidentUrl="https://app.io/incidents/7" assigneeName="Ada" actorName="Grace" />, ["Open incident #7", "SEV1", "Checkout failing", "&lt;b&gt;x&lt;/b&gt;", "https://app.io/incidents/7", "Incident details", "Ada", "Grace", "Supercheck"]],
   ["test-email", <TestEmail key="i" />, ["Supercheck"]],
 ];
 
