@@ -219,7 +219,7 @@ async function sendToProvider(
             title: escapeSlack(heading),
             title_link: message.url,
             text: escapeSlack(message.body),
-            fields: message.fields.map((field) => ({ title: field.title, value: escapeSlack(field.value), short: true })),
+            fields: message.fields.map((field) => ({ title: escapeSlack(field.title), value: escapeSlack(field.value), short: true })),
             footer: "Supercheck",
             ts: Math.floor(Date.now() / 1000),
           },
