@@ -636,6 +636,19 @@ describe('read-only and operational commands', () => {
       expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('requirement/Login: test reference "gone.pw.ts" matches no local test file'))
     })
 
+    it('warns when a job cron is not 5 fields', async () => {
+      mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
+      mockBuildLocalResources.mockReturnValueOnce([
+        { type: 'job', name: 'Fast', definition: { cronSchedule: '* * * * * *' } },
+        { type: 'job', name: 'Ok', definition: { cronSchedule: '*/5 * * * *' } },
+      ])
+
+      await validateCommand.parseAsync(['node', 'validate'])
+
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('Job "Fast": cronSchedule "* * * * * *" is not a 5-field'))
+      expect(mockWarn).not.toHaveBeenCalledWith(expect.stringContaining('Job "Ok"'))
+    })
+
     it('rejects a status page with duplicate component names before any network call', async () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([
