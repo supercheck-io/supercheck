@@ -344,6 +344,16 @@ function formatParameterValue(value: DiagnosticQueryParameterValue) {
   return String(value);
 }
 
+// Values are spliced into the template verbatim, so free-text strings (no pattern, enum or allowlist)
+// must not carry query syntax that could escape the template's label/field constraints.
+const UNSAFE_FREE_TEXT = /["'`{}\\\n\r;]/;
+function rejectUnsafeFreeText(name: string, value: DiagnosticQueryParameterValue, schemaValue: unknown, allowlistValue: unknown) {
+  if (typeof value !== "string" || !UNSAFE_FREE_TEXT.test(value)) return;
+  const schema = normalizeParameterSchemaEntry(name, schemaValue);
+  if (schema?.pattern || schema?.enum || (Array.isArray(allowlistValue) && allowlistValue.length > 0)) return;
+  throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
+}
+
 function parameterDefault(name: string, schemaValue: unknown): DiagnosticQueryParameterValue | undefined {
   const schema = normalizeParameterSchemaEntry(name, schemaValue);
   if (!schema || !("default" in schema)) {
@@ -469,6 +479,7 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name]);
     referencedParameters.add(name);
     return formatParameterValue(value);
   });
