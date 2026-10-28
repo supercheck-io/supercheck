@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
-import { PUT } from "./route";
+import { DELETE, GET, PUT } from "./route";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -62,5 +63,17 @@ describe("PUT /api/projects/[id]", () => {
   it("denies callers without project:update", async () => {
     (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
     expect((await put({ name: "x" })).status).toBe(403);
+  });
+});
+
+describe("deleted projects", () => {
+  it.each([["GET", GET], ["DELETE", DELETE]] as const)("%s filters deleted projects out of the lookup", async (_n, handler) => {
+    let whereSql = "";
+    (db.select as jest.Mock).mockReturnValue({
+      from: () => ({ where: (w: never) => { whereSql = new PgDialect().sqlToQuery(w).sql; return { limit: async () => [] }; } }),
+    });
+    const res = await handler(new NextRequest(`http://localhost/api/projects/${ID}`), { params: Promise.resolve({ id: ID }) });
+    expect(res.status).toBe(404);
+    expect(whereSql).toContain('"status"');
   });
 });

@@ -44,7 +44,7 @@ export async function GET(
         updatedAt: projects.updatedAt
       })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
@@ -213,7 +213,7 @@ export async function DELETE(
     const projectData = await db
       .select({ organizationId: projects.organizationId, isDefault: projects.isDefault })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
