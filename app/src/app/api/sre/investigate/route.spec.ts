@@ -164,12 +164,37 @@ describe("SRE investigate API", () => {
     expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
   });
 
-  it("runs investigation and enables live connectors only with connector permission", async () => {
+  it("rejects live connectors with 403 when the caller lacks connector permission", async () => {
     mockCheckPermissionWithContext
       .mockReturnValueOnce(true)
       .mockReturnValueOnce(true)
       .mockReturnValueOnce(false);
 
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005", useLiveConnectors: true }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Insufficient permissions to use live connectors in an investigation" });
+    expect(mockStartSreIncidentInvestigation).not.toHaveBeenCalled();
+  });
+
+  it("still runs without live connectors when the caller lacks connector permission", async () => {
+    mockCheckPermissionWithContext.mockImplementation((resource: string) => resource !== "sre_connector");
+
+    const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
+      method: "POST",
+      body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005" }),
+    }));
+
+    expect(response.status).toBe(202);
+    expect(mockStartSreIncidentInvestigation).toHaveBeenCalledWith(
+      expect.objectContaining({ enableLiveConnectors: false }),
+    );
+  });
+
+  it("runs investigation and enables live connectors with connector permission", async () => {
     const response = await POST(new NextRequest("http://localhost/api/sre/investigate", {
       method: "POST",
       body: JSON.stringify({ incidentId: "018f0000-0000-7000-8000-000000000005", useLiveConnectors: true }),
@@ -187,7 +212,7 @@ describe("SRE investigate API", () => {
       organizationId: context.organizationId,
       projectId: context.project.id,
       incidentId: "018f0000-0000-7000-8000-000000000005",
-      enableLiveConnectors: false,
+      enableLiveConnectors: true,
       guidance: undefined,
     });
     await flushAfterTasks();
@@ -199,7 +224,7 @@ describe("SRE investigate API", () => {
         organizationId: context.organizationId,
         projectId: context.project.id,
         incidentId: "018f0000-0000-7000-8000-000000000005",
-        enableLiveConnectors: false,
+        enableLiveConnectors: true,
         guidance: undefined,
       },
     );
