@@ -1,3 +1,4 @@
+import { isValidAutoConnectPayload } from '../../examples/recorder-crx/src/supercheck/message-security';
 import { expect, test } from '@playwright/test';
 import { autoConnect, canAutoConnect, clearConfig, getConfig, saveConfig } from '../../examples/recorder-crx/src/supercheck/config';
 
@@ -91,4 +92,10 @@ test('only offers auto-connect to a page the saved instance allows', () => {
   expect(canAutoConnect('https://app.supercheck.io', 'https://demo.supercheck.dev')).toBe(true);
   expect(canAutoConnect('https://sc.corp.example', 'https://sc.corp.example')).toBe(true);
   expect(canAutoConnect('https://sc.corp.example', 'https://app.supercheck.io')).toBe(false);
+});
+
+test('rejects a non-string key id in the auto-connect payload', () => {
+  const origin = 'https://app.supercheck.io';
+  expect(isValidAutoConnectPayload({ ...payload, keyId: 'key-1' }, origin)).toBe(true);
+  expect(isValidAutoConnectPayload({ ...payload, keyId: 42 }, origin)).toBe(false);
 });

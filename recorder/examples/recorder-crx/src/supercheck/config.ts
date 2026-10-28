@@ -106,7 +106,11 @@ export function isSameInstance(first?: string, second?: string): boolean {
 
 /** A saved self-hosted instance is never replaced silently: switching needs the options page. */
 export function canAutoConnect(savedInstanceUrl: string, pageOrigin: string): boolean {
-  return isSupercheckCloudOrigin(new URL(savedInstanceUrl).origin) || isSameInstance(savedInstanceUrl, pageOrigin);
+  try {
+    return isSupercheckCloudOrigin(new URL(savedInstanceUrl).origin) || isSameInstance(savedInstanceUrl, pageOrigin);
+  } catch {
+    return false;
+  }
 }
 
 /** Store the credential handed over by a Supercheck page. */

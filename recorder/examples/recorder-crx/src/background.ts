@@ -26,6 +26,7 @@ import type { RecordingContextPayload } from './supercheck/message-security';
 type StoredRecordingContext = RecordingContextPayload & {
   sourceTabId?: number;
   sourceOrigin?: string;
+  startedAt?: number;
   pendingStart?: boolean;
 };
 
@@ -189,7 +190,9 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     const { recordingContext } = await chrome.storage.session.get<{ recordingContext?: StoredRecordingContext }>('recordingContext');
     let targetUrl = 'about:blank';
 
-    if (recordingContext?.pendingStart) {
+    // A start request older than this is stale (e.g. the user never clicked the icon).
+    const pendingStart = !!recordingContext?.pendingStart && Date.now() - (recordingContext.startedAt ?? 0) < 5 * 60_000;
+    if (recordingContext && pendingStart) {
       if (recordingContext.targetUrl && recordingContext.targetUrl !== 'about:blank')
         targetUrl = recordingContext.targetUrl;
 
@@ -227,10 +230,11 @@ async function attach(tab: chrome.tabs.Tab, mode?: Mode) {
     await crxApp.attach(tab.id!);
 
     // Consume the pending start only once recording is attached, so a failed attach can be retried.
-    if (recordingContext?.pendingStart) {
-      await chrome.storage.session.set({
-        recordingContext: { ...recordingContext, pendingStart: false }
-      });
+    // Re-read so a context stored meanwhile is never overwritten with the old snapshot.
+    if (pendingStart) {
+      const { recordingContext: latest } = await chrome.storage.session.get<{ recordingContext?: StoredRecordingContext }>('recordingContext');
+      if (latest?.startedAt === recordingContext?.startedAt)
+        await chrome.storage.session.set({ recordingContext: { ...latest, pendingStart: false } });
     }
 
     if (mode)

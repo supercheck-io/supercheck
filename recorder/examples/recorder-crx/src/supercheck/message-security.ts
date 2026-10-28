@@ -78,6 +78,7 @@ export function isValidAutoConnectPayload(
   if (
     typeof payload.instanceUrl !== 'string' ||
     typeof payload.apiKey !== 'string' || !payload.apiKey.trim() ||
+    (payload.keyId !== undefined && typeof payload.keyId !== 'string') ||
     typeof payload.userId !== 'string' || !payload.userId.trim() ||
     typeof payload.userEmail !== 'string' || !payload.userEmail.trim()
   )

@@ -231,6 +231,16 @@ export async function POST(request: NextRequest) {
 
       // The extension holds no usable key (reinstall, new profile, lost response):
       // mint a new one and retire the oldest beyond the cap.
+      const stale = existingKeys.slice(
+        0,
+        Math.max(0, existingKeys.length - (MAX_ENABLED_EXTENSION_KEYS - 1))
+      );
+      if (stale.length > 0) {
+        await tx
+          .update(apikey)
+          .set({ enabled: false })
+          .where(inArray(apikey.id, stale.map((key) => key.id)));
+      }
       const newKey = await apiKeyServerApi.createApiKey({
         // Do not pass request headers: Better Auth treats permissions as a
         // server-only property whenever headers/request context are present.
@@ -242,16 +252,6 @@ export async function POST(request: NextRequest) {
           permissions: EXTENSION_API_KEY_PERMISSIONS,
         },
       });
-      const stale = existingKeys.slice(
-        0,
-        Math.max(0, existingKeys.length - (MAX_ENABLED_EXTENSION_KEYS - 1))
-      );
-      if (stale.length > 0) {
-        await tx
-          .update(apikey)
-          .set({ enabled: false })
-          .where(inArray(apikey.id, stale.map((key) => key.id)));
-      }
       return { keyId: newKey.id, apiKey: newKey.key };
     });
 
