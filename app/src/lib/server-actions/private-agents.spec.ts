@@ -17,7 +17,9 @@ jest.mock("@/lib/rbac/middleware", () => ({
 const mockFindFirst = jest.fn();
 jest.mock("@/utils/db", () => ({ db: { transaction: (...a: unknown[]) => mockTransaction(...a), query: { privateAgents: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } } } }));
 
-import { registerPrivateAgent, rotatePrivateAgentToken } from "./private-agents";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { disablePrivateAgent, registerPrivateAgent, rotatePrivateAgentToken } from "./private-agents";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -59,5 +61,19 @@ describe("org-wide Private Agents", () => {
     const result = await rotatePrivateAgentToken({ id: "00000000-0000-4000-8000-000000000001" });
     expect(result.success).toBe(false);
     expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])("disable: org-level permission=%s may target org-wide agents=%s", async (orgLevel, includesOrgWide) => {
+    mockCan.mockImplementation((resource: string) => resource === "sre_connector" || (orgLevel && resource === "organization"));
+    let condition: SQL | undefined;
+    mockTransaction.mockImplementation(async (fn) => fn({
+      update: () => ({ set: () => ({ where: (c: SQL) => { condition = c; return { returning: async () => [] }; } }) }),
+    }));
+    await disablePrivateAgent({ id: "00000000-0000-4000-8000-000000000001" });
+    const text = new PgDialect().sqlToQuery(condition as SQL).sql;
+    expect(/is null/i.test(text)).toBe(includesOrgWide);
   });
 });

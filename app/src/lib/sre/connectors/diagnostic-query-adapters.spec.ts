@@ -156,7 +156,7 @@ describe("diagnostic query adapters", () => {
       expect(renderDiagnosticQueryTemplate(def({ service: { type: "string" } }), { service: "checkout-api" }).query).toContain('service="checkout-api"');
     });
 
-    it("trusts values constrained by a pattern", () => {
+    it("still enforces a schema pattern", () => {
       expect(() => renderDiagnosticQueryTemplate(def({ service: { type: "string", pattern: "^[a-z-]+$" } }), { service: payload })).toThrow();
     });
   });
