@@ -281,6 +281,24 @@ export async function checkSreAttachmentUploadRateLimit(
 }
 
 /**
+ * Rate limit incident lifecycle writes (assign, acknowledge, resolve, update).
+ * Per-user, per-incident: max 30 per minute. Unlike the AI limiters this fails
+ * OPEN when Redis is unavailable: these are cheap writes an on-call engineer must
+ * be able to make during an outage, and the failure is already logged.
+ */
+export async function checkSreIncidentUpdateRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<SreRateLimitResult> {
+  const result = await checkSreRateLimit(
+    `incident-update:${userId}:${incidentId}`,
+    30,
+    60 * 1000,
+  );
+  return result.unavailable ? { allowed: true, remaining: 1 } : result;
+}
+
+/**
  * Rate limit investigation feedback submissions.
  * Per-user, per-investigation run: max 20 per 10 minutes.
  */
@@ -308,4 +326,14 @@ export async function checkSrePostmortemRateLimit(
     5,
     60 * 60 * 1000,
   );
+}
+
+/**
+ * Rate limit alert history writes (each accepted row can open or join an incident).
+ * Per-user: max 60 per minute.
+ */
+export async function checkSreAlertHistoryWriteRateLimit(
+  userId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(`alert-history-write:${userId}`, 60, 60 * 1000);
 }

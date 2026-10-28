@@ -423,9 +423,6 @@ export async function runSreEvidenceBriefGeneration(input: {
       await tx
         .update(sreIncidents)
         .set({
-          ...(collection.incident.status === "triggered"
-            ? { status: "investigating" as const }
-            : {}),
           rootCauseSummary: brief.summary,
           confidenceScore: String(brief.confidenceScore),
           updatedAt: new Date(),
@@ -435,6 +432,19 @@ export async function runSreEvidenceBriefGeneration(input: {
             eq(sreIncidents.id, input.incidentId),
             eq(sreIncidents.organizationId, input.organizationId),
             eq(sreIncidents.projectId, input.projectId),
+          ),
+        );
+
+      // Guarded: the incident may have been resolved while the brief was generating.
+      await tx
+        .update(sreIncidents)
+        .set({ status: "investigating" as const })
+        .where(
+          and(
+            eq(sreIncidents.id, input.incidentId),
+            eq(sreIncidents.organizationId, input.organizationId),
+            eq(sreIncidents.projectId, input.projectId),
+            eq(sreIncidents.status, "triggered"),
           ),
         );
 

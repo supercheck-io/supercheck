@@ -13,7 +13,7 @@ export const TestEmail = ({
     <BaseLayout
       preview="Test Email from Supercheck"
       title="Email Configuration Test"
-      headerColor="#3b82f6" // Blue-500
+      headerColor="#1d4ed8"
     >
       <Section style={contentSection}>
         <Text style={heading}>Email Test Successful</Text>

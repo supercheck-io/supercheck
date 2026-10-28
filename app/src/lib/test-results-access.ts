@@ -160,3 +160,10 @@ export async function resolveAccessContext(
 export function getReportCacheControl(): string {
   return "private, no-store, no-cache, must-revalidate";
 }
+
+export function getPermissionResource(entityType: string): "test" | "monitor" | "run" | null {
+  if (entityType === "test") return "test";
+  if (entityType === "monitor") return "monitor";
+  if (entityType === "job" || entityType === "k6_test" || entityType === "k6_job") return "run";
+  return null;
+}

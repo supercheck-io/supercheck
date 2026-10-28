@@ -1,6 +1,6 @@
 ---
-title: Alerts
-description: Multi-channel notifications for failures and recoveries
+title: Notifications
+description: Notification channels, alert rules, and delivery for failures and recoveries
 icon: BellRing
 ---
 
@@ -44,43 +44,26 @@ sequenceDiagram
 </div>
 </div>
 
-## Notification Providers
+## Set Up a Channel
 
-<Cards>
-<Card icon={<Mail className="text-rose-500" />} title="Email">
-Email alerts through your configured SMTP provider.
-</Card>
+<Brands names={["slack", "teams", "discord", "telegram", "webhook"]} />
 
-<Card icon={<MessageSquare className="text-purple-500" />} title="Slack">
-Send alerts to the channel configured by your Slack webhook.
-</Card>
+Email uses your SMTP provider; the others use the service's webhook or bot token.
 
-<Card icon={<Webhook className="text-orange-500" />} title="Webhook">
-JSON payloads to any HTTP endpoint for custom integrations
-</Card>
-
-<Card icon={<Send className="text-sky-500" />} title="Telegram">
-Bot messages to chats or groups with Markdown formatting
-</Card>
-
-<Card icon={<Hash className="text-indigo-500" />} title="Discord">
-Embedded messages to server channels with color-coded status
-</Card>
-
-<Card icon={<Users className="text-blue-500" />} title="Teams">
-Adaptive Card notifications via Power Automate workflows
-</Card>
-</Cards>
-
-## Setting Up Providers
-
-1. Go to **Notifications**
-2. Click **Create channel**
-3. Select the provider type and enter credentials
-4. Click **Test Connection** to verify the connection
-5. Save the provider
-
-After creating providers, attach them to monitors or jobs in their **Alerts** settings.
+<Steps>
+<Step>
+Open **Notifications** and click **Create channel**.
+</Step>
+<Step>
+Pick the provider and enter its credentials (see [Provider Configuration](#provider-configuration)).
+</Step>
+<Step>
+Click **Test Connection**, then save.
+</Step>
+<Step>
+Select the channel in a monitor's or job's **Alerts** settings.
+</Step>
+</Steps>
 
 ## Alert Types
 
@@ -126,11 +109,7 @@ SSL expiration warnings are evaluated independently of the monitor's up/down res
 
 **Alert Limiting**
 
-To prevent notification spam during extended outages:
-- Maximum **3 alerts** per failure or recovery sequence
-- First alert sent when threshold is reached
-- Recovery counting starts only after an actual down period; each healthy check after downtime advances the configured threshold
-- Up to 3 alerts can be sent per failure or recovery sequence, spaced by the configured reminder intervals
+At most **3 alerts** go out per failure or recovery streak: the first when the threshold is reached, then reminders spaced by the threshold (see job failures above). The interval is not configurable.
 
 </Tab>
 <Tab value="Example">
@@ -446,13 +425,7 @@ Use **Incidents → Alerts → Signals** for investigation-ready failure signals
 
 Repeated sent failures for the same target and alert type appear as one signal, with the latest message and timestamp and a repeat count. All individual deliveries remain in History. A failure signal is historical evidence, not proof that the target is still failing.
 
-From Signals, responders can:
-
-- Search by target, message, type, source, or fingerprint.
-- Filter by severity or source.
-- Sort by signal, severity, source, or last seen time.
-- Select **Incident #N** to go to the incident a signal belongs to, or **Open incident** when it has none (for example when incidents are turned off for that monitor). Incidents open automatically when an alert fires, and resolve automatically on recovery if nobody acknowledged them (configurable per monitor or job under **Incidents** in Alert Settings). AI triage is optional and separate: administrators may enable it.
-- Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
+From Signals you can search, filter by severity or source, and sort. **Incident #N** opens the incident a signal belongs to; **Open incident** creates one when incidents are turned off for that check. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Alert History
 

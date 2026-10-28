@@ -147,6 +147,20 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 Exit codes: `0` healthy, `1` failed, `2` bad usage, `3` installed but the health check reports a problem. The log is `/var/log/supercheck/install.log`.
 
 </Accordion>
+<Accordion title="Serving reports from a separate origin" id="reports-origin">
+
+Off by default: reports are served from the app origin, as in earlier releases. Test reports are HTML produced by test code, so a separate origin keeps that code away from your session.
+
+| Step | Action |
+|---|---|
+| **1. DNS and TLS** | Point a hostname such as `reports.example.net` at the same server, with a certificate. Use a different registrable domain than the app, or make sure session cookies are host-only |
+| **2. Route** | Send that hostname to the app service (the same `app` container). Only `/api/test-results/` answers there |
+| **3. Enable** | Set `REPORTS_ORIGIN=https://reports.example.net` (scheme and host only) and recreate the app |
+| **4. Check** | `/api/config/app` reports `reports.separateOrigin: true`; a report opens in the dashboard |
+
+Report links are signed, expire after one hour, and are tied to one report and project. Unset `REPORTS_ORIGIN` to go back. Trace viewer: the report iframe keeps `allow-same-origin`, which now only grants access to the reports origin; the viewer needs a real origin for its service worker.
+
+</Accordion>
 </Accordions>
 
 ## Verify

@@ -27,16 +27,16 @@ interface UsageNotificationEmailProps {
 }
 
 export const UsageNotificationEmail = ({
-  organizationName,
-  notificationType,
-  resourceType,
-  usageAmount,
-  usageLimit,
-  usagePercentage,
+  organizationName = "Acme Inc",
+  notificationType = "usage_80_percent",
+  resourceType = "playwright",
+  usageAmount = 800,
+  usageLimit = 1000,
+  usagePercentage = 80,
   currentSpendingDollars,
   spendingLimitDollars,
-  billingPageUrl,
-  periodEndDate,
+  billingPageUrl = "https://app.supercheck.io/billing",
+  periodEndDate = "December 1, 2026",
 }: UsageNotificationEmailProps) => {
   const getTitle = () => {
     switch (notificationType) {
@@ -57,21 +57,25 @@ export const UsageNotificationEmail = ({
     }
   };
 
+  const filledPercent = Number.isFinite(usagePercentage)
+    ? Math.round(Math.max(Math.min(usagePercentage, 100), 0))
+    : 0;
+
   const getHeaderColor = () => {
     switch (notificationType) {
       case "usage_50_percent":
-        return "#3b82f6"; // Blue
+        return "#1d4ed8"; // Blue
       case "usage_80_percent":
-        return "#f59e0b"; // Amber
+        return "#b45309"; // Amber
       case "usage_90_percent":
-        return "#f97316"; // Orange
+        return "#c2410c"; // Orange
       case "usage_100_percent":
       case "spending_limit_reached":
-        return "#ef4444"; // Red
+        return "#b91c1c"; // Red
       case "spending_limit_warning":
-        return "#f59e0b"; // Amber
+        return "#b45309"; // Amber
       default:
-        return "#6b7280"; // Gray
+        return "#4b5563"; // Gray
     }
   };
 
@@ -161,15 +165,25 @@ export const UsageNotificationEmail = ({
                 {usageAmount.toLocaleString("en-US", { maximumFractionDigits: 2 })} /{" "}
                 {usageLimit.toLocaleString("en-US", { maximumFractionDigits: 2 })} {getUnitLabel()}
               </Text>
-              <Section style={progressBarContainer}>
-                <Section
-                  style={{
-                    ...progressBar,
-                    width: `${Math.min(usagePercentage, 100)}%`,
-                    backgroundColor: getHeaderColor(),
-                  }}
-                />
-              </Section>
+              {/* A two-cell table: <Section> centres its table, which floated the fill. */}
+              <table width="100%" cellPadding={0} cellSpacing={0} style={progressBarContainer}>
+                <tbody>
+                  <tr>
+                    <td
+                      height={8}
+                      width={`${filledPercent}%`}
+                      style={{ ...progressBar, width: `${filledPercent}%`, backgroundColor: getHeaderColor() }}
+                    >
+                      &nbsp;
+                    </td>
+                    {filledPercent < 100 ? (
+                      <td height={8} style={progressBar}>
+                        &nbsp;
+                      </td>
+                    ) : null}
+                  </tr>
+                </tbody>
+              </table>
             </Section>
 
             {notificationType === "usage_100_percent" && (
@@ -258,8 +272,9 @@ const progressBarContainer = {
 
 const progressBar = {
   height: "8px",
-  borderRadius: "4px",
-  transition: "width 0.3s ease",
+  padding: "0",
+  fontSize: "1px",
+  lineHeight: "8px",
 };
 
 const warningText = {
@@ -284,7 +299,7 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#52c41a",
+  backgroundColor: "#111827",
   borderRadius: "6px",
   color: "#ffffff",
   fontSize: "14px",

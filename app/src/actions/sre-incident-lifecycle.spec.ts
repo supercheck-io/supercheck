@@ -30,6 +30,11 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   listAssignableUsers: (...a: unknown[]) => lifecycle.listAssignableUsers(...a),
 }));
 
+const checkUpdateRateLimit = jest.fn();
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({
+  checkSreIncidentUpdateRateLimit: (...a: unknown[]) => checkUpdateRateLimit(...a),
+}));
+
 import {
   acknowledgeSreIncident,
   addSreIncidentUpdate,
@@ -44,6 +49,7 @@ const actor = { organizationId: mockCtx.organizationId, projectId: mockCtx.proje
 beforeEach(() => {
   jest.clearAllMocks();
   checkPermissionWithContext.mockReturnValue(true);
+  checkUpdateRateLimit.mockResolvedValue({ allowed: true, remaining: 29 });
 });
 
 describe("incident lifecycle actions", () => {
@@ -58,6 +64,20 @@ describe("incident lifecycle actions", () => {
       expect(result).toEqual({ success: false, error: expect.stringContaining("Insufficient permissions") });
     }
     expect(checkPermissionWithContext).toHaveBeenCalledWith("sre_incident", "update", expect.anything());
+    for (const fn of Object.values(lifecycle)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("stops rate-limited writes before any data operation", async () => {
+    checkUpdateRateLimit.mockResolvedValue({ allowed: false, remaining: 0 });
+    for (const result of [
+      await assignSreIncident({ incidentId, assigneeUserId: null }),
+      await acknowledgeSreIncident({ incidentId }),
+      await resolveSreIncident({ incidentId, summary: "done" }),
+      await addSreIncidentUpdate({ incidentId, text: "hi" }),
+    ]) {
+      expect(result).toEqual({ success: false, error: expect.stringContaining("Too many") });
+    }
+    expect(checkUpdateRateLimit).toHaveBeenCalledWith(mockCtx.userId, incidentId);
     for (const fn of Object.values(lifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 

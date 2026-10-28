@@ -117,10 +117,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // formData() buffers the whole body, so an unbounded (chunked/absent length) request is refused.
   const contentLength = Number.parseInt(
-    request.headers.get("content-length") || "0",
+    request.headers.get("content-length") ?? "",
     10,
   );
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return NextResponse.json(
+      { error: "Content-Length is required" },
+      { status: 411 },
+    );
+  }
   if (contentLength > MAX_ATTACHMENT_SIZE + REQUEST_OVERHEAD_BYTES) {
     return NextResponse.json(
       { error: "Attachment request body too large" },

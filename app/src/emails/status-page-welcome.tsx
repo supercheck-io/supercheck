@@ -28,7 +28,8 @@ export const StatusPageWelcomeEmail = ({
     <BaseLayout
       preview={`${t.emailNowSubscribed} ${statusPageName}`}
       title={t.emailSubscriptionConfirmed}
-      headerColor="#16a34a"
+      headerColor="#15803d"
+      showBrand={false}
       showStandardFooter={false}
       footer={
         <>
@@ -253,7 +254,7 @@ const buttonSection = {
 };
 
 const ctaButton = {
-  backgroundColor: "#16a34a",
+  backgroundColor: "#111827",
   borderRadius: "8px",
   color: "#ffffff",
   fontSize: "15px",

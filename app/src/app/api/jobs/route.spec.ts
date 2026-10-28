@@ -29,6 +29,11 @@ jest.mock("@/lib/notification-providers/ownership", () => ({
   validateNotificationProviderOwnership: jest.fn(),
 }));
 
+jest.mock("@/lib/server-actions/update-job", () => ({
+  updateJob: jest.fn(),
+}));
+
+import { updateJob } from "@/lib/server-actions/update-job";
 import { GET, POST, PUT } from "./route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
@@ -302,13 +307,13 @@ describe("Jobs route regressions", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
-  it("PUT /api/jobs stores a null threshold as the default instead of null", async () => {
-    const JOB = "00000000-0000-4000-8000-000000000005";
+  it("PUT /api/jobs updates through updateJob (scheduler, guards) and ignores a client status", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000005";
     mockDb.select
       .mockReturnValueOnce({
         from: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnValue({
-            limit: jest.fn().mockResolvedValue([{ id: JOB, projectId: "project-1", organizationId: "org-1", jobType: "playwright" }]),
+            limit: jest.fn().mockResolvedValue([{ id: jobId, projectId: "project-1", organizationId: "org-1", jobType: "playwright" }]),
           }),
         }),
       })
@@ -317,24 +322,46 @@ describe("Jobs route regressions", () => {
           where: jest.fn().mockResolvedValue([{ id: TEST_ID, type: "browser" }]),
         }),
       });
-    const set = jest.fn().mockReturnValue({ where: jest.fn() });
-    mockDb.transaction.mockImplementationOnce(async (cb: (tx: unknown) => unknown) =>
-      cb({
-        update: () => ({ set }),
-        delete: () => ({ where: jest.fn() }),
-        insert: () => ({ values: jest.fn() }),
-      }),
-    );
+    (updateJob as jest.Mock).mockResolvedValue({ success: true, job: { id: jobId } });
+
     const response = await PUT(new Request("http://localhost/api/jobs", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        id: JOB, name: "Nightly Job", description: "Nightly", cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }],
-        alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null },
+        id: jobId, name: "Nightly Job", description: "Nightly", cronSchedule: "0 * * * *",
+        status: "paused", tests: [{ id: TEST_ID }],
       }),
     }));
+
     expect(response.status).toBe(200);
-    expect(set.mock.calls[0][0].alertConfig).toMatchObject({ failureThreshold: 1, recoveryThreshold: 1 });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(updateJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId, cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }] }),
+      expect.objectContaining({ organizationId: "org-1" }),
+    );
+    expect((updateJob as jest.Mock).mock.calls[0][0]).not.toHaveProperty("status");
+  });
+
+  it("POST /api/jobs rejects a k6 job with more than one test", async () => {
+    const T2 = "00000000-0000-4000-8000-0000000000a2";
+    const rows = [{ id: TEST_ID, type: "performance" }, { id: T2, type: "performance" }];
+    const chain: Record<string, unknown> = {};
+    for (const method of ["from", "where", "orderBy", "limit"]) chain[method] = () => chain;
+    chain.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(rows).then(resolve);
+    mockDb.select.mockReturnValue(chain);
+
+    const response = await POST(new NextRequest("http://localhost/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Load", description: "Load", cronSchedule: "0 * * * *", jobType: "k6",
+        tests: [{ id: TEST_ID }, { id: T2 }],
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("exactly one");
+    expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
   describe("nested test ids", () => {
