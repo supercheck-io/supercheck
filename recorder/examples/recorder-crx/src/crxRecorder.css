@@ -219,7 +219,7 @@
 .supercheck-help-card {
   position: fixed;
   z-index: 1000;
-  width: 260px;
+  width: 300px;
   max-width: calc(100vw - 16px);
   padding: 10px 12px;
   border: 1px solid var(--vscode-panel-border, #454545);
@@ -231,27 +231,70 @@
   line-height: 1.45;
 }
 
-.supercheck-help-card dl {
-  margin: 8px 0;
+.supercheck-help-title {
+  display: block;
+  font-size: 13px;
 }
 
-.supercheck-help-card dt {
+.supercheck-help-group h3 {
+  margin: 10px 0 4px;
+  font-size: 11px;
   font-weight: 600;
-  margin-top: 6px;
+  color: var(--vscode-descriptionForeground, inherit);
 }
 
-.supercheck-help-card dd {
+.supercheck-help-group ul {
   margin: 0;
-  color: var(--vscode-descriptionForeground, inherit);
+  padding: 0;
+  list-style: none;
+}
+
+.supercheck-help-group li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.supercheck-help-group li .codicon {
+  flex: none;
+  width: 16px;
+  font-size: 14px;
+  text-align: center;
+  transform: translateY(2px);
+}
+
+.supercheck-help-group li b {
+  font-weight: 600;
 }
 
 .supercheck-help-links {
   display: flex;
-  gap: 12px;
+  gap: 16px;
+  margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--vscode-panel-border, #454545);
 }
 
-.supercheck-help-links a {
-  color: #22c55e;
+.supercheck-help-links a,
+.supercheck-help-links button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.supercheck-help-links a:hover,
+.supercheck-help-links button:hover {
+  color: var(--vscode-textLink-activeForeground, #4daafc);
+}
+
+.supercheck-help-links a:focus-visible,
+.supercheck-help-links button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+  border-radius: 2px;
 }

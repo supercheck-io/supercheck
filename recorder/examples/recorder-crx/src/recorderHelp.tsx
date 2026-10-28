@@ -1,15 +1,31 @@
 import * as React from 'react';
 
-const DOCS_URL = 'https://supercheck.io/docs/recorder';
+const DOCS_URL = 'https://supercheck.io/docs/recorder#record-a-test';
 
-const TOOLBAR_HELP: Array<[string, string]> = [
-  ['Record', 'Start or stop capturing your clicks and typing as Playwright code.'],
-  ['Save', 'Send the recorded test back to the Supercheck project you opened this from.'],
-  ['Pick locator', 'Click an element on the page to get its selector.'],
-  ['Assert', 'Add assertions for visibility, text or a value.'],
-  ['Copy / Run / Pause', 'Copy the code, replay it, or pause the replay.'],
-  ['Clear', 'Remove the recorded steps.'],
-  ['Theme', 'Switch between light and dark.'],
+// Mirrors the toolbar's real order; icons are the same codicons it renders.
+const HELP_GROUPS: Array<{ title: string; items: Array<[icon: string, name: string, text: string]> }> = [
+  {
+    title: 'Record',
+    items: [
+      ['circle-large-filled', 'Record', 'Turn clicks and typing into Playwright code.'],
+      ['save', 'Save', 'Send the code to the Supercheck Playground you opened the recorder from.'],
+    ],
+  },
+  {
+    title: 'Inspect',
+    items: [
+      ['inspect', 'Pick locator', 'Click an element to see its selector.'],
+      ['eye', 'Assert', 'Check an element is visible, or check its text, value or snapshot.'],
+    ],
+  },
+  {
+    title: 'Code',
+    items: [
+      ['files', 'Copy', 'Copy the code to the clipboard.'],
+      ['debug-pause', 'Pause / Resume / Step over', 'Control a replay while it runs.'],
+      ['clear-all', 'Clear', 'Remove the recorded steps.'],
+    ],
+  },
 ];
 
 /**
@@ -70,20 +86,23 @@ export const RecorderHelp: React.FC = () => {
       </button>
       {open && (
         <div role='dialog' aria-label='How recording works' className='supercheck-help-card' style={position}>
-          <strong>How recording works</strong>
-          <dl>
-            {TOOLBAR_HELP.map(([name, text]) => (
-              <React.Fragment key={name}>
-                <dt>{name}</dt>
-                <dd>{text}</dd>
-              </React.Fragment>
-            ))}
-          </dl>
+          <strong className='supercheck-help-title'>How recording works</strong>
+          {HELP_GROUPS.map(group => (
+            <section key={group.title} className='supercheck-help-group'>
+              <h3>{group.title}</h3>
+              <ul>
+                {group.items.map(([icon, name, text]) => (
+                  <li key={name}>
+                    <span className={`codicon codicon-${icon}`} aria-hidden='true' />
+                    <span><b>{name}</b> {text}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <div className='supercheck-help-links'>
-            <a href='#' onClick={event => { event.preventDefault(); chrome.runtime.openOptionsPage(); }}>
-              Connection and settings
-            </a>
-            <a href={DOCS_URL} target='_blank' rel='noopener noreferrer'>Docs</a>
+            <button type='button' onClick={() => chrome.runtime.openOptionsPage()}>Settings</button>
+            <a href={DOCS_URL} target='_blank' rel='noopener noreferrer'>Documentation</a>
           </div>
         </div>
       )}

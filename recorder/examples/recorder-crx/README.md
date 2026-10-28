@@ -68,7 +68,6 @@ The extension connects without setup on every first-party deployment:
 | Instance | URL |
 |---|---|
 | Supercheck Cloud | `https://app.supercheck.io` |
-| Supercheck website | `https://supercheck.io` |
 | Live demo | `https://demo.supercheck.dev` |
 
 1. Open one of those origins in the same browser profile.
