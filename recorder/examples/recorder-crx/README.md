@@ -85,7 +85,7 @@ The list lives in `src/supercheck/message-security.ts` (`SUPERCHECK_CLOUD_ORIGIN
 
 Self-hosted origins are not trusted until you save the URL: that explicit action is the trust decision for the origin. Changing the URL clears the credential saved for the previous instance so a key is never sent to a host it was not created for.
 
-> The API-key field in Options is strictly reserved for existing recorder-scoped credentials (`ext_*`). CLI tokens and trigger keys cannot upload recordings.
+> The API-key field in Options is strictly reserved for existing recorder-scoped credentials (`ext_*`). CLI tokens and trigger keys cannot be used by the recorder.
 
 ---
 
