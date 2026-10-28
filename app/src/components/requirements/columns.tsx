@@ -15,7 +15,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { MoreHorizontal, ExternalLink, Trash2, Pencil, CalendarIcon, CheckCircle, XCircle, CircleDashed } from "lucide-react";
+import { MoreHorizontal, ExternalLink, Trash2, Pencil, CheckCircle, XCircle, CircleDashed } from "lucide-react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import { useState } from "react";
 import { Requirement, coverageStatusConfig } from "./schema";
 import { priorities } from "./data";
 import { createdByColumn } from "@/components/ui/created-by-column";
+import { DateCell } from "@/components/ui/table-cells";
 
 // Meta type for row actions (passed from parent)
 export interface RequirementsTableMeta {
@@ -374,36 +375,14 @@ export const columns: ColumnDef<Requirement>[] = [
         enableSorting: true,
     },
 
-    // Created column (matching tests with CalendarIcon)
+    // Created column
     createdByColumn<Requirement>(),
     {
         accessorKey: "createdAt",
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Created" />
         ),
-        cell: ({ row }) => {
-            const createdAt = row.getValue("createdAt") as Date | string | null;
-            if (!createdAt) return null;
-
-            const date = new Date(createdAt);
-            const formattedDate = date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-            });
-            const formattedTime = date.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-            });
-
-            return (
-                <div className="flex items-center w-[170px]">
-                    <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-                    <span>{formattedDate}</span>
-                    <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
-                </div>
-            );
-        },
+        cell: ({ row }) => <DateCell value={row.getValue("createdAt") as Date | string | null} empty="—" />,
     },
 
     // Actions column

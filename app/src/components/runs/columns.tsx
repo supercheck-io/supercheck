@@ -223,7 +223,7 @@ export const createColumns = (
           );
         }
         return (
-          <UserCell name={run.triggeredByName} image={run.triggeredByImage} emptyLabel="Unknown" className="h-8 w-[150px]" />
+          <UserCell name={run.triggeredByName} image={run.triggeredByImage} emptyLabel="Unknown" avatarOnly className="h-8" />
         );
       },
     },

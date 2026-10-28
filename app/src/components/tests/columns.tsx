@@ -11,7 +11,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CalendarIcon, ClockIcon } from "lucide-react";
 
 // Type definition for the extended meta object used in this table
 interface TestsTableMeta {
@@ -22,18 +21,19 @@ interface TestsTableMeta {
 
 import { priorities, types } from "./data";
 import { createdByColumn } from "@/components/ui/created-by-column";
+import { DateCell } from "@/components/ui/table-cells";
 
 // Separate component for title with popover
 function TitleWithPopover({ title }: { title: string }) {
   const [isOpen, setIsOpen] = useState(false);
 
   // Check if text is likely to be truncated (rough estimate)
-  const isTruncated = title.length > 25; // Approximate character limit for 200px width
+  const isTruncated = title.length > 40; // Approximate character limit for 280px width
 
   if (!isTruncated) {
     return (
       <div className="flex space-x-2">
-        <span className="font-medium max-w-[160px] truncate">{title}</span>
+        <span className="font-medium max-w-[280px] truncate">{title}</span>
       </div>
     );
   }
@@ -46,7 +46,7 @@ function TitleWithPopover({ title }: { title: string }) {
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
         >
-          <span className="max-w-[160px] truncate">{title}</span>
+          <span className="max-w-[280px] truncate">{title}</span>
         </div>
       </PopoverTrigger>
       <PopoverContent className="flex justify-center items-center w-auto max-w-[500px]">
@@ -66,17 +66,17 @@ function DescriptionWithPopover({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const displayText = description || "No description provided";
-  const isTruncated = displayText.length > 25; // Approximate character limit
+  const isTruncated = displayText.length > 40; // Approximate character limit
 
   if (!isTruncated) {
-    return <div className="max-w-[200px] truncate">{displayText}</div>;
+    return <div className="max-w-[280px] truncate">{displayText}</div>;
   }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <div
-          className="max-w-[160px] truncate cursor-pointer"
+          className="max-w-[280px] truncate cursor-pointer"
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
         >
@@ -319,31 +319,7 @@ export const columns: ColumnDef<Test>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Created" />
     ),
-    cell: ({ row }) => {
-      const createdAt = row.getValue("createdAt") as string;
-      if (!createdAt) return null;
-
-      const date = new Date(createdAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell value={row.getValue("createdAt") as Date | string | null} empty="—" />,
   },
   {
     accessorKey: "updatedAt",
@@ -351,39 +327,9 @@ export const columns: ColumnDef<Test>[] = [
       <DataTableColumnHeader column={column} title="Updated" />
     ),
     cell: ({ row }) => {
-      const updatedAt = row.getValue("updatedAt") as string;
-      const createdAt = row.getValue("createdAt") as string;
-
-      // Only show updatedAt if it's different from createdAt (indicating an actual update)
-      if (!updatedAt || updatedAt === createdAt) {
-        return (
-          <div className="flex items-center w-[170px]">
-            <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground text-sm">Not updated</span>
-          </div>
-        );
-      }
-
-      const date = new Date(updatedAt);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const formattedTime = date.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return (
-        <div className="flex items-center w-[170px]">
-          <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">
-            {formattedTime}
-          </span>
-        </div>
-      );
+      const updatedAt = row.getValue("updatedAt") as Date | string | null;
+      // A fresh row has updatedAt equal to createdAt, which is not an edit.
+      return <DateCell value={updatedAt !== row.getValue("createdAt") ? updatedAt : null} empty="Not updated" />;
     },
   },
   {

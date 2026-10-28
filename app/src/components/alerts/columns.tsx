@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
-import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { DateCell } from "@/components/ui/table-cells";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableRowActions } from "./data-table-row-actions";
 import { AlertHistory } from "./schema";
@@ -193,9 +193,9 @@ export const columns: ColumnDef<AlertHistory>[] = [
     ),
     cell: ({ row }) => {
       return (
-        <DateTimeCell
+        <DateCell
           value={row.getValue("timestamp") as string}
-          emptyLabel="Never"
+          empty="Never"
         />
       );
     },

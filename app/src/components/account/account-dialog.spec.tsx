@@ -29,9 +29,9 @@ describe("AccountDialog", () => {
     expect(screen.getByText("leave organization row")).toBeInTheDocument();
   });
 
-  it("always offers the source code link", () => {
+  it("has no license footer (the source link lives in the community links)", () => {
     render(<AccountDialog open onOpenChange={jest.fn()} />);
-    expect(screen.getByRole("link", { name: "Source code" })).toHaveAttribute("target", "_blank");
+    expect(screen.queryByText(/open source/i)).not.toBeInTheDocument();
   });
 
   it("validates the name and saves it trimmed", async () => {
