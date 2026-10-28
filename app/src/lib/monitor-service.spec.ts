@@ -14,7 +14,7 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { updateMonitorHandler } from "./monitor-service";
+import { updateMonitorHandler, scheduleCreatedMonitor } from "./monitor-service";
 
 describe("updateMonitorHandler schedule synchronization", () => {
   const existing = {
@@ -132,4 +132,63 @@ describe("updateMonitorHandler schedule synchronization", () => {
       );
     },
   );
+});
+
+describe("updateMonitorHandler write safety", () => {
+  const existing = {
+    id: "monitor-1", projectId: "project-1", type: "http_request", target: "https://example.com",
+    config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" },
+    frequencyMinutes: 5, enabled: true, status: "up", scheduledJobId: "old-schedule",
+  };
+  const chain = (row: object) => ({
+    set: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    returning: jest.fn().mockResolvedValue([row]),
+  });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (db.query.monitors.findFirst as jest.Mock).mockResolvedValue(existing);
+  });
+
+  it("keeps worker-owned config keys when config is replaced (c2)", async () => {
+    const c = chain({ ...existing });
+    (db.update as jest.Mock).mockReturnValue(c);
+    await updateMonitorHandler(existing.id, { config: { timeoutSeconds: 10 } });
+    expect(c.set).toHaveBeenCalledWith(expect.objectContaining({
+      config: { timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" },
+    }));
+  });
+
+  it("does not reschedule when only worker bookkeeping differs (c2)", async () => {
+    (db.update as jest.Mock).mockReturnValue(chain({ ...existing }));
+    await updateMonitorHandler(existing.id, { config: { timeoutSeconds: 30 } });
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a scheduling failure instead of reporting success (c5)", async () => {
+    const c = chain({ ...existing, frequencyMinutes: 10 });
+    (db.update as jest.Mock).mockReturnValue(c);
+    (scheduleMonitor as jest.Mock).mockRejectedValue(new Error("redis down"));
+    await expect(updateMonitorHandler(existing.id, { frequencyMinutes: 10 })).rejects.toThrow("redis down");
+    // The stale schedule id must not survive the failed reschedule.
+    expect(c.set.mock.calls.map((call) => call[0])).toContainEqual({ scheduledJobId: null });
+  });
+
+  it("surfaces a scheduling failure after create (c5)", async () => {
+    (scheduleMonitor as jest.Mock).mockRejectedValue(new Error("redis down"));
+    (db.update as jest.Mock).mockReturnValue(chain({}));
+    await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("redis down");
+  });
+
+  it("removes the queued repeatable job when recording its id fails after create", async () => {
+    (scheduleMonitor as jest.Mock).mockResolvedValue("new-schedule");
+    (db.update as jest.Mock).mockReturnValue({ set: jest.fn().mockReturnThis(), where: jest.fn().mockRejectedValue(new Error("db down")) });
+    await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("db down");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-schedule");
+  });
+
+  it("rejects config null instead of wiping the stored config", async () => {
+    await expect(updateMonitorHandler(existing.id, { config: null })).rejects.toMatchObject({ statusCode: 400 });
+    expect(db.update).not.toHaveBeenCalled();
+  });
 });

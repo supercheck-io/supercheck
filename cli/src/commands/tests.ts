@@ -345,8 +345,7 @@ testCommand
     }
 
     if (Object.keys(body).length === 0) {
-      logger.warn('No fields to update. Use --title, --file, --description, --type, or --priority.')
-      return
+      throw new CLIError('No fields to update. Use --title, --file, --description, --type, or --priority.', ExitCode.ConfigError)
     }
 
     if (options.dryRun) {

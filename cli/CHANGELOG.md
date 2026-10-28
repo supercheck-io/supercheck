@@ -6,6 +6,11 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- `deploy`, `diff` and `destroy` compare a config job or monitor `alertConfig` the way the server stores it (defaults filled, default values dropped), so an unchanged alert config no longer shows as an update on every run. They also treat a DELETE that finds the resource already gone after a retry as done.
+- `monitors` and `statusPages` in config must be inline arrays, and a job `status` is rejected: glob strings and job status were ignored, and `deploy --delete` then planned to delete every remote monitor and status page. Remove them from the config.
+- `pull` no longer writes the monitor config keys the server rejects (`responseBodyJsonPath`, `checkExpiration`, `daysUntilExpirationWarning`, `checkRevocation`, `sslCheckOnStatusChange`), and `diff` ignores them on the remote side. `pull` and `validate` warn when a job `cronSchedule` is not 5 fields, which the server rejects on update.
+- The CLI refuses to send the API token over plain `http://` (except to `localhost` or `127.0.0.1`) and tells you to use https. An empty `SUPERCHECK_URL` is treated as unset.
+- `job update`, `monitor update`, `test update` and `notification update` exit non-zero (code 3) when no updatable field is given, instead of exiting 0.
 - `test tag add` and `test tag remove` now send an atomic per-tag change (`PATCH /api/tests/<id>/tags`) instead of replacing the whole set, so concurrent tag changes are no longer lost. Older servers fall back to the previous read-then-replace. Removing an unknown tag is now a no-op.
 - `deploy --verify` now names the failed verification runs (title and run ID) in the human-readable error, not only in `--json` output.
 - `deploy` checks requirement support with a validation-only `POST /api/requirements` instead of exporting every requirement (which also wrote an export audit event). A status page route's own JSON 404 is no longer mistaken for an old server.

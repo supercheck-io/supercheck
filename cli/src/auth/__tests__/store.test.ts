@@ -190,6 +190,12 @@ describe('Auth Store', () => {
   })
 
   describe('getStoredBaseUrl', () => {
+    it('treats an empty SUPERCHECK_URL as unset', () => {
+      process.env.SUPERCHECK_URL = ''
+      mockStore.set('baseUrl', 'https://stored.example.com')
+      expect(getStoredBaseUrl()).toBe('https://stored.example.com')
+    })
+
     it('should return env var when set', () => {
       process.env.SUPERCHECK_URL = 'https://env.example.com'
       expect(getStoredBaseUrl()).toBe('https://env.example.com')

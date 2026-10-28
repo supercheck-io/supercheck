@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Search,
   Download,
+  AlertCircle,
   CheckCircle2,
   Clock,
   Loader2,
@@ -78,19 +79,21 @@ type Subscriber = {
   endpoint: string | null;
   mode: string;
   verifiedAt: Date | null;
+  quarantinedAt: Date | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
 
 type SubscribersTabProps = {
   statusPageId: string;
+  canUpdate: boolean;
 };
 
-export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
+export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0 });
+  const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0, quarantined: 0 });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [subscriberToDelete, setSubscriberToDelete] = useState<string | null>(
     null
@@ -635,7 +638,15 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {subscriber.verifiedAt ? (
+                        {subscriber.quarantinedAt ? (
+                          <Badge
+                            className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            title="Delivery paused after repeated failures. A successful webhook test or resubscribing re-enables it."
+                          >
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Quarantined
+                          </Badge>
+                        ) : subscriber.verifiedAt ? (
                           <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Verified
@@ -667,7 +678,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {subscriber.mode === "webhook" && (
+                          {canUpdate && subscriber.mode === "webhook" && (
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
                               aria-label="Rotate webhook signing secret"
                               title="Rotate webhook signing secret"
@@ -676,7 +687,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                               <KeyRound className="h-4 w-4" />
                             </Button>
                           )}
-                          {!subscriber.verifiedAt && (
+                          {canUpdate && !subscriber.verifiedAt && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -702,6 +713,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                               )}
                             </Button>
                           )}
+                          {canUpdate && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -714,6 +726,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -229,9 +229,9 @@ export function useMonitorPermissions(monitorId: string) {
     queryKey: [...MONITOR_PERMISSIONS_KEY, monitorId],
     queryFn: () => fetchMonitorPermissions(monitorId),
     enabled: !!monitorId,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    // Role changes must show up on revisit, so do not trust the 24h persisted cache
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 

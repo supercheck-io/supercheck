@@ -98,6 +98,16 @@ export async function processScheduledJob(
       return { success: false };
     }
 
+    // Advance the next run time before any early return, so a skipped tick (overlap, billing) does
+    // not leave a stale "next run" behind.
+    try {
+      if (jobRecord.cronSchedule) {
+        await db.update(jobs).set({ nextRunAt: getNextRunDate(jobRecord.cronSchedule) }).where(eq(jobs.id, jobId));
+      }
+    } catch (error) {
+      logger.error({ jobId, error }, 'Failed to update the next run date');
+    }
+
     // A queued run already owns capacity/queue position and must also prevent
     // the next cron tick from creating a duplicate execution.
     const activeRuns = await db
@@ -199,33 +209,7 @@ export async function processScheduledJob(
 
     logger.info({ jobId, runId }, 'Created run record for scheduled job');
 
-    // Update job's next run time
-    const cronSchedule = jobRecord.cronSchedule;
-    let nextRunAt: Date | null = null;
-
-    try {
-      if (cronSchedule) {
-        nextRunAt = getNextRunDate(cronSchedule);
-      }
-    } catch (error) {
-      logger.error({ jobId, error }, 'Failed to calculate next run date');
-    }
-
-    const now = new Date();
-    const jobUpdatePayload: {
-      lastRunAt: Date;
-      nextRunAt?: Date;
-      status: 'running';
-    } = {
-      lastRunAt: now,
-      status: 'running',
-    };
-
-    if (nextRunAt) {
-      jobUpdatePayload.nextRunAt = nextRunAt;
-    }
-
-    await db.update(jobs).set(jobUpdatePayload).where(eq(jobs.id, jobId));
+    await db.update(jobs).set({ lastRunAt: new Date() }).where(eq(jobs.id, jobId));
 
     // Fetch current test scripts and resolve variables at trigger time
     // This ensures scheduled executions always use the latest test content
@@ -310,6 +294,8 @@ export async function processScheduledJob(
       };
 
       try {
+        // Before enqueueing: a fast worker may finish and set the final status before we return.
+        await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, jobId));
         const result = await addK6JobToQueue(k6Task, 'k6-job-execution');
         logger.info(
           { jobId, runId, status: result.status, position: result.position },
@@ -323,6 +309,7 @@ export async function processScheduledJob(
         // If 'queued', status is already 'queued'
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue k6 job');
+        await db.update(jobs).set({ status: jobRecord.status }).where(eq(jobs.id, jobId));
         await db
           .update(runs)
           .set({
@@ -349,6 +336,8 @@ export async function processScheduledJob(
       };
 
       try {
+        // Before enqueueing: a fast worker may finish and set the final status before we return.
+        await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, jobId));
         const result = await addJobToQueue(playwrightTask);
         logger.info(
           { jobId, runId, status: result.status, position: result.position },
@@ -361,6 +350,7 @@ export async function processScheduledJob(
         }
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue Playwright job');
+        await db.update(jobs).set({ status: jobRecord.status }).where(eq(jobs.id, jobId));
         await db
           .update(runs)
           .set({

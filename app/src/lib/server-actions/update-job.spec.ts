@@ -2,10 +2,26 @@
 import { updateJob } from "./update-job";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { scheduleJob } from "@/lib/job-scheduler";
 
 const mockSelect = jest.fn();
 jest.mock("server-only", () => ({}));
-jest.mock("@/utils/db", () => ({ db: { select: (...args: unknown[]) => mockSelect(...args) } }));
+const mockSet = jest.fn();
+const mockWriter = {
+  update: jest.fn(() => ({ set: jest.fn((v: unknown) => (mockSet(v), { where: jest.fn(async () => undefined) })) })),
+  delete: jest.fn(() => ({ where: jest.fn(async () => undefined) })),
+  insert: jest.fn(() => ({ values: jest.fn(async () => undefined) })),
+};
+const mockTransaction = jest.fn(async (fn: (tx: typeof mockWriter) => unknown) => fn(mockWriter));
+jest.mock("@/utils/db", () => ({
+  db: {
+    select: (...args: unknown[]) => mockSelect(...args),
+    update: (...args: unknown[]) => (mockWriter.update as (...a: unknown[]) => unknown)(...args),
+    delete: (...args: unknown[]) => (mockWriter.delete as (...a: unknown[]) => unknown)(...args),
+    insert: (...args: unknown[]) => (mockWriter.insert as (...a: unknown[]) => unknown)(...args),
+    transaction: (fn: never) => mockTransaction(fn),
+  },
+}));
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("@/lib/job-scheduler", () => ({ scheduleJob: jest.fn(), deleteScheduledJob: jest.fn() }));
@@ -58,4 +74,100 @@ it("proceeds to the job lookup once both subscription checks pass", async () => 
   expect(subscriptionService.requireValidPolarCustomer).toHaveBeenCalledWith("org");
   expect(mockSelect).toHaveBeenCalled();
   expect(result).toEqual(expect.objectContaining({ success: false }));
+});
+
+describe("saving a job", () => {
+  const TEST_A = "018f0000-0000-7000-8000-00000000000a";
+  const TEST_B = "018f0000-0000-7000-8000-00000000000b";
+  const rows = (value: unknown[]) => {
+    const chain: Record<string, unknown> = {};
+    for (const method of ["from", "where", "orderBy", "limit"]) chain[method] = () => chain;
+    chain.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(value).then(resolve);
+    return chain;
+  };
+  const arrange = (jobType: string, scoped: Array<{ id: string; type: string }>) => {
+    mockSelect
+      .mockReturnValueOnce(rows([{ id: input.jobId, jobType, cronSchedule: null, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(rows([]))
+      .mockReturnValueOnce(rows(scoped));
+  };
+
+  it("rejects a k6 job with more than one test, since only the first would run", async () => {
+    arrange("k6", [{ id: TEST_A, type: "performance" }, { id: TEST_B, type: "performance" }]);
+    const result = await updateJob({ ...input, tests: [{ id: TEST_A }, { id: TEST_B }] }, context);
+    expect(result).toEqual(expect.objectContaining({ success: false, message: expect.stringContaining("exactly one") }));
+  });
+
+  it("still lets a legacy multi-test k6 job be edited when its tests are not changed", async () => {
+    mockSelect
+      .mockReturnValueOnce(rows([{ id: input.jobId, jobType: "k6", cronSchedule: null, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(rows([{ id: TEST_A }, { id: TEST_B }]))
+      .mockReturnValueOnce(rows([{ id: TEST_A, type: "performance" }, { id: TEST_B, type: "performance" }]));
+    const result = await updateJob(input, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+  });
+
+  it("writes the job and its tests in one transaction", async () => {
+    arrange("playwright", [{ id: TEST_A, type: "browser" }]);
+    const result = await updateJob({ ...input, tests: [{ id: TEST_A }] }, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a warning, and no next run, when the schedule could not be registered", async () => {
+    arrange("playwright", [{ id: TEST_A, type: "browser" }]);
+    jest.mocked(scheduleJob).mockRejectedValueOnce(new Error("redis down"));
+    const result = await updateJob({ ...input, tests: [{ id: TEST_A }] }, context);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    expect((result as { job: { warning?: string; nextRunAt: string | null } }).job.warning).toEqual(expect.any(String));
+    expect((result as { job: { nextRunAt: string | null } }).job.nextRunAt).toBeNull();
+  });
+});
+
+it.each([
+  ["a sub-minute cron", { cronSchedule: "* * * * * *" }],
+  ["a fractional threshold", { alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: 2.5, recoveryThreshold: 1 } }],
+])("rejects %s before any database access (c10, c16)", async (_name, extra) => {
+  const result = await updateJob({ ...input, ...extra }, context);
+  expect(result).toEqual(expect.objectContaining({ success: false }));
+  expect(mockSelect).not.toHaveBeenCalled();
+});
+
+it("does not re-validate a legacy stored cron or threshold that the caller only inherited", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const legacy = {
+    ...input,
+    cronSchedule: "* * * * * *",
+    alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: 500, recoveryThreshold: 1 },
+  };
+  await updateJob(legacy, { ...context, inherited: { cronSchedule: true, alertConfig: true } });
+  expect(mockSelect).toHaveBeenCalled();
+});
+
+it("accepts an inherited null threshold instead of failing an unrelated edit", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const alertConfig = { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null };
+  await updateJob({ ...input, alertConfig } as never, { ...context, inherited: { alertConfig: true } });
+  expect(mockSelect).toHaveBeenCalled();
+});
+
+function mockJob(stored: unknown) {
+  const testId = "018f0000-0000-7000-8000-0000000000a1";
+  mockSelect
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: input.jobId, jobType: "playwright", alertConfig: stored }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: async () => [{ id: testId }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: testId, type: "browser" }] }) });
+}
+
+it("update without alertOnFailure keeps a stored false", async () => {
+  mockJob({ enabled: false, notificationProviders: [], alertOnFailure: false, alertOnSuccess: true, failureThreshold: 3, recoveryThreshold: 2 });
+  const result = await updateJob({ ...input, alertConfig: { customMessage: "hi" } } as never, context);
+  expect(result).toMatchObject({ success: true });
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ alertOnFailure: false, failureThreshold: 3, recoveryThreshold: 2, customMessage: "hi" });
+});
+
+it("applies create defaults when no alertConfig is stored", async () => {
+  mockJob(null);
+  await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ enabled: false, alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, alertOnSuccess: true });
 });

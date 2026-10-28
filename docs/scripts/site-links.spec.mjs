@@ -93,3 +93,14 @@ test('every screenshot referenced by the site and docs exists', () => {
     }
   }
 });
+
+test('site screenshots are loaded through the cache-busting version', () => {
+  // Public screenshots are cached for 7 days; an unversioned URL keeps serving the old image.
+  const ui = read('../src/components/landing/ui.tsx');
+  const hero = read('../src/app/(home)/page.tsx');
+  assert.match(ui, /src=\{versioned\(src\)\}/);
+  assert.match(hero, /src=\{versioned\("\/supercheck-screenshot\.webp"\)\}/);
+  for (const [name, source] of Object.entries(sources)) {
+    assert.doesNotMatch(source, /["']\/screenshots\/playground-editor\.png["']/, `${name}: use OG_IMAGE`);
+  }
+});

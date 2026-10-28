@@ -15,6 +15,10 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- `PUT /api/jobs/{id}` accepts an `alertConfig` without `enabled`, `notificationProviders`, `alertOnFailure` or the thresholds, so a job pulled and deployed by the CLI can be updated. The job in the URL is always the one updated, even if the body carries another `jobId`.
+- `PUT /api/jobs/{id}` keeps any `alertConfig` field the request omits at its stored value (for example `alertOnFailure: false`); create defaults apply only when no alert config is stored.
+- `POST /api/cli/project-config/deploy` rejects more than 500 notification providers or SRE bindings per request.
+- MCP `list_runs` returns the newest runs first (ordered by creation time, cursor format unchanged), and `get_monitor` reports the monitor's configured locations with `locationStrategy` and `locationThreshold`. `list_incidents` accepts `severity`, and `list_tests` accepts `type`, `priority` and `search`.
 - `POST` and `PATCH` on `/api/tests/{id}/tags` and `/api/monitors/{id}/tags` return 400 instead of 500 when a tag is deleted between validation and insert.
 - Monitor checks skipped because no worker is live in any expected location (such as during a deployment rollout) are no longer recorded as Down.
 - A queued trial run is no longer failed when only another run's in-flight reservation puts it over the allowance; it stays queued until that run settles. An expired trial entitlement now counts as having no remaining allowance, as in the worker.

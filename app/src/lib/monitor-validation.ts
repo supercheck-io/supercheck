@@ -15,6 +15,8 @@ type MonitorValidationInput = {
   type: unknown;
   target: unknown;
   config: unknown;
+  /** The config the client sent, if any. Unsupported keys are rejected there only, so a stored legacy key never blocks an unrelated edit. */
+  incomingConfig?: unknown;
 };
 
 export type MonitorValidationResult =
@@ -50,10 +52,34 @@ function validateTimeout(
   return { success: true };
 }
 
+/** Documented in the types but read by no probe: accepting them would give a monitor that silently ignores them. */
+const UNEVALUATED_CONFIG_KEYS = [
+  "responseBodyJsonPath",
+  "checkExpiration",
+  "daysUntilExpirationWarning",
+  "checkRevocation",
+  "sslCheckOnStatusChange",
+] as const;
+
+function validateLocationPolicy(config: Record<string, unknown>): MonitorValidationResult {
+  const location = config.locationConfig;
+  if (!isRecord(location)) return { success: true };
+  const { threshold, strategy } = location;
+  // threshold 0 would mark a monitor up with every region down; above 100 it could never be up.
+  if (threshold !== undefined && (typeof threshold !== "number" || !Number.isInteger(threshold) || threshold < 1 || threshold > 100)) {
+    return invalid("Invalid monitor configuration", "config.locationConfig.threshold must be an integer between 1 and 100");
+  }
+  if (strategy !== undefined && strategy !== "all" && strategy !== "majority" && strategy !== "any") {
+    return invalid("Invalid monitor configuration", 'config.locationConfig.strategy must be "all", "majority" or "any"');
+  }
+  return { success: true };
+}
+
 export function validateMonitorConfiguration({
   type,
   target,
   config,
+  incomingConfig,
 }: MonitorValidationInput): MonitorValidationResult {
   const parsedType = monitorTypeSchema.safeParse(type);
   if (!parsedType.success) {
@@ -71,6 +97,16 @@ export function validateMonitorConfiguration({
 
   const timeoutResult = validateTimeout(monitorConfig);
   if (!timeoutResult.success) return timeoutResult;
+
+  const unevaluated = isRecord(incomingConfig)
+    ? UNEVALUATED_CONFIG_KEYS.find((key) => incomingConfig[key] != null)
+    : undefined;
+  if (unevaluated) {
+    return invalid("Invalid monitor configuration", `config.${unevaluated} is not supported: no check evaluates it`);
+  }
+
+  const locationResult = validateLocationPolicy(monitorConfig);
+  if (!locationResult.success) return locationResult;
 
   if (monitorType === "synthetic_test") {
     const testId = z.string().uuid().safeParse(monitorConfig.testId);

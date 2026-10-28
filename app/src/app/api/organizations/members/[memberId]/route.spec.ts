@@ -4,7 +4,8 @@ jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn()
 jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
-import { PUT } from "./route";
+import { PUT, DELETE } from "./route";
+import { apikey, member } from "@/db/schema";
 import { db } from "@/utils/db";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -43,4 +44,33 @@ it("does not create assignments when the membership update affects no rows", asy
   returning.mockResolvedValue([]);
   expect((await post()).status).toBe(404);
   expect(tx.insert).not.toHaveBeenCalled();
+});
+
+describe("DELETE", () => {
+  const memberId = "0c11ab1e-7460-5139-b3b8-920f69f95082";
+  const del = () => DELETE(new NextRequest("http://localhost/api/organizations/members/x", { method: "DELETE" }), { params: Promise.resolve({ memberId }) });
+  const keyUpdateSet = jest.fn(() => ({ where: jest.fn() }));
+  const delTx = {
+    select: jest.fn((_cols?: unknown) => ({ from: (table: unknown) => ({ where: () => (table === member ? { for: lock } : Promise.resolve([{ id: "p1" }])) }) })),
+    delete: jest.fn(() => ({ where: jest.fn() })),
+    update: jest.fn(() => ({ set: keyUpdateSet })),
+  };
+  beforeEach(() => {
+    (db.select as jest.Mock).mockReset().mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ id: memberId, role: "project_viewer", userName: "n", userEmail: "e" }] }) }) }) });
+    (db.transaction as jest.Mock).mockImplementation(async fn => fn(delTx));
+    lock.mockResolvedValue([{ id: "m1" }]);
+  });
+
+  it("disables the removed member's job trigger keys in the same transaction", async () => {
+    expect((await del()).status).toBe(200);
+    expect(delTx.update).toHaveBeenCalledWith(apikey);
+    expect(keyUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+  });
+
+  it("locks the membership row before deleting assignments, and 404s if it is already gone", async () => {
+    lock.mockResolvedValue([]);
+    expect((await del()).status).toBe(404);
+    expect(lock).toHaveBeenCalledWith("update");
+    expect(delTx.delete).not.toHaveBeenCalled();
+  });
 });

@@ -9,6 +9,8 @@ import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { tryLoadConfig } from '../config/loader.js'
 import { getStoredBaseUrl, getStoredOrganization, getStoredProject } from '../auth/store.js'
 import { logger } from '../utils/logger.js'
+import { jobCronWarning } from '../utils/cron.js'
+import { UNEVALUATED_MONITOR_CONFIG_KEYS } from '../utils/monitor-config-keys.js'
 import { withSpinner } from '../utils/spinner.js'
 import { CLIError, ExitCode, ApiRequestError } from '../utils/errors.js'
 import { fetchAllPages, fetchRemoteRequirements, fetchStatusPagesWithComponents, type RemoteRequirement } from '../utils/resources.js'
@@ -380,6 +382,8 @@ export function buildMonitorDefinitions(
       // Remove runtime-only fields
       delete config.sslLastCheckedAt
       delete config.aggregatedAlertState
+      // Legacy keys no check evaluates; the server now rejects them on write, so a pulled config must not carry them.
+      for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete config[key]
 
       // Clean up default playwrightOptions (retries:0, timeout:300000, headless:true)
       if (config.playwrightOptions && typeof config.playwrightOptions === 'object') {
@@ -444,7 +448,7 @@ export function buildMonitorDefinitions(
  * testMap resolves test UUIDs to file paths for human-readable references.
  * Omits runtime state (status) and cleans up alertConfig defaults.
  */
-function buildJobDefinitions(
+export function buildJobDefinitions(
   jobs: RemoteJob[],
   testMap: Map<string, string>,
 ): Record<string, unknown>[] {
@@ -460,7 +464,11 @@ function buildJobDefinitions(
 
     if (j.description) def.description = j.description
     if (j.jobType) def.jobType = j.jobType
-    if (j.cronSchedule) def.cronSchedule = j.cronSchedule
+    if (j.cronSchedule) {
+      def.cronSchedule = j.cronSchedule
+      const warning = jobCronWarning(j.name, j.cronSchedule)
+      if (warning) logger.warn(warning)
+    }
     // Note: `status` is intentionally omitted — it's runtime state, not config
 
     // Pass alertConfig through, stripping only defaults

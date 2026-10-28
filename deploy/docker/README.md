@@ -70,6 +70,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `DEVICE_AUTH_ENABLED` | Let `supercheck login` sign in through the browser (device authorization). When `false` the CLI asks users to create a token in the dashboard instead. Needs Redis and database migration 0032 | `false` |
 | `MCP_SERVER_ENABLED` | Remote MCP server sign-in (OAuth 2.1 for MCP clients). Off by default; needs migration 0036 and `BETTER_AUTH_URL` set to the public HTTPS URL | `false` |
 | `MCP_ALLOWED_ORIGINS` | Comma-separated exact browser origins (no wildcards) allowed to call `/api/mcp`, for browser-based MCP clients. The app's own origin is always allowed; `CORS_ALLOWED_ORIGINS` does not apply to MCP, so list any browser client origin here | Empty |
+| `REPORTS_ORIGIN` | Optional separate cookieless origin for report documents, for example `https://reports.example.net` (scheme and host, no path). Unset serves reports from the app origin. When set, the app serves report HTML only on that host via short-lived signed URLs, so you must also route that hostname to the app with TLS. Use a different registrable domain than the app, or host-only session cookies | Empty |
 | `MCP_DYNAMIC_CLIENT_REGISTRATION` | With the MCP server on, accept self-registering clients. `false` accepts only clients that identify themselves with a Client ID Metadata Document | `true` |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |

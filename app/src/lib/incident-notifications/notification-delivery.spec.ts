@@ -119,3 +119,15 @@ it("does not deliver an update whose notification flag is off", async () => {
   await sendSlackNotifications("incident", "page", silent);
   expect(resolveSubscribers).not.toHaveBeenCalled();
 });
+
+it("counts a Slack failure toward quarantine only on the final attempt", async () => {
+  (deliverSlackMessage as jest.Mock).mockResolvedValue({ success: false, error: "boom" });
+  const sets: Array<Record<string, unknown>> = [];
+  (db.update as jest.Mock).mockImplementation(() => ({
+    set: (v: Record<string, unknown>) => (sets.push(v), { where: jest.fn() }),
+  }));
+  await sendSlackNotifications("incident", "page", update, "subscriber", false, false);
+  expect(sets.every((s) => s.webhookFailures === undefined)).toBe(true);
+  await sendSlackNotifications("incident", "page", update, "subscriber", false, true);
+  expect(sets.some((s) => s.webhookFailures === 1)).toBe(true);
+});

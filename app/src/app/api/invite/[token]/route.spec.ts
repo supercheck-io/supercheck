@@ -120,7 +120,7 @@ describe("invitation privacy and acceptance", () => {
       .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
     tx.select.mockReset()
       .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
-      .mockReturnValueOnce(selectRows([{ plan }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: plan }]))
       .mockReturnValueOnce(selectRows([]));
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
     expect(response.status).toBe(402);
@@ -136,13 +136,33 @@ describe("invitation privacy and acceptance", () => {
     db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }])).mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
     tx.select.mockReset()
       .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
-      .mockReturnValueOnce(selectRows([{ plan: "plus" }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: "plus", polarCustomerId: "cus", subscriptionStatus: "active", subscriptionEndsAt: null }]))
       .mockReturnValueOnce(selectRows([]))
       .mockReturnValueOnce(selectRows([{ max: 2 }]))
       .mockReturnValueOnce(selectRows([{ count: 2 }]));
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
     expect(response.status).toBe(402);
     expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["unpaid", null],
+    ["canceled", new Date(Date.now() - 86_400_000)],
+  ])("ignores a lapsed %s paid plan when applying the member cap", async (status, endsAt) => {
+    const { tx } = acceptance();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }]))
+      .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
+    tx.select.mockReset()
+      .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: "plus", polarCustomerId: "cus", subscriptionStatus: status, subscriptionEndsAt: endsAt }]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([{ max: 10 }]))
+      .mockReturnValueOnce(selectRows([{ count: 1 }]))
+      .mockReturnValue(selectRows([{ id: "22222222-2222-4222-8222-222222222222" }]));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(402);
     expect(tx.insert).not.toHaveBeenCalled();
   });
 
@@ -158,7 +178,7 @@ describe("invitation privacy and acceptance", () => {
       .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
     tx.select.mockReset()
       .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
-      .mockReturnValueOnce(selectRows([{ plan: null }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: null }]))
       .mockReturnValueOnce(selectRows([]))
       .mockReturnValueOnce(selectRows([{ count }]))
       .mockReturnValue(selectRows([{ id: "22222222-2222-4222-8222-222222222222" }]));
@@ -229,7 +249,7 @@ describe("invitation privacy and acceptance", () => {
       .mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
     tx.select.mockReset()
       .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
-      .mockReturnValueOnce(selectRows([{ plan: "pro" }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: "pro", polarCustomerId: "cus", subscriptionStatus: "active", subscriptionEndsAt: null }]))
       .mockReturnValueOnce(selectRows([]))
       .mockReturnValueOnce(selectRows([{ max: 10 }]))
       .mockReturnValueOnce(selectRows([{ count: 1 }]))

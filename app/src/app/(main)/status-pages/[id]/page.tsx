@@ -8,6 +8,7 @@ import { StatusPageDetail } from "@/components/status-pages/status-page-detail";
 import { useStatusPageDetail } from "@/hooks/use-status-pages";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { toast } from "sonner";
+import { ListErrorState } from "@/components/shared/list-states";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
@@ -40,15 +41,17 @@ export default function StatusPagePage() {
     useStatusPageDetail(statusPageId);
   const hasData = statusPage !== undefined && statusPage !== null;
 
-  // Handle error - redirect to list page
+  const notFound = (error as { status?: number } | null)?.status === 404;
+
+  // Redirect to the list only when the page really does not exist
   useEffect(() => {
-    if (error) {
+    if (notFound) {
       toast.error("Status page not found", {
         description: "The status page you're looking for doesn't exist or has been deleted."
       });
       router.push("/status-pages");
     }
-  }, [error, router]);
+  }, [notFound, router]);
 
   // Show loading state during hydration, cache restoration, or when no data exists
   if (!isMounted || isRestoring || (!hasData && isLoading)) {
@@ -62,7 +65,12 @@ export default function StatusPagePage() {
   // Handle case where page doesn't exist after loading completed
   // Note: If error is set, useEffect above handles the redirect, so we show loading
   if (!statusPage) {
-    // If there was an error, useEffect will redirect, show loading during redirect
+    if (error && !notFound) {
+      return (
+        <ListErrorState title="Failed to load status page" error={error} onRetry={() => invalidate()} />
+      );
+    }
+    // If not found, useEffect will redirect, show loading during redirect
     if (error) {
       return (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">

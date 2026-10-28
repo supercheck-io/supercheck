@@ -82,3 +82,41 @@ it("delivers once the subscriber is verified", async () => {
   expect(result.sentCount).toBe(1);
   expect(deliverWebhook).toHaveBeenCalledTimes(1);
 });
+
+describe("failure counting", () => {
+  const sub = {
+    id: "subscriber-1",
+    endpoint: "https://hooks.example.com/supercheck",
+    webhookSecret: "0123456789abcdef",
+    verifiedAt: new Date(),
+    quarantinedAt: null,
+    purgeAt: null,
+    webhookFailures: 3,
+  };
+  function captureSet() {
+    const sets: Record<string, unknown>[] = [];
+    (db.update as jest.Mock).mockReturnValue({
+      set: (v: Record<string, unknown>) => {
+        sets.push(v);
+        return { where: async () => undefined };
+      },
+    });
+    return sets;
+  }
+
+  it("does not count a retryable (non-final) attempt toward quarantine", async () => {
+    jest.mocked(resolveSubscribers).mockResolvedValue([sub] as never);
+    jest.mocked(deliverWebhook).mockResolvedValue({ success: false, error: "boom", retriesAttempted: 0 } as never);
+    const sets = captureSet();
+    await sendWebhookNotifications("incident-1", "page-1", undefined, "subscriber-1", false, false);
+    expect(sets.every((s) => s.webhookFailures === undefined)).toBe(true);
+  });
+
+  it("counts the final attempt once", async () => {
+    jest.mocked(resolveSubscribers).mockResolvedValue([sub] as never);
+    jest.mocked(deliverWebhook).mockResolvedValue({ success: false, error: "boom", retriesAttempted: 0 } as never);
+    const sets = captureSet();
+    await sendWebhookNotifications("incident-1", "page-1", undefined, "subscriber-1", false, true);
+    expect(sets[0].webhookFailures).toBe(4);
+  });
+});

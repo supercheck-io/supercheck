@@ -235,7 +235,7 @@ class UsageNotificationService {
     periodStart: Date | null,
     periodEnd: Date | null
   ): Promise<NotificationResult | null> {
-    const percentage = Math.round((currentSpendingCents / limitCents) * 100);
+    const percentage = Math.floor((currentSpendingCents * 100) / limitCents);
 
     let notificationType: NotificationType | null = null;
     let thresholdKey: "spending_warning" | "spending_limit" | "spending_90" | null = null;
@@ -243,12 +243,12 @@ class UsageNotificationService {
     if (percentage >= 100) {
       notificationType = "spending_limit_reached";
       thresholdKey = "spending_limit";
-    } else if (percentage >= 90 && settings.hardStopOnLimit) {
+    } else if (percentage >= 90 && settings.hardStopOnLimit && settings.notifyAt90Percent) {
       // PROACTIVE WARNING: Alert at 90% when hard-stop is enabled
       // This gives users advance notice before their executions get blocked
       notificationType = "spending_limit_warning";
       thresholdKey = "spending_90";
-    } else if (percentage >= 80) {
+    } else if (percentage >= 80 && settings.notifyAt80Percent) {
       notificationType = "spending_limit_warning";
       thresholdKey = "spending_warning";
     }

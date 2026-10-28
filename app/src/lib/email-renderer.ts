@@ -258,7 +258,7 @@ export async function renderIncidentUpdateEmail(
   const component = IncidentUpdateEmail(params);
 
   return {
-    subject: `[${params.severity.toUpperCase()}] ${incidentUpdateHeadline(params.event, params.actorName)}: #${params.incidentNumber} ${params.title}`,
+    subject: `[${params.severity.toUpperCase()}] ${incidentUpdateHeadline(params.event, params.actorName, params.assigneeName)}: #${params.incidentNumber} ${params.title}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };
