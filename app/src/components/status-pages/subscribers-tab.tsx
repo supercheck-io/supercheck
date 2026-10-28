@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Search,
   Download,
+  AlertCircle,
   CheckCircle2,
   Clock,
   Loader2,
@@ -78,6 +79,7 @@ type Subscriber = {
   endpoint: string | null;
   mode: string;
   verifiedAt: Date | null;
+  quarantinedAt: Date | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -90,7 +92,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0 });
+  const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0, quarantined: 0 });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [subscriberToDelete, setSubscriberToDelete] = useState<string | null>(
     null
@@ -635,7 +637,15 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {subscriber.verifiedAt ? (
+                        {subscriber.quarantinedAt ? (
+                          <Badge
+                            className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            title="Delivery paused after repeated failures. A successful webhook test or resubscribing re-enables it."
+                          >
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Quarantined
+                          </Badge>
+                        ) : subscriber.verifiedAt ? (
                           <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Verified

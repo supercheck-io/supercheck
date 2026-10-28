@@ -71,3 +71,11 @@ it("supports best case and maps pending checks to degraded rather than claiming 
     ),
   ).toBe("degraded_performance");
 });
+it("ignores pending and paused monitors while another monitor has a real result", () => {
+  const calc = (statuses: string[]) =>
+    service.calculateFromMonitors(statuses.map((status) => ({ status, weight: 1 })), "worst_case", 1);
+  expect(calc(["up", "pending"])).toBe("operational");
+  expect(calc(["up", "paused"])).toBe("operational");
+  expect(calc(["down", "pending"])).toBe("major_outage");
+  expect(calc(["paused"])).toBe("under_maintenance");
+});

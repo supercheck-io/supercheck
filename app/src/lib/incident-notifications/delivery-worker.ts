@@ -327,6 +327,7 @@ export async function processDelivery(deliveryId: string) {
               update,
               delivery.subscriberId,
               event.isCreation,
+              delivery.attempts >= 4,
             )
           : await sendSlackNotifications(
               incident.id,
@@ -334,6 +335,7 @@ export async function processDelivery(deliveryId: string) {
               update,
               delivery.subscriberId,
               event.isCreation,
+              delivery.attempts >= 4,
             );
     if (!result.success) throw new Error(result.message);
     await db

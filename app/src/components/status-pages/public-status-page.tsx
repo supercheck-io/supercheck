@@ -29,6 +29,7 @@ import {
   type DailyCheckCounts,
 } from "@/lib/status-page-uptime";
 import { StatusPageBranding } from "./status-page-branding";
+import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 
 type ComponentStatus =
   | "operational"
@@ -87,6 +88,8 @@ type Incident = {
   impact: IncidentImpact;
   createdAt: Date | null;
   resolvedAt: Date | null;
+  scheduledFor?: Date | null;
+  scheduledUntil?: Date | null;
   latestUpdate: {
     body: string;
     createdAt: Date | null;
@@ -647,6 +650,14 @@ export function PublicStatusPage({
                                     <h4 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
                                       {incident.name}
                                     </h4>
+                                    {incident.scheduledFor && incident.scheduledUntil && (
+                                      <p className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-0.5 sm:mt-1">
+                                        <Wrench className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span>
+                                          {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+                                        </span>
+                                      </p>
+                                    )}
                                     {incident.latestUpdate && (
                                       <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1">
                                         {incident.latestUpdate.body}

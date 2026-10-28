@@ -19,3 +19,9 @@ it("shows check-based uptime without incidents and supports Arabic direction", (
   expect(screen.getByText(/99\.00%/)).toBeInTheDocument();
   expect(container.firstChild).toHaveAttribute("dir", "rtl");
 });
+
+it("renders the maintenance window of a scheduled incident", () => {
+  const incident = { id: "m1", name: "DB upgrade", status: "scheduled" as const, impact: "none" as const, createdAt: new Date(), resolvedAt: null, latestUpdate: null, scheduledFor: new Date("2030-01-05T02:00:00Z"), scheduledUntil: new Date("2030-01-05T04:00:00Z") };
+  render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident]} idOrSubdomain="page" />);
+  expect(screen.getByText(/Jan 5, 2030, 02:00 AM UTC.*04:00 AM UTC/)).toBeInTheDocument();
+});
