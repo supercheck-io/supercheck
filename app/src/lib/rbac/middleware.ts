@@ -23,6 +23,7 @@ import {
   statement,
 } from "./permissions";
 import { normalizeRole } from "./role-normalizer";
+import { resolveEffectiveProjectRole } from "./effective-project-role";
 import { isSuperAdmin } from "./super-admin";
 import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -298,7 +299,7 @@ export async function resolveProjectPermissionContext(
   const orgRole = await getUserOrgRole(userId, project.organizationId);
   if (!orgRole) return null; // Not an org member — deny all access
 
-  // 4. For org-wide roles, use directly (no project membership check needed)
+  // 4. Org-wide roles bypass project membership
   if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) {
     return {
       userId,
@@ -319,9 +320,8 @@ export async function resolveProjectPermissionContext(
     )
     .limit(1);
 
-  const effectiveRole = projectMember
-    ? normalizeRole(projectMember.role)
-    : Role.PROJECT_VIEWER; // Degrade to viewer if not assigned
+  const effectiveRole =
+    resolveEffectiveProjectRole(orgRole, projectMember?.role) ?? Role.PROJECT_VIEWER;
 
   return {
     userId,
@@ -380,7 +380,7 @@ export async function canCancelRunInProject(
       return false; // User is not a member of this project
     }
 
-    const projectRole = normalizeRole(projectMember[0].role);
+    const projectRole = resolveEffectiveProjectRole(userRole, projectMember[0].role);
     // PROJECT_ADMIN and PROJECT_EDITOR can cancel runs
     return (
       projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
