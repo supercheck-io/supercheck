@@ -109,7 +109,7 @@ SSL expiration warnings are evaluated independently of the monitor's up/down res
 
 **Alert Limiting**
 
-At most **3 alerts** go out per failure or recovery streak: the first when the threshold is reached, then reminders at the configured intervals.
+At most **3 alerts** go out per failure or recovery streak: the first when the threshold is reached, then reminders spaced by the threshold (see job failures above). The interval is not configurable.
 
 </Tab>
 <Tab value="Example">

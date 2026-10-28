@@ -37,7 +37,7 @@ const products = [
   },
   {
     title: "Respond",
-    summary: "Every monitor or job alert opens an incident you can work from.",
+    summary: "Monitor and job alerts open an incident you can work from (on by default, per check).",
     href: "/docs/app/investigate",
     shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
     items: [
@@ -65,7 +65,7 @@ const flow = [
   { step: "Check", body: "A monitor or scheduled job with alerts on fails past its threshold." },
   { step: "Alert", body: "Your notification channels get the failure." },
   { step: "Incident", body: "An incident opens for that source, with its alerts attached." },
-  { step: "Investigate", body: "AI SRE reads the evidence and cites what it found. You decide the fix." },
+  { step: "Investigate", body: "Run an AI SRE investigation that cites what it found. You decide the fix." },
   { step: "Recover", body: "The check passes, a recovery is sent, and an unacknowledged incident resolves." },
 ];
 
@@ -138,8 +138,8 @@ export default async function HomePage() {
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
             Test with Playwright and k6 and monitor your sites and APIs. When a check fails,
-            Supercheck opens an incident, investigates it with AI that cites its evidence, and
-            keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
+            Supercheck opens an incident, lets you investigate it with AI that cites its evidence,
+            and keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
