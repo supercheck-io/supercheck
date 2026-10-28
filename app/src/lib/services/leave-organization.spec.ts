@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { PgDialect } from "drizzle-orm/pg-core";
-import { member, projectMembers, session } from "@/db/schema";
+import { apikey, member, projectMembers, session } from "@/db/schema";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { clearRequestCache } from "@/lib/session-cache";
@@ -86,4 +86,9 @@ it("does not clear state or report success when cleanup fails", async () => {
 it("rejects a stale confirmation if the session switched organizations", async () => {
   await expect(leaveOrganization("org-other")).rejects.toMatchObject({ status: 409 });
   expect(db.transaction).not.toHaveBeenCalled();
+});
+it("disables the leaver's job trigger keys for the organization", async () => {
+  await leaveOrganization("org-1");
+  expect(tx.update).toHaveBeenCalledWith(apikey);
+  expect(set).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
 });

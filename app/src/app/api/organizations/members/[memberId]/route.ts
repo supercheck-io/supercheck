@@ -7,6 +7,7 @@ import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { disableTriggerKeysForMember } from '@/lib/security/disable-trigger-keys';
 import { updateMemberSchema } from '@/lib/validations/member';
 
 export async function PUT(
@@ -422,8 +423,20 @@ export async function DELETE(
     }
 
     // Remove member and their project assignments in a transaction
-    await db.transaction(async (tx) => {
-      // First, clean up project member assignments for this org's projects
+    const removed = await db.transaction(async (tx) => {
+      // Lock the membership first so a concurrent role/assignment update cannot
+      // re-insert project assignments after this delete (the PUT handler locks too).
+      const [locked] = await tx
+        .select({ id: member.id })
+        .from(member)
+        .where(and(
+          eq(member.userId, resolvedParams.memberId),
+          eq(member.organizationId, delOrgId)
+        ))
+        .for('update');
+      if (!locked) return false;
+
+      // Clean up project member assignments for this org's projects
       const orgProjectIds = await tx
         .select({ id: projects.id })
         .from(projects)
@@ -447,7 +460,15 @@ export async function DELETE(
           eq(member.userId, resolvedParams.memberId),
           eq(member.organizationId, delOrgId)
         ));
+
+      // Their job trigger keys must not outlive the membership.
+      await disableTriggerKeysForMember(tx, resolvedParams.memberId, delOrgId);
+      return true;
     });
+
+    if (!removed) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+    }
 
     // Log the audit event
     await logAuditEvent({
