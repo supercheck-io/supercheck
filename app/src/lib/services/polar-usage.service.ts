@@ -442,7 +442,7 @@ class PolarUsageService {
     let remainingCents: number | null = null;
 
     if (limitEnabled && limitCents !== null && limitCents > 0) {
-      percentageUsed = Math.round((currentSpendingCents / limitCents) * 100);
+      percentageUsed = Math.floor((currentSpendingCents * 100) / limitCents);
       isAtLimit = currentSpendingCents >= limitCents;
       remainingCents = Math.max(0, limitCents - currentSpendingCents);
     }

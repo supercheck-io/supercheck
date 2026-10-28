@@ -235,7 +235,7 @@ class UsageNotificationService {
     periodStart: Date | null,
     periodEnd: Date | null
   ): Promise<NotificationResult | null> {
-    const percentage = Math.round((currentSpendingCents / limitCents) * 100);
+    const percentage = Math.floor((currentSpendingCents * 100) / limitCents);
 
     let notificationType: NotificationType | null = null;
     let thresholdKey: "spending_warning" | "spending_limit" | "spending_90" | null = null;

@@ -65,6 +65,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (currentScript.length > 50000) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "invalid_request",
+          message: "Current script is too long (maximum 50000 characters)",
+        },
+        { status: 400 }
+      );
+    }
+
     // Sanitize inputs using enhanced security service
     const sanitizedUserRequest =
       AISecurityService.sanitizeTextOutput(userRequest);
