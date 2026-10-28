@@ -39,6 +39,22 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.json().catch(() => null);
     const body = resultSchema.safeParse(rawBody);
     if (!body.success) {
+      // Fail the leased job so a result the server can never accept is not re-leased and re-run forever.
+      const ref = resultSchema.pick({ jobId: true, leaseToken: true }).safeParse(rawBody);
+      if (ref.success) {
+        await db
+          .update(privateAgentJobs)
+          .set({ status: "failed", completedAt: new Date(), errorCode: "result_rejected" })
+          .where(
+            and(
+              eq(privateAgentJobs.id, ref.data.jobId),
+              eq(privateAgentJobs.privateAgentId, auth.agent.id),
+              eq(privateAgentJobs.organizationId, auth.agent.organizationId),
+              eq(privateAgentJobs.leaseTokenHash, hashApiKey(ref.data.leaseToken)),
+              inArray(privateAgentJobs.status, ["leased", "running"])
+            )
+          );
+      }
       return NextResponse.json({ error: "Invalid job result payload" }, { status: 400 });
     }
 

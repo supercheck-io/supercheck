@@ -639,7 +639,12 @@ export class CapacityManager {
       const limits = await checkCapacityLimits(organizationId);
       const raw = await redis.get(jobDataKey);
       if (!raw) {
-        await redis.zrem(queuedKey, jobId);
+        // addToQueue writes the payload just after the atomic reservation adds the member: a fresh entry is
+        // not lost yet.
+        const queuedAt = Number(await redis.zscore(queuedKey, jobId));
+        if (Number.isFinite(queuedAt) && Date.now() - queuedAt < 60_000) return false;
+        // The payload expired or was lost: leaving the run 'queued' would block its schedule forever.
+        await this.discardUnreadableJob(organizationId, jobId, 'The queued run payload was lost and the run was discarded');
         return false;
       }
       try {
@@ -738,7 +743,11 @@ export class CapacityManager {
   }
 
   /** Fails the run of a queued job whose stored payload cannot be parsed, and removes the job. */
-  private async discardUnreadableJob(organizationId: string, jobId: string): Promise<void> {
+  private async discardUnreadableJob(
+    organizationId: string,
+    jobId: string,
+    reason = 'The queued run could not be read and was discarded',
+  ): Promise<void> {
     try {
       const redis = await this.getRedis();
       // Only the caller that removes the entry owns the cleanup.
@@ -748,7 +757,7 @@ export class CapacityManager {
       const { and, eq } = await import('drizzle-orm');
       try {
         // Job ids are run ids, and the payload that would say otherwise is the unreadable part.
-        await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: 'The queued run could not be read and was discarded' })
+        await db.update(runs).set({ status: 'failed', completedAt: new Date(), errorDetails: reason })
           .where(and(eq(runs.id, jobId), eq(runs.status, 'queued')));
       } catch (recordError) {
         await redis.zadd(KEYS.queued(organizationId), Date.now(), jobId);
@@ -1161,6 +1170,10 @@ export async function setupCapacityManagement(
  * - Network issues causing missed events
  * - Counter corruption
  */
+// A drift is corrected only when the previous pass saw the same one: a single pass compares a BullMQ
+// snapshot with a later Redis read, so a job admitted or finished in between would look like drift.
+const pendingDrift = new Map<string, string>();
+
 export async function reconcileCapacityCounters(
   queues?: QueueParameters,
   autoCorrect: boolean = true
@@ -1242,7 +1255,19 @@ export async function reconcileCapacityCounters(
       const stored = redisRunningByOrg[orgId] || 0;
       const drift = stored - actual;
 
-      if (drift !== 0 && autoCorrect) {
+      if (drift === 0) {
+        pendingDrift.delete(orgId);
+        continue;
+      }
+      // The sign, not the exact values: counters move between passes, a leaked slot does not.
+      const seen = drift > 0 ? 'over' : 'under';
+      if (autoCorrect && pendingDrift.get(orgId) !== seen) {
+        pendingDrift.set(orgId, seen);
+        continue;
+      }
+      pendingDrift.delete(orgId);
+
+      if (autoCorrect) {
         logger.warn({ 
           organizationId: orgId,
           redis: stored, 

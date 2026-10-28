@@ -53,3 +53,9 @@ it("checks authorization before billing", async () => {
   expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
   expect(mockInsert).not.toHaveBeenCalled();
 });
+
+it("rejects a sub-minute cron before any write (c10)", async () => {
+  const result = await createJob({ ...input, cronSchedule: "* * * * * *" });
+  expect(result).toEqual(expect.objectContaining({ success: false }));
+  expect(mockInsert).not.toHaveBeenCalled();
+});

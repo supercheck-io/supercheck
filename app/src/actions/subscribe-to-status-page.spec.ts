@@ -12,6 +12,7 @@ jest.mock("@/utils/db", () => ({
     },
     delete: jest.fn(),
     insert: jest.fn(),
+    update: jest.fn(),
   },
 }));
 
@@ -97,5 +98,65 @@ describe("subscribeToStatusPage", () => {
       "Incident subscriptions are disabled for this status page"
     );
     expect(mockDb.query.statusPageSubscribers.findFirst).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    ["webhook", "https://example.com/webhooks/status"],
+    ["slack", "https://hooks.slack.com/services/T/B/x"],
+  ])("resubscribing an existing %s endpoint", (mode, endpoint) => {
+    let set: jest.Mock;
+    beforeEach(() => {
+      set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+      (mockDb.update as jest.Mock).mockReturnValue({ set });
+    });
+    const subscribe = () =>
+      subscribeToStatusPage({
+        statusPageId: "00000000-0000-4000-8000-000000000123",
+        subscriptionMode: mode as "webhook" | "slack",
+        endpoint,
+        subscribeToAllComponents: true,
+        subscribeToAllIncidents: false,
+      });
+    const existing = (o: Record<string, unknown>) =>
+      (mockDb.query.statusPageSubscribers.findFirst as unknown as jest.Mock).mockResolvedValue({
+        id: "00000000-0000-4000-8000-000000000777", mode, endpoint, verifiedAt: new Date(),
+        purgeAt: null, quarantinedAt: null, ...o,
+      });
+
+    it("clears quarantine and the failure counter", async () => {
+      existing({ quarantinedAt: new Date() });
+      const result = await subscribe();
+      expect(result.success).toBe(true);
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ quarantinedAt: null, webhookFailures: 0 }));
+      if (mode === "webhook") expect(set).toHaveBeenCalledWith(expect.objectContaining({ verifiedAt: null }));
+    });
+
+    it("reactivates a row inside its unsubscribe grace period", async () => {
+      existing({ purgeAt: new Date(Date.now() + 86400000) });
+      const result = await subscribe();
+      expect(result.success).toBe(true);
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ purgeAt: null }));
+    });
+
+    it("still reports an active, healthy endpoint as already subscribed", async () => {
+      existing({});
+      expect((await subscribe()).success).toBe(false);
+      expect(set).not.toHaveBeenCalled();
+    });
+  });
+
+  it("tells an already verified email subscriber where to manage the subscription", async () => {
+    (mockDb.query.statusPageSubscribers.findFirst as unknown as jest.Mock).mockResolvedValue({
+      id: "00000000-0000-4000-8000-000000000777", email: "a@example.com", mode: "email",
+      verifiedAt: new Date(), purgeAt: null,
+    });
+    const result = await subscribeToStatusPage({
+      statusPageId: "00000000-0000-4000-8000-000000000123",
+      subscriptionMode: "email",
+      email: "a@example.com",
+      subscribeToAllComponents: true,
+      subscribeToAllIncidents: false,
+    });
+    expect(result.message).toMatch(/unsubscribe link/i);
   });
 });

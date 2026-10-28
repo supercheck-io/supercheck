@@ -263,17 +263,6 @@ export async function POST(
       return NextResponse.json(buildBillingBlockedResponse(spendingBlock.reason), { status: 402 });
     }
 
-    // Additional validation: ensure job is not in an error state that prevents triggering
-    if (job.status === "error") {
-      return NextResponse.json(
-        {
-          error: "Job not available",
-          message: `Job is currently in error state and cannot be triggered`,
-        },
-        { status: 400 }
-      );
-    }
-
     const jobType = (job.jobType || "playwright") as JobType;
     const isPerformanceJob = jobType === "k6";
     const locationParam = isPerformanceJob

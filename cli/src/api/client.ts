@@ -1,4 +1,5 @@
-import { ApiRequestError, TimeoutError, networkErrorMessage } from '../utils/errors.js'
+import { isTokenSafeUrl } from '../utils/api-url.js'
+import { ApiRequestError, CLIError, ExitCode, TimeoutError, networkErrorMessage } from '../utils/errors.js'
 import { logger } from '../utils/logger.js'
 import { CLI_VERSION } from '../version.js'
 import { getProxyAgent as getSharedProxyAgent, clearProxyAgents, getProxyEnv } from '../utils/proxy.js'
@@ -119,6 +120,9 @@ export class ApiClient {
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, options?.params)
     const parsedUrl = new URL(url)
+    if (this.token && !isTokenSafeUrl(url)) {
+      throw new CLIError(`Refusing to send the API token to ${parsedUrl.origin}: use https, or http only for localhost/127.0.0.1, and no credentials in the URL.`, ExitCode.ConfigError)
+    }
     // Show only the origin in connection errors. This helps users spot a stale
     // configured target without exposing URL credentials, paths, or query data.
     const targetOrigin = parsedUrl.origin
@@ -136,6 +140,7 @@ export class ApiClient {
     const isIdempotent = ['GET', 'PUT', 'DELETE', 'HEAD', 'OPTIONS'].includes(upperMethod)
 
     let lastError: Error | null = null
+    let failedAttempt = false // a 5xx or network error may mean the server already ran the request
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -183,6 +188,7 @@ export class ApiClient {
         // Server error — retry only for idempotent methods
         if (response.status >= 500 && attempt < maxRetries && isIdempotent) {
           const waitMs = RETRY_BACKOFF_MS * Math.pow(2, attempt)
+          failedAttempt = true
           logger.debug(`Server error ${response.status}. Retrying in ${waitMs}ms...`)
           await this.sleep(waitMs)
           continue
@@ -191,6 +197,11 @@ export class ApiClient {
         if (options?.binary && response.ok) return { data: new Uint8Array(await response.arrayBuffer()) as T, status: response.status, headers: response.headers }
         // Read response body as text first to safely handle empty/non-JSON responses (e.g. 204 No Content)
         const text = await response.text()
+
+        // A DELETE retried after a failed attempt may find the resource already gone: the goal is met.
+        if (upperMethod === 'DELETE' && failedAttempt && response.status === 404) {
+          return { data: {} as T, status: response.status, headers: response.headers }
+        }
 
         // Client error — don't retry
         if (!response.ok) {
@@ -229,6 +240,7 @@ export class ApiClient {
         }
 
         lastError = err as Error
+        failedAttempt = true
 
         // Non-idempotent methods (POST, PATCH) must NOT be retried on network errors to prevent duplicate mutations
         if (!isIdempotent) {

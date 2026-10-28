@@ -197,7 +197,8 @@ async function enqueueMonitorExecutionJobs(
     },
     {
       key: cycle.key,
-      configuredLocations: expectedLocations,
+      // Regions with no live worker are skipped, not failed: only enqueued regions can be "missing".
+      configuredLocations: enqueuedLocations,
       policy: monitorCyclePolicy(locationConfig),
       abortOnFailure: cycle.finalAttempt,
     }

@@ -19,6 +19,8 @@ interface BaseLayoutProps {
   footer?: React.ReactNode;
   headerColor?: string;
   showStandardFooter?: boolean;
+  /** Header wordmark; false for status-page emails, which carry the customer's page name. */
+  showBrand?: boolean;
 }
 
 export const BaseLayout = ({
@@ -28,6 +30,7 @@ export const BaseLayout = ({
   footer,
   headerColor = "#15803d",
   showStandardFooter = true,
+  showBrand = true,
 }: BaseLayoutProps) => {
   const headerText = readableTextColor(headerColor);
   return (
@@ -45,6 +48,7 @@ export const BaseLayout = ({
         <Container className="sc-container" style={container}>
           {/* Header */}
           <Section style={{ ...header, background: headerColor }}>
+            {showBrand && <Text style={{ ...brand, color: headerText }}>Supercheck</Text>}
             <Heading style={{ ...headerTitle, color: headerText }}>
               {title}
             </Heading>
@@ -116,6 +120,15 @@ const header = {
   padding: "32px 24px",
   textAlign: "center" as const,
   background: "#52c41a",
+};
+
+const brand = {
+  margin: "0 0 8px",
+  fontSize: "13px",
+  fontWeight: "700" as const,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase" as const,
+  opacity: 0.85,
 };
 
 const headerTitle = {
@@ -192,6 +205,99 @@ export const EmailButton = ({
     {children}
   </Button>
 );
+
+export interface DetailField {
+  title: string;
+  value: string;
+}
+
+/** Only http(s) values become links; other schemes (javascript:, data:) stay text. */
+function isHttpUrl(value: string) {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Shared label/value table so alert and incident emails show details the same way. */
+export const DetailsTable = ({
+  heading,
+  fields,
+}: {
+  heading: string;
+  fields: DetailField[];
+}) => (
+  <Section style={detailsSection}>
+    <Text style={detailsTitle}>{heading}</Text>
+    <table style={detailsTable}>
+      <tbody>
+        {fields.map((field, index) => (
+          <tr key={index}>
+            <td style={detailsLabelCell}>{field.title}</td>
+            <td style={detailsValueCell}>
+              {isHttpUrl(field.value) ? (
+                <Link href={field.value} style={detailsLink}>
+                  {field.value}
+                </Link>
+              ) : (
+                field.value
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </Section>
+);
+
+const detailsSection = {
+  padding: "0 32px 32px",
+};
+
+const detailsTitle = {
+  color: "#374151",
+  fontSize: "16px",
+  fontWeight: "600" as const,
+  margin: "0 0 16px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+};
+
+const detailsTable = {
+  width: "100%",
+  borderCollapse: "collapse" as const,
+};
+
+const detailsLabelCell = {
+  padding: "12px 16px",
+  fontWeight: "600" as const,
+  verticalAlign: "top" as const,
+  borderBottom: "1px solid #e5e7eb",
+  color: "#6b7280",
+  fontSize: "14px",
+  width: "30%",
+  backgroundColor: "#f9fafb",
+  textAlign: "left" as const,
+};
+
+const detailsValueCell = {
+  padding: "12px 16px",
+  verticalAlign: "top" as const,
+  borderBottom: "1px solid #e5e7eb",
+  color: "#111827",
+  fontSize: "14px",
+  textAlign: "left" as const,
+  overflowWrap: "anywhere" as const,
+  wordBreak: "break-word" as const,
+};
+
+const detailsLink = {
+  color: "#2563eb",
+  textDecoration: "none",
+  fontWeight: "500" as const,
+};
 
 /** White or near-black text, whichever has better contrast on `hex` (WCAG luminance). */
 function readableTextColor(hex: string): string {

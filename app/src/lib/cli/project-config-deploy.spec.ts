@@ -155,4 +155,16 @@ describe("CLI project config deploy preflight", () => {
       ]),
     );
   });
+
+  it("rejects oversized provider and binding arrays", () => {
+    const result = analyzeCliProjectConfigDeployRequest({
+      notificationProviders: Array.from({ length: 501 }, () => ({})),
+      sreIntegrationBindings: Array.from({ length: 501 }, () => ({})),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "$.notificationProviders", message: expect.stringContaining("at most") }),
+      expect.objectContaining({ path: "$.sreIntegrationBindings", message: expect.stringContaining("at most") }),
+    ]));
+  });
 });

@@ -35,6 +35,7 @@ describe("subscriber reads never select secrets or tokens", () => {
       endpoint: true,
       mode: true,
       verifiedAt: true,
+      quarantinedAt: true,
       createdAt: true,
       updatedAt: true,
     });
@@ -60,5 +61,14 @@ describe("subscriber reads never select secrets or tokens", () => {
     expect(result.subscribers[0].endpoint).toBe("hooks.slack.com/…1234");
     expect(JSON.stringify(result)).not.toContain("SECRETVALUE");
     expect(result.subscribers[1].endpoint).toBe(hook);
+  });
+
+  it("does not count quarantined subscribers as verified", async () => {
+    (db.query.statusPageSubscribers.findMany as jest.Mock).mockResolvedValue([
+      { id: "1", mode: "webhook", endpoint: "https://example.com/a", verifiedAt: new Date(), quarantinedAt: null },
+      { id: "2", mode: "webhook", endpoint: "https://example.com/b", verifiedAt: new Date(), quarantinedAt: new Date() },
+    ]);
+    const result = await getStatusPageSubscribers(pageId);
+    expect(result.stats).toEqual({ total: 2, verified: 1, pending: 0, quarantined: 1 });
   });
 });

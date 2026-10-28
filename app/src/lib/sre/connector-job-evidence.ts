@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
+import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
+
 const evidenceTypes = ["metric", "log", "trace", "artifact", "deployment", "event", "document", "topology"] as const;
 
 const privateAgentEvidenceSummarySchema = z.object({
@@ -33,6 +36,14 @@ export function normalizePrivateAgentEvidenceSummaries(
       return [];
     }
 
-    return [{ ...parsed.data, observedAtDate }];
+    // Private Agents run customer-side executors that do not redact, so scrub here for every consumer.
+    const { sourceUri, title, summary } = parsed.data;
+    return [{
+      ...parsed.data,
+      sourceUri: safeEvidenceSourceUri(redactConnectorText(sourceUri)),
+      title: redactConnectorText(title),
+      summary: redactConnectorText(summary),
+      observedAtDate,
+    }];
   });
 }

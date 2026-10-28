@@ -58,6 +58,12 @@ export class StatusAggregationService {
     method: AggregationMethod,
     failureThreshold: number,
   ): ComponentStatus {
+    // A newly linked (pending) or paused monitor has no result yet; it must not
+    // degrade a component whose other monitors have real results.
+    const reporting = monitors.filter(
+      (monitor) => !["pending", "paused"].includes(monitor.status),
+    );
+    if (reporting.length > 0) monitors = reporting;
     if (!monitors.length) return "operational";
     const failures = monitors.filter((monitor) =>
       ["down", "error", "timeout"].includes(monitor.status),

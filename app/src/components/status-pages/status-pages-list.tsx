@@ -1,5 +1,6 @@
 "use client";
 
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Card,
@@ -71,6 +72,9 @@ import {
 } from "@/hooks/use-status-pages";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
+// GET /api/status-pages returns at most this many rows and the list has no pagination.
+const STATUS_PAGES_LIST_CAP = 100;
+
 /**
  * Status page type for display purposes.
  * Uses Pick-style subset of the full DB schema fields that the component actually needs.
@@ -102,6 +106,8 @@ export default function StatusPagesList() {
     statusPageDomain,
     isLoading,
     isRestoring,
+    error,
+    refetch,
   } = useStatusPages();
   const hasData = rawStatusPages !== undefined && rawStatusPages.length >= 0;
   const queryClient = useQueryClient();
@@ -409,7 +415,10 @@ export default function StatusPagesList() {
       </CardHeader>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        {statusPages.length === 0 ? (
+        <ListCapNote count={statusPages.length} cap={STATUS_PAGES_LIST_CAP} />
+        {error && statusPages.length === 0 ? (
+          <ListErrorState title="Failed to fetch status pages" error={error} onRetry={() => refetch()} />
+        ) : statusPages.length === 0 ? (
           <DashboardEmptyState
             title="No status pages yet"
             description="Create your first status page to communicate service status with your users"

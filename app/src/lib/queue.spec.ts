@@ -270,6 +270,17 @@ describe("queue location refresh", () => {
       expect(flowAddBulk).not.toHaveBeenCalled();
     });
 
+    it("closes a partial cycle over the enqueued regions only", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central", "us-east", "ap-south"];
+      resolveMonitorLocations.mockResolvedValue(["eu-central", "us-east", "ap-south"]);
+      partitionMonitorLocationsByAvailability.mockResolvedValue({ enqueuedLocations: ["eu-central", "us-east"], skippedLocations: ["ap-south"] });
+      try {
+        await queueModule.addMonitorExecutionJobToQueue(task);
+      } finally { delete process.env.MISSING_CYCLE_CLOSURE_ENABLED; }
+      expect(persistMonitorCycle).toHaveBeenCalledWith(expect.objectContaining({ configuredLocations: ["eu-central", "us-east"] }));
+    });
+
     it("still records a real scheduling failure", async () => {
       resolveMonitorLocations.mockRejectedValue(new Error("project restricts all locations"));
       await expect(queueModule.addMonitorExecutionJobToQueue(task)).rejects.toThrow("project restricts all locations");
@@ -350,7 +361,7 @@ describe("queue location refresh", () => {
       expect(order.slice(0, 2)).toEqual(["persist", "publish"]);
       expect(retry).toBe(first);
       expect(first).not.toContain(":");
-      // Skipped (offline) regions stay in the snapshot so they count as missing at the deadline.
+      // enqueueMonitorLocationJobs persists exactly the configuredLocations it is given (callers pass enqueued regions only).
       expect(persistMonitorCycle).toHaveBeenCalledWith(expect.objectContaining({
         id: first,
         monitorId: "monitor-1",
