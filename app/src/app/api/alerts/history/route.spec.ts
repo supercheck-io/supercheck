@@ -11,9 +11,10 @@ jest.mock("@/lib/rbac/middleware", () => ({
 jest.mock("@/sre/lib/background-alert-triage-queue", () => ({
   enqueueSreAlertTriageJob: jest.fn(),
 }));
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreAlertHistoryWriteRateLimit: jest.fn(async () => ({ allowed: true, remaining: 1 })) }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn() } }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock };
 const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; insert: jest.Mock } };
@@ -95,5 +96,33 @@ describe("POST /api/alerts/history", () => {
     expect(response.status).toBe(200);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ monitorId: MONITOR_ID, jobId: null }));
     expect(enqueueSreAlertTriageJob).toHaveBeenCalledWith({ alertHistoryId: "h1" });
+  });
+
+  it("rejects oversized text fields before writing", async () => {
+    const values = mockInsert();
+    expect((await post({ monitorId: MONITOR_ID, message: "x".repeat(2001) })).status).toBe(400);
+    expect((await post({ monitorId: MONITOR_ID, errorMessage: "x".repeat(2001) })).status).toBe(400);
+    expect((await post({ monitorId: MONITOR_ID, target: "x".repeat(256) })).status).toBe(400);
+    expect((await post({ monitorId: MONITOR_ID, provider: "x".repeat(101) })).status).toBe(400);
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("rate limits writes per user", async () => {
+    const { checkSreAlertHistoryWriteRateLimit } = jest.requireMock("@/lib/sre/sre-rate-limiter") as { checkSreAlertHistoryWriteRateLimit: jest.Mock };
+    checkSreAlertHistoryWriteRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0 });
+    mockSourceLookup([{ id: MONITOR_ID }]);
+    const values = mockInsert();
+    expect((await post({ monitorId: MONITOR_ID })).status).toBe(429);
+    expect(values).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/alerts/history errors", () => {
+  it("does not leak internal error messages", async () => {
+    requireAuthContext.mockRejectedValue(new Error("relation alert_history_secret does not exist"));
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await GET(new NextRequest("http://localhost/api/alerts/history"));
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await response.json())).not.toMatch(/alert_history_secret/);
   });
 });

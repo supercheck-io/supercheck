@@ -15,19 +15,24 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 Both paths open the incident workspace.
 
-### Incident settings per monitor or job
-
-In **Alert Settings**, the **Incidents** block controls this check:
-
-- **Open an incident when this alerts** (on by default).
-- **Severity**: *Auto* derives SEV1 to SEV4 from the alert, or pick a fixed level for new incidents.
-- **Resolve automatically on recovery if nobody acknowledged it** (on by default). When the check passes again, an unacknowledged incident resolves itself with a note, even when recovery alerts are off or no channel is notified. An acknowledged incident stays open, gets a *recovered* note, and its assignee is emailed so a person confirms and resolves it.
-
-If the check fails again within 30 minutes of an automatic resolution, the same incident reopens instead of a new one opening.
-
-Incidents open even when AI is not configured. AI triage is optional and runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is set up. Self-hosted: `SRE_ENABLED` (default on) is all that opens incidents from alerts; `SRE_AUTOMATION_ENABLED` gates only the AI triage step.
-
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
+
+## How Alerts Become Incidents
+
+When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider, and happens even if the alert delivery fails.
+
+| Rule | Behavior |
+|---|---|
+| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts |
+| **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
+| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its assignee is emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
+| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident |
+
+Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
+
+<Callout type="info">
+AI triage is separate and optional. It runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured.
+</Callout>
 
 ## Incident Queue
 
@@ -151,25 +156,15 @@ Assignments, acknowledgements, status changes, and resolution all appear on the 
 
 ## Notifications
 
-Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, receives an **AI finding**, **reopens**, and when it is **resolved**.
+Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, gets an **AI finding**, **reopens**, or is **resolved**.
 
-- Incidents opened by a monitor or job alert do not repeat the alert in its channels: the alert (and its recovery) already went there. Opening and automatic resolution therefore post nothing extra to those channels; assignment, acknowledgement, AI findings, reopening, and manual resolution do. When a recovered incident was acknowledged, only its assignee is emailed.
+| Where | What is sent |
+|---|---|
+| **The check's channels** | Assignment, acknowledgement, AI findings, reopening and manual resolution. Opening and automatic resolution post nothing extra, because the alert and recovery already went there |
+| **Assignee email** | A direct email when someone else assigns them, and when an acknowledged incident recovers (requires email delivery) |
+| **Incidents created by hand** | No source channels, so only the assignee is emailed |
 
-- The new assignee also gets a direct email (not for their own actions), when email delivery is configured.
-- Messages go through the notification channels already attached to the monitor or job that raised the alert. Incidents created by hand have no source alert, so only the assignee is emailed when you assign them.
-- Email, Slack, Teams, Discord, Telegram and webhook channels are supported. A webhook that uses a preset or a custom body template is skipped for incident messages, because they use a fixed JSON body; attach a plain webhook channel to receive them.
-- Each message names the incident, severity, and service, and links back to the incident page. It never contains raw evidence, logs, credentials, or AI-written conclusions. An AI finding adds only a confidence label (*AI confidence: High* or *AI result: inconclusive*); open the incident to read the finding.
-- The same event for the same incident is announced once within a short window, so retries and repeated AI runs do not flood a channel.
-
-## How Alerts Become Incidents
-
-When a monitor or job alert fires, Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider. A delivery that fails still opens the incident.
-
-- **One incident per source.** While an incident for a monitor or job is open, further failures join it as linked alerts instead of opening another.
-- **Severity.** *Auto* derives SEV1 to SEV4 from the alert. A fixed level in the check's **Incidents** settings overrides it.
-- **Auto-resolve.** When the check recovers and *Resolve automatically on recovery if nobody acknowledged it* is on (the default), an unacknowledged incident resolves itself with a note. This does not depend on recovery alerts or on any channel being notified. An acknowledged incident stays open for a person to resolve.
-- **Reopen.** If the check fails again within 30 minutes of an automatic resolution, the same incident reopens.
-- **Channels.** Opening and automatic resolution post nothing new: the alert and recovery already went to the check's channels. See [Notifications](#notifications) below for what else is announced.
+Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window.
 
 ## Incident Lifecycle
 

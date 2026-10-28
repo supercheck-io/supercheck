@@ -231,6 +231,12 @@ describe("SreIncidentsList", () => {
     expect(screen.getByRole("heading", { name: "No incidents" })).toBeInTheDocument();
   });
 
+  it("keeps the table (not the first-run checklist) when only resolved incidents exist", () => {
+    render(<SreIncidentsList incidents={[]} hasIncidents loadError={null} />);
+    expect(screen.queryByTestId("incidents-first-run")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Quick filters" })).toBeInTheDocument();
+  });
+
   it("combines faceted selections, retains active-by-default, and clears filters", () => {
     render(
       <SreIncidentsList

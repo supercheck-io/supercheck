@@ -59,7 +59,7 @@ type DiagnosticQueriesAdminViewProps = {
   onSetupChanged?: () => void;
 };
 
-const queryTypes = ["sql", "promql", "logql", "traceql", "http_get"] as const;
+const queryTypes = ["promql", "logql", "traceql", "http_get"] as const;
 
 function formatBytes(value: number) {
   if (value >= 1024 * 1024) {
@@ -145,7 +145,6 @@ export function DiagnosticQueriesAdminView({
         connectorId: form.connectorId,
         name: form.name,
         queryType: form.queryType as
-          | "sql"
           | "promql"
           | "logql"
           | "traceql"

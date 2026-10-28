@@ -1479,6 +1479,28 @@ describe('MonitorService', () => {
       expect(rows.map((row) => row.consecutiveFailureCount)).toEqual([1, 0, 2]);
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
+    it('fails the distributed job when the result insert fails, but keeps the swallow on the local path', async () => {
+      mockDbService.db.insert.mockReturnValue({
+        values: jest.fn().mockRejectedValue(new Error('statement timeout')),
+      });
+      const row = {
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      } as MonitorExecutionResult;
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      await expect(
+        service.saveDistributedMonitorResult(row, {}),
+      ).rejects.toThrow('statement timeout');
+      expect(aggregate).not.toHaveBeenCalled();
+      await expect(
+        service['saveMonitorResultToDb'](row),
+      ).resolves.toBeUndefined();
+    });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {
         ...mockMonitor,

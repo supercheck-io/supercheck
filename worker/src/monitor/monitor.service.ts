@@ -699,7 +699,9 @@ export class MonitorService {
           }
         : result;
 
-    if (!options.persisted) await this.saveMonitorResultToDb(persistedResult);
+    if (!options.persisted) {
+      await this.saveMonitorResultToDb(persistedResult, true);
+    }
 
     if (!executionGroupId) {
       await this.saveMonitorResults([persistedResult], { persisted: true });
@@ -2118,6 +2120,7 @@ export class MonitorService {
 
   private async saveMonitorResultToDb(
     resultData: MonitorExecutionResult,
+    rethrow = false,
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
@@ -2214,6 +2217,8 @@ export class MonitorService {
       this.logger.error(
         `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
       );
+      // Distributed jobs must fail (and retry) rather than ack with no row, or the region is later closed as a false Down.
+      if (rethrow) throw error;
     }
   }
 
