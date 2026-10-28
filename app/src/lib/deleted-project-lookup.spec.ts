@@ -16,7 +16,7 @@ import { resolveProjectPermissionContext } from "./rbac/middleware";
 
 const dialect = new PgDialect();
 const whereSql: string[] = [];
-const rows = (result: unknown[]) =>
+const rows = (result: unknown[]): never =>
   ({
     from: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
