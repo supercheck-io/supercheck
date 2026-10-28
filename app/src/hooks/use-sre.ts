@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
 import { getSreCopilotChatHistories } from "@/actions/sre-ai";
@@ -30,11 +30,14 @@ import {
 
 const MEMORY_ONLY_QUERY = { persist: false } as const;
 
-export function useSreIncidents() {
+export function useSreIncidents(scope: "active" | "all" = "active") {
   const { projectId } = useProjectContext();
   return useQuery({
-    queryKey: getSreIncidentsQueryKey(projectId),
-    queryFn: getSreIncidents,
+    // Scope is appended so invalidating getSreIncidentsQueryKey(projectId) hits both.
+    queryKey: [...getSreIncidentsQueryKey(projectId), scope],
+    queryFn: () => getSreIncidents({ scope }),
+    // Keep the list mounted (and its filters) while the other scope loads.
+    placeholderData: keepPreviousData,
     enabled: Boolean(projectId),
     staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,

@@ -10,6 +10,7 @@ const mockTransaction = jest.fn();
 jest.mock("../../../_auth", () => ({
   requireSreApiPermissions: (...args: unknown[]) => mockRequirePermissions(...args),
   requireSreSameOriginRequest: (...args: unknown[]) => mockSameOrigin(...args),
+  requireSreIncidentUpdateRateLimit: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...args: unknown[]) => mockAudit(...args) }));
 jest.mock("@/utils/db", () => ({ db: { transaction: (...args: unknown[]) => mockTransaction(...args) } }));

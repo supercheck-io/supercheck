@@ -114,6 +114,23 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     expect(sendNotification).not.toHaveBeenCalled();
   });
 
+  it('does not write synthetic Down rows for regions never enqueued (no live worker)', async () => {
+    // The app snapshots only the enqueued regions, so the skipped third region is not expected.
+    await openCycle('partial-skip', {
+      locations: ['eu', 'us'],
+      strategy: 'all',
+    });
+    await report('partial-skip', 'eu', true);
+    await report('partial-skip', 'us', true);
+    expect(await service.closeCycle('partial-skip', afterDeadline)).toBe(
+      'closed',
+    );
+    expect(await results('partial-skip')).toHaveLength(2);
+    expect(await cycleRow('partial-skip')).toMatchObject({
+      resultStatus: 'up',
+    });
+  });
+
   it('does not replace an already closed cycle with an abort', async () => {
     await openCycle('skip-after-closed');
     await db

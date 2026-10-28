@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
+import { versioned } from "../../lib/assets";
 import { solutionsMenu } from "../../lib/site-nav";
 import type { SolutionStep } from "../../lib/solutions";
 import { CodeWindow } from "./code-window";
@@ -37,9 +38,7 @@ export function CheckList({ items, className = "" }: { items: string[]; classNam
 
 // Intrinsic sizes of the 1600px WebP copies in public/screenshots/site.
 const SHOT_HEIGHTS: Record<string, number> = {
-  "status-page-public": 922,
   "incident-workspace-overview": 1000,
-  dashboard: 1000,
   "notification-channels": 1000,
 };
 
@@ -49,7 +48,7 @@ export function Screenshot({ src, alt, priority = false }: { src: string; alt: s
   return (
     <div className="overflow-hidden rounded-xl border border-fd-border bg-[#0a0a0a] shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.3)]">
       <Image
-        src={src}
+        src={versioned(src)}
         alt={alt}
         width={1600}
         height={SHOT_HEIGHTS[name] ?? 969}

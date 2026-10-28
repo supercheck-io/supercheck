@@ -134,7 +134,7 @@ type ExternalConnectorValidationStatus =
   'valid' | 'unreachable' | 'invalid_credentials' | 'policy_blocked';
 type ExternalConnectorCredentialType =
   'api_key' | 'oauth_token' | 'bearer_token' | 'basic_auth' | 'service_account';
-type DiagnosticQueryType = 'sql' | 'promql' | 'logql' | 'traceql' | 'http_get';
+type DiagnosticQueryType = 'promql' | 'logql' | 'traceql' | 'http_get';
 type DiagnosticQueryStatus = 'active' | 'disabled';
 type SreContextPlaybookStatus = 'active' | 'deprecated';
 type SreBackgroundAgentType =
