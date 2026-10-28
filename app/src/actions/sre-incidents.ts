@@ -1460,6 +1460,8 @@ export async function createSreIncidentFromAlert(
         sentAt: alertHistory.sentAt,
         monitorName: monitors.name,
         jobName: jobs.name,
+        monitorAlertConfig: monitors.alertConfig,
+        jobAlertConfig: jobs.alertConfig,
       })
       .from(alertHistory)
       .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
@@ -1497,7 +1499,11 @@ export async function createSreIncidentFromAlert(
     const sourceType: SreAlertSourceType = alert.monitorId ? "monitor" : "job";
     const sourceId = alert.monitorId ?? alert.jobId;
     const targetName = alert.monitorName ?? alert.jobName ?? alert.target;
-    const severity = deriveSeverity(alert.type, alert.message);
+    const configuredSeverity = (alert.monitorId ? alert.monitorAlertConfig : alert.jobAlertConfig)?.incidentSeverity;
+    const severity =
+      configuredSeverity && ["sev1", "sev2", "sev3", "sev4"].includes(configuredSeverity)
+        ? configuredSeverity
+        : deriveSeverity(alert.type, alert.message);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
     // Same identity as automatic incidents: source plus alert type (not the per-channel key).
