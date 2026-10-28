@@ -24,6 +24,11 @@ describe('alertConfig diff and deploy payload', () => {
     expect(diff({ enabled: true, alertOnFailure: false, failureThreshold: 1 }, { enabled: true }).changes.filter((c) => c.action === 'update')).toEqual([])
   })
 
+  it('treats an omitted job field as the stored value, e.g. a stored alertOnFailure false', () => {
+    expect(diff({ enabled: false }, { enabled: false }).changes.filter((c) => c.action === 'update')).toEqual([])
+    expect(diff({ enabled: false, alertOnFailure: true }, { enabled: false }).changes.filter((c) => c.action === 'update')).toHaveLength(1)
+  })
+
   it('still reports a real difference, for monitors too', () => {
     expect(diff({ enabled: true }, { enabled: true }, 'monitor').changes.filter((c) => c.action === 'update')).toHaveLength(1)
   })

@@ -194,7 +194,7 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
       : key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
       : key === 'alertConfig' && (resourceType === 'job' || resourceType === 'monitor') && localVal && typeof localVal === 'object'
-      ? [normalizeLocalAlertConfig(localVal as Record<string, unknown>), remoteVal]
+      ? [normalizeLocalAlertConfig(localVal as Record<string, unknown>, remoteVal, resourceType), remoteVal]
       : [localVal, remoteVal]
     if (stableStringify(comparableLocal) !== stableStringify(comparableRemote)) {
       diffs.push(`${key}: ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableRemote })[key])} -> ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableLocal })[key])}`)

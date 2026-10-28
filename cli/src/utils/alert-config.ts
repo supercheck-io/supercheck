@@ -24,9 +24,11 @@ export function normalizeAlertConfig(alert: Record<string, unknown>): Record<str
 }
 
 /**
- * A local alertConfig as the server stores it (defaults filled), then stripped like the remote copy, for diffing only.
+ * A local alertConfig as the server would store it after an update, then stripped like the remote copy, for diffing only.
+ * Jobs keep a stored field the config omits; monitors reset omitted fields to the server defaults.
  * The deploy payload keeps the user's original values so an explicit `false` is still sent.
  */
-export function normalizeLocalAlertConfig(alert: Record<string, unknown>): Record<string, unknown> | undefined {
+export function normalizeLocalAlertConfig(alert: Record<string, unknown>, remote: unknown, resourceType?: string): Record<string, unknown> | undefined {
+  if (resourceType === 'job' && remote && typeof remote === 'object') return normalizeAlertConfig({ ...(remote as Record<string, unknown>), ...alert })
   return normalizeAlertConfig({ ...alert, enabled: Boolean(alert.enabled), alertOnFailure: alert.alertOnFailure ?? true })
 }
