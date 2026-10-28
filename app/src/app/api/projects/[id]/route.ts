@@ -1,6 +1,7 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, getUserOrgRole } from '@/lib/rbac/middleware';
+import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
@@ -69,7 +70,7 @@ export async function GET(
     }
     
     // Get project stats using SQL count() aggregate (not fetching all rows)
-    const [jobCountResult, testCountResult, monitorCountResult, memberCountResult, userRoleResult] = await Promise.all([
+    const [jobCountResult, testCountResult, monitorCountResult, memberCountResult, userRoleResult, orgRole] = await Promise.all([
       db.select({ count: count() }).from(jobs).where(eq(jobs.projectId, projectId)),
       db.select({ count: count() }).from(tests).where(eq(tests.projectId, projectId)),
       db.select({ count: count() }).from(monitors).where(eq(monitors.projectId, projectId)),
@@ -78,13 +79,14 @@ export async function GET(
         eq(projectMembers.projectId, projectId),
         eq(projectMembers.userId, userId)
       )).limit(1),
+      getUserOrgRole(userId, project.organizationId),
     ]);
     
     return NextResponse.json({
       success: true,
       project: {
         ...project,
-        role: userRoleResult.length > 0 ? userRoleResult[0].role : null,
+        role: resolveEffectiveProjectRole(orgRole, userRoleResult[0]?.role),
         stats: {
           jobCount: jobCountResult[0]?.count || 0,
           testCount: testCountResult[0]?.count || 0,
