@@ -12,7 +12,7 @@ import { isDiagnosticQueryTypeCompatible } from "@/lib/sre/connectors/diagnostic
 import { validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
 import { db } from "@/utils/db";
 
-const diagnosticQueryTypes = ["sql", "promql", "logql", "traceql", "http_get"] as const;
+const diagnosticQueryTypes = ["promql", "logql", "traceql", "http_get"] as const;
 
 const flatJsonSchema: z.ZodType<Record<string, unknown>> = z.record(
   z.string(), z.union([z.string().max(2000), z.number(), z.boolean(), z.null(), z.array(z.union([z.string().max(200), z.number(), z.boolean()])).max(50)])

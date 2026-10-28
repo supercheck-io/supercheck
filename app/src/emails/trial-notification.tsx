@@ -60,7 +60,7 @@ export const TrialNotificationEmail = ({
     <BaseLayout
       preview={copy.heading}
       title="Free trial"
-      headerColor={kind === "midway" ? "#2563eb" : "#d97706"}
+      headerColor={kind === "midway" ? "#1d4ed8" : "#b45309"}
     >
       <Section style={contentSection}>
         <Text style={heading}>{copy.heading}</Text>
@@ -98,7 +98,7 @@ const paragraph = {
 };
 const buttonContainer = { textAlign: "center" as const, margin: "8px 0 24px" };
 const button = {
-  backgroundColor: "#2563eb",
+  backgroundColor: "#111827",
   borderRadius: "6px",
   color: "#ffffff",
   fontSize: "15px",

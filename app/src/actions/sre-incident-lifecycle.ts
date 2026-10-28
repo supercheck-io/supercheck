@@ -18,6 +18,7 @@ import {
   resolveIncident,
   type IncidentActor,
 } from "@/lib/sre/incident-lifecycle";
+import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incident-lifecycle" }) as {
@@ -71,6 +72,11 @@ async function guard(action: "view" | "update"): Promise<Guarded> {
   return { ok: true, actor: { userId, organizationId, projectId: project.id } };
 }
 
+async function updateRateLimitError(actor: IncidentActor, incidentId: string) {
+  const limit = await checkSreIncidentUpdateRateLimit(actor.userId, incidentId);
+  return limit.allowed ? null : "Too many incident updates. Try again in a minute.";
+}
+
 function refresh(incidentId: string) {
   revalidatePath("/incidents");
   revalidatePath(`/incidents/${incidentId}`);
@@ -84,6 +90,8 @@ export async function assignSreIncident(
     if (!parsed.success) return { success: false, error: "Invalid assignment request" };
     const auth = await guard("update");
     if (!auth.ok) return { success: false, error: auth.error };
+    const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
+    if (limited) return { success: false, error: limited };
     const result = await assignIncident(auth.actor, parsed.data.incidentId, parsed.data.assigneeUserId, parsed.data.role);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
@@ -105,6 +113,8 @@ export async function acknowledgeSreIncident(
     if (!parsed.success) return { success: false, error: "Invalid incident" };
     const auth = await guard("update");
     if (!auth.ok) return { success: false, error: auth.error };
+    const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
+    if (limited) return { success: false, error: limited };
     const result = await acknowledgeIncident(auth.actor, parsed.data.incidentId);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
@@ -128,6 +138,8 @@ export async function resolveSreIncident(
     }
     const auth = await guard("update");
     if (!auth.ok) return { success: false, error: auth.error };
+    const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
+    if (limited) return { success: false, error: limited };
     const result = await resolveIncident(auth.actor, parsed.data.incidentId, parsed.data.summary);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
@@ -153,6 +165,8 @@ export async function addSreIncidentUpdate(
     }
     const auth = await guard("update");
     if (!auth.ok) return { success: false, error: auth.error };
+    const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
+    if (limited) return { success: false, error: limited };
     const result = await addIncidentUpdate(auth.actor, parsed.data.incidentId, parsed.data.text);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);

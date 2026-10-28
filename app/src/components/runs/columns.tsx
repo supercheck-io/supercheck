@@ -28,7 +28,8 @@ import { UserCell } from "@/components/ui/user-cell";
 // Helper to validate status is one of the allowed values
 function mapDbStatusToDisplayStatus(
   dbStatus: string,
-  errorDetails?: string | null
+  errorDetails?: string | null,
+  cancelled?: boolean | null
 ): string {
   // Convert the dbStatus to lowercase for case-insensitive comparison
   const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
@@ -43,6 +44,8 @@ function mapDbStatusToDisplayStatus(
 
   // Only return one of the allowed status values
   switch (status) {
+    case "queued":
+      return "queued";
     case "running":
       return "running";
     case "passed":
@@ -50,7 +53,8 @@ function mapDbStatusToDisplayStatus(
     case "failed":
       return "failed";
     case "error":
-      return "error";
+      // A user cancellation is stored as an error run; the list API flags it.
+      return cancelled ? "cancelled" : "error";
     case "blocked":
       return "blocked";
     default:
@@ -228,7 +232,7 @@ export const createColumns = (
       // Use accessorFn to return the mapped status (including cancelled)
       // This ensures facet counts are correct
       accessorFn: (row) =>
-        mapDbStatusToDisplayStatus(row.status, row.errorDetails),
+        mapDbStatusToDisplayStatus(row.status, row.errorDetails, row.cancelled),
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),

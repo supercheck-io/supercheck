@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { updateJob } from "@/lib/server-actions/update-job";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -513,6 +514,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Only the first test of a k6 job runs, so extra tests would be silently ignored.
+    if (resolvedJobType === "k6" && jobData.tests && jobData.tests.length > 1) {
+      return NextResponse.json(
+        { success: false, error: "A k6 job runs exactly one performance test." },
+        { status: 400 }
+      );
+    }
+
     // Generate a unique ID for the job
     const jobId = randomUUID();
 
@@ -599,6 +608,7 @@ export async function POST(request: NextRequest) {
 
     // If a cronSchedule is provided, set up the job scheduler
     let scheduledJobId = null;
+    let scheduleWarning: string | undefined;
     if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
       try {
         scheduledJobId = await scheduleJob({
@@ -619,8 +629,10 @@ export async function POST(request: NextRequest) {
         console.log(`Job ${jobId} scheduled with scheduler ID ${scheduledJobId}`);
       } catch (scheduleError) {
         console.error("Failed to schedule job:", scheduleError);
-        // Continue anyway - the job exists but without background scheduling
-        // Manual execution will still work
+        // The job exists and can be run manually, but nothing will run it on schedule.
+        scheduleWarning = "Job created, but its schedule could not be registered.";
+        nextRunAt = null;
+        await db.update(jobs).set({ nextRunAt: null }).where(eq(jobs.id, jobId));
       }
     }
 
@@ -634,6 +646,7 @@ export async function POST(request: NextRequest) {
         nextRunAt: nextRunAt ? nextRunAt.toISOString() : null,
         scheduledJobId,
         jobType: jobData.jobType === "k6" ? "k6" : "playwright",
+        ...(scheduleWarning ? { warning: scheduleWarning } : {}),
       },
     });
   } catch (error) {
@@ -819,33 +832,27 @@ export async function PUT(request: Request) {
       }
     }
 
-    await db.transaction(async (tx) => {
-      await tx
-        .update(jobs)
-        .set({
-          name: jobData.name,
-          description: jobData.description || "",
-          cronSchedule: jobData.cronSchedule,
-          status: jobData.status as JobStatus,
-          alertConfig: jobData.alertConfig
-            ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
-            : null,
-          updatedAt: new Date(),
-        })
-        .where(eq(jobs.id, targetJobId));
-
-      await tx.delete(jobTests).where(eq(jobTests.jobId, targetJobId));
-
-      if (jobData.tests && jobData.tests.length > 0) {
-        const jobTestValues = jobData.tests.map((test, index) => ({
-          jobId: targetJobId,
-          testId: test.id,
-          orderPosition: index,
-        }));
-
-        await tx.insert(jobTests).values(jobTestValues);
-      }
-    });
+    // Same path as PATCH/PUT /api/jobs/[id]: validates the cron, reschedules, syncs notifications. A
+    // client-supplied status is never written.
+    const result = await updateJob(
+      {
+        jobId: targetJobId,
+        name: jobData.name,
+        description: jobData.description || "",
+        cronSchedule: jobData.cronSchedule,
+        tests: jobData.tests.map((test) => ({ id: test.id })),
+        alertConfig: jobData.alertConfig
+          ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
+          : undefined,
+      },
+      { userId: context.userId, project, organizationId },
+    );
+    if (!result.success) {
+      return NextResponse.json(
+        { success: false, error: result.message ?? (typeof result.error === "string" ? result.error : "Failed to update job") },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -854,6 +861,8 @@ export async function PUT(request: Request) {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
+        nextRunAt: result.job?.nextRunAt ?? null,
+        ...(result.job?.warning ? { warning: result.job.warning } : {}),
       },
     });
   } catch (error) {

@@ -7,9 +7,17 @@ import {
   Timer,
   MousePointerClick,
   ShieldOff,
+  Clock,
+  Ban,
 } from "lucide-react";
 
 export const runStatuses = [
+  {
+    value: "queued",
+    label: "Queued",
+    icon: Clock,
+    color: "text-muted-foreground",
+  },
   {
     value: "running",
     label: "Running",
@@ -33,6 +41,12 @@ export const runStatuses = [
     label: "Error",
     icon: AlertCircle,
     color: "text-orange-500",
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+    icon: Ban,
+    color: "text-muted-foreground",
   },
   {
     value: "blocked",

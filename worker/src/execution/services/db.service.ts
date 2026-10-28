@@ -475,12 +475,18 @@ export class DbService implements OnModuleInit {
         .select({
           id: schema.runs.id,
           status: schema.runs.status,
+          errorDetails: schema.runs.errorDetails,
           createdAt: schema.runs.createdAt,
         })
         .from(schema.runs)
         .where(
           and(
             eq(schema.runs.jobId, jobId),
+            // A user-cancelled run is neither a failure nor a pass for streaks.
+            or(
+              isNull(schema.runs.errorDetails),
+              ne(schema.runs.errorDetails, RUN_CANCELLATION_MARKER),
+            ),
             inArray(sql<string>`${schema.runs.status}`, [
               'passed',
               'failed',

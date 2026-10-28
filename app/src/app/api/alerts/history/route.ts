@@ -6,6 +6,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
 import { isUuid } from '@/lib/uuid';
+import { checkSreAlertHistoryWriteRateLimit } from '@/lib/sre/sre-rate-limiter';
 
 export async function GET(request: NextRequest) {
   try {
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
     } catch (dbError) {
       console.error('[AlertHistory] Database query error:', dbError);
       return NextResponse.json(
-        { error: "Database query failed", details: dbError instanceof Error ? dbError.message : String(dbError) },
+        { error: "Database query failed" },
         { status: 500 }
       );
     }
@@ -231,7 +232,7 @@ export async function GET(request: NextRequest) {
     }
     console.error("[AlertHistory] Error fetching alert history:", error);
     return NextResponse.json(
-      { error: "Failed to fetch alert history", details: error instanceof Error ? error.message : String(error) },
+      { error: "Failed to fetch alert history" },
       { status: 500 }
     );
   }
@@ -295,6 +296,20 @@ export async function POST(request: NextRequest) {
         { error: "Missing required fields" },
         { status: 400 }
       );
+    }
+
+    // Columns are varchar(255)/varchar(100)/text; cap before they reach the DB and the triage queue.
+    const tooLong = (v: unknown, max: number) => typeof v !== "string" || v.length > max;
+    if (
+      tooLong(body.message, 2000) || tooLong(body.target, 255) || tooLong(body.provider, 100) ||
+      (body.errorMessage != null && tooLong(body.errorMessage, 2000))
+    ) {
+      return NextResponse.json({ error: "Invalid or oversized field" }, { status: 400 });
+    }
+
+    const limit = await checkSreAlertHistoryWriteRateLimit(projectContext.userId);
+    if (!limit.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
     // Validate target type

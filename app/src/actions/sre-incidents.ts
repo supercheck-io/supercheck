@@ -9,6 +9,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  lt,
   ne,
   or,
   sql,
@@ -586,10 +587,22 @@ async function getConversationHistory(input: {
   };
 }
 
-export async function getSreIncidents(): Promise<
-  | { success: true; incidents: SreIncidentListItem[]; currentUserId: string }
+const SRE_INCIDENT_LIST_LIMIT = 500;
+
+export async function getSreIncidents(
+  options: { scope?: "active" | "all" } = {},
+): Promise<
+  | {
+      success: true;
+      incidents: SreIncidentListItem[];
+      currentUserId: string;
+      truncated: boolean;
+      /** False only for a project with no incidents at all, resolved or not. */
+      hasIncidents: boolean;
+    }
   | { success: false; error: string; incidents: [] }
 > {
+  const scope = options.scope ?? "all";
   try {
     const { userId, organizationId, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_incident", "view", {
@@ -607,7 +620,7 @@ export async function getSreIncidents(): Promise<
     }
 
     const assignee = alias(user, "assignee");
-    const rows = await db
+    const allRows = await db
       .select({
         id: sreIncidents.id,
         incidentNumber: sreIncidents.incidentNumber,
@@ -636,6 +649,7 @@ export async function getSreIncidents(): Promise<
         and(
           eq(sreIncidents.organizationId, organizationId),
           eq(sreIncidents.projectId, project.id),
+          scope === "active" ? ne(sreIncidents.status, "resolved") : undefined,
         ),
       )
       .groupBy(
@@ -654,12 +668,36 @@ export async function getSreIncidents(): Promise<
         sreIncidents.updatedAt,
         sreIncidents.resolvedAt,
       )
-      .orderBy(desc(sreIncidents.updatedAt));
+      .orderBy(desc(sreIncidents.updatedAt))
+      // One extra row tells us the list was cut off.
+      .limit(SRE_INCIDENT_LIST_LIMIT + 1);
 
+    const truncated = allRows.length > SRE_INCIDENT_LIST_LIMIT;
+    const rows = allRows.slice(0, SRE_INCIDENT_LIST_LIMIT);
     const incidentIds = rows.map((row) => row.id);
 
     if (incidentIds.length === 0) {
-      return { success: true, incidents: [], currentUserId: userId };
+      // Active scope hides resolved rows, so an empty list may still be a used project.
+      const [any] =
+        scope === "active"
+          ? await db
+              .select({ id: sreIncidents.id })
+              .from(sreIncidents)
+              .where(
+                and(
+                  eq(sreIncidents.organizationId, organizationId),
+                  eq(sreIncidents.projectId, project.id),
+                ),
+              )
+              .limit(1)
+          : [];
+      return {
+        success: true,
+        incidents: [],
+        currentUserId: userId,
+        truncated: false,
+        hasIncidents: Boolean(any),
+      };
     }
 
     const [evidenceCounts, investigationCounts, investigationRows] =
@@ -745,6 +783,8 @@ export async function getSreIncidents(): Promise<
     return {
       success: true,
       currentUserId: userId,
+      truncated,
+      hasIncidents: true,
       incidents: rows.map((row) => {
         const latestInvestigation = latestInvestigationByIncidentId.get(row.id);
 
@@ -1459,6 +1499,8 @@ export async function createSreIncidentFromAlert(
         sentAt: alertHistory.sentAt,
         monitorName: monitors.name,
         jobName: jobs.name,
+        monitorAlertConfig: monitors.alertConfig,
+        jobAlertConfig: jobs.alertConfig,
       })
       .from(alertHistory)
       .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
@@ -1496,7 +1538,11 @@ export async function createSreIncidentFromAlert(
     const sourceType: SreAlertSourceType = alert.monitorId ? "monitor" : "job";
     const sourceId = alert.monitorId ?? alert.jobId;
     const targetName = alert.monitorName ?? alert.jobName ?? alert.target;
-    const severity = deriveSeverity(alert.type, alert.message);
+    const configuredSeverity = (alert.monitorId ? alert.monitorAlertConfig : alert.jobAlertConfig)?.incidentSeverity;
+    const severity =
+      configuredSeverity && ["sev1", "sev2", "sev3", "sev4"].includes(configuredSeverity)
+        ? configuredSeverity
+        : deriveSeverity(alert.type, alert.message);
     const alertStatus = deriveAlertStatus(alert.type);
     const firedAt = alert.sentAt ?? new Date();
     // Same identity as automatic incidents: source plus alert type (not the per-channel key).
@@ -1540,6 +1586,27 @@ export async function createSreIncidentFromAlert(
           ),
         )
         .limit(1);
+
+      // Reused per org+fingerprint: refresh to the latest failure so correlation and evidence are current.
+      if (existingAlertEvent) {
+        await tx
+          .update(sreAlertEvents)
+          .set({
+            severity,
+            status: alertStatus,
+            serviceId: mappedService?.id ?? null,
+            title,
+            description: alert.message,
+            firedAt,
+            resolvedAt: alertStatus === "resolved" ? firedAt : null,
+          })
+          .where(
+            and(
+              eq(sreAlertEvents.id, existingAlertEvent.id),
+              lt(sreAlertEvents.firedAt, firedAt),
+            ),
+          );
+      }
 
       const alertEvent = existingAlertEvent
         ? existingAlertEvent

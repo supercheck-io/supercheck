@@ -51,4 +51,22 @@ describe("normalizePrivateAgentEvidenceSummaries", () => {
 
     expect(result).toEqual([]);
   });
+
+  it("redacts secrets in title, summary and sourceUri", () => {
+    const [item] = normalizePrivateAgentEvidenceSummaries({
+      evidence: [
+        {
+          id: "e1",
+          sourceUri: "https://loki.example/query?token=abc123secret&q=up",
+          title: "log password=hunter2",
+          summary: "Authorization: Bearer abcdef123456 and password=hunter2",
+          evidenceType: "log",
+          observedAt: "2026-06-22T10:00:00.000Z",
+          resultHash: "a".repeat(64),
+        },
+      ],
+    });
+    const out = JSON.stringify(item);
+    expect(out).not.toMatch(/hunter2|abcdef123456|abc123secret/);
+  });
 });
