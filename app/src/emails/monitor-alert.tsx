@@ -1,6 +1,6 @@
 import { Link, Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 interface AlertField {
   title: string;
@@ -14,6 +14,8 @@ interface MonitorAlertEmailProps {
   footer: string;
   type: "failure" | "success" | "warning";
   color?: string;
+  /** Absolute link to the incidents page; when set, failure/warning emails get a "View incidents" button. */
+  incidentsUrl?: string;
 }
 
 /**
@@ -43,14 +45,16 @@ export const MonitorAlertEmail = ({
   footer = "Supercheck Monitoring System",
   type = "failure",
   color,
+  incidentsUrl,
 }: MonitorAlertEmailProps) => {
   const statusColor = color ?? getStatusColor(type);
 
   // Helper to check if a string is a URL
+  // Only http(s) values become links; other schemes (javascript:, data:) stay text.
   const isUrl = (str: string) => {
     try {
-      new URL(str);
-      return true;
+      const { protocol } = new URL(str);
+      return protocol === "http:" || protocol === "https:";
     } catch {
       return false;
     }
@@ -76,6 +80,7 @@ export const MonitorAlertEmail = ({
     >
       {/* Alert Title */}
       <Section style={titleSection}>
+        {type === "success" && <Text style={resolvedChip}>&#10003; Resolved</Text>}
         <Text style={alertTitle}>{title}</Text>
       </Section>
 
@@ -90,10 +95,7 @@ export const MonitorAlertEmail = ({
         <table style={detailsTable}>
           <tbody>
             {fields.map((field, index) => {
-              const isLink =
-                isUrl(field.value) ||
-                field.title.toLowerCase().includes("url") ||
-                field.title.toLowerCase().includes("link");
+              const isLink = isUrl(field.value);
               
               return (
                 <tr key={index}>
@@ -113,8 +115,44 @@ export const MonitorAlertEmail = ({
           </tbody>
         </table>
       </Section>
+
+      {/* Incident follow-up (failure/warning only) */}
+      {type !== "success" && incidentsUrl && (
+        <Section style={incidentSection}>
+          <Text style={incidentText}>
+            Ongoing failures are tracked as incidents. Review status, owner and
+            investigation findings in Supercheck.
+          </Text>
+          <EmailButton href={incidentsUrl}>View incidents</EmailButton>
+        </Section>
+      )}
     </BaseLayout>
   );
+};
+
+const resolvedChip = {
+  display: "inline-block",
+  margin: "0 0 12px",
+  padding: "2px 10px",
+  borderRadius: "999px",
+  backgroundColor: "#dcfce7",
+  color: "#166534",
+  fontSize: "12px",
+  fontWeight: "700" as const,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase" as const,
+};
+
+const incidentSection = {
+  padding: "0 32px 32px",
+  textAlign: "center" as const,
+};
+
+const incidentText = {
+  margin: "0 0 16px",
+  color: "#4b5563",
+  fontSize: "14px",
+  lineHeight: "1.6",
 };
 
 const titleSection = {
@@ -134,7 +172,7 @@ const messageBox = {
   backgroundColor: "#f9fafb",
   borderLeft: "4px solid",
   padding: "16px 24px",
-  margin: "0 32px 32px",
+  margin: "0 0 32px",
   borderRadius: "0 4px 4px 0",
 };
 

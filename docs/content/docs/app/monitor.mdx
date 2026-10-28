@@ -194,6 +194,16 @@ Configure when and how you receive notifications about monitor status changes.
 | **SSL Expiration Alerts** | Website monitors only. Warns when a certificate is within **SSL Expiration Warning Days**, at most once per 24 hours | On |
 | **Notification Channels** | Where alerts are sent | More than one for critical services |
 
+**Incidents** (in the same Alert Settings):
+
+| Setting | What it does | Default |
+|---------|-------------|---------|
+| **Open an incident when this alerts** | Opens an incident, or joins the open one for this monitor | On |
+| **Severity** | *Auto* derives SEV1 to SEV4 from the alert, or pick a fixed level | Auto |
+| **Resolve automatically on recovery if nobody acknowledged it** | Resolves the incident when the monitor recovers, even if recovery alerts are off | On |
+
+See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+
 <Accordions>
 <Accordion title="Example: failure threshold 3, recovery threshold 2" id="threshold-example">
 

@@ -51,7 +51,8 @@ flowchart LR
 - Persist state transitions with the result that caused them; `alert_history` records each delivery attempt (provider, status, outcome).
 - Deduplicate repeated failing observations while preserving meaningful reminders/escalations configured by the product.
 - Recovery closes the active condition once (one recovery alert per outage); failure reminders back off exponentially and are capped at 3 per sequence.
-- Acknowledgement is not implemented. Manual status changes require permission, tenant scope, audit events, and race-safe updates.
+- Alerts open incidents: a sent or failed (not pending) `alert_history` row is queued for `app/src/sre/lib/background-alert-triage.ts`, which opens or joins one incident per monitor or job. `alertConfig` carries `incidentEnabled` (default on), `incidentSeverity` (`auto` or `sev1`-`sev4`) and `autoResolveIncident` (default on); a recovery resolves the open auto-opened incident when it is on, even if recovery alerts are off. Only `SRE_ENABLED` is needed; `SRE_AUTOMATION_ENABLED` gates AI triage. Keep these fields in sync across the app schema, worker, CLI schema, MCP tools and OpenAPI.
+- Alert acknowledgement is not implemented; incident acknowledgement is (see the SRE operations skill). Manual status changes require permission, tenant scope, audit events, and race-safe updates.
 
 ## Notification providers
 

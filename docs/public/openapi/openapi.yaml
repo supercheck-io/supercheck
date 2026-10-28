@@ -107,9 +107,11 @@ paths:
                 format: uuid
       responses:
         "200":
-          description: Tenant-scoped incident list including assigneeUserId,
+          description: "Tenant-scoped incident list including statusLabel (the user-facing
+            status: Triggered, Acknowledged, Investigating, Fixing, Monitoring
+            or Resolved; status stays the stored value), assigneeUserId,
             acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
-            and resolutionSummary
+            and resolutionSummary"
         "400":
           description: Invalid filters
         "401":
@@ -131,9 +133,11 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Incident details including assigneeUserId, acknowledgedAt,
-            acknowledgedByUserId, commanderUserId, mitigatedAt and
-            resolutionSummary
+          description: "Incident details including statusLabel (the user-facing status:
+            Triggered, Acknowledged, Investigating, Fixing, Monitoring or
+            Resolved; status stays the stored value), assigneeUserId,
+            acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
+            and resolutionSummary"
         "404":
           description: Incident not found in the active project
   /api/sre/incidents/{id}/timeline:
@@ -6445,6 +6449,22 @@ components:
           minimum: 1
         customMessage:
           type: string
+        incidentEnabled:
+          type: boolean
+          default: true
+          description: Open an incident when this alerts.
+        incidentSeverity:
+          type: string
+          enum:
+            - sev1
+            - sev2
+            - sev3
+            - sev4
+          description: Severity of the opened incident. Omit to derive it from the alert.
+        autoResolveIncident:
+          type: boolean
+          default: true
+          description: Resolve the incident automatically when the source recovers.
     JobTestRef:
       type: object
       properties:
@@ -6846,6 +6866,22 @@ components:
           minimum: 1
         customMessage:
           type: string
+        incidentEnabled:
+          type: boolean
+          default: true
+          description: Open an incident when this alerts.
+        incidentSeverity:
+          type: string
+          enum:
+            - sev1
+            - sev2
+            - sev3
+            - sev4
+          description: Severity of the opened incident. Omit to derive it from the alert.
+        autoResolveIncident:
+          type: boolean
+          default: true
+          description: Resolve the incident automatically when the source recovers.
     MonitorResultDetails:
       type: object
       properties:

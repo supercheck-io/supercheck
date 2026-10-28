@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentsPageClient } from "@/components/sre/incidents/sre-incidents-page-client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,9 @@ export default function IncidentsPage() {
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="m-4 min-w-0 overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md">
         <CardContent>
-          <SreIncidentsPageClient />
+          <Suspense fallback={null}>
+            <SreIncidentsPageClient />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

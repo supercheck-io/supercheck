@@ -183,7 +183,7 @@ export function CreatePageContent({
       icon: <IconComponent size={20} className={provider.color} />,
       title: provider.label,
       description: notificationDescriptions[provider.type] ?? "Send alerts",
-      onClick: () => router.push(`/alerts?create=true&type=${provider.type}`),
+      onClick: () => router.push(`/notifications?create=true&type=${provider.type}`),
     };
   });
   const investigationTypes = capabilities.canInvestigateSre

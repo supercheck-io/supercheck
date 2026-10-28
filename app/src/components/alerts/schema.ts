@@ -11,6 +11,8 @@ export const alertHistorySchema = z.object({
   status: z.enum(["sent", "failed", "pending"]),
   timestamp: z.string(),
   notificationProvider: z.string(),
+  /** The incident this alert belonged to, if any. */
+  incident: z.object({ id: z.string(), number: z.number() }).nullable().optional(),
   metadata: z
     .object({
       errorMessage: z.string().nullable().optional(),

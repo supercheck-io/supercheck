@@ -174,11 +174,11 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/communicate/alerts",
         linkLabel: "Alerts and channels",
-        visual: shot("notification-channels", "Notification channels list with Discord, webhook, Slack and email channels"),
+        visual: shot("notification-channels", "Notification channels list with Teams, Discord, email, Slack and webhook channels"),
       },
       {
         title: "Investigate with cited evidence",
-        body: "Open an incident from an alert, then run a read-only investigation. Findings link back to the evidence, and you decide what to change.",
+        body: "Alerts open incidents automatically; run a read-only investigation. Findings link back to the evidence, and you decide what to change.",
         bullets: [
           "Prometheus, Grafana, Loki, Tempo, AWS CloudWatch, Elasticsearch and OpenSearch",
           "Kubernetes, Sentry, Datadog, GitHub, GitLab, PagerDuty and Opsgenie",

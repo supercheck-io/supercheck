@@ -86,6 +86,16 @@ Set up notifications for job results:
 
 Failure and recovery thresholds count consecutive runs, including the current run exactly once. Failed and errored runs both count toward the failure threshold. A different outcome breaks the consecutive sequence.
 
+**Incidents** (in the same Alert Settings):
+
+| Setting | What it does | Default |
+|---------|-------------|---------|
+| **Open an incident when this alerts** | Opens an incident, or joins the open one for this job | On |
+| **Severity** | *Auto* derives SEV1 to SEV4 from the alert, or pick a fixed level | Auto |
+| **Resolve automatically on recovery if nobody acknowledged it** | Resolves the incident when the job recovers, even if recovery alerts are off | On |
+
+See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+
 ## Parallel Execution
 
 Run multiple jobs or tests simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions across your organization.

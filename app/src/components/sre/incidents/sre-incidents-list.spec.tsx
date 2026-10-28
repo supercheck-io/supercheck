@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentListItem } from "@/actions/sre-incidents";
 
+import { NewIncidentAction } from "./new-incident-action";
 import { SreIncidentsList, formatAge, matchesQuickFilter } from "./sre-incidents-list";
 
 // Radix/cmdk use browser layout APIs that jsdom does not provide.
@@ -126,7 +127,7 @@ describe("SreIncidentsList", () => {
     mockRole = "";
     mockProjectLoading = true;
     const { rerender } = render(
-      <SreIncidentsList incidents={[]} loadError={null} />,
+      <NewIncidentAction />,
     );
     const button = screen.getByRole("button", { name: /new incident/i });
     expect(button).toBeDisabled();
@@ -134,13 +135,13 @@ describe("SreIncidentsList", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     mockRole = "project_editor";
     mockProjectLoading = false;
-    rerender(<SreIncidentsList incidents={[]} loadError={null} />);
+    rerender(<NewIncidentAction />);
     expect(screen.getByRole("button", { name: /new incident/i })).toBeEnabled();
   });
 
   it("explains permission failures and keeps creation unavailable", () => {
     mockProjectError = "Project fetch failed";
-    render(<SreIncidentsList incidents={[]} loadError={null} />);
+    render(<NewIncidentAction />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Permissions unavailable",
     );
@@ -151,7 +152,7 @@ describe("SreIncidentsList", () => {
 
   it("hides creation from viewers", () => {
     mockRole = "project_viewer";
-    render(<SreIncidentsList incidents={[]} loadError={null} />);
+    render(<NewIncidentAction />);
     expect(
       screen.queryByRole("button", { name: /new incident/i }),
     ).not.toBeInTheDocument();
@@ -191,7 +192,7 @@ describe("SreIncidentsList", () => {
       />,
     );
     fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
-    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
@@ -226,7 +227,7 @@ describe("SreIncidentsList", () => {
   it("shows the empty state with setup links when there are no incidents", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} />);
     expect(screen.getByTestId("incidents-first-run")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/alerts");
+    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/notifications");
     expect(screen.getByRole("heading", { name: "No incidents" })).toBeInTheDocument();
   });
 
@@ -272,7 +273,7 @@ describe("SreIncidentsList", () => {
         { name: /Status/ },
       ),
     );
-    fireEvent.click(screen.getByRole("option", { name: "resolved" }));
+    fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
@@ -307,12 +308,6 @@ describe("SreIncidentsList", () => {
 
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
 
-    expect(screen.getByText("Incidents")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Track, investigate, and resolve operational incidents.",
-      ),
-    ).toBeInTheDocument();
     expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
     expect(
       screen.queryByText("Checkout incident 14"),
@@ -320,7 +315,6 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
 
-    const headerActions = screen.getByTestId("incident-header-actions");
     const toolbar = screen.getByTestId("incident-toolbar");
     expect(
       within(toolbar).getByPlaceholderText("Search incidents..."),
@@ -334,12 +328,6 @@ describe("SreIncidentsList", () => {
     expect(
       within(toolbar).getByRole("button", { name: /Status/ }),
     ).toHaveClass("border-dashed");
-    expect(
-      within(headerActions).getByRole("link", { name: /trends/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(headerActions).getByRole("button", { name: /new incident/i }),
-    ).toBeInTheDocument();
 
     const table = screen.getByRole("table");
     expect(
@@ -366,5 +354,43 @@ describe("SreIncidentsList", () => {
     expect(
       screen.queryByText("Checkout incident 12"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SreIncidentsList display-status facet", () => {
+  const pick = (label: string) => {
+    fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
+    fireEvent.click(screen.getByRole("option", { name: label }));
+  };
+  const incidents = [
+    incidentFixture(1, { status: "triggered", title: "Fresh" }),
+    incidentFixture(3, { status: "triggered", acknowledgedAt: new Date("2026-07-03T01:00:00Z"), title: "Acked" }),
+    incidentFixture(5, { status: "investigating", title: "Looking" }),
+    incidentFixture(7, { status: "identified", title: "Known" }),
+    incidentFixture(9, { status: "recommendations_ready", title: "Ready" }),
+    incidentFixture(11, { status: "user_applying_fix", title: "Applying" }),
+    incidentFixture(13, { status: "verifying", title: "Watching" }),
+  ];
+
+  it("maps Acknowledged to triggered incidents with acknowledgedAt", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Acknowledged");
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Acked")).toBeInTheDocument();
+  });
+
+  it("keeps unacknowledged triggered incidents under Triggered only", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Triggered");
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Fresh")).toBeInTheDocument();
+  });
+
+  it("maps Fixing to identified, recommendations_ready and user_applying_fix", () => {
+    render(<SreIncidentsList incidents={incidents} loadError={null} />);
+    pick("Fixing");
+    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    for (const title of ["Known", "Ready", "Applying"]) expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByText("Looking")).not.toBeInTheDocument();
   });
 });

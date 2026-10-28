@@ -13,6 +13,9 @@ export interface MonitorAlertConfig {
   failureThreshold?: number;
   recoveryThreshold?: number;
   customMessage?: string;
+  incidentEnabled?: boolean;
+  incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
+  autoResolveIncident?: boolean;
 }
 
 export interface Monitor {

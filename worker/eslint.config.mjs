@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs', 'dist/**', 'coverage/**', 'node_modules/**', '*.config.js'],
+    ignores: ['eslint.config.mjs', 'dist/**', 'coverage/**', 'node_modules/**', '*.config.js', 'src/emails/**'], // src/emails: byte copies of app/src/emails
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

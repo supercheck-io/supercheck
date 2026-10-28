@@ -67,6 +67,9 @@ interface AlertConfiguration {
   failureThreshold: number;
   recoveryThreshold: number;
   customMessage?: string;
+  incidentEnabled?: boolean;
+  incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
+  autoResolveIncident?: boolean;
 }
 
 const jobFormSchema = z.object({
@@ -237,6 +240,9 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
       alertConfigData.failureThreshold = typeof ac.failureThreshold === 'number' ? ac.failureThreshold : 1;
       alertConfigData.recoveryThreshold = typeof ac.recoveryThreshold === 'number' ? ac.recoveryThreshold : 1;
       alertConfigData.customMessage = typeof ac.customMessage === 'string' ? ac.customMessage : "";
+      alertConfigData.incidentEnabled = ac.incidentEnabled;
+      alertConfigData.incidentSeverity = ac.incidentSeverity;
+      alertConfigData.autoResolveIncident = ac.autoResolveIncident;
     }
 
     setAlertConfig(alertConfigData);
@@ -461,6 +467,9 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
                 failureThreshold: config.failureThreshold,
                 recoveryThreshold: config.recoveryThreshold,
                 customMessage: config.customMessage || "",
+                incidentEnabled: config.incidentEnabled,
+                incidentSeverity: config.incidentSeverity,
+                autoResolveIncident: config.autoResolveIncident,
               })}
               context="job"
             />

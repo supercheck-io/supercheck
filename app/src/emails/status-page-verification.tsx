@@ -1,17 +1,13 @@
 import {
-  Body,
   Button,
-  Container,
-  Head,
   Heading,
   Hr,
-  Html,
   Link,
-  Preview,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { BaseLayout } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageVerificationEmailProps {
@@ -28,18 +24,25 @@ export const StatusPageVerificationEmail = ({
   const t = getTranslations(language);
 
   return (
-    <Html>
-      <Head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
-      </Head>
-      <Preview>{t.emailSubjectVerify} {statusPageName}</Preview>
-      <Body style={main}>
-        <Container style={container}>
-          {/* Header */}
-          <Section style={header}>
-            <Heading style={headerTitle}>{t.emailVerifySubscription}</Heading>
-          </Section>
+    <BaseLayout
+      preview={`${t.emailSubjectVerify} ${statusPageName}`}
+      title={t.emailVerifySubscription}
+      headerColor="#3b82f6"
+      showStandardFooter={false}
+      footer={
+        <>
+            <Text style={footerText}>
+              {t.emailVerifySentNotice} {statusPageName}.
+            </Text>
+            <Text style={copyright}>
+              {t.poweredBy}{" "}
+              <Link href="https://supercheck.io" style={footerLink}>
+                Supercheck
+              </Link>
+            </Text>
+          </>
+      }
+    >
 
           {/* Icon */}
           <Section style={iconSection}>
@@ -110,55 +113,14 @@ export const StatusPageVerificationEmail = ({
           {/* Spacer */}
           <Section style={{ height: "24px" }} />
 
-          <Hr style={footerDivider} />
 
-          {/* Footer */}
-          <Section style={footer}>
-            <Text style={footerText}>
-              {t.emailVerifySentNotice} {statusPageName}.
-            </Text>
-            <Text style={copyright}>
-              {t.poweredBy}{" "}
-              <Link href="https://supercheck.io" style={footerLink}>
-                Supercheck
-              </Link>
-            </Text>
-          </Section>
-        </Container>
-      </Body>
-    </Html>
+          </BaseLayout>
   );
 };
 
-const main = {
-  backgroundColor: "#f4f4f5",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  padding: "40px 20px",
-};
 
-const container = {
-  backgroundColor: "#ffffff",
-  margin: "0 auto",
-  maxWidth: "560px",
-  borderRadius: "12px",
-  overflow: "hidden" as const,
-  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-};
 
-const header = {
-  backgroundColor: "#3b82f6",
-  padding: "28px 32px",
-  textAlign: "center" as const,
-};
 
-const headerTitle = {
-  color: "#ffffff",
-  fontSize: "20px",
-  fontWeight: "600" as const,
-  margin: "0",
-  letterSpacing: "-0.01em",
-};
 
 const iconSection = {
   textAlign: "center" as const,
@@ -275,15 +237,7 @@ const noticeText = {
   textAlign: "center" as const,
 };
 
-const footerDivider = {
-  borderColor: "#e4e4e7",
-  margin: "0",
-};
 
-const footer = {
-  padding: "24px 32px",
-  backgroundColor: "#fafafa",
-};
 
 const footerText = {
   color: "#71717a",

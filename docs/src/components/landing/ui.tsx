@@ -39,6 +39,8 @@ export function CheckList({ items, className = "" }: { items: string[]; classNam
 const SHOT_HEIGHTS: Record<string, number> = {
   "status-page-public": 922,
   "incident-workspace-overview": 1000,
+  dashboard: 1000,
+  "notification-channels": 1000,
 };
 
 /** Product screenshot in a framed panel. Screenshots are dark-theme captures in both site themes. */

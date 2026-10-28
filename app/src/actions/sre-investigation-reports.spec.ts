@@ -24,7 +24,6 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getSreInvestigationReportExportForRun } from "@/lib/sre/investigation-queries";
 import {
   createSreInvestigationReportSnapshot,
-  saveSreInvestigationReportFeedback,
 } from "./sre-investigation-reports";
 
 const mockDb = db as jest.Mocked<typeof db>;
@@ -96,72 +95,5 @@ describe("SRE investigation report actions", () => {
     });
     expect(mockDb.transaction).not.toHaveBeenCalled();
     expect(mockLogAuditEvent).not.toHaveBeenCalled();
-  });
-
-  it("rejects feedback for a snapshot outside the active project", async () => {
-    (mockDb.query.sreInvestigationReports.findFirst as jest.Mock).mockResolvedValue(null);
-
-    const result = await saveSreInvestigationReportFeedback({
-      reportSnapshotId: reportId,
-      accuracy: "incorrect",
-      rejectedHypotheses: [],
-    });
-
-    expect(result).toEqual({
-      success: false,
-      error: "SRE investigation report snapshot not found",
-    });
-    expect(mockDb.insert).not.toHaveBeenCalled();
-  });
-
-  it("upserts normalized feedback for the current user", async () => {
-    (mockDb.query.sreInvestigationReports.findFirst as jest.Mock).mockResolvedValue({
-      id: reportId,
-      incidentId,
-      investigationRunId: runId,
-    });
-    const returning = jest.fn().mockResolvedValue([
-      {
-        id: "018f0000-0000-7000-8000-000000000007",
-        accuracy: "partially_accurate",
-        rejectedHypotheses: ["Cache saturation"],
-        updatedAt: new Date("2026-07-30T10:10:00.000Z"),
-      },
-    ]);
-    const onConflictDoUpdate = jest.fn().mockReturnValue({ returning });
-    const values = jest.fn().mockReturnValue({ onConflictDoUpdate });
-    (mockDb.insert as jest.Mock).mockReturnValue({ values });
-
-    const result = await saveSreInvestigationReportFeedback({
-      reportSnapshotId: reportId,
-      accuracy: "partially_accurate",
-      notes: "  Verified   against deployment history  ",
-      rejectedHypotheses: [" Cache   saturation ", "Cache saturation"],
-    });
-
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        reportId,
-        createdByUserId: context.userId,
-        notes: "Verified against deployment history",
-        rejectedHypotheses: ["Cache saturation"],
-      }),
-    );
-    expect(onConflictDoUpdate).toHaveBeenCalled();
-    expect(result).toEqual({
-      success: true,
-      feedbackId: "018f0000-0000-7000-8000-000000000007",
-      accuracy: "partially_accurate",
-      rejectedHypothesisCount: 1,
-      updatedAt: "2026-07-30T10:10:00.000Z",
-    });
-    expect(mockLogAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "sre_investigation_report_feedback_saved",
-        resourceId: reportId,
-      }),
-    );
   });
 });

@@ -22,6 +22,7 @@ import type {
 } from "@/lib/sre/evidence-brief-generator";
 import {
   collectNativeEvidence,
+  type NativeEvidenceCollection,
   type NativeEvidenceWindow,
 } from "@/lib/sre/native-evidence-collector";
 import { db } from "@/utils/db";
@@ -205,6 +206,89 @@ async function importCompletedPrivateAgentConnectorEvidence(input: {
   });
 }
 
+export async function persistNativeEvidence(input: {
+  organizationId: string;
+  projectId: string;
+  incidentId: string;
+  userId: string | null;
+  /** Run that owns newly created rows; null when no run exists. */
+  investigationRunId?: string | null;
+  /** Pass an already collected result to avoid collecting twice. */
+  collection?: NativeEvidenceCollection;
+  /** Stops before further inserts once aborted. */
+  signal?: AbortSignal;
+}): Promise<{
+  collection: NativeEvidenceCollection | null;
+  rows: (typeof sreEvidenceItems.$inferSelect)[];
+  createdCount: number;
+}> {
+  const collection =
+    input.collection ??
+    (await collectNativeEvidence({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: input.incidentId,
+    }));
+  if (!collection) return { collection: null, rows: [], createdCount: 0 };
+
+  const rows: (typeof sreEvidenceItems.$inferSelect)[] = [];
+  let createdCount = 0;
+  if (collection.evidence.length === 0) return { collection, rows, createdCount };
+
+  // No unique index backs the dedupe, so serialise writers per incident.
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`sre-evidence:${input.incidentId}`}))`,
+    );
+    for (const item of collection.evidence) {
+      if (input.signal?.aborted) break;
+      const [existing] = await tx
+        .select()
+        .from(sreEvidenceItems)
+        .where(
+          and(
+            eq(sreEvidenceItems.incidentId, input.incidentId),
+            eq(sreEvidenceItems.citationResultHash, item.citationResultHash),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        rows.push(existing);
+        continue;
+      }
+
+      const [created] = await tx
+        .insert(sreEvidenceItems)
+        .values({
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          incidentId: input.incidentId,
+          investigationRunId: input.investigationRunId ?? null,
+          sourceType: "native",
+          sourceUri: item.sourceUri,
+          title: item.title,
+          summary: item.summary,
+          rawContentExcerpt: item.rawContentExcerpt,
+          evidenceType: item.evidenceType,
+          severity: item.severity,
+          confidence: String(item.confidence),
+          tags: item.tags,
+          metadata: item.metadata,
+          citationQuery: item.citationQuery,
+          citationResultHash: item.citationResultHash,
+          observedAt: item.observedAt,
+          createdAt: new Date(),
+        })
+        .returning();
+
+      rows.push(created);
+      createdCount += 1;
+    }
+  });
+  return { collection, rows, createdCount };
+}
+
 export async function runSreEvidenceBriefGeneration(input: {
   userId: string;
   organizationId: string;
@@ -251,51 +335,14 @@ export async function runSreEvidenceBriefGeneration(input: {
     .returning();
 
   try {
-    const evidenceRows = [];
-
-    for (const item of collection.evidence) {
-      const [existing] = await db
-        .select()
-        .from(sreEvidenceItems)
-        .where(
-          and(
-            eq(sreEvidenceItems.incidentId, input.incidentId),
-            eq(sreEvidenceItems.citationResultHash, item.citationResultHash),
-          ),
-        )
-        .limit(1);
-
-      if (existing) {
-        evidenceRows.push(existing);
-        continue;
-      }
-
-      const [created] = await db
-        .insert(sreEvidenceItems)
-        .values({
-          organizationId: input.organizationId,
-          projectId: input.projectId,
-          incidentId: input.incidentId,
-          investigationRunId: run.id,
-          sourceType: "native",
-          sourceUri: item.sourceUri,
-          title: item.title,
-          summary: item.summary,
-          rawContentExcerpt: item.rawContentExcerpt,
-          evidenceType: item.evidenceType,
-          severity: item.severity,
-          confidence: String(item.confidence),
-          tags: item.tags,
-          metadata: item.metadata,
-          citationQuery: item.citationQuery,
-          citationResultHash: item.citationResultHash,
-          observedAt: item.observedAt,
-          createdAt: new Date(),
-        })
-        .returning();
-
-      evidenceRows.push(created);
-    }
+    const { rows: evidenceRows } = await persistNativeEvidence({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      incidentId: input.incidentId,
+      userId: input.userId,
+      investigationRunId: run.id,
+      collection,
+    });
 
     const connectorEvidenceRows =
       await importCompletedPrivateAgentConnectorEvidence({

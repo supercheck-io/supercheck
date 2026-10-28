@@ -351,6 +351,9 @@ export async function PUT(
               typeof rawData.alertConfig.customMessage === "string"
                 ? rawData.alertConfig.customMessage
                 : "",
+            incidentEnabled: typeof rawData.alertConfig.incidentEnabled === "boolean" ? rawData.alertConfig.incidentEnabled : undefined,
+            incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(rawData.alertConfig.incidentSeverity) ? rawData.alertConfig.incidentSeverity : undefined,
+            autoResolveIncident: typeof rawData.alertConfig.autoResolveIncident === "boolean" ? rawData.alertConfig.autoResolveIncident : undefined,
           }
         : null;
     }

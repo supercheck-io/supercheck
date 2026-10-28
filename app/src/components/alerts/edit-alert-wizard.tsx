@@ -72,7 +72,7 @@ export function EditAlertWizard({
         <NotificationProviderForm
           initialData={providerData}
           onSuccess={handleProviderSave}
-          onCancel={() => router.push("/alerts")}
+          onCancel={() => router.push("/notifications")}
         />
       ),
     },
@@ -157,7 +157,7 @@ export function EditAlertWizard({
       // Here you would save the alert configuration
       // For now, just show success and redirect
       toast.success("Alert settings saved successfully");
-      router.push("/alerts");
+      router.push("/notifications");
     } catch (error) {
       console.error("Error saving alert settings:", error);
       toast.error("Failed to save alert settings");

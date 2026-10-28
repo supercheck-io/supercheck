@@ -31,6 +31,7 @@ export function IncidentAssigneePicker({
   assigneeImage,
   role = "assignee",
   label = "Assignee",
+  hideLabel = false,
   canUpdate,
 }: {
   incidentId: string;
@@ -39,6 +40,8 @@ export function IncidentAssigneePicker({
   assigneeImage?: string | null;
   role?: "assignee" | "commander";
   label?: string;
+  /** Hide the visible label (a surrounding heading names it); keeps an aria-label. */
+  hideLabel?: boolean;
   canUpdate: boolean;
 }) {
   const id = useId();
@@ -51,7 +54,7 @@ export function IncidentAssigneePicker({
   if (!canUpdate) {
     return (
       <div className="space-y-1">
-        <span className="text-xs text-muted-foreground">{label}</span>
+        {!hideLabel && <span className="text-xs text-muted-foreground">{label}</span>}
         <UserCell name={assigneeName} image={assigneeImage} avatarClassName="h-5 w-5" />
       </div>
     );
@@ -80,15 +83,17 @@ export function IncidentAssigneePicker({
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
-        {label}
-      </Label>
+      {!hideLabel && (
+        <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+          {label}
+        </Label>
+      )}
       <Select
         value={assigneeUserId ?? UNASSIGNED}
         onValueChange={change}
         disabled={pending}
       >
-        <SelectTrigger id={id} className="h-8 w-full">
+        <SelectTrigger id={id} className="h-8 w-full" aria-label={hideLabel ? label : undefined}>
           <SelectValue placeholder="Unassigned">
             {(() => {
               const person = assigneeUserId ? people.find((p) => p.id === assigneeUserId) : undefined;

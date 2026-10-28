@@ -147,6 +147,12 @@ export type AlertConfig = {
   failureThreshold: number;
   recoveryThreshold: number;
   customMessage?: string;
+  /** Open an incident when this alerts. Undefined = true. */
+  incidentEnabled?: boolean;
+  /** Severity for new incidents. Undefined = derived from the alert. */
+  incidentSeverity?: 'sev1' | 'sev2' | 'sev3' | 'sev4';
+  /** Resolve the incident on recovery if unacknowledged. Undefined = true. */
+  autoResolveIncident?: boolean;
 };
 
 export type AlertType =

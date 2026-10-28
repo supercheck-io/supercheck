@@ -22,17 +22,14 @@ jest.mock("@/hooks/use-project-context", () => ({
 
 jest.mock("@/actions/sre-investigation-reports", () => ({
   createSreInvestigationReportSnapshot: jest.fn(),
-  saveSreInvestigationReportFeedback: jest.fn(),
 }));
 
 import {
   createSreInvestigationReportSnapshot,
-  saveSreInvestigationReportFeedback,
 } from "@/actions/sre-investigation-reports";
-import { SreInvestigationPanel } from "./sre-investigation-panel";
+import { SreInvestigationPanel, SreReportSnapshotControl } from "./sre-investigation-panel";
 
 const mockCreateSnapshot = createSreInvestigationReportSnapshot as jest.Mock;
-const mockSaveFeedback = saveSreInvestigationReportFeedback as jest.Mock;
 
 describe("SreInvestigationPanel", () => {
   beforeEach(() => {
@@ -47,7 +44,6 @@ describe("SreInvestigationPanel", () => {
       createdAt: "2026-06-24T12:00:00.000Z",
       reused: false,
     });
-    mockSaveFeedback.mockResolvedValue({ success: true });
   });
 
   it("falls back to saved evidence if a previously selected live-source scope disappears", async () => {
@@ -128,7 +124,6 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Investigation")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /run investigation/i }),
     ).toBeInTheDocument();
@@ -286,45 +281,21 @@ describe("SreInvestigationPanel", () => {
     await waitFor(() => expect(screen.getByLabelText("Re-run with my note")).toHaveValue(""));
   });
 
-  it("saves a completed investigation snapshot and then feedback", async () => {
+  it("saves a completed investigation snapshot", async () => {
     const runId = "018f0000-0000-7000-8000-000000000009";
     render(
-      <SreInvestigationPanel
+      <SreReportSnapshotControl
         incidentId="018f0000-0000-7000-8000-000000000001"
-        hasPrimaryService={true}
-        serviceMappingHref="/org-admin?tab=services"
         canInvestigate={true}
-        latestInvestigation={{
-          id: runId,
-          status: "completed",
-          summary: "Dependency latency is the leading hypothesis.",
-          completedAt: "2026-06-24T12:00:00.000Z",
-        }}
+        latestInvestigation={{ id: runId, status: "completed" }}
       />,
     );
 
-    fireEvent.click(screen.getByText("Save report & feedback"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save report snapshot" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save report snapshot" }));
     await waitFor(() =>
-      expect(mockCreateSnapshot).toHaveBeenCalledWith({
-        investigationRunId: runId,
-      }),
+      expect(mockCreateSnapshot).toHaveBeenCalledWith({ investigationRunId: runId }),
     );
-
-    fireEvent.change(screen.getByLabelText("Notes (optional)"), {
-      target: { value: "Validated against the deployment timeline." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
-    await waitFor(() =>
-      expect(mockSaveFeedback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          reportSnapshotId: "018f0000-0000-7000-8000-000000000010",
-          notes: "Validated against the deployment timeline.",
-        }),
-      ),
-    );
+    expect(screen.queryByLabelText("Notes (optional)")).not.toBeInTheDocument();
   });
 
   it("does not expose snapshot mutation controls to viewers", () => {
@@ -352,7 +323,7 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.queryByLabelText("Include live sources"),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Read-only access")).toBeInTheDocument();
+    expect(screen.queryByText("Read-only access")).not.toBeInTheDocument();
   });
 
   it("shows a persistent disabled state when investigation is not enabled", () => {
@@ -413,43 +384,6 @@ describe("SreInvestigationPanel", () => {
     expect(
       screen.queryByLabelText("Include live sources"),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Read-only access")).toBeInTheDocument();
-  });
-
-  it("enforces the ten-item rejected hypothesis limit before submission", () => {
-    render(
-      <SreInvestigationPanel
-        incidentId="018f0000-0000-7000-8000-000000000001"
-        hasPrimaryService={true}
-        serviceMappingHref="/org-admin?tab=services"
-        canInvestigate={true}
-        latestInvestigation={{
-          id: "018f0000-0000-7000-8000-000000000009",
-          status: "completed",
-          summary: "Dependency latency is the leading hypothesis.",
-          completedAt: "2026-06-24T12:00:00.000Z",
-        }}
-        latestReportSnapshot={{
-          id: "018f0000-0000-7000-8000-000000000010",
-          title: "Investigation report",
-          createdAt: "2026-06-24T12:00:00.000Z",
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByText("Save report & feedback"));
-    fireEvent.change(screen.getByLabelText(/Rejected hypotheses/), {
-      target: {
-        value: Array.from(
-          { length: 11 },
-          (_, index) => `Hypothesis ${index + 1}`,
-        ).join("\n"),
-      },
-    });
-
-    expect(screen.getByText(/11 of 10 hypotheses/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Save feedback" }),
-    ).toBeDisabled();
+    expect(screen.queryByText("Read-only access")).not.toBeInTheDocument();
   });
 });

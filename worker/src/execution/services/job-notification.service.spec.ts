@@ -1,4 +1,9 @@
-import { JobNotificationService } from './job-notification.service';
+import { Logger } from '@nestjs/common';
+import {
+  isFailureAlertStreak,
+  JobNotificationService,
+  maxFailureAlertStreak,
+} from './job-notification.service';
 
 describe('JobNotificationService', () => {
   function createService() {
@@ -61,6 +66,7 @@ describe('JobNotificationService', () => {
     };
     const sreAlertTriageQueueService = {
       enqueueAlertHistoryRows: jest.fn().mockResolvedValue(undefined),
+      enqueueSourceRecovery: jest.fn().mockResolvedValue(undefined),
     };
 
     const service = new JobNotificationService(
@@ -156,4 +162,170 @@ describe('JobNotificationService', () => {
       );
     },
   );
+
+  describe('timeout and error paths', () => {
+    const params = {
+      jobId: 'job-1',
+      runId: 'run-1',
+      finalStatus: 'timeout',
+      durationSeconds: 90,
+    } as never;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    });
+    afterEach(() => errorSpy.mockRestore());
+
+    it('sends a job_timeout warning payload and records it as job_timeout history', async () => {
+      const { service, dbService, notificationService } = createService();
+      await service.handleJobNotifications(params);
+
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          type: 'job_timeout',
+          severity: 'warning',
+          title: 'Job Timeout - Checkout smoke test',
+          message: expect.stringContaining('timed out after 90 seconds'),
+          targetId: 'job-1',
+          metadata: expect.objectContaining({ runId: 'run-1', duration: 90 }),
+        }),
+      );
+      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+      for (const call of dbService.saveAlertHistory.mock.calls) {
+        expect(call.slice(0, 2)).toEqual(['job-1', 'job_timeout']);
+      }
+    });
+
+    it('does not notify on timeout when alertOnTimeout is off', async () => {
+      const { service, dbService, notificationService } = createService();
+      (await dbService.getJobById()).alertConfig.alertOnTimeout = false;
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('logs and swallows an alert-history save failure', async () => {
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      dbService.saveAlertHistory
+        .mockReset()
+        .mockRejectedValue(new Error('db down'));
+      await expect(
+        service.handleJobNotifications(params),
+      ).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Failed to save alert history for job job-1: db down',
+        ),
+      );
+      expect(
+        sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('logs and swallows a failure loading the job', async () => {
+      const { service, dbService } = createService();
+      dbService.getJobById.mockRejectedValue(new Error('lookup failed'));
+      await expect(
+        service.handleJobNotifications(params),
+      ).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Failed to handle job notifications for job job-1: lookup failed',
+        ),
+      );
+    });
+  });
+
+  describe('failure alert cap', () => {
+    it('alerts at threshold then every max(5, 2x threshold), max 3 per streak', () => {
+      const alertingAt = (t: number, upTo = 40) =>
+        Array.from({ length: upTo }, (_, i) => i + 1).filter((n) =>
+          isFailureAlertStreak(n, t),
+        );
+      expect(alertingAt(1)).toEqual([1, 6, 11]);
+      expect(alertingAt(2)).toEqual([2, 7, 12]);
+      expect(alertingAt(3)).toEqual([3, 9, 15]);
+      expect(maxFailureAlertStreak(1)).toBe(11);
+      expect(maxFailureAlertStreak(3)).toBe(15);
+    });
+
+    // Feeds exactly the rows the service asks for, like the real query would.
+    it.each([
+      [2, false],
+      [6, true],
+      [11, true],
+      [12, false],
+      [16, false],
+      [40, false],
+    ])('job failure streak of %i sends=%s', async (streak, sends) => {
+      const { service, dbService, notificationService } = createService();
+      dbService.getRecentRunsForJob.mockImplementation(
+        (_id: string, limit: number) =>
+          Promise.resolve(
+            Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
+              id: i === 0 ? 'run-1' : `old-${i}`,
+              status: 'failed',
+            })),
+          ),
+      );
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(sends ? 1 : 0);
+    });
+
+    it('signals a recovery once, right after a failed run, even with alerts off', async () => {
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        alertConfig: { enabled: false, recoveryThreshold: 2 },
+      });
+      const passAfter = async (history: string[]) => {
+        dbService.getRecentRunsForJob.mockResolvedValueOnce(
+          history.map((status, i) => ({ id: `r${i}`, status })),
+        );
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-new',
+          finalStatus: 'passed',
+          durationSeconds: 1,
+        });
+      };
+      await passAfter(['failed']); // 1 pass, threshold 2: not yet
+      await passAfter(['passed', 'failed']); // 2 passes after a failure: recovered
+      await passAfter(['passed', 'passed']); // already recovered earlier
+      expect(
+        sreAlertTriageQueueService.enqueueSourceRecovery,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        sreAlertTriageQueueService.enqueueSourceRecovery,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: 'job', sourceId: 'job-1' }),
+      );
+    });
+
+    it('requests enough history to see the last capped alert', async () => {
+      const { service, dbService } = createService();
+      await service.handleJobNotifications({
+        jobId: 'job-1',
+        runId: 'run-1',
+        finalStatus: 'failed',
+        durationSeconds: 1,
+      });
+      expect(dbService.getRecentRunsForJob).toHaveBeenCalledWith('job-1', 12);
+    });
+  });
 });

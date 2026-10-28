@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "jsx": "react-jsx",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
@@ -23,6 +24,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "*.ts",
     "config/**/*.ts",
     "test/**/*.ts"

@@ -3,7 +3,7 @@
 const selectQueue: unknown[][] = [];
 function chain(result: unknown[]) {
   const node: Record<string, unknown> = {};
-  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin"]) node[name] = jest.fn(() => node);
+  for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy"]) node[name] = jest.fn(() => node);
   node.then = (resolve: (value: unknown[]) => unknown) => resolve(result);
   return node;
 }
@@ -18,6 +18,8 @@ jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({ fetchPublicEndpoint: (..
 jest.mock("@/lib/notification-providers/crypto", () => ({
   decryptNotificationProviderConfig: jest.fn((config: { envelope?: Record<string, unknown> }) => config.envelope ?? config),
 }));
+const renderIncidentUpdateEmail = jest.fn();
+jest.mock("@/lib/email-renderer", () => ({ renderIncidentUpdateEmail: (...args: unknown[]) => renderIncidentUpdateEmail(...args) }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: jest.fn() }) }));
 
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
@@ -37,6 +39,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   selectQueue.length = 0;
   redisSet.mockResolvedValue("OK");
+  // Default: template fails, so the plain fallback email is what most tests check.
+  renderIncidentUpdateEmail.mockRejectedValue(new Error("render unavailable"));
   process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com/";
 });
 
@@ -60,6 +64,18 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.recipients).toEqual(["ada@example.com"]);
   expect(mail.text).toContain("https://app.example.com/incidents/inc-1");
   expect(mail.text).toContain("Incident #7 assigned");
+});
+
+it("renders the incident email template for direct email", async () => {
+  renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "[SEV2] Incident assigned: #7 x", html: "<html>tpl</html>", text: "tpl" });
+  selectQueue.push([incident], [{ email: "ada@example.com" }], []);
+  await notifyIncidentEvent({ ...base, detail: "Root cause: bad deploy" });
+  expect(renderIncidentUpdateEmail).toHaveBeenCalledWith(
+    expect.objectContaining({ event: "assigned", incidentNumber: 7, incidentUrl: "https://app.example.com/incidents/inc-1", detail: "Root cause: bad deploy" }),
+  );
+  expect(sendEmailToMultiple.mock.calls[0][0]).toEqual(
+    expect.objectContaining({ recipients: ["ada@example.com"], subject: "[SEV2] Incident assigned: #7 x", html: "<html>tpl</html>" }),
+  );
 });
 
 it("does not email the actor about their own assignment", async () => {
@@ -124,4 +140,66 @@ it("skips webhooks that use a preset or body template but still sends plain webh
   await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
   expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   expect(fetchPublicEndpoint.mock.calls[0][0]).toBe("https://example.com/c");
+});
+
+it("sends a plain webhook the fixed incident JSON with its custom headers", async () => {
+  selectQueue.push([incident], [{ sourceType: "monitor", sourceId: "mon-1" }], [
+    { id: "w1", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/hook", headers: { "X-Token": "t" } } } },
+  ]);
+  await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  const [url, init] = fetchPublicEndpoint.mock.calls[0];
+  expect(url).toBe("https://example.com/hook");
+  expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
+  expect(JSON.parse(init.body)).toMatchObject({
+    event: "incident.resolved",
+    title: expect.any(String),
+    url: "https://app.example.com/incidents/inc-1",
+  });
+});
+
+describe("one message per event for alert-triggered incidents", () => {
+  const provider = { id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } };
+  const source = [{ sourceType: "monitor", sourceId: "mon-1" }];
+  const run = (input: Record<string, unknown>, delivered: Array<{ status: string }> = [{ status: "sent" }]) => {
+    selectQueue.push([incident], source);
+    if (input.event === "created") selectQueue.push(delivered);
+    selectQueue.push([provider]);
+    return notifyIncidentEvent({ ...base, assigneeUserId: null, ...input } as never);
+  };
+
+  it.each([
+    ["recovered", {}],
+    ["reopened", {}],
+    ["resolved", { automatic: true }],
+  ])("skips channel posts for %s %j", async (event, extra) => {
+    await run({ event, ...extra });
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("skips channel posts for created when the alert was delivered", async () => {
+    await run({ event: "created" });
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("posts created to channels when every alert delivery failed", async () => {
+    await run({ event: "created" }, [{ status: "failed" }]);
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["assigned", {}],
+    ["acknowledged", {}],
+    ["ai_finding", {}],
+    ["resolved", {}],
+  ])("still posts channels for %s", async (event, extra) => {
+    await run({ event, ...extra });
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("still emails the assignee when channels are skipped", async () => {
+    selectQueue.push([incident], [{ email: "ada@example.com" }], source);
+    await notifyIncidentEvent({ ...base, event: "recovered", assigneeUserId: "assignee", actorUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].text).toContain("recovered");
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
 });

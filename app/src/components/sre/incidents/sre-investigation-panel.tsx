@@ -6,29 +6,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, SearchCheck, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   createSreInvestigationReportSnapshot,
-  saveSreInvestigationReportFeedback,
 } from "@/actions/sre-investigation-reports";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
@@ -57,20 +40,6 @@ type SreInvestigationPanelProps = {
     summary: string | null;
     completedAt: Date | string | null;
   } | null;
-  latestReportSnapshot?: {
-    id: string;
-    title: string | null;
-    createdAt: Date | string;
-  } | null;
-  myReportFeedback?: {
-    accuracy:
-      | "accurate"
-      | "partially_accurate"
-      | "incorrect"
-      | "needs_more_evidence";
-    notes: string | null;
-    rejectedHypotheses: string[];
-  } | null;
   canInvestigate?: boolean;
   canMapService?: boolean;
   canUseLiveConnectors?: boolean;
@@ -84,8 +53,6 @@ export function SreInvestigationPanel({
   evidenceReferences = [],
   toolMetrics = { total: 0, errors: 0, averageDurationMs: 0 },
   latestInvestigation = null,
-  latestReportSnapshot = null,
-  myReportFeedback = null,
   canInvestigate = false,
   canMapService = false,
   canUseLiveConnectors = false,
@@ -101,27 +68,6 @@ export function SreInvestigationPanel({
   const [investigationError, setInvestigationError] = useState<string | null>(
     null,
   );
-  const [isSavingReport, startReportTransition] = useTransition();
-  const [reportSnapshotId, setReportSnapshotId] = useState(
-    latestReportSnapshot?.id ?? null,
-  );
-  const [accuracy, setAccuracy] = useState<
-    "accurate" | "partially_accurate" | "incorrect" | "needs_more_evidence"
-  >(myReportFeedback?.accuracy ?? "accurate");
-  const [feedbackNotes, setFeedbackNotes] = useState(
-    myReportFeedback?.notes ?? "",
-  );
-  const [rejectedHypotheses, setRejectedHypotheses] = useState(
-    myReportFeedback?.rejectedHypotheses.join("\n") ?? "",
-  );
-  const rejectedHypothesisValues = rejectedHypotheses
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const rejectedHypothesesInvalid =
-    rejectedHypothesisValues.length > 10 ||
-    rejectedHypothesisValues.some((value) => value.length > 300);
-
   const [guidance, setGuidance] = useState("");
   const runInvestigation = (note?: string) => {
     if (!canInvestigate || !investigationEnabled || investigationRunning)
@@ -191,89 +137,27 @@ export function SreInvestigationPanel({
     });
   };
 
-  const refreshIncidentDetail = () =>
-    queryClient.invalidateQueries({
-      queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
-    });
-
-  const saveSnapshot = () => {
-    if (!latestInvestigation) return;
-    startReportTransition(async () => {
-      try {
-        const result = await createSreInvestigationReportSnapshot({
-          investigationRunId: latestInvestigation.id,
-        });
-        if (!result.success) {
-          toast.error(result.error);
-          return;
-        }
-        setReportSnapshotId(result.snapshotId);
-        toast.success(
-          result.reused
-            ? "Already saved for this report content"
-            : "Snapshot saved",
-        );
-        await refreshIncidentDetail();
-      } catch {
-        toast.error(
-          "Could not confirm the saved snapshot. Refresh the incident and try again.",
-        );
-      }
-    });
-  };
-
-  const saveFeedback = () => {
-    if (!reportSnapshotId || rejectedHypothesesInvalid) return;
-    startReportTransition(async () => {
-      try {
-        const result = await saveSreInvestigationReportFeedback({
-          reportSnapshotId,
-          accuracy,
-          notes: feedbackNotes,
-          rejectedHypotheses: rejectedHypothesisValues,
-        });
-        if (!result.success) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success("Feedback saved");
-        await refreshIncidentDetail();
-      } catch {
-        toast.error("Could not confirm the saved feedback. Please try again.");
-      }
-    });
-  };
+  if (!canInvestigate) return null;
 
   return (
-    <div className="overflow-hidden rounded-lg border" data-testid="investigation-controls">
-      <CardHeader className="border-b px-5 py-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <CardTitle className="text-base">Investigation</CardTitle>
-            <CardDescription>
-              AI reads your evidence and connected sources. It never changes
-              your systems.
-            </CardDescription>
-          </div>
-          {canInvestigate ? (
-            <Button
-              className="w-full sm:w-auto"
-              onClick={() => runInvestigation()}
-              disabled={investigationRunning || !investigationEnabled}
-            >
-              {investigationRunning ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <SearchCheck className="mr-2 h-4 w-4" />
-              )}
-              {investigationRunning ? "Investigating..." : latestInvestigation ? "Run again" : "Run investigation"}
-            </Button>
+    <div className="space-y-4" data-testid="investigation-controls">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="min-w-0 text-sm text-muted-foreground">
+          AI reads your evidence and connected sources. It never changes your systems.
+        </p>
+        <Button
+          size="sm"
+          onClick={() => runInvestigation()}
+          disabled={investigationRunning || !investigationEnabled}
+        >
+          {investigationRunning ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
-            <Badge variant="outline">Read-only access</Badge>
+            <SearchCheck className="mr-2 h-4 w-4" />
           )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 p-5">
+          {investigationRunning ? "Investigating..." : latestInvestigation ? "Run again" : "Run investigation"}
+        </Button>
+      </div>
         {investigationError && (
           <p
             role="alert"
@@ -397,129 +281,6 @@ export function SreInvestigationPanel({
           </div>
         )}
 
-        {latestInvestigation?.status === "completed" && (
-          <details className="space-y-3 rounded-lg border px-4 py-3">
-            <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              Save report &amp; feedback
-            </summary>
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Save the current sanitized investigation report for audit and
-                review.
-              </p>
-            </div>
-            {!reportSnapshotId ? (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  Save a snapshot to lock this investigation report for review.
-                </p>
-                {canInvestigate && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={saveSnapshot}
-                    disabled={isSavingReport}
-                  >
-                    {isSavingReport && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Save report snapshot
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Snapshot saved
-                  {latestReportSnapshot?.title
-                    ? `: ${latestReportSnapshot.title}`
-                    : ""}
-                  .
-                </p>
-                {canInvestigate ? (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="report-accuracy">Accuracy</Label>
-                      <Select
-                        value={accuracy}
-                        onValueChange={(value) =>
-                          setAccuracy(value as typeof accuracy)
-                        }
-                      >
-                        <SelectTrigger id="report-accuracy">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="accurate">Accurate</SelectItem>
-                          <SelectItem value="partially_accurate">
-                            Partially accurate
-                          </SelectItem>
-                          <SelectItem value="incorrect">Incorrect</SelectItem>
-                          <SelectItem value="needs_more_evidence">
-                            Needs more evidence
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="report-feedback-notes">
-                        Notes (optional)
-                      </Label>
-                      <Textarea
-                        id="report-feedback-notes"
-                        maxLength={2000}
-                        value={feedbackNotes}
-                        onChange={(event) =>
-                          setFeedbackNotes(event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="rejected-hypotheses">
-                        Rejected hypotheses (optional, one per line)
-                      </Label>
-                      <Textarea
-                        id="rejected-hypotheses"
-                        aria-describedby="rejected-hypotheses-help"
-                        aria-invalid={rejectedHypothesesInvalid}
-                        maxLength={3009}
-                        value={rejectedHypotheses}
-                        onChange={(event) =>
-                          setRejectedHypotheses(event.target.value)
-                        }
-                      />
-                      <p
-                        id="rejected-hypotheses-help"
-                        className={
-                          rejectedHypothesesInvalid
-                            ? "text-xs text-destructive"
-                            : "text-xs text-muted-foreground"
-                        }
-                      >
-                        {rejectedHypothesisValues.length} of 10 hypotheses. Each
-                        may contain up to 300 characters.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={saveFeedback}
-                      disabled={isSavingReport || rejectedHypothesesInvalid}
-                    >
-                      {isSavingReport && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      Save feedback
-                    </Button>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    You have read-only access to this snapshot.
-                  </p>
-                )}
-              </div>
-            )}
-          </details>
-        )}
         {toolMetrics.total > 0 && (
           <details className="rounded-lg border p-4">
             <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -557,7 +318,64 @@ export function SreInvestigationPanel({
             </div>
           </details>
         )}
-      </CardContent>
+    </div>
+  );
+}
+
+/** Saves a point-in-time copy of the latest completed report. Feedback lives on the AI summary card. */
+export function SreReportSnapshotControl({
+  incidentId,
+  latestInvestigation,
+  latestReportSnapshot = null,
+  canInvestigate = false,
+}: {
+  incidentId: string;
+  latestInvestigation: { id: string; status: string } | null;
+  latestReportSnapshot?: { id: string; title: string | null; createdAt: Date | string } | null;
+  canInvestigate?: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const { projectId } = useProjectContext();
+  const [isSaving, startTransition] = useTransition();
+  const [snapshotId, setSnapshotId] = useState(latestReportSnapshot?.id ?? null);
+
+  if (latestInvestigation?.status !== "completed") {
+    return <p className="text-sm text-muted-foreground">A snapshot is available after an investigation completes.</p>;
+  }
+
+  const save = () =>
+    startTransition(async () => {
+      try {
+        const result = await createSreInvestigationReportSnapshot({
+          investigationRunId: latestInvestigation.id,
+        });
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+        setSnapshotId(result.snapshotId);
+        toast.success(result.reused ? "Already saved for this report content" : "Snapshot saved");
+        await queryClient.invalidateQueries({
+          queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
+        });
+      } catch {
+        toast.error("Could not confirm the saved snapshot. Refresh the incident and try again.");
+      }
+    });
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-muted-foreground">
+        {snapshotId
+          ? `Snapshot saved${latestReportSnapshot?.title ? `: ${latestReportSnapshot.title}` : ""}.`
+          : "Save the sanitized report to lock it for audit and review."}
+      </p>
+      {canInvestigate && (
+        <Button type="button" variant="outline" size="sm" onClick={save} disabled={isSaving}>
+          {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Save report snapshot
+        </Button>
+      )}
     </div>
   );
 }

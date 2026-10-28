@@ -292,15 +292,15 @@ export function IncidentsTab({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <OctagonAlert className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-lg">Incidents</CardTitle>
+              <CardTitle className="text-lg">Status updates</CardTitle>
             </div>
             <CardDescription>
-              Manage incidents to communicate service disruptions to your users
+              Post status updates to tell your users about service disruptions
             </CardDescription>
           </div>
           <Button disabled size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Create Incident
+            New status update
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
@@ -342,10 +342,10 @@ export function IncidentsTab({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <OctagonAlert className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-lg">Incidents</CardTitle>
+            <CardTitle className="text-lg">Status updates</CardTitle>
           </div>
           <CardDescription>
-            Manage incidents to communicate service disruptions to your users
+            Post status updates to tell your users about service disruptions
           </CardDescription>
         </div>
         <Button
@@ -354,14 +354,14 @@ export function IncidentsTab({
           size="sm"
           title={
             !canUpdate
-              ? "You don't have permission to create incidents"
+              ? "You don't have permission to create status updates"
               : components.length === 0
                 ? "Create components first"
                 : undefined
           }
         >
           <Plus className="h-4 w-4 mr-2" />
-          Create Incident
+          New status update
         </Button>
       </CardHeader>
       <CardContent className="pt-0">
@@ -380,12 +380,12 @@ export function IncidentsTab({
               <CheckCircle2 className="h-7 w-7 text-green-600 dark:text-green-400" />
             </div>
             <h4 className="text-base font-semibold mb-1">
-              No incidents reported
+              No status updates posted
             </h4>
             <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
               {components.length === 0
-                ? "Create components first, then create incidents to communicate service disruptions"
-                : "Create incidents to communicate service disruptions to your users"}
+                ? "Create components first, then post status updates to communicate service disruptions"
+                : "Post status updates to communicate service disruptions to your users"}
             </p>
             {components.length > 0 && (
               <Button
@@ -394,7 +394,7 @@ export function IncidentsTab({
                 disabled={!canUpdate}
                 title={
                   !canUpdate
-                    ? "You don't have permission to create incidents"
+                    ? "You don't have permission to create status updates"
                     : undefined
                 }
               >
@@ -513,7 +513,7 @@ export function IncidentsTab({
                             maxLength={25}
                           />
                         </div>
-                        {incident.sreIncidentId && <Link className="text-xs text-muted-foreground underline underline-offset-4" href={`/incidents/${incident.sreIncidentId}`}>Internal SRE incident</Link>}
+                        {incident.sreIncidentId && <Link className="text-xs text-muted-foreground underline underline-offset-4" href={`/incidents/${incident.sreIncidentId}`}>Internal incident</Link>}
                       </TableCell>
                       <TableCell>
                         <Badge

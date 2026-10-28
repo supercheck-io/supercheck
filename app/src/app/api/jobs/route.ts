@@ -61,6 +61,9 @@ interface JobData {
     failureThreshold: number;
     recoveryThreshold: number;
     customMessage: string;
+    incidentEnabled?: boolean;
+    incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
+    autoResolveIncident?: boolean;
   };
   organizationId?: string;
   projectId?: string;
@@ -557,6 +560,9 @@ export async function POST(request: NextRequest) {
                   typeof jobData.alertConfig.customMessage === "string"
                     ? jobData.alertConfig.customMessage
                     : "",
+                incidentEnabled: typeof jobData.alertConfig.incidentEnabled === "boolean" ? jobData.alertConfig.incidentEnabled : undefined,
+                incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(jobData.alertConfig.incidentSeverity as string) ? jobData.alertConfig.incidentSeverity : undefined,
+                autoResolveIncident: typeof jobData.alertConfig.autoResolveIncident === "boolean" ? jobData.alertConfig.autoResolveIncident : undefined,
               }
             : null,
           organizationId: organizationId,

@@ -1,6 +1,6 @@
 {
-  "title": "Investigate",
-  "description": "Incident investigation, evidence, and Copilot",
+  "title": "Respond",
+  "description": "Incidents, investigation, evidence, and Copilot",
   "pages": [
     "incidents",
     "copilot",
