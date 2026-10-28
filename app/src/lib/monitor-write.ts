@@ -25,13 +25,22 @@ type Raw = Record<string, unknown>;
 export type NormalizedAlertConfig = Result<AlertConfig>;
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
-/** One alertConfig shape for every monitor write path (create, both PUTs, PATCH). */
-export function normalizeMonitorAlertConfig(raw: Raw): NormalizedAlertConfig {
+/**
+ * One alertConfig shape for every monitor write path (create, both PUTs, PATCH). An omitted field takes the
+ * stored value on update (`existing`), and the create default otherwise, so a round trip never flips a flag.
+ */
+export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertConfig> | null): NormalizedAlertConfig {
   const thresholdError = alertThresholdError(raw);
   if (thresholdError) return { ok: false, error: thresholdError };
-  const flag = (key: string, fallback: boolean) => (raw[key] !== undefined ? Boolean(raw[key]) : fallback);
-  const optionalBool = (key: string) => (typeof raw[key] === "boolean" ? (raw[key] as boolean) : undefined);
-  const providers = Array.isArray(raw.notificationProviders) ? raw.notificationProviders : [];
+  const prior = (existing ?? {}) as Record<string, unknown>;
+  const flag = (key: string, fallback: boolean) =>
+    raw[key] !== undefined ? Boolean(raw[key]) : typeof prior[key] === "boolean" ? (prior[key] as boolean) : fallback;
+  const optionalBool = (key: string) =>
+    typeof raw[key] === "boolean" ? (raw[key] as boolean) : typeof prior[key] === "boolean" ? (prior[key] as boolean) : undefined;
+  const providers = Array.isArray(raw.notificationProviders)
+    ? raw.notificationProviders
+    : Array.isArray(prior.notificationProviders) ? prior.notificationProviders : [];
+  const num = (key: string) => (raw[key] as number | undefined | null) ?? (prior[key] as number | undefined) ?? 1;
   if (providers.some((id) => typeof id !== "string" || id.trim().length === 0)) {
     return { ok: false, error: "Notification provider IDs must be non-empty strings" };
   }
@@ -43,13 +52,15 @@ export function normalizeMonitorAlertConfig(raw: Raw): NormalizedAlertConfig {
       alertOnFailure: flag("alertOnFailure", true),
       alertOnRecovery: flag("alertOnRecovery", true),
       alertOnSslExpiration: flag("alertOnSslExpiration", false),
-      failureThreshold: (raw.failureThreshold as number | undefined | null) ?? 1,
-      recoveryThreshold: (raw.recoveryThreshold as number | undefined | null) ?? 1,
-      customMessage: typeof raw.customMessage === "string" ? raw.customMessage : "",
+      failureThreshold: num("failureThreshold"),
+      recoveryThreshold: num("recoveryThreshold"),
+      customMessage: typeof raw.customMessage === "string" ? raw.customMessage : typeof prior.customMessage === "string" ? prior.customMessage : "",
       incidentEnabled: optionalBool("incidentEnabled"),
       incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(raw.incidentSeverity as string)
         ? (raw.incidentSeverity as AlertConfig["incidentSeverity"])
-        : undefined,
+        : ["sev1", "sev2", "sev3", "sev4"].includes(prior.incidentSeverity as string)
+          ? (prior.incidentSeverity as AlertConfig["incidentSeverity"])
+          : undefined,
       autoResolveIncident: optionalBool("autoResolveIncident"),
     },
   };

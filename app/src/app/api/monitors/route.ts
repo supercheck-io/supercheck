@@ -676,6 +676,7 @@ export async function PUT(req: NextRequest) {
         organizationId: monitors.organizationId,
         type: monitors.type,
         status: monitors.status,
+        alertConfig: monitors.alertConfig,
         target: monitors.target,
         config: monitors.config,
       })
@@ -798,7 +799,7 @@ export async function PUT(req: NextRequest) {
     // Prepare alert configuration - ensure it's properly structured
     let alertConfig = null;
     if (rawData.alertConfig) {
-      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, monitorData[0].alertConfig);
       if (!normalized.ok) {
         return NextResponse.json({ error: normalized.error }, { status: 400 });
       }

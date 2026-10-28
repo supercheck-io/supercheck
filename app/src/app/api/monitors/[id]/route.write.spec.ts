@@ -119,6 +119,16 @@ describe("monitor PUT write boundary", () => {
     expect(payload().alertConfig).toMatchObject({ alertOnRecovery: true });
   });
 
+  it("PUT without alertOnRecovery keeps a stored false (pull then deploy round trip)", async () => {
+    findFirst.mockResolvedValue({
+      ...stored,
+      alertConfig: { enabled: true, notificationProviders: ["p1"], alertOnFailure: true, alertOnRecovery: false, alertOnSslExpiration: true, failureThreshold: 3, recoveryThreshold: 2, customMessage: "m" },
+    });
+    providerRows = [{ id: "p1" }];
+    await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["p1"] } });
+    expect(payload().alertConfig).toMatchObject({ alertOnRecovery: false, alertOnSslExpiration: true, failureThreshold: 3, recoveryThreshold: 2, customMessage: "m" });
+  });
+
   it.each([2.5, -1, 0, 1000])("rejects failureThreshold %p (c16)", async (failureThreshold) => {
     const res = await call(PUT, "PUT", { alertConfig: { enabled: false, notificationProviders: [], failureThreshold } });
     expect(res.status).toBe(400);

@@ -324,7 +324,7 @@ export async function PUT(
     // Only update alertConfig if it's explicitly provided; otherwise existing alert settings are preserved
     if (rawData.hasOwnProperty("alertConfig")) {
       if (rawData.alertConfig) {
-        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, currentMonitor.alertConfig);
         if (!normalized.ok) {
           return NextResponse.json({ error: normalized.error }, { status: 400 });
         }
