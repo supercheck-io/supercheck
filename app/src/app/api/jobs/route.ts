@@ -18,6 +18,8 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
+import { validateJobCron } from "@/lib/job-cron-validation";
+import { alertThresholdError } from "@/lib/alert-thresholds";
 import { scheduleJob } from "@/lib/job-scheduler";
 import { validateNotificationProviderOwnership } from "@/lib/notification-providers/ownership";
 import { isTestTypeCompatibleWithJobType, getJobTestTypeMismatchError } from "@/lib/script-type-validator";
@@ -343,6 +345,12 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    const cronError = validateJobCron(jobData.cronSchedule);
+    const thresholdError = alertThresholdError(jobData.alertConfig);
+    if (cronError || thresholdError) {
+      return NextResponse.json({ success: false, error: cronError ?? thresholdError }, { status: 400 });
     }
 
     if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
@@ -696,6 +704,12 @@ export async function PUT(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    const cronError = validateJobCron(jobData.cronSchedule);
+    const thresholdError = alertThresholdError(jobData.alertConfig);
+    if (cronError || thresholdError) {
+      return NextResponse.json({ success: false, error: cronError ?? thresholdError }, { status: 400 });
     }
 
     if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {

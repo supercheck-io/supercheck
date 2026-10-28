@@ -10,6 +10,8 @@ import {
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { alertThresholdError } from "@/lib/alert-thresholds";
+import { validateJobCron } from "@/lib/job-cron-validation";
 import { scheduleJob, deleteScheduledJob } from "@/lib/job-scheduler";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
@@ -43,8 +45,8 @@ const updateJobSchema = z.object({
       alertOnFailure: z.boolean(),
       alertOnSuccess: z.boolean().optional(),
       alertOnTimeout: z.boolean().optional(),
-      failureThreshold: z.number(),
-      recoveryThreshold: z.number(),
+      failureThreshold: z.number().nullish(),
+      recoveryThreshold: z.number().nullish(),
       customMessage: z.string().optional(),
       incidentEnabled: z.boolean().optional(),
       incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
@@ -59,6 +61,8 @@ type UpdateJobContext = {
   userId: string;
   organizationId: string;
   project: { id: string; name: string; userRole: string };
+  /** Fields the caller filled from the stored job. Stored values accepted earlier are not re-validated, so an unrelated edit still works. */
+  inherited?: { cronSchedule?: boolean; alertConfig?: boolean };
 };
 
 export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJobContext) {
@@ -88,6 +92,10 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
     // Validate the data
     const validatedData = updateJobSchema.parse(data);
+    const cronError = contextOverride?.inherited?.cronSchedule ? null : validateJobCron(validatedData.cronSchedule);
+    if (cronError) return { success: false, message: cronError };
+    const thresholdError = contextOverride?.inherited?.alertConfig ? null : alertThresholdError(validatedData.alertConfig);
+    if (thresholdError) return { success: false, message: thresholdError };
 
     // Validate alert configuration if enabled
     let validatedNotificationProviderIds: string[] = [];
@@ -306,6 +314,9 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
             alertConfig: validatedData.alertConfig
               ? {
                   ...validatedData.alertConfig,
+                  // A null threshold (stored by an older write, or sent now) falls back to 1, as create does.
+                  failureThreshold: validatedData.alertConfig.failureThreshold ?? 1,
+                  recoveryThreshold: validatedData.alertConfig.recoveryThreshold ?? 1,
                   notificationProviders: validatedNotificationProviderIds,
                 }
               : null,

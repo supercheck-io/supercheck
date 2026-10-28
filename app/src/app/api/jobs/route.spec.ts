@@ -397,4 +397,24 @@ describe("Jobs route regressions", () => {
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
   });
+
+  describe("cron and threshold validation (c10, c16)", () => {
+    const body = (extra: object) => JSON.stringify({ id: "00000000-0000-4000-8000-000000000005", name: "J", description: "d", cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }], ...extra });
+    const post = (extra: object) => POST(new NextRequest("http://localhost/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: body(extra) }));
+    const put = (extra: object) => PUT(new Request("http://localhost/api/jobs", { method: "PUT", headers: { "content-type": "application/json" }, body: body(extra) }));
+
+    it.each(["* * * * * *", "nonsense"])("POST and PUT reject cron %j before any write", async (cronSchedule) => {
+      for (const send of [post, put]) {
+        const response = await send({ cronSchedule });
+        expect(response.status).toBe(400);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([2.5, 0, -1])("POST rejects failureThreshold %p", async (failureThreshold) => {
+      const response = await post({ alertConfig: { enabled: false, notificationProviders: [], failureThreshold, recoveryThreshold: 1 } });
+      expect(response.status).toBe(400);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+  });
 });

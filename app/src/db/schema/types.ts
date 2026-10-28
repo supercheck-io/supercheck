@@ -105,7 +105,6 @@ export type MonitorConfig = {
   expectedStatusCodes?: string;
   keywordInBody?: string;
   keywordInBodyShouldBePresent?: boolean;
-  responseBodyJsonPath?: { path: string; expectedValue: unknown };
   auth?: {
     type: "none" | "basic" | "bearer";
     username?: string;
@@ -119,10 +118,6 @@ export type MonitorConfig = {
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;
   sslLastCheckedAt?: string;
-  sslCheckOnStatusChange?: boolean;
-  checkExpiration?: boolean;
-  daysUntilExpirationWarning?: number;
-  checkRevocation?: boolean;
   timeoutSeconds?: number;
   regions?: string[];
   locationConfig?: LocationConfig;

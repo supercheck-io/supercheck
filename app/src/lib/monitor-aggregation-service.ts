@@ -641,6 +641,8 @@ export class MonitorAggregationService {
     avgResponseMs: number | null;
     p95ResponseMs: number | null;
     totalChecks: number;
+    /** End of the newest aggregated period; raw results from there on are not yet aggregated. Null when there are none. */
+    coveredTo: Date | null;
   }> {
     const conditions = [
       eq(monitorAggregates.monitorId, monitorId),
@@ -679,6 +681,7 @@ export class MonitorAggregationService {
         avgResponseMs: null,
         p95ResponseMs: null,
         totalChecks: 0,
+        coveredTo: null,
       };
     }
 
@@ -737,6 +740,10 @@ export class MonitorAggregationService {
       avgResponseMs,
       p95ResponseMs,
       totalChecks,
+      coveredTo: new Date(
+        Math.max(...aggregates.map((agg) => agg.periodStart.getTime())) +
+          (periodType === "hourly" ? 3_600_000 : 86_400_000),
+      ),
     };
   }
 
