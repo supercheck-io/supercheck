@@ -20,7 +20,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
 import { db } from "@/utils/db";
 import { getCurrentProjectContext } from "./project-context";
-import { resolveProjectPermissionContext, hasPermissionForUser } from "./rbac/middleware";
+import { resolveProjectPermissionContext, hasPermissionForUser, canCancelRunInProject } from "./rbac/middleware";
 import { requireAuthContext } from "./auth-context";
 import { resolveEffectiveProjectRole } from "./rbac/effective-project-role";
 import { Role } from "./rbac/permissions-client";
@@ -119,5 +119,20 @@ describe("hasPermissionForUser project checks use the lower-of-two role", () => 
   });
   it("does not let a project row promote a viewer", async () => {
     expect(await can("project_viewer", "project_admin")).toBe(false);
+  });
+});
+
+describe("canCancelRunInProject uses the lower-of-two role", () => {
+  const cancel = async (orgRole: string | null, memberRole: string | null) => {
+    queue(orgRole ? [{ role: orgRole }] : [], memberRole ? [{ role: memberRole }] : []);
+    return canCancelRunInProject("u", "p", "org");
+  };
+  it("denies after demotion, promotion and missing org membership", async () => {
+    expect(await cancel("project_editor", "project_viewer")).toBe(false);
+    expect(await cancel("project_viewer", "project_editor")).toBe(false);
+    expect(await cancel(null, "project_admin")).toBe(false);
+  });
+  it("allows when both roles can write", async () => {
+    expect(await cancel("project_admin", "project_editor")).toBe(true);
   });
 });
