@@ -2,20 +2,25 @@
 import { NextRequest } from "next/server";
 
 let tokenRows: unknown[] = [];
+let usableCount = 0;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
 
-jest.mock("@/utils/db", () => ({
-  db: {
+jest.mock("@/utils/db", () => {
+  const update = () => ({
+    set: (v: Record<string, unknown>) => {
+      updates.push(v);
+      return { where: () => ({ returning: async () => [{ id: "t1", name: "CI", enabled: v.enabled }] }) };
+    },
+  });
+  const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
-    update: () => ({
-      set: (v: Record<string, unknown>) => {
-        updates.push(v);
-        return { where: () => ({ returning: async () => [{ id: "t1", name: "CI", enabled: v.enabled }] }) };
-      },
-    }),
-  },
-}));
+    update,
+    transaction: async (fn: (tx: unknown) => unknown) =>
+      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: async () => [{ count: usableCount }] }) }) }),
+  };
+  return { db };
+});
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: (...a: unknown[]) => mockRequireAuth(...a),
   isAuthError: () => false,
@@ -41,14 +46,28 @@ const patch = (body: unknown) =>
 
 beforeEach(() => {
   updates.length = 0;
+  usableCount = 0;
   mockRequireAuth.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: true });
 });
 
 describe("PATCH /api/cli-tokens/[id]", () => {
   it("lets the owner re-enable their token", async () => {
-    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1" }];
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: false }];
     expect((await patch({ enabled: true })).status).toBe(200);
     expect(updates[0]).toMatchObject({ enabled: true });
+  });
+
+  it("refuses to re-enable a token once the project is at the usable-key cap", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: false }];
+    usableCount = 20;
+    expect((await patch({ enabled: true })).status).toBe(409);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("does not apply the cap to a token that is already enabled", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true }];
+    usableCount = 20;
+    expect((await patch({ enabled: true })).status).toBe(200);
   });
 
   it("refuses to re-enable another member's revoked token", async () => {

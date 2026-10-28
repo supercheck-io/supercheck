@@ -7,6 +7,7 @@ import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { MAX_CLI_TOKENS_PER_PROJECT, countUsableCliKeys, lockProjectForKeyIssuance } from "@/lib/auth/cli-key-service";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "cli-tokens" });
@@ -78,7 +79,7 @@ export async function PATCH(
     // Verify the token belongs to this project and is a CLI token (no jobId)
     if (!isUuid((await params).id)) return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
     const tokenRecord = await db
-      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId })
+      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId, enabled: apikey.enabled })
       .from(apikey)
       .where(
         and(
@@ -102,11 +103,22 @@ export async function PATCH(
     if (enabled !== undefined) updateData.enabled = enabled;
     if (name !== undefined) updateData.name = name;
 
-    const [updated] = await db
-      .update(apikey)
-      .set(updateData)
-      .where(eq(apikey.id, tokenId))
-      .returning();
+    // Re-enabling must respect the same per-project cap as issuance (serialised by the same lock).
+    const needsCapCheck = enabled === true && tokenRecord[0].enabled === false;
+    const updated = await db.transaction(async (tx) => {
+      if (needsCapCheck) {
+        await lockProjectForKeyIssuance(tx, context.project.id);
+        if ((await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+      }
+      const [row] = await tx.update(apikey).set(updateData).where(eq(apikey.id, tokenId)).returning();
+      return row;
+    });
+    if (!updated) {
+      return NextResponse.json(
+        { error: `This project already has ${MAX_CLI_TOKENS_PER_PROJECT} active CLI tokens. Revoke one before re-enabling.` },
+        { status: 409 }
+      );
+    }
 
     await logAuditEvent({
       userId: context.userId,
