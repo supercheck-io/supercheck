@@ -40,9 +40,10 @@ const updateJobSchema = z.object({
     .optional(),
   alertConfig: z
     .object({
-      enabled: z.boolean(),
-      notificationProviders: z.array(z.string()),
-      alertOnFailure: z.boolean(),
+      // Omitted fields keep the stored value; create-route defaults apply only when none is stored (see updateJob).
+      enabled: z.boolean().optional(),
+      notificationProviders: z.array(z.string()).optional(),
+      alertOnFailure: z.boolean().optional(),
       alertOnSuccess: z.boolean().optional(),
       alertOnTimeout: z.boolean().optional(),
       failureThreshold: z.number().nullish(),
@@ -97,71 +98,6 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
     const thresholdError = contextOverride?.inherited?.alertConfig ? null : alertThresholdError(validatedData.alertConfig);
     if (thresholdError) return { success: false, message: thresholdError };
 
-    // Validate alert configuration if enabled
-    let validatedNotificationProviderIds: string[] = [];
-    if (validatedData.alertConfig?.enabled) {
-      // Check if at least one notification provider is selected
-      if (
-        !validatedData.alertConfig.notificationProviders ||
-        validatedData.alertConfig.notificationProviders.length === 0
-      ) {
-        return {
-          success: false,
-          error:
-            "At least one notification channel must be selected when alerts are enabled",
-        };
-      }
-
-      // Check notification channel limit
-      const maxJobChannels = parseInt(
-        process.env.MAX_JOB_NOTIFICATION_CHANNELS || "10",
-        10
-      );
-      if (
-        validatedData.alertConfig.notificationProviders.length > maxJobChannels
-      ) {
-        return {
-          success: false,
-          error: `You can only select up to ${maxJobChannels} notification channels`,
-        };
-      }
-
-      // Check if at least one alert type is selected
-      const alertTypesSelected = [
-        validatedData.alertConfig.alertOnFailure,
-        validatedData.alertConfig.alertOnSuccess,
-        validatedData.alertConfig.alertOnTimeout,
-      ].some(Boolean);
-
-      if (!alertTypesSelected) {
-        return {
-          success: false,
-          error:
-            "At least one alert type must be selected when alerts are enabled",
-        };
-      }
-
-    }
-
-    if (validatedData.alertConfig?.notificationProviders?.length) {
-      try {
-        validatedNotificationProviderIds =
-          await validateNotificationProviderOwnership({
-            providerIds: validatedData.alertConfig.notificationProviders,
-            organizationId,
-            projectId: project.id,
-          });
-      } catch (providerValidationError) {
-        return {
-          success: false,
-          message:
-            providerValidationError instanceof Error
-              ? providerValidationError.message
-              : "Invalid or unauthorized notification provider IDs",
-        };
-      }
-    }
-
     // Edits can (re)schedule billable runs, so they need the same access as createJob.
     try {
       await subscriptionService.blockUntilSubscribed(organizationId);
@@ -183,6 +119,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         createdByUserId: jobs.createdByUserId,
         jobType: jobs.jobType,
         cronSchedule: jobs.cronSchedule,
+        alertConfig: jobs.alertConfig,
         scheduledJobId: jobs.scheduledJobId,
         projectId: jobs.projectId,
         organizationId: jobs.organizationId,
@@ -205,6 +142,86 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
     }
 
     const job = existingJob[0];
+
+    // Fields the request omits keep the stored value (`supercheck pull` strips fields equal to their defaults,
+    // so a stored `alertOnFailure: false` must survive); the defaults below apply only when nothing is stored.
+    const supplied = Object.fromEntries(Object.entries(validatedData.alertConfig ?? {}).filter(([, v]) => v != null));
+    const alertConfig = validatedData.alertConfig
+      ? {
+          enabled: false,
+          notificationProviders: [] as string[],
+          alertOnFailure: true,
+          failureThreshold: 1,
+          recoveryThreshold: 1,
+          ...(job.alertConfig ?? {}),
+          ...supplied,
+        } as NonNullable<typeof validatedData.alertConfig> & { enabled: boolean; notificationProviders: string[]; alertOnFailure: boolean; failureThreshold: number; recoveryThreshold: number }
+      : undefined;
+
+    // Validate alert configuration if enabled
+    let validatedNotificationProviderIds: string[] = [];
+    if (alertConfig?.enabled) {
+      // Check if at least one notification provider is selected
+      if (
+        !alertConfig.notificationProviders ||
+        alertConfig.notificationProviders.length === 0
+      ) {
+        return {
+          success: false,
+          error:
+            "At least one notification channel must be selected when alerts are enabled",
+        };
+      }
+
+      // Check notification channel limit
+      const maxJobChannels = parseInt(
+        process.env.MAX_JOB_NOTIFICATION_CHANNELS || "10",
+        10
+      );
+      if (
+        alertConfig.notificationProviders.length > maxJobChannels
+      ) {
+        return {
+          success: false,
+          error: `You can only select up to ${maxJobChannels} notification channels`,
+        };
+      }
+
+      // Check if at least one alert type is selected
+      const alertTypesSelected = [
+        alertConfig.alertOnFailure,
+        alertConfig.alertOnSuccess,
+        alertConfig.alertOnTimeout,
+      ].some(Boolean);
+
+      if (!alertTypesSelected) {
+        return {
+          success: false,
+          error:
+            "At least one alert type must be selected when alerts are enabled",
+        };
+      }
+
+    }
+
+    if (alertConfig?.notificationProviders?.length) {
+      try {
+        validatedNotificationProviderIds =
+          await validateNotificationProviderOwnership({
+            providerIds: alertConfig.notificationProviders,
+            organizationId,
+            projectId: project.id,
+          });
+      } catch (providerValidationError) {
+        return {
+          success: false,
+          message:
+            providerValidationError instanceof Error
+              ? providerValidationError.message
+              : "Invalid or unauthorized notification provider IDs",
+        };
+      }
+    }
 
     const currentTests = await dbInstance
       .select({ id: jobTests.testId })
@@ -311,12 +328,12 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
             description: validatedData.description || "",
             cronSchedule: validatedData.cronSchedule || null,
             nextRunAt: nextRunAt,
-            alertConfig: validatedData.alertConfig
+            alertConfig: alertConfig
               ? {
-                  ...validatedData.alertConfig,
+                  ...alertConfig,
                   // A null threshold (stored by an older write, or sent now) falls back to 1, as create does.
-                  failureThreshold: validatedData.alertConfig.failureThreshold ?? 1,
-                  recoveryThreshold: validatedData.alertConfig.recoveryThreshold ?? 1,
+                  failureThreshold: alertConfig.failureThreshold ?? 1,
+                  recoveryThreshold: alertConfig.recoveryThreshold ?? 1,
                   notificationProviders: validatedNotificationProviderIds,
                 }
               : null,
@@ -326,8 +343,8 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
         // Update notification provider links if alert config is enabled
         if (
-          validatedData.alertConfig?.enabled &&
-          Array.isArray(validatedData.alertConfig.notificationProviders)
+          alertConfig?.enabled &&
+          Array.isArray(alertConfig.notificationProviders)
         ) {
           const currentProviderLinks = await dbInstance
             .select({ id: jobNotificationSettings.notificationProviderId })
@@ -471,9 +488,9 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           cronScheduleChanged: previousSchedule !== newSchedule,
           oldCronSchedule: previousSchedule,
           newCronSchedule: newSchedule,
-          alertsEnabled: validatedData.alertConfig?.enabled || false,
+          alertsEnabled: alertConfig?.enabled || false,
           notificationProvidersCount:
-            validatedData.alertConfig?.notificationProviders?.length || 0,
+            alertConfig?.notificationProviders?.length || 0,
         },
         success: true,
       });

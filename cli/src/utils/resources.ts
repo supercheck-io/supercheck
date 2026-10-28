@@ -9,6 +9,8 @@ import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
 import { PRIORITIES } from './priority.js'
+import { UNEVALUATED_MONITOR_CONFIG_KEYS } from './monitor-config-keys.js'
+import { normalizeAlertConfig } from './alert-config.js'
 
 /** Trim, drop empties and de-duplicate case-insensitively (first spelling wins), keeping the user's spelling. */
 export function dedupeTagNames(names: unknown[]): string[] {
@@ -33,14 +35,12 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
 
   if (config.jobs) {
     for (const job of config.jobs) {
-      // Strip runtime-only `status` from job definitions — it's not config
-      const { status: _status, ...jobWithoutStatus } = job // eslint-disable-line @typescript-eslint/no-unused-vars
       resources.push({
         id: job.id,
         type: 'job',
         name: job.name,
         definition: {
-          ...jobWithoutStatus,
+          ...job,
           tests: normalizeJobTestsToIds(job.tests),
         },
       })
@@ -113,11 +113,6 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         definition: { ...m, ...(m.tags ? { tags: normalizeTagNames(m.tags) } : {}) },
       })
     }
-  } else if (typeof config.monitors === 'string') {
-    logger.warn(
-      `monitors is set to a glob pattern ("${config.monitors}") but glob-based monitor discovery is not yet implemented. ` +
-      'Define monitors as an inline array in your config, or remove the monitors field.',
-    )
   }
 
   if (Array.isArray(config.statusPages)) {
@@ -129,11 +124,6 @@ export function buildLocalResources(config: SupercheckConfig, cwd: string): Loca
         definition: normalizeLocalStatusPage({ ...sp }),
       })
     }
-  } else if (typeof config.statusPages === 'string') {
-    logger.warn(
-      `statusPages is set to a glob pattern ("${config.statusPages}") but glob-based status page discovery is not yet implemented. ` +
-      'Define status pages as an inline array in your config, or remove the statusPages field.',
-    )
   }
 
   const patterns = {
@@ -255,31 +245,6 @@ function safeId(value: unknown): string | undefined {
 }
 
 /**
- * Normalize an alertConfig object by removing server defaults.
- * Mirrors the stripping logic in pull.ts buildMonitorDefinitions/buildJobDefinitions.
- */
-function normalizeAlertConfig(alert: Record<string, unknown>): Record<string, unknown> | undefined {
-  const normalized = { ...alert }
-
-  // Remove empty/default values
-  if (normalized.customMessage === '' || normalized.customMessage === null) delete normalized.customMessage
-  if (normalized.failureThreshold === 1) delete normalized.failureThreshold
-  if (normalized.recoveryThreshold === 1) delete normalized.recoveryThreshold
-
-  // Remove false boolean flags (they're defaults)
-  for (const key of ['alertOnFailure', 'alertOnRecovery', 'alertOnSslExpiration', 'alertOnSuccess', 'alertOnTimeout']) {
-    if (normalized[key] === false) delete normalized[key]
-  }
-
-  // Remove empty notificationProviders array
-  if (Array.isArray(normalized.notificationProviders) && (normalized.notificationProviders as string[]).length === 0) {
-    delete normalized.notificationProviders
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined
-}
-
-/**
  * Normalize monitor config by removing runtime-only and default fields.
  * Mirrors pull.ts buildMonitorDefinitions stripping logic.
  */
@@ -289,6 +254,7 @@ function normalizeMonitorConfig(config: Record<string, unknown>): Record<string,
   // Remove runtime-only fields
   delete normalized.sslLastCheckedAt
   delete normalized.aggregatedAlertState
+  for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete normalized[key]
 
   // Clean up default playwrightOptions
   if (normalized.playwrightOptions && typeof normalized.playwrightOptions === 'object') {

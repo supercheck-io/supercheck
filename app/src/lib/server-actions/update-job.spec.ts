@@ -6,8 +6,9 @@ import { scheduleJob } from "@/lib/job-scheduler";
 
 const mockSelect = jest.fn();
 jest.mock("server-only", () => ({}));
+const mockSet = jest.fn();
 const mockWriter = {
-  update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn(async () => undefined) })) })),
+  update: jest.fn(() => ({ set: jest.fn((v: unknown) => (mockSet(v), { where: jest.fn(async () => undefined) })) })),
   delete: jest.fn(() => ({ where: jest.fn(async () => undefined) })),
   insert: jest.fn(() => ({ values: jest.fn(async () => undefined) })),
 };
@@ -148,4 +149,25 @@ it("accepts an inherited null threshold instead of failing an unrelated edit", a
   const alertConfig = { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null };
   await updateJob({ ...input, alertConfig } as never, { ...context, inherited: { alertConfig: true } });
   expect(mockSelect).toHaveBeenCalled();
+});
+
+function mockJob(stored: unknown) {
+  const testId = "018f0000-0000-7000-8000-0000000000a1";
+  mockSelect
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: input.jobId, jobType: "playwright", alertConfig: stored }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: async () => [{ id: testId }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: testId, type: "browser" }] }) });
+}
+
+it("update without alertOnFailure keeps a stored false", async () => {
+  mockJob({ enabled: false, notificationProviders: [], alertOnFailure: false, alertOnSuccess: true, failureThreshold: 3, recoveryThreshold: 2 });
+  const result = await updateJob({ ...input, alertConfig: { customMessage: "hi" } } as never, context);
+  expect(result).toMatchObject({ success: true });
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ alertOnFailure: false, failureThreshold: 3, recoveryThreshold: 2, customMessage: "hi" });
+});
+
+it("applies create defaults when no alertConfig is stored", async () => {
+  mockJob(null);
+  await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ enabled: false, alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, alertOnSuccess: true });
 });
