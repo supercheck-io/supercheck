@@ -14,9 +14,15 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: (...a: unknown[]) => mockCan(...a),
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
-jest.mock("@/utils/db", () => ({ db: { transaction: (...a: unknown[]) => mockTransaction(...a) } }));
+let mockRows: unknown[] = [];
+jest.mock("@/utils/db", () => ({
+  db: {
+    transaction: (...a: unknown[]) => mockTransaction(...a),
+    select: () => ({ from: () => ({ where: () => ({ orderBy: async () => mockRows }) }) }),
+  },
+}));
 
-import { registerPrivateAgent } from "./private-agents";
+import { getPrivateAgents, registerPrivateAgent } from "./private-agents";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -38,5 +44,17 @@ describe("registerPrivateAgent", () => {
     const result = await registerPrivateAgent({ name: "edge-1", projectScoped: true });
     expect(String((result as { error?: string }).error)).toMatch(/Insufficient permissions/);
     expect(mockImpersonated).not.toHaveBeenCalled();
+  });
+});
+
+describe("getPrivateAgents", () => {
+  it("reports a connected agent with a stale heartbeat as disconnected", async () => {
+    const base = { name: "a", version: "1", agentMode: "sre", supportsSreConnectors: true, region: null, networkLabel: null, lastError: null, projectId: null };
+    mockRows = [
+      { ...base, id: "stale", status: "connected", lastHeartbeatAt: new Date(Date.now() - 10 * 60_000) },
+      { ...base, id: "fresh", status: "connected", lastHeartbeatAt: new Date() },
+    ];
+    const result = await getPrivateAgents();
+    expect(result.agents.map((a) => [a.id, a.status])).toEqual([["stale", "disconnected"], ["fresh", "connected"]]);
   });
 });
