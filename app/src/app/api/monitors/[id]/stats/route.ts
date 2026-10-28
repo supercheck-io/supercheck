@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults, MonitoringLocation } from "@/db/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, lt, or, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
@@ -18,6 +18,61 @@ const logger = createLogger({ module: "monitor-stats-api" }) as {
   warn: (data: unknown, msg?: string) => void;
   error: (data: unknown, msg?: string) => void;
 };
+
+type Aggregated = Awaited<ReturnType<typeof monitorAggregationService.getAggregatedMetrics>>;
+
+/**
+ * Aggregates only hold complete hours/days. Add the raw results the window contains outside them (the oldest
+ * partial period and the in-progress one), so a fresh outage is not hidden. The p95 stays the aggregates' value.
+ */
+async function withUnaggregatedTail(
+  monitorId: string,
+  aggregated: Aggregated,
+  windowStart: Date,
+  coveredFrom: Date,
+  coveredTo: Date,
+  location: string | null,
+): Promise<Aggregated> {
+  if (aggregated.totalChecks === 0) return aggregated;
+  const [row] = await db
+    .select({
+      totalChecks: sql<number>`count(*)`,
+      upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
+      avgResponseTime: sql<number>`avg(case when ${monitorResults.isUp} then ${monitorResults.responseTimeMs} else null end)`,
+    })
+    .from(monitorResults)
+    .where(
+      and(
+        eq(monitorResults.monitorId, monitorId),
+        gte(monitorResults.checkedAt, windowStart),
+        or(lt(monitorResults.checkedAt, coveredFrom), gte(monitorResults.checkedAt, coveredTo)),
+        excludeSupersededSyntheticResults,
+        location ? eq(monitorResults.location, location as MonitoringLocation) : undefined,
+      ),
+    );
+  const tailTotal = Number(row?.totalChecks ?? 0);
+  if (tailTotal === 0) return aggregated;
+  const tailUp = Number(row?.upChecks ?? 0);
+  const totalChecks = aggregated.totalChecks + tailTotal;
+  const upChecks = Math.round((aggregated.uptimePercentage / 100) * aggregated.totalChecks) + tailUp;
+  const tailAvg = row?.avgResponseTime == null ? null : Number(row.avgResponseTime);
+  const parts: [number, number][] = [];
+  if (aggregated.avgResponseMs !== null) parts.push([aggregated.avgResponseMs, aggregated.totalChecks]);
+  if (tailAvg !== null) parts.push([tailAvg, tailTotal]);
+  const weight = parts.reduce((sum, [, w]) => sum + w, 0);
+  return {
+    totalChecks,
+    uptimePercentage: (upChecks / totalChecks) * 100,
+    // Weighted by check count: close enough, since the aggregate does not expose its response-time sample size.
+    avgResponseMs: weight === 0 ? null : Math.round(parts.reduce((sum, [v, w]) => sum + v * w, 0) / weight),
+    p95ResponseMs: aggregated.p95ResponseMs,
+  };
+}
+
+const ceilToHour = (d: Date) => new Date(Math.ceil(d.getTime() / 3_600_000) * 3_600_000);
+const floorToHour = (d: Date) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
+const ceilToDay = (d: Date) => new Date(Math.ceil(d.getTime() / 86_400_000) * 86_400_000);
+const floorToDay = (d: Date) => new Date(Math.floor(d.getTime() / 86_400_000) * 86_400_000);
 
 /**
  * GET /api/monitors/[id]/stats
@@ -85,20 +140,16 @@ export async function GET(
     // Try to use pre-computed aggregates first (O(1) performance)
     // This is the performance-optimized path for monitors with aggregated data
     const [aggregates24h, aggregates30d] = await Promise.all([
-      monitorAggregationService.getAggregatedMetrics(
-        id,
-        "hourly",
-        last24Hours,
-        now,
-        locationParam
-      ),
-      monitorAggregationService.getAggregatedMetrics(
-        id,
-        "daily",
-        last30Days,
-        now,
-        locationParam
-      ),
+      monitorAggregationService
+        .getAggregatedMetrics(id, "hourly", last24Hours, now, locationParam)
+        .then((agg) =>
+          withUnaggregatedTail(id, agg, last24Hours, ceilToHour(last24Hours), floorToHour(now), locationFilter),
+        ),
+      monitorAggregationService
+        .getAggregatedMetrics(id, "daily", last30Days, now, locationParam)
+        .then((agg) =>
+          withUnaggregatedTail(id, agg, last30Days, ceilToDay(last30Days), floorToDay(now), locationFilter),
+        ),
     ]);
 
     // Check if we have valid aggregated data

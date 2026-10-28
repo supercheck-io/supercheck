@@ -46,6 +46,8 @@ it("preserves historical 30d aggregates when the 24h window only has raw data", 
       p95ResponseMs: 180,
     }),
   );
+  // The first query is the unaggregated tail of the aggregated 30d window: nothing there.
+  mockRaw.mockResolvedValueOnce([{ totalChecks: 0, upChecks: 0, avgResponseTime: null }]);
   mockRaw.mockResolvedValue([
     { totalChecks: 2, upChecks: 2, avgResponseTime: 50 },
   ]);
@@ -79,6 +81,7 @@ it.each(["hourly", "daily"])(
     );
     mockRaw.mockReset();
     mockRaw
+      .mockResolvedValueOnce([{ totalChecks: 0, upChecks: 0, avgResponseTime: null }])
       .mockResolvedValueOnce([
         { totalChecks: 5, upChecks: 5, avgResponseTime: 30 },
       ])
@@ -100,3 +103,18 @@ it.each(["hourly", "daily"])(
     expect(body.meta.source).toBe("aggregates+raw");
   },
 );
+
+it("counts raw results outside the aggregated periods, so a fresh outage is not 100% (c13)", async () => {
+  mockAggregates.mockResolvedValue({ uptimePercentage: 100, avgResponseMs: 100, p95ResponseMs: 120, totalChecks: 90 });
+  mockRaw.mockReset();
+  // Every tail query returns 10 failed checks from the in-progress hour/day.
+  mockRaw.mockResolvedValue([{ totalChecks: 10, upChecks: 0, avgResponseTime: null }]);
+  const response = await GET(
+    new NextRequest("http://localhost/api/monitors/00000000-0000-4000-8000-000000000099/stats"),
+    { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000099" }) },
+  );
+  const { data } = await response.json();
+  expect(data.period24h.totalChecks).toBe(100);
+  expect(data.period24h.uptimePercentage).toBeCloseTo(90);
+  expect(data.period30d.totalChecks).toBe(100);
+});
