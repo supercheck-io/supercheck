@@ -70,12 +70,10 @@ function OptionsPage() {
   const [settings, setSettings] = React.useState<CrxSettings>(defaultSettings);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>({ status: 'loading' });
   const [customUrl, setCustomUrl] = React.useState('');
-  const [apiKey, setApiKey] = React.useState('');
   const [hasStoredKey, setHasStoredKey] = React.useState(false);
   const [urlError, setUrlError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [showSelfHosted, setShowSelfHosted] = React.useState(false);
-  const [showApiKey, setShowApiKey] = React.useState(false);
 
   // Empty means Supercheck Cloud.
   const instanceUrl = customUrl.trim() || DEFAULT_INSTANCE_URL;
@@ -107,9 +105,9 @@ function OptionsPage() {
       case 'server_error':
         return 'Your Supercheck instance returned an error. Try again in a moment.';
       case 'missing_key':
-        return 'Enter a recorder API key, or sign in to Supercheck to connect automatically.';
+        return 'Not connected yet. Open Supercheck in this browser and the recorder connects automatically.';
       default:
-        return 'That API key was rejected. Recorder keys only work with the instance that issued them.';
+        return 'The saved connection is no longer valid. Open Supercheck in this browser to reconnect.';
     }
   }, []);
 
@@ -180,7 +178,6 @@ function OptionsPage() {
         if (customUrlFor(next.instanceUrl))
           setShowSelfHosted(true);
         setConnectionState({ status: 'connected', email: next.userEmail });
-        setApiKey('');
         return;
       }
 
@@ -208,7 +205,6 @@ function OptionsPage() {
   const urlChanged = !isSameInstance(instanceUrl, savedInstanceUrl);
   const handleInstanceUrlChange = (next: string) => {
     setCustomUrl(next);
-    setApiKey('');
 
     if (!isSameInstance(next.trim() || DEFAULT_INSTANCE_URL, savedInstanceUrl)) {
       setConnectionState({
@@ -246,10 +242,9 @@ function OptionsPage() {
         apiClient.clearCache();
         setConfig({ instanceUrl, autoConnected: false });
         setHasStoredKey(false);
-        setApiKey('');
         setConnectionState({
           status: 'configured',
-          message: 'URL saved. Sign in to your Supercheck instance to connect automatically.',
+          message: 'URL saved. Open your Supercheck instance in this browser and the recorder connects automatically.',
         });
       }
 
@@ -266,61 +261,6 @@ function OptionsPage() {
     }
   };
 
-  const handleConnectWithKey = async () => {
-    if (!apiKey.trim()) {
-      setConnectionState({ status: 'error', message: 'Enter a recorder API key.' });
-      return;
-    }
-
-    const validation = validateInstanceUrl(instanceUrl);
-    if (!validation.valid) {
-      setUrlError(validation.error || 'Invalid URL');
-      return;
-    }
-
-    setSaving(true);
-    setConnectionState({ status: 'connecting' });
-    try {
-      const result = await apiClient.verifyConnection(apiKey.trim(), instanceUrl);
-      if (!result.valid) {
-        setConnectionState({
-          status: 'error',
-          message: describeFailure(result.reason, result.retryAfterSeconds),
-        });
-        return;
-      }
-
-      suppressStorageSyncRef.current = true;
-      await replaceConfig({
-        instanceUrl,
-        apiKey: apiKey.trim(),
-        userEmail: result.user?.email,
-        userId: result.user?.id,
-        autoConnected: false,
-      });
-      apiClient.clearCache();
-      setConfig({
-        instanceUrl,
-        apiKey: apiKey.trim(),
-        userEmail: result.user?.email,
-        userId: result.user?.id,
-        autoConnected: false,
-      });
-      setHasStoredKey(true);
-      setApiKey('');
-      setConnectionState({ status: 'connected', email: result.user?.email });
-    } catch (error) {
-      suppressStorageSyncRef.current = false;
-      setConnectionState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Connection failed',
-      });
-    } finally {
-      releaseStorageSuppression();
-      setSaving(false);
-    }
-  };
-
   const handleDisconnect = async () => {
     setSaving(true);
     try {
@@ -329,7 +269,6 @@ function OptionsPage() {
       apiClient.clearCache();
       setConfig(null);
       setHasStoredKey(false);
-      setApiKey('');
       setCustomUrl('');
       setConnectionState({
         status: 'disconnected',
@@ -404,18 +343,8 @@ function OptionsPage() {
           ) : (
             <>
               <p className='lead'>
-                Sign in to Supercheck in this browser and the recorder connects automatically.
+                Open Supercheck in this browser and the recorder connects automatically. No setup needed.
               </p>
-              <div className='actions'>
-                <button
-                  className='btn btn-primary'
-                  // An edited, unsaved URL is saved first so sign-in never silently targets a different instance.
-                  onClick={() => urlChanged ? void handleSaveInstance() : void chrome.tabs.create({ url: savedInstanceUrl })}
-                  disabled={saving || (urlChanged && Boolean(urlError))}
-                >
-                  Sign in to Supercheck
-                </button>
-              </div>
 
               <div className='disclosure'>
                 <button
@@ -453,67 +382,17 @@ function OptionsPage() {
                         <span className='field-error' id='instanceUrl-error'>{urlError}</span>
                       ) : (
                         <span className='field-hint' id='instanceUrl-hint'>
-                          Use the HTTPS address of your deployment. Saving it lets the recorder trust that site.
+                          The HTTPS address of your deployment. Leave empty for Supercheck Cloud.
                         </span>
                       )}
                     </div>
                     <button
-                      className='btn btn-secondary'
+                      className='btn btn-primary'
                       onClick={handleSaveInstance}
                       // An empty field means Supercheck Cloud, so clearing it is how a self-hosted user switches back.
-                      disabled={saving || Boolean(urlError) || (!customUrl.trim() && !urlChanged)}
+                      disabled={saving || Boolean(urlError) || !urlChanged}
                     >
-                      {saving
-                        ? 'Saving…'
-                        : !customUrl.trim()
-                          ? 'Switch to Supercheck Cloud'
-                          : urlChanged ? 'Save URL and sign in' : 'Open your instance'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className='disclosure'>
-                <button
-                  type='button'
-                  className='disclosure-toggle'
-                  onClick={() => setShowApiKey(value => !value)}
-                  aria-expanded={showApiKey}
-                  aria-controls='api-key-panel'
-                >
-                  {chevron(showApiKey)}
-                  Connect with an API key
-                </button>
-                {showApiKey && (
-                  <div id='api-key-panel' className='disclosure-panel'>
-                    <p className='hint'>
-                      Only needed if you cannot sign in from this browser.{' '}
-                      <a href={`${DOCS_URL}#manual-api-key-advanced`} target='_blank' rel='noopener noreferrer'>About API keys</a>
-                    </p>
-                    <div className='form-group'>
-                      <label htmlFor='apiKey'>Recorder API key</label>
-                      <input
-                        id='apiKey'
-                        type='password'
-                        autoComplete='off'
-                        spellCheck={false}
-                        value={apiKey}
-                        onChange={e => setApiKey(e.target.value)}
-                        placeholder='Paste your recorder key'
-                      />
-                      <span className='field-hint'>
-                        Keys only work with the instance that issued them.{' '}
-                        {customUrl.trim()
-                          ? 'This key is checked against the self-hosted URL entered above.'
-                          : 'For a self-hosted instance, enter its URL first.'}
-                      </span>
-                    </div>
-                    <button
-                      className='btn btn-secondary'
-                      onClick={handleConnectWithKey}
-                      disabled={saving || !apiKey.trim() || Boolean(urlError)}
-                    >
-                      {saving ? 'Connecting…' : 'Connect'}
+                      {saving ? 'Saving…' : !customUrl.trim() ? 'Use Supercheck Cloud' : 'Save'}
                     </button>
                   </div>
                 )}

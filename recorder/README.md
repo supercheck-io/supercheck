@@ -63,10 +63,8 @@ Then load the unpacked extension in your browser:
 
 1. Right-click the extension icon and select **Options**.
 2. Expand **Self-hosted instance** and enter the HTTPS origin of your deployment (e.g. `https://supercheck.yourcompany.com`) or `http://localhost:3000` for local development.
-3. Click **Save URL and sign in**.
+3. Click **Save**.
 4. Sign in to your Supercheck instance. An authenticated dashboard page connects the extension automatically.
-
-> **Security Note:** The options page retains an advanced API-key field only for existing recorder-scoped credentials (`ext_*`). Ordinary CLI tokens and job trigger keys cannot be used by the recorder.
 
 ---
 

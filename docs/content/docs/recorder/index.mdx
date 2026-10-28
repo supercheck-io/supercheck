@@ -35,14 +35,10 @@ The list is the extension's trust boundary and ships in the extension build. A n
 Self-hosted deployments are not trusted automatically: saving the URL once is the explicit trust decision, and the extension only talks to that exact origin.
 
 1. Open the extension's **Options** page.
-2. Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save URL and sign in**.
+2. Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save**.
 3. Sign in to that instance in the same browser profile. The extension connects automatically and stays connected on later visits.
 
 Changing the URL clears the credential saved for the previous instance. Keys are scoped to one instance and are never sent to another host.
-
-### Manual API key (advanced)
-
-Use a recorder-scoped API key when you cannot sign in on the instance — for example, an automated browser profile. Open **Options → Connect with an API key**, paste a key created on that instance, and select **Connect**. Auto-connect is the normal path; the key field is not required.
 
 ## Record a test
 
@@ -79,7 +75,6 @@ Enterprise and air-gapped environments can install the packaged extension from G
 |---|---|
 | The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#supercheck-hosted-sites), or save the instance URL in **Options** and reload the tab |
 | Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
-| **Invalid API key** | Keys are per instance. The key you pasted belongs to a different instance; clear it and connect automatically, or paste a key created on the current instance |
 | **Too many connection checks** | The legacy verification endpoint is rate limited. Wait for the shown number of seconds, then reopen Options |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
 | Extension stays **Not connected to Supercheck** after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, the app still holds the old key and will not issue a new one. There is no screen to revoke it yet: contact support (cloud) or your Supercheck administrator (self-hosted). If disconnect could not reach the server, keep the configuration and retry. |
