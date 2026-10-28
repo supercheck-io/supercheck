@@ -1,12 +1,14 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
-import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
+import { CopyCommand } from "../../components/landing/interactive";
 import { CheckList, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { DEMO_URL } from "../../lib/site-nav";
+import { versioned } from "../../lib/assets";
 
 // Order follows the path of a failure: tested, caught, handled, announced.
 const products = [
@@ -158,7 +160,16 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-14 md:mt-16">
-            <DemoVideo />
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)]">
+              <Image
+                src={versioned("/supercheck-screenshot.webp")}
+                alt="Supercheck monitor detail view with availability and response time charts"
+                fill
+                sizes="(min-width: 1152px) 1152px, 100vw"
+                className="object-cover object-top"
+                priority
+              />
+            </div>
           </div>
         </section>
 
