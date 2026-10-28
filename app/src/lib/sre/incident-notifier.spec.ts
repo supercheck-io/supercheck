@@ -20,7 +20,8 @@ jest.mock("@/lib/notification-providers/crypto", () => ({
 }));
 const renderIncidentUpdateEmail = jest.fn();
 jest.mock("@/lib/email-renderer", () => ({ renderIncidentUpdateEmail: (...args: unknown[]) => renderIncidentUpdateEmail(...args) }));
-jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: jest.fn() }) }));
+const mockWarn = jest.fn();
+jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockWarn(...a) }) }));
 
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
@@ -110,7 +111,14 @@ it("sends no provider messages for manual incidents (no trigger alert)", async (
 it("never throws when delivery fails", async () => {
   fetchPublicEndpoint.mockRejectedValueOnce(new Error("boom"));
   selectQueue.push([incident], [{ sourceType: "job", sourceId: "job-1" }], [{ id: "p1", type: "discord", config: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } }]);
-  await expect(notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null })).resolves.toBeUndefined();
+  await expect(notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null })).resolves.toBeUndefined();
+});
+
+it("logs a delivery failure when the endpoint answers with a non-2xx status", async () => {
+  fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 404 });
+  selectQueue.push([incident], [{ sourceType: "job", sourceId: "job-1" }], [{ id: "p1", type: "discord", config: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } }]);
+  await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+  expect(mockWarn).toHaveBeenCalledWith(expect.objectContaining({ error: "HTTP 404" }), "Incident notification delivery failed");
 });
 
 it("fails open on dedupe when Redis is unavailable", async () => {

@@ -105,7 +105,8 @@ async function post(url: string, body: unknown, headers: Record<string, string> 
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    return response.ok;
+    // Status only: the URL can carry a bot token.
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
   } finally {
     clearTimeout(timeout);
   }
