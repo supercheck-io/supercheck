@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
+import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Clock } from "lucide-react";
@@ -39,6 +40,8 @@ type Incident = {
   impact: IncidentImpact;
   createdAt: Date | null;
   resolvedAt: Date | null;
+  scheduledFor?: Date | null;
+  scheduledUntil?: Date | null;
   updates: IncidentUpdate[];
   statusPage?: {
     id: string;
@@ -177,6 +180,16 @@ export function PublicIncidentDetail({
 
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-8 sm:pb-12">
+        {incident.scheduledFor && incident.scheduledUntil && (
+          <div className="mb-4 sm:mb-5 flex items-center gap-2 text-sm sm:text-base text-gray-700 dark:text-gray-300">
+            <Clock className="h-4 w-4 flex-shrink-0" />
+            <span>
+              {t.scheduledMaintenance}:{" "}
+              {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+            </span>
+          </div>
+        )}
+
         {/* Timeline */}
         <div className="space-y-4 sm:space-y-5">
           {incident.updates.map((update, index) => (

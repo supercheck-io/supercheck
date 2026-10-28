@@ -21,6 +21,7 @@ import {
 import { getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
+import { resolveEffectiveProjectRole } from "./rbac/effective-project-role";
 import { getCachedAuthSession } from "./session-cache";
 import { getUnifiedAuthContext } from "./rbac/unified-auth";
 import { createLogger } from "./logger/index";
@@ -122,7 +123,7 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
     }
 
     // 2. For PROJECT_ADMIN and PROJECT_EDITOR, check project-specific access
-    let finalRole = orgRole;
+    let finalRole: Role = orgRole;
     if (orgRole === Role.PROJECT_ADMIN || orgRole === Role.PROJECT_EDITOR) {
       const projectMember = await db
         .select({ role: projectMembers.role })
@@ -135,13 +136,8 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
         )
         .limit(1);
 
-      if (projectMember.length === 0) {
-        // For project-limited roles without assignments, give viewer access
-        finalRole = Role.PROJECT_VIEWER;
-      } else {
-        // Keep the org role as final role when assigned to this project
-        finalRole = orgRole;
-      }
+      finalRole =
+        resolveEffectiveProjectRole(orgRole, projectMember[0]?.role) ?? Role.PROJECT_VIEWER;
     }
 
     // 3. Convert Role enum back to string using the normalizer
@@ -474,23 +470,10 @@ export async function requireProjectContext(): Promise<ProjectAuthContext> {
   // Org-wide roles (org_owner/org_admin) can access all projects in org.
   // Project-limited roles (project_admin/project_editor) require explicit project membership;
   // without membership, degrade to viewer.
-  const isOrgWideRole =
-    ctx.organizationRole === "org_owner" || ctx.organizationRole === "org_admin";
-
-  let effectiveRole: string | null = null;
-  if (ctx.organizationRole === "super_admin") {
-    effectiveRole = ctx.organizationRole;
-  } else if (isOrgWideRole) {
-    effectiveRole = ctx.organizationRole;
-  } else if (ctx.projectRole) {
-    effectiveRole = ctx.projectRole;
-  } else if (
-    ctx.organizationRole === "project_admin" ||
-    ctx.organizationRole === "project_editor" ||
-    ctx.organizationRole === "project_viewer"
-  ) {
-    effectiveRole = "project_viewer";
-  }
+  const effectiveRole: string | null = resolveEffectiveProjectRole(
+    ctx.organizationRole,
+    ctx.projectRole,
+  );
 
   if (!effectiveRole) {
     throw new Error("Access denied: You do not have a valid role for this project.");

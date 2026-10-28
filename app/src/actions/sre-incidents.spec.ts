@@ -11,15 +11,16 @@ jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRuns
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn() }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
-jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true) }));
+jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
 
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
-import { getSreIncidentDetails, updateSreIncident } from "./sre-incidents";
+import { createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
@@ -115,5 +116,80 @@ describe("getSreIncidentDetails investigation summary", () => {
       .map(([, column]) => render(column))
       .filter((name) => !name.startsWith('"sre_incidents".') && !grouped.has(name));
     expect(missing).toEqual([]);
+  });
+});
+
+describe("getSreIncidents scope and cap", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "user-1", organizationId: "org-1",
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+  });
+
+  async function whereSql(scope?: "active" | "all") {
+    const { sql } = jest.requireActual("drizzle-orm");
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const query = selectRows([]);
+    (db.select as jest.Mock).mockReturnValueOnce(query);
+    await getSreIncidents(scope ? { scope } : undefined);
+    return new PgDialect().sqlToQuery(sql`${query.where.mock.calls[0][0]}`).params as unknown[];
+  }
+
+  it("filters resolved incidents in SQL only for the active scope", async () => {
+    expect(await whereSql("active")).toContain("resolved");
+    expect(await whereSql("all")).not.toContain("resolved");
+  });
+
+  it("caps at 500 rows and reports truncation", async () => {
+    const row = (i: number) => ({ id: `incident-${i}` });
+    const many = Array.from({ length: 501 }, (_, i) => row(i));
+    const query = selectRows(many);
+    (db.select as jest.Mock).mockReturnValueOnce(query).mockReturnValue(selectRows([]));
+    const result = await getSreIncidents({ scope: "all" });
+    expect(query.limit).toHaveBeenCalledWith(501);
+    expect(result).toMatchObject({ success: true, truncated: true });
+    if (result.success) expect(result.incidents).toHaveLength(500);
+
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows(many.slice(0, 3))).mockReturnValue(selectRows([]));
+    expect(await getSreIncidents({ scope: "all" })).toMatchObject({ truncated: false });
+  });
+
+  it("tells an all-resolved project apart from an empty one when the active list is empty", async () => {
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([{ id: "i1" }]));
+    expect(await getSreIncidents({ scope: "active" })).toMatchObject({ incidents: [], hasIncidents: true });
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([]));
+    expect(await getSreIncidents({ scope: "active" })).toMatchObject({ hasIncidents: false });
+  });
+});
+
+describe("createSreIncidentFromAlert severity", () => {
+  it("honours the monitor's configured incident severity", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "user-1", organizationId: "org-1",
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([{
+      id: "alert-1", targetType: "monitor", target: "API", monitorId: "mon-1", jobId: null, type: "monitor_failure",
+      message: "down", status: "sent", provider: "slack", sentAt: new Date(), monitorName: "API", jobName: null,
+      monitorAlertConfig: { incidentSeverity: "sev1" }, jobAlertConfig: null,
+    }]));
+    const values: unknown[] = [];
+    const chain = (rows: unknown[]) => Object.assign(Promise.resolve(rows), {
+      from: () => chain(rows), where: () => chain(rows), innerJoin: () => chain(rows), leftJoin: () => chain(rows),
+      orderBy: () => chain(rows), limit: () => chain(rows),
+      values: (v: unknown) => { values.push(v); return chain([{ id: "new-id", assigneeUserId: null, incidentNumber: 1 }]); },
+      returning: () => chain([{ id: "new-id", assigneeUserId: null, incidentNumber: 1 }]),
+      set: () => chain([]),
+    });
+    (db.transaction as jest.Mock).mockImplementation(async (cb) => cb({
+      execute: jest.fn(), select: () => chain([]), insert: () => chain([]), update: () => chain([]),
+    }));
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(result.success).toBe(true);
+    expect(values).toContainEqual(expect.objectContaining({ title: expect.any(String), severity: "sev1" }));
   });
 });

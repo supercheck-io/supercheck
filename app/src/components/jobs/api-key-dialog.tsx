@@ -228,6 +228,7 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
+                        aria-label={showKey ? "Hide API key" : "Show API key"}
                         onClick={() => setShowKey(!showKey)}
                       >
                         {showKey ? (
@@ -240,6 +241,7 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
+                        aria-label="Copy API key"
                         onClick={() => copyToClipboard(createdKey.key)}
                       >
                         {copied ? (

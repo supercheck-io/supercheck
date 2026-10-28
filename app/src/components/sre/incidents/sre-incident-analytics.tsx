@@ -132,7 +132,7 @@ export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Created" value={String(summary.created)} caption={`Last ${windowDays} days`} href="/incidents" />
-        <MetricCard title="Resolved" value={String(summary.resolved)} caption={`Last ${windowDays} days`} />
+        <MetricCard title="Resolved" value={String(summary.resolved)} caption={`Of incidents created in the last ${windowDays} days`} />
         <MetricCard title="Resolution rate" value={`${summary.resolutionRate}%`} caption="Resolved of created" />
         <MetricCard
           title="Average resolution"

@@ -160,7 +160,7 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         success: false,
         message: "Invalid status page ID",
         subscribers: [],
-        stats: { total: 0, verified: 0, pending: 0 },
+        stats: { total: 0, verified: 0, pending: 0, quarantined: 0 },
       };
     }
 
@@ -178,7 +178,7 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         success: false,
         message: "Status page not found or access denied",
         subscribers: [],
-        stats: { total: 0, verified: 0, pending: 0 },
+        stats: { total: 0, verified: 0, pending: 0, quarantined: 0 },
       };
     }
 
@@ -195,6 +195,7 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         endpoint: true,
         mode: true,
         verifiedAt: true,
+        quarantinedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -202,7 +203,11 @@ export async function getStatusPageSubscribers(statusPageId: string) {
     });
 
     // Calculate stats
-    const verifiedCount = subscribers.filter((s) => s.verifiedAt).length;
+    // Quarantined endpoints receive nothing, so they are not "verified" for delivery.
+    const quarantinedCount = subscribers.filter((s) => s.quarantinedAt).length;
+    const verifiedCount = subscribers.filter(
+      (s) => s.verifiedAt && !s.quarantinedAt,
+    ).length;
     const pendingCount = subscribers.filter((s) => !s.verifiedAt).length;
 
     return {
@@ -214,6 +219,7 @@ export async function getStatusPageSubscribers(statusPageId: string) {
         total: subscribers.length,
         verified: verifiedCount,
         pending: pendingCount,
+        quarantined: quarantinedCount,
       },
     };
   } catch (error) {
@@ -222,7 +228,7 @@ export async function getStatusPageSubscribers(statusPageId: string) {
       success: false,
       message: "Failed to fetch subscribers",
       subscribers: [],
-      stats: { total: 0, verified: 0, pending: 0 },
+      stats: { total: 0, verified: 0, pending: 0, quarantined: 0 },
     };
   }
 }
@@ -318,7 +324,8 @@ export async function resendVerificationEmail(subscriberId: string) {
       where: eq(statusPageSubscribers.id, subscriberId),
     });
 
-    if (!subscriber) {
+    // Webhook/Slack rows have no mailbox and unsubscribed addresses opted out.
+    if (!subscriber || subscriber.mode !== "email" || subscriber.purgeAt) {
       return { success: false, message: "Subscriber not found" };
     }
 

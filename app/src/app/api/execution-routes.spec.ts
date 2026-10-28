@@ -65,6 +65,8 @@ jest.mock("@/lib/variable-resolver", () => ({
 
 jest.mock("@/lib/job-execution-utils", () => ({
   prepareJobTestScripts: jest.fn(),
+  decodeTestScript: jest.fn(),
+  applyVariablesToTestScripts: jest.fn(),
 }));
 
 jest.mock("@/lib/security/api-key-hash", () => ({
@@ -216,7 +218,7 @@ const { checkExecutionRateLimit: mockCheckExecutionRateLimit } =
   };
 
 // The trigger route joins the key to its owner's current ban state.
-function triggerKeySelect(jobId: string, owner: { banned?: boolean | null; banExpires?: Date | null } = {}) {
+function triggerKeySelect(jobId: string, owner: { banned?: boolean | null; banExpires?: Date | null; userId?: string } = {}) {
   return {
     from: jest.fn().mockReturnValue({
       innerJoin: jest.fn().mockReturnValue({
@@ -228,7 +230,7 @@ function triggerKeySelect(jobId: string, owner: { banned?: boolean | null; banEx
             enabled: true,
             expiresAt: null,
             jobId,
-            userId: "user-1",
+            userId: owner.userId ?? "user-1",
             lastRequest: null,
             requestCount: 0,
             rateLimitEnabled: true,
@@ -767,6 +769,38 @@ describe("Execution route regressions", () => {
     expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
   });
 
+  it("POST /api/jobs/[id]/trigger still triggers a job whose aggregate status is error", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000012";
+    mockDb.select
+      .mockReturnValueOnce(triggerKeySelect(jobId))
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([
+              {
+                id: jobId, name: "Nightly", status: "error", createdByUserId: "user-1",
+                organizationId: "org-1", projectId: "project-1", jobType: "playwright",
+              },
+            ]),
+          }),
+        }),
+      });
+    mockDb.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
+    mockDb.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
+    mockAddJobToQueue.mockResolvedValue({ status: "queued", position: 1 });
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it.each([
     ["banned with no expiry", { banned: true, banExpires: null }],
     ["banned until a future date", { banned: true, banExpires: new Date(Date.now() + 3_600_000) }],
@@ -786,5 +820,110 @@ describe("Execution route regressions", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: "Invalid API key" });
     expect(mockAddJobToQueue).not.toHaveBeenCalled();
+  });
+
+  describe("runs.triggered_by_user_id", () => {
+    const jsonHeaders = { "content-type": "application/json", origin: "http://localhost" };
+    const capturedInsert = () => {
+      const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "run-1" }]) });
+      mockDb.insert.mockReturnValue({ values });
+      mockDb.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
+      return values;
+    };
+
+    it.each([
+      ["browser", "test('x', () => {})", false, mockAddTestToQueue],
+      ["performance", "import http from 'k6/http'; export default () => {}", true, mockAddK6TestToQueue],
+    ])("POST /api/test records the caller on a %s run", async (_label, script, isK6, queue) => {
+      mockIsK6Script.mockReturnValue(isK6);
+      queue.mockResolvedValue({ runId: "run-1", status: "queued", position: 1 });
+      const values = capturedInsert();
+
+      const response = await executePlaygroundTest(
+        new NextRequest("http://localhost/api/test", { method: "POST", headers: jsonHeaders, body: JSON.stringify({ script }) }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(values).toHaveBeenCalledTimes(1);
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({ trigger: "manual", triggeredByUserId: "user-1", jobId: null }));
+    });
+
+    it("POST /api/tests/[id]/execute records the caller", async () => {
+      const id = "b6c7d749-56f1-509f-96c4-8234bc8c0244";
+      mockDb.query.tests.findFirst.mockResolvedValue({
+        id, type: "playwright", script: Buffer.from("test('x', () => {})").toString("base64"), projectId: "project-1", organizationId: "org-1",
+      });
+      mockAddTestToQueue.mockResolvedValue({ runId: "run-1", status: "queued", position: 1 });
+      const values = capturedInsert();
+
+      const response = await executeSingleTest(
+        new NextRequest(`http://localhost/api/tests/${id}/execute`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({}) }),
+        { params: Promise.resolve({ id }) },
+      );
+
+      expect(response.status).toBe(200);
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({ trigger: "manual", triggeredByUserId: "user-1" }));
+    });
+
+    it("POST /api/jobs/run records the caller on the queued run", async () => {
+      const jobId = "00000000-0000-4000-8000-000000000020";
+      const rows = (result: unknown[]) => ({ from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue(result) }) }) });
+      const testId = "b6c7d749-56f1-509f-96c4-8234bc8c0244";
+      mockDb.select
+        .mockReturnValueOnce(rows([{ organizationId: "org-1", projectId: "project-1", jobType: "playwright", name: "Nightly" }]))
+        // The job's saved tests are read from job_tests before each test is ownership-checked.
+        .mockReturnValueOnce({ from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ orderBy: jest.fn().mockResolvedValue([{ id: testId }]) }) }) })
+        .mockReturnValueOnce(rows([{ id: testId, title: "Test 1", type: "playwright", script: Buffer.from("test('x', () => {})").toString("base64") }]));
+      const jobUtils = jest.requireMock("@/lib/job-execution-utils") as { decodeTestScript: jest.Mock; applyVariablesToTestScripts: jest.Mock };
+      jobUtils.decodeTestScript.mockResolvedValue("test('x', () => {})");
+      jobUtils.applyVariablesToTestScripts.mockImplementation(async (testScripts: unknown[]) => ({
+        processedTestScripts: testScripts,
+        variableResolution: { variables: {}, secrets: {}, files: {} },
+      }));
+      mockAddJobToQueue.mockResolvedValue({ status: "queued", position: 1 });
+      const values = capturedInsert();
+
+      const response = await executeJob(
+        new NextRequest("http://localhost/api/jobs/run", {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ jobId, trigger: "manual", tests: [{ id: testId }] }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({ jobId, status: "queued", trigger: "manual", triggeredByUserId: "user-1" }));
+    });
+
+    it("POST /api/jobs/[id]/trigger records the key owner and a key-name snapshot", async () => {
+      const jobId = "00000000-0000-4000-8000-000000000021";
+      mockDb.select.mockReturnValueOnce(triggerKeySelect(jobId, { userId: "key-owner" })).mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue([
+          { id: jobId, name: "Nightly", status: "idle", createdByUserId: "job-creator", organizationId: "org-1", projectId: "project-1", jobType: "playwright" },
+        ]) }) }),
+      });
+      const insertValues = jest.fn().mockResolvedValue(undefined);
+      mockDb.insert.mockReturnValue({ values: insertValues });
+      mockDb.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
+      mockAddJobToQueue.mockResolvedValue({ status: "queued", position: 1 });
+
+      const response = await postTrigger(
+        new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+          method: "POST",
+          headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        { params: Promise.resolve({ id: jobId }) },
+      );
+
+      expect(response.status).toBe(200);
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trigger: "remote",
+          triggeredByUserId: "key-owner",
+          metadata: expect.objectContaining({ source: "api-trigger", triggerKeyName: "key-1" }),
+        }),
+      );
+    });
   });
 });

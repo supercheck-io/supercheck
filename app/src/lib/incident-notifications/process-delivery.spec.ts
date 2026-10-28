@@ -154,6 +154,7 @@ describe("processDelivery", () => {
       { id: "update" },
       "subscriber",
       true,
+      false, // not the final attempt: failures must not count toward quarantine
     );
     expect(sendIncidentNotifications).not.toHaveBeenCalled();
   });

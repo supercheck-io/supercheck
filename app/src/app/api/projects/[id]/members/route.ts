@@ -101,7 +101,10 @@ export async function POST(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    if (isCliAuth) {
+      return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
+    }
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -221,7 +224,10 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    if (isCliAuth) {
+      return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
+    }
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -316,7 +322,10 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    const { userId } = await requireUserAuthContext((await params).id);
+    const { userId, isCliAuth } = await requireUserAuthContext((await params).id);
+    if (isCliAuth) {
+      return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
+    }
     const projectId = resolvedParams.id;
     
     // Get project to determine organization

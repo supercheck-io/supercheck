@@ -88,11 +88,17 @@ describe("AlertSettings incidents block (extended)", () => {
     expect(again).toHaveBeenCalledWith(expect.objectContaining({ incidentSeverity: undefined }));
   });
 
-  it("job mode forces success alerts on, so auto-resolve ignores alertOnRecovery", () => {
-    // config normalisation sets alertOnSuccess=true for jobs, so the hint state is unreachable there.
-    render(<AlertSettings value={{ ...base, alertOnSuccess: false, alertOnRecovery: false }} context="job" />);
-    expect(screen.getByLabelText(/Resolve automatically on recovery/)).toBeEnabled();
-    expect(screen.queryByText("Turn on recovery alerts to auto-resolve")).not.toBeInTheDocument();
+  it("job mode honours a stored alertOnSuccess=false and lets it be unchecked", () => {
+    const onChange = jest.fn();
+    render(<AlertSettings value={{ ...base, alertOnSuccess: false, alertOnRecovery: false }} context="job" onChange={onChange} />);
+    expect(screen.getByLabelText(/Job success/)).not.toBeChecked();
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ alertOnSuccess: true }));
+    expect(screen.getByLabelText(/Resolve automatically on recovery/)).toBeDisabled();
+  });
+
+  it("job mode defaults success alerts on for a new job", () => {
+    render(<AlertSettings value={base} context="job" />);
+    expect(screen.getByLabelText(/Job success/)).toBeChecked();
   });
 
   it("enables auto-resolve in job mode when success alerts are on", () => {

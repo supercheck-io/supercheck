@@ -102,8 +102,8 @@ export function AlertSettings({
         : monitorType === "website" && !sslCheckEnabled
           ? false
           : value?.alertOnSslExpiration || false,
-    // Auto-enable job success alerts for job context
-    alertOnSuccess: context === "job" ? true : value?.alertOnSuccess || false,
+    // Jobs default success alerts on only when nothing is stored
+    alertOnSuccess: value?.alertOnSuccess ?? context === "job",
   });
 
   // Validation state
@@ -158,8 +158,8 @@ export function AlertSettings({
           : monitorType === "website" && !sslCheckEnabled
             ? false
             : value?.alertOnSslExpiration || false,
-      // Auto-enable job success alerts for job context
-      alertOnSuccess: context === "job" ? true : value?.alertOnSuccess || false,
+      // Jobs default success alerts on only when nothing is stored
+      alertOnSuccess: value?.alertOnSuccess ?? context === "job",
     };
     setConfig(safeConfig);
   }, [value, monitorType, sslCheckEnabled, context]);
@@ -186,13 +186,6 @@ export function AlertSettings({
       }
     }
   }, [monitorType, sslCheckEnabled, config.alertOnSslExpiration, updateConfig]);
-
-  // Auto-enable job success alerts for job context
-  useEffect(() => {
-    if (context === "job" && !config.alertOnSuccess) {
-      updateConfig({ alertOnSuccess: true });
-    }
-  }, [context, config.alertOnSuccess, updateConfig]);
 
   // Validate config whenever it changes - using stable reference to avoid loops
   useEffect(() => {

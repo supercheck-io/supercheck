@@ -285,7 +285,6 @@ describe('buildLocalResources', () => {
           id: '01912345-abcd-7000-8000-000000000001',
           name: 'Nightly',
           tests: ['01912345-abcd-7000-8000-000000000010'],
-          status: 'paused',
         },
       ],
     }, cwd)

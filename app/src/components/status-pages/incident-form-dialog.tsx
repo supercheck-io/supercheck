@@ -230,7 +230,7 @@ export function IncidentFormDialog({
   >([]);
   useEffect(() => {
     if (open)
-      void getSreIncidents().then((result) => {
+      void getSreIncidents({ scope: "all" }).then((result) => {
         if (result.success) setSreIncidents(result.incidents);
       });
   }, [open]);

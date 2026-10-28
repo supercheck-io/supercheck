@@ -108,8 +108,7 @@ notificationCommand
 
     const suppliedConfig = parsePayload(options)
     if (!options.name && !options.type && !suppliedConfig) {
-      logger.warn('No fields to update. Use --name, --type, or --payload.')
-      return
+      throw new CLIError('No fields to update. Use --name, --type, or --payload.', ExitCode.ConfigError)
     }
 
     // Fetch existing provider for name/type fallback

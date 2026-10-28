@@ -14,6 +14,7 @@ export interface AppConfig {
     allowedEmailDomains: string[];
   };
   mcp?: { enabled: boolean };
+  reports?: { separateOrigin: boolean };
   demoMode: boolean;
   showCommunityLinks: boolean;
   limits: {

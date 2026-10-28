@@ -49,7 +49,7 @@ const statusPage = {
 
 const monitors: StatusPageMonitor[] = [];
 
-function renderDetail(overrides: { canUpdate?: boolean } = {}) {
+function renderDetail(overrides: { canUpdate?: boolean; onDataChange?: () => void } = {}) {
   return render(
     <StatusPageDetail
       statusPage={statusPage}
@@ -57,6 +57,7 @@ function renderDetail(overrides: { canUpdate?: boolean } = {}) {
       monitors={monitors}
       components={[]}
       canUpdate={overrides.canUpdate ?? true}
+      onDataChange={overrides.onDataChange}
     />,
   );
 }
@@ -169,5 +170,22 @@ describe("StatusPageDetail destructive actions", () => {
 
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(unpublishStatusPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("StatusPageDetail cache refresh", () => {
+  it("refreshes the status query after unpublishing", async () => {
+    jest.mocked(unpublishStatusPage).mockResolvedValue({
+      success: true,
+      message: "ok",
+      statusPage: { id: statusPage.id, name: statusPage.name, subdomain: statusPage.subdomain, status: "draft" },
+    });
+    const onDataChange = jest.fn();
+    renderDetail({ onDataChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpublish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unpublish page" }));
+
+    await waitFor(() => expect(onDataChange).toHaveBeenCalled());
   });
 });

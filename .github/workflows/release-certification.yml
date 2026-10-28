@@ -65,6 +65,7 @@ jobs:
           fi
 
       - name: Test with coverage gates
+        timeout-minutes: 15
         working-directory: ${{ matrix.package }}
         run: npm run test:cov -- --runInBand
         env:
