@@ -87,6 +87,21 @@ describe("generateSrePostmortem", () => {
   });
 });
 
+describe("generateSrePostmortem timeline", () => {
+  it("labels lifecycle events and keeps the opening events of a long incident", async () => {
+    const at = (n: number) => new Date(`2026-10-01T10:0${n}:00Z`);
+    const tail = [
+      { id: "e3", at: at(3), eventType: "state_change", data: { state: "resolved", comment: "rolled back" } },
+      { id: "e2", at: at(2), eventType: "ai_finding", data: { summary: "bad deploy" } },
+    ];
+    const head = [{ id: "e1", at: at(1), eventType: "created", data: null }, { id: "e2", at: at(2), eventType: "ai_finding", data: { summary: "bad deploy" } }];
+    queue.push([resolved], tail, head, [], []);
+    await generateSrePostmortem({ incidentId });
+    const labels = (generate.mock.calls[0][0] as { timeline: { label: string }[] }).timeline.map((e) => e.label);
+    expect(labels).toEqual(["created", "ai finding: bad deploy", "state change: resolved - rolled back"]);
+  });
+});
+
 describe("generateSrePostmortem usage gate", () => {
   it("skips the model call (template only) when the usage gate is closed", async () => {
     queue.push([resolved], [], [], []);

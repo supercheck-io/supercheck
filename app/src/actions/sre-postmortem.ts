@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -37,10 +37,13 @@ export type SrePostmortemActionResult =
   | { success: false; error: string };
 
 function timelineLabel(eventType: string, data: Record<string, unknown> | null) {
-  const text = [data?.text, data?.summary, data?.note, data?.message, data?.type].find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  );
-  const clipped = text ? text.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  const pick = (...values: unknown[]) =>
+    values.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const text = pick(data?.text, data?.summary, data?.note, data?.message, data?.type);
+  // Lifecycle events carry {state, comment}.
+  const state = pick(data?.state);
+  const body = state ? [state, pick(data?.comment)].filter(Boolean).join(" - ") : text ?? pick(data?.comment);
+  const clipped = body ? body.replace(/\s+/g, " ").trim().slice(0, 200) : "";
   return clipped ? `${eventType.replace(/_/g, " ")}: ${clipped}` : eventType.replace(/_/g, " ");
 }
 
@@ -103,13 +106,15 @@ export async function generateSrePostmortem(
       };
     }
 
-    const [timeline, evidence, [run]] = await Promise.all([
+    const timelineQuery = () =>
       db
-        .select({ at: sreIncidentTimelineEvents.createdAt, eventType: sreIncidentTimelineEvents.eventType, data: sreIncidentTimelineEvents.eventData })
+        .select({ id: sreIncidentTimelineEvents.id, at: sreIncidentTimelineEvents.createdAt, eventType: sreIncidentTimelineEvents.eventType, data: sreIncidentTimelineEvents.eventData })
         .from(sreIncidentTimelineEvents)
-        .where(eq(sreIncidentTimelineEvents.incidentId, incident.id))
-        .orderBy(desc(sreIncidentTimelineEvents.createdAt))
-        .limit(40),
+        .where(eq(sreIncidentTimelineEvents.incidentId, incident.id));
+    const [tail, head, evidence, [run]] = await Promise.all([
+      // Newest 30 plus the first 10, so a long incident keeps both its start and its resolution.
+      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(30),
+      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(10),
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })
         .from(sreEvidenceItems)
@@ -156,7 +161,9 @@ export async function generateSrePostmortem(
         ? structured.nextChecks.filter((check): check is string => typeof check === "string").slice(0, 5)
         : [],
       evidence,
-      timeline: [...timeline].reverse().map((event) => ({ at: event.at, label: timelineLabel(event.eventType, event.data) })),
+      timeline: [...new Map([...tail, ...head].map((event) => [event.id, event])).values()]
+        .sort((a, b) => a.at.getTime() - b.at.getTime())
+        .map((event) => ({ at: event.at, label: timelineLabel(event.eventType, event.data) })),
     };
 
     // Same usage gate as chat; when it is closed the template still works, with no model call.
