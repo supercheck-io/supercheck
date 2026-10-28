@@ -12,6 +12,13 @@ import {
   user,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
+import { type DetailField } from "@/emails/base-layout";
+import {
+  INCIDENT_EVENT_COLOR,
+  INCIDENT_EVENT_MESSAGE,
+  incidentUpdateFields,
+  incidentUpdateHeadline,
+} from "@/emails/incident-update";
 import { renderIncidentUpdateEmail } from "@/lib/email-renderer";
 import { EmailService } from "@/lib/email-service";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -92,7 +99,19 @@ type Message = {
   url: string;
   event: IncidentNotifyEvent;
   incident: { id: string; number: number; severity: string; status: string };
-  email: { title: string; statusLabel: string; serviceName?: string; detail?: string };
+  /** Event headline, for example "Incident acknowledged by Ada". */
+  headline: string;
+  /** Event detail, or the standard explanation for the event. */
+  body: string;
+  fields: DetailField[];
+  email: {
+    title: string;
+    statusLabel: string;
+    serviceName?: string;
+    detail?: string;
+    actorName?: string;
+    assigneeName?: string;
+  };
 };
 
 async function post(url: string, body: unknown, headers: Record<string, string> = {}) {
@@ -105,7 +124,7 @@ async function post(url: string, body: unknown, headers: Record<string, string> 
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    return response.ok;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
   } finally {
     clearTimeout(timeout);
   }
@@ -115,8 +134,26 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+/** Slack treats <...> as links and mentions (<!channel>), so user text must escape them. */
+function escapeSlack(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function clip(value: string, max: number) {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function plainText(message: Message) {
+  const facts = message.fields.map((field) => `${field.title}: ${field.value}`).join("\n");
+  return `${message.text}\n\n${facts}\n\n${message.url}`;
+}
+
 async function sendEmail(recipients: string[], message: Message) {
-  const unique = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))].slice(0, MAX_EMAIL_RECIPIENTS);
+  const all = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))];
+  if (all.length > MAX_EMAIL_RECIPIENTS) {
+    logger.warn({ recipients: all.length, max: MAX_EMAIL_RECIPIENTS }, "Incident email recipient list truncated");
+  }
+  const unique = all.slice(0, MAX_EMAIL_RECIPIENTS);
   if (unique.length === 0) return;
   let rendered: { subject: string; html: string; text: string };
   try {
@@ -129,17 +166,25 @@ async function sendEmail(recipients: string[], message: Message) {
       serviceName: message.email.serviceName,
       detail: message.email.detail,
       incidentUrl: message.url,
+      actorName: message.email.actorName,
+      assigneeName: message.email.assigneeName,
     });
   } catch (error) {
-    // Never drop the email because a template failed; send the plain version.
+    // Never drop the email because a template failed; send the plain version with the same facts.
     logger.warn({ error }, "Incident email template failed; sending plain email");
+    const rows = message.fields
+      .map((field) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280"><b>${escapeHtml(field.title)}</b></td><td>${escapeHtml(field.value)}</td></tr>`)
+      .join("");
     rendered = {
-      subject: message.title,
-      text: `${message.text}\n\n${message.url}`,
-      html: `<p>${escapeHtml(message.text)}</p><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
+      subject: `[${message.incident.severity.toUpperCase()}] ${message.headline}: #${message.incident.number} ${message.email.title}`,
+      text: plainText(message),
+      html: `<p><b>${escapeHtml(message.headline)}</b></p><p>${escapeHtml(message.text)}</p><table>${rows}</table><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
     };
   }
-  await EmailService.getInstance().sendEmailToMultiple({ recipients: unique, ...rendered });
+  const result = await EmailService.getInstance().sendEmailToMultiple({ recipients: unique, ...rendered });
+  if (result.failedAddresses.length > 0) {
+    throw new Error(`email failed for ${result.failedAddresses.length}/${unique.length} recipient(s)`);
+  }
 }
 
 function hasCustomWebhookBody(config: Record<string, unknown>) {
@@ -148,29 +193,86 @@ function hasCustomWebhookBody(config: Record<string, unknown>) {
   return (preset !== "" && preset !== "custom") || template !== "";
 }
 
+const TEAMS_COLOR: Partial<Record<IncidentNotifyEvent, string>> = {
+  created: "attention",
+  reopened: "attention",
+  resolved: "good",
+  recovered: "good",
+};
+
 async function sendToProvider(
   provider: { type: string; config: PlainNotificationProviderConfig },
   message: Message,
 ) {
   const config = provider.config as Record<string, unknown>;
-  const line = `${message.text}\n${message.url}`;
+  const color = INCIDENT_EVENT_COLOR[message.event] ?? "#1f2937";
+  const heading = `#${message.incident.number} ${message.email.title}`;
   switch (provider.type) {
     case "email":
       return sendEmail(String(config.emails ?? "").split(","), message);
     case "slack":
-      await post(String(config.webhookUrl), { text: line });
+      await post(String(config.webhookUrl), {
+        text: escapeSlack(`${message.headline}: ${heading}`),
+        attachments: [
+          {
+            color,
+            title: escapeSlack(heading),
+            title_link: message.url,
+            text: escapeSlack(message.body),
+            fields: message.fields.map((field) => ({ title: field.title, value: escapeSlack(field.value), short: true })),
+            footer: "Supercheck",
+            ts: Math.floor(Date.now() / 1000),
+          },
+        ],
+      });
       return;
     case "teams":
-      await post(String(config.teamsWebhookUrl), { text: line });
+      // Teams Workflows webhooks only accept Adaptive Card attachments, not { text }.
+      await post(String(config.teamsWebhookUrl), {
+        type: "message",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                { type: "TextBlock", text: message.headline, weight: "bolder", size: "large", color: TEAMS_COLOR[message.event] ?? "default", wrap: true },
+                { type: "TextBlock", text: heading, weight: "bolder", wrap: true },
+                { type: "TextBlock", text: message.body, wrap: true, spacing: "small" },
+                { type: "FactSet", facts: message.fields.map((field) => ({ title: field.title, value: field.value })), spacing: "medium" },
+              ],
+              actions: [{ type: "Action.OpenUrl", title: `Open incident #${message.incident.number}`, url: message.url }],
+            },
+          },
+        ],
+      });
       return;
     case "discord":
-      await post(String(config.discordWebhookUrl), { content: line });
+      await post(String(config.discordWebhookUrl), {
+        content: clip(message.headline, 2000),
+        embeds: [
+          {
+            title: clip(heading, 256),
+            url: message.url,
+            description: clip(message.body, 4096),
+            color: parseInt(color.slice(1), 16),
+            fields: message.fields.map((field) => ({ name: field.title, value: clip(field.value, 1024), inline: true })),
+            footer: { text: "Supercheck" },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        // Incident titles are user text; never let them ping @everyone or roles.
+        allowed_mentions: { parse: [] },
+      });
       return;
     case "telegram":
       // Plain text: no parse_mode, so incident titles cannot inject markup.
       await post(`https://api.telegram.org/bot${String(config.botToken)}/sendMessage`, {
         chat_id: String(config.chatId),
-        text: line,
+        // Clip the body, never the trailing link (Telegram's limit is 4096 characters).
+        text: `${clip(`${message.headline}\n${plainText({ ...message, url: "" }).trimEnd()}`, 4000)}\n\n${message.url}`,
         disable_web_page_preview: true,
       });
       return;
@@ -241,6 +343,28 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
 
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
+
+    // Direct email to the person who now owns it (not to themselves).
+    const directTo = ["assigned", "created", "recovered", "reopened"].includes(input.event) ? input.assigneeUserId : null;
+    const ownerId = input.assigneeUserId ?? incident.assigneeUserId;
+    const personIds = [...new Set([input.actorUserId, ownerId, directTo].filter((id): id is string => Boolean(id)))];
+    // Names are cosmetic: a failed lookup must not stop the channel posts below.
+    const people = personIds.length
+      ? await db
+          .select({ id: user.id, name: user.name, email: user.email })
+          .from(user)
+          .where(inArray(user.id, personIds))
+          .limit(personIds.length)
+          .catch((error: unknown) => {
+            logger.warn({ error: error instanceof Error ? error.message : "lookup failed" }, "Incident notification name lookup failed");
+            return [];
+          })
+      : [];
+    const person = (id?: string | null) => (id ? people.find((row) => row.id === id) : undefined);
+    const actorName = person(input.actorUserId)?.name || undefined;
+    const assigneeName = person(ownerId)?.name || undefined;
+
+    const statusLabel = getDisplayStatus(incident.status, incident.acknowledgedAt).label;
     const text =
       `[${incident.severity.toUpperCase()}] Incident #${incident.number} ${EVENT_LABEL[input.event]}: ${incident.title}` +
       (incident.serviceName ? ` (${incident.serviceName})` : "") +
@@ -251,19 +375,33 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       url,
       event: input.event,
       incident: { id: incident.id, number: incident.number, severity: incident.severity, status: incident.status },
+      headline: incidentUpdateHeadline(input.event, actorName, assigneeName),
+      body: detail || INCIDENT_EVENT_MESSAGE[input.event],
+      fields: incidentUpdateFields({
+        incidentNumber: incident.number,
+        severity: incident.severity as "sev1" | "sev2" | "sev3" | "sev4",
+        statusLabel,
+        serviceName: incident.serviceName ?? undefined,
+        assigneeName,
+        actorName,
+      }),
       email: {
         title: incident.title,
-        statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
+        statusLabel,
         serviceName: incident.serviceName ?? undefined,
         detail,
+        actorName,
+        assigneeName,
       },
     };
 
-    // Direct email to the person who now owns it (not to themselves).
-    const directTo = ["assigned", "created", "recovered", "reopened"].includes(input.event) ? input.assigneeUserId : null;
-    if (directTo && directTo !== input.actorUserId) {
-      const [assignee] = await db.select({ email: user.email }).from(user).where(eq(user.id, directTo)).limit(1);
-      if (assignee?.email) await sendEmail([assignee.email], message);
+    const directEmail = person(directTo)?.email;
+    if (directTo && directTo !== input.actorUserId && directEmail) {
+      try {
+        await sendEmail([directEmail], message);
+      } catch (error) {
+        logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to assignee failed");
+      }
     }
 
     // Providers linked to the monitor/job that raised the alert; manual incidents have none.
