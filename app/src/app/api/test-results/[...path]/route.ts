@@ -520,7 +520,7 @@ export async function GET(request: Request) {
       ) {
         headers.set(
           "Content-Security-Policy",
-          "sandbox allow-scripts allow-forms allow-downloads; frame-ancestors 'self'"
+          "sandbox allow-scripts allow-downloads; frame-ancestors 'self'"
         );
       }
       headers.append("Vary", "Sec-Fetch-Dest, Sec-Fetch-Site");
