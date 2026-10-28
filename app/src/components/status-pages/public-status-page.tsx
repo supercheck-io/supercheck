@@ -29,6 +29,7 @@ import {
   type DailyCheckCounts,
 } from "@/lib/status-page-uptime";
 import { StatusPageBranding } from "./status-page-branding";
+import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 
 type ComponentStatus =
   | "operational"
@@ -65,6 +66,9 @@ type StatusPage = {
   cssOranges: string | null;
   cssBlues: string | null;
   cssReds: string | null;
+  cssBodyBackgroundColor?: string | null;
+  cssFontColor?: string | null;
+  cssNoData?: string | null;
   faviconLogo: string | null;
   transactionalLogo: string | null;
   language: string | null;
@@ -87,6 +91,8 @@ type Incident = {
   impact: IncidentImpact;
   createdAt: Date | null;
   resolvedAt: Date | null;
+  scheduledFor?: Date | null;
+  scheduledUntil?: Date | null;
   latestUpdate: {
     body: string;
     createdAt: Date | null;
@@ -314,7 +320,7 @@ export function PublicStatusPage({
               className="h-6 sm:h-8 md:h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
                 backgroundColor:
-                  day.status === "nodata" ? "#9ca3af" : getBarColor(day),
+                  day.status === "nodata" ? statusPage.cssNoData || "#9ca3af" : getBarColor(day),
               }}
               onMouseEnter={() => setHoveredDay(index)}
               onMouseLeave={() => setHoveredDay(null)}
@@ -368,6 +374,10 @@ export function PublicStatusPage({
       dir={activeLanguage === "ar" ? "rtl" : "ltr"}
       lang={activeLanguage}
       className="min-h-screen bg-gray-50 dark:bg-gray-950"
+      style={{
+        backgroundColor: statusPage.cssBodyBackgroundColor || undefined,
+        color: statusPage.cssFontColor || undefined,
+      }}
     >
       {/* Header */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -647,6 +657,14 @@ export function PublicStatusPage({
                                     <h4 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate">
                                       {incident.name}
                                     </h4>
+                                    {incident.scheduledFor && incident.scheduledUntil && (
+                                      <p className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-0.5 sm:mt-1">
+                                        <Wrench className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span>
+                                          {formatMaintenanceWindow(locale, incident.scheduledFor, incident.scheduledUntil)}
+                                        </span>
+                                      </p>
+                                    )}
                                     {incident.latestUpdate && (
                                       <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1">
                                         {incident.latestUpdate.body}

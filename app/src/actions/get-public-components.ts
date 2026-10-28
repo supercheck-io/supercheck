@@ -63,8 +63,6 @@ export async function getPublicComponents(statusPageId: string) {
       };
     }
 
-    // PERFORMANCE FIX: Use Drizzle eager loading instead of N+1 queries
-    // Previously: fetched monitors individually per component in a loop
     const components = await db.query.statusPageComponents.findMany({
       where: and(
         eq(statusPageComponents.statusPageId, statusPageId),
@@ -87,21 +85,6 @@ export async function getPublicComponents(statusPageId: string) {
         asc(components.position),
         asc(components.createdAt),
       ],
-      with: {
-        // Eager load monitor associations with nested monitor data
-        monitors: {
-          with: {
-            monitor: {
-              columns: {
-                id: true,
-                name: true,
-                status: true,
-                // EXCLUDED: target (leaks internal URLs/IPs), type (internal detail)
-              },
-            },
-          },
-        },
-      },
     });
 
     const today = new Date();
@@ -184,34 +167,21 @@ export async function getPublicComponents(statusPageId: string) {
             );
     const dailyMetrics = [...historical, ...current];
 
-    // Transform the data to the expected format
-    const componentsWithMonitors = components.map((component) => {
-      const linkedMonitors = component.monitors
-        .filter((assoc) => assoc.monitor)
-        .map((assoc) => ({
-          id: assoc.monitor.id,
-          name: assoc.monitor.name,
-          status: assoc.monitor.status,
-          weight: assoc.weight,
-        }));
-
-      return {
-        ...component,
-        dailyMetrics: dailyMetrics
-          .filter((metric) => metric.componentId === component.id)
-          .map(({ date, totalChecks, successfulChecks }) => ({
-            date,
-            totalChecks,
-            successfulChecks,
-          })),
-        monitors: linkedMonitors,
-        monitorIds: linkedMonitors.map((m) => m.id),
-      };
-    });
+    // Linked monitor names/ids/status are internal; only the aggregated metrics are public.
+    const publicComponents = components.map((component) => ({
+      ...component,
+      dailyMetrics: dailyMetrics
+        .filter((metric) => metric.componentId === component.id)
+        .map(({ date, totalChecks, successfulChecks }) => ({
+          date,
+          totalChecks,
+          successfulChecks,
+        })),
+    }));
 
     return {
       success: true,
-      components: componentsWithMonitors,
+      components: publicComponents,
     };
   } catch (error) {
     console.error("Error fetching public components:", error);

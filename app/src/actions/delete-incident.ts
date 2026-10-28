@@ -3,6 +3,7 @@
 import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
@@ -85,6 +86,7 @@ export async function deleteIncident(id: string, statusPageId: string) {
     }
 
     // Delete the incident (cascade will handle related records)
+    await retireOrphanedSubscribers({ incidentId: id });
     await db
       .delete(incidents)
       .where(

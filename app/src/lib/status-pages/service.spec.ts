@@ -83,6 +83,10 @@ jest.mock("@/lib/services/subscription-service", () => {
     },
   };
 });
+const retireOrphanedSubscribers = jest.fn();
+jest.mock("@/lib/incident-notifications/retire-orphaned-subscribers", () => ({
+  retireOrphanedSubscribers: (...a: unknown[]) => retireOrphanedSubscribers(...a),
+}));
 jest.mock("@/lib/asset-proxy", () => ({ generateProxyUrl: (v: string | null) => v }));
 
 import {
@@ -218,8 +222,16 @@ describe("status page service", () => {
       });
     });
 
+    it("releases a stale unverified reservation of the hostname before claiming it", async () => {
+      pageFindFirst.mockResolvedValueOnce({ id: pageId, customDomain: null }).mockResolvedValueOnce(undefined);
+      await updateStatusPageSettings(ctx, pageId, { customDomain: "status.acme.com" });
+      const sets = update.mock.results.map((r) => (r.value as { set: jest.Mock }).set.mock.calls[0]?.[0]);
+      expect(sets[0]).toEqual({ customDomain: null });
+    });
+
     it("maps a unique-violation to conflict", async () => {
       pageFindFirst.mockResolvedValueOnce({ id: pageId, customDomain: null }).mockResolvedValueOnce(undefined);
+      update.mockImplementationOnce(() => makeChain()); // stale-reservation release
       update.mockImplementationOnce(() => {
         throw Object.assign(new Error("dup"), { code: "23505" });
       });
@@ -435,6 +447,17 @@ describe("status page service", () => {
       componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
       expect(await deleteComponent(ctx, pageId, compId)).toEqual({ ok: true, data: null });
       expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "component_deleted" }));
+    });
+
+    it("retires subscribers scoped only to the component before the cascade removes their scope", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      const order: string[] = [];
+      retireOrphanedSubscribers.mockImplementation(async () => void order.push("retire"));
+      del.mockImplementationOnce(() => (order.push("delete"), makeChain()));
+      await deleteComponent(ctx, pageId, compId);
+      expect(retireOrphanedSubscribers).toHaveBeenCalledWith({ componentId: compId });
+      expect(order).toEqual(["retire", "delete"]);
     });
 
     it("toComponentDto defaults nullable fields", () => {
