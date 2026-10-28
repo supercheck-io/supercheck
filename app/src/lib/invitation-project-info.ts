@@ -1,5 +1,8 @@
 /** Email sentence describing which projects an invitee will be assigned to. */
-export function buildInvitationProjectInfo(role: string, projectNames: string[]): string {
+const escapeHtml = (v: string) => v.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+export function buildInvitationProjectInfo(role: string, rawProjectNames: string[]): string {
+  const projectNames = rawProjectNames.map(escapeHtml);
   const roleRequiresProjectAssignments = role === "project_admin" || role === "project_editor";
   const permission = role === "project_admin" ? "project admin" : "editor";
   let projectInfo = "";

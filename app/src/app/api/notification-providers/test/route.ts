@@ -10,7 +10,7 @@ import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-previ
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 import { db } from "@/utils/db";
 import { user, member } from "@/db/schema";
-import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 
@@ -110,12 +110,12 @@ async function testEmailConnection(
       }
     }
 
-    if (emailList.length > MAX_TEST_RECIPIENTS) {
+    if (new Set(emailList.map((email) => email.toLowerCase())).size > MAX_TEST_RECIPIENTS) {
       throw new Error(`At most ${MAX_TEST_RECIPIENTS} recipients can be tested at once`);
     }
 
     // Platform mail may only go to the caller or members of their organization.
-    const lowered = emailList.map((email) => email.toLowerCase());
+    const lowered = [...new Set(emailList.map((email) => email.toLowerCase()))];
     const permitted = await db
       .select({ email: user.email })
       .from(user)
@@ -123,6 +123,7 @@ async function testEmailConnection(
       .where(and(
         inArray(sql`lower(${user.email})`, lowered),
         or(eq(user.id, context.userId), isNotNull(member.id)),
+        or(isNull(user.banned), eq(user.banned, false)),
       ));
     const permittedSet = new Set(permitted.map((row) => row.email.toLowerCase()));
     if (lowered.some((email) => !permittedSet.has(email))) {
