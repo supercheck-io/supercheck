@@ -86,9 +86,10 @@ type Subscriber = {
 
 type SubscribersTabProps = {
   statusPageId: string;
+  canUpdate: boolean;
 };
 
-export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
+export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -677,7 +678,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {subscriber.mode === "webhook" && (
+                          {canUpdate && subscriber.mode === "webhook" && (
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
                               aria-label="Rotate webhook signing secret"
                               title="Rotate webhook signing secret"
@@ -686,7 +687,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                               <KeyRound className="h-4 w-4" />
                             </Button>
                           )}
-                          {!subscriber.verifiedAt && (
+                          {canUpdate && !subscriber.verifiedAt && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -712,6 +713,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                               )}
                             </Button>
                           )}
+                          {canUpdate && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -724,6 +726,7 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

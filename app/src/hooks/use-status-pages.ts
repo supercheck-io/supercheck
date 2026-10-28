@@ -190,7 +190,10 @@ export function useStatusPageDetail(statusPageId: string | null) {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+        // status lets the page tell "not found" from a transient failure
+        throw Object.assign(new Error(error.error || `HTTP ${response.status}: ${response.statusText}`), {
+          status: response.status,
+        });
       }
 
       return response.json();
