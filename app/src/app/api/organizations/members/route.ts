@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, user as userTable, invitation, projectMembers, projects } from '@/db/schema';
 import { eq, desc, and, or } from 'drizzle-orm';
+import { withEffectiveStatus } from '@/lib/invitation-project-info';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
@@ -117,7 +118,7 @@ export async function GET() {
       success: true,
       data: {
         members: membersWithProjects,
-        invitations,
+        invitations: invitations.map(withEffectiveStatus),
         currentUserRole: currentUserRole[0]?.role || 'project_viewer'
       }
     });

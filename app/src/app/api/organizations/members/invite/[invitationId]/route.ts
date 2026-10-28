@@ -1,8 +1,9 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { invitation, member, organization, user as userTable } from "@/db/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { invitation, member, organization, projects, user as userTable } from "@/db/schema";
+import { buildInvitationProjectInfo } from "@/lib/invitation-project-info";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
@@ -121,11 +122,18 @@ export async function DELETE(
       );
     }
 
-    // Update status to cancelled
-    await db
+    // Guard on status so a concurrent accept is not overwritten.
+    const [cancelled] = await db
       .update(invitation)
       .set({ status: "cancelled" })
-      .where(eq(invitation.id, resolvedParams.invitationId));
+      .where(and(eq(invitation.id, resolvedParams.invitationId), eq(invitation.status, "pending")))
+      .returning({ id: invitation.id });
+    if (!cancelled) {
+      return NextResponse.json(
+        { error: "Invitation is no longer pending" },
+        { status: 409 }
+      );
+    }
 
     // Log the audit event
     await logAuditEvent({
@@ -221,6 +229,7 @@ export async function POST(
         role: invitation.role,
         status: invitation.status,
         expiresAt: invitation.expiresAt,
+        selectedProjects: invitation.selectedProjects,
         organizationId: invitation.organizationId,
         orgName: organization.name,
       })
@@ -306,11 +315,22 @@ export async function POST(
     const emailService = EmailService.getInstance();
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invite.id}`;
 
+    const assignedIds = Array.isArray(invite.selectedProjects)
+      ? invite.selectedProjects.filter((id): id is string => typeof id === "string" && isUuid(id))
+      : [];
+    const assignedProjects = assignedIds.length
+      ? await db
+          .select({ name: projects.name })
+          .from(projects)
+          .where(and(inArray(projects.id, assignedIds), eq(projects.organizationId, organizationId), eq(projects.status, "active")))
+      : [];
+
     const emailContent = await renderOrganizationInvitationEmail({
       inviteUrl,
       organizationName: invite.orgName,
       role: invite.role ?? "project_viewer",
-      projectInfo: "",
+
+      projectInfo: buildInvitationProjectInfo(invite.role ?? "project_viewer", assignedProjects.map((p) => p.name)),
     });
 
     const emailResult = await emailService.sendEmail({
