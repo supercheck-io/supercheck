@@ -6,6 +6,7 @@ import { eq, and, inArray, sql, gte } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
+import { buildInvitationProjectInfo } from "@/lib/invitation-project-info";
 import { EmailService } from "@/lib/email-service";
 import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -353,22 +354,7 @@ export async function POST(request: NextRequest) {
     const emailService = EmailService.getInstance();
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${newInvitation.id}`;
 
-    let projectInfo = "";
-    if (selectedProjectDetails.length > 0) {
-      const projectNames = selectedProjectDetails.map((p) => p.name);
-      if (projectNames.length === 1) {
-        projectInfo = `You'll have ${role === "project_admin" ? "project admin" : "editor"} permissions in the <strong>${projectNames[0]}</strong> project.`;
-      } else {
-        projectInfo = `You'll have ${role === "project_admin" ? "project admin" : "editor"} permissions in the following projects: <strong>${projectNames.join(
-          ", ",
-        )}</strong>.`;
-      }
-    }
-
-    if (roleRequiresProjectAssignments) {
-      projectInfo +=
-        " Other active projects in this team remain visible with read-only access.";
-    }
+    const projectInfo = buildInvitationProjectInfo(role, selectedProjectDetails.map((p) => p.name));
 
     // Fetch org name for email
     const { organization } = await import("@/db/schema");

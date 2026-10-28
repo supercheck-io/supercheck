@@ -1093,6 +1093,13 @@ export async function listIncidentDiagnosticQueries(
         eq(diagnosticQueries.organizationId, scope.organizationId),
         eq(diagnosticQueries.projectId, scope.projectId),
         eq(diagnosticQueries.status, "active"),
+        // Hide rows saved with a since-removed type (e.g. "sql"); they cannot run.
+        inArray(diagnosticQueries.queryType, [
+          "promql",
+          "logql",
+          "traceql",
+          "http_get",
+        ]),
         inArray(diagnosticQueries.connectorId, connectorIds),
       ),
     )

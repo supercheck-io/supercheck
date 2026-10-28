@@ -15,7 +15,9 @@ import { DELETE, PUT } from "./route";
 beforeEach(() => {
   jest.clearAllMocks();
   (getCurrentUser as jest.Mock).mockResolvedValue({ id: "admin" });
-  (db.select as jest.Mock).mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", email: "target@example.test" }] }) }) });
+  (db.select as jest.Mock).mockReset()
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", email: "target@example.test" }] }) }) })
+    .mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) }); // no sole-owned organizations
   const tx = {
     delete: () => ({ where: async () => undefined }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
@@ -37,6 +39,15 @@ it("does not claim deletion when the transaction fails", async () => {
   expect(pruneAvatars).not.toHaveBeenCalled();
 });
 
+it("blocks deleting a user who is the only owner of an organization that has other members", async () => {
+  (db.select as jest.Mock).mockReset()
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", email: "target@example.test" }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1" }] }) }) });
+  const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
+  expect(response.status).toBe(409);
+  expect(db.transaction).not.toHaveBeenCalled();
+});
+
 describe("PUT validation and audit", () => {
   const put = (body: unknown) => PUT(new NextRequest("http://localhost/api/admin/users/target", { method: "PUT", body: JSON.stringify(body) }), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
   beforeEach(() => {
@@ -51,6 +62,27 @@ describe("PUT validation and audit", () => {
     const response = await PUT(new NextRequest("http://localhost/api/admin/users/admin", { method: "PUT", body: JSON.stringify({ role: "project_viewer" }) }), { params: Promise.resolve({ id: "admin" }) });
     expect(response.status).toBe(400);
     expect(logAdminEvent).not.toHaveBeenCalled();
+  });
+  describe("demoting a super admin", () => {
+    const demote = () => put({ role: "project_viewer" });
+    const withAdmins = (ids: string[]) => {
+      const tx = {
+        select: () => ({ from: () => ({ where: () => ({ for: async () => ids.map((id) => ({ id })) }) }) }),
+        update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", role: "project_viewer" }] }) }) }),
+      };
+      (db.transaction as jest.Mock).mockReset().mockImplementation(async (fn) => fn(tx));
+      (db.select as jest.Mock).mockReset().mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ name: "T", email: "t@example.test", role: "super_admin" }] }) }) });
+    };
+    it("refuses to demote the last super admin", async () => {
+      withAdmins(["0c11ab1e-7460-5139-b3b8-920f69f95082"]);
+      expect((await demote()).status).toBe(409);
+      expect(logAdminEvent).not.toHaveBeenCalled();
+    });
+    it("allows it while another super admin remains", async () => {
+      withAdmins(["0c11ab1e-7460-5139-b3b8-920f69f95082", "admin"]);
+      (db as unknown as { delete: jest.Mock }).delete = jest.fn(() => ({ where: async () => undefined }));
+      expect((await demote()).status).toBe(200);
+    });
   });
   it("audits a super-admin grant", async () => {
     expect((await put({ role: "super_admin" })).status).toBe(200);

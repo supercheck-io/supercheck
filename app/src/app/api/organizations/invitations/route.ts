@@ -1,3 +1,4 @@
+import { withEffectiveStatus } from '@/lib/invitation-project-info';
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { invitation, user as userTable } from '@/db/schema';
@@ -49,7 +50,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: invitations
+      data: invitations.map(withEffectiveStatus)
     });
   } catch (error) {
     if (isAuthError(error)) {

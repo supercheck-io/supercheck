@@ -299,7 +299,7 @@ export async function resolveProjectPermissionContext(
   const [project] = await db
     .select({ id: projects.id, organizationId: projects.organizationId })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), eq(projects.status, "active")))
     .limit(1);
 
   if (!project) return null;
