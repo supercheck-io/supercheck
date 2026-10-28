@@ -10,7 +10,7 @@ jest.mock("@/lib/logger/index", () => ({
   })),
 }));
 
-import { checkSreChatRateLimit } from "./sre-rate-limiter";
+import { checkSreChatRateLimit, checkSreIncidentUpdateRateLimit } from "./sre-rate-limiter";
 
 const { getRedisConnection: mockGetRedisConnection } = jest.requireMock(
   "@/lib/queue",
@@ -122,6 +122,47 @@ describe("checkSreChatRateLimit", () => {
         error,
       },
       "SRE rate limiting error, denying request",
+    );
+  });
+});
+
+describe("checkSreIncidentUpdateRateLimit", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("allows writes under the limit", async () => {
+    mockGetRedisConnection.mockResolvedValueOnce({
+      eval: jest.fn().mockResolvedValueOnce([1, 1, Date.now()]),
+    });
+    await expect(
+      checkSreIncidentUpdateRateLimit("user-1", "inc-1"),
+    ).resolves.toEqual({ allowed: true, remaining: 29 });
+  });
+
+  it("limits at 30 writes per minute per user and incident", async () => {
+    const oldest = Date.now() - 1_000;
+    const evalCommand = jest.fn().mockResolvedValueOnce([0, 30, oldest]);
+    mockGetRedisConnection.mockResolvedValueOnce({ eval: evalCommand });
+
+    const result = await checkSreIncidentUpdateRateLimit("user-1", "inc-1");
+
+    expect(result.allowed).toBe(false);
+    expect(result.resetTime).toBe(oldest + 60_000);
+    expect(evalCommand.mock.calls[0][2]).toBe(
+      "supercheck:sre:ratelimit:incident-update:user-1:inc-1",
+    );
+  });
+
+  it("fails open and still logs when Redis is unavailable", async () => {
+    mockGetRedisConnection.mockResolvedValueOnce(null);
+
+    const result = await checkSreIncidentUpdateRateLimit("user-1", "inc-1");
+
+    expect(result.allowed).toBe(true);
+    expect(mockSreRateLimitLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "redis_unavailable" }),
+      expect.any(String),
     );
   });
 });

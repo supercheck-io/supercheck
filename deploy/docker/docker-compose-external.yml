@@ -52,7 +52,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-true}
 
   # App Configuration
-  APP_URL: ${APP_URL}
+  APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL}}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   # Hide the public status page branding footer globally when set to true
@@ -81,6 +81,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # migration 0036 and BETTER_AUTH_URL set to the public HTTPS URL.
   MCP_SERVER_ENABLED: ${MCP_SERVER_ENABLED:-false}
   MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+  REPORTS_ORIGIN: ${REPORTS_ORIGIN:-}
   MCP_DYNAMIC_CLIENT_REGISTRATION: ${MCP_DYNAMIC_CLIENT_REGISTRATION:-true}
 
   # CORS: Allow browser-based integrations (Azure DevOps widgets, Grafana panels, etc.)

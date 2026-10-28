@@ -91,7 +91,8 @@ import {
   useMonitorPermissions,
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
-import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { MONITORS_QUERY_KEY, MONITOR_QUERY_KEY } from "@/hooks/use-monitors";
+import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 import { useLocationMetadata } from "@/hooks/use-locations";
 
 export interface MonitorResultItem {
@@ -336,6 +337,9 @@ export function MonitorDetailClient({
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
       queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      // Dashboard counts and the cached single-monitor entry also change
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, monitor.id], refetchType: 'all' });
 
       router.push("/monitors");
       router.refresh();
@@ -389,6 +393,9 @@ export function MonitorDetailClient({
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
       queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      // Dashboard counts and the cached single-monitor entry also change
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, monitor.id], refetchType: 'all' });
 
       // Refresh server-side props to get the latest data
       router.refresh();

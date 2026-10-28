@@ -8,6 +8,7 @@ import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } fro
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { validateStatusPageDefinition } from '../utils/status-pages.js'
 import { logger } from '../utils/logger.js'
+import { jobCronWarning } from '../utils/cron.js'
 import { withSpinner } from '../utils/spinner.js'
 
 export const validateCommand = new Command('validate')
@@ -25,6 +26,10 @@ export const validateCommand = new Command('validate')
     const localTestNames = new Set(tests.map((t) => t.name))
     const uuidRef = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     for (const resource of localResources) {
+      if (resource.type === 'job') {
+        const warning = jobCronWarning(resource.name, resource.definition.cronSchedule as string | undefined)
+        if (warning) logger.warn(warning)
+      }
       if (resource.type === 'statusPage') validateStatusPageDefinition(resource.definition, resource.name)
       if (resource.type === 'requirement' && Array.isArray(resource.definition.tests)) {
         for (const ref of resource.definition.tests) {

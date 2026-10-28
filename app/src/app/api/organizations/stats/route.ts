@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projects, jobs, tests, monitors, runs, member } from '@/db/schema';
-import { count, eq } from 'drizzle-orm';
+import { and, count, eq, ne } from 'drizzle-orm';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
@@ -40,7 +40,7 @@ export async function GET() {
       runsCount,
       membersCount
     ] = await Promise.all([
-      db.select({ count: count() }).from(projects).where(eq(projects.organizationId, organizationId)),
+      db.select({ count: count() }).from(projects).where(and(eq(projects.organizationId, organizationId), ne(projects.status, 'deleted'))),
       db.select({ count: count() }).from(jobs).where(eq(jobs.organizationId, organizationId)),
       db.select({ count: count() }).from(tests).where(eq(tests.organizationId, organizationId)),
       db.select({ count: count() }).from(monitors).where(eq(monitors.organizationId, organizationId)),

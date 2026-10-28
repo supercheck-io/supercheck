@@ -172,10 +172,8 @@ describe('notification provider command', () => {
   })
 
   describe('update', () => {
-    it('warns and writes nothing when no field is supplied', async () => {
-      await notificationCommand.parseAsync(['node', 'notification', 'update', 'np-1'])
-
-      expect(mockWarn).toHaveBeenCalledWith('No fields to update. Use --name, --type, or --payload.')
+    it('fails and writes nothing when no field is supplied', async () => {
+      await expect(notificationCommand.parseAsync(['node', 'notification', 'update', 'np-1'])).rejects.toThrow('No fields to update. Use --name, --type, or --payload.')
       expect(mockGet).not.toHaveBeenCalled()
       expect(mockPut).not.toHaveBeenCalled()
     })

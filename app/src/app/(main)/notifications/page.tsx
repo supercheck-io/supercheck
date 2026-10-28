@@ -45,12 +45,13 @@ import {
   type NotificationProvider,
 } from "@/hooks/use-alerts";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { ListErrorState } from "@/components/shared/list-states";
 
 function NotificationsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const router = useRouter();
 
-  const { providers, isLoading: providersLoading } = useNotificationProviders();
+  const { providers, isLoading: providersLoading, error: providersError, refetch: refetchProviders } = useNotificationProviders();
   const { createProvider, updateProvider, deleteProvider } = useNotificationProviderMutations();
 
   // Get user permissions
@@ -246,7 +247,9 @@ function NotificationsPage() {
                 }
               />
 
-              {providers.length === 0 && !providersLoading ? (
+              {providersError ? (
+                <ListErrorState title="Failed to fetch notification channels" error={providersError} onRetry={() => refetchProviders()} />
+              ) : providers.length === 0 && !providersLoading ? (
                 <DashboardEmptyState
                   className="min-h-[360px]"
                   title="No notification channels"

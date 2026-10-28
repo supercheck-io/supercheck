@@ -88,13 +88,15 @@ export const jobDefinitionSchema = z.object({
   jobType: z.enum(['playwright', 'k6']).optional(),
   tests: z.array(z.string()).min(1),
   cronSchedule: z.string().optional(),
-  status: z.string().optional(),
   alertConfig: alertConfigSchema.optional(),
 }, {
   error: (issue) => {
     if (issue.code === 'unrecognized_keys' && issue.keys.includes('tags')) {
       const name = (issue.input as { name?: unknown } | undefined)?.name
       return `Jobs do not support tags; remove \`tags\` from job "${typeof name === 'string' ? name : '?'}"`
+    }
+    if (issue.code === 'unrecognized_keys' && issue.keys.includes('status')) {
+      return 'Job `status` is runtime state and is not deployed; remove it from the config'
     }
     return undefined
   },
@@ -210,14 +212,9 @@ export const supercheckConfigSchema = z.object({
   api: apiConfigSchema.optional(),
   defaults: defaultsConfigSchema.optional(),
   tests: testsConfigSchema.optional(),
-  monitors: z.union([
-    z.string(),
-    z.array(monitorDefinitionSchema),
-  ]).optional(),
-  statusPages: z.union([
-    z.string(),
-    z.array(statusPageDefinitionSchema),
-  ]).optional(),
+  // Inline arrays only: glob discovery is not implemented, and a string would be ignored (and plan remote deletions).
+  monitors: z.array(monitorDefinitionSchema, { error: 'monitors must be an inline array; glob patterns are not supported' }).optional(),
+  statusPages: z.array(statusPageDefinitionSchema, { error: 'statusPages must be an inline array; glob patterns are not supported' }).optional(),
   jobs: z.array(jobDefinitionSchema).optional(),
   requirements: z.array(requirementDefinitionSchema).optional(),
   notificationProviders: z.array(notificationProviderDefinitionSchema).optional(),

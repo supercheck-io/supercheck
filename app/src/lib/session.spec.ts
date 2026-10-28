@@ -497,7 +497,7 @@ describe('Session Management', () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockResolvedValue([{ projectId: testProjectId }]),
+          limit: jest.fn().mockResolvedValue([{ role: 'project_admin' }]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
         
@@ -690,7 +690,7 @@ describe('Session Management', () => {
       const selectChain = {
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([{ projectId: testProjectId }]),
+        limit: jest.fn().mockResolvedValue([{ role: 'project_editor' }]),
       };
       mockDbModule.select.mockReturnValue(selectChain);
       

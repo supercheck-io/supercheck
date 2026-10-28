@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, exists, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
@@ -27,6 +28,7 @@ import {
   tests,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+import { TEST_PRIORITIES } from "@/lib/validations/common";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -50,6 +52,7 @@ const idArg = z.string().uuid();
 const RUN_STATUSES = ["running", "passed", "failed", "error", "blocked", "queued"] as const;
 // `open` is a filter, not a stored status: every incident that is not resolved.
 const INCIDENT_STATUSES = ["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"] as const;
+const TEST_TYPES = ["browser", "api", "database", "custom", "performance"] as const;
 const COVERAGE_STATUSES = ["covered", "failing", "missing"] as const;
 const MAX_CHILDREN = 100;
 const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -146,11 +149,13 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { project: project ?? null, role: ctx.role };
   });
 
-  tool("list_tests", "List tests in the project (no scripts)." + UNTRUSTED, "test", page, async ({ limit, cursor }) => {
+  tool("list_tests", "List tests in the project (no scripts)." + UNTRUSTED, "test",
+    { ...page, type: z.enum(TEST_TYPES).optional(), priority: z.enum(TEST_PRIORITIES).optional(), search: z.string().trim().min(1).max(100).optional().describe("case-insensitive title match") },
+    async ({ limit, cursor, type, priority, search }) => {
     const rows = await db
       .select({ id: tests.id, title: tests.title, type: tests.type, priority: tests.priority, updatedAt: tests.updatedAt })
       .from(tests)
-      .where(scope(tests, [cursor ? lt(tests.id, cursor) : undefined]))
+      .where(scope(tests, [cursor ? lt(tests.id, cursor) : undefined, type ? eq(tests.type, type) : undefined, priority ? eq(tests.priority, priority) : undefined, search ? ilike(tests.title, `%${search.replace(/[\\%_]/g, "\\$&")}%`) : undefined]))
       .orderBy(desc(tests.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -216,11 +221,16 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       jobId: z.string().uuid().optional(),
     },
     async ({ limit, cursor, status, jobId }) => {
+    // Run ids are random v4 uuids, so order by createdAt; the cursor stays the last run id and is resolved to its (createdAt, id) position.
+    const cur = alias(runs, "cursor_run");
+    const after = cursor
+      ? sql`(${runs.createdAt}, ${runs.id}) < (select ${cur.createdAt}, ${cur.id} from "runs" "cursor_run" where ${cur.id} = ${cursor} and ${cur.projectId} = ${ctx.projectId})`
+      : undefined;
     const rows = await db
       .select(runColumns)
       .from(runs)
-      .where(runScope([cursor ? lt(runs.id, cursor) : undefined, status ? eq(runs.status, status) : undefined, jobId ? eq(runs.jobId, jobId) : undefined]))
-      .orderBy(desc(runs.id))
+      .where(runScope([after, status ? eq(runs.status, status) : undefined, jobId ? eq(runs.jobId, jobId) : undefined]))
+      .orderBy(desc(runs.createdAt), desc(runs.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
     return { runs: items.map(runDto), nextCursor };
@@ -260,12 +270,12 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
   // statusLabel is the status the app shows (six values); `status` stays the stored value used by the filter.
   const lifecycleDto = (i: LifecycleRow) => ({ statusLabel: getDisplayStatus(i.status, i.acknowledgedAt).label, acknowledgedAt: iso(i.acknowledgedAt), mitigatedAt: iso(i.mitigatedAt) });
 
-  tool("list_incidents", "List incidents, newest first. `assignee` is `me`, `unassigned` or a user id." + UNTRUSTED, "sre_incident", { ...page, status: z.enum(INCIDENT_STATUSES).optional(), assignee: z.union([z.literal("me"), z.literal("unassigned"), z.string().uuid()]).optional() }, async ({ limit, cursor, status, assignee }) => {
+  tool("list_incidents", "List incidents, newest first. `assignee` is `me`, `unassigned` or a user id." + UNTRUSTED, "sre_incident", { ...page, status: z.enum(INCIDENT_STATUSES).optional(), severity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(), assignee: z.union([z.literal("me"), z.literal("unassigned"), z.string().uuid()]).optional() }, async ({ limit, cursor, status, severity, assignee }) => {
     const assigneeFilter = assignee === "unassigned" ? isNull(sreIncidents.assigneeUserId) : assignee ? eq(sreIncidents.assigneeUserId, assignee === "me" ? ctx.userId : assignee) : undefined;
     const rows = await db
       .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, ...incidentLifecycle })
       .from(sreIncidents)
-      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status === "open" ? ne(sreIncidents.status, "resolved") : status ? eq(sreIncidents.status, status) : undefined, assigneeFilter]))
+      .where(scope(sreIncidents, [cursor ? lt(sreIncidents.id, cursor) : undefined, status === "open" ? ne(sreIncidents.status, "resolved") : status ? eq(sreIncidents.status, status) : undefined, severity ? eq(sreIncidents.severity, severity) : undefined, assigneeFilter]))
       .orderBy(desc(sreIncidents.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -345,8 +355,9 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       timeoutSeconds: typeof c?.timeoutSeconds === "number" ? c.timeoutSeconds : null,
       enableSslCheck: typeof c?.enableSslCheck === "boolean" ? c.enableSslCheck : null,
     };
-    const regions = Array.isArray(c?.regions)
-      ? c.regions.filter((r): r is string => typeof r === "string").slice(0, 50).map((r) => safeText(r, 50))
+    const loc = c?.locationConfig;
+    const locations = loc?.enabled === true && Array.isArray(loc.locations)
+      ? loc.locations.filter((r): r is string => typeof r === "string").slice(0, 50).map((r) => safeText(r, 50))
       : [];
     return {
       monitor: {
@@ -359,7 +370,9 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
         enabled: m.enabled,
         frequencyMinutes: m.frequencyMinutes,
         lastCheckAt: iso(m.lastCheckAt),
-        locations: regions,
+        locations,
+        locationStrategy: locations.length ? (loc?.strategy ?? "majority") : null,
+        locationThreshold: locations.length && typeof loc?.threshold === "number" ? loc.threshold : null,
         settings,
         alerts: {
           enabled: m.alertConfig?.enabled === true,

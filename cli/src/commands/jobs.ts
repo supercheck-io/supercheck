@@ -359,8 +359,7 @@ jobCommand
     }
 
     if (Object.keys(body).length === 0) {
-      logger.warn('No fields to update. Use --name, --description, --schedule, or --tests.')
-      return
+      throw new CLIError('No fields to update. Use --name, --description, --schedule, or --tests.', ExitCode.ConfigError)
     }
 
     if (options.dryRun) {

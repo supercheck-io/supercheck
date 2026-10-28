@@ -47,7 +47,7 @@ export function RunsClient() {
   const fetchRuns = useCallback(async () => {
     safeSetIsLoading(true);
     try {
-      const response = await fetch('/api/runs?limit=100');
+      const response = await fetch('/api/runs');
       const result = await response.json();
 
       if (!response.ok) {
@@ -56,6 +56,12 @@ export function RunsClient() {
 
       // Handle new paginated response format
       const fetchedRuns = result.data || result;
+      // With no limit the API returns up to its cap (newest first); say so if more exist.
+      if (result.pagination?.hasNextPage) {
+        toast.info(`Showing the newest ${fetchedRuns.length} of ${result.pagination.total} runs`, {
+          description: "Open a job to see its full run history.",
+        });
+      }
 
       // Cast status and map nulls to undefined
       const typedRuns = fetchedRuns.map((run: { 

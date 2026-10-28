@@ -19,6 +19,8 @@ export async function sendWebhookNotifications(
   update?: NotificationUpdate,
   subscriberId?: string,
   isCreation = false,
+  // Only the settled (final) attempt counts toward quarantine; earlier ones are retried.
+  finalAttempt = true,
 ) {
   try {
     console.log(
@@ -188,15 +190,16 @@ export async function sendWebhookNotifications(
           failureCount++;
 
           // Track failure and quarantine if threshold exceeded
-          const newFailureCount = (subscriber.webhookFailures || 0) + 1;
+          const newFailureCount =
+            (subscriber.webhookFailures || 0) + (finalAttempt ? 1 : 0);
           const updates: Record<string, unknown> = {
             webhookLastAttemptAt: new Date(),
-            webhookFailures: newFailureCount,
+            ...(finalAttempt ? { webhookFailures: newFailureCount } : {}),
             webhookLastError: result.error,
             updatedAt: new Date(),
           };
 
-          if (shouldQuarantine(newFailureCount)) {
+          if (finalAttempt && shouldQuarantine(newFailureCount)) {
             console.warn(
               `[Webhook Notifications] Quarantining subscriber ${subscriber.id} after ${newFailureCount} failures`,
             );

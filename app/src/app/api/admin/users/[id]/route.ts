@@ -7,13 +7,13 @@ import {
   projectVariables,
   notificationProviders, notifications,
   statusPages, incidents, incidentUpdates, incidentTemplates, postmortems,
-  auditLogs,
+  auditLogs, member,
 } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
@@ -96,11 +96,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .where(eq(user.id, resolvedParams.id))
       .limit(1);
 
-    const [updatedUser] = await db
-      .update(user)
-      .set({ ...changes, updatedAt: new Date() })
-      .where(eq(user.id, resolvedParams.id))
-      .returning();
+    const applyChanges = (executor: Pick<typeof db, 'update'>) =>
+      executor
+        .update(user)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(user.id, resolvedParams.id))
+        .returning();
+
+    let updatedUser: typeof user.$inferSelect | undefined;
+    if (before?.role === 'super_admin' && changes.role !== undefined && changes.role !== 'super_admin') {
+      // Lock every super admin row so two concurrent demotions cannot both pass the check.
+      const outcome = await db.transaction(async (tx) => {
+        const admins = await tx.select({ id: user.id }).from(user).where(eq(user.role, 'super_admin')).for('update');
+        if (admins.length <= 1 && admins.some((a) => a.id === resolvedParams.id)) return 'last-admin' as const;
+        return (await applyChanges(tx))[0];
+      });
+      if (outcome === 'last-admin') {
+        return NextResponse.json(
+          { success: false, error: 'Cannot demote the last super admin' },
+          { status: 409 }
+        );
+      }
+      updatedUser = outcome;
+    } else {
+      [updatedUser] = await applyChanges(db);
+    }
 
     if (!updatedUser) {
       return NextResponse.json(
@@ -163,6 +183,25 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }
 
     const userId = resolvedParams.id;
+
+    // Deleting the only owner of an organization that still has other members would
+    // leave it with nobody able to manage it. Require an ownership transfer first.
+    const [soleOwned] = await db
+      .select({ organizationId: member.organizationId })
+      .from(member)
+      .where(and(
+        eq(member.userId, userId),
+        eq(member.role, 'org_owner'),
+        sql`exists (select 1 from member other where other.organization_id = ${member.organizationId} and other.user_id <> ${userId})`,
+        sql`not exists (select 1 from member other where other.organization_id = ${member.organizationId} and other.role = 'org_owner' and other.user_id <> ${userId})`,
+      ))
+      .limit(1);
+    if (soleOwned) {
+      return NextResponse.json(
+        { success: false, error: 'User is the only owner of an organization with other members. Transfer ownership first.' },
+        { status: 409 }
+      );
+    }
 
     await db.transaction(async (tx) => {
       // 1. Delete API keys (onDelete: "no action" would block user deletion)

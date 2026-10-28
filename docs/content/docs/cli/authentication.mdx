@@ -91,7 +91,7 @@ To wait for the result with `job trigger --wait`, also supply a CLI token with a
 |---|---|---|
 | `SUPERCHECK_TOKEN` | Usually | CLI token for most commands and for `job trigger --wait` |
 | `SUPERCHECK_TRIGGER_KEY` | For `job trigger` | Job-specific trigger key |
-| `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`) |
+| `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`). The CLI sends your token only over `https://`, or `http://` to `localhost` or `127.0.0.1`. An empty value is ignored |
 | `SUPERCHECK_ORG` | No | Default organization ID (UUID) |
 | `SUPERCHECK_PROJECT` | No | Default project ID (UUID) |
 | `HTTP_PROXY`, `HTTPS_PROXY` | No | Proxy URL for HTTP / HTTPS requests |

@@ -37,6 +37,7 @@ describe("SreIncidentAnalytics", () => {
     }} />);
 
     expect(screen.getByText("Incident trends")).toBeInTheDocument();
+    expect(screen.getByText("Of incidents created in the last 30 days")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("1h 35m")).toBeInTheDocument();
     expect(screen.getByText("Most affected services")).toBeInTheDocument();

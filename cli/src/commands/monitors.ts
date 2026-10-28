@@ -303,8 +303,7 @@ monitorCommand
     if (Object.keys(config).length > 0) body.config = config
 
     if (Object.keys(body).length === 0) {
-      logger.warn('No fields to update. Use --name, --url, --interval-minutes, --timeout, --method, or --active.')
-      return
+      throw new CLIError('No fields to update. Use --name, --url, --interval-minutes, --timeout, --method, or --active.', ExitCode.ConfigError)
     }
 
     if (options.dryRun) {
