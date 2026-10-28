@@ -4,6 +4,7 @@ import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { hasOrganizationWideAccess, type Role } from '@/lib/rbac/permissions-client';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
 import { ExecutionWorkloadError } from '@/lib/execution/execution-policy';
 import { SubscriptionAccessDeniedError } from '@/lib/services/subscription-service';
@@ -41,7 +42,7 @@ export async function GET() {
     }
 
     // Org-level roles see every project; project-level roles only their own.
-    const isOrgLevelRole = project.userRole.toLowerCase().startsWith('org_');
+    const isOrgLevelRole = hasOrganizationWideAccess(project.userRole as Role);
 
     // Capacity is display-only here. An organization with no active plan or trial
     // (for example after a trial ends) must still see its runs, with no capacity.

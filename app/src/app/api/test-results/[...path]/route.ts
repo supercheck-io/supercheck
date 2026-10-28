@@ -507,13 +507,23 @@ export async function GET(request: Request) {
         );
       }
 
-      // A generated document opened as a top-level page (a link someone sent, not the in-app viewer)
-      // runs on the app origin, and the test code that produced it is user-authored. Give it an opaque
-      // origin so it cannot act with the viewer's session. The embedded viewer is unchanged: it needs
-      // same-origin access to load trace data.
-      if (isGeneratedDocument && request.headers.get("sec-fetch-dest") === "document") {
-        headers.set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads");
+      // A generated document is produced by user-authored test code. Give it an opaque origin unless it
+      // is loaded by the in-app viewer (a same-origin iframe, which needs same-origin access for trace
+      // data). Top-level, cross-site, prefetch and header-less requests are all sandboxed.
+      // Residual risk: the in-app viewer iframe itself keeps allow-same-origin (tracked separately).
+      if (
+        isGeneratedDocument &&
+        !(
+          request.headers.get("sec-fetch-dest") === "iframe" &&
+          request.headers.get("sec-fetch-site") === "same-origin"
+        )
+      ) {
+        headers.set(
+          "Content-Security-Policy",
+          "sandbox allow-scripts allow-forms allow-downloads; frame-ancestors 'self'"
+        );
       }
+      headers.append("Vary", "Sec-Fetch-Dest, Sec-Fetch-Site");
 
       const buffer = await s3Response.arrayBuffer();
 

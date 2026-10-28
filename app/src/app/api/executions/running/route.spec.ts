@@ -105,7 +105,7 @@ it("scopes project-level roles to their project", async () => {
   jest.mocked(requireAuthContext).mockResolvedValue({
     userId: "user",
     organizationId: "org",
-    project: { id: "project-1", userRole: "project_viewer" },
+    project: { id: "project-1", userRole: "project_editor" },
   } as never);
   await GET();
   expect(eq).toHaveBeenCalledWith(runs.projectId, "project-1");

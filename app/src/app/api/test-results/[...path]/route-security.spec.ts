@@ -24,9 +24,13 @@ import { GET } from "./route";
 const attachment = '<script>document.title = "attachment executed"</script>';
 let entityType = "test";
 
+// The in-app viewer loads reports as a same-origin iframe.
+const viewerHeaders = { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin" };
+
 function request(file: string, query = "") {
   return new Request(
     `https://app.example/api/test-results/run-id/${file}${query}`,
+    { headers: viewerHeaders },
   );
 }
 
@@ -147,13 +151,18 @@ describe("report artifact response security", () => {
     },
   );
 
+  it("sandboxes a generated document requested without fetch metadata", async () => {
+    const response = await GET(new Request("https://app.example/api/test-results/run-id/report/index.html"));
+    expect(response.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
+  });
+
   it.each(["report/index.html", "report/trace/index.html", "report.html"])(
     "isolates a generated document opened as a top-level page at %s",
     async (file) => {
       entityType = "k6_job";
       const response = await GET(
         new Request(`https://app.example/api/test-results/run-id/${file}`, {
-          headers: { "Sec-Fetch-Dest": "document" },
+          headers: { "Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "none" },
         }),
       );
       const csp = response.headers.get("content-security-policy") ?? "";
