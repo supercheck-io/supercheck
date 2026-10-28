@@ -1489,7 +1489,7 @@ export class NotificationService {
                   value: clip(field.value || '-', 1024),
                   inline: field.short || false,
                 })),
-                footer: { text: formatted.footer || 'Supercheck' },
+                footer: { text: formatted.footer?.trim() || 'Supercheck' },
                 timestamp: new Date(formatted.timestamp * 1000).toISOString(),
               },
             ],
