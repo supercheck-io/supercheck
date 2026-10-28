@@ -52,7 +52,7 @@ const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: { query: { sreIncidents: { findFirst: jest.Mock } } };
 };
 
-function uploadRequest(file: File, incidentId = "018f0000-0000-7000-8000-000000000004") {
+function uploadRequest(file: File, incidentId = "018f0000-0000-7000-8000-000000000004", omitLength = false) {
   const formData = new FormData();
   formData.append("incidentId", incidentId);
   formData.append("file", file);
@@ -60,6 +60,7 @@ function uploadRequest(file: File, incidentId = "018f0000-0000-7000-8000-0000000
   return new NextRequest("http://localhost/api/sre/chat/attachments", {
     method: "POST",
     body: formData,
+    headers: omitLength ? {} : { "content-length": String(file.size + 1024) },
   });
 }
 
@@ -92,6 +93,12 @@ describe("SRE chat attachment upload API", () => {
     });
     expect(body.attachment.storagePath).toContain("projects/018f0000-0000-7000-8000-000000000003/sre-chat/018f0000-0000-7000-8000-000000000004/");
     expect(body.attachment).not.toHaveProperty("content");
+  });
+
+  it("rejects a body with no content-length before parsing it", async () => {
+    const response = await POST(uploadRequest(new File(["hello"], "a.txt", { type: "text/plain" }), undefined, true));
+
+    expect(response.status).toBe(411);
   });
 
   it("rejects unsupported file types", async () => {

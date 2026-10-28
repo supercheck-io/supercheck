@@ -19,6 +19,7 @@ import {
 import { eq, and, asc, desc, inArray } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions-client";
+import { resolveEffectiveProjectRole } from "./rbac/effective-project-role";
 import { getCachedAuthSession } from "./session-cache";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
@@ -355,23 +356,8 @@ export async function getUserProjects(
 
     // Return projects with correct role for each
     return projectsData.map((project) => {
-      let projectRole: Role;
-
-      // For org-wide roles (ORG_OWNER, ORG_ADMIN), use org role for all projects
-      if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) {
-        projectRole = orgRole;
-      } else {
-        // For all other cases, use the actual project-specific role from project_members table
-        const dbProjectRole = projectRolesMap.get(project.id);
-        if (dbProjectRole) {
-          projectRole = convertRoleToUnified(dbProjectRole);
-        } else {
-          // No project-specific role found
-          // According to RBAC rules, project_editor/project_admin MUST be explicitly assigned
-          // If they are not in projectRolesMap (i.e., not assigned), they degrade to viewer
-          projectRole = Role.PROJECT_VIEWER;
-        }
-      }
+      const projectRole =
+        resolveEffectiveProjectRole(orgRole, projectRolesMap.get(project.id)) ?? Role.PROJECT_VIEWER;
 
       return {
         id: project.id,
@@ -422,8 +408,7 @@ export async function getSelectableProjects(userId: string): Promise<ProjectWith
     const org = orgsById.get(project.organizationId)!;
     // Existing RBAC: assignments grant writes; all other active team projects
     // remain selectable with read-only viewer access.
-    const role = org.role === Role.ORG_OWNER || org.role === Role.ORG_ADMIN
-      ? org.role : project.projectRole ? convertRoleToUnified(project.projectRole) : Role.PROJECT_VIEWER;
+    const role = resolveEffectiveProjectRole(org.role, project.projectRole) ?? Role.PROJECT_VIEWER;
     return {
       id: project.id, name: project.name, slug: project.slug || undefined,
       description: project.description || undefined, organizationId: project.organizationId,
@@ -473,12 +458,12 @@ export async function getUserProjectRole(
       return Role.PROJECT_VIEWER;
     }
 
-    // For PROJECT_ADMIN and PROJECT_EDITOR, check if they're assigned to this specific project
+    // Project-limited roles: effective role is the lower of org role and project assignment
     if (orgRole === Role.PROJECT_ADMIN || orgRole === Role.PROJECT_EDITOR) {
       const { projectMembers } = await import("@/db/schema");
 
       const assignment = await db
-        .select({ projectId: projectMembers.projectId })
+        .select({ role: projectMembers.role })
         .from(projectMembers)
         .where(
           and(
@@ -488,9 +473,7 @@ export async function getUserProjectRole(
         )
         .limit(1);
 
-      // If they're assigned to this project, they have their full role
-      // If not assigned, they have viewer access (project_admin is NOT org admin)
-      return assignment.length > 0 ? orgRole : Role.PROJECT_VIEWER;
+      return resolveEffectiveProjectRole(orgRole, assignment[0]?.role) ?? Role.PROJECT_VIEWER;
     }
 
     // For other roles (ORG_OWNER, ORG_ADMIN, PROJECT_VIEWER) - use their org role

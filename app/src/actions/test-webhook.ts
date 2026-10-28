@@ -125,6 +125,7 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
         .set({
           webhookLastAttemptAt: new Date(),
           webhookFailures: 0,
+          quarantinedAt: null, // a working endpoint rejoins delivery
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, validatedData.subscriberId));

@@ -32,6 +32,13 @@ function duration(from: Date, to: Date | null) {
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+/** A saved section is capped at 4000 characters; drop middle events so the start and resolution survive. */
+function boundedBullets(lines: string[]) {
+  const kept = [...lines];
+  while (bullet(kept).length > 4000 && kept.length > 2) kept.splice(Math.floor(kept.length / 2), 1);
+  return bullet(kept).slice(0, 4000);
+}
+
 /** Template used when the model is unavailable or returns something unusable. Facts only. */
 export function buildDeterministicPostmortem(ctx: PostmortemContext): PostmortemSections {
   const validated = ctx.hypotheses.filter((hypothesis) => hypothesis.state === "validated");
@@ -46,7 +53,7 @@ export function buildDeterministicPostmortem(ctx: PostmortemContext): Postmortem
       ? `Service affected: ${ctx.serviceName}. Describe user and business impact here.`
       : "Describe user and business impact here.",
     timeline: ctx.timeline.length > 0
-      ? bullet(ctx.timeline.map((event) => `${iso(event.at)} - ${event.label}`))
+      ? boundedBullets(ctx.timeline.map((event) => `${iso(event.at)} - ${event.label}`))
       : "No timeline events were recorded.",
     root_cause: ctx.rootCauseSummary
       ? `${ctx.rootCauseSummary}${ctx.confidenceLabel ? `\n\nAI confidence: ${ctx.confidenceLabel}.` : ""}${

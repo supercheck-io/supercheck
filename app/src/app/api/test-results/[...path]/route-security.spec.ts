@@ -10,6 +10,8 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/report-results-utils", () => ({}));
 jest.mock("@/lib/test-results-access", () => ({
+  getPermissionResource: (t: string) =>
+    t === "test" ? "test" : t === "monitor" ? "monitor" : "run",
   getReportCacheControl: () => "private, no-store, no-cache, must-revalidate",
   resolveAccessContext: jest.fn(),
 }));
@@ -24,9 +26,13 @@ import { GET } from "./route";
 const attachment = '<script>document.title = "attachment executed"</script>';
 let entityType = "test";
 
+// The in-app viewer loads reports as a same-origin iframe.
+const viewerHeaders = { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin" };
+
 function request(file: string, query = "") {
   return new Request(
     `https://app.example/api/test-results/run-id/${file}${query}`,
+    { headers: viewerHeaders },
   );
 }
 
@@ -144,6 +150,27 @@ describe("report artifact response security", () => {
       expect(response.headers.get("content-disposition")).toBeNull();
       expect(response.headers.get("content-security-policy")).toBeNull();
       expect(await response.text()).toBe(attachment);
+    },
+  );
+
+  it("sandboxes a generated document requested without fetch metadata", async () => {
+    const response = await GET(new Request("https://app.example/api/test-results/run-id/report/index.html"));
+    expect(response.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
+  });
+
+  it.each(["report/index.html", "report/trace/index.html", "report.html"])(
+    "isolates a generated document opened as a top-level page at %s",
+    async (file) => {
+      entityType = "k6_job";
+      const response = await GET(
+        new Request(`https://app.example/api/test-results/run-id/${file}`, {
+          headers: { "Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "none" },
+        }),
+      );
+      const csp = response.headers.get("content-security-policy") ?? "";
+      // Opaque origin: test-authored script cannot use the viewer's session.
+      expect(csp).toContain("sandbox allow-scripts");
+      expect(csp).not.toContain("allow-same-origin");
     },
   );
 

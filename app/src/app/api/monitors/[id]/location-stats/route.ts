@@ -9,7 +9,7 @@ import { eq, and, gte, sql, desc } from "drizzle-orm";
 import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
-import { requireUserAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import type {
   MonitorResultStatus,
@@ -130,8 +130,9 @@ export async function GET(
         .groupBy(monitorResults.location),
 
       // Get latest result per location
+      // DISTINCT ON keeps one row per location however long a region has been silent.
       db
-        .select({
+        .selectDistinctOn([monitorResults.location], {
           location: monitorResults.location,
           checkedAt: monitorResults.checkedAt,
           status: monitorResults.status,
@@ -139,9 +140,8 @@ export async function GET(
           responseTimeMs: monitorResults.responseTimeMs,
         })
         .from(monitorResults)
-        .where(eq(monitorResults.monitorId, id))
-        .orderBy(desc(monitorResults.checkedAt))
-        .limit(100), // Get enough to cover all locations
+        .where(and(eq(monitorResults.monitorId, id), gte(monitorResults.checkedAt, startDate)))
+        .orderBy(desc(monitorResults.location), desc(monitorResults.checkedAt)),
     ]);
 
     // Calculate uptime percentage for each location
@@ -199,6 +199,10 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      const status = (error as { status?: number }).status === 403 ? 403 : 401;
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Authentication required" }, { status });
+    }
     logger.error({ err: error, monitorId: id }, "Error fetching location stats");
     return NextResponse.json(
       { error: "Failed to fetch location statistics" },

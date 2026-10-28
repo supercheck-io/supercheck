@@ -41,6 +41,7 @@ jest.mock("./rbac/permissions", () => ({
 }));
 
 jest.mock("./rbac/role-normalizer", () => ({
+  ...jest.requireActual("./rbac/role-normalizer"),
   roleToString: jest.fn((role: string) => role),
 }));
 

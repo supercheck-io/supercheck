@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -19,8 +19,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   )).limit(1);
   if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
 
-  const events = await db.select().from(sreIncidentTimelineEvents)
+  // The newest 1000 (so a long incident keeps its latest events), returned oldest first.
+  const newest = await db.select().from(sreIncidentTimelineEvents)
     .where(eq(sreIncidentTimelineEvents.incidentId, parsedId.data))
-    .orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(1000);
-  return NextResponse.json({ success: true, events });
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(1000);
+  return NextResponse.json({ success: true, events: newest.reverse() });
 }

@@ -340,6 +340,9 @@ function buildDeployValidationResult(input: {
   };
 }
 
+/** Caps work per deploy request (one DB query per binding). */
+const MAX_DEPLOY_ITEMS = 500;
+
 function readOptionalArray(
   value: unknown,
   path: string,
@@ -351,6 +354,11 @@ function readOptionalArray(
 
   if (!Array.isArray(value)) {
     errors.push({ path, message: "Expected an array." });
+    return [];
+  }
+
+  if (value.length > MAX_DEPLOY_ITEMS) {
+    errors.push({ path, message: `Expected at most ${MAX_DEPLOY_ITEMS} entries.` });
     return [];
   }
 

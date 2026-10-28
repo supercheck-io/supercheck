@@ -115,4 +115,29 @@ describe("Private Agent job lease route", () => {
     }));
     expect(jest.requireMock("@/lib/sre/connectors").decryptConnectorCredential).not.toHaveBeenCalled();
   });
+
+  it("fails stale queued jobs and jobs of disabled connectors before selecting work", async () => {
+    const updateSets: Array<Record<string, unknown>> = [];
+    const tx = {
+      update: jest.fn(() => ({
+        set: jest.fn((values: Record<string, unknown>) => {
+          updateSets.push(values);
+          return { where: jest.fn().mockResolvedValue([]) };
+        }),
+      })),
+      select: jest.fn(() => ({
+        from: jest.fn(() => ({
+          where: jest.fn(() => ({ orderBy: jest.fn(() => ({ limit: jest.fn().mockResolvedValue([]) })) })),
+        })),
+      })),
+    };
+    mockDb.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
+    const response = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", {
+      method: "POST",
+      body: JSON.stringify({ waitMs: 0 }),
+    }));
+    expect(response.status).toBe(200);
+    expect(updateSets).toContainEqual(expect.objectContaining({ status: "timed_out", errorCode: "queued_too_long" }));
+    expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_disabled" }));
+  });
 });

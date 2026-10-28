@@ -45,6 +45,14 @@ describe("buildDeterministicPostmortem", () => {
     expect(sections.follow_ups).toBe("- Add a canary");
   });
 
+  it("keeps the template timeline within the 4000-character section limit", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ at: new Date(Date.UTC(2026, 9, 1, 10, i)), label: `event ${i} ${"x".repeat(230)}` }));
+    const { timeline } = buildDeterministicPostmortem({ ...ctx, timeline: many });
+    expect(timeline.length).toBeLessThanOrEqual(4000);
+    expect(timeline).toContain("event 0 ");
+    expect(timeline).toContain("event 39 ");
+  });
+
   it("uses placeholders instead of inventing a cause", () => {
     const sections = buildDeterministicPostmortem({ ...ctx, rootCauseSummary: null, hypotheses: [], nextChecks: [], timeline: [] });
     expect(sections.root_cause).toContain("No root cause was recorded");

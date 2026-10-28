@@ -169,7 +169,9 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
             (aic) =>
               aic.incident &&
               aic.incident.id !== validatedData.incidentId &&
-              aic.incident.status !== "resolved",
+              aic.incident.status !== "resolved" &&
+            // A not-yet-started maintenance does not affect health (reconciler ignores it).
+            aic.incident.status !== "scheduled",
           );
 
           if (!hasOtherActiveIncidents) {

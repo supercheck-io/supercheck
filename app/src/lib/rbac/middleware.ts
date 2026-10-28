@@ -23,6 +23,7 @@ import {
   statement,
 } from "./permissions";
 import { normalizeRole } from "./role-normalizer";
+import { resolveEffectiveProjectRole } from "./effective-project-role";
 import { isSuperAdmin } from "./super-admin";
 import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -178,7 +179,7 @@ export async function hasPermission(
 
     const permissionContext: PermissionContext = {
       userId: effectiveUserId,
-      role: userRole,
+      role: await capRoleToProjectMembership(effectiveUserId, userRole, context?.projectId),
       organizationId: context?.organizationId,
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
@@ -190,6 +191,25 @@ export async function hasPermission(
     console.error("Error checking permission:", error);
     return false;
   }
+}
+
+/**
+ * Apply the lower-of-two rule to a project-scoped permission check: a project-limited
+ * org role is capped by the user's project_members role for that project. With no row,
+ * the role is unchanged (checkPermission already limits unassigned projects to view).
+ */
+async function capRoleToProjectMembership(
+  userId: string,
+  role: Role,
+  projectId: string | undefined,
+): Promise<Role> {
+  if (!projectId || (role !== Role.PROJECT_ADMIN && role !== Role.PROJECT_EDITOR)) return role;
+  const [row] = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return row ? (resolveEffectiveProjectRole(role, row.role) ?? role) : role;
 }
 
 /**
@@ -222,7 +242,7 @@ export async function hasPermissionForUser(
 
     const permissionContext: PermissionContext = {
       userId,
-      role: userRole,
+      role: await capRoleToProjectMembership(userId, userRole, context?.projectId),
       organizationId: context?.organizationId,
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
@@ -279,7 +299,7 @@ export async function resolveProjectPermissionContext(
   const [project] = await db
     .select({ id: projects.id, organizationId: projects.organizationId })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), eq(projects.status, "active")))
     .limit(1);
 
   if (!project) return null;
@@ -298,7 +318,7 @@ export async function resolveProjectPermissionContext(
   const orgRole = await getUserOrgRole(userId, project.organizationId);
   if (!orgRole) return null; // Not an org member — deny all access
 
-  // 4. For org-wide roles, use directly (no project membership check needed)
+  // 4. Org-wide roles bypass project membership
   if (orgRole === Role.ORG_OWNER || orgRole === Role.ORG_ADMIN) {
     return {
       userId,
@@ -319,9 +339,8 @@ export async function resolveProjectPermissionContext(
     )
     .limit(1);
 
-  const effectiveRole = projectMember
-    ? normalizeRole(projectMember.role)
-    : Role.PROJECT_VIEWER; // Degrade to viewer if not assigned
+  const effectiveRole =
+    resolveEffectiveProjectRole(orgRole, projectMember?.role) ?? Role.PROJECT_VIEWER;
 
   return {
     userId,
@@ -380,7 +399,7 @@ export async function canCancelRunInProject(
       return false; // User is not a member of this project
     }
 
-    const projectRole = normalizeRole(projectMember[0].role);
+    const projectRole = resolveEffectiveProjectRole(userRole, projectMember[0].role);
     // PROJECT_ADMIN and PROJECT_EDITOR can cancel runs
     return (
       projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR

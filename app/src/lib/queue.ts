@@ -1791,7 +1791,8 @@ export async function addMonitorExecutionJobToQueue(
       removeOnFail: { age: 86400 },
     }, {
       // Manual runs have no scheduler retry: a failed publication aborts its cycle immediately.
-      configuredLocations: effectiveLocations,
+      // Regions with no live worker are skipped, not failed: only enqueued regions can be "missing".
+      configuredLocations: enqueuedLocations,
       policy: monitorCyclePolicy(locationConfig),
       abortOnFailure: true,
     });

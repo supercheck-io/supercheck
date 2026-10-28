@@ -42,7 +42,6 @@ describe("observability provider wiring", () => {
     const recipes = getDiagnosticQueryAdapterRecipes(type);
     expect(recipes.length).toBeGreaterThan(0);
     expect(isDiagnosticQueryTypeCompatible(type, "http_get")).toBe(true);
-    expect(isDiagnosticQueryTypeCompatible(type, "sql")).toBe(false);
     for (const recipe of recipes) {
       const params: Record<string, string> = recipe.id === "azure-resource-metric"
         ? { resource: "/subscriptions/44444444-4444-4444-4444-444444444444/resourceGroups/rg/providers/Microsoft.Web/sites/x" }

@@ -193,8 +193,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error ? error.message : "Failed to upload file",
+        message: "Failed to upload file",
       },
       { status: 500 }
     );
