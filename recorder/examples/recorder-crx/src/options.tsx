@@ -2,8 +2,8 @@
  * Supercheck Recorder - Options Page
  *
  * Connection model:
- * - First-party Supercheck deployments (see SUPERCHECK_CLOUD_ORIGINS) connect
- *   automatically after sign-in; nothing needs to be configured here.
+ * - Supercheck Cloud connects automatically after sign-in; nothing needs to be
+ *   configured here. The URL field stays empty for it.
  * - Self-hosted deployments require the user to save their instance URL once.
  *   That explicit action is the trust decision for the origin.
  * - A recorder API key is only needed for advanced/manual setups. Keys are
@@ -27,7 +27,6 @@ import {
   addConfigChangeListener,
   type SupercheckConfig
 } from './supercheck/config';
-import { SUPERCHECK_CLOUD_ORIGINS } from './supercheck/message-security';
 import { apiClient } from './supercheck/api-client';
 import { loadSettings, storeSettings, defaultSettings, type CrxSettings } from './settings';
 import './options.css';
@@ -40,21 +39,17 @@ interface ConnectionState {
   email?: string;
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
 const DOCS_URL = 'https://supercheck.io/docs/recorder';
+const ISSUES_URL = 'https://github.com/supercheck-io/supercheck/issues';
+
+/** The URL input stays empty for Supercheck Cloud so no address is shown. */
+const customUrlFor = (url: string | undefined) => (!url || isSameInstance(url, DEFAULT_INSTANCE_URL) ? '' : url);
 
 /**
  * Small "i" button that reveals a short explanation on hover or keyboard
  * focus. Keeps the form compact while the detail stays one click away.
  */
-function InfoTip({ label, children, learnMore }: { label: string; children: React.ReactNode; learnMore?: string }) {
+function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
   const id = React.useId();
   return (
     <span className='info-tip'>
@@ -65,15 +60,7 @@ function InfoTip({ label, children, learnMore }: { label: string; children: Reac
           <circle cx='8' cy='4.75' r='0.9' fill='currentColor' />
         </svg>
       </button>
-      <span role='tooltip' id={id} className='info-tip-body'>
-        {children}
-        {learnMore && (
-          <>
-            {' '}
-            <a href={`${DOCS_URL}${learnMore}`} target='_blank' rel='noopener noreferrer'>Learn more</a>
-          </>
-        )}
-      </span>
+      <span role='tooltip' id={id} className='info-tip-body'>{children}</span>
     </span>
   );
 }
@@ -82,13 +69,14 @@ function OptionsPage() {
   const [config, setConfig] = React.useState<SupercheckConfig | null>(null);
   const [settings, setSettings] = React.useState<CrxSettings>(defaultSettings);
   const [connectionState, setConnectionState] = React.useState<ConnectionState>({ status: 'loading' });
-  const [instanceUrl, setInstanceUrl] = React.useState(DEFAULT_INSTANCE_URL);
-  const [apiKey, setApiKey] = React.useState('');
+  const [customUrl, setCustomUrl] = React.useState('');
   const [hasStoredKey, setHasStoredKey] = React.useState(false);
   const [urlError, setUrlError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [showSelfHosted, setShowSelfHosted] = React.useState(false);
 
+  // Empty means Supercheck Cloud.
+  const instanceUrl = customUrl.trim() || DEFAULT_INSTANCE_URL;
   const instanceUrlRef = React.useRef(instanceUrl);
   instanceUrlRef.current = instanceUrl;
   const savedInstanceUrlRef = React.useRef<string | undefined>(undefined);
@@ -107,21 +95,19 @@ function OptionsPage() {
 
   const describeFailure = React.useCallback((
     reason: string | undefined,
-    target: string,
     retryAfterSeconds?: number
   ) => {
-    const host = hostOf(target);
     switch (reason) {
       case 'rate_limited':
         return `Too many connection checks. Try again in ${retryAfterSeconds ?? 60} seconds.`;
       case 'unreachable':
-        return `Could not reach ${host}. Check the URL, then try again.`;
+        return 'Could not reach your Supercheck instance. Check the URL, then try again.';
       case 'server_error':
-        return `${host} returned an error. Try again in a moment.`;
+        return 'Your Supercheck instance returned an error. Try again in a moment.';
       case 'missing_key':
-        return 'Enter a recorder API key, or save the URL and sign in to connect automatically.';
+        return 'Not connected yet. Open Supercheck in this browser and the recorder connects automatically.';
       default:
-        return `That API key was rejected by ${host}. Recorder keys are scoped to a single instance.`;
+        return 'The saved connection is no longer valid. Open Supercheck in this browser to reconnect.';
     }
   }, []);
 
@@ -148,7 +134,7 @@ function OptionsPage() {
 
     setConnectionState({
       status: 'error',
-      message: describeFailure(result.reason, savedConfig.instanceUrl, result.retryAfterSeconds),
+      message: describeFailure(result.reason, result.retryAfterSeconds),
     });
   }, [describeFailure]);
 
@@ -161,7 +147,9 @@ function OptionsPage() {
       ]);
 
       applyConfig(savedConfig);
-      setInstanceUrl(savedConfig.instanceUrl || DEFAULT_INSTANCE_URL);
+      const saved = customUrlFor(savedConfig.instanceUrl);
+      setCustomUrl(saved);
+      setShowSelfHosted(Boolean(saved));
       setSettings(savedSettings);
       await verifySavedConnection(savedConfig);
     }
@@ -186,9 +174,10 @@ function OptionsPage() {
       // An auto-connect from a Supercheck page is authoritative: it also
       // updates the instance this extension is paired with.
       if (next.apiKey) {
-        setInstanceUrl(next.instanceUrl || DEFAULT_INSTANCE_URL);
+        setCustomUrl(customUrlFor(next.instanceUrl));
+        if (customUrlFor(next.instanceUrl))
+          setShowSelfHosted(true);
         setConnectionState({ status: 'connected', email: next.userEmail });
-        setApiKey('');
         return;
       }
 
@@ -197,40 +186,31 @@ function OptionsPage() {
       // was saved before this change).
       const userIsEditing = !isSameInstance(instanceUrlRef.current, previousSavedUrl);
       if (!userIsEditing)
-        setInstanceUrl(next.instanceUrl || DEFAULT_INSTANCE_URL);
+        setCustomUrl(customUrlFor(next.instanceUrl));
       setConnectionState({ status: 'disconnected' });
     });
   }, [applyConfig]);
 
   // Validate URL on change.
   React.useEffect(() => {
-    if (!instanceUrl) {
-      setUrlError('Instance URL is required');
+    if (!customUrl.trim()) {
+      setUrlError(null);
       return;
     }
-    const validation = validateInstanceUrl(instanceUrl);
+    const validation = validateInstanceUrl(customUrl.trim());
     setUrlError(validation.valid ? null : validation.error || null);
-  }, [instanceUrl]);
+  }, [customUrl]);
 
   const savedInstanceUrl = config?.instanceUrl ?? DEFAULT_INSTANCE_URL;
   const urlChanged = !isSameInstance(instanceUrl, savedInstanceUrl);
-  const isCloudHost = React.useMemo(() => {
-    try {
-      return (SUPERCHECK_CLOUD_ORIGINS as readonly string[]).includes(new URL(instanceUrl).origin);
-    } catch {
-      return false;
-    }
-  }, [instanceUrl]);
-
   const handleInstanceUrlChange = (next: string) => {
-    setInstanceUrl(next);
-    setApiKey('');
+    setCustomUrl(next);
 
-    if (!isSameInstance(next, savedInstanceUrl)) {
+    if (!isSameInstance(next.trim() || DEFAULT_INSTANCE_URL, savedInstanceUrl)) {
       setConnectionState({
         status: 'disconnected',
         message: hasStoredKey
-          ? `The saved credential belongs to ${hostOf(savedInstanceUrl)} and will be removed when you save this URL.`
+          ? 'The saved credential belongs to the current instance and will be removed when you save this URL.'
           : undefined,
       });
       return;
@@ -262,12 +242,9 @@ function OptionsPage() {
         apiClient.clearCache();
         setConfig({ instanceUrl, autoConnected: false });
         setHasStoredKey(false);
-        setApiKey('');
         setConnectionState({
           status: 'configured',
-          message: isCloudHost
-            ? `URL saved. Sign in to ${hostOf(instanceUrl)} to connect automatically.`
-            : `Instance saved. Sign in to ${hostOf(instanceUrl)} to connect automatically.`,
+          message: 'URL saved. Open your Supercheck instance in this browser and the recorder connects automatically.',
         });
       }
 
@@ -284,61 +261,6 @@ function OptionsPage() {
     }
   };
 
-  const handleConnectWithKey = async () => {
-    if (!apiKey.trim()) {
-      setConnectionState({ status: 'error', message: 'Enter a recorder API key.' });
-      return;
-    }
-
-    const validation = validateInstanceUrl(instanceUrl);
-    if (!validation.valid) {
-      setUrlError(validation.error || 'Invalid URL');
-      return;
-    }
-
-    setSaving(true);
-    setConnectionState({ status: 'connecting' });
-    try {
-      const result = await apiClient.verifyConnection(apiKey.trim(), instanceUrl);
-      if (!result.valid) {
-        setConnectionState({
-          status: 'error',
-          message: describeFailure(result.reason, instanceUrl, result.retryAfterSeconds),
-        });
-        return;
-      }
-
-      suppressStorageSyncRef.current = true;
-      await replaceConfig({
-        instanceUrl,
-        apiKey: apiKey.trim(),
-        userEmail: result.user?.email,
-        userId: result.user?.id,
-        autoConnected: false,
-      });
-      apiClient.clearCache();
-      setConfig({
-        instanceUrl,
-        apiKey: apiKey.trim(),
-        userEmail: result.user?.email,
-        userId: result.user?.id,
-        autoConnected: false,
-      });
-      setHasStoredKey(true);
-      setApiKey('');
-      setConnectionState({ status: 'connected', email: result.user?.email });
-    } catch (error) {
-      suppressStorageSyncRef.current = false;
-      setConnectionState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Connection failed',
-      });
-    } finally {
-      releaseStorageSuppression();
-      setSaving(false);
-    }
-  };
-
   const handleDisconnect = async () => {
     setSaving(true);
     try {
@@ -347,7 +269,7 @@ function OptionsPage() {
       apiClient.clearCache();
       setConfig(null);
       setHasStoredKey(false);
-      setApiKey('');
+      setCustomUrl('');
       setConnectionState({
         status: 'disconnected',
         message: revoked
@@ -379,7 +301,7 @@ function OptionsPage() {
       case 'connecting':
         return 'Checking connection…';
       case 'connected':
-        return `Connected to ${hostOf(savedInstanceUrl)}${connectionState.email ? ` as ${connectionState.email}` : ''}`;
+        return connectionState.email ? `Connected as ${connectionState.email}` : 'Connected';
       case 'configured':
         return connectionState.message;
       case 'error':
@@ -389,153 +311,105 @@ function OptionsPage() {
     }
   })();
 
+  const connected = connectionState.status === 'connected';
+  const chevron = (open: boolean) => (
+    <svg className={`chevron${open ? ' open' : ''}`} viewBox='0 0 16 16' width='14' height='14' aria-hidden='true'>
+      <path d='M5 3l5 5-5 5' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+
   return (
     <div className='options-container'>
       <header className='options-header'>
-        <div className='logo-section'>
-          <svg className='logo-icon' viewBox='0 0 32 32' width='32' height='32'>
-            <circle cx='16' cy='16' r='16' fill='#50b748' />
-            <path d='M13.52,23.383 L6.158,16.02l2.828-2.828l4.533,4.535l9.617-9.617l2.828,2.828L13.52,23.383z' fill='white' />
-          </svg>
-          <h1>Supercheck Recorder</h1>
-        </div>
-        <p className='subtitle'>Record browser interactions and save them as automated tests</p>
+        <h1>Supercheck Recorder</h1>
+        <p className='subtitle'>Record a browser flow as a Playwright test, then open it in the Supercheck Playground.</p>
       </header>
 
       <main className='options-main'>
-        {/* Connection Section */}
-        <section className='options-section'>
-          <h2>
-            Supercheck Connection
-            <InfoTip label='the connection' learnMore='#connect-to-supercheck'>
-              Supercheck Cloud and the demo connect automatically once you sign in. Self-hosted
-              instances need their URL saved here once.
-            </InfoTip>
-          </h2>
+        <section className='options-section' aria-labelledby='connection-heading'>
+          <h2 id='connection-heading'>Connection</h2>
 
           <div className='connection-status' role='status' aria-live='polite'>
             <span className={`status-indicator ${connectionState.status}`} />
             <span className='status-text'>{statusLabel}</span>
           </div>
 
-          {connectionState.status === 'connected' ? (
-            <div className='connection-actions'>
-              <button
-                className='btn btn-secondary'
-                onClick={handleDisconnect}
-                disabled={saving}
-              >
+          {connected ? (
+            <div className='actions'>
+              <button className='btn btn-secondary' onClick={handleDisconnect} disabled={saving}>
                 Disconnect
               </button>
             </div>
           ) : (
             <>
-              <div className='callout'>
-                <strong>Supercheck-hosted sites connect automatically.</strong>
-                <span>
-                  {SUPERCHECK_CLOUD_ORIGINS.map(hostOf).join(', ')}
-                </span>
-                <span>
-                  Only a self-hosted instance needs its URL saved here.
-                </span>
-              </div>
+              <p className='lead'>
+                Open Supercheck in this browser and the recorder connects automatically. No setup needed.
+              </p>
 
-              <div className='form-group'>
-                <label htmlFor='instanceUrl'>
-                  Supercheck instance URL
-                  <InfoTip label='the instance URL' learnMore='#self-hosted-supercheck'>
-                    The address you open Supercheck at. Saving it is what lets this extension trust that site.
-                    Changing it removes the credential stored for the previous instance.
-                  </InfoTip>
-                </label>
-                <input
-                  id='instanceUrl'
-                  type='url'
-                  inputMode='url'
-                  autoComplete='off'
-                  spellCheck={false}
-                  value={instanceUrl}
-                  onChange={e => handleInstanceUrlChange(e.target.value)}
-                  placeholder={DEFAULT_INSTANCE_URL}
-                  className={urlError ? 'error' : ''}
-                  aria-invalid={Boolean(urlError)}
-                  aria-describedby='instanceUrl-hint'
-                />
-                {urlError && <span className='field-error'>{urlError}</span>}
-                <span className='field-hint' id='instanceUrl-hint'>
-                  Use the HTTPS URL of your deployment.
-                </span>
-              </div>
-
-              <button
-                className='btn btn-primary'
-                onClick={handleSaveInstance}
-                disabled={saving || !instanceUrl || Boolean(urlError)}
-              >
-                {saving ? 'Saving…' : urlChanged ? 'Save URL and open Supercheck' : 'Open Supercheck'}
-              </button>
-
-              <button
-                type='button'
-                className='btn-link'
-                onClick={() => setShowAdvanced(value => !value)}
-                aria-expanded={showAdvanced}
-                aria-controls='advanced-connection'
-              >
-                {showAdvanced ? 'Hide advanced connection' : 'Advanced: connect with an API key'}
-              </button>
-
-              {showAdvanced && (
-                <div id='advanced-connection' className='advanced-panel'>
-                  <div className='form-group'>
-                    <label htmlFor='apiKey'>
-                      Recorder API key
-                      <InfoTip label='the recorder API key' learnMore='#manual-api-key-advanced'>
-                        Only needed when you cannot sign in to the instance from this browser. Keys belong to one
-                        instance and are never sent to another.
-                      </InfoTip>
-                    </label>
-                    <input
-                      id='apiKey'
-                      type='password'
-                      autoComplete='off'
-                      spellCheck={false}
-                      value={apiKey}
-                      onChange={e => setApiKey(e.target.value)}
-                      placeholder='Paste an existing recorder key'
-                    />
-                    <span className='field-hint'>
-                      Paste the key issued by {hostOf(instanceUrl)}.
-                    </span>
+              <div className='disclosure'>
+                <button
+                  type='button'
+                  className='disclosure-toggle'
+                  onClick={() => setShowSelfHosted(value => !value)}
+                  aria-expanded={showSelfHosted}
+                  aria-controls='self-hosted-panel'
+                >
+                  {chevron(showSelfHosted)}
+                  Self-hosted instance
+                </button>
+                {showSelfHosted && (
+                  <div id='self-hosted-panel' className='disclosure-panel'>
+                    <p className='hint'>
+                      Only needed if you run your own Supercheck.{' '}
+                      <a href={`${DOCS_URL}#self-hosted-supercheck`} target='_blank' rel='noopener noreferrer'>Setup guide</a>
+                    </p>
+                    <div className='form-group'>
+                      <label htmlFor='instanceUrl'>Instance URL</label>
+                      <input
+                        id='instanceUrl'
+                        type='url'
+                        inputMode='url'
+                        autoComplete='off'
+                        spellCheck={false}
+                        value={customUrl}
+                        onChange={e => handleInstanceUrlChange(e.target.value)}
+                        placeholder='Your Supercheck URL'
+                        className={urlError ? 'error' : ''}
+                        aria-invalid={Boolean(urlError)}
+                        aria-describedby={urlError ? 'instanceUrl-error' : 'instanceUrl-hint'}
+                      />
+                      {urlError ? (
+                        <span className='field-error' id='instanceUrl-error'>{urlError}</span>
+                      ) : (
+                        <span className='field-hint' id='instanceUrl-hint'>
+                          The HTTPS address of your deployment. Leave empty for Supercheck Cloud.
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      className='btn btn-primary'
+                      onClick={handleSaveInstance}
+                      // An empty field means Supercheck Cloud, so clearing it is how a self-hosted user switches back.
+                      disabled={saving || Boolean(urlError) || !urlChanged}
+                    >
+                      {saving ? 'Saving…' : !customUrl.trim() ? 'Use Supercheck Cloud' : 'Save'}
+                    </button>
                   </div>
-                  <button
-                    className='btn btn-secondary'
-                    onClick={handleConnectWithKey}
-                    disabled={saving || !apiKey.trim() || Boolean(urlError)}
-                  >
-                    {saving ? 'Connecting…' : 'Connect with API key'}
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </section>
 
-        {/* Recorder Settings Section */}
-        <section className='options-section'>
-          <h2>
-            Recorder Settings
-            <InfoTip label='recorder settings' learnMore='#record-a-test'>
-              Preferences for how the recorder generates code and where it opens. They apply to every recording.
-            </InfoTip>
-          </h2>
+        <section className='options-section' aria-labelledby='recorder-heading'>
+          <h2 id='recorder-heading'>Recorder</h2>
 
           <div className='form-group'>
             <label htmlFor='testIdAttributeName'>
-              Test ID Attribute
+              Test ID attribute
               <InfoTip label='the test ID attribute'>
                 The HTML attribute your app uses for test hooks, such as data-testid or data-qa. Recorded
-                selectors use it through getByTestId() when an element has it.
+                selectors use getByTestId() when an element has it.
               </InfoTip>
             </label>
             <input
@@ -555,39 +429,18 @@ function OptionsPage() {
                 onChange={e => handleSettingChange('sidepanel', e.target.checked)}
               />
               Open in side panel
-              <InfoTip label='the side panel option'>
-                Opens the recorder docked beside the page so you can keep both in view. Turn it off to use a
-                popup window instead.
-              </InfoTip>
             </label>
+            <span className='field-hint'>Dock the recorder beside the page. Turn off to use a popup window.</span>
           </div>
-        </section>
-
-        {/* Help Section */}
-        <section className='options-section help-section'>
-          <h2>Need Help?</h2>
-          <ul>
-            <li>
-              <a href='https://supercheck.io/docs/recorder' target='_blank' rel='noopener noreferrer'>
-                Documentation
-              </a>
-            </li>
-            <li>
-              <a href='https://github.com/supercheck-io/supercheck/issues' target='_blank' rel='noopener noreferrer'>
-                Report an Issue
-              </a>
-            </li>
-            <li>
-              <a href='https://supercheck.io' target='_blank' rel='noopener noreferrer'>
-                Supercheck Website
-              </a>
-            </li>
-          </ul>
         </section>
       </main>
 
       <footer className='options-footer'>
-        <p>Supercheck Recorder v{chrome.runtime.getManifest().version}</p>
+        <nav aria-label='Help'>
+          <a href={DOCS_URL} target='_blank' rel='noopener noreferrer'>Documentation</a>
+          <a href={ISSUES_URL} target='_blank' rel='noopener noreferrer'>Report an issue</a>
+        </nav>
+        <p>Version {chrome.runtime.getManifest().version}</p>
       </footer>
     </div>
   );

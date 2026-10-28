@@ -25,7 +25,6 @@ export interface RecordingContextPayload {
  */
 export const SUPERCHECK_CLOUD_ORIGINS = [
   'https://app.supercheck.io',
-  'https://supercheck.io',
   'https://demo.supercheck.dev',
 ] as const;
 
