@@ -118,6 +118,8 @@ interface FormattedNotification {
 
 interface NotificationSendResult {
   success: boolean;
+  /** Some, not all, recipients were reached (email). */
+  partial?: boolean;
   error?: string;
   deliveryMetadata?: AlertDeliveryMetadata;
 }
@@ -291,6 +293,7 @@ export class NotificationService {
       ? result
       : {
           success: false,
+          partial: result.partial,
           error: result.error ?? 'Notification send returned false',
           deliveryMetadata: result.deliveryMetadata,
         };
@@ -626,6 +629,7 @@ export class NotificationService {
     results: Array<{
       provider: NotificationProvider;
       success: boolean;
+      partial?: boolean;
       error?: string;
       deliveryMetadata?: AlertDeliveryMetadata;
     }>;
@@ -651,6 +655,7 @@ export class NotificationService {
         return {
           provider,
           success,
+          partial: result.value.partial,
           error: success
             ? undefined
             : (result.value.error ?? 'Notification send returned false'),
@@ -789,6 +794,7 @@ export class NotificationService {
 
       return {
         success: false,
+        partial: true,
         error: `SMTP delivery reached ${smtpResult.sentCount}/${emailAddresses.length} recipient(s); failed for: ${smtpResult.failedRecipients.join(', ')}`,
       };
     } catch (error) {

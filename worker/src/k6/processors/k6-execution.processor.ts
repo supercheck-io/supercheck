@@ -552,7 +552,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           organizationId: taskData.organizationId,
           projectId: taskData.projectId,
           runId,
-          finalStatus,
+          finalStatus:
+            result.timedOut && finalStatus === 'failed'
+              ? 'timeout'
+              : finalStatus,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',

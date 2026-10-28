@@ -1252,6 +1252,7 @@ describe('NotificationService', () => {
       expect(result.failed).toBe(1);
       expect(result.results[0]).toMatchObject({
         success: false,
+        partial: true,
       });
       expect(result.results[0].error).toContain('bad@test.com');
     });

@@ -187,7 +187,12 @@ export class JobNotificationService {
         ),
       );
 
-      const normalizedStatus = finalStatus === 'error' ? 'failed' : finalStatus;
+      // A timeout still counts as a failed run unless the job has its own timeout alert.
+      const normalizedStatus =
+        finalStatus === 'error' ||
+        (finalStatus === 'timeout' && !alertConfig.alertOnTimeout)
+          ? 'failed'
+          : finalStatus;
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
@@ -221,7 +226,7 @@ export class JobNotificationService {
         normalizedStatus === 'passed' &&
         consecutiveSuccesses >= alertConfig.recoveryThreshold;
 
-      // Timeouts are not counted in the failure streak above, so they are not capped here.
+      // With alertOnTimeout, timeouts are not counted in the failure streak above, so they are not capped here.
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout && finalStatus === 'timeout';
 

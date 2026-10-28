@@ -200,9 +200,23 @@ describe('JobNotificationService', () => {
       }
     });
 
-    it('does not notify on timeout when alertOnTimeout is off', async () => {
+    it('treats a timeout as an ordinary failure when alertOnTimeout is off', async () => {
       const { service, dbService, notificationService } = createService();
       (await dbService.getJobById()).alertConfig.alertOnTimeout = false;
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ type: 'job_failed' }),
+      );
+    });
+
+    it('does not notify on timeout when both alertOnTimeout and alertOnFailure are off', async () => {
+      const { service, dbService, notificationService } = createService();
+      const { alertConfig } = await dbService.getJobById();
+      alertConfig.alertOnTimeout = false;
+      alertConfig.alertOnFailure = false;
       await service.handleJobNotifications(params);
       expect(
         notificationService.sendNotificationToMultipleProviders,
