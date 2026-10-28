@@ -82,14 +82,15 @@ export function NeedsAttentionCard({
   incidentsResult: OpenIncidentsResult | undefined;
   incidentsLoading: boolean;
 }) {
-  const [tab, setTab] = useState<"runs" | "incidents">("runs");
+  const [tab, setTab] = useState<"runs" | "incidents" | null>(null);
   const failureData = failuresByTrigger(failedRuns);
   const failureTotal = failureData.reduce((sum, d) => sum + d.count, 0);
   const incidentData = incidentsBySeverity(incidentsResult?.available ? incidentsResult.incidents : []);
   // Totals come from the bars so an unrecognised severity can't make them disagree.
   const incidentTotal = incidentData.reduce((sum, d) => sum + d.count, 0);
   const showIncidents = incidentsLoading || !!incidentsResult?.available;
-  const active = showIncidents ? tab : "runs";
+  // Open incidents come first; failed runs are the default only when nothing is open.
+  const active = showIncidents ? (tab ?? (incidentTotal > 0 ? "incidents" : "runs")) : "runs";
   const description =
     active === "runs"
       ? `${failureTotal} failed ${failureTotal === 1 ? "run" : "runs"} by trigger, last 7 days`

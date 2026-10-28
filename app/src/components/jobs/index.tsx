@@ -161,6 +161,8 @@ export default function Jobs() {
         tests,
         alertConfig: job.alertConfig as Job["alertConfig"],
         lastRun,
+        createdByName: job.createdByName ?? null,
+        createdByImage: job.createdByImage ?? null,
       };
     });
   }, [rawJobs]);

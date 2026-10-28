@@ -5,9 +5,16 @@ import { Queue } from 'bullmq';
 
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
 
-export type SreAlertTriageQueueJob = {
-  alertHistoryId: string;
+// Keep in sync with backgroundTriageJobSchema in app/src/sre/lib/background-alert-triage.ts.
+export type SreSourceRecovery = {
+  sourceType: 'monitor' | 'job';
+  sourceId: string;
+  /** ISO timestamp of the recovery. */
+  recoveredAt: string;
 };
+
+export type SreAlertTriageQueueJob =
+  { alertHistoryId: string } | { sourceRecovery: SreSourceRecovery };
 
 export type AlertHistoryTriageCandidate = {
   id: string;
@@ -28,7 +35,10 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       return;
     }
 
-    const sentRows = rows.filter((row) => row.status === 'sent');
+    // Failed deliveries still open incidents; only 'pending' rows are skipped.
+    const sentRows = rows.filter(
+      (row) => row.status === 'sent' || row.status === 'failed',
+    );
     if (sentRows.length === 0) {
       return;
     }
@@ -49,6 +59,28 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Tell the app a monitor or job recovered, so its open incident can auto-resolve.
+   * Sent on every recovery, even when no recovery alert is delivered.
+   */
+  async enqueueSourceRecovery(recovery: SreSourceRecovery): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+    try {
+      await this.getQueue().add(
+        'source-recovery',
+        { sourceRecovery: recovery },
+        // One job per recovery; a fixed id would be dropped while the last one is retained.
+        {
+          jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
+        },
+      );
+    } catch (error) {
+      this.logger.error('Failed to enqueue SRE source recovery job', error);
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
     if (this.queue) {
       await this.queue.close();
@@ -56,19 +88,15 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     }
   }
 
-  // SRE_ENABLED is on unless disabled; SRE_AUTOMATION_ENABLED is opt-in and
-  // must be explicitly "true" or "1". Keep in sync with
-  // app/src/sre/lib/feature-gates.ts.
+  // Opening/deduping incidents from alerts needs only SRE_ENABLED (default on).
+  // AI triage (SRE_AUTOMATION_ENABLED) is gated app-side. Keep in sync with
+  // isSreEnabled in app/src/sre/lib/feature-gates.ts.
   private isEnabled() {
-    const read = (key: string) =>
-      this.configService.get<string>(key)?.trim().toLowerCase();
-    const sre = read('SRE_ENABLED');
-    const automation = read('SRE_AUTOMATION_ENABLED');
-    return (
-      sre !== 'false' &&
-      sre !== '0' &&
-      (automation === 'true' || automation === '1')
-    );
+    const sre = this.configService
+      .get<string>('SRE_ENABLED')
+      ?.trim()
+      .toLowerCase();
+    return sre !== 'false' && sre !== '0';
   }
 
   private getQueue() {

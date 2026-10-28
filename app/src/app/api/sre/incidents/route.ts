@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sreIncidentAlerts, sreIncidents, sreServices } from "@/db/schema";
 import { requireSreApiPermissions } from "../_auth";
 import { db } from "@/utils/db";
+import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 
 const querySchema = z.object({
   incidentNumber: z.coerce.number().int().positive().max(2147483647).optional(),
@@ -64,5 +65,12 @@ export async function GET(request: NextRequest) {
     .orderBy(desc(sreIncidents.updatedAt))
     .limit(500);
 
-  return NextResponse.json({ success: true, incidents });
+  return NextResponse.json({
+    success: true,
+    // statusLabel is the user-facing status (six values); status stays the stored value.
+    incidents: incidents.map((incident) => ({
+      ...incident,
+      statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
+    })),
+  });
 }

@@ -9,6 +9,7 @@ import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/servic
 import type { TestType } from "@/db/schema/types";
 import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
+import { loadCreators } from "@/lib/creators";
 
 /**
  * GET /api/tests
@@ -136,6 +137,8 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    const creatorOf = await loadCreators(allTests.map((test) => test.createdByUserId));
+
     // Map the database results to the expected format
     // PERFORMANCE OPTIMIZATION: Only decode scripts when explicitly requested
     // This significantly reduces payload size for list views (KB vs MB)
@@ -157,6 +160,7 @@ export async function GET(request: NextRequest) {
           // Only include script field when requested (reduces payload significantly)
           ...(includeScript && { script }),
           tags: testTagsMap.get(test.id) || [], // Include tags
+          ...creatorOf(test.createdByUserId),
           createdAt: test.createdAt
             ? new Date(test.createdAt).toISOString()
             : null,

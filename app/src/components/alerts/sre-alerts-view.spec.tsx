@@ -104,8 +104,9 @@ describe("SreAlertsView", () => {
     expect(screen.getByText("Total 13 signals")).toBeInTheDocument();
     expect(screen.getByText("Rows per page")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Investigate" })).toHaveLength(
-      12,
+    // jsdom has no layout, so the fitted page size stays at its first option (10).
+    expect(screen.getAllByRole("button", { name: "Open incident" })).toHaveLength(
+      10,
     );
     expect(
       screen.queryByText("Notification failure should stay in history"),
@@ -131,7 +132,7 @@ describe("SreAlertsView", () => {
     });
 
     render(<SreAlertsView alerts={[alertFixture(1)]} isLoading={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open incident" }));
 
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith(
@@ -160,13 +161,13 @@ describe("SreAlertsView", () => {
     ];
     render(<SreAlertsView alerts={alerts} isLoading={false} />);
     expect(screen.getByText("Total 1 signal")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Investigate" })).toHaveLength(
+    expect(screen.getAllByRole("button", { name: "Open incident" })).toHaveLength(
       1,
     );
     expect(
       within(screen.getByRole("table")).getByText("3"),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open incident" }));
     await waitFor(() =>
       expect(createSreIncidentFromAlert).toHaveBeenCalledWith({
         alertHistoryId: alerts[0].id,
@@ -185,7 +186,7 @@ describe("SreAlertsView", () => {
     );
     expect(screen.getByText("Total 2 signals")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Investigate" }),
+      screen.queryByRole("button", { name: "Open incident" }),
     ).not.toBeInTheDocument();
   });
 
@@ -194,7 +195,7 @@ describe("SreAlertsView", () => {
     mockProjectLoading = true;
     render(<SreAlertsView alerts={[alertFixture(1)]} isLoading={false} />);
     expect(screen.queryByText("Read-only")).not.toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "Investigate" });
+    const button = screen.getByRole("button", { name: "Open incident" });
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(createSreIncidentFromAlert).not.toHaveBeenCalled();
@@ -205,7 +206,7 @@ describe("SreAlertsView", () => {
     render(<SreAlertsView alerts={[alertFixture(1)]} isLoading={false} />);
     expect(screen.getByText("Permissions unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Read-only")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Investigate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open incident" })).not.toBeInTheDocument();
   });
 
   it("keeps an incident badge when a newer duplicate delivery replaces the row", async () => {
@@ -215,11 +216,11 @@ describe("SreAlertsView", () => {
     });
     const older = alertFixture(1, { targetId: "shared-job" });
     const { rerender } = render(<SreAlertsView alerts={[older]} isLoading={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open incident" }));
     expect(await screen.findByText("Incident #42")).toBeInTheDocument();
     rerender(<SreAlertsView alerts={[older, alertFixture(2, { targetId: "shared-job" })]} isLoading={false} />);
     expect(screen.getByText("Incident #42")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Investigate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open incident" })).not.toBeInTheDocument();
   });
 
   it.each(["denied", "disconnected"])("allows retry after incident creation is %s", async (failure) => {
@@ -229,8 +230,8 @@ describe("SreAlertsView", () => {
       jest.mocked(createSreIncidentFromAlert).mockRejectedValue(new Error("Disconnected"));
     }
     render(<SreAlertsView alerts={[alertFixture(1)]} isLoading={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Investigate" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Open incident" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open incident" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "Opening..." })).not.toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
@@ -244,13 +245,13 @@ describe("SreAlertsView", () => {
       existing: true, message: "Existing incident opened",
     });
     render(<SreAlertsView alerts={[alertFixture(1), alertFixture(2)]} isLoading={false} />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Investigate" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open incident" })[0]);
     await waitFor(() => expect(push).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Opening..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Investigate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Open incident" })).toBeDisabled();
     expect(screen.queryByText("Incident #42")).not.toBeInTheDocument();
     await act(async () => { finishNavigation(); });
     expect(await screen.findByText("Incident #42")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Investigate" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Open incident" })).toBeEnabled();
   });
 });

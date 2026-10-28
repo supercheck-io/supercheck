@@ -18,6 +18,8 @@ interface NotificationProvider {
   createdAt: string;
   updatedAt: string;
   lastUsed?: string;
+  createdByName?: string | null;
+  createdByImage?: string | null;
 }
 
 interface NotificationChannelsComponentProps {
@@ -87,6 +89,8 @@ export function NotificationChannelsComponent({
           createdAt: provider.createdAt,
           updatedAt: provider.updatedAt,
           lastUsed: provider.lastUsed,
+          createdByName: provider.createdByName ?? null,
+          createdByImage: provider.createdByImage ?? null,
         }));
         safeSetChannels(transformedData);
       } else {

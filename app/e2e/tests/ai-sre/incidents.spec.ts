@@ -60,16 +60,16 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       });
       expect(alertResponse.status(), await alertResponse.text()).toBe(200);
 
-      await page.goto("/alerts?tab=signals", { waitUntil: "domcontentloaded" });
+      await page.goto("/incidents?tab=alerts", { waitUntil: "domcontentloaded" });
       await expect(
-        page.getByRole("heading", { name: "Alerts", exact: true }),
+        page.getByRole("tab", { name: "Alerts", exact: true }),
       ).toBeVisible();
       await expect(page.getByLabel("Search alert signals")).toBeVisible();
       const signalRow = page.getByRole("row").filter({ hasText: alertMessage });
       await expect(signalRow).toContainText(monitor.name);
       await expect(signalRow).toContainText("sev2");
       await signalRow
-        .getByRole("button", { name: "Investigate", exact: true })
+        .getByRole("button", { name: "Open incident", exact: true })
         .click();
       await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
       await expect(

@@ -331,6 +331,8 @@ function normalizeRemoteRaw(type: string, raw: Record<string, unknown>): Record<
   delete normalized.projectId
   delete normalized.organizationId
   delete normalized.createdByUserId
+  delete normalized.createdByName
+  delete normalized.createdByImage
 
   if ((type === 'test' || type === 'monitor') && Array.isArray(normalized.tags)) {
     normalized.tags = normalizeTagNames((normalized.tags as unknown[]).map((tag) => tag && typeof tag === 'object' ? (tag as { name?: unknown }).name : tag))

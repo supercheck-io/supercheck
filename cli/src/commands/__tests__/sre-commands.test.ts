@@ -83,7 +83,8 @@ describe('AI SRE CLI Commands', () => {
       await incidentCommand.parseAsync(['node', 'incident', 'list', '--status', 'investigating'])
 
       expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents', expect.objectContaining({ status: 'investigating' }))
-      expect(mockOutput).toHaveBeenCalledWith(mockIncidents, expect.any(Object))
+      // Older servers send no statusLabel; the CLI falls back to the stored status.
+      expect(mockOutput).toHaveBeenCalledWith(mockIncidents.map((incident) => ({ ...incident, statusLabel: incident.status })), expect.any(Object))
     })
 
     it('incident get fetches details by id', async () => {

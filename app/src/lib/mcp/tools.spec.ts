@@ -134,7 +134,7 @@ describe("MCP tools", () => {
     queue.push([{ id: id(1), name: "n", description: null, jobType: "playwright", status: "passed", cronSchedule: "* * * * *", lastRunAt: null, nextRunAt: new Date(0), alertConfig: { enabled: true, alertOnFailure: true, notificationProviders: ["prov-secret"], customMessage: "hook" } }]);
     queue.push([{ testId: id(7) }]);
     const res = await handlers.get("get_job")!({ id: id(1) });
-    expect(res.structuredContent.job).toMatchObject({ testIds: [id(7)], nextRunAt: "1970-01-01T00:00:00.000Z", alerts: { enabled: true, alertOnFailure: true, alertOnSuccess: false, alertOnTimeout: false } });
+    expect(res.structuredContent.job).toMatchObject({ testIds: [id(7)], nextRunAt: "1970-01-01T00:00:00.000Z", alerts: { enabled: true, alertOnFailure: true, alertOnSuccess: false, alertOnTimeout: false, incidentEnabled: true, incidentSeverity: "auto", autoResolveIncident: true } });
     expect(JSON.stringify(res)).not.toMatch(/prov-secret|notificationProviders|customMessage/);
   });
 
@@ -143,6 +143,20 @@ describe("MCP tools", () => {
     const res = await handlers.get("get_monitor")!({ id: id(1) });
     expect(res.structuredContent.monitor).toMatchObject({ target: "https://example.com", locations: ["eu-central"], settings: { method: "GET", expectedStatusCodes: "200-299" } });
     expect(JSON.stringify(res)).not.toMatch(/HEADERSECRET|AUTHSECRET|BODYSECRET|pw|k=1/);
+  });
+
+  it("get_monitor returns alert and incident settings, never channels", async () => {
+    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: {}, alertConfig: { enabled: true, alertOnFailure: true, notificationProviders: ["prov-secret"], incidentEnabled: false, incidentSeverity: "sev1", autoResolveIncident: false } }]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({ alerts: { enabled: true, alertOnFailure: true, alertOnRecovery: false, incidentEnabled: false, incidentSeverity: "sev1", autoResolveIncident: false } });
+    expect(JSON.stringify(res)).not.toMatch(/prov-secret/);
+  });
+
+  it("get_incident adds the display status and linked alert count", async () => {
+    queue.push([{ id: id(1), number: 3, title: "t", severity: "sev2", status: "investigating", rootCauseSummary: null, resolutionSummary: null, createdAt: null, resolvedAt: null, assigneeUserId: null, commanderUserId: null, acknowledgedAt: null, acknowledgedByUserId: null, mitigatedAt: null }]);
+    queue.push([{ count: 2 }]);
+    const res = await handlers.get("get_incident")!({ id: id(1) });
+    expect(res.structuredContent.incident).toMatchObject({ status: "investigating", statusLabel: expect.any(String), alertCount: 2 });
   });
 
   it("get_monitor drops a method that is not an HTTP verb", async () => {
@@ -240,7 +254,7 @@ describe("MCP tools", () => {
     queue.push([]);
     await handlers.get("list_incidents")!({ limit: 5, assignee: id(7) });
     expect(lastWhere().params).toContain(id(7));
-    expect((mine.structuredContent.incidents as Record<string, unknown>[])[0]).toMatchObject({ assigneeUserId: id(9), acknowledgedAt: "1970-01-01T00:00:00.000Z", mitigatedAt: null });
+    expect((mine.structuredContent.incidents as Record<string, unknown>[])[0]).toMatchObject({ assigneeUserId: id(9), acknowledgedAt: "1970-01-01T00:00:00.000Z", mitigatedAt: null, status: "resolved", statusLabel: "Resolved" });
 
     queue.push([{ id: id(1), incidentId: id(4), agentType: "triage", status: "running", startedAt: new Date(0), completedAt: null, durationMs: null, confidenceScore: null }]);
     const inv = await handlers.get("list_investigations")!({ limit: 5, incidentId: id(4) });

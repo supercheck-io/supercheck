@@ -10,6 +10,8 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
+Channels live on the **Notifications** page in the sidebar. Alert signals and delivery history are on the **Alerts** tab of the **Incidents** page (`Incidents → Alerts`; switch to **History** for deliveries). Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+
 ## Alert Workflow
 
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
@@ -34,7 +36,8 @@ sequenceDiagram
     end
     opt An enabled alert condition occurs
         Environment-->>You: Failure or recovery notification
-        You->>App: Open linked monitor or run
+        App-->>You: Incident opened (or joined) for the check
+        You->>App: Open linked monitor, run, or incident
     end
 ```
 
@@ -71,8 +74,8 @@ Adaptive Card notifications via Power Automate workflows
 
 ## Setting Up Providers
 
-1. Go to **Alerts → Channels**
-2. Click **Add Channel**
+1. Go to **Notifications**
+2. Click **Create channel**
 3. Select the provider type and enter credentials
 4. Click **Test Connection** to verify the connection
 5. Save the provider
@@ -118,6 +121,8 @@ The number of consecutive failures required before sending the first failure ale
 The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert.
 
 SSL expiration warnings are evaluated independently of the monitor's up/down result. Enable **SSL Expiration Alerts** on a website monitor and set its warning window; a warning is sent at most once every 24 hours while the certificate remains within that window.
+
+**Job failures** follow the same rule as monitors: the first alert at the failure threshold, then repeats at threshold + the larger of 5 or 2x threshold failures, at most 3 alerts per failure streak. A passing run resets the streak.
 
 **Alert Limiting**
 
@@ -435,7 +440,7 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 
 ## Alert Signals
 
-Use **Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications remain in **History** so they do not create false incident noise.
+Use **Incidents → Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications are listed only in **History** (the toggle on the same tab).
 
 ![Alert Signals](/screenshots/sre-alert-signals.png)
 
@@ -446,12 +451,12 @@ From Signals, responders can:
 - Search by target, message, type, source, or fingerprint.
 - Filter by severity or source.
 - Sort by signal, severity, source, or last seen time.
-- Select **Investigate** to open a new or existing SRE incident. This does not start a full AI investigation. Administrators may separately enable automatic triage.
+- Select **Incident #N** to go to the incident a signal belongs to, or **Open incident** when it has none (for example when incidents are turned off for that monitor). Incidents open automatically when an alert fires, and resolve automatically on recovery if nobody acknowledged them (configurable per monitor or job under **Incidents** in Alert Settings). AI triage is optional and separate: administrators may enable it.
 - Page through larger signal sets with the same pagination pattern used by other Supercheck tables.
 
 ## Alert History
 
-Track all alerts from **Alerts → History**:
+Track all alerts from **Incidents → Alerts → History**:
 
 ![Alert History](/screenshots/alert-history.png)
 
@@ -459,6 +464,7 @@ Track all alerts from **Alerts → History**:
 - Target (monitor or job name)
 - Notification channels used
 - Delivery status
+- The incident the alert belongs to, linked
 - Timestamp
 - Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
 

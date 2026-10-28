@@ -9,6 +9,8 @@ const tagSchema = z.object({
 
 // Schema for tests matching the database schema
 export const testSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   title: z.string(),
   description: z.string().nullable(),

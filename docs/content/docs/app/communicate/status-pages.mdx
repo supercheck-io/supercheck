@@ -10,7 +10,7 @@ Publish a public page that shows system health, incidents, and scheduled mainten
 <Card icon={<Tally4 className="text-sky-500" />} title="Components">
 Public services, with status from linked monitors and 90-day uptime
 </Card>
-<Card icon={<Siren className="text-rose-500" />} title="Incidents">
+<Card icon={<Siren className="text-rose-500" />} title="Status updates">
 Outages and scheduled maintenance, with a timeline of updates
 </Card>
 <Card icon={<BellRing className="text-amber-500" />} title="Subscribers">
@@ -168,16 +168,18 @@ Linked components refresh every 10 seconds. **Failing monitors required** is the
 
 **Uptime** is successful checks divided by total checks over the last 90 UTC days. Days without checks show no data. It is check-based, not a time-weighted SLA. The banner and badge use showcased components, including components hidden while healthy.
 
-## Incidents
+## Status updates
 
-![Incidents Tab](/screenshots/status-page-incidents.png)
+The **Status updates** tab (previously **Incidents**) holds what your visitors see. A status update can link to an internal incident from the **Incidents** page. When an automatic status update is created for a component, it is linked to the open internal incident triggered by that component's monitors, if there is one.
+
+![Status updates tab](/screenshots/status-page-incidents.png)
 
 <Steps>
 <Step>
 
-### Create the incident
+### Create the status update
 
-Open **Incidents** and choose **Create Incident**. The page needs at least one component first.
+Open **Status updates** and choose **New status update**. The page needs at least one component first.
 
 ![Create Incident](/screenshots/status-page-create-incident.png)
 

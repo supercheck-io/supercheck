@@ -78,7 +78,8 @@ export function CommandSearch({
         jobs: "/jobs",
         runs: "/runs",
         variables: "/variables",
-        alerts: "/alerts",
+        alerts: "/incidents?tab=alerts",
+        notifications: "/notifications",
         incidents: "/incidents",
         "status-pages": "/status-pages",
         admin: "/org-admin",
@@ -197,6 +198,10 @@ export function CommandSearch({
                   <Siren className="mr-2 h-4 w-4 !text-rose-500" />
                   <span>Incidents</span>
                 </CommandItem>
+                <CommandItem onSelect={() => handleCommand("notifications")}>
+                  <BellRing className="mr-2 h-4 w-4 !text-slate-400" />
+                  <span>Notifications</span>
+                </CommandItem>
                 <CommandItem onSelect={() => handleCommand("status-pages")}>
                   <Tally4 className="mr-2 h-4 w-4 !text-green-600" />
                   <span>Status Pages</span>
@@ -231,7 +236,7 @@ export function CommandSearch({
 
               {canInvestigateSre && (
                 <>
-                  <CommandGroup heading="Investigate">
+                  <CommandGroup heading="Respond">
                     <CommandItem
                       onSelect={() => handleCommand("investigation-chat")}
                     >

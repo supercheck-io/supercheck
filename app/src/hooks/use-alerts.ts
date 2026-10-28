@@ -17,6 +17,8 @@ export interface NotificationProvider {
   lastUsed?: string;
   isInUse?: boolean;
   maskedFields?: string[];
+  createdByName?: string | null;
+  createdByImage?: string | null;
 }
 
 export type AlertHistory = AlertHistorySchema;
@@ -26,10 +28,6 @@ export const ALERTS_HISTORY_QUERY_KEY = ["alerts-history"] as const;
 
 export function getNotificationProvidersQueryKey(projectId: string | null) {
   return [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId] as const;
-}
-
-export function getAlertsHistoryQueryKey(projectId: string | null) {
-  return [...ALERTS_HISTORY_QUERY_KEY, projectId] as const;
 }
 
 export async function fetchNotificationProviders(projectId?: string | null): Promise<NotificationProvider[]> {

@@ -112,6 +112,8 @@ describe('reconcile', () => {
     'projectId',
     'organizationId',
     'createdByUserId',
+    'createdByName',
+    'createdByImage',
     '__maskedFields',
   ])('ignores metadata field %s when diffing', (field) => {
     const changes = reconcile(

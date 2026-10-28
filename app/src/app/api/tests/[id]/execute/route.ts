@@ -171,6 +171,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
         projectId: project.id,
         status: "queued", // Start as queued - capacity manager will update to running
         trigger: "manual",
+        triggeredByUserId: userId,
         location: test.type === "performance" ? resolvedLocation : null,
         metadata: {
           source: "playground",

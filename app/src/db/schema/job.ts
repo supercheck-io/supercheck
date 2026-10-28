@@ -152,12 +152,15 @@ export const runs = pgTable(
       .$type<JobTrigger>()
       .notNull()
       .default("manual"),
+    // Who started the run: the user for manual and CLI runs, the key owner for trigger-key runs, null for schedules.
+    triggeredByUserId: uuid("triggered_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => ({
     // Index on job_id for listing job runs
     jobIdIdx: index("runs_job_id_idx").on(table.jobId),
+    triggeredByIdx: index("runs_triggered_by_user_id_idx").on(table.triggeredByUserId).where(sql`${table.triggeredByUserId} IS NOT NULL`),
     // Index on project_id for listing project runs
     projectIdIdx: index("runs_project_id_idx").on(table.projectId),
     // Composite index on job_id and status for filtered queries

@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { CalendarIcon, ClockIcon } from "lucide-react";
+import { CalendarIcon, ClockIcon, KeyRound } from "lucide-react";
 
 import { runStatuses, triggerTypes } from "./data";
 import type { TestRun } from "./schema";
@@ -23,6 +23,7 @@ import {
   isBillingBlockedError,
   isBillingBlockedStatus,
 } from "@/lib/billing-errors";
+import { UserCell } from "@/components/ui/user-cell";
 
 // Helper to validate status is one of the allowed values
 function mapDbStatusToDisplayStatus(
@@ -196,6 +197,31 @@ export const createColumns = (
         return value.includes(row.getValue(id));
       },
       enableSorting: true,
+    },
+    {
+      id: "triggeredBy",
+      accessorFn: (row) =>
+        row.trigger === "schedule" ? "Schedule" : (row.triggerKeyName ?? row.triggeredByName ?? ""),
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Triggered by" />
+      ),
+      cell: ({ row }) => {
+        const run = row.original;
+        if (run.trigger === "schedule") {
+          return <span className="text-sm text-muted-foreground">Schedule</span>;
+        }
+        if (run.triggerKeyName) {
+          return (
+            <div className="flex w-[150px] items-center gap-2 text-sm" title={run.triggeredByName ? `Key owner: ${run.triggeredByName}` : undefined}>
+              <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{run.triggerKeyName}</span>
+            </div>
+          );
+        }
+        return (
+          <UserCell name={run.triggeredByName} image={run.triggeredByImage} emptyLabel="Unknown" className="h-8 w-[150px]" />
+        );
+      },
     },
     {
       id: "status",

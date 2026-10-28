@@ -1,13 +1,17 @@
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import {
+  alertHistory,
   member,
   projectMembers,
+  sreAlertEvents,
+  sreIncidentAlerts,
   sreIncidentTimelineEvents,
   sreIncidents,
   sreServiceOwners,
   sreServices,
   user,
+  type AlertType,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
@@ -31,13 +35,13 @@ export type IncidentActor = {
   userId: string;
 };
 
-export type LifecycleFailure = {
+type LifecycleFailure = {
   ok: false;
   code: "not_found" | "invalid" | "conflict";
   error: string;
 };
 
-export type LifecycleResult<T extends object = object> =
+type LifecycleResult<T extends object = object> =
   | ({ ok: true } & T)
   | LifecycleFailure;
 
@@ -487,4 +491,283 @@ export async function addIncidentUpdate(
   });
   await audit(actor, "sre_incident_update_added", incident, {});
   return { ok: true, incident };
+}
+
+// --- Alert-driven (system) transitions -------------------------------------
+// Used by background alert processing under its advisory lock; callers announce
+// the returned events with notifyIncidentEvent after the transaction commits.
+
+/** A source's failure alert may reopen an auto-resolved incident for this long. */
+export const INCIDENT_REOPEN_WINDOW_MS = 30 * 60 * 1000;
+
+type SourceRef = {
+  organizationId: string;
+  projectId: string;
+  sourceType: "monitor" | "job";
+  sourceId: string;
+};
+
+// Only failures that a passing check really ends: monitor up/down and job failure/timeout.
+// Never SSL-expiry (a passing check does not renew a certificate) or custom triggers.
+const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
+// Old title-cased labels and the current ones (see alert-labels.ts); webhook-keyed events match by title.
+const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Monitor down", "Job failed", "Job timed out"];
+
+const recoverableTrigger = () =>
+  or(
+    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${type}`}`),
+    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${title}`}`),
+  );
+
+const triggerSourceMatch = (source: SourceRef) =>
+  and(
+    recoverableTrigger(),
+    eq(sreIncidents.organizationId, source.organizationId),
+    eq(sreIncidents.projectId, source.projectId),
+    eq(sreIncidentAlerts.role, "trigger"),
+    eq(sreAlertEvents.sourceType, source.sourceType),
+    eq(sreAlertEvents.sourceId, source.sourceId),
+  );
+
+function describeDuration(ms: number) {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}h${rest ? ` ${rest}m` : ""}`;
+}
+
+/**
+ * Handle a recovery signal for a monitor/job: auto-resolve open, unacknowledged
+ * trigger incidents (when allowed), otherwise leave a `recovered` note for the owner.
+ */
+export async function applySourceRecovery(
+  tx: Executor,
+  source: SourceRef & { targetName: string; autoResolve: boolean; recoveredAt: Date },
+) {
+  const open = await tx
+    .select({
+      id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
+      createdAt: sreIncidents.createdAt,
+      acknowledgedAt: sreIncidents.acknowledgedAt,
+      assigneeUserId: sreIncidents.assigneeUserId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
+  if (open.length === 0) return { resolved: [], recovered: [] };
+
+  // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
+  // Compared in SQL: sent_at is a timestamp without time zone, so parsing it in JS depends on the host TZ.
+  const [newerFailure] = await tx
+    .select({ id: alertHistory.id })
+    .from(alertHistory)
+    .where(
+      and(
+        source.sourceType === "monitor"
+          ? eq(alertHistory.monitorId, source.sourceId)
+          : eq(alertHistory.jobId, source.sourceId),
+        inArray(alertHistory.type, RECOVERABLE_ALERT_TYPES),
+        gt(alertHistory.sentAt, source.recoveredAt),
+      ),
+    )
+    .limit(1);
+  if (newerFailure) {
+    return { resolved: [], recovered: [] };
+  }
+
+  const resolved: { id: string }[] = [];
+  const recovered: { id: string; assigneeUserId: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const incident of open) {
+    if (seen.has(incident.id)) continue;
+    seen.add(incident.id);
+    const now = source.recoveredAt;
+    if (source.autoResolve && !incident.acknowledgedAt) {
+      const summary = `Recovered automatically: ${source.targetName} passed again after ${describeDuration(now.getTime() - incident.createdAt.getTime())}.`;
+      const [updated] = await tx
+        .update(sreIncidents)
+        .set({
+          status: "resolved",
+          resolvedAt: now,
+          mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamp)`,
+          resolutionSummary: summary,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(sreIncidents.id, incident.id),
+            ne(sreIncidents.status, "resolved"),
+            isNull(sreIncidents.acknowledgedAt),
+          ),
+        )
+        .returning({ id: sreIncidents.id });
+      if (updated) {
+        await tx.insert(sreIncidentTimelineEvents).values({
+          incidentId: incident.id,
+          eventType: "state_change",
+          eventData: { state: "resolved", comment: summary, automatic: true },
+          actorType: "system",
+          // Wall-clock write time: timeline order must not depend on queue delay.
+          createdAt: new Date(),
+        });
+        resolved.push({ id: incident.id });
+        continue;
+      }
+    }
+    const [lastState] = await tx
+      .select({ state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'` })
+      .from(sreIncidentTimelineEvents)
+      .where(
+        and(
+          eq(sreIncidentTimelineEvents.incidentId, incident.id),
+          eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        ),
+      )
+      .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+      .limit(1);
+    if (lastState?.state === "recovered") continue; // already noted; do not repeat the note or email
+    await tx.insert(sreIncidentTimelineEvents).values({
+      incidentId: incident.id,
+      eventType: "state_change",
+      eventData: {
+        state: "recovered",
+        comment: `${source.targetName} recovered; resolve when you've confirmed`,
+      },
+      actorType: "system",
+      createdAt: new Date(),
+    });
+    recovered.push({ id: incident.id, assigneeUserId: incident.assigneeUserId });
+  }
+  return { resolved, recovered };
+}
+
+/**
+ * The open incident already tracking this source's up/down failure, if any. A new
+ * failure joins it even when its alert identity differs (for example incidents
+ * opened before identities moved to source plus type).
+ */
+export async function findOpenIncidentForSource(tx: Executor, source: SourceRef) {
+  const [open] = await tx
+    .select({
+      id: sreIncidents.id,
+      triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")))
+    .orderBy(desc(sreIncidents.createdAt))
+    .limit(1);
+  return open ?? null;
+}
+
+/**
+ * Reopen the source's most recent trigger incident when it was auto-resolved
+ * within the reopen window and no other incident for the source is open.
+ */
+export async function reopenRecentlyAutoResolved(
+  tx: Executor,
+  source: SourceRef & { firedAt: Date },
+) {
+  const [latest] = await tx
+    .select({
+      id: sreIncidents.id,
+      status: sreIncidents.status,
+      resolvedAt: sreIncidents.resolvedAt,
+      assigneeUserId: sreIncidents.assigneeUserId,
+      triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(triggerSourceMatch(source))
+    .orderBy(desc(sreIncidents.createdAt))
+    .limit(1);
+  if (
+    !latest ||
+    latest.status !== "resolved" ||
+    !latest.resolvedAt ||
+    source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS
+  ) {
+    return null;
+  }
+
+  // Only when the most recent resolve/reopen was the automatic one; a person's later resolve wins.
+  const [lastResolution] = await tx
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      automatic: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'automatic'`,
+    })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, latest.id),
+        eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('resolved', 'reopened')`,
+      ),
+    )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+    .limit(1);
+  if (lastResolution?.state !== "resolved" || lastResolution.automatic !== "true") return null;
+
+  const now = new Date();
+  const [updated] = await tx
+    .update(sreIncidents)
+    .set({
+      status: "triggered",
+      resolvedAt: null,
+      mitigatedAt: null,
+      resolutionSummary: null,
+      // A returning failure needs a fresh acknowledgement (and stays auto-resolvable).
+      acknowledgedAt: null,
+      acknowledgedByUserId: null,
+      updatedAt: now,
+    })
+    .where(and(eq(sreIncidents.id, latest.id), eq(sreIncidents.status, "resolved")))
+    .returning({ id: sreIncidents.id });
+  if (!updated) return null;
+
+  await tx.insert(sreIncidentTimelineEvents).values({
+    incidentId: latest.id,
+    eventType: "state_change",
+    eventData: { state: "reopened", comment: "Failure returned within 30 minutes of automatic recovery" },
+    actorType: "system",
+    createdAt: now,
+  });
+  return {
+    incidentId: latest.id,
+    assigneeUserId: latest.assigneeUserId,
+    alreadyTriaged: Boolean(latest.triageInvestigationRunId),
+  };
+}
+
+/** Audit + announce an alert-driven transition (best effort; never throws). */
+export async function announceSystemTransition(
+  organizationId: string,
+  projectId: string,
+  incidentId: string,
+  event: "resolved" | "recovered" | "reopened",
+  extra: { assigneeUserId?: string | null; discriminator: string },
+) {
+  await logAuditEvent({
+    organizationId,
+    action: `sre_incident_${event === "resolved" ? "auto_resolved" : event}`,
+    resource: "sre_incident",
+    resourceId: incidentId,
+    metadata: { projectId },
+    success: true,
+  }).catch(() => undefined);
+  await notifyIncidentEvent({
+    organizationId,
+    projectId,
+    incidentId,
+    event,
+    automatic: event === "resolved",
+    assigneeUserId: extra.assigneeUserId,
+    dedupeDiscriminator: extra.discriminator,
+  }).catch(() => undefined);
 }

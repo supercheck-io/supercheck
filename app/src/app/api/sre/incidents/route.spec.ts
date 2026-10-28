@@ -32,7 +32,7 @@ describe("incident number lookup", () => {
     expect(response.status).toBe(200);
     const query = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
     expect(query.params).toEqual(["org-1", "project-1", 42]);
-    expect(await response.json()).toEqual({ success: true, incidents: [{ id: "incident-uuid", incidentNumber: 42 }] });
+    expect(await response.json()).toEqual({ success: true, incidents: [{ id: "incident-uuid", incidentNumber: 42, statusLabel: "Unknown" }] });
   });
 
   it.each(["0", "-1", "1.5", "abc", "2147483648", "9007199254740992"])("rejects invalid incident number %s before querying", async (number) => {

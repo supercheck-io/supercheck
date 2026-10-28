@@ -34,6 +34,9 @@ export interface JobAlertConfig {
   failureThreshold?: number;
   recoveryThreshold?: number;
   customMessage?: string;
+  incidentEnabled?: boolean;
+  incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
+  autoResolveIncident?: boolean;
 }
 
 export interface Job {
@@ -50,6 +53,8 @@ export interface Job {
   projectId?: string;
   organizationId?: string;
   createdByUserId?: string;
+  createdByName?: string | null;
+  createdByImage?: string | null;
   tests?: JobTest[];
   alertConfig?: JobAlertConfig | null;
   lastRun?: JobLastRun | null;

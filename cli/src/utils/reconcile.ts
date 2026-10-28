@@ -166,7 +166,7 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
   for (const [key, localVal] of Object.entries(local)) {
     if (localVal === undefined) continue
     // Skip internal/metadata fields
-    if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', '__maskedFields'].includes(key)) continue
+    if (['id', 'createdAt', 'updatedAt', 'projectId', 'organizationId', 'createdByUserId', 'createdByName', 'createdByImage', '__maskedFields'].includes(key)) continue
     // Read-only, server-generated: pulled but never compared.
     if (resourceType === 'statusPage' && key === 'subdomain') continue
     if (resourceType === 'statusPage' && key === 'components') {

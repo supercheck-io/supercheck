@@ -287,7 +287,7 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
       queryFn: () => fetchJsonWithProject("/api/status-pages", projectId),
       staleTime: STALE_TIME,
     },
-    "/alerts": {
+    "/notifications": {
       queryKey: ["notification-providers", projectId],
       queryFn: () =>
         fetchJsonWithProject("/api/notification-providers", projectId),

@@ -288,7 +288,7 @@ export function IncidentFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>Create Incident</DialogTitle>
+          <DialogTitle>New status update</DialogTitle>
           <DialogDescription>
             Report a service disruption to your users.
           </DialogDescription>
@@ -662,7 +662,7 @@ export function IncidentFormDialog({
                 {isSubmitting && (
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 )}
-                Create Incident
+                Post status update
               </Button>
             </div>
           </div>

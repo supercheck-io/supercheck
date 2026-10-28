@@ -1,8 +1,8 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useSyncExternalStore, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,7 +11,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Info,
   SearchCheck,
   Search,
   Siren,
@@ -19,7 +18,9 @@ import {
 import { toast } from "sonner";
 
 import { createSreIncidentFromAlert } from "@/actions/sre-incidents";
+import type { ReactNode } from "react";
 import type { AlertHistory } from "@/components/alerts/schema";
+import { getAlertTypeLabel } from "@/components/alerts/data";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
@@ -41,15 +42,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
+import { pageSizeOptions, useFitPageSize } from "@/hooks/use-fit-page-size";
 
 type SreAlertSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 
@@ -63,11 +59,14 @@ type DerivedSreAlert = {
   severity: SreAlertSeverity;
   timestamp: string;
   duplicateCount: number;
+  incident: { id: string; number: number } | null;
 };
 
 type SreAlertsViewProps = {
   alerts: AlertHistory[];
   isLoading: boolean;
+  /** Right-aligned control in the toolbar row (the Signals/History switch). */
+  toolbarEnd?: ReactNode;
 };
 
 type AlertSortKey =
@@ -79,7 +78,6 @@ type AlertSortKey =
   | "timestamp";
 type SortDirection = "asc" | "desc";
 
-const PAGE_SIZE_OPTIONS = [12, 25, 50, 100];
 
 const severityTones: Record<SreAlertSeverity, TableBadgeTone> = {
   sev1: "danger",
@@ -165,11 +163,12 @@ function deriveSreAlerts(alerts: AlertHistory[]) {
       fingerprint,
       targetName: alert.targetName,
       source: deriveSource(alert),
-      type: titleCase(alert.type),
+      type: getAlertTypeLabel(alert.type),
       message: alert.message,
       severity: deriveSeverity(alert),
       timestamp: alert.timestamp,
       duplicateCount: (previous?.duplicateCount ?? 0) + 1,
+      incident: alert.incident ?? null,
     });
   }
   return Array.from(grouped.values());
@@ -236,7 +235,7 @@ function SortableHead({
   );
 }
 
-export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
+export function SreAlertsView({ alerts, isLoading, toolbarEnd }: SreAlertsViewProps) {
   const isMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -263,7 +262,8 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
   const [sortKey, setSortKey] = useState<AlertSortKey>("timestamp");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(12);
+  // Rows fit the window like the other list pages, so the page itself never scrolls.
+  const { bodyRef, pageSize, setPageSize } = useFitPageSize();
   const [incidentByFingerprint, setIncidentByFingerprint] = useState<
     Record<string, number>
   >({});
@@ -356,20 +356,26 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
 
   if (!isMounted || (isLoading && alerts.length === 0)) {
     return (
-      <div className="flex min-h-[360px] items-center justify-center">
-        <SupercheckLoading size="md" message="Loading alert signals..." />
+      <div>
+        {toolbarEnd && <div className="flex justify-end">{toolbarEnd}</div>}
+        <div className="flex min-h-[360px] items-center justify-center">
+          <SupercheckLoading size="md" message="Loading alert signals..." />
+        </div>
       </div>
     );
   }
 
   if (derivedAlerts.length === 0) {
     return (
-      <DashboardEmptyState
-        className="min-h-[360px]"
-        title="No alert signals yet"
-        description="Only sent failure alerts appear here. Notification delivery failures stay in alert history."
-        icon={<Siren className="h-12 w-12" />}
-      />
+      <div>
+        {toolbarEnd && <div className="flex justify-end">{toolbarEnd}</div>}
+        <DashboardEmptyState
+          className="min-h-[360px]"
+          title="No alert signals yet"
+          description="Only sent failure alerts appear here. Notification delivery failures stay in alert history."
+          icon={<Siren className="h-12 w-12" />}
+        />
+      </div>
     );
   }
 
@@ -428,31 +434,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground"
-                  aria-label="Alert signal scope"
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                Repeated failures are grouped into one signal. Investigate opens
-                an incident. Delivery failures and recovery events stay in
-                History.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
-            <Link href="/incidents">View incidents</Link>
-          </Button>
-        </div>
+        {toolbarEnd}
       </div>
 
       <div className="w-full max-w-full overflow-x-auto rounded-t-lg border">
@@ -505,7 +487,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
               <TableHead className="w-[1%]" />
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {pagedAlerts.length === 0 ? (
               <TableRow>
                 <TableCell
@@ -566,6 +548,10 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                         <SearchCheck className="h-4 w-4" />
                         Opening...
                       </Button>
+                    ) : alert.incident ? (
+                      <Button variant="ghost" size="sm" asChild className="h-8">
+                        <Link href={`/incidents/${alert.incident.id}`}>Incident #{alert.incident.number}</Link>
+                      </Button>
                     ) : incidentByFingerprint[alert.fingerprint] ? (
                       <TableBadge tone="info" compact>
                         Incident #{incidentByFingerprint[alert.fingerprint]}
@@ -581,7 +567,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                         className="h-8"
                       >
                         <SearchCheck className="h-4 w-4" />
-                        Investigate
+                        Open incident
                       </Button>
                     ) : (
                       <span
@@ -617,7 +603,7 @@ export function SreAlertsView({ alerts, isLoading }: SreAlertsViewProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent side="top">
-                {PAGE_SIZE_OPTIONS.map((option) => (
+                {pageSizeOptions(pageSize).map((option) => (
                   <SelectItem key={option} value={`${option}`}>
                     {option}
                   </SelectItem>

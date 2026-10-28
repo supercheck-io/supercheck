@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, max, sql } from "drizzle-orm";
 
 import {
   sreEvidenceItems,
@@ -44,9 +44,13 @@ import {
   listIncidentFeedbackNotes,
   listServiceFeedbackHints,
 } from "@/lib/sre/investigation-feedback";
+import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
 import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/similar-incidents";
 import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+
+const NATIVE_EVIDENCE_TIMEOUT_MS = 15_000;
+const NATIVE_EVIDENCE_FRESH_MS = 10 * 60 * 1000;
 
 const investigationLogger = createLogger({
   module: "sre-investigation-runner",
@@ -220,7 +224,7 @@ export async function executeSreIncidentInvestigation(
   let lastStepElapsedMs = 0;
 
   try {
-    const [nativeEvidence, connectorEvidence] = await Promise.all([
+    let [nativeEvidence, connectorEvidence] = await Promise.all([
       listStoredSreEvidence({
         organizationId: input.organizationId,
         projectId: input.projectId,
@@ -236,6 +240,55 @@ export async function executeSreIncidentInvestigation(
         limit: 8,
       }),
     ]);
+    // Native monitor/run/alert evidence is otherwise only stored by the evidence
+    // brief; collect it here so the agent can see it. Best-effort and bounded.
+    let collectedCount = 0;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const [{ latest } = { latest: null }] = await db
+      .select({ latest: max(sreEvidenceItems.createdAt) })
+      .from(sreEvidenceItems)
+      .where(and(
+        eq(sreEvidenceItems.incidentId, incident.id),
+        eq(sreEvidenceItems.organizationId, input.organizationId),
+        eq(sreEvidenceItems.projectId, input.projectId),
+        eq(sreEvidenceItems.sourceType, "native"),
+      ));
+      if (!latest || new Date(latest).getTime() < Date.now() - NATIVE_EVIDENCE_FRESH_MS) {
+        const persisted = await Promise.race([
+          persistNativeEvidence({
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            incidentId: incident.id,
+            userId: input.userId,
+            investigationRunId,
+            signal: abort.signal,
+          }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              abort.abort();
+              reject(new Error("native evidence collection timed out"));
+            }, NATIVE_EVIDENCE_TIMEOUT_MS);
+          }),
+        ]);
+        collectedCount = persisted?.createdCount ?? 0;
+        if (collectedCount > 0) {
+          nativeEvidence = await listStoredSreEvidence({
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            incidentId: incident.id,
+            sourceMode: "native",
+            limit: 8,
+          });
+        }
+      }
+    } catch (error) {
+      investigationLogger.error({ err: error }, "Native evidence collection failed; continuing without it");
+    } finally {
+      clearTimeout(timer);
+    }
+    const evidenceCount = Number(incident.evidenceCount ?? 0) + collectedCount;
     const storedEvidenceContext = [...nativeEvidence, ...connectorEvidence].map(
       (item) => {
         const summary =
@@ -292,7 +345,7 @@ export async function executeSreIncidentInvestigation(
         severity: incident.severity,
         status: incident.status,
         serviceName: incident.primaryServiceName,
-        evidenceCount: Number(incident.evidenceCount ?? 0),
+        evidenceCount,
         connectorEvidenceCount: Number(incident.connectorEvidenceCount ?? 0),
         liveConnectorToolsEnabled: liveConnectorsEnabled,
         storedEvidenceContext,
@@ -356,6 +409,9 @@ export async function executeSreIncidentInvestigation(
         .set({
           status: "completed",
           modelId: result.modelId,
+          promptTokens: result.usage.inputTokens,
+          completionTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
           rootCauseHypothesis: headline,
           confidenceScore: confidence,
           hypotheses: structured ? toStoredHypotheses(structured) : null,
@@ -375,7 +431,7 @@ export async function executeSreIncidentInvestigation(
               : null,
             modelUsage: result.usage,
             finishReason: result.finishReason,
-            evidenceCount: Number(incident.evidenceCount ?? 0),
+            evidenceCount,
             connectorEvidenceCount: Number(
               incident.connectorEvidenceCount ?? 0,
             ),

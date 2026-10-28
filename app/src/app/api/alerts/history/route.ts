@@ -1,10 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
-import { alertHistory, type AlertDeliveryMetadata } from "@/db/schema";
-import { sql } from "drizzle-orm";
+import { alertHistory, jobs, monitors, type AlertDeliveryMetadata } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(request: NextRequest) {
   try {
@@ -143,6 +144,36 @@ export async function GET(request: NextRequest) {
       
       const history = historyResult as unknown as AlertHistoryRow[];
 
+      // The incident each alert belonged to: the earliest incident of the same source that was not yet
+      // resolved when the alert was sent (same alert type first). Creation time is not compared, since a
+      // queue backlog can create the incident well after the alert.
+      const ids = history.map((item) => item.id);
+      const incidentRows = ids.length
+        ? ((await dbInstance.execute(sql`
+            SELECT DISTINCT ON (ah.id) ah.id AS "alertId", i.id AS "incidentId", i.incident_number AS "incidentNumber"
+            FROM alert_history ah
+            JOIN sre_alert_events e
+              ON e.source_id = coalesce(ah.monitor_id, ah.job_id)
+             AND e.organization_id = ${context.organizationId}
+             AND e.project_id = ${context.project.id}
+            JOIN sre_incident_alerts ia ON ia.alert_event_id = e.id
+            JOIN sre_incidents i ON i.id = ia.incident_id
+            WHERE ah.id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+              -- Same alert type, or a recovery matched to the up/down failure it recovers.
+              AND (
+                e.dedup_key LIKE '%:' || ah.type
+                OR (ah.type IN ('monitor_recovery', 'job_success') AND e.dedup_key ~ ':(monitor_failure|job_failed|job_timeout)$')
+              )
+              -- Open when the alert was sent; an hour of slack covers a queue backlog.
+              AND i.created_at <= ah.sent_at + interval '1 hour'
+              AND (i.resolved_at IS NULL OR i.resolved_at >= ah.sent_at - interval '1 minute')
+            ORDER BY ah.id, i.created_at ASC
+          `)) as unknown as Array<{ alertId: string; incidentId: string; incidentNumber: number }>)
+        : [];
+      const incidentByAlert = new Map(
+        incidentRows.map((row) => [row.alertId, { id: row.incidentId, number: Number(row.incidentNumber) }]),
+      );
+
       // Transform the data to match the expected format
       const transformedHistory = history.map((item: AlertHistoryRow) => ({
         id: item.id,
@@ -153,6 +184,7 @@ export async function GET(request: NextRequest) {
         message: item.message,
         status: item.status,
         timestamp: item.timestamp,
+        incident: incidentByAlert.get(item.id) ?? null,
         notificationProvider:
           item.providerType ||
           item.providerName ||
@@ -242,7 +274,10 @@ export async function POST(request: NextRequest) {
     }
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    const canManage = checkPermissionWithContext('monitor', 'manage', projectContext);
+    // A recorded alert can open or resolve an incident, so it needs incident rights too.
+    const canManage =
+      checkPermissionWithContext('monitor', 'manage', projectContext) &&
+      checkPermissionWithContext('sre_incident', 'update', projectContext);
 
     if (!canManage) {
       return NextResponse.json(
@@ -294,6 +329,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The row can open or resolve an incident for its source, so the source must be in the caller's project.
+    const sourceId = body.targetType === "monitor" ? body.monitorId : body.jobId;
+    const otherId = body.targetType === "monitor" ? body.jobId : body.monitorId;
+    if (typeof sourceId !== "string" || !isUuid(sourceId) || otherId) {
+      return NextResponse.json(
+        { error: `${body.targetType}Id is required and must match targetType` },
+        { status: 400 }
+      );
+    }
+    const table = body.targetType === "monitor" ? monitors : jobs;
+    const [source] = await dbInstance
+      .select({ id: table.id })
+      .from(table)
+      .where(and(
+        eq(table.id, sourceId),
+        eq(table.organizationId, projectContext.organizationId),
+        eq(table.projectId, projectContext.project.id),
+      ))
+      .limit(1);
+    if (!source) {
+      return NextResponse.json({ error: `${body.targetType} not found` }, { status: 404 });
+    }
+
     // Insert new alert history entry
     const [result] = await dbInstance
       .insert(alertHistory)
@@ -302,8 +360,8 @@ export async function POST(request: NextRequest) {
         message: body.message,
         target: body.target,
         targetType: body.targetType,
-        monitorId: body.monitorId || null,
-        jobId: body.jobId || null,
+        monitorId: body.targetType === "monitor" ? sourceId : null,
+        jobId: body.targetType === "job" ? sourceId : null,
         provider: body.provider,
         status: body.status,
         errorMessage: body.errorMessage || null,

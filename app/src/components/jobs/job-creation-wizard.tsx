@@ -37,6 +37,9 @@ interface JobAlertConfig {
   failureThreshold: number;
   recoveryThreshold: number;
   customMessage?: string;
+  incidentEnabled?: boolean;
+  incidentSeverity?: "sev1" | "sev2" | "sev3" | "sev4";
+  autoResolveIncident?: boolean;
 }
 
 export function JobCreationWizard() {
@@ -331,6 +334,9 @@ export function JobCreationWizard() {
                   failureThreshold: config.failureThreshold,
                   recoveryThreshold: config.recoveryThreshold,
                   customMessage: config.customMessage,
+                  incidentEnabled: config.incidentEnabled,
+                  incidentSeverity: config.incidentSeverity,
+                  autoResolveIncident: config.autoResolveIncident,
                 })
               }
               context="job"

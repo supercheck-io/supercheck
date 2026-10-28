@@ -35,6 +35,9 @@ export const alertConfigSchema = z.object({
   failureThreshold: z.number(),
   recoveryThreshold: z.number(),
   customMessage: z.string().optional(),
+  incidentEnabled: z.boolean().optional(),
+  incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
+  autoResolveIncident: z.boolean().optional(),
 });
 
 export type AlertConfig = z.infer<typeof alertConfigSchema>;
@@ -76,6 +79,8 @@ export type LastRun = z.infer<typeof lastRunSchema>;
 
 // Job schema matching the database schema
 export const jobSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),

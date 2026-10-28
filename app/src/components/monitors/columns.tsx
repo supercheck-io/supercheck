@@ -11,6 +11,7 @@ import { monitorTypes } from "./data";
 import { maskUrlPassword } from "@/lib/mask-url-password";
 import { formatDurationMinutes } from "@/lib/date-utils";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 // Type definition for the extended meta object used in this table
 interface MonitorTableMeta {
@@ -152,6 +153,7 @@ export const columns: ColumnDef<Monitor>[] = [
       );
     },
   },
+  createdByColumn<Monitor>(),
   {
     accessorKey: "createdAt",
     header: ({ column }) => (

@@ -592,7 +592,7 @@ AI SRE commands use the active project from the CLI token and preserve the same 
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `incident list` | List incidents (assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
+| `incident list` | List incidents (status label, assignee and acknowledgement shown) | `--status`, `--severity`, `--assignee me\|unassigned\|<user-id>` |
 | `incident get <ref>` | Get an incident | — |
 | `incident timeline <ref>` | Incident timeline | — |
 | `incident assign <ref>` | Assign the incident, or its commander, to a project editor or admin | `--user <user-id\|me>` (required), `--commander` |
@@ -620,6 +620,8 @@ supercheck incident assign <incident-number-or-uuid> --user me
 supercheck incident ack <incident-number-or-uuid>
 supercheck incident resolve <incident-number-or-uuid> --summary "Traffic restored after rollback"
 ```
+
+The **Status** column shows the display label (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved), also returned as `statusLabel` with `--json`. `--status` filters on the stored values: `open`, `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`.
 
 Resolution prompts for confirmation and stores the required summary in the incident timeline and audit log. Use `--force` only in reviewed automation.
 

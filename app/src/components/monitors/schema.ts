@@ -2,6 +2,8 @@ import { z } from "zod";
 
 // Schema for monitors matching the database schema
 export const monitorSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string().uuid(),
   organizationId: z.string().nullable().optional(),
   createdByUserId: z.string().nullable().optional(),
@@ -30,6 +32,9 @@ export const monitorSchema = z.object({
     failureThreshold: z.number(),
     recoveryThreshold: z.number(),
     customMessage: z.string().optional(),
+    incidentEnabled: z.boolean().optional(),
+    incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
+    autoResolveIncident: z.boolean().optional(),
   }).optional(),
   lastCheckAt: z.string().nullable().optional(),
   lastStatusChangeAt: z.string().nullable().optional(),

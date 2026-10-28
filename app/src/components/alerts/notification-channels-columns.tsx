@@ -16,6 +16,7 @@ import {
 import { getNotificationProviderConfig } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 interface TableMeta {
   onEdit?: (channel: NotificationChannel) => void;
@@ -81,6 +82,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       );
     },
   },
+  createdByColumn<NotificationChannel>(),
   {
     accessorKey: "createdAt",
     header: ({ column }) => (

@@ -43,6 +43,9 @@ type EditSreIncidentDialogProps = {
   incident: SreIncidentDetail["incident"];
   services: SreServiceListItem[];
   canUpdate: boolean;
+  /** Controlled mode: the caller owns the open state and supplies its own trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 type FieldErrors = Record<string, string[] | undefined>;
@@ -57,13 +60,17 @@ export function EditSreIncidentDialog({
   incident,
   services,
   canUpdate,
+  open: controlledOpen,
+  onOpenChange,
 }: EditSreIncidentDialogProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const mappingRequested = searchParams.get("edit") === "service";
   const { projectId } = useProjectContext();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [isPending, startTransition] = useTransition();
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>();
   const [title, setTitle] = useState(incident.title);
@@ -163,12 +170,14 @@ export function EditSreIncidentDialog({
 
   return (
     <Dialog open={open || mappingRequested} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          <Pencil className="h-4 w-4" />
-          Edit incident
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" size="sm">
+            <Pencil className="h-4 w-4" />
+            Edit incident
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit incident</DialogTitle>

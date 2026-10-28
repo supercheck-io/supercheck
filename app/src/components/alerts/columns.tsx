@@ -1,6 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTableColumnHeader } from "./data-table-column-header";
@@ -141,6 +142,23 @@ export const columns: ColumnDef<AlertHistory>[] = [
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));
+    },
+  },
+  {
+    id: "incident",
+    accessorFn: (row) => row.incident?.number ?? null,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Incident" />
+    ),
+    cell: ({ row }) => {
+      const incident = row.original.incident;
+      return incident ? (
+        <Link href={`/incidents/${incident.id}`} className="text-sm underline-offset-4 hover:underline">
+          #{incident.number}
+        </Link>
+      ) : (
+        <span className="text-sm text-muted-foreground">-</span>
+      );
     },
   },
   {

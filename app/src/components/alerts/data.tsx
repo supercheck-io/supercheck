@@ -141,11 +141,4 @@ export const getNotificationProviderConfig = (type: string) => {
   };
 };
 
-/** Human label for an alert type, e.g. "monitor_failure" -> "Monitor Failure". */
-export const getAlertTypeLabel = (type: string) => {
-  const known = alertTypes.find((alertType) => alertType.value === type);
-  if (known) return known.label;
-  return type
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-};
+export { getAlertTypeLabel } from "@/lib/sre/alert-labels";

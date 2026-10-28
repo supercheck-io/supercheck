@@ -25,18 +25,28 @@ import {
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
 
+/** The detail view listens for this to open the post-mortem section. */
+export const OPEN_POSTMORTEM_EVENT = "incident:open-postmortem";
+
 export function ResolveSreIncidentDialog({
   incidentId,
   defaultSummary = "",
+  open: controlledOpen,
+  onOpenChange,
 }: {
   incidentId: string;
   /** Pre-fills the summary, for example from the AI root cause. The user still confirms it. */
   defaultSummary?: string;
+  /** Controlled mode: the caller owns the open state and supplies its own trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
   const commentId = useId();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [comment, setComment] = useState(defaultSummary.slice(0, 2000));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -74,8 +84,7 @@ export function ResolveSreIncidentDialog({
           description: "You can generate a post-mortem draft from the incident timeline.",
           action: {
             label: "Post-mortem",
-            onClick: () =>
-              document.getElementById("incident-postmortem")?.scrollIntoView({ behavior: "smooth" }),
+            onClick: () => window.dispatchEvent(new Event(OPEN_POSTMORTEM_EVENT)),
           },
         });
         await Promise.allSettled(
@@ -105,12 +114,14 @@ export function ResolveSreIncidentDialog({
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Check className="h-4 w-4" />
-          Resolve incident
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <Check className="h-4 w-4" />
+            Resolve incident
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Resolve incident</DialogTitle>
