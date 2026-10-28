@@ -39,6 +39,12 @@ describe("email test connection", () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["me@example.com"] }));
   });
 
+  it("deduplicates repeated recipients so one request sends one mail per address", async () => {
+    allowed(["me@example.com"]);
+    await post("me@example.com, ME@example.com, me@example.com");
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["me@example.com"] }));
+  });
+
   it("refuses arbitrary outside recipients without sending", async () => {
     allowed(["me@example.com"]);
     expect((await post("me@example.com, victim@elsewhere.com")).status).toBe(400);

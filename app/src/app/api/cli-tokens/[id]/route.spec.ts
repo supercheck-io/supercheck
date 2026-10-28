@@ -17,7 +17,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: async () => [{ count: usableCount }] }) }) }),
+      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => [{ enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }] }) }) }) }),
   };
   return { db };
 });

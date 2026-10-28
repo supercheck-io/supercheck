@@ -104,11 +104,12 @@ export async function PATCH(
     if (name !== undefined) updateData.name = name;
 
     // Re-enabling must respect the same per-project cap as issuance (serialised by the same lock).
-    const needsCapCheck = enabled === true && tokenRecord[0].enabled === false;
     const updated = await db.transaction(async (tx) => {
-      if (needsCapCheck) {
+      if (enabled === true) {
         await lockProjectForKeyIssuance(tx, context.project.id);
-        if ((await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        // Re-read under the lock: the pre-read may be stale.
+        const [current] = await tx.select({ enabled: apikey.enabled }).from(apikey).where(eq(apikey.id, tokenId)).limit(1);
+        if (current?.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
       }
       const [row] = await tx.update(apikey).set(updateData).where(eq(apikey.id, tokenId)).returning();
       return row;

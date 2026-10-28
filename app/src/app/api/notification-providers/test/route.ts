@@ -93,10 +93,16 @@ async function testEmailConnection(
     }
 
     // Validate email format with length limit to prevent ReDoS
-    const emailList = (typedConfig.emails as string)
-      .split(",")
-      .map((email) => email.trim())
-      .filter((email) => email);
+    // Deduplicated so a repeated address cannot multiply deliveries.
+    const emailList = [...new Set(
+      (typedConfig.emails as string)
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email),
+    )];
+    if (emailList.length === 0) {
+      throw new Error("At least one email address is required");
+    }
     // Safer email regex without nested quantifiers - uses explicit character classes
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
@@ -110,12 +116,12 @@ async function testEmailConnection(
       }
     }
 
-    if (new Set(emailList.map((email) => email.toLowerCase())).size > MAX_TEST_RECIPIENTS) {
+    if (emailList.length > MAX_TEST_RECIPIENTS) {
       throw new Error(`At most ${MAX_TEST_RECIPIENTS} recipients can be tested at once`);
     }
 
     // Platform mail may only go to the caller or members of their organization.
-    const lowered = [...new Set(emailList.map((email) => email.toLowerCase()))];
+    const lowered = emailList;
     const permitted = await db
       .select({ email: user.email })
       .from(user)

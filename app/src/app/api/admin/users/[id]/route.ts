@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Lock every super admin row so two concurrent demotions cannot both pass the check.
       const outcome = await db.transaction(async (tx) => {
         const admins = await tx.select({ id: user.id }).from(user).where(eq(user.role, 'super_admin')).for('update');
-        if (admins.length <= 1) return 'last-admin' as const;
+        if (admins.length <= 1 && admins.some((a) => a.id === resolvedParams.id)) return 'last-admin' as const;
         return (await applyChanges(tx))[0];
       });
       if (outcome === 'last-admin') {

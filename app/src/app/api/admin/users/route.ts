@@ -4,6 +4,7 @@ import { getAllUsers, requireAdmin } from '@/lib/admin';
 import { db } from '@/utils/db';
 import { user } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { isUuid } from '@/lib/uuid';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
 
@@ -101,7 +102,14 @@ export async function PATCH(request: NextRequest) {
         result = { success: true, userId, action: 'banned', banReason: reason, sessionsInvalidated: true };
         break;
       
-      case 'unban':
+      case 'unban': {
+        if (typeof userId !== 'string' || !isUuid(userId)) {
+          return NextResponse.json({ success: false, error: 'Invalid user ID' }, { status: 400 });
+        }
+        const actor = await getCurrentUser();
+        if (!actor) {
+          return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+        }
         // Use direct database update since we have our own RBAC admin check  
         // Better Auth's admin plugin requires specific user IDs, but we use RBAC system
         const [unbanned] = await db
@@ -120,10 +128,11 @@ export async function PATCH(request: NextRequest) {
             { status: 404 }
           );
         }
-        await logAdminEvent((await getCurrentUser())?.id ?? 'unknown', 'user_unbanned', userId, 'user', userId);
+        await logAdminEvent(actor.id, 'user_unbanned', userId, 'user', userId);
 
         result = { success: true, userId, action: 'unbanned' };
         break;
+      }
       
       default:
         return NextResponse.json(

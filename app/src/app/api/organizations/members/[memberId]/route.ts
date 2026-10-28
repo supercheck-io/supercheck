@@ -427,14 +427,17 @@ export async function DELETE(
       // Lock the membership first so a concurrent role/assignment update cannot
       // re-insert project assignments after this delete (the PUT handler locks too).
       const [locked] = await tx
-        .select({ id: member.id })
+        .select({ id: member.id, role: member.role })
         .from(member)
         .where(and(
           eq(member.userId, resolvedParams.memberId),
           eq(member.organizationId, delOrgId)
         ))
         .for('update');
-      if (!locked) return false;
+      if (!locked) return 'gone' as const;
+      // Role may have changed while waiting for the lock; repeat the protections.
+      if (locked.role === 'org_owner') return 'forbidden' as const;
+      if (locked.role === 'org_admin' && delOrgRole !== Role.ORG_OWNER) return 'forbidden' as const;
 
       // Clean up project member assignments for this org's projects
       const orgProjectIds = await tx
@@ -463,11 +466,14 @@ export async function DELETE(
 
       // Their job trigger keys must not outlive the membership.
       await disableTriggerKeysForMember(tx, resolvedParams.memberId, delOrgId);
-      return true;
+      return 'removed' as const;
     });
 
-    if (!removed) {
+    if (removed === 'gone') {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+    }
+    if (removed === 'forbidden') {
+      return NextResponse.json({ error: 'Insufficient permissions to remove this member' }, { status: 403 });
     }
 
     // Log the audit event

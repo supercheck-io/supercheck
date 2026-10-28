@@ -59,12 +59,11 @@ export async function PATCH(
     }
 
     // Re-enabling undoes a revocation: only the key's owner or a holder of apiKey:delete may do it.
-    if (
+    const restrictedReenable =
       enabled === true &&
-      keyRecord[0].enabled === false &&
       keyRecord[0].ownerId !== authCtx.userId &&
-      !checkPermissionWithContext("apiKey", "delete", authCtx)
-    ) {
+      !checkPermissionWithContext("apiKey", "delete", authCtx);
+    if (restrictedReenable && keyRecord[0].enabled === false) {
       return NextResponse.json({ error: "Only the key's owner or an admin can re-enable it" }, { status: 403 });
     }
 
@@ -77,8 +76,12 @@ export async function PATCH(
     const updatedKey = await db
       .update(apikey)
       .set(updateData)
-      .where(eq(apikey.id, keyId))
+      // A restricted caller must not overwrite a revocation that landed after the pre-read.
+      .where(restrictedReenable ? and(eq(apikey.id, keyId), eq(apikey.enabled, true)) : eq(apikey.id, keyId))
       .returning();
+    if (!updatedKey.length) {
+      return NextResponse.json({ error: "API key state changed" }, { status: 409 });
+    }
 
     return NextResponse.json({
       success: true,

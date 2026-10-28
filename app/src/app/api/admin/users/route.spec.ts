@@ -40,8 +40,9 @@ describe("PATCH /api/admin/users ban duration", () => {
   });
 });
 
+const UID = "0c11ab1e-7460-5139-b3b8-920f69f95082";
 const unban = () =>
-  PATCH(new NextRequest("https://app.example.com/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "u1", action: "unban" }) }));
+  PATCH(new NextRequest("https://app.example.com/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: UID, action: "unban" }) }));
 
 describe("admin users API hardening", () => {
   beforeEach(() => (logAdminEvent as jest.Mock).mockClear());
@@ -56,7 +57,12 @@ describe("admin users API hardening", () => {
     expect(logAdminEvent).not.toHaveBeenCalled();
     mockReturning.mockResolvedValueOnce([{ id: "u1" }]);
     expect((await unban()).status).toBe(200);
-    expect(logAdminEvent).toHaveBeenCalledWith("admin", "user_unbanned", "u1", "user", "u1");
+    expect(logAdminEvent).toHaveBeenCalledWith("admin", "user_unbanned", UID, "user", UID);
+  });
+
+  it("rejects a malformed unban id before touching the database", async () => {
+    const res = await PATCH(new NextRequest("https://app.example.com/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "u1", action: "unban" }) }));
+    expect(res.status).toBe(400);
   });
 
   it("clamps list pagination", async () => {
