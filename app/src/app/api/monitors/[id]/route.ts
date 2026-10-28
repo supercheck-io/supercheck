@@ -30,6 +30,13 @@ import {
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import {
+  enabledAlertConfigError,
+  normalizeMonitorAlertConfig,
+  preserveWorkerConfigKeys,
+  replaceMonitorProviders,
+  testInProject,
+} from "@/lib/monitor-write";
+import {
   findLocationsOutsideProject,
   findUnsupportedMonitorLocations,
   unsupportedMonitorLocationsMessage,
@@ -134,6 +141,18 @@ export async function GET(
   }
 }
 
+// Allowlist: createUpdateSchema accepts every column, including organizationId, projectId and scheduledJobId.
+const monitorWritableSchema = monitorsUpdateSchema.pick({
+  name: true,
+  description: true,
+  type: true,
+  target: true,
+  frequencyMinutes: true,
+  enabled: true,
+  status: true,
+  config: true,
+});
+
 export async function PUT(
   request: NextRequest,
   routeContext: { params: Promise<{ id: string }> },
@@ -161,7 +180,7 @@ export async function PUT(
     }
 
     const rawData = await request.json();
-    const validationResult = monitorsUpdateSchema.safeParse(rawData);
+    const validationResult = monitorWritableSchema.safeParse(rawData);
 
     if (!validationResult.success) {
       return NextResponse.json(
@@ -202,6 +221,17 @@ export async function PUT(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+
+    if (
+      (updateData.type ?? currentMonitor.type) === "synthetic_test" &&
+      updateData.config?.testId !== undefined &&
+      !(await testInProject(updateData.config.testId, authCtx.organizationId, authCtx.project.id))
+    ) {
+      return NextResponse.json(
+        { error: "Test not found or access denied" },
+        { status: 404 },
+      );
     }
 
     if (updateData.config?.locationConfig) {
@@ -256,57 +286,8 @@ export async function PUT(
       }
     }
 
-    // Validate alert configuration if enabled
-    if (rawData.alertConfig?.enabled) {
-      // Check if at least one notification provider is selected
-      if (
-        !rawData.alertConfig.notificationProviders ||
-        rawData.alertConfig.notificationProviders.length === 0
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "At least one notification channel must be selected when alerts are enabled",
-          },
-          { status: 400 },
-        );
-      }
-
-      // Check notification channel limit
-      const maxMonitorChannels = parseInt(
-        process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10,
-      );
-      if (
-        rawData.alertConfig.notificationProviders.length > maxMonitorChannels
-      ) {
-        return NextResponse.json(
-          {
-            error: `You can only select up to ${maxMonitorChannels} notification channels`,
-          },
-          { status: 400 },
-        );
-      }
-
-      // Check if at least one alert type is selected
-      const alertTypesSelected = [
-        rawData.alertConfig.alertOnFailure,
-        rawData.alertConfig.alertOnRecovery,
-        rawData.alertConfig.alertOnSslExpiration,
-      ].some(Boolean);
-
-      if (!alertTypesSelected) {
-        return NextResponse.json(
-          {
-            error:
-              "At least one alert type must be selected when alerts are enabled",
-          },
-          { status: 400 },
-        );
-      }
-    }
-
-    // Prepare update data - preserve existing alert config if not provided
+    // Prepare update data. Only the writable columns are taken from the body: tenant ids, the scheduler id and
+    // the other server-owned columns must not be settable by a client.
     const { type, status, ...restUpdate } = updateData;
     const updatePayload: Partial<typeof monitors.$inferInsert> = {
       ...restUpdate,
@@ -321,71 +302,41 @@ export async function PUT(
       updatePayload.status = status as MonitorStatus;
     }
 
-    // Only update alertConfig if it's explicitly provided
-    if (rawData.hasOwnProperty("alertConfig")) {
-      updatePayload.alertConfig = rawData.alertConfig
-        ? {
-            enabled: Boolean(rawData.alertConfig.enabled),
-            notificationProviders: Array.isArray(
-              rawData.alertConfig.notificationProviders,
-            )
-              ? rawData.alertConfig.notificationProviders
-              : [],
-            alertOnFailure:
-              rawData.alertConfig.alertOnFailure !== undefined
-                ? Boolean(rawData.alertConfig.alertOnFailure)
-                : true,
-            alertOnRecovery: Boolean(rawData.alertConfig.alertOnRecovery),
-            alertOnSslExpiration: Boolean(
-              rawData.alertConfig.alertOnSslExpiration,
-            ),
-            failureThreshold:
-              typeof rawData.alertConfig.failureThreshold === "number"
-                ? rawData.alertConfig.failureThreshold
-                : 1,
-            recoveryThreshold:
-              typeof rawData.alertConfig.recoveryThreshold === "number"
-                ? rawData.alertConfig.recoveryThreshold
-                : 1,
-            customMessage:
-              typeof rawData.alertConfig.customMessage === "string"
-                ? rawData.alertConfig.customMessage
-                : "",
-            incidentEnabled: typeof rawData.alertConfig.incidentEnabled === "boolean" ? rawData.alertConfig.incidentEnabled : undefined,
-            incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(rawData.alertConfig.incidentSeverity) ? rawData.alertConfig.incidentSeverity : undefined,
-            autoResolveIncident: typeof rawData.alertConfig.autoResolveIncident === "boolean" ? rawData.alertConfig.autoResolveIncident : undefined,
-          }
-        : null;
+    // Keep enabled and status in step, as PATCH does: the scheduler skips a monitor with enabled=false.
+    if (status && rawData.enabled === undefined) {
+      updatePayload.enabled = status !== "paused";
+    } else if (rawData.enabled === false && !status) {
+      updatePayload.status = "paused";
+    } else if (rawData.enabled === true && !status && currentMonitor.status === "paused") {
+      updatePayload.status = "pending";
     }
-    // If alertConfig is not in rawData, existing alert settings are preserved
 
-    const shouldSyncNotificationProviders =
-      rawData.alertConfig?.enabled &&
-      Array.isArray(rawData.alertConfig.notificationProviders);
+    if (updateData.config) {
+      updatePayload.config = preserveWorkerConfigKeys(currentMonitor.config, updateData.config);
+    }
 
     let normalizedProviderIds: string[] = [];
-    if (shouldSyncNotificationProviders) {
-      const rawProviderIds = rawData.alertConfig
-        .notificationProviders as unknown[];
-
-      normalizedProviderIds = Array.from(
-        new Set(
-          rawProviderIds.filter(
-            (providerId: unknown): providerId is string =>
-              typeof providerId === "string" && providerId.trim().length > 0,
-          ),
-        ),
-      );
-
-      if (normalizedProviderIds.length !== rawProviderIds.length) {
-        return NextResponse.json(
-          {
-            error: "Notification provider IDs must be non-empty strings",
-          },
-          { status: 400 },
-        );
+    // Only update alertConfig if it's explicitly provided; otherwise existing alert settings are preserved
+    if (rawData.hasOwnProperty("alertConfig")) {
+      if (rawData.alertConfig) {
+        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+        if (!normalized.ok) {
+          return NextResponse.json({ error: normalized.error }, { status: 400 });
+        }
+        const alertError = enabledAlertConfigError(normalized.value);
+        if (alertError) {
+          return NextResponse.json({ error: alertError }, { status: 400 });
+        }
+        updatePayload.alertConfig = normalized.value;
+        normalizedProviderIds = Array.from(new Set(normalized.value.notificationProviders));
+      } else {
+        updatePayload.alertConfig = null;
       }
     }
+
+    const shouldSyncNotificationProviders = Boolean(
+      updatePayload.alertConfig?.enabled && rawData.alertConfig,
+    );
 
     const NOTIFICATION_PROVIDER_VALIDATION_ERROR =
       "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
@@ -830,6 +781,15 @@ export async function PATCH(
       return NextResponse.json(configurationValidation, { status: 400 });
     }
 
+    if (
+      (updatePayload.type ?? currentMonitor.type) === "synthetic_test" &&
+      isObject(rawData.config) &&
+      rawData.config.testId !== undefined &&
+      !(await testInProject(rawData.config.testId, authCtx.organizationId, authCtx.project.id))
+    ) {
+      return NextResponse.json({ error: "Test not found or access denied" }, { status: 404 });
+    }
+
     if (rawData.config?.locationConfig) {
       const outside = await findLocationsOutsideProject(
         (updatePayload.config as { locationConfig?: LocationConfig } | undefined)
@@ -862,12 +822,31 @@ export async function PATCH(
     }
 
     // Handle partial update for 'alertConfig'
+    let providerIdsToSync: string[] | null = null;
     if (rawData.alertConfig) {
-      const newAlertConfig = deepMerge(
-        currentMonitor.alertConfig ?? {},
-        rawData.alertConfig,
+      // Same normaliser and rules as PUT, applied to the merged result.
+      const normalized = normalizeMonitorAlertConfig(
+        deepMerge(currentMonitor.alertConfig ?? {}, rawData.alertConfig),
       );
-      updatePayload.alertConfig = newAlertConfig;
+      const alertError = normalized.ok ? enabledAlertConfigError(normalized.value) : normalized.error;
+      if (!normalized.ok || alertError) {
+        return NextResponse.json({ error: alertError }, { status: 400 });
+      }
+      updatePayload.alertConfig = normalized.value;
+      if (normalized.value.enabled && Array.isArray(rawData.alertConfig.notificationProviders)) {
+        providerIdsToSync = normalized.value.notificationProviders;
+      }
+    }
+
+    // The worker delivers through monitor_notification_settings, not the JSON column.
+    if (
+      providerIdsToSync &&
+      !(await replaceMonitorProviders(id, providerIdsToSync, authCtx.organizationId, authCtx.project.id))
+    ) {
+      return NextResponse.json(
+        { error: "One or more notification providers are invalid or not accessible in this project" },
+        { status: 400 },
+      );
     }
 
     const updatedMonitor = await updateMonitorHandler(id, updatePayload);

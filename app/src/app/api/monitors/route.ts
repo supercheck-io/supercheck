@@ -38,6 +38,7 @@ import {
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { normalizeMonitorAlertConfig, providerIdsOutsideProject } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -407,41 +408,11 @@ export async function POST(req: NextRequest) {
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
     let alertConfig = null;
     if (rawData.alertConfig) {
-      alertConfig = {
-        enabled: Boolean(rawData.alertConfig.enabled),
-        notificationProviders: Array.isArray(
-          rawData.alertConfig.notificationProviders,
-        )
-          ? rawData.alertConfig.notificationProviders
-          : [],
-        alertOnFailure:
-          rawData.alertConfig.alertOnFailure !== undefined
-            ? Boolean(rawData.alertConfig.alertOnFailure)
-            : true,
-        alertOnRecovery:
-          rawData.alertConfig.alertOnRecovery !== undefined
-            ? Boolean(rawData.alertConfig.alertOnRecovery)
-            : true,
-        alertOnSslExpiration:
-          rawData.alertConfig.alertOnSslExpiration !== undefined
-            ? Boolean(rawData.alertConfig.alertOnSslExpiration)
-            : false,
-        failureThreshold:
-          typeof rawData.alertConfig.failureThreshold === "number"
-            ? rawData.alertConfig.failureThreshold
-            : 1,
-        recoveryThreshold:
-          typeof rawData.alertConfig.recoveryThreshold === "number"
-            ? rawData.alertConfig.recoveryThreshold
-            : 1,
-        customMessage:
-          typeof rawData.alertConfig.customMessage === "string"
-            ? rawData.alertConfig.customMessage
-            : "",
-        incidentEnabled: typeof rawData.alertConfig.incidentEnabled === "boolean" ? rawData.alertConfig.incidentEnabled : undefined,
-        incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(rawData.alertConfig.incidentSeverity) ? rawData.alertConfig.incidentSeverity : undefined,
-        autoResolveIncident: typeof rawData.alertConfig.autoResolveIncident === "boolean" ? rawData.alertConfig.autoResolveIncident : undefined,
-      };
+      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      alertConfig = normalized.value;
       logger.debug(
         { alertEnabled: alertConfig?.enabled },
         "[MONITOR_CREATE] Processed alert config",
@@ -554,6 +525,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // SECURITY: every provider must belong to this org and project; reject rather than create a monitor
+    // that shows alerts as enabled but has no delivery rows.
+    if (alertConfig?.enabled) {
+      const invalidProviderIds = await providerIdsOutsideProject(
+        alertConfig.notificationProviders,
+        organizationId,
+        targetProjectId,
+      );
+      if (invalidProviderIds.length > 0) {
+        return NextResponse.json(
+          { error: "One or more notification providers are invalid or not accessible in this project" },
+          { status: 400 },
+        );
+      }
+    }
+
     // Serialize count -> limit check -> insert per organization so concurrent
     // requests cannot both pass the plan limit.
     const inserted = await insertWithinPlanLimit({
@@ -591,64 +578,20 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
-    const newMonitor = await scheduleCreatedMonitor(
-      inserted.row.newMonitor,
-      inserted.row.enabled,
-    );
-
-    // Link notification providers if alert config is enabled
-    if (
-      newMonitor &&
-      alertConfig?.enabled &&
-      Array.isArray(alertConfig.notificationProviders) &&
-      alertConfig.notificationProviders.length > 0
-    ) {
-      // SECURITY: Validate that all notification providers belong to the same org/project
-      const validProviders = await db
-        .select({ id: notificationProviders.id })
-        .from(notificationProviders)
-        .where(
-          and(
-            inArray(
-              notificationProviders.id,
-              alertConfig.notificationProviders,
-            ),
-            eq(notificationProviders.organizationId, organizationId),
-            eq(notificationProviders.projectId, targetProjectId),
-          ),
-        );
-
-      const validProviderIds = new Set(validProviders.map((p) => p.id));
-      const invalidProviderIds = alertConfig.notificationProviders.filter(
-        (id: string) => !validProviderIds.has(id),
-      );
-
-      if (invalidProviderIds.length > 0) {
-        logger.warn(
-          { invalidProviderIds },
-          `Skipping ${invalidProviderIds.length} invalid/unauthorized notification provider(s)`,
-        );
-      }
-
-      if (validProviderIds.size > 0) {
-        const normalizedProviderIds = Array.from(validProviderIds);
-
-        logger.debug(
-          { providerIds: normalizedProviderIds },
-          "[MONITOR_CREATE] Linking notification providers",
-        );
-
-        await db
-          .insert(monitorNotificationSettings)
-          .values(
-            normalizedProviderIds.map((providerId) => ({
-              monitorId: newMonitor.id,
-              notificationProviderId: providerId,
-            })),
-          )
-          .onConflictDoNothing();
-      }
+    // Link the validated providers before scheduling, so a scheduling failure cannot leave a monitor without them.
+    const createdMonitor = inserted.row.newMonitor;
+    if (alertConfig?.enabled && alertConfig.notificationProviders.length > 0) {
+      await db
+        .insert(monitorNotificationSettings)
+        .values(
+          Array.from(new Set(alertConfig.notificationProviders)).map((providerId) => ({
+            monitorId: createdMonitor.id,
+            notificationProviderId: providerId,
+          })),
+        )
+        .onConflictDoNothing();
     }
+    const newMonitor = await scheduleCreatedMonitor(createdMonitor, inserted.row.enabled);
 
     // Log the audit event for monitor creation
     await logAuditEvent({
@@ -790,7 +733,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Validate synthetic test monitor updates
-    if (rawData.type === "synthetic_test" && rawData.config?.testId) {
+    if ((updateData.type ?? monitorData[0].type) === "synthetic_test" && rawData.config?.testId) {
       const { tests } = await import("@/db/schema");
       const { eq, and } = await import("drizzle-orm");
 
@@ -832,41 +775,11 @@ export async function PUT(req: NextRequest) {
     // Prepare alert configuration - ensure it's properly structured
     let alertConfig = null;
     if (rawData.alertConfig) {
-      alertConfig = {
-        enabled: Boolean(rawData.alertConfig.enabled),
-        notificationProviders: Array.isArray(
-          rawData.alertConfig.notificationProviders,
-        )
-          ? rawData.alertConfig.notificationProviders
-          : [],
-        alertOnFailure:
-          rawData.alertConfig.alertOnFailure !== undefined
-            ? Boolean(rawData.alertConfig.alertOnFailure)
-            : true,
-        alertOnRecovery:
-          rawData.alertConfig.alertOnRecovery !== undefined
-            ? Boolean(rawData.alertConfig.alertOnRecovery)
-            : true,
-        alertOnSslExpiration:
-          rawData.alertConfig.alertOnSslExpiration !== undefined
-            ? Boolean(rawData.alertConfig.alertOnSslExpiration)
-            : false,
-        failureThreshold:
-          typeof rawData.alertConfig.failureThreshold === "number"
-            ? rawData.alertConfig.failureThreshold
-            : 1,
-        recoveryThreshold:
-          typeof rawData.alertConfig.recoveryThreshold === "number"
-            ? rawData.alertConfig.recoveryThreshold
-            : 1,
-        customMessage:
-          typeof rawData.alertConfig.customMessage === "string"
-            ? rawData.alertConfig.customMessage
-            : "",
-        incidentEnabled: typeof rawData.alertConfig.incidentEnabled === "boolean" ? rawData.alertConfig.incidentEnabled : undefined,
-        incidentSeverity: ["sev1", "sev2", "sev3", "sev4"].includes(rawData.alertConfig.incidentSeverity) ? rawData.alertConfig.incidentSeverity : undefined,
-        autoResolveIncident: typeof rawData.alertConfig.autoResolveIncident === "boolean" ? rawData.alertConfig.autoResolveIncident : undefined,
-      };
+      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      alertConfig = normalized.value;
     }
 
     // Use the monitor service to update the monitor
@@ -956,6 +869,20 @@ export async function PUT(req: NextRequest) {
             error:
               "At least one alert type must be selected when alerts are enabled",
           },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (alertConfig?.enabled) {
+      const invalidProviderIds = await providerIdsOutsideProject(
+        alertConfig.notificationProviders,
+        organizationId,
+        project.id,
+      );
+      if (invalidProviderIds.length > 0) {
+        return NextResponse.json(
+          { error: "One or more notification providers are invalid or not accessible in this project" },
           { status: 400 },
         );
       }

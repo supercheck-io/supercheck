@@ -14,6 +14,7 @@ import {
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
+import { preserveWorkerConfigKeys, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
 // Updated to support dual scoping (organization + project) for multi-tenant architecture.
@@ -118,7 +119,8 @@ export async function scheduleCreatedMonitor(
         `Failed to schedule monitor ${newMonitor.id} after creation:`,
         scheduleError
       );
-      // Decide if this should be a hard error or just logged
+      // An unscheduled monitor never runs and nothing reconciles it, so the caller must see the failure.
+      throw scheduleError;
     }
 
     // Trigger immediate execution for validation (non-blocking)
@@ -140,7 +142,7 @@ export async function createMonitorHandler(data: MonitorApiData) {
 /** Config that changes what a check does. Alert channels, regions and bookkeeping must not reset the schedule. */
 export function executionConfig(config: MonitorConfig | null | undefined) {
   return Object.fromEntries(Object.entries(config ?? {}).filter(([key]) =>
-    !["locationConfig", "regions", "alertChannels", "sslLastCheckedAt", "testTitle", "retryStrategy"].includes(key)
+    !["locationConfig", "regions", "alertChannels", "testTitle", "retryStrategy", ...WORKER_OWNED_CONFIG_KEYS].includes(key)
   ));
 }
 
@@ -165,7 +167,11 @@ export async function updateMonitorHandler(
   if (data.target !== undefined) updateData.target = data.target;
   if (data.frequencyMinutes !== undefined)
     updateData.frequencyMinutes = data.frequencyMinutes;
-  if (data.config !== undefined) updateData.config = data.config;
+  if (data.config !== undefined) {
+    // The worker owns alert dedupe state in config; a replacement must not reset it.
+    data = { ...data, config: preserveWorkerConfigKeys(existingMonitor.config, data.config) };
+    updateData.config = data.config;
+  }
   if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.alertConfig !== undefined) updateData.alertConfig = data.alertConfig;
   // Do not include organizationId or createdByUserId in updates usually, unless specifically intended
@@ -256,6 +262,12 @@ export async function updateMonitorHandler(
           `Failed to re-schedule monitor ${updatedMonitor.id} after update:`,
           scheduleError
         );
+        // The old repeat job is gone: drop the stale id so the state is detectable, and tell the caller.
+        await db
+          .update(monitorTable)
+          .set({ scheduledJobId: null })
+          .where(eq(monitorTable.id, updatedMonitor.id));
+        throw scheduleError;
       }
     } else {
       // Clear scheduler ID if disabled or frequency is 0
