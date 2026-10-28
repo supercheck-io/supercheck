@@ -1,24 +1,27 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
-import { CopyCommand, DemoVideo } from "../../components/landing/interactive";
+import { CopyCommand } from "../../components/landing/interactive";
 import { CheckList, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { DEMO_URL } from "../../lib/site-nav";
+import { versioned } from "../../lib/assets";
 
+// Order follows the path of a failure: tested, caught, handled, announced.
 const products = [
   {
     title: "Automate",
     summary: "Write, record and run end-to-end and load tests.",
     href: "/docs/app/automate",
-    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright API test" },
+    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test" },
     items: [
       "Playwright browser, API and database tests",
       "k6 load tests with streaming logs and run comparison",
+      "Scheduled jobs that run from cron or your CI pipeline",
       "Recorder extension for Chrome and Edge",
-      "AI test generation and failure fixes",
       "Requirements with coverage tracking",
     ],
   },
@@ -35,29 +38,37 @@ const products = [
     ],
   },
   {
-    title: "Communicate",
-    summary: "Tell your team first, then tell your users.",
-    href: "/docs/app/communicate",
-    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page showing all systems operational" },
-    items: [
-      "Alerts by email, Slack, Teams, Discord, Telegram and webhooks",
-      "Public status pages on your own domain",
-      "Email, Slack and webhook subscribers, plus RSS and calendar feeds",
-      "Project dashboard for runs, jobs and uptime",
-    ],
-  },
-  {
-    title: "Investigate",
-    summary: "Find the cause of an incident with evidence, not guesses.",
+    title: "Respond",
+    summary: "Monitor and job alerts open an incident you can work from (on by default, per check).",
     href: "/docs/app/investigate",
-    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage" },
+    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
     items: [
-      "Alerts open one incident per failing source and resolve it on recovery",
+      "One incident per failing source, resolved on recovery unless someone has acknowledged it",
       "AI SRE investigations that cite their evidence",
+      "Copilot chat and a service catalog for ownership and context",
       "Read-only connectors for GitHub, Kubernetes, Prometheus, Grafana, Sentry and Datadog",
       "Private Agent for systems inside your network",
     ],
   },
+  {
+    title: "Communicate",
+    summary: "Tell your team first, then tell your users.",
+    href: "/docs/app/communicate",
+    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with an active status update and 90 days of uptime per component" },
+    items: [
+      "Notifications by email, Slack, Teams, Discord, Telegram and webhooks",
+      "Public status pages on your own domain",
+      "Email, Slack and webhook subscribers, plus RSS and calendar feeds",
+    ],
+  },
+];
+
+const flow = [
+  { step: "Check", body: "A monitor or scheduled job with alerts on fails past its threshold." },
+  { step: "Alert", body: "Your notification channels get the failure." },
+  { step: "Incident", body: "An incident opens for that source, with its alerts attached." },
+  { step: "Investigate", body: "Run an AI SRE investigation that cites what it found. You decide the fix." },
+  { step: "Recover", body: "The check passes, a recovery is sent, and an unacknowledged incident resolves." },
 ];
 
 const configExample = `import { defineConfig } from '@supercheck/cli'
@@ -128,9 +139,9 @@ export default async function HomePage() {
             </span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
-            Test with Playwright and k6. Monitor your sites and APIs, keep users informed
-            with status pages, and investigate incidents with AI that shows its evidence.
-            Self-host today, or join the Supercheck Cloud waitlist.
+            Test with Playwright and k6 and monitor your sites and APIs. When a check fails,
+            Supercheck opens an incident, lets you investigate it with AI that cites its evidence,
+            and keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
@@ -149,7 +160,16 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-14 md:mt-16">
-            <DemoVideo />
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)]">
+              <Image
+                src={versioned("/supercheck-screenshot.webp")}
+                alt="Supercheck monitor detail view with availability and response time charts"
+                fill
+                sizes="(min-width: 1152px) 1152px, 100vw"
+                className="object-cover object-top"
+                priority
+              />
+            </div>
           </div>
         </section>
 
@@ -181,9 +201,18 @@ export default async function HomePage() {
         <section className="border-t border-fd-border">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Platform" title="One place for the work between deploy and incident">
-              Most teams stitch together a test runner, an uptime service, a status page and a pile of
-              dashboards. Supercheck covers all four, sharing one set of projects, alerts and history.
+              Most teams stitch together a test runner, an uptime service, an incident tool and a status
+              page. Supercheck covers all four, sharing one set of projects, alerts and history.
             </SectionHeading>
+            <ol className="mt-12 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border lg:grid-cols-5">
+              {flow.map((item, index) => (
+                <li key={item.step} className="bg-fd-background p-5">
+                  <p className="font-mono text-xs text-fd-muted-foreground">{String(index + 1).padStart(2, "0")}</p>
+                  <h3 className="mt-2 font-semibold">{item.step}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-fd-muted-foreground">{item.body}</p>
+                </li>
+              ))}
+            </ol>
             <div className="mt-16 space-y-20 md:space-y-28">
               {products.map((product, index) => (
                 <div

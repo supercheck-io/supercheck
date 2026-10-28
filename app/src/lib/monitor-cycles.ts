@@ -28,7 +28,7 @@ export type MonitorCyclePolicy = {
 export type MonitorCycleRequest = {
   /** Stable key (scheduler job id) so a retry of the same scheduled cycle reuses one cycle. */
   key?: string;
-  /** Every configured region, including ones that could not be published to. */
+  /** Regions actually published to (live workers). Skipped regions are excluded so they are not counted missing. */
   configuredLocations: string[];
   policy: MonitorCyclePolicy;
   /** Abort the persisted cycle when publication fails (false while the scheduler will retry). */

@@ -163,6 +163,10 @@ const WEBHOOK_BLOCKED_HEADERS = new Set([
   'user-agent',
 ]);
 
+function clip(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -436,7 +440,7 @@ export class NotificationService {
     // Enhanced message with context
     let enhancedMessage = payload.message;
     if (payload.metadata?.errorMessage) {
-      enhancedMessage += `\n\n**Error Details:** ${payload.metadata.errorMessage}`;
+      enhancedMessage += `\n\nError Details: ${payload.metadata.errorMessage}`;
     }
 
     // Build standardized fields
@@ -843,7 +847,7 @@ export class NotificationService {
   private async trySMTPDelivery(
     config: any,
     formatted: FormattedNotification,
-    emailContent: { html: string; text: string },
+    emailContent: { html: string; text: string; subject: string },
     emailAddresses: string[],
   ): Promise<SmtpDeliveryResult> {
     const failureResult = (error: string): SmtpDeliveryResult => ({
@@ -928,7 +932,7 @@ export class NotificationService {
           await transporter.sendMail({
             from: fromEmail,
             to: email,
-            subject: formatted.title,
+            subject: emailContent.subject,
             html: emailContent.html,
             text: emailContent.text,
           });
@@ -1427,8 +1431,9 @@ export class NotificationService {
           },
           body: JSON.stringify({
             chat_id: chatId,
+            // Plain text: monitor names and errors often contain _ or *, which break
+            // Telegram Markdown parsing and make the API reject the whole alert.
             text: telegramMessage,
-            parse_mode: 'Markdown',
           }),
         },
         retryConfig,
@@ -1477,23 +1482,25 @@ export class NotificationService {
             'User-Agent': 'Supercheck-Monitor/1.0',
           },
           body: JSON.stringify({
-            content: formatted.title,
+            // Discord rejects the whole message when a field is over its limit
+            // or the footer text is empty.
+            content: clip(formatted.title, 2000),
             embeds: [
               {
-                title: formatted.title,
-                description: formatted.message,
+                title: clip(formatted.title, 256),
+                description: clip(formatted.message, 4096),
                 color: parseInt(formatted.color.replace('#', ''), 16),
-                fields: formatted.fields.map((field) => ({
-                  name: field.title,
-                  value: field.value,
+                fields: formatted.fields.slice(0, 25).map((field) => ({
+                  name: clip(field.title, 256),
+                  value: clip(field.value || '-', 1024),
                   inline: field.short || false,
                 })),
-                footer: {
-                  text: formatted.footer,
-                },
+                footer: { text: formatted.footer?.trim() || 'Supercheck' },
                 timestamp: new Date(formatted.timestamp * 1000).toISOString(),
               },
             ],
+            // Monitor names and errors are user text; never ping @everyone or roles.
+            allowed_mentions: { parse: [] },
           }),
         },
         retryConfig,
@@ -1578,9 +1585,13 @@ export class NotificationService {
       // Sanitize input fields to prevent injection
       const sanitizeText = (text: string | undefined | null): string => {
         if (!text) return '';
-        // Remove control characters and limit length
-        // eslint-disable-next-line no-control-regex
-        return text.replace(/[\x00-\x1F\x7F]/g, '').substring(0, 5000);
+        // Remove control characters (keeping line breaks) and limit length
+        return (
+          text
+            // eslint-disable-next-line no-control-regex
+            .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
+            .substring(0, 5000)
+        );
       };
 
       // Build Adaptive Card payload for Teams
@@ -1667,9 +1678,13 @@ export class NotificationService {
 
   private formatTelegramMessage(formatted: FormattedNotification): string {
     const fieldsText = formatted.fields
-      .map((field) => `*${field.title}:* ${field.value}`)
+      .map((field) => `${field.title}: ${field.value}`)
       .join('\n');
-    return `${formatted.title}\n\n${formatted.message}\n\n${fieldsText}`;
+    // Telegram rejects messages over 4096 characters.
+    return clip(
+      `${formatted.title}\n\n${formatted.message}\n\n${fieldsText}`,
+      4096,
+    );
   }
 
   private getColorForSeverity(severity: string): string {
