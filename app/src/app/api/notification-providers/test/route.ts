@@ -8,6 +8,10 @@ import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
 import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
+import { db } from "@/utils/db";
+import { user, member } from "@/db/schema";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 
 export async function POST(req: NextRequest) {
@@ -41,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     switch (type) {
       case "email":
-        return await testEmailConnection(config);
+        return await testEmailConnection(config, context);
       case "slack":
         return await testSlackConnection(config);
       case "webhook":
@@ -73,7 +77,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function testEmailConnection(config: NotificationProviderConfig) {
+const MAX_TEST_RECIPIENTS = 5;
+// 5 test sends per 10 minutes per user
+const TEST_EMAIL_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 5 };
+
+async function testEmailConnection(
+  config: NotificationProviderConfig,
+  context: { userId: string; organizationId: string },
+) {
   try {
     // Validate emails field (new format)
     const typedConfig = config as Record<string, unknown>;
@@ -97,6 +108,33 @@ async function testEmailConnection(config: NotificationProviderConfig) {
       if (!emailRegex.test(email)) {
         throw new Error(`Invalid email format: ${email}`);
       }
+    }
+
+    if (emailList.length > MAX_TEST_RECIPIENTS) {
+      throw new Error(`At most ${MAX_TEST_RECIPIENTS} recipients can be tested at once`);
+    }
+
+    // Platform mail may only go to the caller or members of their organization.
+    const lowered = emailList.map((email) => email.toLowerCase());
+    const permitted = await db
+      .select({ email: user.email })
+      .from(user)
+      .leftJoin(member, and(eq(member.userId, user.id), eq(member.organizationId, context.organizationId)))
+      .where(and(
+        inArray(sql`lower(${user.email})`, lowered),
+        or(eq(user.id, context.userId), isNotNull(member.id)),
+      ));
+    const permittedSet = new Set(permitted.map((row) => row.email.toLowerCase()));
+    if (lowered.some((email) => !permittedSet.has(email))) {
+      throw new Error("Test emails can only be sent to your own address or members of your organization");
+    }
+
+    const limit = await apiKeyRateLimiter.checkAndIncrement(`notification-test:${context.userId}`, TEST_EMAIL_RATE_LIMIT);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Too many test emails. Try again later." },
+        { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+      );
     }
 
     // Test SMTP connection — send to ALL configured addresses so users can verify
