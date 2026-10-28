@@ -5,9 +5,11 @@ import { NextRequest } from "next/server";
 const mockSelectLimit = jest.fn();
 const mockSelectWhere = jest.fn((_condition: SQL) => ({ limit: mockSelectLimit }));
 const mockTransaction = jest.fn();
+const mockUpdateSet = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
 
 jest.mock("@/utils/db", () => ({
   db: {
+    update: () => ({ set: mockUpdateSet }),
     select: () => ({ from: () => ({ where: mockSelectWhere }) }),
     transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
   },
@@ -48,6 +50,16 @@ describe("Private Agent job result route", () => {
   it("returns 400 for malformed JSON instead of 500", async () => {
     const response = await POST(request("{not json", true));
     expect(response.status).toBe(400);
+  });
+
+  it("fails the job when the result is rejected by schema validation so it is not re-leased forever", async () => {
+    const evidence = [{
+      id: "e1", sourceUri: "x".repeat(1001), title: "t", summary: "s", evidenceType: "log",
+      observedAt: new Date().toISOString(), resultHash: "a".repeat(64),
+    }];
+    const response = await POST(request({ ...body, evidence }));
+    expect(response.status).toBe(400);
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", errorCode: "result_rejected" }));
   });
 
   it("returns 409 when the lease is unknown or expired", async () => {

@@ -146,7 +146,14 @@ jobs:
 
       - name: Run tests
         working-directory: ./app
-        run: npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache 2>&1 | tee "$RUNNER_TEMP/jest-app.log"
+          if grep -qE "A worker process has failed to exit gracefully|Jest did not exit" "$RUNNER_TEMP/jest-app.log"; then
+            echo "::error::Jest reported a leaked handle (app): a spec left a client/timer open. Release certification runs in-band and would hang."
+            exit 1
+          fi
         env:
           NODE_ENV: test
           TEST_REDIS_URL: redis://localhost:6381
@@ -233,7 +240,14 @@ jobs:
 
       - name: Run tests
         working-directory: ./worker
-        run: npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:cov -- --maxWorkers=2 --cacheDirectory=.jest-cache 2>&1 | tee "$RUNNER_TEMP/jest-worker.log"
+          if grep -qE "A worker process has failed to exit gracefully|Jest did not exit" "$RUNNER_TEMP/jest-worker.log"; then
+            echo "::error::Jest reported a leaked handle (worker): a spec left a client/timer open. Release certification runs in-band and would hang."
+            exit 1
+          fi
         env:
           NODE_ENV: test
           EXECUTION_USAGE_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/execution_usage_test

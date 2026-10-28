@@ -57,11 +57,11 @@ suite("device auth rate limiter (real Redis)", () => {
 
   it("fails closed when Redis is unavailable", async () => {
     const original = redis;
-    redis = new Redis("redis://127.0.0.1:1", { maxRetriesPerRequest: 0, lazyConnect: true, retryStrategy: () => null });
+    // A stub rather than a dead ioredis client: the latter leaves Jest unable to exit.
+    redis = { eval: () => Promise.reject(new Error("ECONNREFUSED")) } as unknown as Redis;
     try {
       expect(await allowDeviceAuthRequest([{ scope: `${namespace}:t`, subject: "z", max: 5 }])).toBe(false);
     } finally {
-      redis.disconnect();
       redis = original;
     }
   });

@@ -1,8 +1,13 @@
 # Email templates
 
 All transactional emails are React Email components in this folder. Every template
-renders inside `BaseLayout` (header, typography, `EmailButton`, footer, preheader),
-so changes to the look happen in one place.
+renders inside `BaseLayout` (Supercheck wordmark, header, `EmailButton`, `DetailsTable`,
+footer, preheader), so changes to the look happen in one place.
+
+House style: dark header colours with white text (red `#b91c1c` problem, amber
+`#b45309` warning, blue `#1d4ed8` info, green `#15803d` resolved, gray `#1f2937`
+neutral) and `#111827` primary buttons. Status-page subscriber emails pass
+`showBrand={false}`; they carry the customer's page name and a "Powered by" footer.
 
 ```
 app (Next.js)                         worker (NestJS)
