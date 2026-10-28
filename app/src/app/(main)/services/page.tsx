@@ -20,7 +20,7 @@ export default async function ServicesPage() {
     <div>
       <PageBreadcrumbs
         items={[
-          { label: "Investigate", href: "/incidents" },
+          { label: "Home", href: "/" },
           { label: "Services", isCurrentPage: true },
         ]}
       />

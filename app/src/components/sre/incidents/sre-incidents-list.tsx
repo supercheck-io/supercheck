@@ -19,6 +19,9 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { formatAge } from "@/components/sre/incidents/incident-age";
+import { InfoTip } from "@/components/ui/info-tip";
+import { getDisplayStatus, INCIDENT_DISPLAY_STATUSES } from "@/lib/sre/incident-status-display";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -96,14 +99,7 @@ export function matchesQuickFilter(
   return true;
 }
 
-/** Compact age such as 5m, 3h, 2d. */
-export function formatAge(from: Date | string, to: Date | string | number = Date.now()) {
-  const minutes = Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
+export { formatAge };
 
 type IncidentSortKey =
   | "incidentNumber"
@@ -123,16 +119,6 @@ const severityTones: Record<SreIncidentListItem["severity"], TableBadgeTone> = {
   sev2: "warning",
   sev3: "warning",
   sev4: "slate",
-};
-
-const statusTones: Record<SreIncidentListItem["status"], TableBadgeTone> = {
-  triggered: "danger",
-  investigating: "info",
-  identified: "purple",
-  recommendations_ready: "info",
-  user_applying_fix: "indigo",
-  verifying: "warning",
-  resolved: "success",
 };
 
 const investigationStatusTones: Record<
@@ -179,7 +165,9 @@ function SortableHead({
   direction,
   onSort,
   className,
+  info,
 }: {
+  info?: React.ReactNode;
   label: string;
   sortKey: IncidentSortKey;
   activeKey: IncidentSortKey;
@@ -196,6 +184,7 @@ function SortableHead({
 
   return (
     <TableHead className={className}>
+      <div className="flex items-center gap-1">
       <Button
         type="button"
         variant="ghost"
@@ -211,6 +200,8 @@ function SortableHead({
           )}
         />
       </Button>
+      {info}
+      </div>
     </TableHead>
   );
 }
@@ -221,26 +212,6 @@ export function SreIncidentsList({
   currentUserId = null,
 }: SreIncidentsListProps) {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const {
-    projectId,
-    currentProject,
-    loading: projectLoading,
-    error: projectError,
-  } = useProjectContext();
-  const canCreate = Boolean(
-    !projectLoading &&
-      !projectError &&
-      currentProject?.userRole &&
-      checkRolePermissionsClient(currentProject.userRole, {
-        sre_incident: ["create"],
-      }),
-  );
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [severity, setSeverity] =
-    useState<SreIncidentListItem["severity"]>("sev3");
-  const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -257,58 +228,6 @@ export function SreIncidentsList({
     setLastPageSize(pageSize);
     setPageIndex(Math.floor((pageIndex * lastPageSize) / pageSize));
   }
-  const [isPending, startTransition] = useTransition();
-
-  const resetForm = () => {
-    setTitle("");
-    setSeverity("sev3");
-    setSummary("");
-  };
-
-  const handleCreateIncident = () => {
-    if (!canCreate || isPending) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      toast.error("Incident title is required");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await createManualSreIncident({
-        title: trimmedTitle,
-        severity,
-        summary: summary.trim() || null,
-      });
-
-      if (!result.success) {
-        toast.error(result.fieldErrors?.title?.[0] ?? result.error);
-        return;
-      }
-
-      toast.success(result.message);
-      setDialogOpen(false);
-      resetForm();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreIncidentAnalyticsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreEvidenceGraphQueryKey(projectId),
-        }),
-      ]);
-      router.push(`/incidents/${result.incident.id}`);
-    });
-  };
-
-  const statusOptions = useMemo(
-    () =>
-      Array.from(new Set(incidents.map((incident) => incident.status))).sort(),
-    [incidents],
-  );
-
   const serviceOptions = useMemo(
     () =>
       Array.from(
@@ -338,7 +257,10 @@ export function SreIncidentsList({
           statusFilter.length > 0 && quickFilter === "active" ? "all" : quickFilter,
           currentUserId,
         ) &&
-        (statusFilter.length === 0 || statusFilter.includes(incident.status));
+        (statusFilter.length === 0 ||
+          statusFilter.includes(
+            getDisplayStatus(incident.status, incident.acknowledgedAt).value,
+          ));
       const matchesService =
         serviceFilter.length === 0 ||
         serviceFilter.includes(incident.primaryServiceId ?? "unlinked");
@@ -417,50 +339,7 @@ export function SreIncidentsList({
   }
 
   return (
-    <div className="w-full max-w-full mt-6 space-y-4 p-2">
-      <PageHeader
-        title="Incidents"
-        description="Track, investigate, and resolve operational incidents."
-        className="mb-4 -mt-2"
-        actions={
-          <div
-            className="flex flex-wrap items-center gap-2"
-            data-testid="incident-header-actions"
-          >
-            {incidents.length > 0 && (
-              <>
-                <Button asChild type="button" variant="outline" className="h-8">
-                  <Link href="/alerts">Review alerts</Link>
-                </Button>
-                <Button asChild type="button" variant="outline" className="h-8">
-                  <Link href="/incidents/analytics">
-                    <BarChart3 className="h-4 w-4" />
-                    Trends
-                  </Link>
-                </Button>
-              </>
-            )}
-            {projectError && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Permissions unavailable. Refresh to try again.
-              </p>
-            )}
-            {(canCreate || projectLoading) && (
-              <Button
-                type="button"
-                className="h-8"
-                disabled={!canCreate}
-                aria-busy={projectLoading || undefined}
-                title={projectLoading ? "Loading permissions..." : undefined}
-                onClick={() => setDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-                New incident
-              </Button>
-            )}
-          </div>
-        }
-      />
+    <div className="w-full max-w-full space-y-4">
 
       {incidents.length > 0 && (
         <div
@@ -544,9 +423,10 @@ export function SreIncidentsList({
               setStatusFilter(values);
               setPageIndex(0);
             }}
-            options={Array.from(new Set([...statusOptions, "resolved"])).map(
-              (value) => ({ value, label: formatStatus(value) }),
-            )}
+            options={INCIDENT_DISPLAY_STATUSES.map(({ value, label }) => ({
+              value,
+              label,
+            }))}
           />
         </div>
         </div>
@@ -578,6 +458,7 @@ export function SreIncidentsList({
                   />
                   <SortableHead
                     label="Severity"
+                    info={<InfoTip label="About severity">SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.</InfoTip>}
                     sortKey="severity"
                     activeKey={sortKey}
                     direction={sortDirection}
@@ -586,6 +467,7 @@ export function SreIncidentsList({
                   />
                   <SortableHead
                     label="Status"
+                    info={<InfoTip label="About status">Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved. Hover a status on the incident page for details.</InfoTip>}
                     sortKey="status"
                     activeKey={sortKey}
                     direction={sortDirection}
@@ -675,13 +557,17 @@ export function SreIncidentsList({
                         </TableBadge>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <TableBadge
-                          tone={statusTones[incident.status]}
-                          compact
-                          className="capitalize"
-                        >
-                          {formatStatus(incident.status)}
-                        </TableBadge>
+                        {(() => {
+                          const display = getDisplayStatus(
+                            incident.status,
+                            incident.acknowledgedAt,
+                          );
+                          return (
+                            <TableBadge tone={display.tone} compact>
+                              {display.label}
+                            </TableBadge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell
                         className="max-w-[180px] truncate py-2.5"
@@ -801,85 +687,6 @@ export function SreIncidentsList({
         </>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create incident</DialogTitle>
-            <DialogDescription>
-              Use this when an incident did not start from an alert.
-              Alert-created incidents still come from the Alerts page.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-title">Title</Label>
-              <Input
-                id="manual-incident-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Checkout API failures"
-                maxLength={500}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-severity">Severity</Label>
-              <Select
-                value={severity}
-                onValueChange={(value) =>
-                  setSeverity(value as SreIncidentListItem["severity"])
-                }
-              >
-                <SelectTrigger id="manual-incident-severity">
-                  <SelectValue placeholder="Select severity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sev1">SEV1 - Critical</SelectItem>
-                  <SelectItem value="sev2">SEV2 - High</SelectItem>
-                  <SelectItem value="sev3">SEV3 - Medium</SelectItem>
-                  <SelectItem value="sev4">SEV4 - Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="manual-incident-summary">Initial notes</Label>
-              <Textarea
-                id="manual-incident-summary"
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-                placeholder="What is known so far?"
-                rows={4}
-                maxLength={2000}
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleCreateIncident}
-              disabled={isPending || !title.trim()}
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create incident"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

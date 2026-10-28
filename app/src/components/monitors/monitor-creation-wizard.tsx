@@ -489,6 +489,9 @@ export function MonitorCreationWizard() {
                 failureThreshold: config.failureThreshold,
                 recoveryThreshold: config.recoveryThreshold,
                 customMessage: config.customMessage,
+              incidentEnabled: config.incidentEnabled,
+              incidentSeverity: config.incidentSeverity,
+              autoResolveIncident: config.autoResolveIncident,
               })
             }
             context="monitor"

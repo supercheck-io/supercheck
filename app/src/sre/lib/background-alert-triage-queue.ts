@@ -1,9 +1,8 @@
-import { createHash } from "crypto";
 import { Queue } from "bullmq";
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { alertHistory, jobs, monitors, sreAlertEvents, sreIncidentAlerts, sreIncidents } from "@/db/schema";
+import { alertHistory, jobs, monitors } from "@/db/schema";
 import { getRedisConnection, queueLogger } from "@/lib/queue";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
@@ -21,36 +20,22 @@ let queue: Queue<SreAlertTriageQueueJob> | null = null;
 type SreAlertTriageEnqueueSkipReason =
   | "alert_not_found"
   | "non_sent_alert"
-  | "resolved_alert"
-  | "unsupported_source"
-  | "already_triaged";
+  | "unsupported_source";
 
 type SreAlertTriageEnqueuePrecheck =
   | { shouldEnqueue: true }
   | { shouldEnqueue: false; reason: SreAlertTriageEnqueueSkipReason };
 
-function deriveAlertStatus(type: string) {
-  const normalizedType = type.toLowerCase();
-  return normalizedType.includes("recovery") || normalizedType.includes("success") ? "resolved" : "firing";
-}
-
-function sha256(value: string) {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
+// Mirrors the worker enqueue rule: delivered or failed alerts, firing or recovery,
+// from a monitor or job. Incident dedup, recovery and reopen happen in the processor.
 async function shouldEnqueueAlertTriage(alertHistoryId: string): Promise<SreAlertTriageEnqueuePrecheck> {
   const [alert] = await db
     .select({
-      id: alertHistory.id,
       status: alertHistory.status,
-      type: alertHistory.type,
       monitorId: alertHistory.monitorId,
       jobId: alertHistory.jobId,
-      deliveryMetadata: alertHistory.deliveryMetadata,
       monitorOrganizationId: monitors.organizationId,
-      monitorProjectId: monitors.projectId,
       jobOrganizationId: jobs.organizationId,
-      jobProjectId: jobs.projectId,
     })
     .from(alertHistory)
     .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
@@ -62,51 +47,12 @@ async function shouldEnqueueAlertTriage(alertHistoryId: string): Promise<SreAler
     return { shouldEnqueue: false, reason: "alert_not_found" };
   }
 
-  if (alert.status !== "sent") {
+  if (alert.status !== "sent" && alert.status !== "failed") {
     return { shouldEnqueue: false, reason: "non_sent_alert" };
   }
 
-  if (deriveAlertStatus(alert.type) !== "firing") {
-    return { shouldEnqueue: false, reason: "resolved_alert" };
-  }
-
-  const organizationId = alert.monitorOrganizationId ?? alert.jobOrganizationId;
-  const projectId = alert.monitorProjectId ?? alert.jobProjectId;
-  const sourceType = alert.monitorId ? "monitor" : alert.jobId ? "job" : null;
-  const sourceId = alert.monitorId ?? alert.jobId;
-
-  if (!organizationId || !projectId || !sourceType || !sourceId) {
+  if (!(alert.monitorId ?? alert.jobId) || !(alert.monitorOrganizationId ?? alert.jobOrganizationId)) {
     return { shouldEnqueue: false, reason: "unsupported_source" };
-  }
-
-  const deliveryDedupKey =
-    typeof alert.deliveryMetadata?.correlation?.dedupKey === "string" &&
-    alert.deliveryMetadata.correlation.dedupKey.trim().length > 0
-      ? alert.deliveryMetadata.correlation.dedupKey.trim()
-      : undefined;
-  const dedupKey = deliveryDedupKey ?? [projectId, sourceType, sourceId, alert.type].join(":");
-  const fingerprintHash = sha256(`${organizationId}:${dedupKey}`);
-
-  const [existingTriage] = await db
-    .select({
-      alertTriageRunId: sreAlertEvents.triageInvestigationRunId,
-      incidentTriageRunId: sreIncidents.triageInvestigationRunId,
-    })
-    .from(sreAlertEvents)
-    .leftJoin(sreIncidentAlerts, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
-    .leftJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
-    .where(
-      and(
-        eq(sreAlertEvents.organizationId, organizationId),
-        eq(sreAlertEvents.projectId, projectId),
-        eq(sreAlertEvents.fingerprintHash, fingerprintHash)
-      )
-    )
-    .orderBy(desc(sreIncidents.createdAt))
-    .limit(1);
-
-  if (existingTriage?.alertTriageRunId || existingTriage?.incidentTriageRunId) {
-    return { shouldEnqueue: false, reason: "already_triaged" };
   }
 
   return { shouldEnqueue: true };

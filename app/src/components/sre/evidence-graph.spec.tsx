@@ -185,7 +185,7 @@ describe("SreEvidenceGraph", () => {
     }));
     render(<SreEvidenceGraph graph={{ ...graph, nodes, edges: [] }} initialSelectedNodeId="service:s160" />);
     expect(screen.getByRole("dialog", { name: "Service: Service 160" })).toBeInTheDocument();
-    expect(screen.getByText("160 visible")).toBeInTheDocument();
+    expect(screen.getByTestId("graph-count")).toHaveTextContent("160 nodes");
   });
 
   it("focuses an incident deep link even beyond the first 25 incidents", () => {

@@ -215,7 +215,7 @@ Before sync operations, the CLI verifies configured organization and project IDs
 | `jobType` | `string` | Job runner type (`playwright`, `k6`) |
 | `cronSchedule` | `string` | Cron expression |
 | `tests` | `string[]` | Test file paths or IDs |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 
 </Accordion>
 <Accordion title="monitors[]" id="monitors">
@@ -229,10 +229,18 @@ Before sync operations, the CLI verifies configured organization and project IDs
 | `frequencyMinutes` | `number` | Check interval in minutes |
 | `enabled` | `boolean` | Whether the monitor is active |
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery` |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 | `tags` | `string[]` | Tag names assigned to the monitor. Omit to leave remote tags unchanged; names compare case-insensitively and must exist in the project or under `tags[]` |
 
 Jobs have no `tags` field; a config containing one fails validation.
+
+### Incident fields in `alertConfig`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `incidentEnabled` | `boolean` | `true` | Open an incident when the check alerts |
+| `incidentSeverity` | `string` | auto | `sev1` to `sev4`. Omit to derive severity from the alert |
+| `autoResolveIncident` | `boolean` | `true` | Resolve the incident when the check recovers, if nobody acknowledged it |
 
 </Accordion>
 <Accordion title="requirements[]" id="requirements">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Activity,
   ArrowDownLeft,
   ArrowUpRight,
@@ -278,24 +279,29 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto overflow-x-hidden">
       <header className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Button asChild variant="link" className="mb-1 h-auto p-0 text-muted-foreground">
+            <Link href="/services">
+              <ArrowLeft className="h-4 w-4" />
+              Services
+            </Link>
+          </Button>
+          <h1 className="break-words text-2xl font-semibold">
+            {detail.service.name}
+          </h1>
+          {/* Meta line, like the incident header: status (when not active), tier and environment. */}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {detail.service.status !== "active" && (
               <TableBadge tone="warning" className="capitalize">
                 {detail.service.status}
               </TableBadge>
             )}
-            {detail.service.environment && (
-              <span className="text-sm text-muted-foreground">
-                {detail.service.environment}
-              </span>
-            )}
+            {[detail.service.tier ? `Tier ${detail.service.tier}` : null, detail.service.environment]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
-          <h1 className="break-words text-2xl font-semibold">
-            {detail.service.name}
-          </h1>
           {detail.service.description && (
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               {detail.service.description}
@@ -358,7 +364,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             Service details
           </summary>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-            <span>Tier {detail.service.tier}</span>
             {detail.service.ownerTeam && (
               <span>Owner: {detail.service.ownerTeam}</span>
             )}
@@ -374,7 +379,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
       <Tabs
         defaultValue="context"
-        className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-hidden"
+        className="flex flex-col gap-4"
       >
         <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
           <TabsTrigger value="context">Activity</TabsTrigger>
@@ -391,7 +396,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="dependencies"
-          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
+          className="space-y-4"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -576,7 +581,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="resources"
-          className="min-h-0 flex-1 space-y-4 lg:overflow-y-auto"
+          className="space-y-4"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -666,7 +671,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
 
         <TabsContent
           value="context"
-          className="min-h-0 flex-1 space-y-6 lg:overflow-y-auto"
+          className="space-y-6"
         >
           {detail.recentIncidents.length === 0 &&
           detail.recentAlerts.length === 0 &&

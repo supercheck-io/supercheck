@@ -33,6 +33,15 @@ export class MonitorAlertService {
     private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
 
+  /** Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out. */
+  async signalRecovery(monitorId: string, recoveredAt: Date): Promise<void> {
+    await this.sreAlertTriageQueueService.enqueueSourceRecovery({
+      sourceType: 'monitor',
+      sourceId: monitorId,
+      recoveredAt: recoveredAt.toISOString(),
+    });
+  }
+
   async sendNotification(
     monitorId: string,
     type: 'recovery' | 'failure',

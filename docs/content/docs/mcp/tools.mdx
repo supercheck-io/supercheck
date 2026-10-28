@@ -16,11 +16,11 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `list_tests` | tests | `limit`, `cursor` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
-| `get_job` | jobs | `id` | One job plus its test IDs (up to 100) and which alerts are on (`enabled`, `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`). No notification channels, trigger keys or scripts |
+| `get_job` | jobs | `id` | One job plus its test IDs (up to 100) and which alerts are on (`enabled`, `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`, `incidentEnabled`, `incidentSeverity`, `autoResolveIncident`). No notification channels, trigger keys or scripts |
 | `list_runs` | runs | `limit`, `cursor`, `status`, `jobId` | Recent runs, newest first: `status`, `trigger`, `location`, `durationMs`, start and end |
 | `get_run` | runs | `id` | One run plus a redacted, truncated `error` excerpt |
 | `list_monitors` | monitors | `limit`, `cursor` | `name`, `type`, `target` (scheme and host only), `status`, `lastCheckAt` |
-| `get_monitor` | monitors | `id` | One monitor: `target` (scheme and host only), `status`, `enabled`, `frequencyMinutes`, `locations` and non-secret check settings (`method`, `expectedStatusCodes`, `port`, `protocol`, `timeoutSeconds`, `enableSslCheck`). No headers, auth, request body or alert settings |
+| `get_monitor` | monitors | `id` | One monitor: `target` (scheme and host only), `status`, `enabled`, `frequencyMinutes`, `locations` and non-secret check settings (`method`, `expectedStatusCodes`, `port`, `protocol`, `timeoutSeconds`, `enableSslCheck`) and which alerts are on, including `incidentEnabled`, `incidentSeverity` and `autoResolveIncident`. No headers, auth, request body or notification channels |
 | `list_requirements` | requirements | `limit`, `cursor`, `coverageStatus` | `id`, `title`, `priority`, `coverageStatus` (`covered`, `failing`, `missing`), `linkedTestCount`, `updatedAt` |
 | `get_requirement` | requirements | `id` | One requirement with description, tags, external ID and link, coverage counts and its linked tests (up to 100) |
 | `list_status_pages` | status pages | `limit`, `cursor` | `name`, `status`, `subdomain`, `customDomain`, `customDomainVerified`, `headline` |
@@ -28,8 +28,8 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `list_services` | services | `limit`, `cursor` | Service catalog: `name`, `description`, `tier`, `environment`, `ownerTeam`, `tags`, `status` |
 | `get_service` | services | `id` | One service plus its dependencies in both directions, owning teams, repository host and latest health |
 | `list_variables` | variables | `limit`, `cursor` | `key`, `type`, `isSecret`, `description`, `updatedAt`. Never values |
-| `list_incidents` | incidents | `limit`, `cursor`, `status`, `assignee` | `number`, `title`, `severity`, `status`, `createdAt`, `resolvedAt`, `assigneeUserId`, `commanderUserId`, `acknowledgedAt`, `acknowledgedByUserId`, `mitigatedAt` |
-| `get_incident` | incidents | `id` | One incident with its root-cause summary, resolution summary, assignment and acknowledgement |
+| `list_incidents` | incidents | `limit`, `cursor`, `status`, `assignee` | `number`, `title`, `severity`, `status`, `statusLabel`, `createdAt`, `resolvedAt`, `assigneeUserId`, `commanderUserId`, `acknowledgedAt`, `acknowledgedByUserId`, `mitigatedAt` |
+| `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, resolution summary, assignment and acknowledgement, and `alertCount` (linked alerts) |
 | `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
 | `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server never writes) |
@@ -52,7 +52,7 @@ Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) ret
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 
-Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (`open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`) and `assignee` (`me`, `unassigned` or a user id); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
+Filters are optional and combine with paging. `list_runs` accepts `status` (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) and `jobId`; `list_incidents` accepts `status` (stored values, not `statusLabel`: `open` for every unresolved incident, or one of `triggered`, `investigating`, `identified`, `recommendations_ready`, `user_applying_fix`, `verifying`, `resolved`) and `assignee` (`me`, `unassigned` or a user id); `list_requirements` accepts `coverageStatus`; `list_investigations` accepts `incidentId`.
 
 </Accordion>
 <Accordion title="AI SRE" id="ai-sre">

@@ -17,6 +17,10 @@ import {
 } from "../email-renderer";
 
 /**
+ * @deprecated The worker now renders alert emails locally (worker/src/emails).
+ * shortcut: kept for rolling deploys from workers <= current release; delete next release
+ */
+/**
  * Email Template Processor
  *
  * This worker processes email template rendering jobs from the queue.

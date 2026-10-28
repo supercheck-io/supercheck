@@ -1,17 +1,13 @@
 import {
-  Body,
   Button,
-  Container,
-  Head,
   Heading,
   Hr,
-  Html,
   Link,
-  Preview,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { BaseLayout } from "./base-layout";
 import {
   getTranslations,
   translateIncidentStatus,
@@ -136,20 +132,34 @@ export const IncidentNotificationEmail = ({
   const supportCtaLabel = getStatusPageSupportCtaLabel(language);
 
   return (
-    <Html>
-      <Head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
-      </Head>
-      <Preview>
-        {isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}: {incidentName}
-      </Preview>
-      <Body style={main}>
-        <Container style={container}>
-          {/* Header with Status Page Name */}
-          <Section style={{ ...header, backgroundColor: colors.headerBg }}>
-            <Heading style={headerTitle}>{statusPageName}</Heading>
-          </Section>
+    <BaseLayout
+      preview={isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}
+      title={statusPageName}
+      headerColor={colors.headerBg}
+      showStandardFooter={false}
+      footer={
+        <>
+            <Text style={footerText}>
+              {t.emailSubscriptionNotice} {statusPageName}.
+            </Text>
+            <Text style={footerLinks}>
+              <Link href={statusPageUrl} style={footerLink}>
+                {t.emailViewStatusPage}
+              </Link>
+              {" • "}
+              <Link href={unsubscribeUrl} style={footerLink}>
+                {t.unsubscribe}
+              </Link>
+            </Text>
+            <Text style={copyright}>
+              {t.poweredBy}{" "}
+              <Link href="https://supercheck.io" style={footerLink}>
+                Supercheck
+              </Link>
+            </Text>
+          </>
+      }
+    >
 
           {/* Status Badge */}
           <Section style={badgeContainer}>
@@ -271,30 +281,7 @@ export const IncidentNotificationEmail = ({
 
           <Hr style={divider} />
 
-          {/* Footer */}
-          <Section style={footer}>
-            <Text style={footerText}>
-              {t.emailSubscriptionNotice} {statusPageName}.
-            </Text>
-            <Text style={footerLinks}>
-              <Link href={statusPageUrl} style={footerLink}>
-                {t.emailViewStatusPage}
-              </Link>
-              {" • "}
-              <Link href={unsubscribeUrl} style={footerLink}>
-                {t.unsubscribe}
-              </Link>
-            </Text>
-            <Text style={copyright}>
-              {t.poweredBy}{" "}
-              <Link href="https://supercheck.io" style={footerLink}>
-                Supercheck
-              </Link>
-            </Text>
-          </Section>
-        </Container>
-      </Body>
-    </Html>
+          </BaseLayout>
   );
 };
 
@@ -302,34 +289,9 @@ export const IncidentNotificationEmail = ({
 // STYLES
 // ============================================================================
 
-const main = {
-  backgroundColor: "#f4f4f5",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  padding: "40px 20px",
-};
 
-const container = {
-  backgroundColor: "#ffffff",
-  margin: "0 auto",
-  maxWidth: "560px",
-  borderRadius: "12px",
-  overflow: "hidden" as const,
-  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-};
 
-const header = {
-  padding: "28px 32px",
-  textAlign: "center" as const,
-};
 
-const headerTitle = {
-  color: "#ffffff",
-  fontSize: "20px",
-  fontWeight: "600" as const,
-  margin: "0",
-  letterSpacing: "-0.01em",
-};
 
 const badgeContainer = {
   textAlign: "center" as const,
@@ -474,10 +436,6 @@ const divider = {
   margin: "0",
 };
 
-const footer = {
-  padding: "24px 32px",
-  backgroundColor: "#fafafa",
-};
 
 const footerText = {
   color: "#71717a",

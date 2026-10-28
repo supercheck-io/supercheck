@@ -50,9 +50,9 @@ const products = [
     title: "Investigate",
     summary: "Find the cause of an incident with evidence, not guesses.",
     href: "/docs/app/investigate",
-    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for an API gateway incident" },
+    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage" },
     items: [
-      "Incidents linked to the alerts and runs that raised them",
+      "Alerts open one incident per failing source and resolve it on recovery",
       "AI SRE investigations that cite their evidence",
       "Read-only connectors for GitHub, Kubernetes, Prometheus, Grafana, Sentry and Datadog",
       "Private Agent for systems inside your network",

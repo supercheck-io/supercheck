@@ -28,10 +28,6 @@ export function getNotificationProvidersQueryKey(projectId: string | null) {
   return [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId] as const;
 }
 
-export function getAlertsHistoryQueryKey(projectId: string | null) {
-  return [...ALERTS_HISTORY_QUERY_KEY, projectId] as const;
-}
-
 export async function fetchNotificationProviders(projectId?: string | null): Promise<NotificationProvider[]> {
   const headers: Record<string, string> = {};
   if (projectId) {

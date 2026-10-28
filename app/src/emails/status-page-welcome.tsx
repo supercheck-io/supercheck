@@ -1,17 +1,13 @@
 import {
-  Body,
   Button,
-  Container,
-  Head,
   Heading,
   Hr,
-  Html,
   Link,
-  Preview,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { BaseLayout } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
 interface StatusPageWelcomeEmailProps {
@@ -29,18 +25,34 @@ export const StatusPageWelcomeEmail = ({
 }: StatusPageWelcomeEmailProps) => {
   const t = getTranslations(language);
   return (
-    <Html>
-      <Head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
-      </Head>
-      <Preview>{t.emailNowSubscribed} {statusPageName}</Preview>
-      <Body style={main}>
-        <Container style={container}>
-          {/* Header */}
-          <Section style={header}>
-            <Heading style={headerTitle}>{t.emailSubscriptionConfirmed}</Heading>
-          </Section>
+    <BaseLayout
+      preview={`${t.emailNowSubscribed} ${statusPageName}`}
+      title={t.emailSubscriptionConfirmed}
+      headerColor="#16a34a"
+      showStandardFooter={false}
+      footer={
+        <>
+            <Text style={footerText}>
+              {t.emailNowSubscribed} {statusPageName}.
+            </Text>
+            <Text style={footerLinks}>
+              <Link href={statusPageUrl} style={footerLink}>
+                {t.emailViewStatusPage}
+              </Link>
+              {" • "}
+              <Link href={unsubscribeUrl} style={footerLink}>
+                {t.unsubscribe}
+              </Link>
+            </Text>
+            <Text style={copyright}>
+              {t.poweredBy}{" "}
+              <Link href="https://supercheck.io" style={footerLink}>
+                Supercheck
+              </Link>
+            </Text>
+          </>
+      }
+    >
 
           {/* Success Icon */}
           <Section style={iconSection}>
@@ -128,32 +140,8 @@ export const StatusPageWelcomeEmail = ({
           {/* Spacer */}
           <Section style={{ height: "24px" }} />
 
-          <Hr style={footerDivider} />
 
-          {/* Footer */}
-          <Section style={footer}>
-            <Text style={footerText}>
-              {t.emailNowSubscribed} {statusPageName}.
-            </Text>
-            <Text style={footerLinks}>
-              <Link href={statusPageUrl} style={footerLink}>
-                {t.emailViewStatusPage}
-              </Link>
-              {" • "}
-              <Link href={unsubscribeUrl} style={footerLink}>
-                {t.unsubscribe}
-              </Link>
-            </Text>
-            <Text style={copyright}>
-              {t.poweredBy}{" "}
-              <Link href="https://supercheck.io" style={footerLink}>
-                Supercheck
-              </Link>
-            </Text>
-          </Section>
-        </Container>
-      </Body>
-    </Html>
+          </BaseLayout>
   );
 };
 
@@ -161,35 +149,9 @@ export const StatusPageWelcomeEmail = ({
 // STYLES
 // ============================================================================
 
-const main = {
-  backgroundColor: "#f4f4f5",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  padding: "40px 20px",
-};
 
-const container = {
-  backgroundColor: "#ffffff",
-  margin: "0 auto",
-  maxWidth: "560px",
-  borderRadius: "12px",
-  overflow: "hidden" as const,
-  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-};
 
-const header = {
-  backgroundColor: "#16a34a",
-  padding: "28px 32px",
-  textAlign: "center" as const,
-};
 
-const headerTitle = {
-  color: "#ffffff",
-  fontSize: "20px",
-  fontWeight: "600" as const,
-  margin: "0",
-  letterSpacing: "-0.01em",
-};
 
 const iconSection = {
   textAlign: "center" as const,
@@ -323,15 +285,7 @@ const tipText = {
   textAlign: "center" as const,
 };
 
-const footerDivider = {
-  borderColor: "#e4e4e7",
-  margin: "0",
-};
 
-const footer = {
-  padding: "24px 32px",
-  backgroundColor: "#fafafa",
-};
 
 const footerText = {
   color: "#71717a",

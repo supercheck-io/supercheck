@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
@@ -12,23 +13,15 @@ jest.mock('bullmq', () => ({
 
 const mockQueueConstructor = Queue as unknown as jest.Mock;
 
-// Mirrored in worker/src/monitor/services/sre-alert-triage-queue.service.spec.ts
-// and app/src/sre/lib/feature-gates.spec.ts. Change both together.
-// [SRE_ENABLED, SRE_AUTOMATION_ENABLED, automatic triage enabled]
-const AUTOMATION_GATE_CONTRACT: Array<
-  [string | undefined, string | undefined, boolean]
-> = [
-  [undefined, undefined, false],
-  [undefined, 'true', true],
-  [undefined, '1', true],
-  [undefined, ' TRUE ', true],
-  [undefined, 'yes', false],
-  [undefined, 'false', false],
-  ['true', 'true', true],
-  ['false', 'true', false],
-  ['0', '1', false],
-  [' FALSE ', 'true', false],
-  ['', 'true', true],
+// Incident pipeline gate: SRE_ENABLED only (AI triage is gated app-side).
+// Mirrored in app/src/sre/lib/feature-gates.spec.ts.
+const INCIDENT_GATE_CONTRACT: Array<[string | undefined, boolean]> = [
+  [undefined, true],
+  ['true', true],
+  ['', true],
+  ['false', false],
+  ['0', false],
+  [' FALSE ', false],
 ];
 
 describe('SreAlertTriageQueueService', () => {
@@ -46,34 +39,10 @@ describe('SreAlertTriageQueueService', () => {
     config.set('REDIS_PORT', 6379);
   });
 
-  it('does not create a queue when automation is unset (default off)', async () => {
-    const service = new SreAlertTriageQueueService(configService);
-
-    await service.enqueueAlertHistoryRows([
-      { id: 'alert-history-1', status: 'sent' },
-    ]);
-
-    expect(mockQueueConstructor).not.toHaveBeenCalled();
-  });
-
-  it('does not enqueue failed alert deliveries', async () => {
-    config.set('SRE_AUTOMATION_ENABLED', 'true');
-    const service = new SreAlertTriageQueueService(configService);
-
-    await service.enqueueAlertHistoryRows([
-      { id: 'alert-history-1', status: 'failed' },
-    ]);
-
-    expect(mockQueueConstructor).not.toHaveBeenCalled();
-  });
-
-  it('enqueues deterministic jobs for sent alert deliveries when opted in', async () => {
-    config.set('SRE_AUTOMATION_ENABLED', 'true');
-    const service = new SreAlertTriageQueueService(configService);
-
-    await service.enqueueAlertHistoryRows([
-      { id: 'alert-history-1', status: 'sent' },
-    ]);
+  it('enqueues by default without SRE_AUTOMATION_ENABLED', async () => {
+    await new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows(
+      [{ id: 'alert-history-1', status: 'sent' }],
+    );
 
     const queue = mockQueueConstructor.mock.results[0].value;
     expect(queue.add).toHaveBeenCalledWith(
@@ -83,46 +52,77 @@ describe('SreAlertTriageQueueService', () => {
     );
   });
 
-  it.each(['false', '0', ' FALSE '])(
-    'does not enqueue when SRE_ENABLED=%s even if automation is on',
-    async (flag) => {
-      config.set('SRE_ENABLED', flag);
-      config.set('SRE_AUTOMATION_ENABLED', 'true');
-      await new SreAlertTriageQueueService(
-        configService,
-      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
-      expect(mockQueueConstructor).not.toHaveBeenCalled();
-    },
-  );
+  it('enqueues a source recovery with a per-recovery job id, and not when SRE is off', async () => {
+    const recovery = {
+      sourceType: 'monitor' as const,
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    };
+    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+      recovery,
+    );
+    const queue = mockQueueConstructor.mock.results[0].value;
+    expect(queue.add).toHaveBeenCalledWith(
+      'source-recovery',
+      { sourceRecovery: recovery },
+      {
+        jobId: `sre-recovery-monitor-m1-${Date.parse(recovery.recoveredAt)}`,
+      },
+    );
 
-  it.each(['', 'false', '0', ' FALSE ', 'yes'])(
-    'does not enqueue when SRE_AUTOMATION_ENABLED=%j',
-    async (flag) => {
-      config.set('SRE_AUTOMATION_ENABLED', flag);
-      await new SreAlertTriageQueueService(
-        configService,
-      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
-      expect(mockQueueConstructor).not.toHaveBeenCalled();
-    },
-  );
+    config.set('SRE_ENABLED', 'false');
+    mockQueueConstructor.mockClear();
+    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+      recovery,
+    );
+    expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
 
-  it.each(['true', '1', ' TRUE '])(
-    'enqueues when SRE_AUTOMATION_ENABLED=%j and SRE_ENABLED is unset',
-    async (flag) => {
-      config.set('SRE_AUTOMATION_ENABLED', flag);
-      await new SreAlertTriageQueueService(
-        configService,
-      ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);
-      expect(mockQueueConstructor).toHaveBeenCalledTimes(1);
-    },
-  );
+  it('enqueues failed deliveries but not pending ones', async () => {
+    await new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows(
+      [
+        { id: 'h-failed', status: 'failed' },
+        { id: 'h-pending', status: 'pending' },
+      ],
+    );
 
-  it.each(AUTOMATION_GATE_CONTRACT)(
-    'automation gate contract: SRE_ENABLED=%j SRE_AUTOMATION_ENABLED=%j -> %s',
-    async (sre, automation, expected) => {
+    const queue = mockQueueConstructor.mock.results[0].value;
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(queue.add.mock.calls[0][1]).toEqual({ alertHistoryId: 'h-failed' });
+  });
+
+  it('does not enqueue when only pending rows are given', async () => {
+    await new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows(
+      [{ id: 'h-pending', status: 'pending' }],
+    );
+    expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
+
+  it('logs an enqueue failure and does not throw', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const failure = new Error('redis down');
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add: jest.fn().mockRejectedValue(failure),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueAlertHistoryRows([
+        { id: 'alert-history-1', status: 'sent' },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to enqueue SRE alert triage jobs',
+      failure,
+    );
+    errorSpy.mockRestore();
+  });
+
+  it.each(INCIDENT_GATE_CONTRACT)(
+    'incident gate contract: SRE_ENABLED=%j -> %s',
+    async (sre, expected) => {
       if (sre !== undefined) config.set('SRE_ENABLED', sre);
-      if (automation !== undefined)
-        config.set('SRE_AUTOMATION_ENABLED', automation);
       await new SreAlertTriageQueueService(
         configService,
       ).enqueueAlertHistoryRows([{ id: 'alert-history-1', status: 'sent' }]);

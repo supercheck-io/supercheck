@@ -32,6 +32,32 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at
+// the threshold, then every max(5, 2 x threshold) failures after it, max 3 per streak.
+const MAX_FAILURE_ALERTS_PER_STREAK = 3;
+
+function failureAlertInterval(threshold: number) {
+  return Math.max(5, threshold * 2);
+}
+
+export function maxFailureAlertStreak(threshold: number) {
+  const t = Math.max(1, threshold || 1);
+  return t + failureAlertInterval(t) * (MAX_FAILURE_ALERTS_PER_STREAK - 1);
+}
+
+export function isFailureAlertStreak(
+  consecutiveFailures: number,
+  threshold: number,
+) {
+  const t = Math.max(1, threshold || 1);
+  const after = consecutiveFailures - t;
+  if (after < 0) return false;
+  const interval = failureAlertInterval(t);
+  return (
+    after % interval === 0 && after / interval < MAX_FAILURE_ALERTS_PER_STREAK
+  );
+}
+
 @Injectable()
 export class JobNotificationService {
   private readonly logger = new Logger(JobNotificationService.name);
@@ -41,6 +67,35 @@ export class JobNotificationService {
     private readonly notificationService: NotificationService,
     private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
+
+  /** Signal a recovery once: when the pass streak reaches the threshold right after a failed run. */
+  private async signalRecoveryIfRecovered(
+    jobId: string,
+    runId: string,
+    recoveryThreshold: number,
+  ): Promise<void> {
+    const recentRuns = await this.dbService.getRecentRunsForJob(
+      jobId,
+      recoveryThreshold + 1,
+    );
+    let passes = 1;
+    let afterFailure = false;
+    for (const run of recentRuns) {
+      if (run.id === runId) continue;
+      if (run.status === 'passed') {
+        passes++;
+        continue;
+      }
+      afterFailure = run.status === 'failed' || run.status === 'error';
+      break;
+    }
+    if (passes !== recoveryThreshold || !afterFailure) return;
+    await this.sreAlertTriageQueueService.enqueueSourceRecovery({
+      sourceType: 'job',
+      sourceId: jobId,
+      recoveredAt: new Date().toISOString(),
+    });
+  }
 
   async handleJobNotifications({
     jobId,
@@ -80,6 +135,15 @@ export class JobNotificationService {
         } | null;
       } | null;
 
+      // Before the alert checks: an open incident must auto-resolve even with alerts or channels off.
+      if (job && finalStatus === 'passed') {
+        await this.signalRecoveryIfRecovered(
+          jobId,
+          runId,
+          job.alertConfig?.recoveryThreshold || 1,
+        );
+      }
+
       if (!job || !job.alertConfig?.enabled) {
         this.logger.debug(
           `No alerts configured for job ${jobId} - alertConfig: ${JSON.stringify(job?.alertConfig)}`,
@@ -116,7 +180,11 @@ export class JobNotificationService {
 
       const recentRuns = await this.dbService.getRecentRunsForJob(
         jobId,
-        Math.max(alertConfig.failureThreshold, alertConfig.recoveryThreshold),
+        Math.max(
+          alertConfig.recoveryThreshold,
+          // +1 so the count can pass the last alert point (otherwise it saturates there).
+          maxFailureAlertStreak(alertConfig.failureThreshold) + 1,
+        ),
       );
 
       const normalizedStatus = finalStatus === 'error' ? 'failed' : finalStatus;
@@ -146,13 +214,14 @@ export class JobNotificationService {
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        consecutiveFailures >= alertConfig.failureThreshold;
+        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&
         normalizedStatus === 'passed' &&
         consecutiveSuccesses >= alertConfig.recoveryThreshold;
 
+      // Timeouts are not counted in the failure streak above, so they are not capped here.
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout && finalStatus === 'timeout';
 

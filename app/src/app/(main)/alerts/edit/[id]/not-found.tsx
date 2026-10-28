@@ -9,7 +9,7 @@ export default function NotFound() {
         The notification provider you&apos;re looking for doesn&apos;t exist or has been deleted.
       </p>
       <Button asChild>
-        <Link href="/alerts">Return to Alerts</Link>
+        <Link href="/notifications">Return to Notifications</Link>
       </Button>
     </div>
   );

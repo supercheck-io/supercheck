@@ -42,8 +42,11 @@ import {
   MAX_RESOLUTION_SUMMARY_LENGTH,
   acknowledgeIncident,
   addIncidentUpdate,
+  announceSystemTransition,
   assignIncident,
+  applySourceRecovery,
   getDefaultAssigneeId,
+  reopenRecentlyAutoResolved,
   resolveIncident,
 } from "./incident-lifecycle";
 import { notifyIncidentEvent } from "./incident-notifier";
@@ -209,5 +212,184 @@ describe("getDefaultAssigneeId", () => {
   it("leaves the incident unassigned when no owner is assignable", async () => {
     selectQueue.push([{ ownerUserId: assignee }], [], []);
     expect(await getDefaultAssigneeId(executor as never, input)).toBeNull();
+  });
+});
+
+describe("applySourceRecovery", () => {
+  const source = {
+    organizationId: actor.organizationId,
+    projectId: actor.projectId,
+    sourceType: "monitor" as const,
+    sourceId: "mon-1",
+    targetName: "Checkout API",
+    recoveredAt: new Date("2026-01-01T01:30:00Z"),
+  };
+  const open = (acknowledgedAt: Date | null) => ({
+    id: incidentId,
+    incidentNumber: 7,
+    title: "t",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    acknowledgedAt,
+    assigneeUserId: assignee,
+  });
+
+  it("auto-resolves an unacknowledged incident with an automatic timeline event", async () => {
+    selectQueue.push([open(null)], []);
+    updateQueue.push([{ id: incidentId }]);
+    const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
+    expect(result).toEqual({ resolved: [{ id: incidentId }], recovered: [] });
+    expect(inserts[0]).toMatchObject({
+      incidentId,
+      actorType: "system",
+      eventData: {
+        state: "resolved",
+        automatic: true,
+        comment: "Recovered automatically: Checkout API passed again after 1h 30m.",
+      },
+    });
+  });
+
+  it("only notes recovery on an acknowledged incident", async () => {
+    selectQueue.push([open(new Date())], [], []);
+    const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(result.recovered).toEqual([{ id: incidentId, assigneeUserId: assignee }]);
+    expect(inserts[0]).toMatchObject({ eventData: { state: "recovered", comment: "Checkout API recovered; resolve when you've confirmed" } });
+  });
+
+  it("only notes recovery when autoResolveIncident is off", async () => {
+    selectQueue.push([open(null)], [], []);
+    const result = await applySourceRecovery(executor as never, { ...source, autoResolve: false });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(result.resolved).toEqual([]);
+    expect(result.recovered).toHaveLength(1);
+  });
+
+  it("falls back to a recovered note when the guarded update loses a race", async () => {
+    selectQueue.push([open(null)], [], []);
+    updateQueue.push([]);
+    const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
+    expect(result.resolved).toEqual([]);
+    expect(result.recovered).toHaveLength(1);
+  });
+
+  it("ignores a stale recovery when a newer failure alert exists", async () => {
+    selectQueue.push([open(null)], [{ id: "newer-failure" }]);
+    expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(executor.update).not.toHaveBeenCalled();
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("does not repeat the recovered note", async () => {
+    selectQueue.push([open(new Date())], [], [{ state: "recovered" }]);
+    expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("scopes the open-incident lookup to recoverable failure alert types (not ssl_expiring)", async () => {
+    selectQueue.push([]);
+    await applySourceRecovery(executor as never, { ...source, autoResolve: true });
+    const where = (executor.select.mock.results[0].value as { where: jest.Mock }).where.mock.calls[0][0];
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core") as typeof import("drizzle-orm/pg-core");
+    const text = JSON.stringify(new PgDialect().sqlToQuery(where).params);
+    expect(text).toContain("monitor_failure");
+    expect(text).toContain("job_failed");
+    expect(text).toContain("job_timeout");
+    expect(text).not.toContain("ssl_expiring");
+  });
+
+  it("does nothing when no incident is open", async () => {
+    selectQueue.push([]);
+    expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(inserts).toHaveLength(0);
+  });
+});
+
+describe("reopenRecentlyAutoResolved", () => {
+  const source = {
+    organizationId: actor.organizationId,
+    projectId: actor.projectId,
+    sourceType: "monitor" as const,
+    sourceId: "mon-1",
+    firedAt: new Date("2026-01-01T02:00:00Z"),
+  };
+  const latest = (over: Record<string, unknown> = {}) => ({
+    id: incidentId,
+    status: "resolved",
+    resolvedAt: new Date("2026-01-01T01:45:00Z"),
+    assigneeUserId: assignee,
+    triageInvestigationRunId: null,
+    ...over,
+  });
+
+  it("reopens an auto-resolved incident inside the 30 minute window", async () => {
+    selectQueue.push([latest()], [{ state: "resolved", automatic: "true" }]);
+    updateQueue.push([{ id: incidentId }]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toEqual({
+      incidentId,
+      assigneeUserId: assignee,
+      alreadyTriaged: false,
+    });
+    expect(inserts[0]).toMatchObject({ eventData: { state: "reopened" }, actorType: "system" });
+  });
+
+  it("does not reopen outside the window", async () => {
+    selectQueue.push([latest({ resolvedAt: new Date("2026-01-01T01:29:00Z") })]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    expect(executor.update).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen after auto-resolve, reopen, then a manual resolve", async () => {
+    selectQueue.push([latest()], [{ state: "resolved", automatic: null }]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    selectQueue.push([latest()], [{ state: "reopened", automatic: null }]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    expect(executor.update).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen a manually resolved incident", async () => {
+    selectQueue.push([latest()], []);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    expect(executor.update).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the latest incident is still open or absent", async () => {
+    selectQueue.push([latest({ status: "triggered", resolvedAt: null })]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+    selectQueue.push([]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toBeNull();
+  });
+});
+
+describe("announceSystemTransition", () => {
+  const announce = (event: "resolved" | "recovered" | "reopened") =>
+    announceSystemTransition(actor.organizationId, actor.projectId, incidentId, event, {
+      assigneeUserId: assignee,
+      discriminator: "d1",
+    });
+
+  it("audits and notifies, marking only resolved as automatic", async () => {
+    await announce("resolved");
+    await announce("recovered");
+    await announce("reopened");
+    const calls = (notifyIncidentEvent as jest.Mock).mock.calls.map(([arg]) => [arg.event, arg.automatic]);
+    expect(calls).toEqual([["resolved", true], ["recovered", false], ["reopened", false]]);
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ assigneeUserId: assignee, dedupeDiscriminator: "d1", incidentId }),
+    );
+    const actions = (logAuditEvent as jest.Mock).mock.calls.map(([arg]) => arg.action);
+    expect(actions).toEqual(["sre_incident_auto_resolved", "sre_incident_recovered", "sre_incident_reopened"]);
+  });
+
+  it("still notifies when the audit write fails", async () => {
+    (logAuditEvent as jest.Mock).mockRejectedValueOnce(new Error("audit down"));
+    await expect(announce("reopened")).resolves.toBeUndefined();
+    expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when the notification fails", async () => {
+    (notifyIncidentEvent as jest.Mock).mockRejectedValueOnce(new Error("notify down"));
+    await expect(announce("resolved")).resolves.toBeUndefined();
+    expect(logAuditEvent).toHaveBeenCalledTimes(1);
   });
 });

@@ -46,8 +46,7 @@ test.describe('Notification providers lifecycle @alerts @channels', () => {
       type: 'email',
     });
 
-    await projectAdminPage.goto('/alerts');
-    await projectAdminPage.getByRole('tab', { name: 'Channels' }).click();
+    await projectAdminPage.goto('/notifications');
     await expect(projectAdminPage.getByText(providerName, { exact: true })).toBeVisible();
 
     const update = await request.put(`/api/notification-providers/${providerId}`, {
@@ -57,7 +56,6 @@ test.describe('Notification providers lifecycle @alerts @channels', () => {
     expect(await update.json()).toMatchObject({ id: providerId, name: renamedProvider, type: 'email' });
 
     await projectAdminPage.reload();
-    await projectAdminPage.getByRole('tab', { name: 'Channels' }).click();
     await expect(projectAdminPage.getByText(renamedProvider, { exact: true })).toBeVisible();
     await expect(projectAdminPage.getByText(providerName, { exact: true })).toHaveCount(0);
 

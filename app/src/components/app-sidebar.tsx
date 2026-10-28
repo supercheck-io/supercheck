@@ -57,28 +57,13 @@ const releaseVersionBadge = getReleaseVersionBadge(
 
 // Sidebar navigation data
 const data = {
-  Communicate: [
+  Respond: [
     {
       title: "Dashboard",
       url: "/",
       icon: ChartColumn,
       isActive: true,
     },
-
-    {
-      title: "Alerts",
-      url: "/alerts",
-      icon: BellRing,
-    },
-
-    {
-      title: "Status Pages",
-      url: "/status-pages",
-      icon: Tally4,
-    },
-  ],
-
-  Investigate: [
     {
       title: "Incidents",
       url: "/incidents",
@@ -93,6 +78,19 @@ const data = {
       title: "Services",
       url: "/services",
       icon: Boxes,
+    },
+  ],
+
+  Communicate: [
+    {
+      title: "Status Pages",
+      url: "/status-pages",
+      icon: Tally4,
+    },
+    {
+      title: "Notifications",
+      url: "/notifications",
+      icon: BellRing,
     },
   ],
 
@@ -326,10 +324,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        <NavMain groupLabel="Respond" items={data.Respond} />
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />
-        <NavMain groupLabel="Investigate" items={data.Investigate} />
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />
         )}

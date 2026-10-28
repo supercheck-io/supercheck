@@ -38,7 +38,7 @@ export default async function EditAlertPage({ params }: { params: Promise<{ id: 
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
-    { label: "Alerts", href: "/alerts" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Edit", href: `/alerts/edit/${id}` },
   ];
 

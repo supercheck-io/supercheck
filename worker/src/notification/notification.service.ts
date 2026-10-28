@@ -403,7 +403,7 @@ export class NotificationService {
         dashboardUrl = `${baseUrl}/notification-run/${payload.metadata.runId}`;
       }
     } else {
-      dashboardUrl = `${baseUrl}/alerts`;
+      dashboardUrl = `${baseUrl}/incidents?tab=alerts`;
     }
 
     const targetUrl = payload.metadata?.target;
@@ -711,6 +711,8 @@ export class NotificationService {
       // Render email using centralized template service (React Email templates)
       // Use appropriate template based on alert type
       let rendered: { html: string; text: string; subject: string };
+      // Same env the dashboard links use; omitted (no button) if unset rather than linking to localhost.
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
 
       if (payload.type === 'job_failed') {
         // Use job failure template (generic, no test stats)
@@ -720,6 +722,7 @@ export class NotificationService {
           errorMessage: payload.metadata?.errorMessage,
           runId: payload.metadata?.runId,
           dashboardUrl: payload.metadata?.dashboardUrl,
+          appUrl,
         });
       } else if (payload.type === 'job_success') {
         // Use job success template (generic, no test stats)
@@ -728,6 +731,7 @@ export class NotificationService {
           duration: payload.metadata?.duration || 0,
           runId: payload.metadata?.runId,
           dashboardUrl: payload.metadata?.dashboardUrl,
+          appUrl,
         });
       } else if (payload.type === 'job_timeout') {
         // Use job timeout template
@@ -736,6 +740,7 @@ export class NotificationService {
           duration: payload.metadata?.duration || 0,
           runId: payload.metadata?.runId,
           dashboardUrl: payload.metadata?.dashboardUrl,
+          appUrl,
         });
       } else {
         // Use monitor alert template for all other types
@@ -746,6 +751,7 @@ export class NotificationService {
           footer: formatted.footer,
           type: this.mapSeverityToType(payload.severity),
           color: formatted.color,
+          appUrl,
         });
       }
 
