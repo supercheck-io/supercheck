@@ -106,4 +106,14 @@ describe("current billing subscription display", () => {
     expect(body.subscription.plan).toBeNull();
     expect(body.usage.k6VuMinutes).toMatchObject({ used: 10, included: 150 });
   });
+
+  it("counts pending invitations as reserved team seats", async () => {
+    const counts = [0, 0, 0, 2, 3];
+    let call = 0;
+    (db.select as jest.Mock).mockImplementation(() => ({ from: () => ({ where: async () => [{ count: counts[call++] }] }) }));
+    (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({ maxTeamMembers: 6 });
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "plus", status: "active" });
+    const body = await (await GET()).json();
+    expect(body.limits.teamMembers).toMatchObject({ current: 5, remaining: 1 });
+  });
 });

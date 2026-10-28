@@ -81,7 +81,11 @@ export async function listAssignableUsers(
         onlyUserId ? eq(member.userId, onlyUserId) : undefined,
         or(
           inArray(member.role, ORG_WIDE_ROLES),
-          inArray(projectMembers.role, PROJECT_WRITE_ROLES),
+          // lower-of-two: the org role must also allow writes
+          and(
+            inArray(projectMembers.role, PROJECT_WRITE_ROLES),
+            inArray(member.role, PROJECT_WRITE_ROLES),
+          ),
         ),
       ),
     )

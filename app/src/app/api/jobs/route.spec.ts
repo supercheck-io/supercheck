@@ -29,6 +29,11 @@ jest.mock("@/lib/notification-providers/ownership", () => ({
   validateNotificationProviderOwnership: jest.fn(),
 }));
 
+jest.mock("@/lib/server-actions/update-job", () => ({
+  updateJob: jest.fn(),
+}));
+
+import { updateJob } from "@/lib/server-actions/update-job";
 import { GET, POST, PUT } from "./route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
@@ -302,6 +307,63 @@ describe("Jobs route regressions", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
+  it("PUT /api/jobs updates through updateJob (scheduler, guards) and ignores a client status", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000005";
+    mockDb.select
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([{ id: jobId, projectId: "project-1", organizationId: "org-1", jobType: "playwright" }]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([{ id: TEST_ID, type: "browser" }]),
+        }),
+      });
+    (updateJob as jest.Mock).mockResolvedValue({ success: true, job: { id: jobId } });
+
+    const response = await PUT(new Request("http://localhost/api/jobs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: jobId, name: "Nightly Job", description: "Nightly", cronSchedule: "0 * * * *",
+        status: "paused", tests: [{ id: TEST_ID }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(updateJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId, cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }] }),
+      expect.objectContaining({ organizationId: "org-1" }),
+    );
+    expect((updateJob as jest.Mock).mock.calls[0][0]).not.toHaveProperty("status");
+  });
+
+  it("POST /api/jobs rejects a k6 job with more than one test", async () => {
+    const T2 = "00000000-0000-4000-8000-0000000000a2";
+    const rows = [{ id: TEST_ID, type: "performance" }, { id: T2, type: "performance" }];
+    const chain: Record<string, unknown> = {};
+    for (const method of ["from", "where", "orderBy", "limit"]) chain[method] = () => chain;
+    chain.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(rows).then(resolve);
+    mockDb.select.mockReturnValue(chain);
+
+    const response = await POST(new NextRequest("http://localhost/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Load", description: "Load", cronSchedule: "0 * * * *", jobType: "k6",
+        tests: [{ id: TEST_ID }, { id: T2 }],
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("exactly one");
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
   describe("nested test ids", () => {
     // A string that is not a uuid would reach `inArray(tests.id, ...)` and fail in Postgres with a 500.
     it.each(["test-1", "not-a-uuid", "12345"])("POST /api/jobs answers 400 for the test id %s", async (id) => {
@@ -332,6 +394,26 @@ describe("Jobs route regressions", () => {
 
       expect(response.status).toBe(400);
       expect((await response.json()).error).toContain("valid test ID");
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("cron and threshold validation (c10, c16)", () => {
+    const body = (extra: object) => JSON.stringify({ id: "00000000-0000-4000-8000-000000000005", name: "J", description: "d", cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }], ...extra });
+    const post = (extra: object) => POST(new NextRequest("http://localhost/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: body(extra) }));
+    const put = (extra: object) => PUT(new Request("http://localhost/api/jobs", { method: "PUT", headers: { "content-type": "application/json" }, body: body(extra) }));
+
+    it.each(["* * * * * *", "nonsense"])("POST and PUT reject cron %j before any write", async (cronSchedule) => {
+      for (const send of [post, put]) {
+        const response = await send({ cronSchedule });
+        expect(response.status).toBe(400);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([2.5, 0, -1])("POST rejects failureThreshold %p", async (failureThreshold) => {
+      const response = await post({ alertConfig: { enabled: false, notificationProviders: [], failureThreshold, recoveryThreshold: 1 } });
+      expect(response.status).toBe(400);
       expect(mockDb.transaction).not.toHaveBeenCalled();
     });
   });

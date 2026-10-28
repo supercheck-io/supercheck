@@ -142,7 +142,7 @@ export function clearAuth(): void {
  * Get the stored base URL override.
  */
 export function getStoredBaseUrl(): string | null {
-  return process.env.SUPERCHECK_URL ?? store.get('baseUrl') ?? null
+  return process.env.SUPERCHECK_URL || store.get('baseUrl') || null
 }
 
 /**

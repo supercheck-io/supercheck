@@ -12,10 +12,20 @@ Jobs let you group tests together and run them automatically on a schedule or tr
 
 A job is a collection of tests that run together. When a job executes:
 
-1. All selected tests run in sequence
-2. Results are collected and aggregated
-3. Your selected channels receive notifications for the alert types you enable
-4. Reports are generated with full details
+<Steps>
+<Step>
+All selected tests run in sequence
+</Step>
+<Step>
+Results are collected and aggregated
+</Step>
+<Step>
+Your selected channels receive notifications for the alert types you enable
+</Step>
+<Step>
+Reports are generated with full details
+</Step>
+</Steps>
 
 **Use jobs for:**
 - **Scheduled regression tests** — Run nightly or hourly to catch issues early
@@ -31,9 +41,17 @@ On Supercheck Cloud, creating or editing a job requires an active organization s
 
 ### Step 1: Basic Information
 
-1. Go to **Create → Job**
-2. Enter a descriptive **name** (e.g., "Nightly Regression Suite")
-3. Add an optional **description** explaining what the job tests
+<Steps>
+<Step>
+Open **Jobs** and click **Create Job** (or use **Quick Create → Playwright Job**)
+</Step>
+<Step>
+Enter a descriptive **name** (e.g., "Nightly Regression Suite")
+</Step>
+<Step>
+Add a **description** explaining what the job tests (required)
+</Step>
+</Steps>
 
 ### Step 2: Select Tests
 
@@ -158,9 +176,17 @@ This shows the CLI workflow with `--wait`. A plain HTTP trigger starts the job b
 
 ### Setting Up API Triggers
 
-1. Open the job you want to trigger
-2. Open the job's **Edit** action and continue to **CI/CD Settings**
-3. Click **Create Key**
+<Steps>
+<Step>
+Open the job you want to trigger
+</Step>
+<Step>
+Open the job's **Edit** action and continue to **CI/CD Settings**
+</Step>
+<Step>
+Click **Create Key**
+</Step>
+</Steps>
 
 ![CI/CD Tab](/screenshots/edit-job-add-cicd-apikey-1.png)
 
@@ -222,18 +248,36 @@ test:
 
 ### Running Jobs Manually
 
-1. Go to **Jobs** list
-2. Click the **Run** button on any job
-3. View real-time progress in the execution dialog
-4. Results appear when complete
+<Steps>
+<Step>
+Go to **Jobs** list
+</Step>
+<Step>
+Click the **Run** button on any job
+</Step>
+<Step>
+View real-time progress in the execution dialog
+</Step>
+<Step>
+Results appear when complete
+</Step>
+</Steps>
 
 ### Canceling Jobs
 
 You can cancel a running job at any time:
 
-1. Click the **Cancel** button on the running job
-2. Confirm the cancellation
-3. Review the cancellation status and any partial results in the run details
+<Steps>
+<Step>
+Click the **Cancel** button on the running job
+</Step>
+<Step>
+Confirm the cancellation
+</Step>
+<Step>
+Review the cancellation status and any partial results in the run details
+</Step>
+</Steps>
 
 ### Viewing Results
 

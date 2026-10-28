@@ -1,6 +1,6 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout, EmailButton } from "./base-layout";
+import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
 
 export type IncidentUpdateEvent =
   | "created"
@@ -23,7 +23,12 @@ export interface IncidentUpdateEmailProps {
   /** Plain text (rendered escaped). */
   detail?: string;
   incidentUrl: string;
+  /** Person who caused the event (acknowledged, resolved, reopened). */
   actorName?: string;
+  /** Current owner of the incident. */
+  assigneeName?: string;
+  /** When the event happened; defaults to now. */
+  occurredAt?: Date;
 }
 
 const SEVERITY: Record<
@@ -36,7 +41,8 @@ const SEVERITY: Record<
   sev4: { label: "SEV4 Low", bg: "#e5e7eb", fg: "#374151" },
 };
 
-const HEADER_COLOR: Record<IncidentUpdateEvent, string> = {
+/** Same palette as the monitor alert email: red open, amber/blue in progress, green closed. */
+export const INCIDENT_EVENT_COLOR: Record<IncidentUpdateEvent, string> = {
   created: "#b91c1c",
   reopened: "#b91c1c",
   assigned: "#1d4ed8",
@@ -46,18 +52,23 @@ const HEADER_COLOR: Record<IncidentUpdateEvent, string> = {
   recovered: "#15803d",
 };
 
+export function incidentSeverityLabel(severity: string): string {
+  return SEVERITY[severity as IncidentUpdateSeverity]?.label ?? severity.toUpperCase();
+}
+
 export function incidentUpdateHeadline(
   event: IncidentUpdateEvent,
   actorName?: string,
+  assigneeName?: string,
 ): string {
   const by = actorName ? ` by ${actorName}` : "";
   switch (event) {
     case "created":
-      return "A new incident was opened";
+      return "New incident opened";
     case "assigned":
-      return actorName
-        ? `Incident assigned to ${actorName}`
-        : "Incident was assigned";
+      return assigneeName
+        ? `Incident assigned to ${assigneeName}`
+        : "Incident assigned";
     case "acknowledged":
       return `Incident acknowledged${by}`;
     case "ai_finding":
@@ -71,6 +82,35 @@ export function incidentUpdateHeadline(
   }
 }
 
+/** One-line explanation shown under the title when there is no event detail. */
+export const INCIDENT_EVENT_MESSAGE: Record<IncidentUpdateEvent, string> = {
+  created: "Supercheck opened an incident. Review the evidence, assign an owner and start the investigation.",
+  assigned: "The incident has a new owner.",
+  acknowledged: "Someone is working on this incident.",
+  ai_finding: "The AI investigation added a finding. Review its evidence before acting on it.",
+  resolved: "This incident is resolved. Reopen it if the problem comes back.",
+  recovered: "The checks that raised this incident are passing again. Resolve the incident once you have confirmed the fix.",
+  reopened: "This incident was reopened and needs attention again.",
+};
+
+export function incidentUpdateFields(
+  props: Pick<
+    IncidentUpdateEmailProps,
+    "incidentNumber" | "severity" | "statusLabel" | "serviceName" | "assigneeName" | "actorName" | "occurredAt"
+  >,
+): DetailField[] {
+  const fields: DetailField[] = [
+    { title: "Incident", value: `#${props.incidentNumber}` },
+    { title: "Severity", value: incidentSeverityLabel(props.severity) },
+    { title: "Status", value: props.statusLabel },
+  ];
+  if (props.serviceName) fields.push({ title: "Service", value: props.serviceName });
+  fields.push({ title: "Owner", value: props.assigneeName || "Unassigned" });
+  if (props.actorName) fields.push({ title: "Updated by", value: props.actorName });
+  fields.push({ title: "Time", value: (props.occurredAt ?? new Date()).toUTCString() });
+  return fields;
+}
+
 export const IncidentUpdateEmail = ({
   event = "created",
   incidentNumber = 1,
@@ -81,41 +121,49 @@ export const IncidentUpdateEmail = ({
   detail,
   incidentUrl = "https://app.supercheck.io/incidents",
   actorName,
+  assigneeName,
+  occurredAt,
 }: IncidentUpdateEmailProps) => {
   const sev = SEVERITY[severity] ?? SEVERITY.sev3;
-  const headline = incidentUpdateHeadline(event, actorName);
+  const headline = incidentUpdateHeadline(event, actorName, assigneeName);
+  const accent = INCIDENT_EVENT_COLOR[event] ?? "#1f2937";
 
   return (
     <BaseLayout
       preview={`${headline}: #${incidentNumber} ${title}`}
-      title={`Incident #${incidentNumber}`}
-      headerColor={HEADER_COLOR[event] ?? "#1f2937"}
+      title={headline}
+      headerColor={accent}
     >
-      <Section style={section}>
-        <Text style={headlineStyle}>{headline}</Text>
-        <Text style={titleStyle}>{title}</Text>
+      <Section style={titleSection}>
         <Text style={metaRow}>
-          <span
-            style={{ ...chip, backgroundColor: sev.bg, color: sev.fg }}
-          >
+          <span style={{ ...chip, backgroundColor: sev.bg, color: sev.fg }}>
             {sev.label}
           </span>
           <span style={{ ...chip, backgroundColor: "#f3f4f6", color: "#374151" }}>
             {statusLabel}
           </span>
-          {serviceName ? (
-            <span style={{ ...chip, backgroundColor: "#f3f4f6", color: "#374151" }}>
-              {serviceName}
-            </span>
-          ) : null}
+        </Text>
+        <Text style={titleStyle}>
+          #{incidentNumber} {title}
         </Text>
       </Section>
 
-      {detail ? (
-        <Section style={section}>
-          <Text style={detailBox}>{detail}</Text>
-        </Section>
-      ) : null}
+      <Section style={{ ...messageBox, borderLeftColor: accent }}>
+        <Text style={messageText}>{detail || INCIDENT_EVENT_MESSAGE[event]}</Text>
+      </Section>
+
+      <DetailsTable
+        heading="Incident details"
+        fields={incidentUpdateFields({
+          incidentNumber,
+          severity,
+          statusLabel,
+          serviceName,
+          assigneeName,
+          actorName,
+          occurredAt,
+        })}
+      />
 
       <Section style={buttonSection}>
         <EmailButton href={incidentUrl}>
@@ -126,26 +174,17 @@ export const IncidentUpdateEmail = ({
   );
 };
 
-const section = { padding: "28px 32px 0" };
-
-const headlineStyle = {
-  margin: "0 0 8px",
-  color: "#6b7280",
-  fontSize: "13px",
-  fontWeight: "600" as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
+const titleSection = { padding: "32px 32px 0" };
 
 const titleStyle = {
-  margin: "0 0 16px",
+  margin: "0 0 24px",
   color: "#111827",
   fontSize: "20px",
   fontWeight: "700" as const,
   lineHeight: "1.4",
 };
 
-const metaRow = { margin: "0", lineHeight: "2" };
+const metaRow = { margin: "0 0 12px", lineHeight: "2" };
 
 const chip = {
   display: "inline-block",
@@ -156,19 +195,24 @@ const chip = {
   fontWeight: "600" as const,
 };
 
-const detailBox = {
-  margin: "0",
-  padding: "16px 20px",
+const messageBox = {
   backgroundColor: "#f9fafb",
-  borderLeft: "4px solid #d1d5db",
-  color: "#374151",
-  fontSize: "14px",
+  borderLeft: "4px solid",
+  padding: "16px 24px",
+  margin: "0 0 32px",
+  borderRadius: "0 4px 4px 0",
+};
+
+const messageText = {
+  margin: "0",
+  color: "#4b5563",
+  fontSize: "15px",
   lineHeight: "1.6",
   whiteSpace: "pre-wrap" as const,
 };
 
 const buttonSection = {
-  padding: "28px 32px 32px",
+  padding: "0 32px 32px",
   textAlign: "center" as const,
 };
 

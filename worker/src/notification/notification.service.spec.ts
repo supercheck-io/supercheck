@@ -440,6 +440,18 @@ describe('NotificationService', () => {
 
       expect(typeof body.embeds[0].color).toBe('number');
     });
+
+    it('should keep embeds within Discord limits and disable mentions', async () => {
+      await service.sendNotification(discordProvider, {
+        ...basePayload,
+        message: 'x'.repeat(5000),
+      });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.embeds[0].description.length).toBeLessThanOrEqual(4096);
+      expect(body.embeds[0].footer.text).toBe('Supercheck');
+      expect(body.allowed_mentions).toEqual({ parse: [] });
+    });
   });
 
   // ==========================================================================
@@ -458,13 +470,18 @@ describe('NotificationService', () => {
       );
     });
 
-    it('should use Markdown parse mode', async () => {
-      await service.sendNotification(telegramProvider, basePayload);
+    it('should send plain text so names with Markdown characters are not rejected', async () => {
+      await service.sendNotification(telegramProvider, {
+        ...basePayload,
+        targetName: 'api_v2_*prod*',
+      });
 
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
 
-      expect(body.parse_mode).toBe('Markdown');
+      expect(body.parse_mode).toBeUndefined();
+      expect(body.text).toContain('api_v2_*prod*');
+      expect(body.text.length).toBeLessThanOrEqual(4096);
       expect(body.chat_id).toBe(telegramProvider.config.chatId);
     });
   });
@@ -1252,6 +1269,7 @@ describe('NotificationService', () => {
       expect(result.failed).toBe(1);
       expect(result.results[0]).toMatchObject({
         success: false,
+        partial: true,
       });
       expect(result.results[0].error).toContain('bad@test.com');
     });

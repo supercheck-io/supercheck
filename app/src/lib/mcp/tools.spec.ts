@@ -139,10 +139,41 @@ describe("MCP tools", () => {
   });
 
   it("get_monitor exposes only allow-listed settings", async () => {
-    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://u:pw@example.com/p?k=1", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { method: "GET", expectedStatusCodes: "200-299", headers: { Authorization: "Bearer HEADERSECRET" }, auth: { type: "basic", password: "AUTHSECRET" }, body: "BODYSECRET", regions: ["eu-central"] } }]);
+    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://u:pw@example.com/p?k=1", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { method: "GET", expectedStatusCodes: "200-299", headers: { Authorization: "Bearer HEADERSECRET" }, auth: { type: "basic", password: "AUTHSECRET" }, body: "BODYSECRET", locationConfig: { enabled: true, locations: ["eu-central"], threshold: 50 } } }]);
     const res = await handlers.get("get_monitor")!({ id: id(1) });
     expect(res.structuredContent.monitor).toMatchObject({ target: "https://example.com", locations: ["eu-central"], settings: { method: "GET", expectedStatusCodes: "200-299" } });
     expect(JSON.stringify(res)).not.toMatch(/HEADERSECRET|AUTHSECRET|BODYSECRET|pw|k=1/);
+  });
+
+  it("get_monitor reads locations from locationConfig", async () => {
+    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { locationConfig: { enabled: true, locations: ["eu-central", "us-east"], threshold: 50, strategy: "majority" } } }]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({ locations: ["eu-central", "us-east"], locationStrategy: "majority", locationThreshold: 50 });
+  });
+
+  it("get_monitor returns no locations when location checks are disabled", async () => {
+    queue.push([{ id: id(1), name: "m", description: null, type: "http_request", target: "https://example.com", status: "up", enabled: true, frequencyMinutes: 5, lastCheckAt: null, config: { locationConfig: { enabled: false, locations: ["eu-central"], threshold: 50 } } }]);
+    const res = await handlers.get("get_monitor")!({ id: id(1) });
+    expect(res.structuredContent.monitor).toMatchObject({ locations: [] });
+  });
+
+  it("list_runs orders newest first by createdAt and pages by (createdAt, id)", async () => {
+    queue.push([{ id: id(3) }, { id: id(2) }]);
+    await handlers.get("list_runs")!({ limit: 1, cursor: id(4) });
+    const order = new PgDialect().sqlToQuery(([...(calls as [string, unknown[]][])].reverse().find(([m]) => m === "orderBy")![1][0]) as SQL);
+    expect(order.sql).toContain("created_at");
+    expect(lastWhere().sql).toContain("created_at");
+    expect(lastWhere().params).toContain(id(4));
+    expect(lastWhere().sql).toContain('from "runs" "cursor_run" where');
+  });
+
+  it("list_incidents filters by severity and list_tests by type, priority and search", async () => {
+    queue.push([]);
+    await handlers.get("list_incidents")!({ limit: 5, severity: "sev1" });
+    expect(lastWhere().params).toContain("sev1");
+    queue.push([]);
+    await handlers.get("list_tests")!({ limit: 5, type: "browser", priority: "high", search: "log%in" });
+    expect(lastWhere().params).toEqual(expect.arrayContaining(["browser", "high", "%log\\%in%"]));
   });
 
   it("get_monitor returns alert and incident settings, never channels", async () => {

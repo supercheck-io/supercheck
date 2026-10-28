@@ -59,7 +59,7 @@ Use the supplied Compose file: it keeps the agent non-root, read-only, and capab
 
 ### Register the agent
 
-In your Cloud or self-hosted dashboard, select the project and open **Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
+In your Cloud or self-hosted dashboard, select the project and open **Settings → Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
 
 Copy the **Agent ID** and **Registration token**. Start the agent within **15 minutes**, before the token expires.
 
@@ -114,7 +114,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
 
 ### Connect a provider
 
-Confirm the agent shows **connected**. In the same project's **Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
+Confirm the agent shows **connected**. In the same project's **Settings → Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
 
 Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 

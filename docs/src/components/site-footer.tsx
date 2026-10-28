@@ -39,8 +39,8 @@ const sections = [
         links: [
             { name: "Automate", href: "/docs/app/automate" },
             { name: "Monitor", href: "/docs/app/monitor" },
+            { name: "Respond", href: "/docs/app/investigate" },
             { name: "Communicate", href: "/docs/app/communicate" },
-            { name: "Investigate", href: "/docs/app/investigate" },
             { name: "Pricing", href: "/pricing" },
             { name: "Live demo", href: DEMO_URL },
         ],

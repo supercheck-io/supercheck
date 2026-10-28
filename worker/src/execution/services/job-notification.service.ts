@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
 import { DbService } from './db.service';
 import {
@@ -23,6 +24,13 @@ export interface JobNotificationParams {
   jobType?: string;
   location?: string | null;
   errorMessage?: string | null;
+  /** The user cancelled the run: it is neither a failure to alert on nor part of a streak. */
+  cancelled?: boolean;
+}
+
+// A user-cancelled run is stored as 'error'; it must not count toward or reset a streak.
+function isCancelledRun(run: { errorDetails?: string | null }) {
+  return run.errorDetails === RUN_CANCELLATION_MARKER;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -81,7 +89,7 @@ export class JobNotificationService {
     let passes = 1;
     let afterFailure = false;
     for (const run of recentRuns) {
-      if (run.id === runId) continue;
+      if (run.id === runId || isCancelledRun(run)) continue;
       if (run.status === 'passed') {
         passes++;
         continue;
@@ -108,9 +116,10 @@ export class JobNotificationService {
     jobType,
     location,
     errorMessage,
+    cancelled,
   }: JobNotificationParams): Promise<void> {
     try {
-      if (!jobId) {
+      if (!jobId || cancelled) {
         this.logger.debug('No jobId provided for notification handling');
         return;
       }
@@ -187,13 +196,17 @@ export class JobNotificationService {
         ),
       );
 
-      const normalizedStatus = finalStatus === 'error' ? 'failed' : finalStatus;
+      // A timeout is a failed run for the streak; alertOnTimeout only picks the alert type.
+      const normalizedStatus =
+        finalStatus === 'error' || finalStatus === 'timeout'
+          ? 'failed'
+          : finalStatus;
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
 
       for (const run of recentRuns) {
-        if (run.id === runId) continue;
+        if (run.id === runId || isCancelledRun(run)) continue;
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;
@@ -221,9 +234,11 @@ export class JobNotificationService {
         normalizedStatus === 'passed' &&
         consecutiveSuccesses >= alertConfig.recoveryThreshold;
 
-      // Timeouts are not counted in the failure streak above, so they are not capped here.
+      // Same threshold, cadence and cap as failures; only the alert type differs.
       const shouldNotifyTimeout =
-        alertConfig.alertOnTimeout && finalStatus === 'timeout';
+        alertConfig.alertOnTimeout &&
+        finalStatus === 'timeout' &&
+        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
 
       if (
         !shouldNotifyFailure &&
@@ -262,7 +277,7 @@ export class JobNotificationService {
         alertType = 'job_timeout';
         severity = 'warning';
         title = `Job Timeout - ${job.name}`;
-        message = `Job "${job.name}" timed out after ${safeDuration} seconds. No ping received within expected interval.`;
+        message = `Job "${job.name}" timed out after ${safeDuration} seconds.`;
       } else if (shouldNotifyFailure) {
         payloadType = 'job_failed';
         alertType = 'job_failed';
@@ -294,7 +309,7 @@ export class JobNotificationService {
         projectName,
         metadata: {
           duration: safeDuration,
-          status: normalizedStatus,
+          status: shouldNotifyTimeout ? 'timeout' : normalizedStatus,
           totalTests,
           passedTests,
           failedTests,
