@@ -226,7 +226,7 @@ With workers in several locations, a silent region holds up a monitor result by 
 
 `MISSING_CYCLE_DEADLINE_SECONDS` (default `300`, plus two check timeouts) sets how long a run waits. To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, keep `monitor-control` running until open runs close, then remove it from `COMPOSE_PROFILES`.
 
-Regions with no live worker (for example during a rollout) are skipped for that run, not counted as failed.
+Regions with no live worker when a run is scheduled (for example during a rollout) are skipped for that run, not counted as failed. A region whose worker goes offline after the run is scheduled is still expected and counts as failed at the deadline.
 
 </Accordion>
 </Accordions>
