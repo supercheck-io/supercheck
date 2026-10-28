@@ -3,7 +3,7 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SreAlertsView } from "@/components/alerts/sre-alerts-view";
 import { AlertHistoryPanel } from "@/components/alerts/alert-history-panel";
-import { useAlertHistory } from "@/hooks/use-alerts";
+import { ALERT_HISTORY_LIMIT, useAlertHistory } from "@/hooks/use-alerts";
 
 export type AlertsView = "signals" | "history";
 
@@ -15,7 +15,7 @@ export function IncidentAlertsTab({
   view: AlertsView;
   onViewChange: (view: AlertsView) => void;
 }) {
-  const { alertHistory, isLoading } = useAlertHistory();
+  const { alertHistory, isLoading, error } = useAlertHistory();
 
   // Lives in the toolbar row; the tooltip replaces the old (i) icon.
   const viewSwitch = (
@@ -34,9 +34,26 @@ export function IncidentAlertsTab({
     </Tabs>
   );
 
-  return view === "history" ? (
-    <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
-  ) : (
-    <SreAlertsView alerts={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
+  if (error) {
+    return (
+      <p role="alert" className="py-12 text-center text-sm text-destructive">
+        Failed to load alerts. Please try again.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {alertHistory.length >= ALERT_HISTORY_LIMIT && (
+        <p className="pb-2 text-xs text-muted-foreground">
+          Showing the latest {ALERT_HISTORY_LIMIT} notifications.
+        </p>
+      )}
+      {view === "history" ? (
+        <AlertHistoryPanel alertHistory={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
+      ) : (
+        <SreAlertsView alerts={alertHistory} isLoading={isLoading} toolbarEnd={viewSwitch} />
+      )}
+    </>
   );
 }
