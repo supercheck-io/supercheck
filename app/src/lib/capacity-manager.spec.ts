@@ -218,6 +218,14 @@ describe('CapacityManager', () => {
         expect(mockRedisEval).not.toHaveBeenCalled();
       });
 
+      it('fails the run when the payload is missing, instead of leaving it queued forever', async () => {
+        mockRedisGet.mockResolvedValue(null);
+        const { db } = jest.requireMock('@/utils/db');
+        db.update.mockClear();
+        expect(await capacityManager['promoteJob'](testOrgId, queued.jobId)).toBe(false);
+        expect(db.update).toHaveBeenCalled();
+      });
+
       it('is left alone when another promoter already removed it', async () => {
         mockRedisGet.mockResolvedValue('not json');
         mockRedisZrem.mockResolvedValueOnce(0);
