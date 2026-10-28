@@ -1,8 +1,8 @@
 <h1><img src="https://raw.githubusercontent.com/supercheck-io/supercheck/main/supercheck-logo.png" alt="Supercheck logo" width="40" height="40" align="top"> Supercheck Recorder</h1>
 
-**Browser extension and Playwright CRX runtime for recording and syncing browser tests as code.**
+**Browser extension and Playwright CRX runtime for recording browser tests as Playwright code.**
 
-The Supercheck Recorder turns real browser interactions into maintainable Playwright code. Built on Chrome Extensions Manifest V3 and Playwright CRX, it operates directly inside Chrome and Microsoft Edge without requiring external drivers or local runner setups. Record user flows, assert DOM states, inspect selectors, and save generated tests straight to your Supercheck projects with zero manual token copying.
+The Supercheck Recorder turns real browser interactions into maintainable Playwright code. Built on Chrome Extensions Manifest V3 and Playwright CRX, it operates directly inside Chrome and Microsoft Edge without requiring external drivers or local runner setups. Record user flows, assert DOM states, inspect selectors, and send generated tests to the Supercheck Playground with zero manual token copying.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Supercheck_Recorder-blue?logo=googlechrome)](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 [![Edge Add-ons](https://img.shields.io/badge/Microsoft_Edge-Supercheck_Recorder-0078D7?logo=microsoftedge)](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
@@ -14,8 +14,8 @@ The Supercheck Recorder turns real browser interactions into maintainable Playwr
 ## What Supercheck Recorder includes
 
 - **In-Browser Recording**: Leverages [`chrome.debugger`](https://developer.chrome.com/docs/extensions/reference/debugger/) to capture clicks, navigation, inputs, form fills, and assertions without installing local Node.js or Python environments.
-- **1-Click Sync to Supercheck**: Saves generated scripts directly into cloud or self-hosted Supercheck projects, ready for scheduled execution and alerting.
-- **Playwright Test Output**: Generates recorded flows as Playwright Test (JavaScript); tests saved to Supercheck use the same format.
+- **Playground Hand-off**: Sends the generated script back to the Supercheck Playground editor that started the recording.
+- **Playwright Test Output**: Generates recorded flows as Playwright Test (JavaScript), the same format the Playground runs.
 - **Intelligent Selector Engine**: Prioritizes `getByTestId` (`data-testid`), accessible role locators, text, and resilient CSS attributes.
 - **Built-in Player & Step Execution**: Replays recorded instructions directly within the extension tab, highlighting lines as they execute.
 - **Playwright Trace Viewer Compatible**: Captures standard `.zip` traces compatible with [Playwright Trace Viewer](https://trace.playwright.dev).
@@ -66,7 +66,7 @@ Then load the unpacked extension in your browser:
 3. Click **Save URL and open Supercheck**.
 4. Sign in to your Supercheck instance. An authenticated dashboard page connects the extension automatically.
 
-> **Security Note:** The options page retains an advanced API-key field only for existing recorder-scoped credentials (`ext_*`). Ordinary CLI tokens and job trigger keys cannot upload recordings.
+> **Security Note:** The options page retains an advanced API-key field only for existing recorder-scoped credentials (`ext_*`). Ordinary CLI tokens and job trigger keys cannot be used by the recorder.
 
 ---
 
@@ -79,7 +79,7 @@ Then load the unpacked extension in your browser:
 3. The recorder side panel opens.
 4. Interact with the page: clicks, typing, navigation, and dropdown selections are captured in real time.
 5. Review and customize the generated code in the side panel editor.
-6. Click **Save to Supercheck**, select your target project, and save the test.
+6. Click **Save** in the recorder to insert the code into the originating Supercheck Playground editor, then save the test there.
 
 ### Keyboard shortcuts
 
@@ -99,18 +99,16 @@ flowchart TB
     User[User in Browser] -->|Navigates & interacts| Tab[Active Chrome / Edge Tab]
     Tab -->|CDP events via chrome.debugger| Background[Extension Background Worker<br/>playwright-crx transport]
     Background -->|AST & code generation| SidePanel[Side Panel UI<br/>CodeMirror + Step Replayer]
-    SidePanel -->|Save recording| API[Supercheck API<br/>POST /api/recordings]
-    API -->|Persist test| DB[(Supercheck Project)]
+    SidePanel -->|Send recorded code| Playground[Supercheck Playground tab]
 
     style User fill:#6366f1,stroke:#4338ca,color:#fff
     style Tab fill:#0ea5e9,stroke:#0369a1,color:#fff
     style Background fill:#3b82f6,stroke:#1e40af,color:#fff
     style SidePanel fill:#10b981,stroke:#047857,color:#fff
-    style API fill:#f59e0b,stroke:#b45309,color:#fff
-    style DB fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Playground fill:#f59e0b,stroke:#b45309,color:#fff
 ```
 
-The extension uses `chrome.debugger` to implement Playwright's `ConnectionTransport` interface directly inside the browser. Injected highlighter scripts highlight hovered and clicked DOM elements while generating robust locator strategies. When saving, the extension communicates with the Supercheck backend via origin-validated API endpoints.
+The extension uses `chrome.debugger` to implement Playwright's `ConnectionTransport` interface directly inside the browser. Injected highlighter scripts highlight hovered and clicked DOM elements while generating robust locator strategies. When sending code back, the extension messages the originating Supercheck tab through origin-validated channels; the Playground persists the test.
 
 ---
 
