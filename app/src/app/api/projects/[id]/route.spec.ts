@@ -77,3 +77,14 @@ describe("deleted projects", () => {
     expect(whereSql).toContain('"status"');
   });
 });
+
+describe("CLI tokens", () => {
+  it.each([["PUT", () => put({ name: "x" })], ["DELETE", () => DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) })]] as const)(
+    "%s is refused for project-scoped CLI auth",
+    async (_m, call) => {
+      (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "u1", isCliAuth: true });
+      expect((await call()).status).toBe(403);
+      expect(db.update).not.toHaveBeenCalled();
+    },
+  );
+});
