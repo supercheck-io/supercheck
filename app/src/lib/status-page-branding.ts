@@ -49,7 +49,7 @@ export function resolveBranding(page: BrandingInput): StatusPageBranding {
     pageColors = {
       background,
       font,
-      lightFont: readable(custom(page.cssLightFontColor, DEFAULTS.lightFont), font),
+      lightFont: readable(custom(page.cssLightFontColor, DEFAULTS.lightFont), `color-mix(in srgb, ${font} 75%, ${background})`),
       border: custom(page.cssBorderColor, DEFAULTS.border),
     };
   }

@@ -107,17 +107,18 @@ type Incident = {
 };
 
 // Banner severity of an open incident, so an incident with no visible components still shows.
-const IMPACT_BANNER_STATUS: Record<IncidentImpact, ComponentStatus> = {
+// Impact "none" is informational and does not change the banner.
+const IMPACT_BANNER_STATUS: Partial<Record<IncidentImpact, ComponentStatus>> = {
   critical: "major_outage",
   major: "partial_outage",
   minor: "degraded_performance",
-  none: "degraded_performance",
 };
 
 // Overrides the themed Tailwind colours when the owner configured a custom background.
 const BRANDED_CSS = `
 [data-sp-branded] .sp-fg{color:var(--sp-fg)!important}
 [data-sp-branded] .sp-muted{color:var(--sp-muted)!important}
+[data-sp-branded] .sp-muted a{color:var(--sp-fg)!important}
 [data-sp-branded] .sp-card{background-color:transparent!important}
 [data-sp-branded] .sp-border,[data-sp-branded] .sp-divide>*{border-color:var(--sp-border)!important}
 `;
@@ -171,7 +172,7 @@ export function PublicStatusPage({
   const activeIncidents = incidents.filter((i) => i.status !== "resolved");
   const openIssueStatuses = activeIncidents
     .filter((i) => i.status !== "scheduled" && !(i.scheduledFor && i.scheduledUntil))
-    .map((i) => IMPACT_BANNER_STATUS[i.impact]);
+    .flatMap((i) => IMPACT_BANNER_STATUS[i.impact] ?? []);
 
   const calculateSystemStatus = () => {
     const statuses = [
@@ -793,7 +794,7 @@ export function PublicStatusPage({
                       {!hideBranding && (
                         <StatusPageBranding
                           poweredByLabel={t.poweredBy}
-                          className="sm:flex-1 justify-center sm:justify-end"
+                          className="sp-muted sm:flex-1 justify-center sm:justify-end"
                         />
                       )}
                     </>
@@ -802,7 +803,7 @@ export function PublicStatusPage({
                       {!hideBranding && (
                         <StatusPageBranding
                           poweredByLabel={t.poweredBy}
-                          className="w-full"
+                          className="sp-muted w-full"
                         />
                       )}
                     </>

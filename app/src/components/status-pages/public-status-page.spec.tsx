@@ -51,6 +51,15 @@ describe("active incidents", () => {
     expect(screen.getByText(t.majorOutage)).toBeInTheDocument();
   });
 
+  it("takes the worst of component status and incident impact, and ignores impact none", () => {
+    const { unmount } = render(<PublicStatusPage statusPage={page} components={[{ ...component, status: "partial_outage" as const }]} incidents={[incident({ impact: "critical" })]} idOrSubdomain="page" />);
+    expect(screen.getByText(t.majorOutage)).toBeInTheDocument();
+    unmount();
+    render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident({ impact: "none" })]} idOrSubdomain="page" />);
+    expect(screen.getByText(t.allSystemsOperational)).toBeInTheDocument();
+    expect(screen.getByTestId("active-incidents")).toBeInTheDocument();
+  });
+
   it("shows maintenance in the block without degrading the banner", () => {
     render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident({ name: "DB upgrade", status: "scheduled", impact: "none", scheduledFor: new Date("2030-01-05T02:00:00Z"), scheduledUntil: new Date("2030-01-05T04:00:00Z") })]} idOrSubdomain="page" />);
     expect(screen.getByTestId("active-incidents")).toHaveTextContent("DB upgrade");
