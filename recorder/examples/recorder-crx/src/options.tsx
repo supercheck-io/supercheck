@@ -177,6 +177,7 @@ function OptionsPage() {
       // updates the instance this extension is paired with.
       if (next.apiKey) {
         setCustomUrl(customUrlFor(next.instanceUrl));
+        if (customUrlFor(next.instanceUrl)) setShowSelfHosted(true);
         setConnectionState({ status: 'connected', email: next.userEmail });
         setApiKey('');
         return;
@@ -407,8 +408,8 @@ function OptionsPage() {
               <div className='actions'>
                 <button
                   className='btn btn-primary'
-                  onClick={handleSaveInstance}
-                  disabled={saving || Boolean(urlError)}
+                  onClick={() => void chrome.tabs.create({ url: savedInstanceUrl })}
+                  disabled={saving}
                 >
                   {saving ? 'Opening…' : 'Sign in to Supercheck'}
                 </button>
