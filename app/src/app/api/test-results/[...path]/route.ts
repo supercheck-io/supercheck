@@ -558,8 +558,10 @@ export async function GET(request: Request) {
       // A generated document is produced by user-authored test code. Give it an opaque origin unless it
       // is loaded by the in-app viewer (a same-origin iframe, which needs same-origin access for trace
       // data). Top-level, cross-site, prefetch and header-less requests are all sandboxed.
+      // A reports-origin response (tokenGrant) is already isolated by origin and keeps its frame-ancestors policy.
       // Residual risk: the in-app viewer iframe itself keeps allow-same-origin (tracked separately).
       if (
+        !tokenGrant &&
         isGeneratedDocument &&
         !(
           request.headers.get("sec-fetch-dest") === "iframe" &&

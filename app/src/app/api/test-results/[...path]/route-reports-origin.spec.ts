@@ -106,7 +106,11 @@ describe("reports origin enforcement", () => {
 
   it("behaves as before when REPORTS_ORIGIN is unset", async () => {
     delete process.env.REPORTS_ORIGIN;
-    const res = await GET(get(APP, `${ENTITY}/report/index.html`));
+    // The in-app viewer iframe is exempt from the generated-document sandbox (#662), so this request sends its fetch metadata.
+    const req = new Request(`${APP}/api/test-results/${ENTITY}/report/index.html`, {
+      headers: { "sec-fetch-dest": "iframe", "sec-fetch-site": "same-origin" },
+    });
+    const res = await GET(req);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toBeNull();
     expect(requireUserAuthContext).toHaveBeenCalled();
