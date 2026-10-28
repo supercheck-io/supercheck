@@ -224,7 +224,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
         eq(member.userId, matchedKey.userId)
       )
     )
-    .where(eq(projects.id, matchedKey.projectId))
+    .where(and(eq(projects.id, matchedKey.projectId), eq(projects.status, "active")))
     .limit(1);
 
   const ctx = contextResult[0];

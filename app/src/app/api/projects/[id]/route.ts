@@ -4,7 +4,17 @@ import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, ne, count } from 'drizzle-orm';
+import { z } from 'zod';
+
+// Status transitions are not editable here: DELETE owns soft-delete (project:delete, non-default).
+const updateProjectSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255).optional(),
+    slug: z.string().trim().max(100).nullable().optional(),
+    description: z.string().max(5000).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, 'No fields to update');
 
 /**
  * GET /api/projects/[id]
@@ -115,12 +125,12 @@ export async function PUT(
     // Get project to determine organization
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const projectData = await db
-      .select({ organizationId: projects.organizationId })
+      .select({ organizationId: projects.organizationId, status: projects.status })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
     
-    if (projectData.length === 0) {
+    if (projectData.length === 0 || projectData[0].status === 'deleted') {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
@@ -141,27 +151,21 @@ export async function PUT(
       );
     }
     
-    const body = await request.json();
-    const { name, slug, description, status } = body;
-    
-    if (!name) {
-      return NextResponse.json(
-        { error: 'Project name is required' },
-        { status: 400 }
-      );
+    const parsed = updateProjectSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid project data' }, { status: 400 });
     }
-    
-    // Update project
+    const { name, slug, description } = parsed.data;
+
     const [updatedProject] = await db
       .update(projects)
       .set({
-        name,
-        slug: slug || null,
-        description: description || null,
-        status: status || 'active',
+        ...(name !== undefined && { name }),
+        ...(slug !== undefined && { slug: slug || null }),
+        ...(description !== undefined && { description: description || null }),
         updatedAt: new Date()
       })
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .returning();
     
     if (!updatedProject) {
