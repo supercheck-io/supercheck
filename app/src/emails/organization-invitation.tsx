@@ -24,7 +24,7 @@ export const OrganizationInvitationEmail = ({
     <BaseLayout
       preview={`You're invited to join ${organizationName} on Supercheck`}
       title="Team Invitation"
-      headerColor="#16a34a" // Green-600
+      headerColor="#15803d"
     >
       <Section style={contentSection}>
         {/* Main Content */}
@@ -155,7 +155,7 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#16a34a",
+  backgroundColor: "#111827",
   borderRadius: "6px",
   color: "#ffffff",
   fontSize: "15px",
