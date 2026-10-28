@@ -283,3 +283,52 @@ describe("scheduled execution admission", () => {
     expect(db.insert).not.toHaveBeenCalled();
   });
 });
+
+describe("scheduled job bookkeeping", () => {
+  const jobRow = {
+    id: "job-1",
+    projectId: "project-1",
+    organizationId: "org-1",
+    jobType: "playwright",
+    cronSchedule: "*/5 * * * *",
+  };
+  const sets: Array<Record<string, unknown>> = [];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    sets.length = 0;
+    (polarUsageService.shouldBlockUsage as jest.Mock).mockResolvedValue({ blocked: false });
+    (subscriptionService.blockUntilSubscribed as jest.Mock).mockResolvedValue(undefined);
+    (subscriptionService.requireValidPolarCustomer as jest.Mock).mockResolvedValue(undefined);
+    (db.update as jest.Mock).mockReturnValue({
+      set: jest.fn((values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: jest.fn().mockResolvedValue(undefined) };
+      }),
+    });
+    (db.insert as jest.Mock).mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
+  });
+
+  it("advances nextRunAt when the tick is skipped because a run is still active", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([jobRow]))
+      .mockReturnValueOnce(selectRows([{ id: "run-active" }]));
+    await processScheduledJob(scheduledJob);
+    expect(sets).toContainEqual(expect.objectContaining({ nextRunAt: expect.any(Date) }));
+  });
+
+  it("does not leave the job 'running' when enqueueing fails", async () => {
+    const { prepareJobTestScripts } = jest.requireMock("@/lib/job-execution-utils");
+    prepareJobTestScripts.mockResolvedValue({
+      testScripts: [{ id: "t1", name: "T", script: "x", type: "browser" }],
+      variableResolution: { variables: {}, secrets: {}, files: {} },
+    });
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([jobRow]))
+      .mockReturnValueOnce(selectRows([]));
+    const { addJobToQueue } = jest.requireMock("@/lib/queue");
+    addJobToQueue.mockRejectedValue(new Error("queue down"));
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: false });
+    expect(sets).not.toContainEqual(expect.objectContaining({ status: "running" }));
+  });
+});
