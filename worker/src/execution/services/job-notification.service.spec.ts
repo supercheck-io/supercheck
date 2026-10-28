@@ -191,7 +191,11 @@ describe('JobNotificationService', () => {
           title: 'Job Timeout - Checkout smoke test',
           message: expect.stringContaining('timed out after 90 seconds'),
           targetId: 'job-1',
-          metadata: expect.objectContaining({ runId: 'run-1', duration: 90 }),
+          metadata: expect.objectContaining({
+            runId: 'run-1',
+            duration: 90,
+            status: 'timeout',
+          }),
         }),
       );
       expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);

@@ -300,7 +300,7 @@ export class JobNotificationService {
         projectName,
         metadata: {
           duration: safeDuration,
-          status: normalizedStatus,
+          status: shouldNotifyTimeout ? 'timeout' : normalizedStatus,
           totalTests,
           passedTests,
           failedTests,
