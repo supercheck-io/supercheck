@@ -17,7 +17,7 @@ export const EmailVerificationEmail = ({
     <BaseLayout
       preview="Verify your email address to complete signup"
       title="Email Verification"
-      headerColor="#059669" // Emerald-600
+      headerColor="#15803d"
     >
       <Section style={contentSection}>
         {/* Main Content */}
@@ -115,7 +115,7 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#059669",
+  backgroundColor: "#111827",
   borderRadius: "8px",
   color: "#ffffff",
   display: "inline-block",

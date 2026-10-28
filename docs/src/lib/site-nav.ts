@@ -44,7 +44,7 @@ export interface NavMenu {
   groups: NavGroup[];
 }
 
-// Product groups mirror the docs sidebar (Automate, Monitor, Communicate, Investigate).
+// Product groups mirror the app and docs sidebars (Automate, Monitor, Respond, Communicate).
 export const productMenu: NavMenu = {
   label: "Product",
   groups: [
@@ -66,18 +66,18 @@ export const productMenu: NavMenu = {
       ],
     },
     {
-      title: "Communicate",
+      title: "Respond",
       items: [
-        { title: "Alerts", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: BellRing },
-        { title: "Status pages", description: "Incidents and subscriber updates", href: "/product/status-pages", icon: Tally4 },
+        { title: "Incidents", description: "Opened by failing monitors and jobs", href: "/docs/app/investigate/incidents", icon: Siren },
+        { title: "AI SRE", description: "Investigations that cite evidence", href: "/product/ai-sre", icon: Bot },
+        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Plug },
       ],
     },
     {
-      title: "Investigate",
+      title: "Communicate",
       items: [
-        { title: "Incidents", description: "Alerts and runs in one place", href: "/docs/app/investigate/incidents", icon: Siren },
-        { title: "AI SRE", description: "Investigations that cite evidence", href: "/product/ai-sre", icon: Bot },
-        { title: "Connectors", description: "Prometheus, Grafana, Kubernetes", href: "/docs/app/investigate/connectors", icon: Plug },
+        { title: "Notifications", description: "Slack, Teams, email and more", href: "/docs/app/communicate/alerts", icon: BellRing },
+        { title: "Status pages", description: "Incidents and subscriber updates", href: "/product/status-pages", icon: Tally4 },
       ],
     },
   ],
