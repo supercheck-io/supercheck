@@ -248,6 +248,16 @@ describe("monitor-scheduler", () => {
       );
     });
 
+    it("passes only the enqueued regions as configured when some have no live worker", async () => {
+      (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: ["eu-central"], skippedLocations: ["us-east"] });
+      (enqueueMonitorLocationJobs as jest.Mock).mockResolvedValue("group");
+      await processScheduledMonitor(job());
+      expect(enqueueMonitorLocationJobs).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), ["eu-central"], expect.anything(),
+        expect.objectContaining({ configuredLocations: ["eu-central"] }),
+      );
+    });
+
     it("aborts the cycle on a final failure that happens before publication", async () => {
       (partitionMonitorLocationsByAvailability as jest.Mock).mockResolvedValue({ enqueuedLocations: [], skippedLocations: ["eu-central", "us-east"] });
       await expect(processScheduledMonitor(job({ attemptsMade: 2 }))).rejects.toThrow("no jobs enqueued");
