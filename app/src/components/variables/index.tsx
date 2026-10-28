@@ -6,6 +6,8 @@ import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { Variable } from "./schema";
+import { ListErrorState } from "@/components/shared/list-states";
+import { toast } from "sonner";
 
 // Type for variable data as returned from API (before transformation)
 interface VariableApiResponse {
@@ -33,6 +35,7 @@ export default function Variables() {
   const [variables, setVariables] = useState<Variable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [canCreateEdit, setCanCreateEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
@@ -63,6 +66,14 @@ export default function Variables() {
       mountedRef.current = false;
     };
   }, []);
+
+  // Keep any rows already loaded; only the first load shows the error panel.
+  const reportLoadError = (message?: string) => {
+    if (!mountedRef.current) return;
+    const text = message || "The variables could not be loaded.";
+    setLoadError(text);
+    toast.error("Failed to load variables", { description: text });
+  };
 
   // Fetch variables from the database
   const fetchVariables = useCallback(async () => {
@@ -100,15 +111,14 @@ export default function Variables() {
         setCanCreateEdit(data.canCreateEdit || false);
         setCanDelete(data.canDelete || false);
         setCanViewSecrets(data.canViewSecrets || false);
+        setLoadError(null);
       } else {
         console.error("Failed to fetch variables:", data.error);
-        setVariables([]);
+        reportLoadError(data.error);
       }
     } catch (error) {
       console.error("Error fetching variables:", error);
-      if (mountedRef.current) {
-        setVariables([]);
-      }
+      reportLoadError();
     } finally {
       if (mountedRef.current) {
         setIsLoading(false);
@@ -174,6 +184,9 @@ export default function Variables() {
   const handleSuccess = useCallback(() => {
     // Trigger a refresh by incrementing the refreshTrigger
     setRefreshTrigger(prev => prev + 1);
+    // The secret may have changed: drop cached plaintext so reveal and the edit dialog refetch it
+    setDecryptedValues({});
+    setSecretVisibility({});
   }, []);
 
   // Don't render until component is mounted (prevents hydration mismatch)
@@ -182,6 +195,16 @@ export default function Variables() {
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={2} />
       </div>
+    );
+  }
+
+  if (loadError && variables.length === 0 && !isLoading) {
+    return (
+      <ListErrorState
+        title="Failed to fetch variables"
+        error={new Error(loadError)}
+        onRetry={() => setRefreshTrigger(prev => prev + 1)}
+      />
     );
   }
 

@@ -10,6 +10,10 @@ import { useRouter } from "next/navigation";
 import { Test } from "./schema";
 import { Row } from "@tanstack/react-table";
 import { useTests } from "@/hooks/use-tests";
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
+
+// GET /api/tests returns at most this many rows and the list has no pagination.
+const TESTS_LIST_CAP = 200;
 
 export default function Tests() {
   const [selectedTest] = useState<Test | null>(null);
@@ -67,21 +71,12 @@ export default function Tests() {
   }
 
   if (error) {
-    return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
-        <h3 className="font-semibold">Failed to fetch tests</h3>
-        <p className="max-w-md text-sm text-muted-foreground">
-          {error instanceof Error ? error.message : "The tests list could not be loaded."}
-        </p>
-        <Button variant="outline" onClick={() => invalidate()}>
-          Retry
-        </Button>
-      </div>
-    );
+    return <ListErrorState title="Failed to fetch tests" error={error} onRetry={() => invalidate()} />;
   }
 
   return (
     <div className="flex h-full flex-col p-2 mt-6">
+      <ListCapNote count={tests.length} cap={TESTS_LIST_CAP} />
       <DataTable
         columns={columns}
         data={tests}

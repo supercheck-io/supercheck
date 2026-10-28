@@ -8,6 +8,10 @@ import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { Monitor } from "./schema";
 import { Row } from "@tanstack/react-table";
 import { useMonitors } from "@/hooks/use-monitors";
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
+
+// GET /api/monitors without params returns at most this many rows.
+const MONITORS_LIST_CAP = 200;
 
 export default function MonitorsList() {
   const router = useRouter();
@@ -20,7 +24,7 @@ export default function MonitorsList() {
 
   // Use React Query hook for monitors data (cached, handles loading/error)
   // No pagination params = API returns all monitors for client-side filtering
-  const { monitors, isLoading, isRestoring, invalidate } = useMonitors();
+  const { monitors, isLoading, isRestoring, invalidate, error, refetch } = useMonitors();
   
 
   // Handle row click to navigate to monitor detail
@@ -47,8 +51,13 @@ export default function MonitorsList() {
     );
   }
 
+  if (error) {
+    return <ListErrorState title="Failed to fetch monitors" error={error} onRetry={() => refetch()} />;
+  }
+
   return (
     <div className="flex h-full flex-col space-y-4 p-2 mt-6">
+      <ListCapNote count={monitors.length} cap={MONITORS_LIST_CAP} />
       <DataTable
         key={tableKey}
         columns={columns}

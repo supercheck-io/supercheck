@@ -20,7 +20,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
+import { TESTS_QUERY_KEY, TEST_QUERY_KEY } from "@/hooks/use-tests";
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
@@ -301,18 +301,21 @@ export function TestForm({
   // Save tags when form is submitted - uses mutation hook
   // Note: For new tests (no testId), tags should be saved after the test is created.
   // The testIdToSave parameter supports both existing and new tests.
-  const saveTestTags = async (testIdToSave: string) => {
+  // Returns false when the tags could not be saved (the test itself is already saved).
+  const saveTestTags = async (testIdToSave: string): Promise<boolean> => {
     // Skip if no test ID - tags will be saved when test is created
     if (!testIdToSave) {
-      return;
+      return true;
     }
     try {
       await saveTestTagsMutation.mutateAsync({
         testId: testIdToSave,
         tagIds: selectedTags.map((tag) => tag.id),
       });
+      return true;
     } catch (error) {
       console.error("Error saving test tags:", error);
+      return false;
     }
   };
 
@@ -331,11 +334,18 @@ export function TestForm({
   }, [initialTags, selectedTags]);
 
   const invalidatePostSaveQueries = useCallback(
-    (includeRequirements: boolean) => {
+    (includeRequirements: boolean, savedTestId?: string) => {
       void queryClient.invalidateQueries({
         queryKey: TESTS_QUERY_KEY,
         refetchType: "all",
       });
+      if (savedTestId) {
+        // The playground reads this entry with refetchOnMount:false, so it would reopen the old script
+        void queryClient.invalidateQueries({
+          queryKey: [...TEST_QUERY_KEY, savedTestId],
+          refetchType: "all",
+        });
+      }
       void queryClient.invalidateQueries({
         queryKey: DASHBOARD_QUERY_KEY,
         refetchType: "all",
@@ -571,13 +581,18 @@ export function TestForm({
 
           if (result.success) {
             // Save tags only when changed to avoid unnecessary API/DB work
-            if (tagsChanged) {
-              await saveTestTags(testId);
+            const tagsSaved = !tagsChanged || (await saveTestTags(testId));
+
+            invalidatePostSaveQueries(false, testId);
+
+            if (!tagsSaved) {
+              toast.error("Test saved, but its tags could not be saved", {
+                description: "Click Update again to retry the tags.",
+              });
+              return;
             }
 
             toast.success("Test updated successfully.");
-
-            invalidatePostSaveQueries(false);
 
             // Navigate to the tests page after updating
             router.push("/tests/");
@@ -600,13 +615,20 @@ export function TestForm({
 
           if (result.success && result.id) {
             // Save tags only when changed to avoid unnecessary API/DB work
-            if (tagsChanged) {
-              await saveTestTags(result.id);
+            const tagsSaved = !tagsChanged || (await saveTestTags(result.id));
+
+            invalidatePostSaveQueries(!!initialLinkedRequirement?.id, result.id);
+
+            if (!tagsSaved) {
+              // Open the saved test so a retry does not create a duplicate
+              toast.error("Test saved, but its tags could not be saved", {
+                description: "Add the tags again and click Update.",
+              });
+              router.push(`/playground/${result.id}`);
+              return;
             }
 
             toast.success("Test saved successfully.");
-
-            invalidatePostSaveQueries(!!initialLinkedRequirement?.id);
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");
