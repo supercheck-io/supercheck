@@ -10,6 +10,8 @@ import {
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { alertThresholdSchema } from "@/lib/alert-thresholds";
+import { validateJobCron } from "@/lib/job-cron-validation";
 import { scheduleJob, deleteScheduledJob } from "@/lib/job-scheduler";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { requireProjectContext } from "@/lib/project-context";
@@ -43,8 +45,8 @@ const updateJobSchema = z.object({
       alertOnFailure: z.boolean(),
       alertOnSuccess: z.boolean().optional(),
       alertOnTimeout: z.boolean().optional(),
-      failureThreshold: z.number(),
-      recoveryThreshold: z.number(),
+      failureThreshold: alertThresholdSchema,
+      recoveryThreshold: alertThresholdSchema,
       customMessage: z.string().optional(),
       incidentEnabled: z.boolean().optional(),
       incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
@@ -88,6 +90,8 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
     // Validate the data
     const validatedData = updateJobSchema.parse(data);
+    const cronError = validateJobCron(validatedData.cronSchedule);
+    if (cronError) return { success: false, message: cronError };
 
     // Validate alert configuration if enabled
     let validatedNotificationProviderIds: string[] = [];

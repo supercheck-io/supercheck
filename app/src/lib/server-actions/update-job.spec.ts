@@ -59,3 +59,12 @@ it("proceeds to the job lookup once both subscription checks pass", async () => 
   expect(mockSelect).toHaveBeenCalled();
   expect(result).toEqual(expect.objectContaining({ success: false }));
 });
+
+it.each([
+  ["a sub-minute cron", { cronSchedule: "* * * * * *" }],
+  ["a fractional threshold", { alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: 2.5, recoveryThreshold: 1 } }],
+])("rejects %s before any database access (c10, c16)", async (_name, extra) => {
+  const result = await updateJob({ ...input, ...extra }, context);
+  expect(result).toEqual(expect.objectContaining({ success: false }));
+  expect(mockSelect).not.toHaveBeenCalled();
+});
