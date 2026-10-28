@@ -9,6 +9,7 @@ import type { SupercheckConfig } from '../config/schema.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { normalizeLocalStatusPage, statusPageToDefinition } from './status-pages.js'
 import { PRIORITIES } from './priority.js'
+import { UNEVALUATED_MONITOR_CONFIG_KEYS } from './monitor-config-keys.js'
 import { normalizeAlertConfig } from './alert-config.js'
 
 /** Trim, drop empties and de-duplicate case-insensitively (first spelling wins), keeping the user's spelling. */
@@ -253,6 +254,7 @@ function normalizeMonitorConfig(config: Record<string, unknown>): Record<string,
   // Remove runtime-only fields
   delete normalized.sslLastCheckedAt
   delete normalized.aggregatedAlertState
+  for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete normalized[key]
 
   // Clean up default playwrightOptions
   if (normalized.playwrightOptions && typeof normalized.playwrightOptions === 'object') {

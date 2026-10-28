@@ -5,7 +5,9 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 const mockSelect = jest.fn();
 jest.mock("server-only", () => ({}));
-jest.mock("@/utils/db", () => ({ db: { select: (...args: unknown[]) => mockSelect(...args) } }));
+const mockSet = jest.fn();
+const mockWrite = () => ({ set: (v: unknown) => (mockSet(v), { where: async () => undefined }), values: async () => undefined, where: async () => undefined });
+jest.mock("@/utils/db", () => ({ db: { select: (...args: unknown[]) => mockSelect(...args), update: () => mockWrite(), insert: () => mockWrite(), delete: () => mockWrite() } }));
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("@/lib/job-scheduler", () => ({ scheduleJob: jest.fn(), deleteScheduledJob: jest.fn() }));
@@ -60,8 +62,23 @@ it("proceeds to the job lookup once both subscription checks pass", async () => 
   expect(result).toEqual(expect.objectContaining({ success: false }));
 });
 
-it("accepts an alertConfig that omits fields the CLI pull strips (server defaults apply)", async () => {
-  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+function mockJob(stored: unknown) {
+  const testId = "018f0000-0000-7000-8000-0000000000a1";
+  mockSelect
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: input.jobId, jobType: "playwright", alertConfig: stored }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: async () => [{ id: testId }] }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: testId, type: "browser" }] }) });
+}
+
+it("update without alertOnFailure keeps a stored false", async () => {
+  mockJob({ enabled: false, notificationProviders: [], alertOnFailure: false, alertOnSuccess: true, failureThreshold: 3, recoveryThreshold: 2 });
+  const result = await updateJob({ ...input, alertConfig: { customMessage: "hi" } } as never, context);
+  expect(result).toMatchObject({ success: true });
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ alertOnFailure: false, failureThreshold: 3, recoveryThreshold: 2, customMessage: "hi" });
+});
+
+it("applies create defaults when no alertConfig is stored", async () => {
+  mockJob(null);
   await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
-  expect(mockSelect).toHaveBeenCalled();
+  expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ enabled: false, alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, alertOnSuccess: true });
 });
