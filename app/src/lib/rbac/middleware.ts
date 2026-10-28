@@ -179,7 +179,7 @@ export async function hasPermission(
 
     const permissionContext: PermissionContext = {
       userId: effectiveUserId,
-      role: userRole,
+      role: await capRoleToProjectMembership(effectiveUserId, userRole, context?.projectId),
       organizationId: context?.organizationId,
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
@@ -191,6 +191,25 @@ export async function hasPermission(
     console.error("Error checking permission:", error);
     return false;
   }
+}
+
+/**
+ * Apply the lower-of-two rule to a project-scoped permission check: a project-limited
+ * org role is capped by the user's project_members role for that project. With no row,
+ * the role is unchanged (checkPermission already limits unassigned projects to view).
+ */
+async function capRoleToProjectMembership(
+  userId: string,
+  role: Role,
+  projectId: string | undefined,
+): Promise<Role> {
+  if (!projectId || (role !== Role.PROJECT_ADMIN && role !== Role.PROJECT_EDITOR)) return role;
+  const [row] = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return row ? (resolveEffectiveProjectRole(role, row.role) ?? role) : role;
 }
 
 /**
@@ -223,7 +242,7 @@ export async function hasPermissionForUser(
 
     const permissionContext: PermissionContext = {
       userId,
-      role: userRole,
+      role: await capRoleToProjectMembership(userId, userRole, context?.projectId),
       organizationId: context?.organizationId,
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,

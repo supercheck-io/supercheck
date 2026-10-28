@@ -20,7 +20,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
 import { db } from "@/utils/db";
 import { getCurrentProjectContext } from "./project-context";
-import { resolveProjectPermissionContext } from "./rbac/middleware";
+import { resolveProjectPermissionContext, hasPermissionForUser } from "./rbac/middleware";
 import { requireAuthContext } from "./auth-context";
 import { resolveEffectiveProjectRole } from "./rbac/effective-project-role";
 import { Role } from "./rbac/permissions-client";
@@ -99,5 +99,25 @@ describe("resolveEffectiveProjectRole", () => {
   it("denies when there is no org role and fails closed on an unknown project role", () => {
     expect(resolveEffectiveProjectRole(null, "project_admin")).toBeNull();
     expect(resolveEffectiveProjectRole(Role.PROJECT_ADMIN, "bogus")).toBe(Role.PROJECT_VIEWER);
+  });
+});
+
+describe("hasPermissionForUser project checks use the lower-of-two role", () => {
+  const can = async (orgRole: string, memberRole: string | null) => {
+    queue([{ role: orgRole }], [{ role: orgRole }], memberRole ? [{ role: memberRole }] : []);
+    return hasPermissionForUser("u", "job", "update", {
+      organizationId: "org",
+      projectId: "p",
+      assignedProjectIds: ["p"],
+    });
+  };
+  it("denies edits after a project-level demotion", async () => {
+    expect(await can("project_editor", "project_viewer")).toBe(false);
+  });
+  it("keeps edits when the project role agrees", async () => {
+    expect(await can("project_editor", "project_editor")).toBe(true);
+  });
+  it("does not let a project row promote a viewer", async () => {
+    expect(await can("project_viewer", "project_admin")).toBe(false);
   });
 });
