@@ -211,6 +211,14 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(notifyIncidentEvent).not.toHaveBeenCalled();
     });
 
+    it("does not reopen an auto-resolved incident for a non-recoverable alert type", async () => {
+      (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
+      selectQueue.push([alertRow({ type: "ssl_expiring" })]);
+      selectQueue.push([], [{ id: "ae-1" }], []);
+      await processSreBackgroundAlertTriageJob(JOB);
+      expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
+    });
+
     it("resolves open incidents on a recovery alert and announces them", async () => {
       (applySourceRecovery as jest.Mock).mockResolvedValue({
         resolved: [{ id: "inc-1" }],

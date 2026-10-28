@@ -413,13 +413,15 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     }
 
     // A failure shortly after an automatic recovery is the same incident coming back.
-    const reopened = await reopenRecentlyAutoResolved(tx, {
-      organizationId,
-      projectId,
-      sourceType,
-      sourceId,
-      firedAt,
-    });
+    const reopened = RECOVERABLE_FAILURE_TYPES.has(alert.type)
+      ? await reopenRecentlyAutoResolved(tx, {
+        organizationId,
+        projectId,
+        sourceType,
+        sourceId,
+        firedAt,
+      })
+      : null;
     if (reopened) {
       return {
         skipped: false as const,
