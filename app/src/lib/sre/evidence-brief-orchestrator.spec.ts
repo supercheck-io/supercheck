@@ -5,7 +5,7 @@ import { runSreEvidenceBriefGeneration } from "./evidence-brief-orchestrator";
 const mockWhere = jest.fn();
 const mockLimit = jest.fn();
 const mockUpdateWhere = jest.fn().mockResolvedValue(undefined);
-const mockSet = jest.fn(() => ({ where: mockUpdateWhere }));
+const mockSet = jest.fn((_values: unknown) => ({ where: mockUpdateWhere }));
 const mockValues = jest.fn(() => ({ returning: jest.fn().mockResolvedValue([{ id: "brief-run" }]) }));
 jest.mock("@/utils/db", () => ({ db: {
   select: () => {

@@ -9,6 +9,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  lt,
   ne,
   or,
   sql,
@@ -1540,6 +1541,27 @@ export async function createSreIncidentFromAlert(
           ),
         )
         .limit(1);
+
+      // Reused per org+fingerprint: refresh to the latest failure so correlation and evidence are current.
+      if (existingAlertEvent) {
+        await tx
+          .update(sreAlertEvents)
+          .set({
+            severity,
+            status: alertStatus,
+            serviceId: mappedService?.id ?? null,
+            title,
+            description: alert.message,
+            firedAt,
+            resolvedAt: alertStatus === "resolved" ? firedAt : null,
+          })
+          .where(
+            and(
+              eq(sreAlertEvents.id, existingAlertEvent.id),
+              lt(sreAlertEvents.firedAt, firedAt),
+            ),
+          );
+      }
 
       const alertEvent = existingAlertEvent
         ? existingAlertEvent

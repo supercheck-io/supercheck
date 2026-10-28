@@ -1,6 +1,6 @@
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createHash } from "crypto";
-import { and, desc, eq, gt, gte, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -353,6 +353,27 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         ),
       )
       .limit(1);
+
+    // Reused per org+fingerprint: refresh to the latest failure so correlation and evidence are current.
+    if (existingAlertEvent) {
+      await tx
+        .update(sreAlertEvents)
+        .set({
+          severity,
+          status: alertStatus,
+          serviceId: mappedService?.id ?? null,
+          title,
+          description: alert.message,
+          firedAt,
+          resolvedAt: null,
+        })
+        .where(
+          and(
+            eq(sreAlertEvents.id, existingAlertEvent.id),
+            lt(sreAlertEvents.firedAt, firedAt),
+          ),
+        );
+    }
 
     const alertEvent = existingAlertEvent
       ? existingAlertEvent
