@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { Check, Copy, Play } from "lucide-react";
+import { versioned } from "../../lib/assets";
 
 const CLI_INSTALL = "npm install -g @supercheck/cli";
 const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
@@ -58,7 +59,7 @@ export function DemoVideo() {
           aria-label="Play the product demo video"
         >
           <Image
-            src="/supercheck-screenshot.webp"
+            src={versioned("/supercheck-screenshot.webp")}
             alt="Supercheck monitor detail view with availability and response time charts"
             fill
             sizes="(min-width: 1152px) 1152px, 100vw"
