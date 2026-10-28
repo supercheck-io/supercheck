@@ -34,7 +34,7 @@ export function IncidentAlertsTab({
     </Tabs>
   );
 
-  if (error) {
+  if (error && alertHistory.length === 0) {
     return (
       <p role="alert" className="py-12 text-center text-sm text-destructive">
         Failed to load alerts. Please try again.
