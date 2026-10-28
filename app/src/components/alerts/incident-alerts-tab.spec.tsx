@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { IncidentAlertsTab } from "./incident-alerts-tab";
 
-let mockState: { alertHistory: unknown[]; isLoading: boolean; error: Error | null };
+let mockState: { alertHistory: unknown[]; isLoading: boolean; error: Error | null; refetch?: () => void };
 jest.mock("@/hooks/use-alerts", () => ({ ALERT_HISTORY_LIMIT: 200, useAlertHistory: () => mockState }));
 jest.mock("@/components/alerts/sre-alerts-view", () => ({ SreAlertsView: () => <div>signals-view</div> }));
 jest.mock("@/components/alerts/alert-history-panel", () => ({ AlertHistoryPanel: () => <div>history-view</div> }));
@@ -13,6 +13,15 @@ describe("IncidentAlertsTab", () => {
     render(<IncidentAlertsTab view="signals" onViewChange={jest.fn()} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Failed to load alerts");
     expect(screen.queryByText("signals-view")).toBeNull();
+  });
+
+  it("keeps cached history visible and warns when a refresh fails", () => {
+    const refetch = jest.fn();
+    mockState = { alertHistory: [{ id: "1" }], isLoading: false, error: new Error("boom"), refetch };
+    render(<IncidentAlertsTab view="signals" onViewChange={jest.fn()} />);
+    expect(screen.getByText("signals-view")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
   });
 
   it("notes when only the latest page of notifications is shown", () => {

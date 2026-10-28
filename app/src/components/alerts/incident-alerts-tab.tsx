@@ -15,7 +15,7 @@ export function IncidentAlertsTab({
   view: AlertsView;
   onViewChange: (view: AlertsView) => void;
 }) {
-  const { alertHistory, isLoading, error } = useAlertHistory();
+  const { alertHistory, isLoading, error, refetch } = useAlertHistory();
 
   // Lives in the toolbar row; the tooltip replaces the old (i) icon.
   const viewSwitch = (
@@ -37,13 +37,24 @@ export function IncidentAlertsTab({
   if (error && alertHistory.length === 0) {
     return (
       <p role="alert" className="py-12 text-center text-sm text-destructive">
-        Failed to load alerts. Please try again.
+        Failed to load alerts.{" "}
+        <button type="button" className="underline" onClick={() => void refetch()}>
+          Retry
+        </button>
       </p>
     );
   }
 
   return (
     <>
+      {error && (
+        <p role="alert" className="pb-2 text-xs text-destructive">
+          Could not refresh alerts; showing earlier results.{" "}
+          <button type="button" className="underline" onClick={() => void refetch()}>
+            Retry
+          </button>
+        </p>
+      )}
       {alertHistory.length >= ALERT_HISTORY_LIMIT && (
         <p className="pb-2 text-xs text-muted-foreground">
           Showing the latest {ALERT_HISTORY_LIMIT} notifications.

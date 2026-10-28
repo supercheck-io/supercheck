@@ -42,7 +42,7 @@ function timelineLabel(eventType: string, data: Record<string, unknown> | null) 
   const text = pick(data?.text, data?.summary, data?.note, data?.message, data?.type);
   // Lifecycle events carry {state, comment}.
   const state = pick(data?.state);
-  const body = state ? [state, pick(data?.comment)].filter(Boolean).join(" - ") : text ?? pick(data?.comment);
+  const body = state ? [state, pick(data?.comment, data?.summary)].filter(Boolean).join(" - ") : text ?? pick(data?.comment);
   const clipped = body ? body.replace(/\s+/g, " ").trim().slice(0, 200) : "";
   return clipped ? `${eventType.replace(/_/g, " ")}: ${clipped}` : eventType.replace(/_/g, " ");
 }

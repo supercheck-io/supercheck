@@ -14,7 +14,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn() }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
-jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true) }));
+jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
 
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
@@ -142,7 +142,8 @@ describe("createSreIncidentFromAlert severity", () => {
     (db.transaction as jest.Mock).mockImplementation(async (cb) => cb({
       execute: jest.fn(), select: () => chain([]), insert: () => chain([]), update: () => chain([]),
     }));
-    await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(result.success).toBe(true);
     expect(values).toContainEqual(expect.objectContaining({ title: expect.any(String), severity: "sev1" }));
   });
 });
