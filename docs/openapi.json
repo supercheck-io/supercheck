@@ -8237,6 +8237,14 @@
             "format": "uuid",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -8291,6 +8299,18 @@
               "remote",
               "schedule"
             ]
+          },
+          "triggeredByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "triggeredByImage": {
+            "type": "string",
+            "nullable": true
+          },
+          "triggerKeyName": {
+            "type": "string",
+            "nullable": true
           },
           "duration": {
             "type": "string",
@@ -8749,6 +8769,14 @@
               "$ref": "#/components/schemas/Tag"
             }
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -8781,6 +8809,14 @@
           "createdByUserId": {
             "type": "string",
             "format": "uuid",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
             "nullable": true
           },
           "name": {
@@ -9075,6 +9111,14 @@
             "type": "string",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
+            "nullable": true
+          },
           "fileName": {
             "type": "string",
             "nullable": true
@@ -9230,6 +9274,14 @@
           "lastUsed": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
+            "type": "string",
             "nullable": true
           },
           "createdAt": {
@@ -10735,6 +10787,14 @@
             "nullable": true
           },
           "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdByImage": {
             "type": "string",
             "nullable": true
           },

@@ -24,6 +24,10 @@ Every test or job execution creates a run with results, logs, and artifacts.
 1. Go to **Automate → Runs**
 2. Select a run to view its details
 
+The **Triggered by** column shows who started each run: the user for manual and CLI runs, the trigger key name for runs started with a job trigger key (hover to see the key owner), or **Schedule** for scheduled runs. Runs recorded before this column was added show **Unknown**.
+
+Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. On the jobs and monitors tables it is hidden by default; turn it on from the column menu.
+
 When cancellation is requested for a running execution, the run is recorded as **Error** with cancellation details. The worker may still be finishing report uploads.
 
 ## Run Details

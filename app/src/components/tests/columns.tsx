@@ -21,6 +21,7 @@ interface TestsTableMeta {
 }
 
 import { priorities, types } from "./data";
+import { createdByColumn } from "@/components/ui/created-by-column";
 
 // Separate component for title with popover
 function TitleWithPopover({ title }: { title: string }) {
@@ -312,6 +313,7 @@ export const columns: ColumnDef<Test>[] = [
     },
   },
 
+  createdByColumn<Test>(),
   {
     accessorKey: "createdAt",
     header: ({ column }) => (

@@ -35,6 +35,7 @@ export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
           "type",
           "priority",
           "tags",
+          "createdBy",
         ],
         ...props.meta,
       }}

@@ -19,6 +19,7 @@ import {
   restCreateRequirementSchema,
   toServiceContext,
 } from '@/lib/requirements/service';
+import { loadCreators } from "@/lib/creators";
 
 // The dashboard calls this endpoint without paging and paginates client-side, so the default stays 500.
 const DEFAULT_PAGE = 1;
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
           externalUrl: requirements.externalUrl,
           externalProvider: requirements.externalProvider,
           createdBy: requirements.createdBy,
+          createdByUserId: requirements.createdByUserId,
           createdAt: requirements.createdAt,
           updatedAt: requirements.updatedAt,
           coverageStatus: requirementCoverageSnapshots.status,
@@ -196,6 +198,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Transform results with tags and default coverage values
+    const creatorOf = await loadCreators(results.map((r) => r.createdByUserId));
     const data = results.map((r) => ({
       id: r.id,
       title: r.title,
@@ -212,6 +215,7 @@ export async function GET(request: NextRequest) {
       externalUrl: r.externalUrl,
       externalProvider: r.externalProvider,
       createdBy: r.createdBy,
+      ...creatorOf(r.createdByUserId),
       createdAt: r.createdAt?.toISOString() ?? null,
       updatedAt: r.updatedAt?.toISOString() ?? null,
       coverageStatus: (r.coverageStatus as RequirementCoverageStatus) ?? "missing",

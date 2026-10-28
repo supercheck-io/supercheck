@@ -2,6 +2,8 @@ import { z } from "zod";
 
 // Schema for monitors matching the database schema
 export const monitorSchema = z.object({
+  createdByName: z.string().nullable().optional(),
+  createdByImage: z.string().nullable().optional(),
   id: z.string().uuid(),
   organizationId: z.string().nullable().optional(),
   createdByUserId: z.string().nullable().optional(),

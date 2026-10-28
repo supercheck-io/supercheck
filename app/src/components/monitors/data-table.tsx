@@ -72,6 +72,7 @@ export function DataTable<TData, TValue>({
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
     updatedAt: false,
+    createdBy: false,
   });
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -154,7 +155,7 @@ export function DataTable<TData, TValue>({
     getFacetedUniqueValues: getFacetedUniqueValues(),
     globalFilterFn: "auto",
     meta: {
-      globalFilterColumns: ["id", "name", "target", "type", "status"],
+      globalFilterColumns: ["id", "name", "target", "type", "status", "createdBy"],
       ...meta,
     } as ExtendedTableMeta<TData>,
   });
