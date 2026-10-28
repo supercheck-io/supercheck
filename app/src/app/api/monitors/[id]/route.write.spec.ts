@@ -131,6 +131,16 @@ describe("monitor PUT write boundary", () => {
   });
 });
 
+describe("switching to a synthetic monitor re-checks the stored testId", () => {
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s refuses a stored foreign testId", async (method, handler) => {
+    findFirst.mockResolvedValue({ ...stored, config: { testId: "00000000-0000-4000-8000-0000000000aa" } });
+    testsFindFirst.mockResolvedValue(undefined);
+    const res = await call(handler, method, { type: "synthetic_test" });
+    expect(res.status).toBe(404);
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe("monitor PATCH alertConfig (c12)", () => {
   it("replaces the delivery rows when providers change", async () => {
     providerRows = [{ id: "p1" }];

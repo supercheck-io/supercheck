@@ -223,10 +223,14 @@ export async function PUT(
       return NextResponse.json(configurationValidation, { status: 400 });
     }
 
+    // Re-check ownership whenever the test is supplied or the monitor becomes synthetic (a stored testId is not trusted).
+    const putType = updateData.type ?? currentMonitor.type;
+    const putTestId = (updateData.config ?? currentMonitor.config)?.testId;
     if (
-      (updateData.type ?? currentMonitor.type) === "synthetic_test" &&
-      updateData.config?.testId !== undefined &&
-      !(await testInProject(updateData.config.testId, authCtx.organizationId, authCtx.project.id))
+      putType === "synthetic_test" &&
+      putTestId !== undefined &&
+      (updateData.config?.testId !== undefined || putType !== currentMonitor.type) &&
+      !(await testInProject(putTestId, authCtx.organizationId, authCtx.project.id))
     ) {
       return NextResponse.json(
         { error: "Test not found or access denied" },
@@ -781,11 +785,13 @@ export async function PATCH(
       return NextResponse.json(configurationValidation, { status: 400 });
     }
 
+    const patchType = updatePayload.type ?? currentMonitor.type;
+    const patchTestId = (updatePayload.config ?? currentMonitor.config)?.testId;
     if (
-      (updatePayload.type ?? currentMonitor.type) === "synthetic_test" &&
-      isObject(rawData.config) &&
-      rawData.config.testId !== undefined &&
-      !(await testInProject(rawData.config.testId, authCtx.organizationId, authCtx.project.id))
+      patchType === "synthetic_test" &&
+      patchTestId !== undefined &&
+      ((isObject(rawData.config) && rawData.config.testId !== undefined) || patchType !== currentMonitor.type) &&
+      !(await testInProject(patchTestId, authCtx.organizationId, authCtx.project.id))
     ) {
       return NextResponse.json({ error: "Test not found or access denied" }, { status: 404 });
     }

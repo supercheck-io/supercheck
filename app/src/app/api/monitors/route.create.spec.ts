@@ -14,7 +14,11 @@ jest.mock("@/lib/services/subscription-service", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
-jest.mock("@/lib/execution/trial-interval-response", () => ({ trialIntervalErrorResponse: jest.fn().mockResolvedValue(null) }));
+const monitorResumeBlockedResponse = jest.fn();
+jest.mock("@/lib/execution/trial-interval-response", () => ({
+  trialIntervalErrorResponse: jest.fn().mockResolvedValue(null),
+  monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
+}));
 const insertWithinPlanLimit = jest.fn();
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: (...a: unknown[]) => insertWithinPlanLimit(...a) }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkMonitorLimit: jest.fn() }));
@@ -31,7 +35,7 @@ jest.mock("@/lib/location-registry", () => ({
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 jest.mock("@/lib/creators", () => ({ loadCreators: jest.fn() }));
 
-import { POST } from "./route";
+import { POST, PUT } from "./route";
 
 const post = (alertConfig: object) =>
   POST(
@@ -57,4 +61,19 @@ it.each([2.5, 0, -3, 101])("rejects failureThreshold %p (c16)", async (failureTh
   const res = await post({ enabled: false, notificationProviders: [], failureThreshold });
   expect(res.status).toBe(400);
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("bulk PUT refuses to resume a paused monitor without a plan", async () => {
+  dbSelect.mockReturnValue({
+    from: () => ({ where: () => ({ limit: async () => [{ projectId: "project-1", organizationId: "org-1", status: "paused", type: "website", target: "https://example.com", config: {} }] }) }),
+  });
+  monitorResumeBlockedResponse.mockResolvedValue(Response.json({ error: "Active subscription required." }, { status: 402 }));
+  const res = await PUT(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "PUT",
+      body: JSON.stringify({ id: "00000000-0000-4000-8000-000000000002", enabled: true }),
+    }),
+  );
+  expect(res.status).toBe(402);
+  expect(monitorResumeBlockedResponse).toHaveBeenCalledWith("org-1", "paused", expect.objectContaining({ enabled: true }));
 });

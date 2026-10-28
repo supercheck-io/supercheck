@@ -24,7 +24,7 @@ import {
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
-import { trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
+import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import {
   subscriptionService,
@@ -667,6 +667,7 @@ export async function PUT(req: NextRequest) {
         projectId: monitors.projectId,
         organizationId: monitors.organizationId,
         type: monitors.type,
+        status: monitors.status,
         target: monitors.target,
         config: monitors.config,
       })
@@ -723,6 +724,13 @@ export async function PUT(req: NextRequest) {
       if (trialIntervalError) return trialIntervalError;
     }
 
+    const resumeBlocked = await monitorResumeBlockedResponse(
+      monitorData[0].organizationId,
+      monitorData[0].status,
+      rawData,
+    );
+    if (resumeBlocked) return resumeBlocked;
+
     const configurationValidation = validateMonitorConfiguration({
       type: updateData.type ?? monitorData[0].type,
       target: updateData.target ?? monitorData[0].target,
@@ -733,13 +741,19 @@ export async function PUT(req: NextRequest) {
     }
 
     // Validate synthetic test monitor updates
-    if ((updateData.type ?? monitorData[0].type) === "synthetic_test" && rawData.config?.testId) {
+    const bulkType = updateData.type ?? monitorData[0].type;
+    const syntheticTestId = (rawData.config ?? monitorData[0].config)?.testId;
+    if (
+      bulkType === "synthetic_test" &&
+      syntheticTestId &&
+      (rawData.config?.testId !== undefined || bulkType !== monitorData[0].type)
+    ) {
       const { tests } = await import("@/db/schema");
       const { eq, and } = await import("drizzle-orm");
 
       const test = await db.query.tests.findFirst({
         where: and(
-          eq(tests.id, rawData.config.testId),
+          eq(tests.id, syntheticTestId),
           eq(tests.projectId, project.id),
           eq(tests.organizationId, organizationId),
         ),
@@ -762,7 +776,7 @@ export async function PUT(req: NextRequest) {
       }
 
       // Update cached test title
-      if (!rawData.config.testTitle) {
+      if (rawData.config && !rawData.config.testTitle) {
         rawData.config.testTitle = test.title;
       }
 
