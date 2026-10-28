@@ -52,7 +52,7 @@ const getIncidentColors = (
   if (status.toLowerCase() === "resolved") {
     return {
       textColor: "#166534",
-      headerBg: "#16a34a",
+      headerBg: "#15803d",
       badgeBg: "#dcfce7",
       badgeText: "#166534",
       borderColor: "#16a34a",
@@ -64,7 +64,7 @@ const getIncidentColors = (
     case "critical":
       return {
         textColor: "#991b1b",
-        headerBg: "#dc2626",
+        headerBg: "#b91c1c",
         badgeBg: "#fee2e2",
         badgeText: "#991b1b",
         borderColor: "#dc2626",
@@ -72,7 +72,7 @@ const getIncidentColors = (
     case "major":
       return {
         textColor: "#9a3412",
-        headerBg: "#ea580c",
+        headerBg: "#c2410c",
         badgeBg: "#ffedd5",
         badgeText: "#9a3412",
         borderColor: "#ea580c",
@@ -80,7 +80,7 @@ const getIncidentColors = (
     case "minor":
       return {
         textColor: "#854d0e",
-        headerBg: "#ca8a04",
+        headerBg: "#a16207",
         badgeBg: "#fef9c3",
         badgeText: "#854d0e",
         borderColor: "#ca8a04",
@@ -88,7 +88,7 @@ const getIncidentColors = (
     default:
       return {
         textColor: "#374151",
-        headerBg: "#6b7280",
+        headerBg: "#4b5563",
         badgeBg: "#f3f4f6",
         badgeText: "#374151",
         borderColor: "#6b7280",
@@ -136,6 +136,7 @@ export const IncidentNotificationEmail = ({
       preview={isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}
       title={statusPageName}
       headerColor={colors.headerBg}
+      showBrand={false}
       showStandardFooter={false}
       footer={
         <>
