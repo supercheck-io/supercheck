@@ -327,3 +327,13 @@ export async function checkSrePostmortemRateLimit(
     60 * 60 * 1000,
   );
 }
+
+/**
+ * Rate limit alert history writes (each accepted row can open or join an incident).
+ * Per-user: max 60 per minute.
+ */
+export async function checkSreAlertHistoryWriteRateLimit(
+  userId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(`alert-history-write:${userId}`, 60, 60 * 1000);
+}

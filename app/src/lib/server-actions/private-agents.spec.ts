@@ -14,9 +14,12 @@ jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: (...a: unknown[]) => mockCan(...a),
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
-jest.mock("@/utils/db", () => ({ db: { transaction: (...a: unknown[]) => mockTransaction(...a) } }));
+const mockFindFirst = jest.fn();
+jest.mock("@/utils/db", () => ({ db: { transaction: (...a: unknown[]) => mockTransaction(...a), query: { privateAgents: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } } } }));
 
-import { registerPrivateAgent } from "./private-agents";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { disablePrivateAgent, registerPrivateAgent, rotatePrivateAgentToken } from "./private-agents";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -38,5 +41,39 @@ describe("registerPrivateAgent", () => {
     const result = await registerPrivateAgent({ name: "edge-1", projectScoped: true });
     expect(String((result as { error?: string }).error)).toMatch(/Insufficient permissions/);
     expect(mockImpersonated).not.toHaveBeenCalled();
+  });
+});
+
+describe("org-wide Private Agents", () => {
+  // Project-level editors hold sre_connector:configure but not organization:update.
+  const projectOnly = (resource: string) => resource === "sre_connector";
+
+  it("refuses to register an org-wide agent without org-level permission", async () => {
+    mockCan.mockImplementation(projectOnly);
+    const result = await registerPrivateAgent({ name: "edge-1", projectScoped: false });
+    expect(result.success).toBe(false);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses to rotate an org-wide agent token without org-level permission", async () => {
+    mockCan.mockImplementation(projectOnly);
+    mockFindFirst.mockResolvedValue({ id: "a1", projectId: null, status: "connected" });
+    const result = await rotatePrivateAgentToken({ id: "00000000-0000-4000-8000-000000000001" });
+    expect(result.success).toBe(false);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])("disable: org-level permission=%s may target org-wide agents=%s", async (orgLevel, includesOrgWide) => {
+    mockCan.mockImplementation((resource: string) => resource === "sre_connector" || (orgLevel && resource === "organization"));
+    let condition: SQL | undefined;
+    mockTransaction.mockImplementation(async (fn) => fn({
+      update: () => ({ set: () => ({ where: (c: SQL) => { condition = c; return { returning: async () => [] }; } }) }),
+    }));
+    await disablePrivateAgent({ id: "00000000-0000-4000-8000-000000000001" });
+    const text = new PgDialect().sqlToQuery(condition as SQL).sql;
+    expect(/is null/i.test(text)).toBe(includesOrgWide);
   });
 });
