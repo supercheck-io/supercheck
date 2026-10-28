@@ -357,10 +357,26 @@ describe("Recordings API Route", () => {
     });
 
     it("only saves into active projects", async () => {
-      await post("import { test } from '@playwright/test';");
+      const values = jest.fn(() => ({ returning: async () => [{ id: "test-1" }] }));
+      mockDb.insert.mockReturnValue({ values });
+      const response = await post("import { test } from '@playwright/test';");
+      expect(response.status).toBe(201);
       const query = new PgDialect().sqlToQuery(projectQuery.where.mock.calls[0][0]);
       expect(query.sql).toContain('"status"');
       expect(query.params).toContain("active");
+    });
+
+    it("returns 404 and saves nothing when the project is not active", async () => {
+      projectQuery.limit.mockResolvedValue([]);
+      const response = await post("import { test } from '@playwright/test';");
+      expect(response.status).toBe(404);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("rejects a script that is empty once normalised", async () => {
+      const response = await post("\u0000");
+      expect(response.status).toBe(400);
+      expect(mockDb.insert).not.toHaveBeenCalled();
     });
 
     it("rejects a k6 script posted as a browser recording", async () => {

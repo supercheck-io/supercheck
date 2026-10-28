@@ -230,7 +230,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const typeValidation = validateTestScript(decodeStoredTestScript(data.script), "browser");
+    const decodedScript = decodeStoredTestScript(data.script);
+    const typeValidation = decodedScript.trim()
+      ? validateTestScript(decodedScript, "browser")
+      : { valid: false, error: "Script is empty" };
     if (!typeValidation.valid) {
       return NextResponse.json(
         { success: false, error: typeValidation.error },
