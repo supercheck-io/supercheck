@@ -16,6 +16,8 @@ import {
  */
 export async function retireOrphanedSubscribers(
   target: { componentId: string } | { incidentId: string },
+  // Pass the delete's transaction so a failed delete rolls the retirement back too.
+  executor: Pick<typeof db, "update"> = db,
 ) {
   const isComponent = "componentId" in target;
   const [mine, others, otherKind] = isComponent
@@ -30,7 +32,7 @@ export async function retireOrphanedSubscribers(
         sql`select 1 from ${componentSubs} where ${componentSubs.subscriberId} = ${subscribers.id}`,
       ];
 
-  await db
+  await executor
     .update(subscribers)
     .set({ purgeAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), updatedAt: new Date() })
     .where(

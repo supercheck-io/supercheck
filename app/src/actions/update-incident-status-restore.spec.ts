@@ -55,11 +55,11 @@ function run(others: Array<{ id: string; status: string }>) {
 }
 
 it("restores the component when the only other incident is a not-yet-started maintenance", async () => {
-  await run([{ id: "m", status: "scheduled" }]);
+  expect((await run([{ id: "m", status: "scheduled" }])).success).toBe(true);
   expect(sets.some((s) => s.status === "operational")).toBe(true);
 });
 
 it("keeps the component degraded while another incident is genuinely active", async () => {
-  await run([{ id: "x", status: "investigating" }]);
+  expect((await run([{ id: "x", status: "investigating" }])).success).toBe(true);
   expect(sets.some((s) => s.status === "operational")).toBe(false);
 });

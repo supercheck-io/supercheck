@@ -2,6 +2,7 @@ jest.mock("@/utils/db", () => ({
   db: {
     query: { statusPages: { findFirst: jest.fn() }, incidents: { findFirst: jest.fn() } },
     delete: jest.fn(),
+    transaction: jest.fn(async (run: (tx: unknown) => unknown) => run((jest.requireMock("@/utils/db") as { db: unknown }).db)),
   },
 }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
@@ -26,6 +27,6 @@ it("retires subscribers scoped only to the incident before deleting it", async (
 
   await deleteIncident(id, id);
 
-  expect(retireOrphanedSubscribers).toHaveBeenCalledWith({ incidentId: id });
+  expect(retireOrphanedSubscribers).toHaveBeenCalledWith({ incidentId: id }, expect.anything());
   expect(order).toEqual(["retire", "delete"]);
 });

@@ -940,15 +940,17 @@ export async function deleteComponent(
     });
     if (!component) return fail("not_found", "Component not found or access denied");
 
-    await retireOrphanedSubscribers({ componentId });
-    await db
-      .delete(statusPageComponents)
-      .where(
-        and(
-          eq(statusPageComponents.id, componentId),
-          eq(statusPageComponents.statusPageId, statusPageId)
-        )
-      );
+    await db.transaction(async (tx) => {
+      await retireOrphanedSubscribers({ componentId }, tx);
+      await tx
+        .delete(statusPageComponents)
+        .where(
+          and(
+            eq(statusPageComponents.id, componentId),
+            eq(statusPageComponents.statusPageId, statusPageId)
+          )
+        );
+    });
 
     await logAuditEvent({
       userId,

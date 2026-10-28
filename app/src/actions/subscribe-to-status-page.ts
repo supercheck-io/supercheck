@@ -940,6 +940,19 @@ async function handleSlackSubscription(
 
     // Reactivate an existing pending, quarantined or unsubscribed Slack subscription.
     if (existingSubscriber) {
+      if (existingSubscriber.purgeAt) {
+        // An unsubscribed row no longer counts toward the plan limit, so re-check it.
+        const limitCheck = await enforceSubscriberLimit({
+          statusPageId: statusPage.id as string,
+          organizationId: statusPage.organizationId as string | null,
+        });
+        if (!limitCheck.allowed) {
+          return {
+            success: false,
+            message: limitCheck.error || "Subscriber limit reached for this status page.",
+          };
+        }
+      }
       await db
         .update(statusPageSubscribers)
         .set({

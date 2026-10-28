@@ -86,12 +86,14 @@ export async function deleteIncident(id: string, statusPageId: string) {
     }
 
     // Delete the incident (cascade will handle related records)
-    await retireOrphanedSubscribers({ incidentId: id });
-    await db
-      .delete(incidents)
-      .where(
-        and(eq(incidents.id, id), eq(incidents.statusPageId, statusPageId))
-      );
+    await db.transaction(async (tx) => {
+      await retireOrphanedSubscribers({ incidentId: id }, tx);
+      await tx
+        .delete(incidents)
+        .where(
+          and(eq(incidents.id, id), eq(incidents.statusPageId, statusPageId))
+        );
+    });
 
     // Log the audit event
     await logAuditEvent({

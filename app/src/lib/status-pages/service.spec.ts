@@ -456,7 +456,7 @@ describe("status page service", () => {
       retireOrphanedSubscribers.mockImplementation(async () => void order.push("retire"));
       del.mockImplementationOnce(() => (order.push("delete"), makeChain()));
       await deleteComponent(ctx, pageId, compId);
-      expect(retireOrphanedSubscribers).toHaveBeenCalledWith({ componentId: compId });
+      expect(retireOrphanedSubscribers).toHaveBeenCalledWith({ componentId: compId }, expect.anything());
       expect(order).toEqual(["retire", "delete"]);
     });
 
