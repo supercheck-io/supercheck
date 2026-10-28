@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
     // One transaction per user: the advisory lock makes check-then-mint atomic
     // across tabs and instances, so concurrent connects cannot each mint a key.
     const result = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
 
       // listApiKeys cannot be used here: its adapter caps unpaginated reads, so
       // the newest key is invisible past 100 API keys.
