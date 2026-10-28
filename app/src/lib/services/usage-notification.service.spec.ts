@@ -99,8 +99,8 @@ describe("UsageNotificationService", () => {
       monthlySpendingLimitCents: 10_000,
       hardStopOnLimit: true,
       notifyAt50Percent: false,
-      notifyAt80Percent: false,
-      notifyAt90Percent: false,
+      notifyAt80Percent: true,
+      notifyAt90Percent: true,
       notifyAt100Percent: false,
       notificationEmails: [],
     });
@@ -165,6 +165,59 @@ describe("UsageNotificationService", () => {
     await usageNotificationService.checkAndNotify("org_123");
     const keys = (billingSettingsService.markNotificationSent as jest.Mock).mock.calls.map(c => c[1]);
     expect(keys).toEqual(["spending_90"]);
+  });
+
+  const setOverage = async (cents: number) =>
+    (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValue({
+      ...(await (polarUsageService.getUsageMetrics as jest.Mock)()),
+      totalOverageCostCents: cents,
+    });
+  const withSettings = (over: Record<string, unknown>) =>
+    (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
+      enableSpendingLimit: true,
+      monthlySpendingLimitCents: 10_000,
+      hardStopOnLimit: true,
+      notifyAt50Percent: false,
+      notifyAt80Percent: true,
+      notifyAt90Percent: true,
+      notifyAt100Percent: false,
+      notificationEmails: [],
+      ...over,
+    });
+  const sentKeys = () =>
+    (billingSettingsService.markNotificationSent as jest.Mock).mock.calls.map(c => c[1]);
+
+  it("skips the hard-stop 90% spending warning when the 90% toggle is off", async () => {
+    withSettings({ notifyAt90Percent: false, notifyAt80Percent: false });
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(sentKeys()).toEqual([]);
+  });
+
+  it("falls through to the 80% warning when only the 90% toggle is off", async () => {
+    await setOverage(9_200);
+    withSettings({ notifyAt90Percent: false });
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(sentKeys()).toEqual(["spending_warning"]);
+  });
+
+  it("sends the 80% spending warning only when the 80% toggle is on", async () => {
+    await setOverage(8_500);
+    withSettings({ hardStopOnLimit: false });
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(sentKeys()).toEqual(["spending_warning"]);
+
+    jest.clearAllMocks();
+    withSettings({ hardStopOnLimit: false, notifyAt80Percent: false });
+    (billingSettingsService.hasNotificationBeenSent as jest.Mock).mockResolvedValue(false);
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(sentKeys()).toEqual([]);
+  });
+
+  it("always sends the limit-reached alert even with every toggle off", async () => {
+    await setOverage(10_000);
+    withSettings({ notifyAt80Percent: false, notifyAt90Percent: false, notifyAt100Percent: false });
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(sentKeys()).toEqual(["spending_limit"]);
   });
 
   it("does not send the same spending threshold notification twice", async () => {
