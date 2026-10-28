@@ -1,5 +1,4 @@
 const sets: Array<Record<string, unknown>> = [];
-const otherIncidents = { value: [] as Array<{ incident: { id: string; status: string } }> };
 const chain = (rows: unknown[]) => {
   const c: Record<string, unknown> = {};
   c.set = (v: Record<string, unknown>) => (sets.push(v), c);
