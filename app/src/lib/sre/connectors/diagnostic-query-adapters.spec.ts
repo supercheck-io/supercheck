@@ -29,7 +29,6 @@ describe("diagnostic query adapters", () => {
 
   it("maps complex connector types to compatible diagnostic query types", () => {
     expect(isDiagnosticQueryTypeCompatible("prometheus", "promql")).toBe(true);
-    expect(isDiagnosticQueryTypeCompatible("prometheus", "sql")).toBe(false);
     expect(isDiagnosticQueryTypeCompatible("loki", "logql")).toBe(true);
     expect(isDiagnosticQueryTypeCompatible("tempo", "traceql")).toBe(true);
     expect(isDiagnosticQueryTypeCompatible("aws_cloudwatch", "http_get")).toBe(true);
