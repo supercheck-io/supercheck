@@ -65,6 +65,8 @@ jest.mock("@/lib/variable-resolver", () => ({
 
 jest.mock("@/lib/job-execution-utils", () => ({
   prepareJobTestScripts: jest.fn(),
+  decodeTestScript: jest.fn(),
+  applyVariablesToTestScripts: jest.fn(),
 }));
 
 jest.mock("@/lib/security/api-key-hash", () => ({
@@ -834,18 +836,28 @@ describe("Execution route regressions", () => {
     it("POST /api/jobs/run records the caller on the queued run", async () => {
       const jobId = "00000000-0000-4000-8000-000000000020";
       const rows = (result: unknown[]) => ({ from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue(result) }) }) });
-      // Job lookup, then no owned tests; the run row is inserted before test validation.
-      mockDb.select.mockReturnValueOnce(rows([{ organizationId: "org-1", projectId: "project-1", jobType: "playwright", name: "Nightly" }])).mockReturnValue(rows([]));
+      const testId = "b6c7d749-56f1-509f-96c4-8234bc8c0244";
+      mockDb.select
+        .mockReturnValueOnce(rows([{ organizationId: "org-1", projectId: "project-1", jobType: "playwright", name: "Nightly" }]))
+        .mockReturnValueOnce(rows([{ id: testId, title: "Test 1", type: "playwright", script: Buffer.from("test('x', () => {})").toString("base64") }]));
+      const jobUtils = jest.requireMock("@/lib/job-execution-utils") as { decodeTestScript: jest.Mock; applyVariablesToTestScripts: jest.Mock };
+      jobUtils.decodeTestScript.mockResolvedValue("test('x', () => {})");
+      jobUtils.applyVariablesToTestScripts.mockImplementation(async (testScripts: unknown[]) => ({
+        processedTestScripts: testScripts,
+        variableResolution: { variables: {}, secrets: {}, files: {} },
+      }));
+      mockAddJobToQueue.mockResolvedValue({ status: "queued", position: 1 });
       const values = capturedInsert();
 
-      await executeJob(
+      const response = await executeJob(
         new NextRequest("http://localhost/api/jobs/run", {
           method: "POST",
           headers: jsonHeaders,
-          body: JSON.stringify({ jobId, trigger: "manual", tests: [{ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }] }),
+          body: JSON.stringify({ jobId, trigger: "manual", tests: [{ id: testId }] }),
         }),
       );
 
+      expect(response.status).toBe(200);
       expect(values).toHaveBeenCalledWith(expect.objectContaining({ jobId, status: "queued", trigger: "manual", triggeredByUserId: "user-1" }));
     });
 
