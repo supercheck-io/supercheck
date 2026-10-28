@@ -291,6 +291,13 @@ export async function PUT(
       }
     }
 
+    if (updateData.config === null) {
+      return NextResponse.json({ error: "config cannot be null" }, { status: 400 });
+    }
+    if (updateData.status && rawData.enabled !== undefined && rawData.enabled !== (updateData.status !== "paused")) {
+      return NextResponse.json({ error: "status and enabled disagree" }, { status: 400 });
+    }
+
     // Prepare update data. Only the writable columns are taken from the body: tenant ids, the scheduler id and
     // the other server-owned columns must not be settable by a client.
     const { type, status, ...restUpdate } = updateData;

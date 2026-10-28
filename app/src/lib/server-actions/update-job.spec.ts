@@ -68,3 +68,21 @@ it.each([
   expect(result).toEqual(expect.objectContaining({ success: false }));
   expect(mockSelect).not.toHaveBeenCalled();
 });
+
+it("does not re-validate a legacy stored cron or threshold that the caller only inherited", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const legacy = {
+    ...input,
+    cronSchedule: "* * * * * *",
+    alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: 500, recoveryThreshold: 1 },
+  };
+  await updateJob(legacy, { ...context, inherited: { cronSchedule: true, alertConfig: true } });
+  expect(mockSelect).toHaveBeenCalled();
+});
+
+it("accepts an inherited null threshold instead of failing an unrelated edit", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const alertConfig = { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null };
+  await updateJob({ ...input, alertConfig } as never, { ...context, inherited: { alertConfig: true } });
+  expect(mockSelect).toHaveBeenCalled();
+});

@@ -114,19 +114,42 @@ describe("monitor PUT write boundary", () => {
   });
 
   it("defaults alertOnRecovery to true like create does (c11)", async () => {
-    providerRows = [{ id: "p1" }];
-    await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["p1"], alertOnFailure: true } });
+    providerRows = [{ id: "00000000-0000-4000-8000-0000000000c1" }];
+    await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000c1"], alertOnFailure: true } });
     expect(payload().alertConfig).toMatchObject({ alertOnRecovery: true });
   });
 
   it("PUT without alertOnRecovery keeps a stored false (pull then deploy round trip)", async () => {
     findFirst.mockResolvedValue({
       ...stored,
-      alertConfig: { enabled: true, notificationProviders: ["p1"], alertOnFailure: true, alertOnRecovery: false, alertOnSslExpiration: true, failureThreshold: 3, recoveryThreshold: 2, customMessage: "m" },
+      alertConfig: { enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000c1"], alertOnFailure: true, alertOnRecovery: false, alertOnSslExpiration: true, failureThreshold: 3, recoveryThreshold: 2, customMessage: "m" },
     });
-    providerRows = [{ id: "p1" }];
-    await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["p1"] } });
+    providerRows = [{ id: "00000000-0000-4000-8000-0000000000c1" }];
+    await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000c1"] } });
     expect(payload().alertConfig).toMatchObject({ alertOnRecovery: false, alertOnSslExpiration: true, failureThreshold: 3, recoveryThreshold: 2, customMessage: "m" });
+  });
+
+  it("PUT keeps a stored enabled=true when alertConfig omits enabled", async () => {
+    findFirst.mockResolvedValue({ ...stored, alertConfig: { enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000c1"], alertOnFailure: true } });
+    providerRows = [{ id: "00000000-0000-4000-8000-0000000000c1" }];
+    await call(PUT, "PUT", { alertConfig: { notificationProviders: ["00000000-0000-4000-8000-0000000000c1"] } });
+    expect(payload().alertConfig).toMatchObject({ enabled: true });
+  });
+
+  it("rejects a malformed provider id before any database access", async () => {
+    const res = await call(PUT, "PUT", { alertConfig: { enabled: true, notificationProviders: ["not-a-uuid"], alertOnFailure: true } });
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it.each([{ status: "paused", enabled: true }, { status: "up", enabled: false }])("rejects disagreeing %j", async (body) => {
+    expect((await call(PUT, "PUT", body)).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("rejects config null instead of wiping the stored config", async () => {
+    expect((await call(PUT, "PUT", { config: null })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
   });
 
   it.each([2.5, -1, 0, 1000])("rejects failureThreshold %p (c16)", async (failureThreshold) => {
@@ -158,10 +181,10 @@ it("a stored legacy assertion key does not block an unrelated edit", async () =>
 
 describe("monitor PATCH alertConfig (c12)", () => {
   it("replaces the delivery rows when providers change", async () => {
-    providerRows = [{ id: "p1" }];
-    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: ["p1"] } });
+    providerRows = [{ id: "00000000-0000-4000-8000-0000000000c1" }];
+    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000c1"] } });
     expect(res.status).toBe(200);
-    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: "p1" }]);
+    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: "00000000-0000-4000-8000-0000000000c1" }]);
   });
 
   it("rejects providers outside the project and writes nothing", async () => {

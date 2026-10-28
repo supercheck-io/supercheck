@@ -101,8 +101,9 @@ export async function scheduleCreatedMonitor(
       config: newMonitor.config as MonitorConfig,
       frequencyMinutes: newMonitor.frequencyMinutes,
     };
+    let schedulerId: string | undefined;
     try {
-      const schedulerId = await scheduleMonitor({
+      schedulerId = await scheduleMonitor({
         monitorId: newMonitor.id,
         frequencyMinutes: newMonitor.frequencyMinutes,
         jobData: jobDataPayload,
@@ -119,6 +120,10 @@ export async function scheduleCreatedMonitor(
         `Failed to schedule monitor ${newMonitor.id} after creation:`,
         scheduleError
       );
+      // The caller deletes the row, so a repeatable job already queued would be orphaned.
+      if (schedulerId) {
+        try { await deleteScheduledMonitor(schedulerId); } catch { /* best effort; the original error is rethrown */ }
+      }
       // An unscheduled monitor never runs and nothing reconciles it, so the caller must see the failure.
       throw scheduleError;
     }
@@ -167,6 +172,7 @@ export async function updateMonitorHandler(
   if (data.target !== undefined) updateData.target = data.target;
   if (data.frequencyMinutes !== undefined)
     updateData.frequencyMinutes = data.frequencyMinutes;
+  if (data.config === null) throw { statusCode: 400, message: "config cannot be null" };
   if (data.config !== undefined) {
     // The worker owns alert dedupe state in config; a replacement must not reset it.
     data = { ...data, config: preserveWorkerConfigKeys(existingMonitor.config, data.config) };

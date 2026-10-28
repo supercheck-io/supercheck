@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorNotificationSettings, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
+import { isUuid } from "@/lib/uuid";
 import { alertThresholdError } from "@/lib/alert-thresholds";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
@@ -41,13 +42,13 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
     ? raw.notificationProviders
     : Array.isArray(prior.notificationProviders) ? prior.notificationProviders : [];
   const num = (key: string) => (raw[key] as number | undefined | null) ?? (prior[key] as number | undefined) ?? 1;
-  if (providers.some((id) => typeof id !== "string" || id.trim().length === 0)) {
-    return { ok: false, error: "Notification provider IDs must be non-empty strings" };
+  if (providers.some((id) => typeof id !== "string" || !isUuid(id))) {
+    return { ok: false, error: "Notification provider IDs must be valid UUIDs" };
   }
   return {
     ok: true,
     value: {
-      enabled: Boolean(raw.enabled),
+      enabled: flag("enabled", false),
       notificationProviders: providers as string[],
       alertOnFailure: flag("alertOnFailure", true),
       alertOnRecovery: flag("alertOnRecovery", true),

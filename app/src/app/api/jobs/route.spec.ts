@@ -302,6 +302,41 @@ describe("Jobs route regressions", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
+  it("PUT /api/jobs stores a null threshold as the default instead of null", async () => {
+    const JOB = "00000000-0000-4000-8000-000000000005";
+    mockDb.select
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([{ id: JOB, projectId: "project-1", organizationId: "org-1", jobType: "playwright" }]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([{ id: TEST_ID, type: "browser" }]),
+        }),
+      });
+    const set = jest.fn().mockReturnValue({ where: jest.fn() });
+    mockDb.transaction.mockImplementationOnce(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        update: () => ({ set }),
+        delete: () => ({ where: jest.fn() }),
+        insert: () => ({ values: jest.fn() }),
+      }),
+    );
+    const response = await PUT(new Request("http://localhost/api/jobs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: JOB, name: "Nightly Job", description: "Nightly", cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }],
+        alertConfig: { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(set.mock.calls[0][0].alertConfig).toMatchObject({ failureThreshold: 1, recoveryThreshold: 1 });
+  });
+
   describe("nested test ids", () => {
     // A string that is not a uuid would reach `inArray(tests.id, ...)` and fail in Postgres with a 500.
     it.each(["test-1", "not-a-uuid", "12345"])("POST /api/jobs answers 400 for the test id %s", async (id) => {

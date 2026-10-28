@@ -179,4 +179,16 @@ describe("updateMonitorHandler write safety", () => {
     (db.update as jest.Mock).mockReturnValue(chain({}));
     await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("redis down");
   });
+
+  it("removes the queued repeatable job when recording its id fails after create", async () => {
+    (scheduleMonitor as jest.Mock).mockResolvedValue("new-schedule");
+    (db.update as jest.Mock).mockReturnValue({ set: jest.fn().mockReturnThis(), where: jest.fn().mockRejectedValue(new Error("db down")) });
+    await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("db down");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-schedule");
+  });
+
+  it("rejects config null instead of wiping the stored config", async () => {
+    await expect(updateMonitorHandler(existing.id, { config: null })).rejects.toMatchObject({ statusCode: 400 });
+    expect(db.update).not.toHaveBeenCalled();
+  });
 });

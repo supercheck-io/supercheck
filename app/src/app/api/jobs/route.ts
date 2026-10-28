@@ -842,7 +842,13 @@ export async function PUT(request: Request) {
           cronSchedule: jobData.cronSchedule,
           status: jobData.status as JobStatus,
           alertConfig: jobData.alertConfig
-            ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
+            ? {
+              ...jobData.alertConfig,
+              // A null threshold would be stored as null; create falls back to 1 the same way.
+              failureThreshold: jobData.alertConfig.failureThreshold ?? 1,
+              recoveryThreshold: jobData.alertConfig.recoveryThreshold ?? 1,
+              notificationProviders: validatedUpdateProviderIds,
+            }
             : null,
           updatedAt: new Date(),
         })

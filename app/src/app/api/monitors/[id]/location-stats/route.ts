@@ -140,7 +140,7 @@ export async function GET(
           responseTimeMs: monitorResults.responseTimeMs,
         })
         .from(monitorResults)
-        .where(eq(monitorResults.monitorId, id))
+        .where(and(eq(monitorResults.monitorId, id), gte(monitorResults.checkedAt, startDate)))
         .orderBy(desc(monitorResults.location), desc(monitorResults.checkedAt)),
     ]);
 
