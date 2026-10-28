@@ -128,6 +128,7 @@ describe("subscribeToStatusPage", () => {
       const result = await subscribe();
       expect(result.success).toBe(true);
       expect(set).toHaveBeenCalledWith(expect.objectContaining({ quarantinedAt: null, webhookFailures: 0 }));
+      if (mode === "webhook") expect(set).toHaveBeenCalledWith(expect.objectContaining({ verifiedAt: null }));
     });
 
     it("reactivates a row inside its unsubscribe grace period", async () => {
@@ -144,7 +145,7 @@ describe("subscribeToStatusPage", () => {
     });
   });
 
-  it("does not promise a verification email to an already verified email subscriber", async () => {
+  it("tells an already verified email subscriber where to manage the subscription", async () => {
     (mockDb.query.statusPageSubscribers.findFirst as unknown as jest.Mock).mockResolvedValue({
       id: "00000000-0000-4000-8000-000000000777", email: "a@example.com", mode: "email",
       verifiedAt: new Date(), purgeAt: null,
@@ -156,7 +157,6 @@ describe("subscribeToStatusPage", () => {
       subscribeToAllComponents: true,
       subscribeToAllIncidents: false,
     });
-    expect(result.requiresVerification).toBeFalsy();
-    expect(result.message).toMatch(/already subscribed/i);
+    expect(result.message).toMatch(/unsubscribe link/i);
   });
 });

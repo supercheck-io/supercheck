@@ -605,12 +605,13 @@ async function handleEmailSubscription(
     }
     
     if (existingSubscriber.verifiedAt) {
-      // Changing a verified subscriber's scope would let anyone who knows the address edit it.
+      // Changing a verified subscriber's scope would let anyone who knows the address edit it,
+      // and a distinct reply would reveal who is subscribed, so the wording stays neutral.
       return {
         success: true,
         message:
-          "You are already subscribed. Use the manage or unsubscribe link in your notification emails.",
-        requiresVerification: false,
+          "Please check your email. If you are already subscribed, use the unsubscribe link in your notification emails.",
+        requiresVerification: true,
       };
     } else {
       // If exists but not verified, update the verification token and resend
@@ -789,6 +790,7 @@ async function handleWebhookSubscription(
         .update(statusPageSubscribers)
         .set({
           unsubscribeToken: generateHexToken(),
+          verifiedAt: null, // always re-prove endpoint ownership via the challenge
           purgeAt: null,
           quarantinedAt: null,
           webhookFailures: 0,
