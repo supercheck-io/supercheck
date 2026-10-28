@@ -97,7 +97,7 @@ supercheck ci init --github`,
         ],
         href: "/docs/app/automate/playground",
         linkLabel: "Playground and AI Fix",
-        visual: shot("ai-fix-result-dialog", "AI Fix review dialog showing the original script beside the suggested fix"),
+        visual: shot("ai-fix-button", "Failed test report in the Playground with the AI Fix button"),
       },
       {
         title: "Give your coding agent the context",
@@ -162,7 +162,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/monitor",
         linkLabel: "Monitor types",
-        visual: shot("create-monitor-multilocation-selector", "Monitor location settings with three regions selected"),
+        visual: shot("monitor-details", "Monitor detail with uptime, response time and recent check results"),
       },
       {
         title: "Route alerts to the right channel",
@@ -198,7 +198,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/communicate/status-pages",
         linkLabel: "Status pages",
-        visual: shot("status-page-public", "Public status page showing all systems operational with uptime bars"),
+        visual: shot("status-page-public", "Public status page with an active status update and uptime bars"),
       },
     ],
     closing: {
