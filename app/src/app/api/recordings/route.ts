@@ -10,6 +10,8 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
+import { validateTestScript } from "@/lib/script-type-validator";
+import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
 
 const logger = createLogger({ module: "recordings" });
@@ -207,7 +209,7 @@ export async function POST(request: NextRequest) {
         organizationId: projects.organizationId,
       })
       .from(projects)
-      .where(eq(projects.id, data.projectId))
+      .where(and(eq(projects.id, data.projectId), eq(projects.status, "active")))
       .limit(1);
 
     if (project.length === 0) {
@@ -225,6 +227,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },
         { status: 403 }
+      );
+    }
+
+    const typeValidation = validateTestScript(decodeStoredTestScript(data.script), "browser");
+    if (!typeValidation.valid) {
+      return NextResponse.json(
+        { success: false, error: typeValidation.error },
+        { status: 400 }
       );
     }
 
@@ -271,7 +281,7 @@ export async function POST(request: NextRequest) {
           data.metadata.recordedAt
         ).toLocaleString()}\n\nBase URL: ${data.metadata.baseUrl}\nSteps: ${data.metadata.stepsCount}\nDuration: ${Math.round(data.metadata.duration / 1000)}s`,
         type: "browser",
-        script: data.script,
+        script: encodeStoredTestScript(data.script),
         createdAt: new Date(),
         updatedAt: new Date(),
       })

@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
+    insert: jest.fn(),
   },
 }));
 
@@ -49,11 +50,14 @@ jest.mock("@/lib/logger/pino-config", () => {
   };
 });
 
+import { PgDialect } from "drizzle-orm/pg-core";
+import { encodeStoredTestScript } from "@/lib/test-script";
 import { POST } from "./route";
 
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
     select: jest.Mock;
+    insert: jest.Mock;
   };
 };
 
@@ -318,5 +322,60 @@ describe("Recordings API Route", () => {
       "create",
       context,
     );
+  });
+
+  describe("with an authorised recorder key", () => {
+    const projectId = "11111111-1111-4111-8111-111111111111";
+    const rows = (result: unknown[]) => ({
+      from: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(result),
+    });
+    const post = (script: string) => POST(
+      new NextRequest("http://localhost/api/recordings", {
+        method: "POST",
+        headers: { "X-API-Key": "ext-test", "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          name: "Recording",
+          script,
+          metadata: { recordedAt: new Date().toISOString(), duration: 1, stepsCount: 1, baseUrl: "https://example.com" },
+        }),
+      }),
+    );
+    let projectQuery: ReturnType<typeof rows>;
+
+    beforeEach(() => {
+      projectQuery = rows([{ id: projectId, name: "P", organizationId: "org" }]);
+      mockDb.select
+        .mockReturnValueOnce(rows([{ id: "key", userId: "user-1", prefix: "ext", banned: false, banExpires: null }]))
+        .mockReturnValueOnce(projectQuery);
+      const { resolveProjectPermissionContext, checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware");
+      resolveProjectPermissionContext.mockResolvedValueOnce({ userId: "user-1", organizationId: "org", project: { id: projectId, userRole: "project_editor" } });
+      checkPermissionWithContext.mockReturnValueOnce(true);
+    });
+
+    it("only saves into active projects", async () => {
+      await post("import { test } from '@playwright/test';");
+      const query = new PgDialect().sqlToQuery(projectQuery.where.mock.calls[0][0]);
+      expect(query.sql).toContain('"status"');
+      expect(query.params).toContain("active");
+    });
+
+    it("rejects a k6 script posted as a browser recording", async () => {
+      const response = await post("import http from 'k6/http'; export default function () { http.get('https://example.com'); }");
+      expect(response.status).toBe(400);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("stores the script sanitised and encoded like a normal test", async () => {
+      const values = jest.fn(() => ({ returning: async () => [{ id: "test-1" }] }));
+      mockDb.insert.mockReturnValue({ values });
+      const response = await post("import { test } from '@playwright/test';\u0000");
+      expect(response.status).toBe(201);
+      const stored = (values.mock.calls[0] as unknown as [{ script: string }])[0].script;
+      expect(stored).toBe(encodeStoredTestScript("import { test } from '@playwright/test';"));
+    });
   });
 });

@@ -1,5 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { RecordButton } from "./RecordButton";
+
+jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
 type RecorderApi = {
   version: string;
@@ -55,6 +58,34 @@ describe("RecordButton", () => {
       expect.objectContaining({ projectId: "project-1", testName: "Checkout" }),
     ));
     expect(await screen.findByRole("dialog", { name: "Start Recording" })).toBeVisible();
+  });
+
+  it("reports a failed hand-off instead of claiming the extension is missing", async () => {
+    const api: RecorderApi = {
+      version: "1.0.2",
+      isConnected: jest.fn().mockResolvedValue(true),
+      storeRecordingContext: jest.fn().mockRejectedValue(new Error("Invalid recording context")),
+    };
+    installRecorderApi(api);
+
+    render(<RecordButton projectId="project-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Record Browser Test" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Invalid recording context"));
+    expect(screen.queryByRole("dialog", { name: "Install Supercheck Recorder" })).toBeNull();
+  });
+
+  it("does not start a recording before the project is known", async () => {
+    const api: RecorderApi = {
+      version: "1.0.2",
+      isConnected: jest.fn().mockResolvedValue(true),
+      storeRecordingContext: jest.fn(),
+    };
+    installRecorderApi(api);
+
+    render(<RecordButton projectId="" />);
+
+    expect(screen.getByRole("button", { name: "Record Browser Test" })).toBeDisabled();
   });
 
   it("shows the refresh dialog when the content script reports an updated extension", async () => {

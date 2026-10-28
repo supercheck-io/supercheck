@@ -1,6 +1,7 @@
 export interface AutoConnectPayload {
   instanceUrl: string;
   apiKey: string;
+  keyId?: string;
   userId: string;
   userEmail: string;
 }

@@ -110,7 +110,7 @@ Recorded flows are always generated as Playwright Test (JavaScript); the recorde
 
 ## Security
 
-- Recorder-scoped credentials are stored in Chrome sync storage; treat the browser profile and installed extensions as trusted because extension storage is not a general-purpose secret vault.
+- Recorder-scoped credentials are stored in local extension storage (never synced to the browser account); treat the browser profile and installed extensions as trusted because extension storage is not a general-purpose secret vault.
 - All network traffic uses HTTPS (except `localhost` development).
 - Origin validation pins cloud communication to the exact first-party origins listed above plus the instance URL saved in Options; lookalike and non-HTTPS origins are rejected.
 - Form inputs may be captured during recording; always inspect generated code before saving to avoid recording secrets.

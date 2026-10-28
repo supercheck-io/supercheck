@@ -9,11 +9,15 @@
 export interface SupercheckConfig {
   instanceUrl: string;
   apiKey?: string;
+  keyId?: string; // server id of apiKey, reported so the app can detect a lost key
   userId?: string;
   userEmail?: string;
   lastProjectId?: string;
   autoConnected?: boolean; // True if connected via seamless auth
 }
+
+import type { AutoConnectPayload } from './message-security';
+import { isSupercheckCloudOrigin } from './message-security';
 
 function isConfig(value: unknown): value is SupercheckConfig {
   return !!value && typeof value === 'object' && 'instanceUrl' in value && typeof value.instanceUrl === 'string';
@@ -29,13 +33,29 @@ const DEFAULT_CONFIG: SupercheckConfig = {
 };
 
 /**
+ * Read the stored config from local storage. The API key must never sit in
+ * chrome.storage.sync (it replicates to the browser vendor's cloud), so a copy
+ * found there by an older version is moved to local storage and removed.
+ */
+async function readStoredConfig(): Promise<Partial<SupercheckConfig> | undefined> {
+  const local = (await chrome.storage.local.get<{ supercheckConfig?: Partial<SupercheckConfig> }>(STORAGE_KEY))[STORAGE_KEY];
+  if (local)
+    return local;
+  const synced = (await chrome.storage.sync.get<{ supercheckConfig?: Partial<SupercheckConfig> }>(STORAGE_KEY))[STORAGE_KEY];
+  if (synced) {
+    await chrome.storage.local.set({ [STORAGE_KEY]: synced });
+    await chrome.storage.sync.remove(STORAGE_KEY);
+  }
+  return synced;
+}
+
+/**
  * Get the current Supercheck configuration
  * Returns default config if none exists (enables seamless operation)
  */
 export async function getConfig(): Promise<SupercheckConfig> {
   try {
-    const result = await chrome.storage.sync.get<{ supercheckConfig?: Partial<SupercheckConfig> }>(STORAGE_KEY);
-    return { ...DEFAULT_CONFIG, ...result[STORAGE_KEY] };
+    return { ...DEFAULT_CONFIG, ...await readStoredConfig() };
   } catch (error) {
     console.error('[Supercheck] Failed to get config:', error);
     return DEFAULT_CONFIG;
@@ -49,7 +69,7 @@ export async function saveConfig(config: Partial<SupercheckConfig>): Promise<voi
   try {
     const existing = await getConfig();
     const merged = { ...existing, ...config };
-    await chrome.storage.sync.set({ [STORAGE_KEY]: merged });
+    await chrome.storage.local.set({ [STORAGE_KEY]: merged });
   } catch (error) {
     console.error('[Supercheck] Failed to save config:', error);
     throw error;
@@ -63,7 +83,7 @@ export async function saveConfig(config: Partial<SupercheckConfig>): Promise<voi
  */
 export async function replaceConfig(config: SupercheckConfig): Promise<void> {
   try {
-    await chrome.storage.sync.set({ [STORAGE_KEY]: config });
+    await chrome.storage.local.set({ [STORAGE_KEY]: config });
   } catch (error) {
     console.error('[Supercheck] Failed to replace config:', error);
     throw error;
@@ -82,6 +102,19 @@ export function isSameInstance(first?: string, second?: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** A saved self-hosted instance is never replaced silently: switching needs the options page. */
+export function canAutoConnect(savedInstanceUrl: string, pageOrigin: string): boolean {
+  return isSupercheckCloudOrigin(new URL(savedInstanceUrl).origin) || isSameInstance(savedInstanceUrl, pageOrigin);
+}
+
+/** Store the credential handed over by a Supercheck page. */
+export async function autoConnect(payload: AutoConnectPayload): Promise<void> {
+  const { instanceUrl: saved } = await getConfig();
+  if (!canAutoConnect(saved, payload.instanceUrl))
+    throw new Error(`The recorder is set to ${new URL(saved).origin}. Change the instance in the extension options to connect to another one.`);
+  await replaceConfig({ ...payload, autoConnected: true });
 }
 
 /** How long to wait for the instance when revoking the key on disconnect. */
@@ -114,7 +147,7 @@ export async function clearConfig(): Promise<{ revoked: boolean }> {
         revoked = false;
       }
     }
-    await chrome.storage.sync.remove(STORAGE_KEY);
+    await Promise.all([chrome.storage.local.remove(STORAGE_KEY), chrome.storage.sync.remove(STORAGE_KEY)]);
     return { revoked };
   } catch (error) {
     console.error('[Supercheck] Failed to clear config:', error);
@@ -178,10 +211,10 @@ export function addConfigChangeListener(
     }
   };
 
-  chrome.storage.sync.onChanged.addListener(handler);
+  chrome.storage.local.onChanged.addListener(handler);
 
   return () => {
-    chrome.storage.sync.onChanged.removeListener(handler);
+    chrome.storage.local.onChanged.removeListener(handler);
   };
 }
 

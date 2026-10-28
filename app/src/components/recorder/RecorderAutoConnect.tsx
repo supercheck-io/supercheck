@@ -24,6 +24,9 @@ const MESSAGE_TYPES = {
 
 interface ExtensionReadyPayload {
   version: string;
+  hasKey?: boolean; // absent on older extensions that cannot report their key
+  keyId?: string;
+  connectable?: boolean; // false when the extension is set to a different instance
 }
 
 export function RecorderAutoConnect() {
@@ -31,8 +34,8 @@ export function RecorderAutoConnect() {
   const extensionConnectedRef = useRef(false);
   const apiKeyGeneratedRef = useRef(false);
 
-  const connectExtension = useCallback(async () => {
-    if (!session?.user || extensionConnectedRef.current || apiKeyGeneratedRef.current) {
+  const connectExtension = useCallback(async (ready?: ExtensionReadyPayload) => {
+    if (!session?.user || extensionConnectedRef.current || apiKeyGeneratedRef.current || ready?.connectable === false) {
       return;
     }
 
@@ -45,6 +48,10 @@ export function RecorderAutoConnect() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "Supercheck Recorder Extension",
+          // null: the extension holds no key; a string: the key it holds. Omitted for
+          // older extensions (or keys stored before ids were kept), which keeps the
+          // previous "already connected" behaviour.
+          ...(ready?.hasKey === false ? { clientKeyId: null } : ready?.keyId ? { clientKeyId: ready.keyId } : {}),
         }),
       });
 
@@ -73,6 +80,7 @@ export function RecorderAutoConnect() {
           payload: {
             instanceUrl: window.location.origin,
             apiKey: data.data.apiKey,
+            keyId: data.data.keyId,
             userId: session.user.id,
             userEmail: session.user.email,
           },
@@ -106,13 +114,16 @@ export function RecorderAutoConnect() {
         case MESSAGE_TYPES.EXTENSION_READY:
           // Extension is installed and ready - auto-connect it
           console.log("[Supercheck] Recorder extension detected, auto-connecting...");
-          connectExtension();
+          connectExtension(message.payload as ExtensionReadyPayload | undefined);
           break;
 
         case MESSAGE_TYPES.EXTENSION_CONNECTED:
           if (message.payload?.success) {
             extensionConnectedRef.current = true;
             console.log("[Supercheck] Recorder extension connected successfully");
+          } else {
+            // The one-time key was not stored; allow the next READY to mint another.
+            apiKeyGeneratedRef.current = false;
           }
           break;
 
