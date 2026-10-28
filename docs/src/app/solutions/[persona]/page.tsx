@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { OG_IMAGE } from "../../../lib/assets";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -29,13 +30,13 @@ export async function generateMetadata({ params }: { params: Promise<{ persona: 
       url,
       siteName: "Supercheck",
       type: "website",
-      images: ["/screenshots/playground-editor.png"],
+      images: [OG_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description: solution.metaDescription,
-      images: ["/screenshots/playground-editor.png"],
+      images: [OG_IMAGE],
     },
   };
 }
