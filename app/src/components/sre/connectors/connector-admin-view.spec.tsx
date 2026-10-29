@@ -228,7 +228,8 @@ describe("ConnectorAdminView", () => {
     expect(screen.getByText("prod-vpc-agent")).toBeInTheDocument();
     // Service scope and risk are hidden by default (available under View).
     expect(screen.queryByText("1 service")).not.toBeInTheDocument();
-    expect(screen.getByText("Jun 27, 2026")).toBeInTheDocument();
+    // DateCell omits the year for current-year dates, so accept both forms.
+    expect(screen.getByText(/^Jun 27(, 2026)?$/)).toBeInTheDocument();
     expect(screen.queryByText(connector.endpointUrl)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/access key|credential value/i),
