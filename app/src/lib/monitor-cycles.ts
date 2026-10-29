@@ -47,7 +47,8 @@ export function monitorCheckTimeoutConfig(
   config: unknown,
   env: Record<string, string | undefined> = process.env,
 ): { timeoutSeconds?: number; maxTimeoutSeconds?: number } | undefined {
-  if (type !== "synthetic_test") return config as { timeoutSeconds?: number } | undefined;
+  // Pass only the check timeout through: the cap override is reserved for synthetic checks.
+  if (type !== "synthetic_test") return { timeoutSeconds: (config as { timeoutSeconds?: number } | null | undefined)?.timeoutSeconds };
   const testTimeoutMs = Number(env.TEST_EXECUTION_TIMEOUT_MS ?? 300000);
   const timeoutSeconds = Number.isFinite(testTimeoutMs) && testTimeoutMs > 0 ? testTimeoutMs / 1000 : 300;
   // The worker enforces this timeout itself, so the HTTP check cap must not shorten it.

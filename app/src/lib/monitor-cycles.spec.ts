@@ -34,6 +34,7 @@ describe("monitor cycle helpers", () => {
     expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("synthetic_test", {}, { TEST_EXECUTION_TIMEOUT_MS: "120000" }))).toBe((300 + 240) * 1000);
     expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("synthetic_test", {}, { TEST_EXECUTION_TIMEOUT_MS: "600000" }))).toBe((300 + 1200) * 1000);
     expect(monitorCheckTimeoutConfig("http_request", { timeoutSeconds: 10 }, {})).toEqual({ timeoutSeconds: 10 });
+    expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("http_request", { timeoutSeconds: 9999, maxTimeoutSeconds: 1 }, {}))).toBe((300 + 600) * 1000);
   });
 
   it("derives a stable, BullMQ-safe, per-key id", () => {
