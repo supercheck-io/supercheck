@@ -206,4 +206,6 @@ Use disposable fixtures for browser and provider tests and remove them afterward
 
 The app, worker (including Private Agent mode), deployment assets, and documentation are `AGPL-3.0-only`. The CLI and recorder are Apache-2.0; retain third-party licenses, notices, and upstream headers.
 
+Before your first pull request can merge, sign the [Contributor License Agreement](CLA.md). You keep the copyright in your contribution, and you allow the project maintainer and their successors to distribute and relicense it, including under commercial terms. A bot comments on your pull request with the exact text to post on its own; you sign once.
+
 All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
