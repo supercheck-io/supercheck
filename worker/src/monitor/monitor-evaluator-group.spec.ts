@@ -61,19 +61,61 @@ async function firstAlertCycle(
 }
 
 describe('MonitorEvaluator.prepareGroupEvaluation multi-location counters', () => {
-  it.each([1, 2])(
-    'counts the first non-pending failing cycle so threshold %i is reached on that cycle',
-    async (threshold) => {
-      const states = await firstAlertCycle(threshold, ['down', 'down', 'down']);
-      expect(states.map((s) => s.failures)).toEqual([1, 2, 3]);
-      expect(states.findIndex((s) => s.failures >= threshold) + 1).toBe(
-        threshold,
-      );
-    },
-  );
+  it('counts the first failing cycle after pending as failure 1', async () => {
+    const states = await firstAlertCycle(2, ['down', 'down', 'down']);
+    expect(states.map((s) => s.failures)).toEqual([1, 2, 3]);
+  });
 
   it('counts the first successful cycle after pending', async () => {
     const states = await firstAlertCycle(1, ['up', 'up']);
     expect(states.map((s) => s.successes)).toEqual([1, 2]);
+  });
+});
+
+describe('MonitorEvaluator.advanceAggregatedAlertState', () => {
+  const evaluator = new MonitorEvaluator({} as never, {} as never);
+  const stale = {
+    aggregatedAlertState: {
+      consecutiveFailureCount: 9,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 3,
+      alertsSentForRecovery: 0,
+      recoverySequence: false,
+    },
+  } as never;
+
+  it('starts a fresh failure sequence after pending, dropping stale sent counts', () => {
+    expect(
+      evaluator.advanceAggregatedAlertState(true, stale, 'pending', 'down'),
+    ).toMatchObject({ consecutiveFailureCount: 1, alertsSentForFailure: 0 });
+  });
+
+  it('does not mark a pending to up cycle as a recovery', () => {
+    expect(
+      evaluator.advanceAggregatedAlertState(true, stale, 'pending', 'up'),
+    ).toMatchObject({ consecutiveSuccessCount: 1, recoverySequence: false });
+  });
+
+  it.each([
+    ['paused', true],
+    ['down', false],
+  ])(
+    'leaves counters unchanged when previous status is %s and alerts enabled is %s',
+    (previousStatus, enabled) => {
+      expect(
+        evaluator.advanceAggregatedAlertState(
+          enabled,
+          stale,
+          previousStatus,
+          'down',
+        ),
+      ).toMatchObject({ consecutiveFailureCount: 9, alertsSentForFailure: 3 });
+    },
+  );
+
+  it('continues a down sequence', () => {
+    expect(
+      evaluator.advanceAggregatedAlertState(true, stale, 'down', 'down'),
+    ).toMatchObject({ consecutiveFailureCount: 10, alertsSentForFailure: 3 });
   });
 });
