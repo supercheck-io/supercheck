@@ -38,7 +38,8 @@ read -r -d '' payload <<'JSON' || true
     "Worker Quality Checks",
     "Quality Checks Summary",
     "Dependency Review",
-    "CodeQL"
+    "CodeQL",
+    "CLA"
   ]
 }
 JSON
