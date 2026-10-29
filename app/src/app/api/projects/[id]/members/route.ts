@@ -282,26 +282,28 @@ export async function PUT(
       );
     }
     
-    const [targetOrganizationMember] = await db.select({ role: member.role }).from(member)
-      .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
-      .limit(1);
-    if (!targetOrganizationMember) {
-      return NextResponse.json({ error: 'User is not a member of this organization' }, { status: 400 });
+    // Lock the org membership like POST, so a concurrent org-role change cannot slip in between check and write.
+    const outcome = await db.transaction(async (tx) => {
+      const [targetOrganizationMember] = await tx.select({ role: member.role }).from(member)
+        .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
+        .for("update");
+      if (!targetOrganizationMember) return { error: 'User is not a member of this organization' } as const;
+      if (projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) return { error: ROLE_ABOVE_ORG_ROLE_MESSAGE } as const;
+      const [updated] = await tx
+        .update(projectMembers)
+        .set({ role })
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, targetUserId)
+        ))
+        .returning();
+      return { updated } as const;
+    });
+    if ("error" in outcome) {
+      return NextResponse.json({ error: outcome.error }, { status: 400 });
     }
-    if (projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) {
-      return NextResponse.json({ error: ROLE_ABOVE_ORG_ROLE_MESSAGE }, { status: 400 });
-    }
+    const updatedMember = outcome.updated;
 
-    // Update member role
-    const [updatedMember] = await db
-      .update(projectMembers)
-      .set({ role })
-      .where(and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, targetUserId)
-      ))
-      .returning();
-    
     if (!updatedMember) {
       return NextResponse.json(
         { error: 'Member not found in project' },

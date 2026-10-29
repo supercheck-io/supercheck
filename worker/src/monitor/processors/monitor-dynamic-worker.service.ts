@@ -449,7 +449,7 @@ export class MonitorDynamicWorkerService
               ...job.data,
               aggregationOnly: true,
               _pendingResult: result,
-            } as MonitorJobDataDto)
+            })
             .catch((updateError: unknown) => {
               this.logger.warn(
                 `Could not keep the unsaved result for monitor ${job.data.monitorId}: ${getErrorMessage(updateError)}`,
@@ -645,13 +645,15 @@ export class MonitorDynamicWorkerService
 
     // Check whether a real result for this location + execution group
     // was already persisted by processJob() before it threw.
-    const existing = await this.dbService.db.query.monitorResults.findFirst({
-      where: and(
-        eq(schema.monitorResults.monitorId, monitorId),
-        eq(schema.monitorResults.executionGroupId, executionGroupId),
-        eq(schema.monitorResults.location, executionLocation),
-      ),
-    });
+    const findStored = () =>
+      this.dbService.db.query.monitorResults.findFirst({
+        where: and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.executionGroupId, executionGroupId),
+          eq(schema.monitorResults.location, executionLocation),
+        ),
+      });
+    const existing = await findStored();
 
     if (existing) {
       this.logger.log(
@@ -696,6 +698,11 @@ export class MonitorDynamicWorkerService
         } catch (pendingError) {
           if (pendingError instanceof MonitorAggregationBusyError)
             throw pendingError;
+          // The row may have been inserted before a later step threw: finish from it, never add an error row.
+          if (await findStored()) {
+            await save(pending, true);
+            return;
+          }
           // The stored result itself cannot be saved; an error row still lets the group close.
           this.logger.warn(
             `Stored result for ${monitorId}/${executionLocation} could not be saved, recording an error result: ${getErrorMessage(pendingError)}`,
@@ -798,8 +805,7 @@ export class MonitorDynamicWorkerService
 function pendingResultOf(
   job: Job<MonitorJobDataDto>,
 ): MonitorExecutionResult | undefined {
-  const pending = (job.data as { _pendingResult?: MonitorExecutionResult })
-    ._pendingResult;
+  const pending = job.data._pendingResult;
   return pending
     ? { ...pending, checkedAt: new Date(pending.checkedAt) }
     : undefined;

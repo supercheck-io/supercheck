@@ -1277,6 +1277,44 @@ describe('a completed check whose result failed to save', () => {
     );
   });
 
+  it('finishes from the stored row, not an error row, when the save inserted before throwing', async () => {
+    const save = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('aggregation failed'))
+      .mockResolvedValue(undefined);
+    const service = build(save);
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue({ id: 'row' });
+    (service['dbService'] as any).db.query.monitorResults.findFirst = findFirst;
+    const data = JSON.parse(
+      JSON.stringify({
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'g',
+        aggregationOnly: true,
+        _pendingResult: result,
+      }),
+    );
+    await service['handleFinalJobFailure'](
+      {
+        data,
+        attemptsMade: 3,
+        getState: jest.fn().mockResolvedValue('failed'),
+      } as never,
+      new Error('aggregation failed'),
+    );
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'down' }),
+      expect.objectContaining({ persisted: true }),
+    );
+    expect(save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'error' }),
+      expect.anything(),
+    );
+  });
+
   it('does not keep a result for a job without a group, whose retry could not see a saved row', async () => {
     const save = jest.fn().mockRejectedValueOnce(new Error('db down'));
     const service = build(save, jest.fn().mockResolvedValue(result));

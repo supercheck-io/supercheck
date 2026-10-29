@@ -62,12 +62,13 @@ describe("streaming AI Fix artifact access", () => {
     expect(keys.every((key: string) => key.startsWith("latest-run-id/report/"))).toBe(true);
   });
   it.each([null, "job-id"])("selects the newest canonical run and worker artifact layout (job=%s)", async (jobId) => {
-    jest.mocked(db.query.runs.findFirst).mockResolvedValue({ id: "latest-run-id", jobId } as never);
+    // No run has this id as its primary key, so the newest run carrying it as metadata.testId wins.
+    jest.mocked(db.query.runs.findFirst).mockResolvedValueOnce(undefined).mockResolvedValue({ id: "latest-run-id", jobId } as never);
     expect((await POST(request())).status).toBe(200);
-    const options = jest.mocked(db.query.runs.findFirst).mock.calls[0][0];
-    expect(options?.orderBy).toHaveLength(2);
+    const options = jest.mocked(db.query.runs.findFirst).mock.calls[1][0];
+    expect(options?.orderBy).toHaveLength(1);
     const ordering = options?.orderBy as import("drizzle-orm").SQL[];
-    expect(new PgDialect().sqlToQuery(ordering[1]).sql).toContain('"created_at" desc');
+    expect(new PgDialect().sqlToQuery(ordering[0]).sql).toContain('"created_at" desc');
     const { __send: send } = jest.requireMock("@aws-sdk/client-s3") as { __send: jest.Mock };
     expect(send.mock.calls.map(([command]) => command.input)).toEqual([
       { Bucket: jobId ? process.env.S3_K6_JOB_BUCKET_NAME || "k6-job-artifacts" : process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts", Key: "latest-run-id/report/console.log" },
