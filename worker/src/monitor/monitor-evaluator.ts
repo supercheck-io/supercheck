@@ -510,8 +510,8 @@ export class MonitorEvaluator {
       if (this.isMultiLocationEvaluation(monitor.config, resultCount)) {
         const previousState = this.readAggregatedAlertState(monitor.config);
         evaluation.alertState = {
-          ...(monitor.alertConfig?.enabled &&
-          !['pending', 'paused'].includes(previousStatus)
+          // 'pending' must count: its first real observation is cycle 1 (as for single-location).
+          ...(monitor.alertConfig?.enabled && previousStatus !== 'paused'
             ? this.getNextAggregatedAlertState(
                 previousState,
                 previousStatus,
