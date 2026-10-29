@@ -1181,6 +1181,84 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
   });
 });
 
+describe('a completed check whose result failed to save', () => {
+  const result = {
+    monitorId: 'monitor-1',
+    location: 'eu',
+    status: 'down',
+    isUp: false,
+    checkedAt: new Date('2026-10-29T00:00:00Z'),
+  };
+  function build(save: jest.Mock, executeMonitor = jest.fn()) {
+    const service = new MonitorDynamicWorkerService(
+      {
+        executeMonitor,
+        saveDistributedMonitorResult: save,
+      } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          query: {
+            monitorResults: { findFirst: jest.fn().mockResolvedValue(undefined) },
+          },
+        },
+      } as unknown as DbService,
+    );
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    return service;
+  }
+
+  it('keeps the result on the job so the retry saves it without rerunning the check', async () => {
+    const save = jest.fn().mockRejectedValueOnce(new Error('db down'));
+    const executeMonitor = jest.fn().mockResolvedValue(result);
+    const service = build(save, executeMonitor);
+    const updateData = jest.fn().mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { monitorId: 'monitor-1', executionLocation: 'eu', executionGroupId: 'g' },
+      updateData,
+    };
+    await expect(service['processJob'](job as never)).rejects.toThrow('db down');
+    const kept = updateData.mock.calls[0][0];
+    expect(kept).toMatchObject({ aggregationOnly: true, _pendingResult: result });
+
+    // BullMQ stores job data as JSON, so the retry sees a string date.
+    job.data = JSON.parse(JSON.stringify(kept));
+    save.mockResolvedValue(undefined);
+    await service['processJob'](job as never);
+    expect(executeMonitor).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'down', checkedAt: result.checkedAt }),
+      expect.not.objectContaining({ persisted: true }),
+    );
+  });
+
+  it('records the real outcome, not a synthetic error, once save retries run out', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const service = build(save);
+    const data = JSON.parse(
+      JSON.stringify({
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'g',
+        aggregationOnly: true,
+        _pendingResult: { ...result, status: 'up', isUp: true },
+      }),
+    );
+    await service['handleFinalJobFailure'](
+      { data, attemptsMade: 3, getState: jest.fn().mockResolvedValue('failed') } as never,
+      new Error('db down'),
+    );
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'up', isUp: true }),
+      expect.anything(),
+    );
+  });
+});
+
 describe('MonitorDynamicWorkerService workload gating and backstops', () => {
   const originalQueues = process.env.WORKER_QUEUES;
   beforeEach(() => resetWorkerQueuesForTests());

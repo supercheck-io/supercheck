@@ -41,6 +41,17 @@ export function missingCycleClosureEnabled(
   return env.MISSING_CYCLE_CLOSURE_ENABLED === "true";
 }
 
+/** Check timeout used for the cycle deadline: synthetic checks run a whole Playwright test. */
+export function monitorCheckTimeoutConfig(
+  type: string,
+  config: unknown,
+  env: Record<string, string | undefined> = process.env,
+): { timeoutSeconds?: number } | undefined {
+  if (type !== "synthetic_test") return config as { timeoutSeconds?: number } | undefined;
+  const testTimeoutMs = Number(env.TEST_EXECUTION_TIMEOUT_MS ?? 300000);
+  return { timeoutSeconds: Number.isFinite(testTimeoutMs) && testTimeoutMs > 0 ? testTimeoutMs / 1000 : 300 };
+}
+
 /** Base grace (env, clamped) plus two check timeouts to cover a retry. */
 export function missingCycleDeadlineMs(
   env: Record<string, string | undefined> = process.env,

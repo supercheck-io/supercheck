@@ -393,15 +393,22 @@ export class MonitorDynamicWorkerService
               orderBy: [desc(schema.monitorResults.checkedAt)],
             })
           : undefined;
-      if (job.data.aggregationOnly && !saved)
+      // A completed check whose result row failed to save is retried from the stored result, never re-run:
+      // re-running would bill a synthetic check twice and could replace the failure that was observed.
+      const pending =
+        !saved && job.data.aggregationOnly ? pendingResultOf(job) : undefined;
+      if (job.data.aggregationOnly && !saved && !pending)
         throw new Error(
           'Persisted monitor result unavailable for aggregation retry',
         );
       // Backstop for stale/misrouted jobs. Only on the execute path: a saved
       // result (aggregation retry) must always be allowed to finish, so revoking
       // a capability never discards results already produced.
-      if (!saved) await this.assertBrowserCapability(job.data, jobLocation);
-      const result = saved
+      if (!saved && !pending)
+        await this.assertBrowserCapability(job.data, jobLocation);
+      const result = pending
+        ? pending
+        : saved
         ? {
             ...saved,
             details: saved.details ?? undefined,
@@ -434,6 +441,19 @@ export class MonitorDynamicWorkerService
           await job.updateData({ ...job.data, aggregationOnly: true });
           await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
           throw new DelayedError();
+        }
+        if (!saved) {
+          await job
+            .updateData({
+              ...job.data,
+              aggregationOnly: true,
+              _pendingResult: result,
+            } as MonitorJobDataDto)
+            .catch((updateError: unknown) => {
+              this.logger.warn(
+                `Could not keep the unsaved result for monitor ${job.data.monitorId}: ${getErrorMessage(updateError)}`,
+              );
+            });
         }
         throw error;
       }
@@ -639,7 +659,11 @@ export class MonitorDynamicWorkerService
       );
     }
 
-    const errorResult: MonitorExecutionResult = existing
+    // Only saving failed: record the check's real outcome, not a synthetic error that reads as downtime.
+    const pending = existing ? undefined : pendingResultOf(job);
+    const errorResult: MonitorExecutionResult = pending
+      ? pending
+      : existing
       ? {
           ...existing,
           details: existing.details ?? undefined,
@@ -754,4 +778,15 @@ export class MonitorDynamicWorkerService
   private createRedisConnection(): Redis {
     return new Redis(buildRedisOptions(this.configService));
   }
+}
+
+/** The executed-but-unsaved result kept on the job by a failed save, with its dates revived from JSON. */
+function pendingResultOf(
+  job: Job<MonitorJobDataDto>,
+): MonitorExecutionResult | undefined {
+  const pending = (job.data as { _pendingResult?: MonitorExecutionResult })
+    ._pendingResult;
+  return pending
+    ? { ...pending, checkedAt: new Date(pending.checkedAt) }
+    : undefined;
 }

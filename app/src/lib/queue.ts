@@ -21,6 +21,7 @@ import {
   MonitorCycleClosedError,
   missingCycleClosureEnabled,
   missingCycleDeadlineMs,
+  monitorCheckTimeoutConfig,
   monitorCycleId,
   monitorCyclePolicy,
   persistMonitorCycle,
@@ -1841,7 +1842,7 @@ export async function enqueueMonitorLocationJobs(
         monitorId: task.monitorId,
         configuredLocations: closureCycle.configuredLocations,
         policy: closureCycle.policy,
-        deadlineMs: missingCycleDeadlineMs(process.env, task.config as { timeoutSeconds?: number } | undefined),
+        deadlineMs: missingCycleDeadlineMs(process.env, monitorCheckTimeoutConfig(task.type, task.config)),
       });
     }
     const nodes = await flow.addBulk(locations.map((location) => {
