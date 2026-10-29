@@ -285,7 +285,10 @@ export async function PUT(
     const [targetOrganizationMember] = await db.select({ role: member.role }).from(member)
       .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
       .limit(1);
-    if (targetOrganizationMember && projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) {
+    if (!targetOrganizationMember) {
+      return NextResponse.json({ error: 'User is not a member of this organization' }, { status: 400 });
+    }
+    if (projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) {
       return NextResponse.json({ error: ROLE_ABOVE_ORG_ROLE_MESSAGE }, { status: 400 });
     }
 
