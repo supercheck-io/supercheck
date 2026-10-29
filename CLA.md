@@ -10,10 +10,12 @@ In this agreement:
 - "We" and "us" mean Krishna Kant, the maintainer of Supercheck, and any
   successor or assignee, including a company that later holds the Supercheck
   project.
-- "You" means the person or legal entity that signs this agreement.
+- "You" means the person who signs this agreement. If you contribute on
+  behalf of an employer or other organisation, you confirm that you are
+  authorised to sign for it, and "you" also means that organisation.
 - "Contribution" means any code, documentation or other material that you
-  submit to us, for example by pull request, patch or issue. Material that you
-  clearly mark "Not a Contribution" in writing is excluded.
+  submit to us by pull request or patch. Material that you clearly mark
+  "Not a Contribution" in the pull request description is excluded.
 
 ## 1. Copyright license
 
@@ -59,13 +61,13 @@ contributions "as is", without warranties or conditions of any kind.
 
 ## 5. Scope
 
-This agreement covers your past and future contributions to the Supercheck
-repositories.
+This agreement covers your past and future contributions to repositories
+under github.com/supercheck-io, whatever license each repository uses.
 
 ## How to sign
 
 When you open your first pull request, a bot asks you to sign. Post this
-comment on the pull request:
+exact text, on its own, as a comment on the pull request:
 
     I have read the CLA Document and I hereby sign the CLA
 
