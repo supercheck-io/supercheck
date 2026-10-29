@@ -39,7 +39,7 @@ it("waits for a concurrent leave then rejects instead of recreating project assi
   expect(insert).not.toHaveBeenCalled();
 });
 it("inserts only while holding a valid organization membership lock", async () => {
-  lock.mockResolvedValue([{ id: "membership-1" }]);
+  lock.mockResolvedValue([{ id: "membership-1", role: "project_admin" }]);
   insert.mockReturnValue({ values: () => ({ returning: async () => [{ id: "assignment-1" }] }) });
   expect((await post()).status).toBe(201);
   expect(insert).toHaveBeenCalledTimes(1);
@@ -50,4 +50,12 @@ it.each([["POST", POST], ["PUT", PUT], ["DELETE", DELETE]] as const)("%s is refu
   const res = await handler(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=target-user", { method, headers: { "content-type": "application/json" }, body: method === "DELETE" ? undefined : JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
   expect(res.status).toBe(403);
   expect(db.transaction).not.toHaveBeenCalled();
+});
+
+it("refuses a project role above the member's organization role instead of silently capping it", async () => {
+  lock.mockResolvedValue([{ id: "membership-1", role: "project_viewer" }]);
+  const res = await post();
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toMatch(/higher than the member's organization role/);
+  expect(insert).not.toHaveBeenCalled();
 });

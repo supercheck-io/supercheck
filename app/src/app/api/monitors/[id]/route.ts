@@ -34,6 +34,7 @@ import {
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
   replaceMonitorProviders,
+  syntheticFrequencyError,
   testInProject,
 } from "@/lib/monitor-write";
 import {
@@ -204,6 +205,15 @@ export async function PUT(
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
+    const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
+      rawData.type ?? currentMonitor.type,
+      rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+    );
+    if (syntheticError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticError }, { status: 400 });
     }
 
     if (rawData.frequencyMinutes !== undefined) {
@@ -750,6 +760,15 @@ export async function PATCH(
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
+    const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
+      rawData.type ?? currentMonitor.type,
+      rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+    );
+    if (syntheticError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticError }, { status: 400 });
     }
 
     if (rawData.frequencyMinutes !== undefined) {

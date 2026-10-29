@@ -5,6 +5,9 @@ import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { member, projects, projectMembers, user } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { projectRoleExceedsOrgRole } from '@/lib/rbac/effective-project-role';
+
+const ROLE_ABOVE_ORG_ROLE_MESSAGE = "This role is higher than the member's organization role. Change their organization role first.";
 
 /**
  * GET /api/projects/[id]/members
@@ -168,10 +171,11 @@ export async function POST(
 
     const newMember = await db.transaction(async (tx) => {
       // Serialize assignments with leave; checking outside this transaction can resurrect stale access.
-      const [targetOrganizationMember] = await tx.select({ id: member.id }).from(member)
+      const [targetOrganizationMember] = await tx.select({ id: member.id, role: member.role }).from(member)
         .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
         .for("update");
       if (!targetOrganizationMember) throw new Error('PROJECT_ORGANIZATION_MEMBER_REQUIRED');
+      if (projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) throw new Error('PROJECT_ROLE_ABOVE_ORG_ROLE');
       const existingMember = await tx.select({ id: projectMembers.id }).from(projectMembers)
         .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
         .limit(1);
@@ -202,6 +206,9 @@ export async function POST(
     }
     if (error instanceof Error && error.message === 'PROJECT_ORGANIZATION_MEMBER_REQUIRED') {
       return NextResponse.json({ error: 'User is not a member of this organization' }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === 'PROJECT_ROLE_ABOVE_ORG_ROLE') {
+      return NextResponse.json({ error: ROLE_ABOVE_ORG_ROLE_MESSAGE }, { status: 400 });
     }
     if (error instanceof Error && error.message === 'PROJECT_MEMBER_ALREADY_EXISTS') {
       return NextResponse.json({ error: 'User is already a member of this project' }, { status: 400 });
@@ -275,16 +282,28 @@ export async function PUT(
       );
     }
     
-    // Update member role
-    const [updatedMember] = await db
-      .update(projectMembers)
-      .set({ role })
-      .where(and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, targetUserId)
-      ))
-      .returning();
-    
+    // Lock the org membership like POST, so a concurrent org-role change cannot slip in between check and write.
+    const outcome = await db.transaction(async (tx) => {
+      const [targetOrganizationMember] = await tx.select({ role: member.role }).from(member)
+        .where(and(eq(member.userId, targetUserId), eq(member.organizationId, organizationId)))
+        .for("update");
+      if (!targetOrganizationMember) return { error: 'User is not a member of this organization' } as const;
+      if (projectRoleExceedsOrgRole(targetOrganizationMember.role, role)) return { error: ROLE_ABOVE_ORG_ROLE_MESSAGE } as const;
+      const [updated] = await tx
+        .update(projectMembers)
+        .set({ role })
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, targetUserId)
+        ))
+        .returning();
+      return { updated } as const;
+    });
+    if ("error" in outcome) {
+      return NextResponse.json({ error: outcome.error }, { status: 400 });
+    }
+    const updatedMember = outcome.updated;
+
     if (!updatedMember) {
       return NextResponse.json(
         { error: 'Member not found in project' },

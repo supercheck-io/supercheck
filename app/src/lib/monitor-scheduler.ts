@@ -2,6 +2,7 @@ import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
 import { eq, isNotNull, and, ne } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
+import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";
 
 interface ScheduleMonitorOptions {
@@ -18,6 +19,11 @@ export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<
   try {
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
+    // Backstop for the write-path check: concurrent edits (or rows saved before it) must not schedule faster checks.
+    const frequencyMinutes =
+      options.jobData.type === "synthetic_test"
+        ? Math.max(options.frequencyMinutes, SYNTHETIC_MIN_FREQUENCY_MINUTES)
+        : options.frequencyMinutes;
 
     // Clean up ALL existing repeatable jobs for this monitor ID
     // Using .filter() instead of .find() to remove ALL matching jobs,
@@ -41,12 +47,12 @@ export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<
       {
         monitorId: options.monitorId,
         jobData: options.jobData,
-        frequencyMinutes: options.frequencyMinutes,
+        frequencyMinutes,
         retryLimit: options.retryLimit || 3,
       },
       {
         repeat: {
-          every: options.frequencyMinutes * 60 * 1000, // Convert to milliseconds
+          every: frequencyMinutes * 60 * 1000, // Convert to milliseconds
         },
         removeOnComplete: true,
         removeOnFail: 100,

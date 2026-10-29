@@ -393,25 +393,32 @@ export class MonitorDynamicWorkerService
               orderBy: [desc(schema.monitorResults.checkedAt)],
             })
           : undefined;
-      if (job.data.aggregationOnly && !saved)
+      // A completed check whose result row failed to save is retried from the stored result, never re-run:
+      // re-running would bill a synthetic check twice and could replace the failure that was observed.
+      const pending =
+        !saved && job.data.aggregationOnly ? pendingResultOf(job) : undefined;
+      if (job.data.aggregationOnly && !saved && !pending)
         throw new Error(
           'Persisted monitor result unavailable for aggregation retry',
         );
       // Backstop for stale/misrouted jobs. Only on the execute path: a saved
       // result (aggregation retry) must always be allowed to finish, so revoking
       // a capability never discards results already produced.
-      if (!saved) await this.assertBrowserCapability(job.data, jobLocation);
-      const result = saved
-        ? {
-            ...saved,
-            details: saved.details ?? undefined,
-            responseTimeMs: saved.responseTimeMs ?? undefined,
-            testExecutionId: saved.testExecutionId ?? undefined,
-            testReportS3Url: saved.testReportS3Url ?? undefined,
-          }
-        : await this.executeOrDefer(job, () =>
-            this.monitorService.executeMonitor(job.data, jobLocation),
-          );
+      if (!saved && !pending)
+        await this.assertBrowserCapability(job.data, jobLocation);
+      const result = pending
+        ? pending
+        : saved
+          ? {
+              ...saved,
+              details: saved.details ?? undefined,
+              responseTimeMs: saved.responseTimeMs ?? undefined,
+              testExecutionId: saved.testExecutionId ?? undefined,
+              testReportS3Url: saved.testReportS3Url ?? undefined,
+            }
+          : await this.executeOrDefer(job, () =>
+              this.monitorService.executeMonitor(job.data, jobLocation),
+            );
 
       if (!result) {
         // null means the check was deliberately not run: the monitor is paused, billing is on hold, the
@@ -434,6 +441,20 @@ export class MonitorDynamicWorkerService
           await job.updateData({ ...job.data, aggregationOnly: true });
           await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
           throw new DelayedError();
+        }
+        // Without a group id a retry cannot see an already-inserted row, so it would insert a duplicate.
+        if (!saved && job.data.executionGroupId) {
+          await job
+            .updateData({
+              ...job.data,
+              aggregationOnly: true,
+              _pendingResult: result,
+            })
+            .catch((updateError: unknown) => {
+              this.logger.warn(
+                `Could not keep the unsaved result for monitor ${job.data.monitorId}: ${getErrorMessage(updateError)}`,
+              );
+            });
         }
         throw error;
       }
@@ -624,13 +645,15 @@ export class MonitorDynamicWorkerService
 
     // Check whether a real result for this location + execution group
     // was already persisted by processJob() before it threw.
-    const existing = await this.dbService.db.query.monitorResults.findFirst({
-      where: and(
-        eq(schema.monitorResults.monitorId, monitorId),
-        eq(schema.monitorResults.executionGroupId, executionGroupId),
-        eq(schema.monitorResults.location, executionLocation),
-      ),
-    });
+    const findStored = () =>
+      this.dbService.db.query.monitorResults.findFirst({
+        where: and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.executionGroupId, executionGroupId),
+          eq(schema.monitorResults.location, executionLocation),
+        ),
+      });
+    const existing = await findStored();
 
     if (existing) {
       this.logger.log(
@@ -639,6 +662,8 @@ export class MonitorDynamicWorkerService
       );
     }
 
+    // Only saving failed: record the check's real outcome, not a synthetic error that reads as downtime.
+    const pending = existing ? undefined : pendingResultOf(job);
     const errorResult: MonitorExecutionResult = existing
       ? {
           ...existing,
@@ -658,13 +683,33 @@ export class MonitorDynamicWorkerService
           },
         };
 
-    try {
-      await this.monitorService.saveDistributedMonitorResult(errorResult, {
+    const save = (result: MonitorExecutionResult, persisted: boolean) =>
+      this.monitorService.saveDistributedMonitorResult(result, {
         executionGroupId,
         expectedLocations,
         ...(job.data.monitorCycle ? { monitorCycle: true } : {}),
-        ...(existing ? { persisted: true } : {}),
+        ...(persisted ? { persisted: true } : {}),
       });
+    try {
+      if (pending) {
+        try {
+          await save(pending, false);
+          return;
+        } catch (pendingError) {
+          if (pendingError instanceof MonitorAggregationBusyError)
+            throw pendingError;
+          // The row may have been inserted before a later step threw: finish from it, never add an error row.
+          if (await findStored()) {
+            await save(pending, true);
+            return;
+          }
+          // The stored result itself cannot be saved; an error row still lets the group close.
+          this.logger.warn(
+            `Stored result for ${monitorId}/${executionLocation} could not be saved, recording an error result: ${getErrorMessage(pendingError)}`,
+          );
+        }
+      }
+      await save(errorResult, !!existing);
     } catch (aggregationError) {
       if (!(aggregationError instanceof MonitorAggregationBusyError))
         throw aggregationError;
@@ -754,4 +799,14 @@ export class MonitorDynamicWorkerService
   private createRedisConnection(): Redis {
     return new Redis(buildRedisOptions(this.configService));
   }
+}
+
+/** The executed-but-unsaved result kept on the job by a failed save, with its dates revived from JSON. */
+function pendingResultOf(
+  job: Job<MonitorJobDataDto>,
+): MonitorExecutionResult | undefined {
+  const pending = job.data._pendingResult;
+  return pending
+    ? { ...pending, checkedAt: new Date(pending.checkedAt) }
+    : undefined;
 }

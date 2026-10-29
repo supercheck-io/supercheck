@@ -19,9 +19,7 @@ import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { db } from "@/utils/db";
-import { runs } from "@/db/schema";
-import { desc, eq, or, sql } from "drizzle-orm";
+import { resolveRunArtifact } from "@/lib/ai/run-artifact";
 
 // Minimum stack trace length to consider as useful for error analysis
 const MINIMUM_USEFUL_STACKTRACE_LENGTH = 50;
@@ -118,7 +116,8 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Playwright test (browser, api, database, custom)
-      const markdownReportUrl = await getMarkdownReportUrl(testId);
+      const { artifactId } = await resolveRunArtifact(testId);
+      const markdownReportUrl = await getMarkdownReportUrl(artifactId);
 
       let errorContext: string;
       let errorClassifications: Array<{
@@ -145,8 +144,8 @@ export async function POST(request: NextRequest) {
           PlaywrightMarkdownParser.parseMarkdownForErrors(errorContext);
       } else {
         // Try multiple sources for error information
-        const htmlContent = await getHTMLReportContent(testId);
-        const resultsJSON = await getPlaywrightResultsJSON(testId);
+        const htmlContent = await getHTMLReportContent(artifactId);
+        const resultsJSON = await getPlaywrightResultsJSON(artifactId);
 
         if (!htmlContent && !resultsJSON.found) {
           return NextResponse.json(
@@ -388,13 +387,8 @@ async function getK6TestResults(runId: string): Promise<{
   summaryJSON: string | null;
 }> {
   try {
-    const run = await db.query.runs.findFirst({
-      where: or(eq(runs.id, runId), sql`${runs.metadata}->>'testId' = ${runId}`),
-      orderBy: [desc(sql`${runs.id} = ${runId}`), desc(runs.createdAt)],
-      columns: { id: true, jobId: true },
-    });
-    const artifactId = run?.id ?? runId;
-    const testBucketName = run?.jobId
+    const { artifactId, jobId } = await resolveRunArtifact(runId);
+    const testBucketName = jobId
       ? process.env.S3_K6_JOB_BUCKET_NAME || "k6-job-artifacts"
       : process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts";
     const consolePath = `${artifactId}/report/console.log`;

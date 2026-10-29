@@ -4,6 +4,7 @@ jest.mock("@/db/schema", () => ({ monitorCycles: {} }));
 import {
   missingCycleClosureEnabled,
   missingCycleDeadlineMs,
+  monitorCheckTimeoutConfig,
   monitorCycleId,
   monitorCyclePolicy,
 } from "./monitor-cycles";
@@ -26,6 +27,14 @@ describe("monitor cycle helpers", () => {
     ["300", { timeoutSeconds: -4 }, (300 + 60) * 1000],
   ])("sizes the deadline for env %j and config %j to %d ms", (value, config, expected) => {
     expect(missingCycleDeadlineMs({ MISSING_CYCLE_DEADLINE_SECONDS: value }, config)).toBe(expected);
+  });
+
+  it("gives synthetic checks the Playwright test timeout, not the HTTP default", () => {
+    expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("synthetic_test", { testId: "t" }, {}))).toBe((300 + 600) * 1000);
+    expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("synthetic_test", {}, { TEST_EXECUTION_TIMEOUT_MS: "120000" }))).toBe((300 + 240) * 1000);
+    expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("synthetic_test", {}, { TEST_EXECUTION_TIMEOUT_MS: "600000" }))).toBe((300 + 1200) * 1000);
+    expect(monitorCheckTimeoutConfig("http_request", { timeoutSeconds: 10 }, {})).toEqual({ timeoutSeconds: 10 });
+    expect(missingCycleDeadlineMs({}, monitorCheckTimeoutConfig("http_request", { timeoutSeconds: 9999, maxTimeoutSeconds: 1 }, {}))).toBe((300 + 600) * 1000);
   });
 
   it("derives a stable, BullMQ-safe, per-key id", () => {

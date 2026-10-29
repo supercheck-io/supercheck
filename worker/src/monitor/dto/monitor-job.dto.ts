@@ -6,6 +6,7 @@ import {
   MonitorConfig,
   MonitoringLocation,
 } from '../../db/schema';
+import type { MonitorExecutionResult } from '../types/monitor-result.type';
 
 // Re-export types for compatibility
 export { MonitorType, MonitorConfig };
@@ -20,6 +21,8 @@ export class MonitorJobDataDto {
   executionGroupId?: string;
   expectedLocations?: MonitoringLocation[];
   aggregationOnly?: boolean;
+  /** A completed check whose save failed; the retry saves it instead of running the check again. */
+  _pendingResult?: MonitorExecutionResult;
   /** Set by the app when MISSING_CYCLE_CLOSURE_ENABLED persisted a cycle row for executionGroupId. */
   monitorCycle?: boolean;
 }

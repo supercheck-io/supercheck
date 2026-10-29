@@ -31,3 +31,9 @@ export function resolveEffectiveProjectRole(
   const lower = Math.min(rank(org), Math.max(rank(proj), 0));
   return PROJECT_ROLE_ORDER[lower];
 }
+
+/** True when a project_members role would be capped by the org role, so writes can refuse it instead. */
+export function projectRoleExceedsOrgRole(orgRole: Role | string, projectRole: string): boolean {
+  const org = rank(normalizeRole(orgRole));
+  return org >= 0 && rank(normalizeRole(projectRole)) > org;
+}

@@ -140,3 +140,15 @@ export async function testInProject(testId: unknown, organizationId: string, pro
   });
   return Boolean(test);
 }
+
+/** Synthetic checks run a full browser test, so plans and the form advertise a 5-minute floor. */
+export const SYNTHETIC_MIN_FREQUENCY_MINUTES = 5;
+
+/** Checks the stored-or-new type against the stored-or-new frequency, so changing either one is covered. */
+export function syntheticFrequencyError(type: unknown, frequencyMinutes: unknown): string | null {
+  if (type !== "synthetic_test" || frequencyMinutes === undefined || frequencyMinutes === null) return null;
+  const minutes = Number(frequencyMinutes);
+  return !Number.isFinite(minutes) || minutes < SYNTHETIC_MIN_FREQUENCY_MINUTES
+    ? `Synthetic monitors can run no more often than every ${SYNTHETIC_MIN_FREQUENCY_MINUTES} minutes`
+    : null;
+}

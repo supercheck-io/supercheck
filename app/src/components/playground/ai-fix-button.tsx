@@ -137,9 +137,6 @@ export function AIFixButton({
       }
     };
 
-    onStreamingStart?.(); // Notify parent that streaming has started
-    hasStreamingStarted = true;
-
     let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
 
     try {
@@ -186,6 +183,11 @@ export function AIFixButton({
                   "Please ensure your test script follows security guidelines.",
               });
               return;
+            } else if (result.reason === "report_not_available") {
+              toast.info("Report not ready yet", {
+                description: "Wait for the run's report to finish uploading, then try AI Fix again.",
+              });
+              return;
             } else if (result.reason === "not_fixable") {
               toast.info("Manual investigation required", {
                 description: "AI analysis suggests this issue needs human attention.",
@@ -204,6 +206,11 @@ export function AIFixButton({
 
         throw new Error(result.message || `Failed to generate AI fix (${response.status})`);
       }
+
+      // Open the diff viewer only once the server has accepted the request,
+      // so an error response never leaves an empty "improved" dialog behind.
+      onStreamingStart?.();
+      hasStreamingStarted = true;
 
       // Handle streaming response
       reader = response.body?.getReader();

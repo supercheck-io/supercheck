@@ -41,10 +41,24 @@ export function missingCycleClosureEnabled(
   return env.MISSING_CYCLE_CLOSURE_ENABLED === "true";
 }
 
+/** Check timeout used for the cycle deadline: synthetic checks run a whole Playwright test. */
+export function monitorCheckTimeoutConfig(
+  type: string,
+  config: unknown,
+  env: Record<string, string | undefined> = process.env,
+): { timeoutSeconds?: number; maxTimeoutSeconds?: number } | undefined {
+  // Pass only the check timeout through: the cap override is reserved for synthetic checks.
+  if (type !== "synthetic_test") return { timeoutSeconds: (config as { timeoutSeconds?: number } | null | undefined)?.timeoutSeconds };
+  const testTimeoutMs = Number(env.TEST_EXECUTION_TIMEOUT_MS ?? 300000);
+  const timeoutSeconds = Number.isFinite(testTimeoutMs) && testTimeoutMs > 0 ? testTimeoutMs / 1000 : 300;
+  // The worker enforces this timeout itself, so the HTTP check cap must not shorten it.
+  return { timeoutSeconds, maxTimeoutSeconds: timeoutSeconds };
+}
+
 /** Base grace (env, clamped) plus two check timeouts to cover a retry. */
 export function missingCycleDeadlineMs(
   env: Record<string, string | undefined> = process.env,
-  config?: { timeoutSeconds?: number } | null,
+  config?: { timeoutSeconds?: number; maxTimeoutSeconds?: number } | null,
 ): number {
   const raw = Number.parseInt(env.MISSING_CYCLE_DEADLINE_SECONDS ?? "", 10);
   const base = Math.min(
@@ -56,7 +70,7 @@ export function missingCycleDeadlineMs(
   );
   const timeout =
     typeof config?.timeoutSeconds === "number" && config.timeoutSeconds > 0
-      ? Math.min(MAX_CHECK_TIMEOUT_SECONDS, config.timeoutSeconds)
+      ? Math.min(config.maxTimeoutSeconds ?? MAX_CHECK_TIMEOUT_SECONDS, config.timeoutSeconds)
       : DEFAULT_CHECK_TIMEOUT_SECONDS;
   return (base + 2 * timeout) * 1000;
 }

@@ -19,6 +19,7 @@ import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { resolveRunArtifact } from "@/lib/ai/run-artifact";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -106,7 +107,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Step 4: Try to get markdown report URL first
-    const markdownReportUrl = await getMarkdownReportUrl(testId);
+    const { artifactId } = await resolveRunArtifact(testId);
+    const markdownReportUrl = await getMarkdownReportUrl(artifactId);
 
     let errorContext: string;
     let errorClassifications: Array<{
@@ -134,7 +136,7 @@ export async function POST(request: NextRequest) {
         PlaywrightMarkdownParser.parseMarkdownForErrors(errorContext);
     } else {
       // Step 4b: Fallback to HTML report parsing
-      const htmlContent = await getHTMLReportContent(testId);
+      const htmlContent = await getHTMLReportContent(artifactId);
       if (!htmlContent) {
         return NextResponse.json(
           {
