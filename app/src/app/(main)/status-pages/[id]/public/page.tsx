@@ -3,6 +3,7 @@ import { getStatusPage } from "@/actions/get-status-page";
 import { getComponents } from "@/actions/get-components";
 import { getIncidents } from "@/actions/get-incidents";
 import { isStatusPageBrandingHidden } from "@/lib/feature-flags";
+import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 import { redirect } from "next/navigation";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 
@@ -25,6 +26,8 @@ export default async function PublicStatusPagePage({
   // Fetch components and incidents for the status page
   const componentsResult = await getComponents(resolvedParams.id);
   const incidentsResult = await getIncidents(resolvedParams.id);
+  // getComponents has already checked status_page:view; the preview needs the same uptime bars as the public page.
+  const components = await withDailyMetrics(componentsResult.components);
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
@@ -37,7 +40,7 @@ export default async function PublicStatusPagePage({
       <PageBreadcrumbs items={breadcrumbs} />
       <PublicStatusPage
         statusPage={result.statusPage}
-        components={componentsResult.components}
+        components={components}
         incidents={incidentsResult.incidents}
         idOrSubdomain={resolvedParams.id}
         hideBranding={isStatusPageBrandingHidden()}
