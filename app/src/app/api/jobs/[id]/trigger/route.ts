@@ -254,10 +254,13 @@ export async function POST(
 
     // The key acts as its owner, so it can do no more than the owner can do today. This covers
     // demotion, removal from the project or org, and a key minted while its owner was being removed.
-    const ownerCanTrigger = await hasPermissionForUser(key.userId, "job", "trigger", {
-      organizationId: job.organizationId,
-      projectId: job.projectId ?? undefined,
-    });
+    // A job without a project would only be checked at org level, so it is refused outright.
+    const ownerCanTrigger =
+      !!job.projectId &&
+      (await hasPermissionForUser(key.userId, "job", "trigger", {
+        organizationId: job.organizationId,
+        projectId: job.projectId,
+      }));
     if (!ownerCanTrigger) {
       console.warn(
         `API key owner lacks job trigger permission: ${key.name} (${key.id}) for job ${jobId}`

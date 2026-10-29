@@ -808,6 +808,37 @@ describe("Execution route regressions", () => {
 
   // Covers an owner who was demoted to viewer, removed from the project or org, or removed
   // while the key was being created: the key itself stays enabled, so the check must run here.
+  it("POST /api/jobs/[id]/trigger refuses a job without a project", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000014";
+    mockDb.select
+      .mockReturnValueOnce(triggerKeySelect(jobId))
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([
+              {
+                id: jobId, name: "Nightly", status: "passed", createdByUserId: "user-1",
+                organizationId: "org-1", projectId: null, jobType: "playwright",
+              },
+            ]),
+          }),
+        }),
+      });
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(mockHasPermissionForUser).not.toHaveBeenCalled();
+    expect(mockAddJobToQueue).not.toHaveBeenCalled();
+  });
+
   it("POST /api/jobs/[id]/trigger rejects a key whose owner can no longer trigger the job", async () => {
     const jobId = "00000000-0000-4000-8000-000000000013";
     mockDb.select
