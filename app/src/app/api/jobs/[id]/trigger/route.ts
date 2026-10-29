@@ -23,7 +23,7 @@ import {
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, hasPermissionForUser } from "@/lib/rbac/middleware";
 import {
   assertProjectSupportsBrowser,
   LocationWorkloadUnavailableError,
@@ -249,6 +249,25 @@ export async function POST(
       return NextResponse.json(
         { error: "Organization ID is required for subscription validation" },
         { status: 400 }
+      );
+    }
+
+    // The key acts as its owner, so it can do no more than the owner can do today. This covers
+    // demotion, removal from the project or org, and a key minted while its owner was being removed.
+    const ownerCanTrigger = await hasPermissionForUser(key.userId, "job", "trigger", {
+      organizationId: job.organizationId,
+      projectId: job.projectId ?? undefined,
+    });
+    if (!ownerCanTrigger) {
+      console.warn(
+        `API key owner lacks job trigger permission: ${key.name} (${key.id}) for job ${jobId}`
+      );
+      return NextResponse.json(
+        {
+          error: "API key not authorized for this job",
+          message: "The owner of this API key no longer has permission to trigger this job",
+        },
+        { status: 403 }
       );
     }
 

@@ -34,6 +34,7 @@ jest.mock("@/lib/auth-context", () => ({
 
 jest.mock("@/lib/rbac/middleware", () => ({
   checkPermissionWithContext: jest.fn(),
+  hasPermissionForUser: jest.fn(),
 }));
 
 jest.mock("@/lib/queue", () => ({
@@ -141,10 +142,13 @@ const {
   isAuthError: jest.Mock;
 };
 
-const { checkPermissionWithContext: mockCheckPermissionWithContext } =
-  jest.requireMock("@/lib/rbac/middleware") as {
-    checkPermissionWithContext: jest.Mock;
-  };
+const {
+  checkPermissionWithContext: mockCheckPermissionWithContext,
+  hasPermissionForUser: mockHasPermissionForUser,
+} = jest.requireMock("@/lib/rbac/middleware") as {
+  checkPermissionWithContext: jest.Mock;
+  hasPermissionForUser: jest.Mock;
+};
 
 const {
   addTestToQueue: mockAddTestToQueue,
@@ -259,6 +263,7 @@ describe("Execution route regressions", () => {
     mockRequireAuthContext.mockResolvedValue(authCtx);
     mockIsAuthError.mockReturnValue(false);
     mockCheckPermissionWithContext.mockReturnValue(true);
+    mockHasPermissionForUser.mockResolvedValue(true);
 
     mockPlaywrightValidationService.validateCode.mockReturnValue({
       valid: true,
@@ -799,6 +804,44 @@ describe("Execution route regressions", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  // Covers an owner who was demoted to viewer, removed from the project or org, or removed
+  // while the key was being created: the key itself stays enabled, so the check must run here.
+  it("POST /api/jobs/[id]/trigger rejects a key whose owner can no longer trigger the job", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000013";
+    mockDb.select
+      .mockReturnValueOnce(triggerKeySelect(jobId, { userId: "key-owner" }))
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([
+              {
+                id: jobId, name: "Nightly", status: "passed", createdByUserId: "key-owner",
+                organizationId: "org-1", projectId: "project-1", jobType: "playwright",
+              },
+            ]),
+          }),
+        }),
+      });
+    mockHasPermissionForUser.mockResolvedValueOnce(false);
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(mockHasPermissionForUser).toHaveBeenCalledWith("key-owner", "job", "trigger", {
+      organizationId: "org-1",
+      projectId: "project-1",
+    });
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockAddJobToQueue).not.toHaveBeenCalled();
   });
 
   it.each([

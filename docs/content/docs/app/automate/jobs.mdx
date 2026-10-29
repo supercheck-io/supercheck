@@ -140,6 +140,8 @@ Trigger jobs from your CI/CD pipeline to run tests after every deployment.
 
 Create a job trigger key, store it as a secret in your CI/CD platform, and call the copied trigger URL after deployment. To make the pipeline wait for the result and fail when tests fail, use the [CLI CI/CD workflow](/docs/cli/ci-cd) with `supercheck job trigger --wait`.
 
+A trigger key acts as the user who created it. If that user can no longer trigger the job, for example after a role change or removal from the project, the key is refused with `403` until someone with access creates a new one.
+
 <p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
 
 <div className="overflow-x-auto" role="region" aria-label="Jobs workflow diagram" tabIndex={0}>
