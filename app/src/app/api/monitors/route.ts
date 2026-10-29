@@ -38,7 +38,7 @@ import {
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
-import { normalizeMonitorAlertConfig, providerIdsOutsideProject } from "@/lib/monitor-write";
+import { normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -318,6 +318,11 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    const syntheticCreateError = syntheticFrequencyError(rawData.type, rawData.frequencyMinutes ?? 5);
+    if (syntheticCreateError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticCreateError }, { status: 400 });
     }
 
     const trialIntervalError = await trialFrequencyError(organizationId, rawData.frequencyMinutes ?? 5);
@@ -675,6 +680,7 @@ export async function PUT(req: NextRequest) {
         projectId: monitors.projectId,
         organizationId: monitors.organizationId,
         type: monitors.type,
+        frequencyMinutes: monitors.frequencyMinutes,
         status: monitors.status,
         alertConfig: monitors.alertConfig,
         target: monitors.target,
@@ -726,6 +732,14 @@ export async function PUT(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    const syntheticUpdateError = syntheticFrequencyError(
+      rawData.type ?? monitorData[0].type,
+      rawData.frequencyMinutes ?? monitorData[0].frequencyMinutes,
+    );
+    if (syntheticUpdateError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticUpdateError }, { status: 400 });
     }
 
     if (rawData.frequencyMinutes !== undefined) {

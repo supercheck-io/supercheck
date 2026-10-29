@@ -34,6 +34,7 @@ import {
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
   replaceMonitorProviders,
+  syntheticFrequencyError,
   testInProject,
 } from "@/lib/monitor-write";
 import {
@@ -204,6 +205,14 @@ export async function PUT(
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    const syntheticError = syntheticFrequencyError(
+      rawData.type ?? currentMonitor.type,
+      rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+    );
+    if (syntheticError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticError }, { status: 400 });
     }
 
     if (rawData.frequencyMinutes !== undefined) {
@@ -750,6 +759,14 @@ export async function PATCH(
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    const syntheticError = syntheticFrequencyError(
+      rawData.type ?? currentMonitor.type,
+      rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+    );
+    if (syntheticError) {
+      return NextResponse.json({ error: "Invalid frequency", details: syntheticError }, { status: 400 });
     }
 
     if (rawData.frequencyMinutes !== undefined) {

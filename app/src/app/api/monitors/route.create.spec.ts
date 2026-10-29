@@ -89,3 +89,15 @@ it("removes the new monitor when it cannot be scheduled, so a retry does not dup
   expect(res.status).toBe(500);
   expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });
+
+it("rejects a synthetic monitor that runs more often than every 5 minutes", async () => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "synthetic_test", frequencyMinutes: 1, config: { testId: "00000000-0000-4000-8000-0000000000bb" } }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});

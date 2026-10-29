@@ -1263,6 +1263,8 @@ const Playground: React.FC<PlaygroundProps> = ({
     // Use errorAnalysis for debugging purposes
     if (_errorAnalysis && process.env.NODE_ENV === "development") {
     }
+    // A failed fix must not leave the diff viewer open with an empty script.
+    setShowAIDiff(false);
     setGuidanceMessage(guidance);
     setShowGuidanceModal(true);
   };

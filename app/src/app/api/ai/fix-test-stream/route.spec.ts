@@ -49,6 +49,18 @@ describe("streaming AI Fix artifact access", () => {
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
   });
+  it.each([["streaming", POST], ["regular", fixTest]] as const)("reads the %s Playwright report from the newest run's directory, not the test id", async (_name, post) => {
+    await post(new NextRequest("http://localhost/api/ai/fix-test", { method: "POST",
+      body: JSON.stringify({ testId: "saved-test-id", testType: "browser", failedScript: "test('example', async () => {})" }) }));
+    const { __send: send } = jest.requireMock("@aws-sdk/client-s3") as { __send: jest.Mock };
+    const { ListObjectsV2Command } = jest.requireMock("@aws-sdk/client-s3") as { ListObjectsV2Command: jest.Mock };
+    const keys = [
+      ...ListObjectsV2Command.mock.calls.map(([input]) => input.Prefix),
+      ...send.mock.calls.map(([command]) => command?.input?.Key).filter(Boolean),
+    ];
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((key: string) => key.startsWith("latest-run-id/report/"))).toBe(true);
+  });
   it.each([null, "job-id"])("selects the newest canonical run and worker artifact layout (job=%s)", async (jobId) => {
     jest.mocked(db.query.runs.findFirst).mockResolvedValue({ id: "latest-run-id", jobId } as never);
     expect((await POST(request())).status).toBe(200);

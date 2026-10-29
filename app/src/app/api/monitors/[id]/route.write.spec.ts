@@ -199,3 +199,23 @@ describe("monitor PATCH alertConfig (c12)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("synthetic monitors keep the 5-minute minimum", () => {
+  const synthetic = { ...stored, type: "synthetic_test", config: { testId: "t" } };
+  it.each([["PUT", PUT], ["PATCH", PATCH]] as const)("%s rejects a 1-minute synthetic frequency", async (method, handler) => {
+    findFirst.mockResolvedValue(synthetic);
+    const res = await call(handler, method, { frequencyMinutes: 1 });
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+  it("PUT rejects switching a 1-minute monitor to synthetic", async () => {
+    findFirst.mockResolvedValue({ ...stored, frequencyMinutes: 1 });
+    const res = await call(PUT, "PUT", { type: "synthetic_test", config: { testId: "t" } });
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+  it("still allows 1 minute for non-synthetic monitors", async () => {
+    const res = await call(PATCH, "PATCH", { frequencyMinutes: 1 });
+    expect(res.status).not.toBe(400);
+  });
+});
