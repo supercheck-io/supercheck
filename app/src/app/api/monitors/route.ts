@@ -734,7 +734,8 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    const syntheticUpdateError = syntheticFrequencyError(
+    // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
+    const syntheticUpdateError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
       rawData.type ?? monitorData[0].type,
       rawData.frequencyMinutes ?? monitorData[0].frequencyMinutes,
     );

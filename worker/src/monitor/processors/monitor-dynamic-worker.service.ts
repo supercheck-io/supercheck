@@ -409,16 +409,16 @@ export class MonitorDynamicWorkerService
       const result = pending
         ? pending
         : saved
-        ? {
-            ...saved,
-            details: saved.details ?? undefined,
-            responseTimeMs: saved.responseTimeMs ?? undefined,
-            testExecutionId: saved.testExecutionId ?? undefined,
-            testReportS3Url: saved.testReportS3Url ?? undefined,
-          }
-        : await this.executeOrDefer(job, () =>
-            this.monitorService.executeMonitor(job.data, jobLocation),
-          );
+          ? {
+              ...saved,
+              details: saved.details ?? undefined,
+              responseTimeMs: saved.responseTimeMs ?? undefined,
+              testExecutionId: saved.testExecutionId ?? undefined,
+              testReportS3Url: saved.testReportS3Url ?? undefined,
+            }
+          : await this.executeOrDefer(job, () =>
+              this.monitorService.executeMonitor(job.data, jobLocation),
+            );
 
       if (!result) {
         // null means the check was deliberately not run: the monitor is paused, billing is on hold, the
@@ -442,7 +442,8 @@ export class MonitorDynamicWorkerService
           await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
           throw new DelayedError();
         }
-        if (!saved) {
+        // Without a group id a retry cannot see an already-inserted row, so it would insert a duplicate.
+        if (!saved && job.data.executionGroupId) {
           await job
             .updateData({
               ...job.data,
@@ -661,9 +662,7 @@ export class MonitorDynamicWorkerService
 
     // Only saving failed: record the check's real outcome, not a synthetic error that reads as downtime.
     const pending = existing ? undefined : pendingResultOf(job);
-    const errorResult: MonitorExecutionResult = pending
-      ? pending
-      : existing
+    const errorResult: MonitorExecutionResult = existing
       ? {
           ...existing,
           details: existing.details ?? undefined,
@@ -682,13 +681,28 @@ export class MonitorDynamicWorkerService
           },
         };
 
-    try {
-      await this.monitorService.saveDistributedMonitorResult(errorResult, {
+    const save = (result: MonitorExecutionResult, persisted: boolean) =>
+      this.monitorService.saveDistributedMonitorResult(result, {
         executionGroupId,
         expectedLocations,
         ...(job.data.monitorCycle ? { monitorCycle: true } : {}),
-        ...(existing ? { persisted: true } : {}),
+        ...(persisted ? { persisted: true } : {}),
       });
+    try {
+      if (pending) {
+        try {
+          await save(pending, false);
+          return;
+        } catch (pendingError) {
+          if (pendingError instanceof MonitorAggregationBusyError)
+            throw pendingError;
+          // The stored result itself cannot be saved; an error row still lets the group close.
+          this.logger.warn(
+            `Stored result for ${monitorId}/${executionLocation} could not be saved, recording an error result: ${getErrorMessage(pendingError)}`,
+          );
+        }
+      }
+      await save(errorResult, !!existing);
     } catch (aggregationError) {
       if (!(aggregationError instanceof MonitorAggregationBusyError))
         throw aggregationError;

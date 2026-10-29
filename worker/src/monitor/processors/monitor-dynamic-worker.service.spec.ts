@@ -1200,7 +1200,9 @@ describe('a completed check whose result failed to save', () => {
       {
         db: {
           query: {
-            monitorResults: { findFirst: jest.fn().mockResolvedValue(undefined) },
+            monitorResults: {
+              findFirst: jest.fn().mockResolvedValue(undefined),
+            },
           },
         },
       } as unknown as DbService,
@@ -1218,12 +1220,21 @@ describe('a completed check whose result failed to save', () => {
     const updateData = jest.fn().mockResolvedValue(undefined);
     const job = {
       name: EXECUTE_MONITOR_JOB_NAME,
-      data: { monitorId: 'monitor-1', executionLocation: 'eu', executionGroupId: 'g' },
+      data: {
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'g',
+      },
       updateData,
     };
-    await expect(service['processJob'](job as never)).rejects.toThrow('db down');
+    await expect(service['processJob'](job as never)).rejects.toThrow(
+      'db down',
+    );
     const kept = updateData.mock.calls[0][0];
-    expect(kept).toMatchObject({ aggregationOnly: true, _pendingResult: result });
+    expect(kept).toMatchObject({
+      aggregationOnly: true,
+      _pendingResult: result,
+    });
 
     // BullMQ stores job data as JSON, so the retry sees a string date.
     job.data = JSON.parse(JSON.stringify(kept));
@@ -1234,6 +1245,50 @@ describe('a completed check whose result failed to save', () => {
       expect.objectContaining({ status: 'down', checkedAt: result.checkedAt }),
       expect.not.objectContaining({ persisted: true }),
     );
+  });
+
+  it('falls back to an error row when the stored result itself cannot be saved', async () => {
+    const save = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('value too long'))
+      .mockResolvedValue(undefined);
+    const service = build(save);
+    const data = JSON.parse(
+      JSON.stringify({
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'g',
+        aggregationOnly: true,
+        _pendingResult: result,
+      }),
+    );
+    await service['handleFinalJobFailure'](
+      {
+        data,
+        attemptsMade: 3,
+        getState: jest.fn().mockResolvedValue('failed'),
+      } as never,
+      new Error('value too long'),
+    );
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'error' }),
+      expect.anything(),
+    );
+  });
+
+  it('does not keep a result for a job without a group, whose retry could not see a saved row', async () => {
+    const save = jest.fn().mockRejectedValueOnce(new Error('db down'));
+    const service = build(save, jest.fn().mockResolvedValue(result));
+    const updateData = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      service['processJob']({
+        name: EXECUTE_MONITOR_JOB_NAME,
+        data: { monitorId: 'monitor-1', executionLocation: 'eu' },
+        updateData,
+      } as never),
+    ).rejects.toThrow('db down');
+    expect(updateData).not.toHaveBeenCalled();
   });
 
   it('records the real outcome, not a synthetic error, once save retries run out', async () => {
@@ -1249,7 +1304,11 @@ describe('a completed check whose result failed to save', () => {
       }),
     );
     await service['handleFinalJobFailure'](
-      { data, attemptsMade: 3, getState: jest.fn().mockResolvedValue('failed') } as never,
+      {
+        data,
+        attemptsMade: 3,
+        getState: jest.fn().mockResolvedValue('failed'),
+      } as never,
       new Error('db down'),
     );
     expect(save).toHaveBeenCalledWith(

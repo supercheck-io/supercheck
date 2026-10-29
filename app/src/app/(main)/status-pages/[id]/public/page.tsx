@@ -27,7 +27,10 @@ export default async function PublicStatusPagePage({
   const componentsResult = await getComponents(resolvedParams.id);
   const incidentsResult = await getIncidents(resolvedParams.id);
   // getComponents has already checked status_page:view; the preview needs the same uptime bars as the public page.
-  const components = await withDailyMetrics(componentsResult.components);
+  const components = await withDailyMetrics(componentsResult.components).catch((error) => {
+    console.error("Error loading status page preview uptime:", error);
+    return componentsResult.components;
+  });
 
   const breadcrumbs = [
     { label: "Home", href: "/" },

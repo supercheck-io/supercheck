@@ -207,7 +207,8 @@ export async function PUT(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const syntheticError = syntheticFrequencyError(
+    // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
+    const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
       rawData.type ?? currentMonitor.type,
       rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
     );
@@ -761,7 +762,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    const syntheticError = syntheticFrequencyError(
+    // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
+    const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
       rawData.type ?? currentMonitor.type,
       rawData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
     );

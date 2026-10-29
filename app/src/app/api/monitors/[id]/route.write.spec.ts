@@ -214,6 +214,14 @@ describe("synthetic monitors keep the 5-minute minimum", () => {
     expect(res.status).toBe(400);
     expect(set).not.toHaveBeenCalled();
   });
+  it.each([["PATCH", PATCH, { enabled: false }], ["PUT", PUT, { name: "renamed" }]] as const)(
+    "%s still pauses or renames a legacy sub-5-minute synthetic monitor",
+    async (method, handler, body) => {
+      findFirst.mockResolvedValue({ ...synthetic, frequencyMinutes: 1 });
+      const res = await call(handler, method, body);
+      expect(await res.json()).not.toMatchObject({ error: "Invalid frequency" });
+    },
+  );
   it("still allows 1 minute for non-synthetic monitors", async () => {
     const res = await call(PATCH, "PATCH", { frequencyMinutes: 1 });
     expect(res.status).not.toBe(400);
