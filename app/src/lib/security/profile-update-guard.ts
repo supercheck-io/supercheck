@@ -1,11 +1,12 @@
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { avatarVersionOf } from "@/lib/user-avatar-path";
+import { isAvatarPreset } from "@/lib/avatar-presets";
 import type { AuthHookContext } from "./login-lockout-hooks";
 
 /**
  * Server-side rules for Better Auth's /update-user and /sign-up/email, which browsers call directly:
  * no profile edits while impersonating, and `image` may only be cleared, kept, or set
- * to the user's own uploaded avatar (any other URL would be loaded by every viewer).
+ * to a preset or the user's own uploaded avatar (any other URL would be loaded by every viewer).
  */
 export async function guardProfileUpdate(ctx: AuthHookContext) {
   const body = (ctx.body ?? {}) as Record<string, unknown>;
@@ -32,6 +33,7 @@ export async function guardProfileUpdate(ctx: AuthHookContext) {
     const allowed =
       image === null ||
       image === session.user.image ||
+      isAvatarPreset(image) ||
       (typeof image === "string" && avatarVersionOf(session.user.id, image) !== null);
     if (!allowed) {
       throw new APIError("BAD_REQUEST", { message: "Upload a photo from your account settings" });

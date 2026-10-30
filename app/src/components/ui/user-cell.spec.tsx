@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { UserAvatar, UserCell, avatarColor, initials, isSafeAvatarUrl } from "./user-cell";
+import { AVATAR_PRESETS, defaultAvatarFor } from "@/lib/avatar-presets";
 
 describe("initials", () => {
   it("uses the first letter of up to two words", () => {
@@ -32,7 +33,7 @@ describe("avatarColor", () => {
 });
 
 describe("UserAvatar", () => {
-  it("shows initials for a person", () => {
+  it("shows initials until the image loads", () => {
     render(<UserAvatar name="Ada Lovelace" />);
     expect(screen.getByText("AL")).toBeInTheDocument();
   });
@@ -64,10 +65,20 @@ describe("UserAvatar image source", () => {
     expect(imgSrc(container)).toBe(appAvatar);
   });
 
-  it("never loads an arbitrary URL for someone else", () => {
+  it("never loads an arbitrary URL for someone else, showing their default preset instead", () => {
     const { container } = render(<UserAvatar name="Ada" image="https://evil.example/t.png" />);
-    expect(imgSrc(container)).toBeNull();
-    expect(screen.getByText("AD")).toBeInTheDocument();
+    expect(imgSrc(container)).toBe(defaultAvatarFor("Ada"));
+  });
+
+  it("shows a stable default preset when there is no photo", () => {
+    const { container } = render(<UserAvatar name="Ada Lovelace" />);
+    expect(imgSrc(container)).toBe(defaultAvatarFor("Ada Lovelace"));
+    expect(AVATAR_PRESETS).toContain(defaultAvatarFor("Ada Lovelace"));
+  });
+
+  it("renders a chosen preset", () => {
+    const { container } = render(<UserAvatar name="Ada" image={AVATAR_PRESETS[3]} />);
+    expect(imgSrc(container)).toBe(AVATAR_PRESETS[3]);
   });
 
   it("loads an external photo only when allowed (own account)", () => {
@@ -88,6 +99,7 @@ describe("isSafeAvatarUrl", () => {
     "https://avatars.githubusercontent.com/u/12345?v=4",
     "https://lh3.googleusercontent.com/a/ACg8ocK=s96-c",
     "https://lh5.googleusercontent.com/a-/AOh14Gi",
+    "/avatars/notionists-01.svg",
   ])("allows %s", (url) => expect(isSafeAvatarUrl(url)).toBe(true));
 
   it.each([
@@ -101,6 +113,8 @@ describe("isSafeAvatarUrl", () => {
     "//avatars.githubusercontent.com/u/1",
     "javascript:alert(1)",
     "/api/users/me/avatar",
+    "/avatars/notionists-99.svg",
+    "/avatars/../api/x.svg",
   ])("rejects %s", (url) => expect(isSafeAvatarUrl(url)).toBe(false));
 });
 

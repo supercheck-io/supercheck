@@ -5,6 +5,10 @@ import { toast } from "sonner";
 import { authClient, useSession } from "@/utils/auth-client";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { UserAvatar } from "@/components/ui/user-cell";
+import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import { AVATAR_PRESETS, defaultAvatarFor, isAvatarPreset } from "@/lib/avatar-presets";
+import { cn } from "@/lib/utils";
+import * as RadioGroup from "@radix-ui/react-radio-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,23 +48,48 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   // The server blocks photo changes while impersonating; keep the whole form read-only for consistency.
   const impersonating = !!(session?.session as { impersonatedBy?: string | null } | undefined)?.impersonatedBy;
   const [name, setName] = useState(user?.name ?? "");
+  // A chosen preset is staged until Save; uploads and removals apply at once.
+  const [preset, setPreset] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const trimmed = name.trim();
   const nameError = trimmed.length < 1 ? "Name is required" : trimmed.length > 100 ? "Name must be 100 characters or fewer" : null;
-  const dirty = trimmed !== (user?.name ?? "");
+  const nameDirty = trimmed !== (user?.name ?? "");
+  // The picture shown today: an uploaded photo, a chosen preset, or the default preset for the name.
+  const current = user?.image ?? defaultAvatarFor(user?.name || user?.email || "");
+  const selected = preset ?? current;
+  // Compared with the stored image, so picking the shown default saves it and a later rename keeps it.
+  const presetDirty = preset !== null && preset !== user?.image;
+  const dirty = nameDirty || presetDirty;
 
-  async function saveName(event: React.FormEvent) {
+  async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (nameError || !dirty) return;
+    if (!dirty || (nameDirty && nameError)) return;
     setSaving(true);
-    const { error } = await authClient.updateUser({ name: trimmed });
-    setSaving(false);
-    if (error) return void toast.error("Could not update your name");
-    toast.success("Profile updated");
-    onClose();
+    try {
+      if (presetDirty) {
+        const response = await fetch("/api/users/me/avatar", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preset }),
+        });
+        if (!response.ok) throw new Error("Could not update your avatar");
+      }
+      if (nameDirty) {
+        const { error } = await authClient.updateUser({ name: trimmed });
+        if (error) throw new Error("Could not update your name");
+      }
+      refreshSession();
+      toast.success("Profile updated");
+      onClose();
+    } catch (error) {
+      refreshSession(); // The avatar may have saved before the name failed.
+      toast.error(error instanceof Error ? error.message : "Could not update your profile");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function uploadPhoto(file: File) {
@@ -75,6 +104,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
         const data = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? "Upload failed");
       }
+      setPreset(null);
       refreshSession();
       toast.success("Photo updated");
     } catch (error) {
@@ -90,6 +120,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
     try {
       const response = await fetch("/api/users/me/avatar", { method: "DELETE" });
       if (!response.ok) throw new Error("Could not remove photo");
+      setPreset(null);
       refreshSession();
       toast.success("Photo removed");
     } catch (error) {
@@ -102,13 +133,14 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <UserAvatar name={user?.name || user?.email} image={user?.image} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
+        <UserAvatar name={user?.name || user?.email} image={selected} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
         <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={photoBusy || impersonating} onClick={() => fileInput.current?.click()}>
-            Change photo
+          <Button type="button" variant="outline" size="sm" disabled={photoBusy || saving || impersonating} onClick={() => fileInput.current?.click()}>
+            Upload photo
           </Button>
-          {user?.image && (
-            <Button type="button" variant="ghost" size="sm" disabled={photoBusy || impersonating} onClick={removePhoto}>
+          {/* Only an uploaded or sign-in photo can be removed; presets are switched in the grid. */}
+          {user?.image && !isAvatarPreset(user.image) && (
+            <Button type="button" variant="ghost" size="sm" disabled={photoBusy || saving || impersonating} onClick={removePhoto}>
               Remove photo
             </Button>
           )}
@@ -123,18 +155,44 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <form onSubmit={saveName} className="space-y-4">
+      <form onSubmit={save} className="space-y-4">
+        <fieldset className="space-y-2" disabled={!user || impersonating || saving || photoBusy}>
+          <legend className="text-sm font-medium leading-none">Avatar</legend>
+          <RadioGroup.Root
+            value={selected}
+            onValueChange={setPreset}
+            className="grid grid-cols-6 gap-2 pt-2 sm:grid-cols-8"
+          >
+            {AVATAR_PRESETS.map((src, i) => (
+              <RadioGroup.Item
+                key={src}
+                value={src}
+                aria-label={`Avatar ${i + 1}`}
+                // Radix skips onValueChange for the checked item; clicking the shown default should still save it.
+                onClick={() => setPreset(src)}
+                className={cn(
+                  "w-fit rounded-full outline-none ring-offset-2 ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                  "data-[state=checked]:ring-2 data-[state=checked]:ring-primary data-[state=unchecked]:hover:opacity-80",
+                )}
+              >
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={src} alt="" />
+                </Avatar>
+              </RadioGroup.Item>
+            ))}
+          </RadioGroup.Root>
+        </fieldset>
         <div className="space-y-2">
           <Label htmlFor="account-name">Name</Label>
           <Input id="account-name" disabled={impersonating} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!nameError} />
-          {nameError && dirty && <p role="alert" className="text-xs text-destructive">{nameError}</p>}
+          {nameError && nameDirty && <p role="alert" className="text-xs text-destructive">{nameError}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="account-email">Email</Label>
           <Input id="account-email" value={user?.email ?? ""} readOnly disabled />
         </div>
         <div className="flex justify-end">
-          <Button type="submit" disabled={impersonating || saving || !dirty || !!nameError}>{saving ? "Saving..." : "Save changes"}</Button>
+          <Button type="submit" disabled={impersonating || saving || photoBusy || !dirty || (nameDirty && !!nameError)}>{saving ? "Saving..." : "Save changes"}</Button>
         </div>
       </form>
       <LeaveOrganizationDialog />
@@ -144,7 +202,9 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
 
 export function AccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { isMcpEnabled } = useAppConfig();
-  const profile = <ProfileTab onClose={() => onOpenChange(false)} />;
+  const { data: session } = useSession();
+  // Remount once the session loads, so the name field starts from the real name.
+  const profile = <ProfileTab key={session?.user?.id ?? "loading"} onClose={() => onOpenChange(false)} />;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
