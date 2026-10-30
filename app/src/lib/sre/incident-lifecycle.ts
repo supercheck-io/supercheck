@@ -198,7 +198,7 @@ function notify(
   actor: IncidentActor,
   incidentId: string,
   event: IncidentNotifyEvent,
-  extra: { assigneeUserId?: string | null } = {},
+  extra: { assigneeUserId?: string | null; previousAssigneeUserId?: string | null } = {},
 ) {
   // Never let a delivery problem fail the user action; the notifier logs its own errors.
   void notifyIncidentEvent({
@@ -299,7 +299,7 @@ export async function assignIncident(
       previousAssigneeUserId: result.previous,
     });
     if (assigneeUserId && role === "assignee") {
-      notify(actor, incidentId, "assigned", { assigneeUserId });
+      notify(actor, incidentId, "assigned", { assigneeUserId, previousAssigneeUserId: result.previous });
     }
   }
   return { ok: true, incident: result.incident, changed: result.changed };
@@ -670,6 +670,33 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
 }
 
 /**
+ * Record a failure that came back on an open incident after its recovery note, so the
+ * timeline shows it and the next recovery is noted again.
+ */
+export async function noteFailureReturned(tx: Executor, incidentId: string) {
+  const [lastState] = await tx
+    .select({ state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'` })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, incidentId),
+        eq(sreIncidentTimelineEvents.eventType, "state_change"),
+      ),
+    )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+    .limit(1);
+  if (lastState?.state !== "recovered") return false;
+  await tx.insert(sreIncidentTimelineEvents).values({
+    incidentId,
+    eventType: "state_change",
+    eventData: { state: "failure_returned", comment: "The check failed again after recovering" },
+    actorType: "system",
+    createdAt: new Date(),
+  });
+  return true;
+}
+
+/**
  * Reopen the source's most recent trigger incident when it was auto-resolved
  * within the reopen window and no other incident for the source is open.
  */
@@ -695,6 +722,8 @@ export async function reopenRecentlyAutoResolved(
     !latest ||
     latest.status !== "resolved" ||
     !latest.resolvedAt ||
+    // A failure that fired before the recovery was processed late; it is not the failure returning.
+    source.firedAt.getTime() < latest.resolvedAt.getTime() ||
     source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS
   ) {
     return null;

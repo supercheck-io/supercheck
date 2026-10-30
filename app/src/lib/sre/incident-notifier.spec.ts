@@ -24,6 +24,9 @@ jest.mock("@/lib/email-renderer", () => ({ renderIncidentUpdateEmail: (...args: 
 const mockWarn = jest.fn();
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockWarn(...a) }) }));
 
+let mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
+jest.mock("./incident-lifecycle", () => ({ listAssignableUsers: jest.fn(async () => mockAssignable) }));
+
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
 
@@ -44,6 +47,7 @@ const incident = { id: "inc-1", number: 7, title: "Checkout down", severity: "se
 beforeEach(() => {
   jest.clearAllMocks();
   selectQueue.length = 0;
+  mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
   redisSet.mockResolvedValue("OK");
   // Default: template fails, so the plain fallback email is what most tests check.
   renderIncidentUpdateEmail.mockRejectedValue(new Error("render unavailable"));
@@ -91,6 +95,41 @@ it("does not email the actor about their own assignment", async () => {
   selectQueue.push([incident], people, []);
   await notifyIncidentEvent({ ...base, assigneeUserId: "actor" });
   expect(sendEmailToMultiple).not.toHaveBeenCalled();
+});
+
+describe("participant emails", () => {
+  const participants = [
+    ...people,
+    { id: "commander", name: "Lin", email: "lin@example.com" },
+    { id: "previous", name: "Bo", email: "bo@example.com" },
+  ];
+
+  it("emails the owner and commander when someone else acknowledges", async () => {
+    selectQueue.push([{ ...incident, commanderUserId: "commander" }], participants, []);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ada@example.com", "lin@example.com"]);
+  });
+
+  it("tells the previous owner on a reassignment", async () => {
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, previousAssigneeUserId: "previous" });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ada@example.com", "bo@example.com"]);
+  });
+
+  it("skips people who can no longer act on the incident", async () => {
+    mockAssignable = [{ id: "actor" }];
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
+  it("emails a participant about a flapping reopen at most once per window", async () => {
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "reopened", actorUserId: null, assigneeUserId: null });
+    expect(redisSet).toHaveBeenCalledWith("supercheck:sre:incident-email:inc-1:reopened:assignee", "1", "EX", 600, "NX");
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
 });
 
 it("posts to providers linked to the triggering monitor and skips invalid configs", async () => {

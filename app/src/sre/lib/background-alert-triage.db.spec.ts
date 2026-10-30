@@ -187,6 +187,25 @@ it("leaves an acknowledged incident open on recovery with a single recovered not
   expect((await states(row.id)).filter((s) => s === "recovered")).toHaveLength(1);
 });
 
+it("notes a failure that returns on an acknowledged incident, then notes the next recovery again", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [open] = await incidents();
+  await mockDatabase.update(schema.sreIncidents).set({ acknowledgedAt: minutes(1), acknowledgedByUserId: userId }).where(eq(schema.sreIncidents.id, open.id));
+  await alert("monitor_recovery", minutes(10));
+  await alert("monitor_failure", minutes(12));
+  await alert("monitor_recovery", minutes(14));
+  expect((await states(open.id)).slice(1)).toEqual(["recovered", "failure_returned", "recovered"]);
+});
+
+it("does not reopen on a failure that fired before the automatic recovery", async () => {
+  await alert("monitor_failure", minutes(0));
+  await alert("monitor_recovery", minutes(10));
+  await alert("job_failed", minutes(9), { job: false });
+  const rows = await incidents();
+  expect(rows[0].status).toBe("resolved");
+  expect(await states(rows[0].id)).not.toContain("reopened");
+});
+
 it("does not reopen an incident a person resolved, even within the window", async () => {
   await alert("monitor_failure", minutes(0));
   await alert("monitor_recovery", minutes(5));

@@ -53,6 +53,8 @@ type IncidentNotifyInput = {
   actorUserId?: string | null;
   /** Assignee for `assigned` / `created`; receives a direct email. */
   assigneeUserId?: string | null;
+  /** The assignee being replaced on `assigned`; told the incident moved. */
+  previousAssigneeUserId?: string | null;
   /** Short, already-safe text (for example an AI conclusion headline). */
   detail?: string;
   /** Distinguishes repeats of one event, such as the investigation run id. */
@@ -293,6 +295,39 @@ async function sendToProvider(
   }
 }
 
+// System events can repeat every check cycle while a monitor flaps.
+const SYSTEM_EVENTS: IncidentNotifyEvent[] = ["recovered", "reopened"];
+
+/** Emails of participants who can still act on the incident, at most one per person per window for system events. */
+async function participantEmails(
+  input: IncidentNotifyInput,
+  participantIds: string[],
+  person: (id?: string | null) => { email: string } | undefined,
+) {
+  if (participantIds.length === 0) return [];
+  // Lazy import: incident-lifecycle imports this module.
+  const { listAssignableUsers } = await import("./incident-lifecycle");
+  const assignable = new Set((await listAssignableUsers(input.organizationId, input.projectId)).map((row) => row.id));
+  const emails: string[] = [];
+  for (const id of participantIds) {
+    const email = person(id)?.email;
+    if (!email || !assignable.has(id)) continue;
+    if (SYSTEM_EVENTS.includes(input.event) && !(await claimRecipient(input, id))) continue;
+    emails.push(email);
+  }
+  return emails;
+}
+
+async function claimRecipient(input: IncidentNotifyInput, userId: string) {
+  try {
+    const redis = await getRedisConnection();
+    const key = `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
+    return (await redis.set(key, "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
+  } catch {
+    return true;
+  }
+}
+
 /** True when a failure alert for this source was delivered (status `sent`) in the last 15 minutes. */
 async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string) {
   const rows = await db
@@ -328,6 +363,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
+        commanderUserId: sreIncidents.commanderUserId,
         serviceName: sreServices.name,
       })
       .from(sreIncidents)
@@ -345,10 +381,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
 
-    // Direct email to the person who now owns it (not to themselves).
-    const directTo = ["assigned", "created", "recovered", "reopened"].includes(input.event) ? input.assigneeUserId : null;
+    // Participants (owner, commander, and the owner being replaced) get a direct email for
+    // every lifecycle change, like ticket watchers; never the person who made the change.
     const ownerId = input.assigneeUserId ?? incident.assigneeUserId;
-    const personIds = [...new Set([input.actorUserId, ownerId, directTo].filter((id): id is string => Boolean(id)))];
+    const participantIds =
+      input.event === "ai_finding"
+        ? []
+        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId])].filter(
+            (id): id is string => Boolean(id) && id !== input.actorUserId,
+          );
+    const personIds = [...new Set([input.actorUserId, ownerId, ...participantIds].filter((id): id is string => Boolean(id)))];
     // Names are cosmetic: a failed lookup must not stop the channel posts below.
     const people = personIds.length
       ? await db
@@ -396,12 +438,12 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       },
     };
 
-    const directEmail = person(directTo)?.email;
-    if (directTo && directTo !== input.actorUserId && directEmail) {
+    const directEmails = await participantEmails(input, participantIds, person);
+    if (directEmails.length > 0) {
       try {
-        await sendEmail([directEmail], message);
+        await sendEmail(directEmails, message);
       } catch (error) {
-        logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to assignee failed");
+        logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }
 

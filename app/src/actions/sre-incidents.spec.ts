@@ -11,7 +11,7 @@ jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRuns
 jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
-jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn() }));
+jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
 jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
@@ -98,6 +98,29 @@ describe("getSreIncidentDetails investigation summary", () => {
     })).resolves.toEqual({ success: false, error: "Incident changed by another request — reload and try again" });
     expect(insert).not.toHaveBeenCalled();
     expect(jest.requireMock("@/lib/audit-logger").logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("reopening from the editor clears the acknowledgement, records the reopen and notifies", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved" });
+    const sets: Array<Record<string, unknown>> = [];
+    const inserted: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async (values: Record<string, unknown>) => { inserted.push(values); } }),
+    }));
+    const result = await updateSreIncident({
+      id: incidentId, title: "Checkout down", severity: "sev2", status: "investigating", primaryServiceId: null,
+    });
+    expect(result).toMatchObject({ success: true });
+    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, resolvedAt: null });
+    expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);
+    expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId, event: "reopened" }),
+    );
   });
 
   it("groups by every plain column the detail query selects (Postgres rejects the rest)", async () => {

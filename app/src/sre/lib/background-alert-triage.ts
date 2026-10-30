@@ -31,6 +31,7 @@ import {
   announceSystemTransition,
   applySourceRecovery,
   findOpenIncidentForSource,
+  noteFailureReturned,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
@@ -401,6 +402,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     const [existingIncident] = await tx
       .select({
         id: sreIncidents.id,
+        status: sreIncidents.status,
         triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
       })
       .from(sreIncidentAlerts)
@@ -423,6 +425,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       .limit(1);
 
     if (existingIncident) {
+      if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+        await noteFailureReturned(tx, existingIncident.id);
+      }
       return {
         skipped: false as const,
         organizationId,
@@ -463,6 +468,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
           .insert(sreIncidentAlerts)
           .values({ incidentId: openForSource.id, alertEventId: alertEvent.id, role: "related", createdAt: new Date() })
           .onConflictDoNothing();
+        await noteFailureReturned(tx, openForSource.id);
         return {
           skipped: false as const,
           organizationId,

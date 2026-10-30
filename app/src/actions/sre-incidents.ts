@@ -1344,6 +1344,7 @@ export async function updateSreIncident(
     }
 
     const now = new Date();
+    const reopening = current.status === "resolved" && parsed.data.status !== "resolved";
     const incident = await db.transaction(async (tx) => {
       const [updatedIncident] = await tx
         .update(sreIncidents)
@@ -1359,9 +1360,15 @@ export async function updateSreIncident(
           ...(parsed.data.status === "verifying" && !current.mitigatedAt
             ? { mitigatedAt: now }
             : {}),
-          // A reopened incident is no longer verified.
+          // A reopened incident is no longer verified, and needs a fresh acknowledgement.
           ...(parsed.data.status !== "resolved" && current.status === "resolved"
-            ? { verifiedAt: null, resolutionSummary: null }
+            ? {
+                verifiedAt: null,
+                resolutionSummary: null,
+                mitigatedAt: null,
+                acknowledgedAt: null,
+                acknowledgedByUserId: null,
+              }
             : {}),
           updatedAt: now,
         })
@@ -1406,6 +1413,16 @@ export async function updateSreIncident(
         actorUserId: userId,
         createdAt: now,
       });
+      if (reopening) {
+        await tx.insert(sreIncidentTimelineEvents).values({
+          incidentId: parsed.data.id,
+          eventType: "state_change",
+          eventData: { state: "reopened", comment: "Reopened from the incident editor" },
+          actorType: "user",
+          actorUserId: userId,
+          createdAt: now,
+        });
+      }
 
       return updatedIncident;
     });
@@ -1429,6 +1446,17 @@ export async function updateSreIncident(
       },
       success: true,
     });
+
+    if (reopening) {
+      void notifyIncidentEvent({
+        organizationId,
+        projectId: project.id,
+        incidentId: parsed.data.id,
+        event: "reopened",
+        actorUserId: userId,
+        dedupeDiscriminator: String(now.getTime()),
+      }).catch(() => undefined);
+    }
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${parsed.data.id}`);
