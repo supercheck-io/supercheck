@@ -17,29 +17,6 @@ function isSelfHosted() {
  * request preserves Host/SNI and certificate verification while preventing a
  * second DNS lookup from rebinding the request to an internal address.
  */
-/** Errors the body stream once it passes maxBytes, matching the pinned path's cap. */
-function capResponseBody(response: Response, maxBytes: number): Response {
-  if (!response.body) return response;
-  let total = 0;
-  const limited = response.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        total += chunk.byteLength;
-        if (total > maxBytes) {
-          controller.error(new Error(`Connector response exceeded ${maxBytes} bytes`));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  return new Response(limited, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
-
 async function fetchPinnedEndpoint(
   input: string | URL,
   init: RequestInit = {},
@@ -58,7 +35,7 @@ async function fetchPinnedEndpoint(
 
   if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
     // Self-hosted connector administrators intentionally may target private services.
-    return capResponseBody(await fetch(url, init), maxResponseBytes); // lgtm [js/request-forgery]
+    return fetch(url, init); // lgtm [js/request-forgery]
   }
 
   if (url.protocol !== "https:") {
@@ -156,12 +133,38 @@ async function fetchPinnedEndpoint(
   });
 }
 
+/** Errors the body stream once it passes maxBytes, matching the pinned path's cap. */
+function capResponseBody(response: Response, maxBytes: number): Response {
+  if (!response.body) return response;
+  let total = 0;
+  const limited = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          controller.error(new Error(`Connector response exceeded ${maxBytes} bytes`));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(limited, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export function fetchConnectorEndpoint(
   input: string | URL,
   init: RequestInit = {},
   maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
-  return fetchPinnedEndpoint(input, init, true, maxResponseBytes);
+  // The self-hosted private-network path uses plain fetch; give it the pinned path's body cap.
+  return fetchPinnedEndpoint(input, init, true, maxResponseBytes).then((response) =>
+    isSelfHosted() ? capResponseBody(response, maxResponseBytes) : response,
+  );
 }
 
 /** Public webhook variant: always validates and pins the destination. */
