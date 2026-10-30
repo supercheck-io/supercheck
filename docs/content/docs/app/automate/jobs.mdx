@@ -123,7 +123,7 @@ See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-bec
 
 ## Parallel execution
 
-Jobs and tests run in parallel up to your capacity. Select the **RUNNING / QUEUED** indicator in the header to inspect, open, or cancel active and waiting runs. Self-hosted installations configure concurrent and queued limits; see [Self-Hosted](/docs/app/deployment/self-hosted).
+Jobs and tests run in parallel up to your capacity; further runs wait in the queue until a slot frees. Select the **RUNNING / QUEUED** indicator in the header to inspect, open, or cancel active and waiting runs. Self-hosted installations configure concurrent and queued limits; see [Self-Hosted](/docs/app/deployment/self-hosted).
 
 ![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
 
@@ -279,6 +279,8 @@ Open a run to see its summary, per-test results, reports (screenshots, traces, l
 | **k6 performance job** | Exactly one test, 60 minutes per execution |
 
 k6 scripts are rejected when a literal `vus`, `maxVUs`, `preAllocatedVUs`, `startVUs`, or a VU stage target (top-level `stages` or `ramping-vus` scenarios) is above **1000**, or a literal duration is above 60 minutes.
+
+## Notifications and cleanup
 
 <Accordions>
 <Accordion title="Notification contents" id="notification-contents">

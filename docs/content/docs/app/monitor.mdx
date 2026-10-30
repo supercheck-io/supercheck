@@ -98,7 +98,7 @@ Simplified monitoring for web pages with built-in SSL tracking.
 - Public-facing web applications
 - SSL certificate expiration alerts
 
-Website monitors accept custom headers and Basic or Bearer authentication. They always send `GET` with no request body; use an HTTP monitor to send one.
+Website monitors accept custom headers and Basic or Bearer authentication. The form always sends `GET` with no request body; use an HTTP monitor to send another method or a body.
 
 ![Create Website Monitor](/screenshots/create-website-monitor.png)
 
@@ -312,7 +312,7 @@ A paginated table showing detailed results for each check:
 **Features:**
 - **Pagination** — Navigate through historical results (10 per page)
 - **Date Filter** — Filter results by specific date
-- **Location Filter** — Show results, uptime and response times for one location
+- **Location** — Use the location menu on the availability chart to show one location
 
 </Accordion>
 </Accordions>
@@ -351,7 +351,7 @@ A check cycle is skipped, not recorded as Down, when none of the monitor's locat
 
 ## Check Intervals
 
-Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources. A monitor created with another interval through the CLI or API keeps it when edited; the form shows it as **(current)**.
+Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
 <Callout type="info">
 Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.
