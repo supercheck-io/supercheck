@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from './db.service';
 
+/** Mirrored in app/src/lib/requirements/coverage-status.ts; keep both in sync (a spec pins the cases). */
+export function computeCoverageStatus(
+  linked: number,
+  passed: number,
+  failed: number,
+): 'covered' | 'failing' | 'missing' {
+  if (linked === 0 || (passed === 0 && failed === 0)) return 'missing';
+  return failed > 0 ? 'failing' : 'covered';
+}
+
 /**
  * Service responsible for updating requirement coverage snapshots after job completion.
  * Coverage status rules per REQUIREMENTS_SYSTEM.md spec:
@@ -119,22 +129,11 @@ export class RequirementCoverageService {
       const pendingCount = linkedTests.filter((t) => t.status === null).length;
       const failedTest = linkedTests.find((t) => t.status === 'failed');
 
-      // Coverage rules:
-      // - If no tests have run yet (all null) -> "missing"
-      // - If ANY test has failed -> "failing"
-      // - If all tests that have run passed -> "covered"
-      let status: 'covered' | 'failing' | 'missing';
-
-      if (passedCount === 0 && failedCount === 0) {
-        // No tests have run yet
-        status = 'missing';
-      } else if (failedCount > 0) {
-        // At least one test failed
-        status = 'failing';
-      } else {
-        // All tests that have run passed
-        status = 'covered';
-      }
+      const status = computeCoverageStatus(
+        linkedCount,
+        passedCount,
+        failedCount,
+      );
 
       await this.dbService.updateRequirementCoverageSnapshot(
         requirementId,

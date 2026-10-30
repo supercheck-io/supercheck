@@ -34,6 +34,16 @@ describe("AI streaming lifecycle", () => {
     await new Response(stream).text();
     expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalledWith("org", 7, "plus");
   });
+  it("sends a generic error to the client without the provider message", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    jest.mocked(streamText).mockImplementation(() => ({
+      textStream: (async function* () { throw new Error("sk-secret upstream 401"); })(),
+    }) as never);
+    const { stream } = await AIStreamingService.generateStreamingResponse({ prompt: "test", orgId: "org" });
+    const text = await new Response(stream).text();
+    expect(text).toContain("AI generation failed. Try again.");
+    expect(text).not.toContain("sk-secret");
+  });
   it("propagates request abort and consumer cancellation to the provider", async () => {
     let finish!: () => void;
     const gate = new Promise<void>((resolve) => { finish = resolve; });

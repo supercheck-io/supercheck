@@ -10,12 +10,12 @@ export async function GET() {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    const { csv } = await exportRequirementsCsvRecord(toServiceContext(context));
+    const { csv, filename } = await exportRequirementsCsvRecord(toServiceContext(context));
     return new NextResponse(csv, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": 'attachment; filename="requirements.csv"',
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (error) {

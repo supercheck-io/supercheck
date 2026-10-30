@@ -15,6 +15,11 @@ import { AIPromptBuilder } from "./ai-prompts";
 
 describe("AISecurityService", () => {
   describe("sanitizeCodeInput", () => {
+    it("leaves ordinary object keys and page.evaluate untouched", () => {
+      const input = 'await request.post(url, { data: payload });\nawait page.evaluate(() => window.scrollTo(0, 0));';
+      expect(AISecurityService.sanitizeCodeInput(input)).toBe(input);
+    });
+
     it("should sanitize eval patterns", () => {
       const input = 'eval("malicious code")';
       const result = AISecurityService.sanitizeCodeInput(input);

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
-import { isTestPriority, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import {
   validateTestScript,
   validateScriptTypeMatch,
@@ -16,6 +17,9 @@ import {
   decodeStoredTestScript,
   encodeStoredTestScript,
 } from "@/lib/test-script";
+
+// Matches the tests.title varchar(255) column.
+const MAX_TITLE_LENGTH = 255;
 
 export async function GET(
   request: NextRequest,
@@ -116,7 +120,41 @@ export async function PUT(
     }
 
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    const body = await request.json();
+    // Browser sessions only: CLI and API-key callers send no Origin header.
+    if (!context.isCliAuth) {
+      const originError = requireSameOriginRequest(request);
+      if (originError) return originError;
+    }
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    if (body.title !== undefined) {
+      body.title = typeof body.title === "string" ? body.title.trim() : body.title;
+      if (typeof body.title !== "string" || !body.title || [...body.title].length > MAX_TITLE_LENGTH) {
+        return NextResponse.json(
+          { error: `Title must be 1-${MAX_TITLE_LENGTH} characters` },
+          { status: 400 },
+        );
+      }
+    }
+    if (
+      body.description !== undefined &&
+      body.description !== null &&
+      (typeof body.description !== "string" ||
+        body.description.length > MAX_DESCRIPTION_LENGTH)
+    ) {
+      return NextResponse.json(
+        { error: `Description must be a string up to ${MAX_DESCRIPTION_LENGTH} characters` },
+        { status: 400 },
+      );
+    }
 
     if (body.priority !== undefined && !isTestPriority(body.priority)) {
       return NextResponse.json(
@@ -194,7 +232,13 @@ export async function PUT(
         type: resolvedType,
         updatedAt: new Date(),
       })
-      .where(eq(tests.id, testId))
+      .where(
+        and(
+          eq(tests.id, testId),
+          eq(tests.projectId, context.project.id),
+          eq(tests.organizationId, context.organizationId),
+        ),
+      )
       .returning();
 
     return NextResponse.json(updatedTest);

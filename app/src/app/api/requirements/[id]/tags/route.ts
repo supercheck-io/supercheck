@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { requirements, requirementTags, tags } from '@/db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
@@ -87,20 +88,12 @@ export async function POST(
     }
 
     const { id: requirementId } = await params;
-    const body = await request.json();
-    const tagIds = body?.tagIds;
-
-    if (!Array.isArray(tagIds)) {
-      return NextResponse.json({ error: 'Tag IDs must be an array' }, { status: 400 });
+    const body = await request.json().catch(() => null);
+    const parsed = z.array(z.string().uuid()).max(10).safeParse(body?.tagIds);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Tag IDs must be an array of up to 10 valid IDs' }, { status: 400 });
     }
-
-    const validTagIds = tagIds.filter(
-      (tagId): tagId is string => typeof tagId === 'string' && tagId.trim().length > 0
-    );
-
-    if (validTagIds.length !== tagIds.length) {
-      return NextResponse.json({ error: 'Tag IDs must be non-empty strings' }, { status: 400 });
-    }
+    const validTagIds = parsed.data;
 
     const normalizedTagIds = Array.from(new Set(validTagIds));
 
@@ -150,19 +143,15 @@ export async function POST(
       }
     }
 
-    // Remove existing tags for this requirement
-    await db.delete(requirementTags).where(eq(requirementTags.requirementId, requirementId));
-
-    // Add new tags
-    if (normalizedTagIds.length > 0) {
-      const requirementTagsToInsert = normalizedTagIds.map((tagId: string) => ({
-        requirementId,
-        tagId,
-        assignedAt: new Date(),
-      }));
-
-      await db.insert(requirementTags).values(requirementTagsToInsert);
-    }
+    // Replace atomically so a failed insert cannot leave the requirement with no tags.
+    await db.transaction(async (tx) => {
+      await tx.delete(requirementTags).where(eq(requirementTags.requirementId, requirementId));
+      if (normalizedTagIds.length > 0) {
+        await tx.insert(requirementTags).values(
+          normalizedTagIds.map((tagId) => ({ requirementId, tagId, assignedAt: new Date() }))
+        );
+      }
+    });
 
     // Return updated tags
     const updatedTags = await db

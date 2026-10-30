@@ -25,7 +25,12 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
+    // A non-numeric value (?page=abc) would otherwise become NaN and fail in Postgres with a 500.
+    const safeInt = (value: string | null, fallback: number) => {
+      const parsed = Number.parseInt(value ?? "", 10);
+      return Number.isSafeInteger(parsed) ? parsed : fallback;
+    };
+    const page = safeInt(searchParams.get('page'), 1);
     const limitParam = searchParams.get('limit');
     const jobId = searchParams.get('jobId');
     // An empty ?jobId= means no filter, like a missing one. A malformed id is a bad request, not a missing job.
@@ -37,7 +42,7 @@ export async function GET(request: NextRequest) {
     // If no limit specified, fetch all data (for client-side filtering)
     // If limit specified, use pagination (max 1000 for safety)
     const fetchAll = !limitParam;
-    const limit = fetchAll ? 1000 : Math.min(parseInt(limitParam || '10', 10), 1000);
+    const limit = fetchAll ? 1000 : Math.min(safeInt(limitParam, 10), 1000);
 
     // Validate pagination parameters
     if (page < 1 || limit < 1) {
@@ -117,7 +122,8 @@ export async function GET(request: NextRequest) {
           )
         )
         .where(whereCondition)
-        .orderBy(desc(runs.startedAt))
+        // Queued runs have no startedAt (NULL sorts first in DESC); fall back to createdAt and break ties by id.
+        .orderBy(desc(sql`coalesce(${runs.startedAt}, ${runs.createdAt})`), desc(runs.id))
         .limit(limit)
         .offset(offset),
     ]);
