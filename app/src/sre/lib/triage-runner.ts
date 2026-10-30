@@ -11,6 +11,11 @@ import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-re
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { createLogger } from "@/lib/logger/index";
+
+const triageLogger = createLogger({ module: "sre-triage-runner" }) as {
+  error: (data: unknown, message?: string) => void;
+};
 
 export type RunSreIncidentTriageInput = {
   organizationId: string;
@@ -190,18 +195,27 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       modelId: result.modelId,
       finishReason: result.finishReason,
     };
-  } catch {
-    // Raw provider errors may contain credentials or sensitive evidence.
+  } catch (error) {
+    // Raw provider errors may contain credentials or sensitive evidence; log only the error class.
+    triageLogger.error(
+      { investigationRunId: run.id, errorName: error instanceof Error ? error.name : typeof error },
+      "SRE triage failed",
+    );
     const errorMessage = "SRE triage failed";
-    await db
-      .update(sreInvestigationRuns)
-      .set({
-        status: "failed",
-        agentStateSnapshot: { mode: "sre_triage_api", error: errorMessage },
-        completedAt: new Date(),
-        durationMs: Date.now() - startedAt,
-      })
-      .where(and(eq(sreInvestigationRuns.id, run.id), eq(sreInvestigationRuns.status, "running")));
+    try {
+      await db
+        .update(sreInvestigationRuns)
+        .set({
+          status: "failed",
+          agentStateSnapshot: { mode: "sre_triage_api", error: errorMessage },
+          completedAt: new Date(),
+          durationMs: Date.now() - startedAt,
+        })
+        .where(and(eq(sreInvestigationRuns.id, run.id), eq(sreInvestigationRuns.status, "running")));
+    } catch {
+      // Stale-run recovery fails the run later; the caller still gets a clean 502.
+      triageLogger.error({ investigationRunId: run.id }, "Could not mark SRE triage run failed");
+    }
 
     return { success: false, status: 502, error: "SRE triage failed", investigationRunId: run.id };
   }
