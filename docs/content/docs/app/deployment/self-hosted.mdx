@@ -286,6 +286,8 @@ Replace `v1.4.0` with the target release. `--upgrade` moves to the script's own 
 3. Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
 4. Restarts the stack, which applies database migrations, and checks health.
 
+If `sudo bash install.sh --help` on your installed release does not list `--upgrade` (v1.4.0 and earlier), follow [Manual update](#manual-update) once; later upgrades can use the command above.
+
 Expect a few minutes of downtime. Upgrade remote workers afterwards ([Multi-Server](/docs/app/deployment/multi-server#upgrade-workers)).
 
 <Callout type="warn">
