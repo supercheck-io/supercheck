@@ -102,7 +102,7 @@ backup() {
   say "Copying .env"
   install -m 600 .env "$dest/env"
   say "Dumping the database"
-  ( umask 077; dc exec -T postgres sh -c 'pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"' >"$dest/database.dump" )
+  ( umask 077; dc exec -T postgres sh -c "pg_dump -Fc -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"" >"$dest/database.dump" )
   [[ -s "$dest/database.dump" ]] || die "The database dump is empty."
   for name in rustfs-data traefik-letsencrypt; do
     vol="$(volume_of "$name")"
@@ -177,10 +177,10 @@ restore() {
   dc up -d --wait --wait-timeout 120 postgres
   # The role password lives in the volume; align it with the restored .env (local socket, no password).
   printf '%s\n' "ALTER ROLE CURRENT_USER PASSWORD :'pw';" | \
-    dc exec -T postgres sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -v pw="$POSTGRES_PASSWORD"'
+    dc exec -T postgres sh -c "psql -q -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d postgres -v pw=\"\$POSTGRES_PASSWORD\""
   printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db";' | \
-    dc exec -T postgres sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -v db="$POSTGRES_DB"'
-  dc exec -T postgres sh -c 'pg_restore --exit-on-error --no-owner -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <"$src/database.dump"
+    dc exec -T postgres sh -c "psql -q -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d postgres -v db=\"\$POSTGRES_DB\""
+  dc exec -T postgres sh -c "pg_restore --exit-on-error --no-owner -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"" <"$src/database.dump"
 
   say "Starting Supercheck"
   dc up -d --wait --wait-timeout 300

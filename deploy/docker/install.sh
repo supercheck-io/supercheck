@@ -603,7 +603,7 @@ backup_database() {
     [[ ! -L "$(dirname "$file")" ]]
     install -d -m 700 "$(dirname "$file")"
     chmod 700 "$(dirname "$file")"
-    dc exec -T postgres sh -c 'pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"' >"$file.partial"
+    dc exec -T postgres sh -c "pg_dump -Fc -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"" >"$file.partial"
     [[ -s "$file.partial" ]]
     mv "$file.partial" "$file"
   )
@@ -634,7 +634,7 @@ upgrade_preflight() {
   dirty="$(ugit status --porcelain --untracked-files=no 2>/dev/null || true)"
   if [[ -n "$dirty" ]]; then
     die "Tracked files in $UPGRADE_TOP were changed locally; upgrading would overwrite them:" \
-      "$(sed 's/^...//' <<<"$dirty" | head -n 10 | tr '\n' ' ')" \
+      "$(cut -c4- <<<"$dirty" | head -n 10 | tr '\n' ' ')" \
       "Move the change into .env (for example DB_BIND_ADDR, or COMPOSE_FILE with your own override file)," \
       "then restore the file with: sudo git -C $UPGRADE_TOP checkout -- <file>   and re-run."
   fi
