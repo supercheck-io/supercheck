@@ -7,8 +7,14 @@ import { scheduleJob } from "@/lib/job-scheduler";
 const mockSelect = jest.fn();
 jest.mock("server-only", () => ({}));
 const mockSet = jest.fn();
+const mockWhere = jest.fn();
+const mockUpdatedRows = jest.fn(() => [{ id: "job" }]);
 const mockWriter = {
-  update: jest.fn(() => ({ set: jest.fn((v: unknown) => (mockSet(v), { where: jest.fn(async () => undefined) })) })),
+  update: jest.fn(() => ({
+    set: jest.fn((v: unknown) => (mockSet(v), {
+      where: jest.fn((cond: unknown) => (mockWhere(cond), Object.assign(Promise.resolve(undefined), { returning: async () => mockUpdatedRows() }))),
+    })),
+  })),
   delete: jest.fn(() => ({ where: jest.fn(async () => undefined) })),
   insert: jest.fn(() => ({ values: jest.fn(async () => undefined) })),
 };
@@ -144,6 +150,16 @@ it("does not re-validate a legacy stored cron or threshold that the caller only 
   expect(mockSelect).toHaveBeenCalled();
 });
 
+it("only caps a description the caller supplied, not an inherited legacy one", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const legacy = { ...input, description: "x".repeat(5000) };
+  await updateJob(legacy, { ...context, inherited: { description: true } });
+  expect(mockSelect).toHaveBeenCalled();
+  mockSelect.mockClear();
+  expect(await updateJob(legacy, context)).toMatchObject({ success: false, message: expect.stringContaining("2000") });
+  expect(mockSelect).not.toHaveBeenCalled();
+});
+
 it("accepts an inherited null threshold instead of failing an unrelated edit", async () => {
   mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
   const alertConfig = { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null };
@@ -170,4 +186,61 @@ it("applies create defaults when no alertConfig is stored", async () => {
   mockJob(null);
   await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
   expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ enabled: false, alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, alertOnSuccess: true });
+});
+
+describe("input limits and concurrent edits", () => {
+  it.each([
+    ["a blank name", { name: "   " }, "name is required"],
+    ["a name over 255 characters", { name: "x".repeat(256) }, "255"],
+    ["a description over 2000 characters", { description: "x".repeat(2001) }, "2000"],
+  ])("rejects %s with a readable message and no database access", async (_label, extra, text) => {
+    const result = (await updateJob({ ...input, ...extra }, context)) as { success: boolean; message: string; error: unknown };
+    expect(result.success).toBe(false);
+    expect(result.message).toContain(text);
+    expect(typeof result.error).toBe("string");
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  describe("more than 50 tests", () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`);
+    const chain = (value: unknown[]) => {
+      const c: Record<string, unknown> = {};
+      for (const m of ["from", "where", "orderBy", "limit"]) c[m] = () => c;
+      c.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(value).then(resolve);
+      return c;
+    };
+    const arrange = (current: string[]) => mockSelect.mockReset()
+      .mockReturnValueOnce(chain([{ id: input.jobId, jobType: "playwright", cronSchedule: null, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(chain(current.map((id) => ({ id }))))
+      .mockReturnValueOnce(chain(ids.map((id) => ({ id, type: "browser" }))));
+
+    it("rejects a changed selection over the cap", async () => {
+      arrange([]);
+      expect(await updateJob({ ...input, tests: ids.map((id) => ({ id })) }, context)).toMatchObject({ success: false, message: expect.stringContaining("at most 50") });
+    });
+
+    it("lets an unchanged legacy selection over the cap through", async () => {
+      arrange(ids);
+      const result = (await updateJob({ ...input, tests: ids.map((id) => ({ id })) }, context)) as { message?: string };
+      expect(result.message ?? "").not.toContain("at most 50");
+    });
+  });
+
+  it("reports a conflict when the job changed since the editor loaded it", async () => {
+    mockJob(null);
+    mockUpdatedRows.mockReturnValueOnce([]);
+    const result = await updateJob({ ...input, expectedUpdatedAt: "2026-01-01T00:00:00.000Z" }, context);
+    expect(result).toMatchObject({ success: false, message: expect.stringContaining("changed since you opened it") });
+  });
+
+  it("only adds the updatedAt condition when the caller supplies expectedUpdatedAt", async () => {
+    mockJob(null);
+    await updateJob(input, context);
+    const chunks = () => (mockWhere.mock.calls[0][0] as { queryChunks: unknown[] }).queryChunks.length;
+    const without = chunks();
+    mockWhere.mockClear();
+    mockJob(null);
+    await updateJob({ ...input, expectedUpdatedAt: "2026-01-01T00:00:00.000Z" }, context);
+    expect(chunks()).toBeGreaterThan(without);
+  });
 });

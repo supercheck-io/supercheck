@@ -5,7 +5,7 @@ import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
-import { eq, and, ne, count } from 'drizzle-orm';
+import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 // Status transitions are not editable here: DELETE owns soft-delete (project:delete, non-default).
@@ -261,6 +261,24 @@ export async function DELETE(
         updatedAt: new Date()
       })
       .where(eq(projects.id, projectId));
+
+    // Best effort: processScheduledJob also drops the repeatable if this fails.
+    try {
+      const { deleteScheduledJob } = await import('@/lib/job-scheduler');
+      const scheduled = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(and(eq(jobs.projectId, projectId), isNotNull(jobs.cronSchedule)));
+      await Promise.all(
+        scheduled.map(async (job) => {
+          if (!(await deleteScheduledJob(job.id))) {
+            console.error('Failed to remove schedule for job of deleted project', job.id);
+          }
+        }),
+      );
+    } catch (error) {
+      console.error('Failed to remove schedules for deleted project', projectId, error);
+    }
     
     return NextResponse.json({
       success: true,

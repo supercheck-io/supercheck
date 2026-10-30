@@ -23,7 +23,7 @@ const mockQueueRemoveRepeatableByKey = jest.fn();
 const mockRedisClient = {
   ping: jest.fn().mockResolvedValue('PONG'),
   set: jest.fn().mockResolvedValue('OK'), // Simulate lock acquired
-  del: jest.fn().mockResolvedValue(1),
+  eval: jest.fn().mockResolvedValue(1),
 };
 
 const mockQueuesModule = {
@@ -136,7 +136,7 @@ describe("Job Scheduler", () => {
     // Reset Redis client mocks for distributed locking
     mockRedisClient.ping.mockResolvedValue('PONG');
     mockRedisClient.set.mockResolvedValue('OK'); // Simulate lock acquired
-    mockRedisClient.del.mockResolvedValue(1);
+    mockRedisClient.eval.mockResolvedValue(1);
 
     // Default mock implementations
     mockQueueGetRepeatableJobs.mockResolvedValue([]);
@@ -393,6 +393,32 @@ describe("Job Scheduler", () => {
   // ==========================================================================
 
   describe("initializeJobSchedulers", () => {
+    describe("lock ownership", () => {
+      const emptySelect = () =>
+        mockDbModule.select.mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue([]),
+        });
+
+      it("releases the lock only with the token it acquired", async () => {
+        emptySelect();
+        await initializeJobSchedulers();
+        const token = mockRedisClient.set.mock.calls[0][1];
+        expect(mockRedisClient.eval).toHaveBeenCalledWith(expect.any(String), 1, "job:scheduler:init:lock", token);
+      });
+
+      it("cleans orphaned repeatables only while holding the lock", async () => {
+        emptySelect();
+        mockRedisClient.set.mockResolvedValue(null);
+        await initializeJobSchedulers();
+        expect(mockQueueGetRepeatableJobs).not.toHaveBeenCalled();
+
+        mockRedisClient.set.mockResolvedValue("OK");
+        await initializeJobSchedulers();
+        expect(mockQueueGetRepeatableJobs).toHaveBeenCalled();
+      });
+    });
+
     describe("Positive Cases", () => {
       it("should initialize all jobs with cron schedules", async () => {
         const selectChain = {

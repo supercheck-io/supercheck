@@ -20,6 +20,7 @@ export function getNextRunDate(
   try {
     const interval = CronExpressionParser.parse(cronExpression, {
       currentDate: fromDate,
+      tz: 'UTC', // match the repeatable's tz in scheduleJob
     });
     return interval.next().toDate();
   } catch (err) {

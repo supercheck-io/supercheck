@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, desc, sql, like, or, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, inArray } from "drizzle-orm";
 import {
   requirements,
   requirementsInsertSchema,
@@ -33,6 +33,7 @@ import {
   type CreateRequirementInput,
   type UpdateRequirementInput,
 } from "@/lib/requirements/service";
+import { containsPattern } from "@/lib/requirements/like";
 import {
   AT_RISK_PRIORITIES,
   accumulateRequirementCoverage,
@@ -117,8 +118,10 @@ export async function getRequirements(options?: {
     throw new Error("Insufficient permissions to view requirements");
   }
 
-  const page = options?.page ?? 1;
-  const pageSize = options?.pageSize ?? 500; // Default to 500 to fetch all requirements
+  const clamp = (v: number | undefined, fallback: number, max: number) =>
+    Number.isFinite(v) ? Math.min(max, Math.max(1, Math.floor(v as number))) : fallback;
+  const page = clamp(options?.page, 1, 100_000);
+  const pageSize = clamp(options?.pageSize, 500, 500); // Default to 500 to fetch all requirements
   const offset = (page - 1) * pageSize;
 
   // Build where conditions
@@ -127,8 +130,8 @@ export async function getRequirements(options?: {
   if (options?.search) {
     conditions.push(
       or(
-        like(requirements.title, `%${options.search}%`),
-        like(requirements.description, `%${options.search}%`)
+        ilike(requirements.title, containsPattern(options.search)),
+        ilike(requirements.description, containsPattern(options.search))
       ) as ReturnType<typeof eq>
     );
   }
@@ -470,30 +473,36 @@ export async function deleteRequirements(
       };
     }
 
-    if (ids.length === 0) {
+    const parsed = z.array(z.string().uuid()).max(100).safeParse(ids);
+    if (!parsed.success) {
+      return { success: false, error: "Invalid requirement IDs (max 100)", deletedCount: 0 };
+    }
+    if (parsed.data.length === 0) {
       return { success: true, deletedCount: 0 };
     }
 
     // Delete requirements (cascade handles snapshots and test links)
-    await db
+    const deleted = await db
       .delete(requirements)
       .where(
         and(
-          inArray(requirements.id, ids),
+          inArray(requirements.id, parsed.data),
           eq(requirements.projectId, project.id),
           eq(requirements.organizationId, organizationId)
         )
-      );
+      )
+      .returning({ id: requirements.id });
+    const deletedIds = deleted.map((r) => r.id);
 
     // Log audit event
     await logAuditEvent({
       userId,
       action: "requirements_bulk_deleted",
       resource: "requirement",
-      resourceId: ids.join(","),
+      resourceId: deletedIds.join(","),
       metadata: {
         organizationId,
-        count: ids.length,
+        count: deletedIds.length,
         projectId: project.id,
         projectName: project.name,
       },
@@ -502,7 +511,7 @@ export async function deleteRequirements(
 
     revalidatePath("/requirements");
 
-    return { success: true, deletedCount: ids.length };
+    return { success: true, deletedCount: deletedIds.length };
   } catch (error) {
     console.error("Error bulk deleting requirements:", error);
     return {
@@ -959,7 +968,7 @@ export async function getLinkedTests(
       })
       .from(testTags)
       .innerJoin(tags, eq(testTags.tagId, tags.id))
-      .where(inArray(testTags.testId, testIds));
+      .where(and(inArray(testTags.testId, testIds), eq(tags.projectId, project.id)));
 
     // Group tags by test ID
     const tagsByTestId = tagsData.reduce<Record<string, { id: string; name: string; color: string | null }[]>>((acc, curr) => {
@@ -1025,23 +1034,17 @@ export async function getAvailableTestsForLinking(
     // Import tests table
     const { tests } = await import("@/db/schema");
 
-    // Get already linked test IDs
-    const linkedTestIds = await db
-      .select({ testId: testRequirements.testId })
-      .from(testRequirements)
-      .where(eq(testRequirements.requirementId, requirementId));
-
-    const excludeIds = linkedTestIds.map((t) => t.testId);
-
-    // Build query conditions
-    const conditions = [eq(tests.projectId, project.id)];
+    // Exclude linked tests in SQL so the 50-row cap applies to tests that can actually be linked.
+    const conditions = [
+      eq(tests.projectId, project.id),
+      sql`${tests.id} NOT IN (SELECT ${testRequirements.testId} FROM ${testRequirements} WHERE ${testRequirements.requirementId} = ${requirementId})`,
+    ];
 
     if (search && search.trim()) {
-      conditions.push(like(tests.title, `%${search.trim()}%`));
+      conditions.push(ilike(tests.title, containsPattern(search.trim())));
     }
 
-    // Get available tests
-    let query = db
+    const availableTests = await db
       .select({
         id: tests.id,
         title: tests.title,
@@ -1049,18 +1052,14 @@ export async function getAvailableTestsForLinking(
       })
       .from(tests)
       .where(and(...conditions))
+      .orderBy(desc(tests.updatedAt), desc(tests.id))
       .limit(50);
 
-    const availableTests = await query;
-
-    // Filter out already linked tests
-    return availableTests
-      .filter((t) => !excludeIds.includes(t.id))
-      .map((t) => ({
-        id: t.id,
-        title: t.title ?? "Untitled",
-        type: t.type ?? "unknown",
-      }));
+    return availableTests.map((t) => ({
+      id: t.id,
+      title: t.title ?? "Untitled",
+      type: t.type ?? "unknown",
+    }));
   } catch (error) {
     console.error("Error getting available tests:", error);
     return [];

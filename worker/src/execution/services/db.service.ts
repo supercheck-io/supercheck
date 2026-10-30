@@ -548,8 +548,18 @@ export class DbService implements OnModuleInit {
       .returning({ id: runs.id, jobId: runs.jobId });
     if (!finalized) return false;
     if (finalized.jobId) {
-      const statuses = await this.getRunStatusesForJob(finalized.jobId);
-      await this.updateJobStatus(finalized.jobId, statuses);
+      try {
+        const active = await this.hasOtherActiveRun(finalized.jobId, runId);
+        await this.updateJobStatus(finalized.jobId, [
+          active ? 'running' : 'error',
+        ]);
+      } catch (error) {
+        // The run is already finalized; leave the job status for the next run to write rather than guess.
+        this.logger.error(
+          `Failed to update job status after cancelling run ${runId}:`,
+          error,
+        );
+      }
     }
     return true;
   }
@@ -592,6 +602,7 @@ export class DbService implements OnModuleInit {
     });
   }
 
+  // Still used by the k6 processor.
   async getRunStatusesForJob(
     jobId: string,
   ): Promise<
@@ -616,6 +627,22 @@ export class DbService implements OnModuleInit {
       this.logger.error(`Failed to get run statuses for job ${jobId}:`, error);
       return [];
     }
+  }
+
+  /** True when another run of the job is still queued or running. Throws when the lookup fails: callers must not guess. */
+  async hasOtherActiveRun(jobId: string, runId: string): Promise<boolean> {
+    const [other] = await this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.jobId, jobId),
+          ne(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+        ),
+      )
+      .limit(1);
+    return !!other;
   }
 
   // ===============================
@@ -718,7 +745,7 @@ export class DbService implements OnModuleInit {
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
             ),
           )
-          .orderBy(desc(schema.runs.completedAt))
+          .orderBy(desc(schema.runs.completedAt), desc(schema.runs.id))
           .limit(1);
 
         const status = latestRun.length > 0 ? latestRun[0].status : null;

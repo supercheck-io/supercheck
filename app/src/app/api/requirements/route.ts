@@ -10,7 +10,7 @@ import {
   type RequirementPriority,
   type RequirementCoverageStatus,
 } from "@/db/schema";
-import { desc, eq, and, sql, like, or, inArray } from "drizzle-orm";
+import { desc, eq, and, sql, ilike, or, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import {
@@ -19,6 +19,7 @@ import {
   restCreateRequirementSchema,
   toServiceContext,
 } from '@/lib/requirements/service';
+import { containsPattern } from '@/lib/requirements/like';
 import { loadCreators } from "@/lib/creators";
 
 // The dashboard calls this endpoint without paging and paginates client-side, so the default stays 500.
@@ -64,8 +65,8 @@ export async function GET(request: NextRequest) {
     if (search) {
       conditions.push(
         or(
-          like(requirements.title, `%${search}%`),
-          like(requirements.description, `%${search}%`)
+          ilike(requirements.title, containsPattern(search)),
+          ilike(requirements.description, containsPattern(search))
         ) as ReturnType<typeof eq>
       );
     }

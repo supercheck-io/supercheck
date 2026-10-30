@@ -152,6 +152,19 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       );
     }
     
+    // Deleting the org cascades run/report rows and would orphan their S3 objects; projects must go first.
+    const [projectRow] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.organizationId, resolvedParams.id))
+      .limit(1);
+    if (projectRow) {
+      return NextResponse.json(
+        { success: false, error: 'Organization still has projects; delete them first' },
+        { status: 409 }
+      );
+    }
+
     await db
       .delete(organization)
       .where(eq(organization.id, resolvedParams.id));

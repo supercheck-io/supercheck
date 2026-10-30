@@ -2,6 +2,8 @@ import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
+import { isAiRateLimitError } from "@/lib/ai/ai-rate-limit-error";
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
@@ -216,8 +218,7 @@ export async function POST(request: NextRequest) {
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
-      errorMessage.includes("rate limit") ||
-      errorMessage.includes("too many requests");
+      isAiRateLimitError(error);
     const isSecurityError =
       errorMessage.includes("unsafe") || errorMessage.includes("security");
 
@@ -273,24 +274,12 @@ export async function POST(request: NextRequest) {
 
 // Health check endpoint
 export async function GET() {
+  // Unauthenticated: report config only, never call the provider or expose error detail.
+  let configured = true;
   try {
-    const healthStatus = await AIStreamingService.healthCheck();
-
-    return NextResponse.json({
-      status: healthStatus.status,
-      timestamp: new Date().toISOString(),
-      service: "ai-create-api",
-      details: healthStatus.details,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        status: "unhealthy",
-        timestamp: new Date().toISOString(),
-        service: "ai-create-api",
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 503 }
-    );
+    validateAIConfiguration();
+  } catch {
+    configured = false;
   }
+  return NextResponse.json({ status: "ok", configured, service: "ai-create-api" });
 }

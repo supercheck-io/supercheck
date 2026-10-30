@@ -15,9 +15,11 @@ jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { usageTracker } from "@/lib/services/usage-tracker";
 
 const { getActiveOrganization } = jest.requireMock("@/lib/session") as { getActiveOrganization: jest.Mock };
@@ -46,5 +48,23 @@ describe("AI create-test input bounds", () => {
     expect(response.status).toBe(400);
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+  });
+
+  it("maps the capitalised rate-limit error from AuthService to 429", async () => {
+    const { AuthService } = jest.requireMock("@/lib/ai/ai-security") as { AuthService: { checkRateLimit: jest.Mock } };
+    AuthService.checkRateLimit.mockRejectedValueOnce(new Error("Rate limit exceeded. Please try again in 5 seconds."));
+    const response = await post({ userRequest: "write a login test", testType: "playwright" });
+    expect(response.status).toBe(429);
+  });
+
+  it("serves a static health check without calling the provider", async () => {
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+
+  it("reports configured: false when the AI provider is not configured", async () => {
+    (validateAIConfiguration as jest.Mock).mockImplementationOnce(() => { throw new Error("no key"); });
+    expect(await (await GET()).json()).toMatchObject({ configured: false });
   });
 });

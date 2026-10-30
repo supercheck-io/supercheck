@@ -46,7 +46,7 @@ On Supercheck Cloud, creating or editing a job requires an active organization s
 Open **Jobs** and click **Create Job** (or use **Quick Create → Playwright Job**)
 </Step>
 <Step>
-Enter a descriptive **name** (e.g., "Nightly Regression Suite")
+Enter a descriptive **name** (e.g., "Nightly Regression Suite"), up to 255 characters
 </Step>
 <Step>
 Add a **description** explaining what the job tests (required)
@@ -60,6 +60,8 @@ Choose which tests to include in the job. You can select any combination of:
 - API tests
 - Database tests
 - Custom tests
+
+A job can include up to 50 tests. A k6 performance job runs exactly one performance test.
 
 ![Select Tests](/screenshots/create-job-select-tests.png)
 
@@ -75,10 +77,11 @@ Choose when and how the job runs:
 
 | Schedule Type | Description | Best For |
 |---------------|-------------|----------|
-| **Interval** | Run every X minutes or hours | Regular health checks |
-| **Cron** | Custom cron expression for precise timing | Specific schedules (nightly, weekly) |
+| **Schedule** | Pick an hourly, daily, weekly, monthly or yearly time with the schedule builder | Regular runs (hourly checks, nightly suites) |
 | **Manual** | Run only when triggered manually | On-demand testing |
 | **API Trigger** | Run via HTTP API call | CI/CD integration |
+
+The builder offers hourly and longer periods. Schedules are stored as five-field cron expressions (minute, hour, day of month, month, day of week), so the CLI and API can set any cron down to one minute. Schedules run in UTC.
 
 **Common cron examples:**
 
@@ -88,6 +91,10 @@ Choose when and how the job runs:
 | Every day at midnight | `0 0 * * *` |
 | Every Monday at 9 AM | `0 9 * * 1` |
 | Every 6 hours | `0 */6 * * *` |
+
+<Callout type="info">
+The Jobs list shows your 100 most recently created jobs. A job beyond that is still reachable by its direct link.
+</Callout>
 
 ### Step 4: Configure Alerts
 

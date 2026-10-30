@@ -35,7 +35,7 @@ const mockDbService = {
   updateRunStatus: jest.fn(),
   failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
   updateJobStatus: jest.fn(),
-  getRunStatusesForJob: jest.fn(),
+  hasOtherActiveRun: jest.fn(),
   db: {
     update: jest.fn().mockReturnValue({
       set: jest.fn().mockReturnValue({
@@ -209,7 +209,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockDbService.claimRunExecution.mockResolvedValue(true);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.updateJobStatus.mockResolvedValue(undefined);
-    mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
+    mockDbService.hasOtherActiveRun.mockResolvedValue(false);
     mockJobNotificationService.handleJobNotifications.mockResolvedValue(
       undefined,
     );
@@ -820,7 +820,12 @@ describe('PlaywrightExecutionProcessor', () => {
           runId,
           'error',
           '0',
+          'Cancellation requested by user',
         );
+        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
+          'error',
+        ]);
+        expect(mockDbService.db.update).toHaveBeenCalled();
       });
 
       it('should handle cancellation during execution', async () => {
@@ -871,33 +876,57 @@ describe('PlaywrightExecutionProcessor', () => {
     });
 
     describe('Job Status Update Logic', () => {
-      it('should update job status after completion', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue([
-          'passed',
-          'failed',
-        ]);
+      it('sets job status from this run, ignoring historical blocked/error runs', async () => {
         const job = createMockJob(mockJobTask);
 
         await processor.process(job);
 
-        // Implementation updates job status - exact value depends on logic
-        expect(mockDbService.updateJobStatus).toHaveBeenCalled();
+        expect(mockDbService.hasOtherActiveRun).toHaveBeenCalledWith(
+          jobId,
+          runId,
+        );
+        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
+          'passed',
+        ]);
       });
 
-      it('should query run statuses for job', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue([
-          'passed',
-          'passed',
-        ]);
+      it('keeps job running while another run is queued or running', async () => {
+        mockDbService.hasOtherActiveRun.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
 
         await processor.process(job);
 
-        expect(mockDbService.getRunStatusesForJob).toHaveBeenCalledWith(jobId);
+        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
+          'running',
+        ]);
+      });
+
+      it('skips the job status write when the sibling-run lookup fails', async () => {
+        mockDbService.hasOtherActiveRun.mockRejectedValueOnce(
+          new Error('db down'),
+        );
+        mockDbService.updateJobStatus.mockClear();
+        const job = createMockJob(mockJobTask);
+
+        await processor.process(job);
+
+        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
+      });
+
+      it('leaves the job alone when a cancelled run status could not be recorded', async () => {
+        mockCancellationService.isCancelled.mockResolvedValue(true);
+        mockDbService.updateRunStatus.mockRejectedValueOnce(
+          new Error('db down'),
+        );
+        mockDbService.updateJobStatus.mockClear();
+        const job = createMockJob(mockJobTask);
+
+        await processor.process(job);
+
+        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
       });
 
       it('should handle single run status', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
         const job = createMockJob(mockJobTask);
 
         await processor.process(job);
@@ -1450,32 +1479,6 @@ describe('PlaywrightExecutionProcessor', () => {
             testCount: 1000,
           }),
         );
-      });
-    });
-
-    describe('Run Statuses', () => {
-      it('should handle multiple run statuses', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue([
-          'passed',
-          'failed',
-          'error',
-          'passed',
-          'failed',
-        ]);
-        const job = createMockJob(mockJobTask);
-
-        await processor.process(job);
-
-        // Implementation uses robust update which may simplify statuses
-        expect(mockDbService.updateJobStatus).toHaveBeenCalled();
-      });
-
-      it('should call getRunStatusesForJob after job completion', async () => {
-        const job = createMockJob(mockJobTask);
-
-        await processor.process(job);
-
-        expect(mockDbService.getRunStatusesForJob).toHaveBeenCalledWith(jobId);
       });
     });
   });
