@@ -209,6 +209,8 @@ __pycache__/
 .env.migrating
 .env.bak-*
 .env.pre-rustfs*
+.env.pre-restore-*
+traefik-dns.env
 
 # Local CLI execution and recovery files
 supercheck.state.json.lock

@@ -60,7 +60,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # Days to keep finished status-page notification delivery rows (App-side; 1-3650).
   STATUS_PAGE_DELIVERY_RETENTION_DAYS: ${STATUS_PAGE_DELIVERY_RETENTION_DAYS:-30}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
-  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required - generate one with openssl rand -hex 32}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
   # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.
   TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
@@ -463,12 +463,6 @@ services:
           cpus: "0.5"
           memory: 1G
 
-      # Container Restart Protection (handles stuck/crashed containers)
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-        delay: 15s
-        window: 120s
 
     # GVISOR-006: Hardened security profile
     security_opt:

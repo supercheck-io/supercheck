@@ -29,9 +29,12 @@ function config(profiles = "", file = "docker-compose.yml", vars = {}) {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
           COMPOSE_PROFILES: profiles,
-          // Required by the bundled storage service; init-secrets.sh generates real values.
+          // Required secrets; init-secrets.sh generates real values.
           AWS_ACCESS_KEY_ID: "placeholder-access-key",
           AWS_SECRET_ACCESS_KEY: "placeholder-secret-key-0123456789ab",
+          DB_PASSWORD: "placeholder-db-password",
+          REDIS_PASSWORD: "placeholder-redis-password",
+          BETTER_AUTH_SECRET: "placeholder-auth-secret",
           ...vars,
         },
         encoding: "utf8",
@@ -56,6 +59,31 @@ testCompose("production compose files refuse to start without S3 keys", () => {
       expect(() => config("", file, { [key]: "" })).toThrow();
     }
   }
+});
+
+testCompose("the main compose file refuses to start without generated secrets", () => {
+  for (const key of ["DB_PASSWORD", "REDIS_PASSWORD", "BETTER_AUTH_SECRET"]) {
+    expect(() => config("", "docker-compose.yml", { [key]: "" })).toThrow();
+  }
+  expect(() => config("", "docker-compose-external.yml", { BETTER_AUTH_SECRET: "" })).toThrow();
+  const stack = config();
+  expect(stack.services.app.environment.DATABASE_URL).toBe(
+    "postgresql://postgres:placeholder-db-password@postgres:5432/supercheck",
+  );
+  expect(stack.services.worker.deploy.restart_policy).toBeUndefined();
+  expect(stack.services.worker.restart).toBe("unless-stopped");
+});
+
+testCompose("multi-server bind addresses move only the published data ports", () => {
+  const stack = config("", "docker-compose.yml", {
+    DB_BIND_ADDR: "10.0.0.10",
+    REDIS_BIND_ADDR: "10.0.0.11",
+    RUSTFS_BIND_ADDR: "10.0.0.12",
+  });
+  expect(stack.services.postgres.ports[0].host_ip).toBe("10.0.0.10");
+  expect(stack.services.redis.ports[0].host_ip).toBe("10.0.0.11");
+  expect(stack.services.rustfs.ports[0].host_ip).toBe("10.0.0.12");
+  expect(stack.services.app.ports[0].host_ip).toBe("127.0.0.1");
 });
 
 testCompose("the default stack needs neither HTTPS nor Private Agent settings", () => {

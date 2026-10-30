@@ -572,6 +572,237 @@ echo fixture > "$file"
         self.assertEqual((self.root / 'backup.sql').stat().st_mode & 0o777, 0o600)
 
 
+    def _git_checkout(self, version='1.4.0', tags=('1.4.0',)):
+        """A clone like the installer's: origin with release tags, target checked out at a tag."""
+        git = ['git', '-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'init.defaultBranch=main',
+               '-c', 'commit.gpgSign=false', '-c', 'tag.gpgSign=false', '-c', 'core.hooksPath=/dev/null']
+        origin = self.root / 'origin'
+        (origin / 'deploy/docker').mkdir(parents=True)
+        subprocess.run(git + ['init', '-q', str(origin)], check=True)
+        for tag in tags:
+            (origin / 'deploy/docker/docker-compose.yml').write_text(
+                f'image: ghcr.io/supercheck-io/supercheck/app:${{SUPERCHECK_VERSION:-{tag}}}\n')
+            subprocess.run(git + ['-C', str(origin), 'add', '-A'], check=True)
+            subprocess.run(git + ['-C', str(origin), 'commit', '-qm', tag], check=True)
+            subprocess.run(git + ['-C', str(origin), 'tag', f'v{tag}'], check=True)
+        target = self.root / 'target'
+        subprocess.run(git + ['init', '-q', str(target)], check=True)
+        subprocess.run(git + ['-C', str(target), 'remote', 'add', 'origin', f'file://{origin}'], check=True)
+        subprocess.run(git + ['-C', str(target), 'fetch', '-q', '--depth', '1', 'origin',
+                              f'refs/tags/v{version}:refs/tags/v{version}'], check=True)
+        subprocess.run(git + ['-C', str(target), 'checkout', '-q', '--detach', f'refs/tags/v{version}'], check=True)
+        (target / 'deploy/docker/.env').write_text(
+            f'DB_PASSWORD=x\nREDIS_PASSWORD=x\nBETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION={version}\n')
+        return target
+
+    def test_upgrade_checks_out_the_release_and_keeps_env(self):
+        target = self._git_checkout('1.4.0', ('1.4.0', '1.5.0'))
+        out = self.run_shell('COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION=1.5.0\n'
+                             'upgrade_preflight\nupgrade_source\n')
+        self.assertIn('1.4.0 → 1.5.0', out)
+        compose = target / 'deploy/docker/docker-compose.yml'
+        self.assertIn('SUPERCHECK_VERSION:-1.5.0', compose.read_text())
+        self.assertIn('BETTER_AUTH_SECRET=fixture', (target / 'deploy/docker/.env').read_text())
+        backups = list((target / 'deploy/docker').glob('.env.bak-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+
+    def test_upgrade_refuses_local_changes_and_downgrades(self):
+        target = self._git_checkout('1.5.0', ('1.4.0', '1.5.0'))
+        body = 'COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION={}\nupgrade_preflight\n'
+        self.assertIn('downgrading to 1.4.0 is not supported', self.run_shell(body.format('1.4.0'), 1))
+        (target / 'deploy/docker/docker-compose.yml').write_text('edited\n')
+        out = self.run_shell(body.format('1.5.0'), 1)
+        self.assertIn('changed locally', out)
+        self.assertIn('deploy/docker/docker-compose.yml', out)
+
+    def test_upgrade_fails_early_when_a_required_secret_is_missing(self):
+        target = self._git_checkout('1.4.0', ('1.4.0', '1.5.0'))
+        env = target / 'deploy/docker/.env'
+        env.write_text(env.read_text().replace('REDIS_PASSWORD=x\n', ''))
+        out = self.run_shell('COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION=1.5.0\nupgrade_preflight\n', 1)
+        self.assertIn('REDIS_PASSWORD is missing', out)
+        self.assertIn('never generate a new one', out)
+
+    def test_upgrade_needs_an_existing_install(self):
+        self.assertIn('No existing installation', self.run_shell('VERSION=1.5.0\nupgrade_preflight\n', 1))
+
+    def test_version_flag_on_existing_install_points_to_upgrade(self):
+        out = self.run_shell(r'''INSTALL_DIR="$TEST_ROOT/target"
+COMPOSE_DIR=""
+mkdir -p "$INSTALL_DIR/deploy/docker"
+touch "$INSTALL_DIR/deploy/docker/init-secrets.sh"
+printf '%s\n' BETTER_AUTH_SECRET=fixture SUPERCHECK_VERSION=1.3.6 > "$INSTALL_DIR/deploy/docker/.env"
+MODE=local
+VERSION_SET=true
+VERSION=1.4.0
+preflight() { :; }
+install_prerequisites() { touch "$TEST_ROOT/packages-installed"; }
+main
+''', 1)
+        self.assertIn('install.sh --upgrade --version 1.4.0', out)
+        self.assertFalse((self.root / 'packages-installed').exists())
+
+    def test_version_flag_for_an_older_release_points_to_restore(self):
+        out = self.run_shell(r'''INSTALL_DIR="$TEST_ROOT/target"
+COMPOSE_DIR=""
+mkdir -p "$INSTALL_DIR/deploy/docker"
+touch "$INSTALL_DIR/deploy/docker/init-secrets.sh"
+printf '%s\n' BETTER_AUTH_SECRET=fixture SUPERCHECK_VERSION=1.5.0 > "$INSTALL_DIR/deploy/docker/.env"
+MODE=local
+VERSION_SET=true
+VERSION=1.4.0
+preflight() { :; }
+main
+''', 1)
+        self.assertIn('going back to 1.4.0 is not supported', out)
+        self.assertIn('backup.sh --restore', out)
+        self.assertNotIn('--upgrade --version', out)
+
+    def test_upgrade_remembers_the_previous_release(self):
+        self._git_checkout('1.4.0', ('1.4.0', '1.5.0'))
+        out = self.run_shell('COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION=1.5.0\n'
+                             'upgrade_preflight\necho "from=$UPGRADE_FROM"\n')
+        self.assertIn('from=1.4.0', out)
+
+    def test_old_release_images_are_removed_and_failures_ignored(self):
+        out = self.run_shell(r'''k3s() { echo "k3s $*" >>"$TEST_ROOT/calls"; return 1; }
+docker() { echo "docker $*" >>"$TEST_ROOT/calls"; return 1; }
+remove_release_images 1.4.0
+echo "status=$?"
+cat "$TEST_ROOT/calls"
+''')
+        self.assertIn('k3s ctr -n k8s.io images rm ghcr.io/supercheck-io/supercheck/worker:1.4.0', out)
+        self.assertIn('docker image rm ghcr.io/supercheck-io/supercheck/app:1.4.0 ghcr.io/supercheck-io/supercheck/worker:1.4.0', out)
+        self.assertIn('status=0', out)
+
+    def test_version_accepts_only_stable_releases(self):
+        for version in ['1.5.0-rc1', '1.4.1-canary.6', '1.4']:
+            result = subprocess.run(['bash', str(DEPLOY / 'install.sh'), '--version', version, '--dry-run'],
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2, version)
+            self.assertIn('not a stable release number', result.stderr)
+
+    def test_upgrade_rejects_configuration_flags(self):
+        for flag in (['--local'], ['--domain', 'app.example.com']):
+            result = subprocess.run(['bash', str(DEPLOY / 'install.sh'), '--upgrade', *flag],
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('--upgrade keeps the existing configuration', result.stderr)
+
+    def _backup_fixture(self, docker_script):
+        install = self.root / 'install'
+        install.mkdir()
+        script = (DEPLOY / 'backup.sh').read_text().replace('$EUID', '$INSTALL_TEST_EUID')
+        (install / 'backup.sh').write_text(script)
+        (install / 'docker-compose.yml').write_text(
+            'image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.4.0}\n')
+        (install / '.env').write_text('BETTER_AUTH_SECRET=fixture\n')
+        binaries = self.root / 'bin'
+        binaries.mkdir()
+        (binaries / 'docker').write_text('#!/usr/bin/env bash\necho "$*" >> "$TEST_ROOT/docker.log"\n' + docker_script)
+        (binaries / 'docker').chmod(0o755)
+
+    def _run_backup(self, *args):
+        env = {**os.environ, 'TEST_ROOT': str(self.root), 'INSTALL_TEST_EUID': '0',
+               'PATH': f'{self.root / "bin"}:{os.environ["PATH"]}'}
+        # A new session has no controlling terminal, like a cron job or CI.
+        return subprocess.run(['bash', str(self.root / 'install/backup.sh'), *args], env=env, text=True,
+                              capture_output=True, timeout=20, start_new_session=True)
+
+    def test_backup_restarts_stopped_services_when_archiving_fails(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: "acme"' ;;
+  'compose ps -aq postgres'|'compose ps --status running -q postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'compose ps --status running --services') printf '%s\n' app worker postgres redis rustfs ;;
+  'compose exec'*) echo dump-bytes ;;
+  'volume ls'*) [[ "$*" == *'project=acme'* && "$*" == *'volume=rustfs-data'* ]] && echo acme_rustfs-data ;;
+  'run'*) exit 1 ;;
+esac
+exit 0
+''')
+        result = self._run_backup('--out', str(self.root / 'backups'))
+        self.assertNotEqual(result.returncode, 0)
+        log = (self.root / 'docker.log').read_text()
+        self.assertIn('compose stop app worker rustfs', log)
+        self.assertIn('compose start app worker rustfs', log)
+        self.assertIn('acme_rustfs-data:/data:ro', log)
+        dumps = list((self.root / 'backups').glob('*/database.dump'))
+        self.assertEqual(len(dumps), 1)
+        self.assertEqual(dumps[0].parent.stat().st_mode & 0o777, 0o700)
+
+    def test_restore_needs_confirmation_and_a_matching_release(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: supercheck' ;;
+  'compose ps -aq postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'volume ls'*) [[ "$*" == *'volume=rustfs-data'* ]] && echo supercheck_rustfs-data ;;
+esac
+exit 0
+''')
+        backup = self.root / 'backup'
+        backup.mkdir()
+        (backup / 'database.dump').write_text('x')
+        (backup / 'rustfs-data.tar.gz').write_text('x')
+        (backup / 'manifest').write_text('release=1.4.0\n')
+        result = self._run_backup('--restore', str(backup))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('--yes', result.stderr)
+        (backup / 'manifest').write_text('release=1.3.6\n')
+        result = self._run_backup('--restore', str(backup), '--yes')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('taken on Supercheck 1.3.6', result.stderr)
+        log = (self.root / 'docker.log').read_text()
+        self.assertNotIn('compose stop', log)
+        # Archives and the dump are checked before the confirmation prompt.
+        self.assertIn('-tzf /backup/rustfs-data.tar.gz', log)
+        self.assertIn('-l /backup/database.dump', log)
+
+    def test_backup_fails_when_stopped_services_do_not_restart(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: acme' ;;
+  'compose ps -aq postgres'|'compose ps --status running -q postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'compose ps --status running --services') printf '%s\n' app postgres ;;
+  'compose exec'*) echo dump-bytes ;;
+  'compose start'*) exit 1 ;;
+  'volume ls'*) [[ "$*" == *'volume=rustfs-data'* ]] && echo acme_rustfs-data ;;
+  'run'*) for a in "$@"; do [[ $a == *:/backup ]] && touch "${a%:/backup}/rustfs-data.tar.gz"; done ;;
+esac
+exit 0
+''')
+        (self.root / 'install/traefik-dns.env').write_text('CF_DNS_API_TOKEN=x\n')
+        result = self._run_backup('--out', str(self.root / 'backups'))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('Could not start app', result.stderr)
+        saved = list((self.root / 'backups').glob('*/traefik-dns.env'))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0].stat().st_mode & 0o777, 0o600)
+
+    def test_restore_warns_about_a_missing_volume_and_explains_a_failure(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: acme' ;;
+  'compose ps -aq postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'compose up'*) exit 1 ;;
+  'volume ls'*) [[ "$*" == *'volume=rustfs-data'* ]] && echo acme_rustfs-data ;;
+esac
+exit 0
+''')
+        backup = self.root / 'backup'
+        backup.mkdir()
+        for name in ('database.dump', 'rustfs-data.tar.gz', 'traefik-letsencrypt.tar.gz', 'traefik-dns.env'):
+            (backup / name).write_text('x')
+        (backup / 'manifest').write_text('release=1.4.0\n')
+        result = self._run_backup('--restore', str(backup), '--yes')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('no traefik-letsencrypt volume', result.stderr)
+        self.assertIn('Restore failed part-way', result.stderr)
+        restored = self.root / 'install/traefik-dns.env'
+        self.assertEqual(restored.read_text(), 'x')
+        self.assertEqual(restored.stat().st_mode & 0o777, 0o600)
+
     def test_prompts_need_only_a_readable_tty_not_a_tty_stdout(self):
         out = self.run_shell(r'''ASSUME_YES=false; IS_TTY=false
 tty_readable() { return 0; }

@@ -100,7 +100,7 @@ sequenceDiagram
 | Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.4.0** |
 
 <Callout type="warn">
-Never expose PostgreSQL, Redis, or S3 publicly. Allow only worker hosts. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
+Never expose PostgreSQL, Redis, or S3 publicly. Docker-published ports bypass `ufw`, so a host firewall rule does not protect them: bind them to the private address (below) and restrict 5432, 6379, and 9000 to the worker IPs in your cloud firewall or in the `DOCKER-USER` iptables chain. Keep the k3s API (6443) closed to the internet; each worker uses its own local k3s, and the main server's worker container reaches 6443 over the local Docker network. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
 </Callout>
 
 ## Set up
@@ -119,25 +119,18 @@ WORKER_LOCATION=worker-main
 RUNNING_CAPACITY=2
 ```
 
-In `docker-compose.yml`, replace the `127.0.0.1` PostgreSQL, Redis, and RustFS port bindings with the server's **private VPN address**:
+In the same `.env`, publish PostgreSQL, Redis, and RustFS on the server's **private VPN address** instead of `127.0.0.1`. Do not edit `docker-compose.yml`: upgrades replace it.
 
-```yaml
-services:
-  postgres:
-    ports:
-      - "10.0.0.10:5432:5432"
-  redis:
-    ports:
-      - "10.0.0.10:6379:6379"
-  rustfs:
-    ports:
-      - "10.0.0.10:9000:9000"
+```dotenv
+DB_BIND_ADDR=10.0.0.10
+REDIS_BIND_ADDR=10.0.0.10
+RUSTFS_BIND_ADDR=10.0.0.10
 ```
 
-From `deploy/docker`, apply the change (keep any custom `-f` option):
+From `deploy/docker`, apply the change:
 
 ```bash
-sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+sudo docker compose up -d
 ```
 
 </Step>
@@ -175,7 +168,10 @@ AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
 
 ```bash
 chmod 600 .env
-sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
+sudo docker compose -f docker-compose-worker.yml pull
+# Load the worker image into the sandbox so the first run does not time out downloading it.
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
 </Step>
@@ -210,6 +206,19 @@ An unknown token stops the worker at startup. Which workloads users may run in a
 `CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
 
 For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.4.0/deploy/docker/docker-compose-worker.yml).
+
+## Upgrade workers
+
+After [upgrading the main server](/docs/app/deployment/self-hosted#upgrade), upgrade each worker server to the same release. In `~/supercheck-worker`, download that release's `setup-k3s.sh` and `docker-compose-worker.yml` as in [Prepare each worker server](#prepare-each-worker-server), set `SUPERCHECK_VERSION` in `.env`, then:
+
+```bash
+sudo bash setup-k3s.sh
+sudo docker compose -f docker-compose-worker.yml pull
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:<x.y.z> | sudo k3s ctr -n k8s.io images import -
+sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
+```
+
+Workers keep no data, so they need no backup; keep their `.env` private.
 
 ## Missing-region detection
 

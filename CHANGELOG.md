@@ -6,12 +6,24 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+### Upgrade notes
+
+Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) before upgrading a self-hosted installation.
+
+- **Required secrets.** `docker-compose.yml` no longer falls back to built-in values for `DB_PASSWORD`, `REDIS_PASSWORD` and `BETTER_AUTH_SECRET` (and `docker-compose-external.yml` requires `BETTER_AUTH_SECRET`). Installer-created `.env` files already have them. If yours does not, Compose refuses to start and names the missing key: restore the `.env` you installed with, and never generate new values for an existing install.
+- **Database TLS.** `sslmode` in `DATABASE_URL` is now honoured by the app, migrations and the worker. `require`, `verify-ca` and `verify-full` connect with a verified certificate, and `allow` and `prefer` try TLS first. An external PostgreSQL with a private certificate authority needs that CA trusted in the containers.
+- **Image pins.** The bundled PostgreSQL and Redis images are pinned to `postgres:18.6` and `redis:8.10`, the versions the floating `18` and `8` tags pointed to.
+
 ### Added
 
 - Supercheck Cloud sends server-side error reports from the app and worker to Sentry when `SENTRY_DSN` is set. A report has the error type, a shortened message scrubbed of secrets, URLs, email addresses, quoted text and database values, a stack trace, service (app or worker)/release/environment, OS and runtime versions, and internal IDs (hostnames and IPs in messages may appear); request contents, headers, cookies, form inputs, test scripts and run logs are not attached. Ignored when `SELF_HOSTED=true`, where the Sentry SDK is not loaded and no Sentry calls are made.
 - The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install.
 - `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
 - The requirements API accepts `"priority": null` to clear a requirement's priority.
+- `sudo bash install.sh --upgrade [--version X]` upgrades an existing installation in one step: it checks the checkout, dumps the database, keeps a copy of `.env`, checks out the release, refreshes the sandbox, imports the worker image and restarts with a health check, then removes the previous release's app and worker images (going back means restoring a backup taken on that release, which pulls its images again). `--version X` on an existing installation now points to `--upgrade` for a newer release and to `backup.sh --restore` for an older one.
+- `deploy/docker/backup.sh` backs up the database, stored files, HTTPS certificates and `.env`, and `backup.sh --restore DIR` restores them onto the same release after confirmation.
+- Opt-in `compose.dns01.yml` issues a wildcard certificate for status-page subdomains through a DNS-01 challenge.
+- `DB_BIND_ADDR`, `REDIS_BIND_ADDR` and `RUSTFS_BIND_ADDR` in `.env` publish PostgreSQL, Redis and RustFS for remote workers without editing the Compose file.
 
 ### Fixed
 

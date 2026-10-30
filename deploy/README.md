@@ -1,30 +1,22 @@
 # Supercheck Deployment
 
-Self-host Supercheck on your own infrastructure.
+Self-host Supercheck on a Linux server (Ubuntu 22.04+ or Debian 12+). macOS, Windows, WSL2 and Docker Desktop are not supported: the test sandbox needs the Linux kernel.
 
-> **Linux Required:** The test-execution sandbox requires the Linux kernel. Only Linux servers (Ubuntu 22.04+, Debian 12+) are supported. macOS, Windows, and WSL2 are not supported.
-
-## Docker Compose
-
-Deploy with Docker Compose:
+**Start here:** [Self-Hosted guide](https://supercheck.io/docs/app/deployment/self-hosted). It covers the one-command installer, upgrades, backups and restore, status-page HTTPS and troubleshooting.
 
 ```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-
-# Generate secrets and set up the execution sandbox
-./init-secrets.sh
-sudo bash setup-k3s.sh
-
-# For HTTPS, first set COMPOSE_PROFILES=https, APP_DOMAIN and ACME_EMAIL in .env.
-# Start services
-KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
+sudo bash install.sh --version 1.4.0
 ```
 
-If you use browser-based integrations such as Azure DevOps dashboard widgets or Grafana panels, set `CORS_ALLOWED_ORIGINS` on the App deployment, for example `https://dev.azure.com,https://*.visualstudio.com`. Leave it empty if you do not need browser-side API access.
+## In this directory
 
-See [docker/README.md](docker/README.md) for detailed configuration options, including multi-region workers, external managed services, the outbound-only private agent, and the optional AI SRE integration lab.
+| Path | Purpose |
+|------|---------|
+| [docker/INSTALL.md](docker/INSTALL.md) | Advanced manual install, step by step, for hosts where the installer does not fit |
+| [docker/README.md](docker/README.md) | Compose files and environment variable reference |
+| `docker/install.sh` | Installer and upgrader (`--help` lists every option) |
+| `docker/backup.sh` | Backup and restore of the bundled database, storage and `.env` |
+| [docker/aisre-lab](docker/aisre-lab/README.md) | Optional AI SRE integration lab for connector development |
 
-## Documentation
-
-Full documentation: **[supercheck.io/docs/app/deployment](https://supercheck.io/docs/app/deployment)**
+More: [Multi-Server](https://supercheck.io/docs/app/deployment/multi-server) workers and the [Private Agent](https://supercheck.io/docs/app/deployment/private-agent).

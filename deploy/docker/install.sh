@@ -3,13 +3,14 @@
 #
 # Takes a fresh Ubuntu 22.04+/Debian 12+ server to a running, verified Supercheck.
 #
-#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
 #   less install.sh                 # read it first
 #   sudo bash install.sh            # guided; asks only what it cannot detect
 #
 #   sudo bash install.sh --local --yes                                   # evaluation on this host, no prompts
 #   sudo bash install.sh --domain app.example.com --email you@example.com --yes   # public HTTPS, no prompts
 #   sudo bash install.sh --dry-run                                       # show the plan, change nothing
+#   sudo bash install.sh --upgrade                                       # upgrade an existing install to this release
 #
 # This is a thin wrapper around init-secrets.sh and setup-k3s.sh, which remain the source of
 # truth. Safe to re-run: it preserves secrets and keeps private backups when settings change.
@@ -42,6 +43,7 @@ DRY_RUN=false
 PREWARM=true
 DOCKER_GROUP=false
 IGNORE_MINIO=false
+UPGRADE=false
 
 usage() {
   cat <<'EOF'
@@ -58,6 +60,8 @@ Behaviour:
   --dry-run               Run read-only checks and print the plan; change nothing
   --dir <path>            Where to put the source and .env (default: /opt/supercheck)
   --version <x.y.z>       Release to install (default: bundled with this script)
+  --upgrade               Upgrade an existing install to --version (default: this script's release):
+                          dumps the database, updates the files, re-runs sandbox setup and restarts
   --no-prewarm            Skip importing the worker image into the sandbox runtime
   --docker-group          Add the invoking sudo user to the docker group (root-equivalent access)
   --ignore-minio          Do not stop for a leftover MinIO volume (start with empty storage)
@@ -68,6 +72,7 @@ Examples:
   sudo bash install.sh
   sudo bash install.sh --local --yes
   sudo bash install.sh --domain app.example.com --email ops@example.com --yes
+  sudo bash install.sh --upgrade --version 1.4.0
 EOF
 }
 
@@ -92,14 +97,22 @@ while [[ $# -gt 0 ]]; do
     --no-prewarm) PREWARM=false ;;
     --docker-group) DOCKER_GROUP=true ;;
     --ignore-minio) IGNORE_MINIO=true ;;
+    --upgrade) UPGRADE=true ;;
     --no-color) NO_COLOR_FLAG=true ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; echo "Run with --help for usage." >&2; exit 2 ;;
   esac
   shift
 done
-if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "'$VERSION' is not a release number like 1.3.6." >&2; exit 2
+if [[ "$UPGRADE" == true ]]; then
+  if [[ -n "$MODE$EMAIL$STATUS_DOMAIN" ]]; then
+    echo "--upgrade keeps the existing configuration; do not combine it with --local, --domain, --email or --status-domain." >&2; exit 2
+  fi
+  VERSION_SET=true # the target release is always explicit, even when it is this script's default
+fi
+# Stable releases only: pre-release images (such as -canary builds) are not for self-hosting.
+if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "'$VERSION' is not a stable release number like 1.4.0." >&2; exit 2
 fi
 if [[ "$INSTALL_DIR" != /* ]]; then echo "--dir must be an absolute path." >&2; exit 2; fi
 while [[ "$INSTALL_DIR" == */ && "$INSTALL_DIR" != "/" ]]; do INSTALL_DIR="${INSTALL_DIR%/}"; done
@@ -356,6 +369,18 @@ env_has_https() { [[ "$(env_get COMPOSE_PROFILES)" == *https* && -n "$(env_get A
 
 dc() { ( cd "$(compose_dir)" && KUBECONFIG_FILE="$KUBECONFIG_FILE" docker compose "$@" ); }
 
+# Release of an existing install: the pinned SUPERCHECK_VERSION, else the checkout's Compose default.
+installed_version() {
+  local v
+  v="$(env_get SUPERCHECK_VERSION || true)"
+  [[ -n "$v" ]] || v="$(grep -o 'supercheck/app:[$]{SUPERCHECK_VERSION:-[^}]*}' "$(compose_dir)/docker-compose.yml" 2>/dev/null | head -n1 | sed 's/.*:-//; s/}$//' || true)"
+  printf '%s\n' "$v"
+}
+
+# The installer clones into <dir>; deploy files live in <dir>/deploy/docker.
+UPGRADE_TOP=""
+ugit() { git -c safe.directory="$UPGRADE_TOP" -C "$UPGRADE_TOP" "$@"; }
+
 # ─── Step bodies (run in subshells; failures abort the step) ────────────────
 
 install_prerequisites() {
@@ -566,8 +591,75 @@ prewarm_worker_image() {
   fi
 }
 
+# Each release's app and worker images take several GB in Docker and the sandbox; drop the old ones.
+remove_release_images() {
+  local repo="ghcr.io/supercheck-io/supercheck"
+  k3s ctr -n k8s.io images rm "$repo/worker:$1" >/dev/null 2>&1 || true
+  docker image rm "$repo/app:$1" "$repo/worker:$1" >/dev/null 2>&1 || true
+}
+
 start_stack() {
   dc up -d --wait --wait-timeout 300
+}
+
+# pg_dump is consistent while the app runs; written under a temporary name so a failure leaves no
+# file that looks like a good backup.
+backup_database() {
+  local file="$1"
+  dc up -d --wait --wait-timeout 120 postgres
+  ( umask 077
+    [[ ! -L "$(dirname "$file")" ]]
+    install -d -m 700 "$(dirname "$file")"
+    chmod 700 "$(dirname "$file")"
+    dc exec -T postgres sh -c "pg_dump -Fc -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"" >"$file.partial"
+    [[ -s "$file.partial" ]]
+    mv "$file.partial" "$file"
+  )
+}
+
+# Check out the release tag in the existing clone, the same way fetch_source does for a new one.
+upgrade_source() {
+  cd "$(compose_dir)"
+  ( umask 077; install -m 600 .env "$(mktemp ".env.bak-$(date +%Y%m%d%H%M%S).XXXXXX")" )
+  ugit fetch --quiet --depth 1 origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
+  ugit checkout --quiet --detach "refs/tags/v${VERSION}"
+}
+
+# Read-only checks for --upgrade; they run before anything changes, so --dry-run reports them.
+upgrade_preflight() {
+  [[ -f "$(compose_dir)/.env" ]] || die "No existing installation was found in $(compose_dir)." \
+    "Install first with: sudo bash install.sh   (or pass the install location with --dir)"
+  local key
+  for key in DB_PASSWORD REDIS_PASSWORD BETTER_AUTH_SECRET; do
+    grep -Eq "^${key}=[^[:space:]]" "$(compose_dir)/.env" || die "$key is missing from $(compose_dir)/.env; this release will not start without it." \
+      "Existing install? Restore the .env you installed with; never generate a new one (new installs run ./init-secrets.sh)."
+  done
+  command -v git >/dev/null 2>&1 || die "git is required to upgrade. Install it with: sudo apt-get install -y git"
+  UPGRADE_TOP="$(cd "$(compose_dir)/../.." && pwd -P)"
+  # Root runs git here, so the checkout must not be controlled by another user (hooks, config).
+  if [[ -e "$UPGRADE_TOP/.git" && "$(stat -c %u "$UPGRADE_TOP/.git" 2>/dev/null || stat -f %u "$UPGRADE_TOP/.git")" != "$(id -u)" ]]; then
+    die "$UPGRADE_TOP/.git is owned by another user, so the upgrade will not run git there as root." \
+      "Use an installer-managed checkout, or follow the manual update steps as the checkout's owner."
+  fi
+  [[ "$(ugit rev-parse --show-toplevel 2>/dev/null || true)" == "$UPGRADE_TOP" ]] || die "$UPGRADE_TOP is not a git checkout, so it cannot be upgraded automatically." \
+    "Follow the manual update steps: https://supercheck.io/docs/app/deployment/self-hosted#manual-update"
+  local dirty
+  dirty="$(ugit status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if [[ -n "$dirty" ]]; then
+    die "Tracked files in $UPGRADE_TOP were changed locally; upgrading would overwrite them:" \
+      "$(cut -c4- <<<"$dirty" | head -n 10 | tr '\n' ' ')" \
+      "Move the change into .env (for example DB_BIND_ADDR, or COMPOSE_FILE with your own override file)," \
+      "then restore the file with: sudo git -C $UPGRADE_TOP checkout -- <file>   and re-run."
+  fi
+  local current
+  current="$(installed_version)"
+  UPGRADE_FROM="$current"
+  if [[ -n "$current" ]] && ! version_ge "$VERSION" "$current"; then
+    die "This server runs ${current}; downgrading to ${VERSION} is not supported (database migrations only move forward)." \
+      "To go back, restore a backup taken on ${VERSION} (sudo bash backup.sh --restore <dir>)."
+  fi
+  if [[ "$current" == "$VERSION" ]]; then ok "Already on ${VERSION}; files, sandbox and images will be re-applied"
+  else ok "Upgrade ${current:-unknown version} → ${BOLD}${VERSION}${RESET}"; fi
 }
 
 # ─── Preflight (read-only; runs before anything is changed) ─────────────────
@@ -639,7 +731,7 @@ preflight() {
     proj="$(project_name)"
     if [[ "$IGNORE_MINIO" != true ]] && grep -Fxq "${proj}_minio-data" <<<"$vols" && { [[ "$(env_get S3_ENDPOINT)" != "http://rustfs:9000" ]] || ! grep -Fxq "${proj}_rustfs-data" <<<"$vols"; }; then
       fail "An existing Supercheck MinIO storage volume was found. Installing now would start with empty storage."
-      note "Run migrate-minio-to-rustfs.sh from your current checkout first (see 'Upgrading' in deploy/docker/README.md)."
+      note "Run migrate-minio-to-rustfs.sh from your current checkout first: https://supercheck.io/docs/app/deployment/self-hosted#upgrading-from-minio-breaking"
       note "Starting fresh on purpose? Re-run with --ignore-minio."
       problems=1
     fi
@@ -703,6 +795,8 @@ main() {
   else
     USING_THIS_CHECKOUT=false
   fi
+  # An upgrade moves this checkout to the release tag, so the checkout's own version does not apply.
+  [[ "$UPGRADE" == true ]] && USING_THIS_CHECKOUT=false
 
   if [[ "$DRY_RUN" != true && "$EUID" -eq 0 ]]; then
     LOG_DIR="/var/log/supercheck"
@@ -728,6 +822,20 @@ main() {
 
   header 1 "Checking this server"
   preflight
+  if [[ "$UPGRADE" == true ]]; then
+    upgrade_preflight
+  elif [[ "$VERSION_SET" == true && "$USING_THIS_CHECKOUT" != true && -f "$(compose_dir)/.env" ]]; then
+    # --version on an existing install used to change only the image tag and keep old files.
+    current_version="$(installed_version)"
+    if [[ -n "$current_version" && "$current_version" != "$VERSION" ]]; then
+      if version_ge "$VERSION" "$current_version"; then
+        die "This server runs ${current_version}. Changing the release needs the upgrade command:" \
+          "sudo bash install.sh --upgrade --version ${VERSION}"
+      fi
+      die "This server runs ${current_version}; going back to ${VERSION} is not supported (database migrations only move forward)." \
+        "To go back, restore a backup taken on ${VERSION} (sudo bash backup.sh --restore <dir>)."
+    fi
+  fi
 
   header 2 "Choosing your setup"
   USE_EXISTING=false
@@ -784,7 +892,8 @@ main() {
     fi
     check_ufw
     ok "Public HTTPS install for ${BOLD}${DOMAIN}${RESET}"
-    note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains, so also add a wildcard record (*.${STATUS_DOMAIN:-$DOMAIN})."
+    note "Status pages use ${STATUS_DOMAIN:-$DOMAIN} subdomains: add a wildcard DNS record (*.${STATUS_DOMAIN:-$DOMAIN})."
+    note "HTTPS for those subdomains needs a wildcard certificate (DNS-01); see 'Status page HTTPS' in the docs."
   elif [[ "$MODE" == "local" && "$USE_EXISTING" != true ]]; then
     ok "Local evaluation on this server"
   fi
@@ -806,7 +915,11 @@ main() {
   fi
 
   if [[ "$CAN_PROMPT" == true && "$DRY_RUN" != true ]]; then
-    printf '\n  This will install Docker (if missing), k3s with the gVisor sandbox, and Supercheck %s.\n' "$VERSION"
+    if [[ "$UPGRADE" == true ]]; then
+      printf '\n  This will dump the database, update %s to %s, re-run the sandbox setup and restart Supercheck (a few minutes of downtime).\n' "$UPGRADE_TOP" "$VERSION"
+    else
+      printf '\n  This will install Docker (if missing), k3s with the gVisor sandbox, and Supercheck %s.\n' "$VERSION"
+    fi
     confirm "Continue?" || die "Cancelled. Nothing was changed."
   fi
 
@@ -833,7 +946,12 @@ main() {
   check_ports
 
   header 4 "Preparing configuration"
-  if [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
+  if [[ "$UPGRADE" == true ]]; then
+    PRE_UPGRADE_DUMP="/var/backups/supercheck/pre-upgrade-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    # Never migrate without a dump: start PostgreSQL first if it is stopped.
+    run_step "Dumping the database to ${PRE_UPGRADE_DUMP}" backup_database "$PRE_UPGRADE_DUMP"
+    run_step "Updating deployment files to v${VERSION} (.env backup kept)" upgrade_source
+  elif [[ -f "$(compose_dir)/init-secrets.sh" ]]; then
     ok "Source in $(compose_dir)"
   elif [[ -d "$INSTALL_DIR" ]] && dir_has_content "$INSTALL_DIR"; then
     die "${INSTALL_DIR} exists but is not a Supercheck checkout." "Choose another location with --dir, or remove it."
@@ -855,7 +973,9 @@ main() {
     run_step "Generating secrets and configuration" generate_config
   fi
 
-  run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
+  if [[ "$IGNORE_MINIO" == true ]]; then
+    run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
+  fi
   run_step "Saving the image version" persist_version
 
   header 5 "Setting up the isolated test sandbox"
@@ -900,6 +1020,9 @@ main() {
     if [[ "$health" == '{"status":"ok"'* ]]; then
       ok "Health check passed"
       HEALTHY=true
+      if [[ "$UPGRADE" == true && -n "${UPGRADE_FROM:-}" && "$UPGRADE_FROM" != "$VERSION" ]]; then
+        SOFT_STEP=true run_step "Removing the images of ${UPGRADE_FROM}" remove_release_images "$UPGRADE_FROM"
+      fi
     elif [[ -n "$health" ]]; then
       warn "Running, but the health check reports a problem:"
       note "$health"
@@ -921,7 +1044,9 @@ main() {
   # Report what is actually configured, not what was requested.
   if env_has_https; then MODE="public"; DOMAIN="$(env_get APP_DOMAIN)"; else MODE="local"; fi
   if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:3000"; fi
-  if [[ "$HEALTHY" == true ]]; then
+  if [[ "$HEALTHY" == true && "$UPGRADE" == true ]]; then
+    printf '\n%s  Supercheck %s is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$VERSION" "$RESET" "$DIM" "$SECONDS" "$RESET"
+  elif [[ "$HEALTHY" == true ]]; then
     printf '\n%s  Supercheck is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
   else
     printf '\n%s  Supercheck is running, but the health check reported a problem (see above).%s %s(%ss)%s\n\n' "$YELLOW$BOLD" "$RESET" "$DIM" "$SECONDS" "$RESET"
@@ -939,7 +1064,10 @@ main() {
   fi
   printf '  Config      %s/.env  %s(keep a private backup; it holds your secrets)%s\n' "$(compose_dir)" "$DIM" "$RESET"
   printf '  Logs        cd %s && sudo docker compose logs -f app worker\n' "$(compose_dir)"
-  printf '  Stop/start  sudo docker compose stop   /   sudo env KUBECONFIG_FILE=%s docker compose up -d\n' "$KUBECONFIG_FILE"
+  printf '  Stop/start  sudo docker compose stop   /   sudo docker compose up -d\n'
+  printf '  Back up     cd %s && sudo bash backup.sh\n' "$(compose_dir)"
+  printf '  Upgrade     download the new release'"'"'s install.sh, then: sudo bash install.sh --upgrade\n'
+  [[ -z "${PRE_UPGRADE_DUMP:-}" ]] || printf '  DB dump     %s  %s(taken before the upgrade)%s\n' "$PRE_UPGRADE_DUMP" "$DIM" "$RESET"
   printf '  Install log %s\n' "$LOG_FILE"
   printf '  Docs        https://supercheck.io/docs/app/deployment/self-hosted\n'
   if [[ "$DOCKER_GROUP" == true && -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then

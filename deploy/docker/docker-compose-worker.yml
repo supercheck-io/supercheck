@@ -165,11 +165,6 @@ services:
           cpus: "0.5"
           memory: 1G
 
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-        delay: 15s
-        window: 120s
 
     # GVISOR-006: Hardened security profile
     security_opt:

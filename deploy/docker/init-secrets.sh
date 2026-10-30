@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./init-secrets.sh              # Create .env with auto-generated secrets
-#   ./init-secrets.sh --force      # Overwrite existing .env file
+#   ./init-secrets.sh --force      # Overwrite .env: new secrets cannot open an existing install's data
 
 set -e
 
@@ -163,19 +163,20 @@ S3_ENDPOINT=http://rustfs:9000
 # AI_MODEL=gpt-6-luna
 # OPENAI_API_KEY=sk-your-api-key
 
+# Other providers: set AI_MODEL to a model ID your provider account offers.
 # Anthropic
 # AI_PROVIDER=anthropic
-# AI_MODEL=claude-3-5-haiku-20241022
+# AI_MODEL=your-model-id
 # ANTHROPIC_API_KEY=sk-ant-your-key
 
 # Google Gemini
 # AI_PROVIDER=gemini
-# AI_MODEL=gemini-2.5-flash
+# AI_MODEL=your-model-id
 # GOOGLE_GENERATIVE_AI_API_KEY=your-key
 
 # Azure OpenAI
 # AI_PROVIDER=azure
-# AI_MODEL=gpt-4o-mini
+# AI_MODEL=your-model-id
 # AZURE_RESOURCE_NAME=your-resource
 # AZURE_API_KEY=your-key
 # AZURE_OPENAI_DEPLOYMENT=your-deployment
@@ -187,7 +188,7 @@ S3_ENDPOINT=http://rustfs:9000
 
 # OpenRouter (400+ models)
 # AI_PROVIDER=openrouter
-# AI_MODEL=anthropic/claude-3.5-haiku
+# AI_MODEL=provider/model-id
 # OPENROUTER_API_KEY=sk-or-your-key
 
 # ────────────────────────────────────────────────────────────
@@ -195,15 +196,6 @@ S3_ENDPOINT=http://rustfs:9000
 # ────────────────────────────────────────────────────────────
 # WORKER_REPLICAS=1            # Number of worker containers (docker compose only)
 # RUNNING_CAPACITY=1           # App-side gate: max concurrent test runs (set equal to WORKER_REPLICAS)
-
-# ────────────────────────────────────────────────────────────
-# OPTIONAL: Customer Support (Cloud Only)
-# ────────────────────────────────────────────────────────────
-# CHATWOOT_BASE_URL=https://app.chatwoot.com
-# CHATWOOT_WEBSITE_TOKEN=your-token
-# HMAC secret from Chatwoot inbox > Configuration > Identity Validation (verifies signed-in users)
-# CHATWOOT_IDENTITY_VALIDATION_KEY=
-
 
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: UI Configuration
@@ -243,7 +235,7 @@ echo -e "   2. Install local K3s + gVisor:"
 echo -e "      ${BLUE}sudo bash setup-k3s.sh${NC}"
 echo ""
 echo -e "   3. Start Supercheck:"
-echo -e "      ${BLUE}KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300${NC}"
+echo -e "      ${BLUE}sudo docker compose up -d --wait --wait-timeout 300${NC}"
 echo -e "      Then check health:"
 echo -e "      ${BLUE}curl --fail --silent --show-error http://localhost:3000/api/health${NC}"
 echo ""
