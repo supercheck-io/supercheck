@@ -193,13 +193,37 @@ describe("input limits and concurrent edits", () => {
     ["a blank name", { name: "   " }, "name is required"],
     ["a name over 255 characters", { name: "x".repeat(256) }, "255"],
     ["a description over 2000 characters", { description: "x".repeat(2001) }, "2000"],
-    ["more than 50 tests", { tests: Array.from({ length: 51 }, (_, i) => ({ id: `018f0000-0000-7000-8000-${String(i).padStart(12, "0")}` })) }, "at most 50"],
   ])("rejects %s with a readable message and no database access", async (_label, extra, text) => {
     const result = (await updateJob({ ...input, ...extra }, context)) as { success: boolean; message: string; error: unknown };
     expect(result.success).toBe(false);
     expect(result.message).toContain(text);
     expect(typeof result.error).toBe("string");
     expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  describe("more than 50 tests", () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`);
+    const chain = (value: unknown[]) => {
+      const c: Record<string, unknown> = {};
+      for (const m of ["from", "where", "orderBy", "limit"]) c[m] = () => c;
+      c.then = (resolve: (v: unknown[]) => unknown) => Promise.resolve(value).then(resolve);
+      return c;
+    };
+    const arrange = (current: string[]) => mockSelect.mockReset()
+      .mockReturnValueOnce(chain([{ id: input.jobId, jobType: "playwright", cronSchedule: null, scheduledJobId: null, projectId: "project", organizationId: "org" }]))
+      .mockReturnValueOnce(chain(current.map((id) => ({ id }))))
+      .mockReturnValueOnce(chain(ids.map((id) => ({ id, type: "browser" }))));
+
+    it("rejects a changed selection over the cap", async () => {
+      arrange([]);
+      expect(await updateJob({ ...input, tests: ids.map((id) => ({ id })) }, context)).toMatchObject({ success: false, message: expect.stringContaining("at most 50") });
+    });
+
+    it("lets an unchanged legacy selection over the cap through", async () => {
+      arrange(ids);
+      const result = (await updateJob({ ...input, tests: ids.map((id) => ({ id })) }, context)) as { message?: string };
+      expect(result.message ?? "").not.toContain("at most 50");
+    });
   });
 
   it("reports a conflict when the job changed since the editor loaded it", async () => {

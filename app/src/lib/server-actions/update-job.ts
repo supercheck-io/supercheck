@@ -47,7 +47,6 @@ const updateJobSchema = z.object({
       })
     )
     .min(1, { message: "At least one test is required." })
-    .max(MAX_JOB_TESTS, { message: `A job can have at most ${MAX_JOB_TESTS} tests.` })
     .optional(),
   alertConfig: z
     .object({
@@ -264,6 +263,16 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       };
     }
 
+    const currentTestIds = currentTests.map((test) => test.id);
+    const testsChanged =
+      currentTestIds.length !== testIds.length ||
+      currentTestIds.some((testId, index) => testIds[index] !== testId);
+    // A legacy job over the cap stays editable while its selection is unchanged; the cap applies to changes.
+    if (testsChanged && testIds.length > MAX_JOB_TESTS) {
+      const message = `A job can have at most ${MAX_JOB_TESTS} tests.`;
+      return { success: false, message, error: message };
+    }
+
     const scopedTests = await dbInstance
       .select({ id: testsTable.id, type: testsTable.type })
       .from(testsTable)
@@ -307,11 +316,6 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
     if (jobType === "k6" && validatedData.tests && testIds.length > 1) {
       return { success: false, message: "A k6 job runs exactly one performance test." };
     }
-
-    const currentTestIds = currentTests.map((test) => test.id);
-    const testsChanged =
-      currentTestIds.length !== testIds.length ||
-      currentTestIds.some((testId, index) => testIds[index] !== testId);
 
     console.log(
       `Job ${validatedData.jobId} being updated by user ${userId} in project ${project.name}`

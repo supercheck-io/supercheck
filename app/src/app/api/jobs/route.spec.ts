@@ -10,6 +10,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
+// The real scheduler opens BullMQ/Redis connections that keep the Jest worker alive.
+jest.mock("@/lib/job-scheduler", () => ({ scheduleJob: jest.fn().mockResolvedValue("scheduled-job-id") }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn(),
@@ -37,6 +39,7 @@ jest.mock("@/lib/server-actions/update-job", () => {
     jobNameSchema: z.string().trim().min(1, "Job name is required.").max(255, "Job name must be at most 255 characters."),
     jobDescriptionSchema: z.string().max(2000, "Description must be at most 2000 characters."),
     MAX_JOB_TESTS: 50,
+    JOB_CONFLICT_ERROR: "Job changed since you opened it — reload",
   };
 });
 
@@ -357,6 +360,33 @@ describe("Jobs route regressions", () => {
     expect((updateJob as jest.Mock).mock.calls[0][0]).not.toHaveProperty("status");
   });
 
+  it("PUT /api/jobs keeps the stored description, guards inherited fields with updatedAt, and maps a conflict to 409", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000006";
+    const updatedAt = new Date("2026-01-01T00:00:00.000Z");
+    mockDb.select
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([{ id: jobId, projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "5 * * * *", description: "Stored", updatedAt }]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({ from: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue([{ id: TEST_ID, type: "browser" }]) }) });
+    (updateJob as jest.Mock).mockResolvedValue({ success: false, message: "Job changed since you opened it — reload" });
+
+    const response = await PUT(new Request("http://localhost/api/jobs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: jobId, name: "Nightly Job", tests: [{ id: TEST_ID }] }),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(updateJob).toHaveBeenCalledWith(
+      expect.objectContaining({ description: "Stored", expectedUpdatedAt: updatedAt.toISOString() }),
+      expect.objectContaining({ inherited: { cronSchedule: true, description: true } }),
+    );
+  });
+
   it("PUT /api/jobs keeps the stored schedule when cronSchedule is omitted", async () => {
     const jobId = "00000000-0000-4000-8000-000000000006";
     mockDb.select
@@ -379,7 +409,7 @@ describe("Jobs route regressions", () => {
     expect(response.status).toBe(200);
     expect(updateJob).toHaveBeenCalledWith(
       expect.objectContaining({ jobId, cronSchedule: "5 * * * *" }),
-      expect.objectContaining({ inherited: { cronSchedule: true } }),
+      expect.objectContaining({ inherited: { cronSchedule: true, description: true } }),
     );
   });
 

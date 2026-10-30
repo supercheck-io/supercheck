@@ -14,7 +14,7 @@ import {
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { z } from "zod";
-import { updateJob, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";
+import { updateJob, JOB_CONFLICT_ERROR, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -747,6 +747,8 @@ export async function PUT(request: Request) {
         organizationId: jobs.organizationId,
         jobType: jobs.jobType,
         cronSchedule: jobs.cronSchedule,
+        description: jobs.description,
+        updatedAt: jobs.updatedAt,
       })
       .from(jobs)
       .where(eq(jobs.id, targetJobId))
@@ -854,23 +856,27 @@ export async function PUT(request: Request) {
     // An omitted cronSchedule keeps the stored one (as PATCH does); an explicit "" or null clears it.
     const scheduleOmitted = jobData.cronSchedule === undefined;
     const effectiveCron = scheduleOmitted ? existingJob[0].cronSchedule : jobData.cronSchedule;
+    const descriptionOmitted = jobData.description === undefined;
+    const effectiveDescription = descriptionOmitted ? existingJob[0].description ?? "" : jobData.description || "";
     const result = await updateJob(
       {
         jobId: targetJobId,
         name: jobData.name,
-        description: jobData.description || "",
+        description: effectiveDescription,
+        // An inherited schedule/description only applies if the job is unchanged since it was read here.
+        ...((scheduleOmitted || descriptionOmitted) && existingJob[0].updatedAt ? { expectedUpdatedAt: existingJob[0].updatedAt.toISOString() } : {}),
         cronSchedule: effectiveCron || undefined,
         tests: jobData.tests.map((test) => ({ id: test.id })),
         alertConfig: jobData.alertConfig
           ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
           : undefined,
       },
-      { userId: context.userId, project, organizationId, inherited: { cronSchedule: scheduleOmitted } },
+      { userId: context.userId, project, organizationId, inherited: { cronSchedule: scheduleOmitted, description: descriptionOmitted } },
     );
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.message ?? (typeof result.error === "string" ? result.error : "Failed to update job") },
-        { status: 400 }
+        { status: result.message === JOB_CONFLICT_ERROR ? 409 : 400 }
       );
     }
 
@@ -879,7 +885,7 @@ export async function PUT(request: Request) {
       job: {
         id: targetJobId,
         name: jobData.name,
-        description: jobData.description || "",
+        description: effectiveDescription,
         cronSchedule: effectiveCron || null,
         nextRunAt: result.job?.nextRunAt ?? null,
         ...(result.job?.warning ? { warning: result.job.warning } : {}),
