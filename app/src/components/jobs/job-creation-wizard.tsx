@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { Test } from "./schema";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
+import { invalidateJobCaches } from "@/hooks/use-jobs";
 
 interface FormData {
   name: string;
@@ -261,7 +261,7 @@ export function JobCreationWizard() {
         clearDraft();
 
         // Invalidate Jobs cache to ensure fresh data on jobs page
-        queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+        invalidateJobCaches(queryClient);
 
         // Use router.push for proper navigation
         router.push("/jobs");

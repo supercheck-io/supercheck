@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { EditJobSkeleton } from "@/components/jobs/edit-job-skeleton";
 import { toast } from "sonner";
 import { useJob } from "@/hooks/use-jobs";
+import { ListErrorState } from "@/components/shared/list-states";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function EditJobPage() {
@@ -16,11 +17,11 @@ export default function EditJobPage() {
   const jobId = params.id as string;
 
   // Use React Query hook for job data - this caches for 60s and prevents duplicate fetches
-  const { data: jobData, isLoading, error } = useJob(jobId);
+  const { data: jobData, isLoading, error, refetch } = useJob(jobId);
 
-  // Redirect to not-found if job doesn't exist
+  // Redirect only when the job is gone; any other failure keeps the page with a Retry.
   useEffect(() => {
-    if (error) {
+    if (error && /not found|HTTP 404/i.test(error.message)) {
       toast.error("Job Not Found", {
         description: "The job you're looking for doesn't exist or has been deleted."
       });
@@ -50,28 +51,7 @@ export default function EditJobPage() {
     return (
       <div className=" mx-auto p-4 space-y-4">
         <PageBreadcrumbs items={breadcrumbs} />
-        <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-semibold text-destructive">Failed to Load Job</h2>
-            <p className="text-muted-foreground">
-              We couldn&apos;t load the job details. Please try again.
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => router.push("/jobs")}
-              className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors"
-            >
-              Back to Jobs
-            </button>
-          </div>
-        </div>
+        <ListErrorState title="Failed to load job" error={error} onRetry={() => refetch()} />
       </div>
     );
   }

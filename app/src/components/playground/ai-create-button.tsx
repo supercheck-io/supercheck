@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { readAiStream } from "./read-ai-stream";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,6 +51,10 @@ export function AICreateButton({
   const [isDialogOpen, setIsDialogOpen] = useState(initialIsOpen || false);
   const [userRequest, setUserRequest] = useState(initialPrompt || "");
   const [isProcessing, setIsProcessing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort the in-flight request on unmount so the server stops generating.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // Update userRequest if initialPrompt changes
   useState(() => {
@@ -169,12 +174,13 @@ export function AICreateButton({
     onAnalyzing?.(true);
     onStreamingStart?.(); // Notify parent that streaming has started
 
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined =
-      null;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const response = await fetch("/api/ai/create-test", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
         },
@@ -221,59 +227,8 @@ export function AICreateButton({
         }
       }
 
-      // Handle streaming response
-      reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
+      const fullText = await readAiStream(response, onStreamingUpdate);
 
-      if (!reader) {
-        throw new Error("No response body received from server");
-      }
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-
-                if (data.type === "content") {
-                  fullText += data.content;
-                  onStreamingUpdate?.(fullText); // Update parent with streaming content
-                } else if (data.type === "done") {
-                  // Streaming complete
-                  onStreamingEnd?.();
-                } else if (data.type === "error") {
-                  throw new Error(data.error || "AI generation error");
-                }
-              } catch (parseError) {
-                // Only skip if it's a JSON parse error (empty lines are expected in SSE)
-                if (parseError instanceof SyntaxError && line.trim() === "") {
-                  continue;
-                }
-                // Silently ignore parsing errors
-              }
-            }
-          }
-        }
-      } finally {
-        // Always release the reader
-        reader.releaseLock();
-        reader = null;
-      }
-
-      // Check if we received any content
-      if (!fullText || fullText.trim().length === 0) {
-        throw new Error("No output generated from AI. Please try again.");
-      }
-
-      // Parse the complete response
       const { script, explanation } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
@@ -290,6 +245,7 @@ export function AICreateButton({
       setIsDialogOpen(false);
       setUserRequest("");
     } catch (error) {
+      if (controller.signal.aborted) return; // unmounted
       // Provide specific error messages
       let errorDescription = "Please try again in a few moments.";
       if (error instanceof Error) {
@@ -316,14 +272,7 @@ export function AICreateButton({
         duration: 5000,
       });
     } finally {
-      // Cleanup: release reader if still locked
-      if (reader) {
-        try {
-          reader.releaseLock();
-        } catch {
-          // Ignore errors during cleanup
-        }
-      }
+      onStreamingEnd?.();
       setIsProcessing(false);
       onAnalyzing?.(false);
     }

@@ -514,22 +514,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
         // Update job status based on all current run statuses
         try {
-          const finalRunStatuses = await this.dbService.getRunStatusesForJob(
+          // The job reflects this run; an old failed run in its history must not pin it.
+          const active = await this.dbService.hasOtherActiveRun(
             taskData.jobId,
+            runId,
           );
-          const allTerminal = finalRunStatuses.every((s) =>
-            ['passed', 'failed', 'error'].includes(s),
-          );
-
-          // If only one run or all runs are terminal, set job status to match this run
-          if (finalRunStatuses.length === 1 || allTerminal) {
-            await this.dbService.updateJobStatus(taskData.jobId, [finalStatus]);
-          } else {
-            await this.dbService.updateJobStatus(
-              taskData.jobId,
-              finalRunStatuses,
-            );
-          }
+          await this.dbService.updateJobStatus(taskData.jobId, [
+            active ? 'running' : finalStatus,
+          ]);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
@@ -695,22 +687,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       if (taskData.jobId) {
         // Update job status based on all current run statuses
         try {
-          const finalRunStatuses = await this.dbService.getRunStatusesForJob(
+          // The job reflects this run; an old failed run in its history must not pin it.
+          const active = await this.dbService.hasOtherActiveRun(
             taskData.jobId,
+            runId,
           );
-          const allTerminal = finalRunStatuses.every((s) =>
-            ['passed', 'failed', 'error'].includes(s),
-          );
-
-          // If only one run or all runs are terminal, set job status to failed
-          if (finalRunStatuses.length === 1 || allTerminal) {
-            await this.dbService.updateJobStatus(taskData.jobId, ['failed']);
-          } else {
-            await this.dbService.updateJobStatus(
-              taskData.jobId,
-              finalRunStatuses,
-            );
-          }
+          await this.dbService.updateJobStatus(taskData.jobId, [
+            active ? 'running' : 'failed',
+          ]);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status on error: ${err instanceof Error ? err.message : String(err)}`,

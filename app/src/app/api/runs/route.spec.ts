@@ -17,10 +17,12 @@ import { GET } from "./route";
 
 describe("GET /api/runs lists job runs only", () => {
   const wheres: SQL[] = [];
+  const orderBys: unknown[][] = [];
 
   beforeEach(() => {
     jest.clearAllMocks();
     wheres.length = 0;
+    orderBys.length = 0;
     jest.mocked(requireAuthContext).mockResolvedValue({
       organizationId: "org-1",
       project: { id: "project-1" },
@@ -29,11 +31,15 @@ describe("GET /api/runs lists job runs only", () => {
     // Chainable query builder; resolves to `rows` at the end of either query.
     jest.mocked(db.select).mockImplementation((() => {
       const query: Record<string, unknown> = {};
-      for (const method of ["from", "leftJoin", "orderBy", "offset"]) {
+      for (const method of ["from", "leftJoin", "offset"]) {
         query[method] = jest.fn(() => query);
       }
       query.where = jest.fn((condition: SQL) => {
         wheres.push(condition);
+        return query;
+      });
+      query.orderBy = jest.fn((...args: unknown[]) => {
+        orderBys.push(args);
         return query;
       });
       query.limit = jest.fn(() => query);
@@ -62,6 +68,21 @@ describe("GET /api/runs lists job runs only", () => {
     const response = await GET(new NextRequest("http://localhost/api/runs"));
     expect(response.status).toBe(403);
     expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it("falls back to defaults for a non-numeric page or limit instead of a 500", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/runs?page=abc&limit=xyz"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).pagination).toMatchObject({ page: 1, limit: 10 });
+  });
+
+  it("orders by start time with createdAt for queued runs, then id", async () => {
+    await GET(new NextRequest("http://localhost/api/runs"));
+    expect(orderBys).toHaveLength(1);
+    const [byTime, byId] = orderBys[0] as SQL[];
+    const dialect = new PgDialect();
+    expect(dialect.sqlToQuery(byTime).sql).toMatch(/coalesce\("runs"\."started_at", "runs"\."created_at"\) desc/);
+    expect(dialect.sqlToQuery(byId).sql).toContain('"runs"."id" desc');
   });
 
   describe("jobId filter", () => {

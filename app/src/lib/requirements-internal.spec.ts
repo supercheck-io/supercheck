@@ -3,7 +3,7 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
-import { syncRequirementTags, syncRequirementTagsByName, TagLimitError } from "./requirements-internal";
+import { syncRequirementTags, syncRequirementTagsByName, TagLimitError, updateCoverageSnapshot } from "./requirements-internal";
 
 const R = "44444444-4444-4444-8444-444444444444";
 
@@ -86,5 +86,39 @@ describe("syncRequirementTags", () => {
     await expect(syncRequirementTags(R, Array.from({ length: 11 }, (_, i) => `t${i}`), executor)).rejects.toBeInstanceOf(
       TagLimitError
     );
+  });
+});
+
+describe("updateCoverageSnapshot", () => {
+  const run = async (rows: { testId: string; status: string | null }[]) => {
+    const sets: Record<string, unknown>[] = [];
+    const orders: unknown[][] = [];
+    const q: Record<string, unknown> = {};
+    q.from = () => q;
+    q.leftJoin = () => q;
+    q.where = () => q;
+    q.orderBy = (...o: unknown[]) => { orders.push(o); return Promise.resolve(rows); };
+    const executor = {
+      selectDistinctOn: () => q,
+      update: () => ({ set: (v: Record<string, unknown>) => { sets.push(v); return { where: () => Promise.resolve() }; } }),
+    };
+    await updateCoverageSnapshot(R, executor as never);
+    return { sets, orders };
+  };
+
+  it("derives the link count and pass/fail counts from one latest-run-per-test result", async () => {
+    const { sets, orders } = await run([
+      { testId: "a", status: "failed" },
+      { testId: "b", status: "passed" },
+      { testId: "c", status: null },
+    ]);
+    expect(sets[0]).toMatchObject({ status: "failing", linkedTestCount: 3, passedTestCount: 1, failedTestCount: 1 });
+    // runs.id is the final ordering key, so equal completedAt values resolve deterministically.
+    expect(orders[0]).toHaveLength(3);
+  });
+
+  it("marks coverage missing when nothing is linked", async () => {
+    const { sets } = await run([]);
+    expect(sets[0]).toMatchObject({ status: "missing", linkedTestCount: 0 });
   });
 });

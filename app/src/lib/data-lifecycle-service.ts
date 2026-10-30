@@ -1373,6 +1373,9 @@ export class RunArtifactsCleanupStrategy implements ICleanupStrategy {
   }
 }
 
+// Retention must never delete a run that is still queued or running.
+const TERMINAL_RUN_STATUSES = ["passed", "failed", "error", "blocked"] as const;
+
 export class JobRunsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "job_runs";
   config: CleanupStrategyConfig;
@@ -1400,7 +1403,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
   private playgroundCondition(cutoff: Date): SQL {
     return and(
       sql`${runs.jobId} IS NULL`,
-      inArray(runs.status, ["passed", "failed", "error", "blocked"]),
+      inArray(runs.status, TERMINAL_RUN_STATUSES),
       lt(sql`coalesce(${runs.completedAt}, ${runs.createdAt})`, sql`${cutoff.toISOString()}::timestamp`)
     )!;
   }
@@ -1486,7 +1489,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       const orgRetentions = await getOrganizationJobRetentionSettings(this.config.retentionDays!);
       if (orgRetentions.length === 0) {
         result.details.multiTenant = false;
-        await this.cleanupRuns(and(sql`${runs.jobId} IS NOT NULL`, lt(runs.createdAt, new Date(
+        await this.cleanupRuns(and(sql`${runs.jobId} IS NOT NULL`, inArray(runs.status, TERMINAL_RUN_STATUSES), lt(runs.createdAt, new Date(
           Date.now() - this.config.retentionDays! * 86400000
         )))!, dryRun, maxRecords, result);
       } else {
@@ -1501,6 +1504,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           try {
             await this.cleanupRuns(and(
               inArray(runs.jobId, jobsInOrg.map(job => job.id)),
+              inArray(runs.status, TERMINAL_RUN_STATUSES),
               lt(runs.createdAt, new Date(Date.now() - orgRetention.jobRetentionDays * 86400000))
             )!, dryRun, maxRecords - Number(result.details.recordsProcessed || 0), result);
           } catch (error) {

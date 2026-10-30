@@ -15,19 +15,20 @@ Every test or job execution creates a run with results, logs, and artifacts.
 | **Passed** | All tests completed successfully |
 | **Failed** | One or more tests failed |
 | **Error** | Execution error (timeout, crash, infrastructure) |
+| **Cancelled** | Stopped by a user before it finished (stored as an error run, shown as Cancelled) |
 | **Running** | Currently executing |
 | **Queued** | Waiting to execute |
 | **Blocked** | Execution denied by access or spending controls |
 
 ## View Runs
 
-Open **Automate → Runs** and select a run to view its details.
+Open **Automate → Runs** and select a run to view its details. The list shows the newest 1000 runs; older runs are not loaded and search and filters only cover the loaded ones.
 
 The **Triggered by** column shows who started each run: the user for manual and CLI runs, the trigger key name for runs started with a job trigger key (hover to see the key owner), or **Schedule** for scheduled runs. Runs recorded before this column was added show **Unknown**.
 
 Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. On the jobs and monitors tables it is hidden by default; turn it on from the column menu.
 
-When cancellation is requested for a running execution, the run is recorded as **Error** with cancellation details. The worker may still be finishing report uploads.
+When cancellation is requested for a running execution, the run ends as **Cancelled**, with cancellation details on the run page. The worker may still be finishing report uploads.
 
 ## Run Details
 

@@ -17,7 +17,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
-import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import {
   validateTestScript,
@@ -39,6 +39,7 @@ const saveTestSchema = testsInsertSchema.omit({
 const saveTestWithIdSchema = saveTestSchema.extend({
   id: z.string().uuid().optional(),
   requirementId: z.string().uuid().optional(),
+  description: z.string().max(MAX_DESCRIPTION_LENGTH).nullish(),
 });
 
 export type SaveTestInput = z.infer<typeof saveTestWithIdSchema>;
@@ -141,25 +142,17 @@ export async function saveTest(
     if (validatedData.id) {
       const testId = validatedData.id;
 
-      // Remove the id from the data to update
-
-      const {
-        id: _,
-        requirementId: _requirementId,
-        ...updateData
-      } = validatedData;
-
-      // Update the test in the database
+      // Update the test in the database; explicit fields only, so client input
+      // cannot overwrite ownership columns such as createdByUserId.
       const updatedTests = await db
         .update(tests)
         .set({
-          ...updateData,
+          title: validatedData.title,
+          description: validatedData.description,
           script: scriptToSave,
           updatedAt: new Date(),
-          priority: updateData.priority as TestPriority,
+          priority: validatedData.priority as TestPriority,
           type: resolvedType as TestType,
-          organizationId: organizationId,
-          projectId: project.id,
         })
         .where(
           and(

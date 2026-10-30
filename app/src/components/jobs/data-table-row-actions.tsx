@@ -35,7 +35,7 @@ import { normalizeRole } from "@/lib/rbac/role-normalizer";
 
 import { Job } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
+import { invalidateJobCaches } from "@/hooks/use-jobs";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -98,7 +98,7 @@ export function DataTableRowActions<TData>({
       toast.success("Job deleted successfully");
 
       // Invalidate Jobs cache to ensure fresh data on jobs page
-      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      invalidateJobCaches(queryClient, job.id);
 
       // Call onDelete callback if provided
       if (onDelete) {

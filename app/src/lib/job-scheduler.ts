@@ -1,4 +1,5 @@
 import { Job } from "bullmq";
+import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
 import { jobs } from "@/db/schema";
@@ -143,7 +144,8 @@ export async function handleScheduledJobTrigger(job: Job) {
  * Deletes a job scheduler
  */
 export async function deleteScheduledJob(
-  schedulerId: string
+  schedulerId: string,
+  options: { throwOnError?: boolean } = {}
 ): Promise<boolean> {
   try {
     // Removing job scheduler
@@ -179,6 +181,7 @@ export async function deleteScheduledJob(
     return removed;
   } catch (error) {
     console.error(`Failed to delete scheduled job:`, error);
+    if (options.throwOnError) throw error; // lets a BullMQ worker retry instead of reporting success
     return false;
   }
 }
@@ -203,7 +206,8 @@ export async function initializeJobSchedulers() {
 
       // Acquire distributed lock to prevent multiple instances from initializing simultaneously
       // This is critical in clustered deployments where multiple Next.js instances start together
-      const lockResult = await redisClient.set(LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX');
+      const lockToken = `${process.pid}:${randomUUID()}`;
+      const lockResult = await redisClient.set(LOCK_KEY, lockToken, 'EX', LOCK_TTL_SECONDS, 'NX');
       const lockAcquired = !!lockResult;
       
       if (!lockAcquired) {
@@ -215,6 +219,9 @@ export async function initializeJobSchedulers() {
 
       // Use try-finally to ensure lock is always released
       try {
+        // Under the lock so concurrent instances cannot remove each other's fresh repeatables.
+        await cleanupJobScheduler();
+
         const jobsWithSchedules = await db
           .select()
           .from(jobs)
@@ -305,7 +312,13 @@ export async function initializeJobSchedulers() {
       } finally {
         // Always release the lock after we're done (success or error)
         try {
-          await redisClient.del(LOCK_KEY);
+          // Delete only if we still own it; the TTL may have expired and another instance taken over.
+          await redisClient.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            LOCK_KEY,
+            lockToken,
+          );
           console.log('[JobScheduler] Lock released');
         } catch (unlockError) {
           console.error('[JobScheduler] Failed to release lock:', unlockError);

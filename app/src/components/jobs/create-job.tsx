@@ -33,7 +33,7 @@ import CronScheduler from "./cron-scheduler";
 import { Loader2 } from "lucide-react";
 import NextRunDisplay from "./next-run-display";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
+import { invalidateJobCaches } from "@/hooks/use-jobs";
 
 const jobFormSchema = z.object({
   name: z.string().min(1, "Job name is required"),
@@ -115,7 +115,7 @@ export function CreateJob({
         });
 
         // Invalidate Jobs cache to ensure fresh data on jobs page
-        queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+        invalidateJobCaches(queryClient);
 
         router.push("/jobs");
       } else {

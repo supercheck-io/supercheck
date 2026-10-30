@@ -3,10 +3,12 @@ import { NextRequest } from "next/server";
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn().mockResolvedValue(true) }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
 import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
+import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -128,5 +130,18 @@ describe("audit, conflicts and ordering", () => {
     expect((await del()).status).toBe(403);
     (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
     expect((await del()).status).toBe(400);
+  });
+});
+
+describe("DELETE schedules", () => {
+  it("removes repeatables for the project's scheduled jobs after soft-deleting", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }, { id: "job-2" }] }) });
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
+    const res = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    expect(res.status).toBe(200);
+    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
+    expect(deleteScheduledJob).toHaveBeenCalledWith("job-2");
   });
 });

@@ -102,6 +102,17 @@ describe("Assets Proxy Route", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
+  it("still returns HEAD headers when cancelling the S3 body rejects", async () => {
+    mockFindStatusPage.mockResolvedValue({ id: PAGE_ID });
+    const body = { cancel: jest.fn().mockRejectedValue(new Error("errored")) };
+    mockFetchFromS3.mockResolvedValue({ status: 200, headers: new Headers({ "content-type": "image/png" }), body } as unknown as Response);
+    const response = await HEAD(new NextRequest(`http://localhost/api/assets/status-pages/${PAGE_ID}/banner.png`), {
+      params: Promise.resolve({ path: ["status-pages", PAGE_ID, "banner.png"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(body.cancel).toHaveBeenCalled();
+  });
+
   it("returns 404 for HEAD when status page asset is not published", async () => {
     mockFindStatusPage.mockResolvedValue(null);
 
@@ -175,5 +186,20 @@ describe("Assets Proxy Route", () => {
       expect(mockFindStatusPage).not.toHaveBeenCalled();
       expect(mockFetchFromS3).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("published asset caching", () => {
+  it("opts into public caching explicitly for published non-favicon assets", async () => {
+    mockFindStatusPage.mockResolvedValue({ id: PAGE_ID });
+    mockFetchFromS3.mockResolvedValue(new Response("png", { headers: { "content-type": "image/png" } }));
+    await GET(new NextRequest(`http://localhost/api/assets/status-pages/${PAGE_ID}/logo/a.png`), {
+      params: Promise.resolve({ path: ["status-pages", PAGE_ID, "logo", "a.png"] }),
+    });
+    expect(mockFetchFromS3).toHaveBeenCalledWith(
+      "status-page-artifacts",
+      `status-pages/${PAGE_ID}/logo/a.png`,
+      { cacheControl: "public, max-age=31536000" }
+    );
   });
 });

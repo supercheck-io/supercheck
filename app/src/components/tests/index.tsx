@@ -3,9 +3,8 @@
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
-import { useState, useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 
-import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { Test } from "./schema";
 import { Row } from "@tanstack/react-table";
@@ -16,7 +15,6 @@ import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 const TESTS_LIST_CAP = 200;
 
 export default function Tests() {
-  const [selectedTest] = useState<Test | null>(null);
   const isMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -87,34 +85,6 @@ export default function Tests() {
         }}
       />
 
-      {selectedTest && (
-        <div className="space-y-2 py-2">
-          <div>
-            <h3 className="font-medium">Title</h3>
-            <p>{selectedTest.title}</p>
-          </div>
-          <div>
-            <h3 className="font-medium">Description</h3>
-            <p>{selectedTest.description || "No description provided"}</p>
-          </div>
-          <div>
-            <h3 className="font-medium">Priority</h3>
-            <p className="capitalize">{selectedTest.priority}</p>
-          </div>
-          <div>
-            <h3 className="font-medium">Type</h3>
-            <p className="capitalize">{selectedTest.type}</p>
-          </div>
-          <div className="flex space-x-2 pt-4">
-            <Button
-              onClick={() => router.push(`/playground/${selectedTest.id}`)}
-              className="flex-1"
-            >
-              Open in Playground
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

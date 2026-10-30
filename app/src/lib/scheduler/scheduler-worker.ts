@@ -160,6 +160,13 @@ export async function initializeSchedulerWorkers(): Promise<void> {
       );
     } catch (error) {
       logger.error({ error }, 'Failed to initialize scheduler workers');
+      // Reset so a later call can retry, and release workers created before the failure.
+      initPromise = null;
+      const created = [playwrightSchedulerWorker, k6SchedulerWorker, monitorSchedulerWorker];
+      playwrightSchedulerWorker = null;
+      k6SchedulerWorker = null;
+      monitorSchedulerWorker = null;
+      await Promise.allSettled(created.map((worker) => worker?.close()));
       throw error;
     }
   })();
