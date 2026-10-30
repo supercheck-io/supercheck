@@ -323,6 +323,13 @@
       "when": 1793130000000,
       "tag": "0045_run_triggered_by",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793216400000,
+      "tag": "0046_incident_alert_snapshot",
+      "breakpoints": true
     }
   ]
 }

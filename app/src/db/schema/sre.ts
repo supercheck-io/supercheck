@@ -431,6 +431,11 @@ export const sreIncidentAlerts = pgTable(
     incidentId: uuid("incident_id").notNull().references(() => sreIncidents.id, { onDelete: "cascade" }),
     alertEventId: uuid("alert_event_id").notNull().references(() => sreAlertEvents.id, { onDelete: "cascade" }),
     role: varchar("role", { length: 20 }).$type<SreIncidentAlertRole>().notNull().default("trigger"),
+    // The alert as it was when linked; the shared alert event row moves on with later failures.
+    alertTitle: text("alert_title"),
+    alertDescription: text("alert_description"),
+    alertSeverity: varchar("alert_severity", { length: 10 }).$type<SreSeverity>(),
+    alertFiredAt: timestamp("alert_fired_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({

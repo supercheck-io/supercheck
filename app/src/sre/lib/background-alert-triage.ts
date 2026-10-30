@@ -466,7 +466,16 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       if (openForSource) {
         await tx
           .insert(sreIncidentAlerts)
-          .values({ incidentId: openForSource.id, alertEventId: alertEvent.id, role: "related", createdAt: new Date() })
+          .values({
+            incidentId: openForSource.id,
+            alertEventId: alertEvent.id,
+            role: "related",
+            alertTitle: title,
+            alertDescription: alert.message,
+            alertSeverity: severity,
+            alertFiredAt: firedAt,
+            createdAt: new Date(),
+          })
           .onConflictDoNothing();
         await noteFailureReturned(tx, openForSource.id);
         return {
@@ -578,6 +587,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
               incidentId: correlation.candidate.incidentId,
               alertEventId: alertEvent.id,
               role: "related",
+              alertTitle: title,
+              alertDescription: alert.message,
+              alertSeverity: severity,
+              alertFiredAt: firedAt,
               createdAt: new Date(),
             })
             .onConflictDoNothing();
@@ -658,6 +671,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       incidentId: incident.id,
       alertEventId: alertEvent.id,
       role: "trigger",
+      alertTitle: title,
+      alertDescription: alert.message,
+      alertSeverity: severity,
+      alertFiredAt: firedAt,
       createdAt: new Date(),
     });
 

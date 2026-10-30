@@ -24,6 +24,7 @@ import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
 import { GET as getAlertHistory } from "@/app/api/alerts/history/route";
 import { requireAuthContext } from "@/lib/auth-context";
 import { resolveIncident } from "@/lib/sre/incident-lifecycle";
+import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 const execFileAsync = promisify(execFile);
@@ -91,12 +92,12 @@ const minutes = (n: number) => new Date(base + n * 60_000);
 async function alert(
   type: string,
   at: Date,
-  opts: { status?: "sent" | "failed" | "pending"; job?: boolean; provider?: string; dedupKey?: string } = {},
+  opts: { status?: "sent" | "failed" | "pending"; job?: boolean; provider?: string; dedupKey?: string; message?: string } = {},
 ) {
   const [row] = await mockDatabase
     .insert(schema.alertHistory)
     .values({
-      message: `${type} message`,
+      message: opts.message ?? `${type} message`,
       type: type as never,
       target: opts.job ? "Nightly export" : "Checkout API",
       targetType: opts.job ? "job" : "monitor",
@@ -204,6 +205,21 @@ it("does not reopen on a failure that fired before the automatic recovery", asyn
   const rows = await incidents();
   expect(rows[0].status).toBe("resolved");
   expect(await states(rows[0].id)).not.toContain("reopened");
+});
+
+it("keeps each incident's alert as it was when linked, after later failures reuse the alert row", async () => {
+  await alert("monitor_failure", minutes(0), { message: "first: 502 from checkout" });
+  await alert("monitor_recovery", minutes(5));
+  await alert("monitor_failure", minutes(5 + 31), { message: "second: DNS timeout" });
+  const [first, second] = await incidents();
+  const linked = async (incidentId: string) =>
+    mockDatabase
+      .select({ description: linkedAlertFields.description, firedAt: linkedAlertFields.firedAt })
+      .from(schema.sreIncidentAlerts)
+      .innerJoin(schema.sreAlertEvents, eq(schema.sreAlertEvents.id, schema.sreIncidentAlerts.alertEventId))
+      .where(eq(schema.sreIncidentAlerts.incidentId, incidentId));
+  expect(await linked(first.id)).toEqual([{ description: "first: 502 from checkout", firedAt: minutes(0) }]);
+  expect(await linked(second.id)).toEqual([{ description: "second: DNS timeout", firedAt: minutes(36) }]);
 });
 
 it("does not reopen an incident a person resolved, even within the window", async () => {
