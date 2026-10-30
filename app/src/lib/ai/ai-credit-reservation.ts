@@ -9,6 +9,7 @@ type CreditKind = "ai_fix" | "ai_create" | "ai_analyze";
  */
 export async function reserveAICredit(organizationId: string, kind: CreditKind) {
   const result = await usageTracker.consumeAICredit(organizationId, kind);
+  // True while held by an in-flight/successful refund; reset on failure so a later call can retry.
   let settled = !result.allowed;
   const refund = async () => {
     if (settled) return;
@@ -16,6 +17,7 @@ export async function reserveAICredit(organizationId: string, kind: CreditKind) 
     try {
       await usageTracker.refundAICredit(organizationId, kind);
     } catch (error) {
+      settled = false;
       console.error("[AI credits] Refund failed:", error);
     }
   };

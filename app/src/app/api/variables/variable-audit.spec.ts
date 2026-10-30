@@ -1,5 +1,5 @@
 /** @jest-environment node */
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), delete: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), delete: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(async () => ({ userId: "user", organizationId: "org", project: { id: "48926de9-3ee7-59f7-9383-481fc00e98ed" } })), requireUserAuthContext: jest.fn(async () => ({ userId: "user" })), isAuthError: jest.fn(() => false), authErrorStatus: jest.fn(() => 401) }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true), resolveProjectPermissionContext: jest.fn(async () => ({ organizationId: "org", project: { id: "48926de9-3ee7-59f7-9383-481fc00e98ed" } })) }));
 jest.mock("@/lib/encryption", () => ({ encryptValue: jest.fn(() => "ciphertext"), decryptValue: jest.fn() }));
@@ -32,7 +32,8 @@ beforeEach(() => {
   jest.mocked(db.select).mockReturnValue(select as never);
   set.mockImplementation((values) => ({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ ...existing, ...values }]) }) }));
   jest.mocked(db.update).mockReturnValue({ set } as never);
-  jest.mocked(db.delete).mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) } as never);
+  jest.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => unknown) => fn(db)) as never);
+  jest.mocked(db.delete).mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: VID }]) }) } as never);
 });
 
 describe.each(["cli", "project"])("%s variable routes", (route) => {
@@ -51,7 +52,26 @@ describe.each(["cli", "project"])("%s variable routes", (route) => {
   it("audits delete", async () => {
     const res = await call(route, "DELETE");
     expect(res.status).toBe(200);
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "variable_deleted", metadata: { projectId: PID, key: "OLD_KEY", isSecret: true } }));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "variable_deleted", metadata: { projectId: PID, key: "OLD_KEY", isSecret: true } }), db, { strict: true });
+  });
+
+  it("returns 404 and no audit when the delete removes no row", async () => {
+    jest.mocked(db.delete).mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([]) }) } as never);
+    const res = await call(route, "DELETE");
+    expect(res.status).toBe(404);
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("passes the transaction and strict mode to the audit write", async () => {
+    await call(route, "PUT", { key: "NEW_KEY" });
+    expect(jest.mocked(logAuditEvent).mock.calls[0][1]).toBe(db);
+    expect(jest.mocked(logAuditEvent).mock.calls[0][2]).toEqual({ strict: true });
+  });
+
+  it("maps a wrapped unique violation (error.cause) to 400/409", async () => {
+    set.mockImplementation(() => ({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockRejectedValue({ cause: { code: "23505" } }) }) }));
+    const res = await call(route, "PUT", { key: "NEW_KEY" });
+    expect(res.status).toBe(route === "cli" ? 409 : 400);
   });
 
   it("maps a unique violation on update to 400", async () => {

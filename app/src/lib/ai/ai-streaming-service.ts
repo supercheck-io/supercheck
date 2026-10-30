@@ -393,6 +393,9 @@ export class AIStreamingService {
               testType,
             });
 
+            // Refund first so a client retrying on end-of-stream cannot hit a stale limit
+            await reportNoContent();
+
             // Send a generic message; provider detail stays in the server logs above
             const errorData = JSON.stringify({
               type: "error",

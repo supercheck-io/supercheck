@@ -33,4 +33,15 @@ describe("reserveAICredit", () => {
     const r = await reserveAICredit("org", "ai_fix");
     await expect(r.refund()).resolves.toBeUndefined();
   });
+
+  it("allows a retry after a failed refund", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    jest.mocked(usageTracker.consumeAICredit).mockResolvedValue({ allowed: true });
+    jest.mocked(usageTracker.refundAICredit).mockRejectedValueOnce(new Error("db")).mockResolvedValue(undefined);
+    const r = await reserveAICredit("org", "ai_fix");
+    await r.refund();
+    await r.refund();
+    await r.refund();
+    expect(usageTracker.refundAICredit).toHaveBeenCalledTimes(2);
+  });
 });

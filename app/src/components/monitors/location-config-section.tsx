@@ -321,6 +321,7 @@ function LocationConfigSectionComponent({
                               !rowDisabled && handleLocationToggle(location)
                             }
                             disabled={rowDisabled}
+                            onClick={(e) => e.stopPropagation()}
                           />
                           <div className="flex-1">
                             <div className="flex items-center gap-2">

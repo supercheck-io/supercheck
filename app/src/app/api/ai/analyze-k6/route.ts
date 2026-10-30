@@ -174,21 +174,7 @@ export async function POST(request: NextRequest) {
 
     }
 
-    // Step 4: Fetch K6 HTML reports for both runs (optional, for enhanced analysis)
-    const [baselineReport, compareReport] = await Promise.all([
-      getK6ReportContent(baselineRun.runId),
-      getK6ReportContent(compareRun.runId),
-    ]);
-
-    // Step 5: Build AI prompt for K6 comparison analysis
-    const prompt = AIPromptBuilder.buildK6AnalyzePrompt({
-      baselineRun,
-      compareRun,
-      baselineReportHtml: baselineReport || undefined,
-      compareReportHtml: compareReport || undefined,
-    });
-
-    // Step 6: Generate streaming AI response
+    // Reserve before the S3 report reads so denied requests skip them.
     // Reserve a credit atomically before the provider call; refunded if no content.
     const creditResult = await reserveAICredit(activeOrg.id, "ai_analyze");
     if (!creditResult.allowed) {
@@ -210,6 +196,21 @@ export async function POST(request: NextRequest) {
     }
     refundCredit = creditResult.refund;
 
+    // Step 4: Fetch K6 HTML reports for both runs (optional, for enhanced analysis)
+    const [baselineReport, compareReport] = await Promise.all([
+      getK6ReportContent(baselineRun.runId),
+      getK6ReportContent(compareRun.runId),
+    ]);
+
+    // Step 5: Build AI prompt for K6 comparison analysis
+    const prompt = AIPromptBuilder.buildK6AnalyzePrompt({
+      baselineRun,
+      compareRun,
+      baselineReportHtml: baselineReport || undefined,
+      compareReportHtml: compareReport || undefined,
+    });
+
+    // Step 6: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
       onNoContent: creditResult.refund,

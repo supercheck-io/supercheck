@@ -174,16 +174,16 @@ const actualKey = getSecret('API_KEY');
 ```
 
 <Callout type="warn">
-Masking covers console output, error messages, and plain-text report files. It does not cover traces, screenshots, videos, or the Playwright HTML report, whose test data is stored compressed inside the page. If a test types a secret into a page, the secret can appear in those artifacts. Do not type secrets into pages whose reports you share.
+Masking covers console output, error messages, and text report files (`.html`, `.json`, `.txt`, `.md`, `.xml`, up to 20 MB each). It does not cover traces, screenshots, videos, or the Playwright HTML report, whose test data is stored compressed inside the page. If a test types a secret into a page, the secret can appear in those artifacts. Do not type secrets into pages whose reports you share.
 </Callout>
 
 <Accordions>
 <Accordion title="What is masked" id="secret-masking">
 
-- Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in text-based report files before the report is uploaded. The same applies to the base64, URL-encoded, and JSON-escaped forms of each value.
+- Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in `.html`, `.json`, `.txt`, `.md`, and `.xml` report files before the report is uploaded; files over 20 MB are skipped, and `.js` and `.css` files are not scanned. The same applies to the base64, URL-encoded, and JSON-escaped forms of each value.
 - Secrets shorter than 6 characters are not masked, because replacing short strings would damage unrelated output. Use longer secrets.
 - Binary or compressed artifacts are not scanned or rewritten: `trace.zip`, screenshots, videos, and the test data embedded in the Playwright HTML report.
-- A secret is only injected into a run when a script reads it with `getSecret('KEY')`. If a script that uses a secret cannot decrypt it, the run fails with a message naming the key. Secrets that no script uses never affect a run.
+- A secret is only injected into a run when a script reads it with `getSecret('KEY')`. If a script that uses a secret cannot decrypt it, the run fails with a message naming the key. For Playwright tests, jobs, and synthetic monitors, a secret that no script uses does not affect a run, unless a script calls `getSecret` with a non-literal key. In that case every project secret is decrypted, and an undecryptable secret fails the run. k6 runs and the app-side resolver decrypt all project secrets, so an undecryptable secret can fail those runs too.
 
 </Accordion>
 </Accordions>

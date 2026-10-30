@@ -14,6 +14,12 @@ import { z } from "zod";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
+// Drizzle wraps driver errors; the Postgres code lives on `cause`.
+const isUniqueViolation = (e: unknown): boolean =>
+  [e, (e as { cause?: unknown } | null)?.cause].some(
+    (x) => !!x && typeof x === "object" && (x as { code?: unknown }).code === "23505"
+  );
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; variableId: string }> }
@@ -270,7 +276,8 @@ export async function PUT(
       }
 
       // Update the variable
-      const [updatedVariable] = await db
+      const updatedVariable = await db.transaction(async (tx) => {
+        const [row] = await tx
         .update(projectVariables)
         .set(updateData)
         .where(
@@ -281,7 +288,7 @@ export async function PUT(
         )
         .returning();
 
-      await logAuditEvent({
+        await logAuditEvent({
         userId,
         organizationId: permCtx.organizationId,
         action: "variable_updated",
@@ -289,12 +296,14 @@ export async function PUT(
         resourceId: variableId,
         metadata: {
           projectId,
-          key: updatedVariable.key,
-          isSecret: updatedVariable.isSecret,
-          ...(existingVariable.key !== updatedVariable.key ? { previousKey: existingVariable.key } : {}),
-          ...(existingVariable.isSecret !== updatedVariable.isSecret ? { previousIsSecret: existingVariable.isSecret } : {}),
+          key: row.key,
+          isSecret: row.isSecret,
+          ...(existingVariable.key !== row.key ? { previousKey: existingVariable.key } : {}),
+          ...(existingVariable.isSecret !== row.isSecret ? { previousIsSecret: existingVariable.isSecret } : {}),
         },
         success: true,
+      }, tx, { strict: true });
+        return row;
       });
 
       // Return the variable without encrypted data
@@ -309,7 +318,7 @@ export async function PUT(
         data: responseVariable,
       });
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+      if (isUniqueViolation(error)) {
         return NextResponse.json(
           { error: "Variable with this name already exists" },
           { status: 400 }
@@ -392,16 +401,17 @@ export async function DELETE(
 
     // Delete the database row first so the variable is no longer visible.
     // If DB deletion fails, the S3 object is still intact — no corruption.
-    await db
+    const didDelete = await db.transaction(async (tx) => {
+      const deleted = await tx
       .delete(projectVariables)
       .where(
         and(
           eq(projectVariables.id, variableId),
           eq(projectVariables.projectId, projectId)
         )
-      );
-
-    await logAuditEvent({
+      ).returning({ id: projectVariables.id });
+      if (deleted.length === 0) return false;
+      await logAuditEvent({
       userId,
       organizationId: permCtx.organizationId,
       action: "variable_deleted",
@@ -409,7 +419,12 @@ export async function DELETE(
       resourceId: variableId,
       metadata: { projectId, key: existingVariable.key, isSecret: existingVariable.isSecret },
       success: true,
+    }, tx, { strict: true });
+      return true;
     });
+    if (!didDelete) {
+      return NextResponse.json({ error: "Variable not found" }, { status: 404 });
+    }
 
     // Best-effort S3 cleanup after the row is gone.
     // An orphaned object is harmless; a row pointing at a deleted object is not.

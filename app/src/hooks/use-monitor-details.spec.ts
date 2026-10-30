@@ -43,4 +43,15 @@ describe("useMonitorPermissions", () => {
     await waitFor(() => expect(result.current.canEdit).toBe(true));
     expect(fetchMock).toHaveBeenCalledWith("/api/monitors/m1/permissions");
   });
+
+  it("does not confirm permissions when the request fails", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({}) }) as unknown as typeof fetch;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useMonitorPermissions("m1"), { wrapper });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.canEdit).toBe(false);
+    expect(result.current.isConfirmed).toBe(false);
+  });
 });

@@ -31,12 +31,12 @@ export default function EditMonitorPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { canEdit, isLoading: permissionsLoading } = useMonitorPermissions(id);
+  const { canEdit, isLoading: permissionsLoading, isConfirmed: permissionsConfirmed } = useMonitorPermissions(id);
 
   // Viewers cannot edit: send them to the detail page instead of an editable form
   useEffect(() => {
-    if (id && !permissionsLoading && !canEdit) router.replace(`/monitors/${id}`);
-  }, [id, permissionsLoading, canEdit, router]);
+    if (id && permissionsConfirmed && !canEdit) router.replace(`/monitors/${id}`);
+  }, [id, permissionsConfirmed, canEdit, router]);
 
   // Get params on the client side
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function EditMonitorPage({
     };
   }, [id]);
 
-  if (loading || permissionsLoading || (id && !canEdit)) {
+  if (loading || permissionsLoading || (id && permissionsConfirmed && !canEdit)) {
     return (
       <div>
         <PageBreadcrumbs

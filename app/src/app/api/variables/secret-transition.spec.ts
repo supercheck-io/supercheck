@@ -1,5 +1,5 @@
 /** @jest-environment node */
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(async () => ({ userId: "user", organizationId: "org", project: { id: "48926de9-3ee7-59f7-9383-481fc00e98ed" } })), requireUserAuthContext: jest.fn(async () => ({ userId: "user" })), isAuthError: jest.fn(() => false) }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true), resolveProjectPermissionContext: jest.fn(async () => ({ organizationId: "org", project: { id: "48926de9-3ee7-59f7-9383-481fc00e98ed" } })) }));
 jest.mock("@/lib/encryption", () => ({ encryptValue: jest.fn(), decryptValue: jest.fn() }));
@@ -16,6 +16,7 @@ beforeEach(() => {
   const select = { from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(rows), then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve(rows).then(resolve) };
   jest.mocked(db.select).mockReturnValue(select as never);
   set.mockImplementation((values) => ({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ ...existing, ...values }]) }) }));
+  jest.mocked(db.transaction).mockImplementation((async (fn: (tx: unknown) => unknown) => fn(db)) as never);
   jest.mocked(db.update).mockReturnValue({ set } as never);
 });
 it.each(["cli", "project"])("requires replacement for %s secret-to-plaintext conversion", async (route) => {
