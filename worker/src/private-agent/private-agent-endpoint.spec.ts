@@ -26,22 +26,23 @@ describe('Private Agent endpoint transport', () => {
     '100.100.100.200',
     '168.63.129.16',
     'fd00:ec2::254',
-  ])(
-    'rejects forbidden resolved address %s before fetch',
-    async (address) => {
-      mockLookup.mockResolvedValueOnce([
-        { address, family: address.includes(':') ? 6 : 4 },
-      ]);
-      global.fetch = jest.fn();
+    '64:ff9b::a9fe:a9fe',
+    '2002:a9fe:a9fe::',
+    '::127.0.0.1',
+    '192.0.0.192',
+  ])('rejects forbidden resolved address %s before fetch', async (address) => {
+    mockLookup.mockResolvedValueOnce([
+      { address, family: address.includes(':') ? 6 : 4 },
+    ]);
+    global.fetch = jest.fn();
 
-      await expect(
-        requestPrivateAgentEndpoint('https://internal.example.com', {}, (r) =>
-          r.text(),
-        ),
-      ).rejects.toThrow('cannot target localhost');
-      expect(global.fetch).not.toHaveBeenCalled();
-    },
-  );
+    await expect(
+      requestPrivateAgentEndpoint('https://internal.example.com', {}, (r) =>
+        r.text(),
+      ),
+    ).rejects.toThrow('cannot target localhost');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 
   it('rejects mixed DNS answers and trailing-dot localhost', async () => {
     mockLookup.mockResolvedValueOnce([

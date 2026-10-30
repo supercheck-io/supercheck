@@ -28,7 +28,7 @@ const resultSchema = z.object({
   evidence: z.array(evidenceSummarySchema).max(100).optional().default([]),
   truncated: z.boolean().optional().default(false),
   // Agents may echo hostnames or tokens from upstream errors; this text is stored and shown in the UI.
-  errorCode: z.string().trim().max(100).transform(redactConnectorText).optional().nullable(),
+  errorCode: z.string().trim().max(100).transform((value) => redactConnectorText(value).slice(0, 100)).optional().nullable(),
   durationMs: z.number().int().min(0).max(24 * 60 * 60 * 1000).optional().nullable(),
 });
 

@@ -13,6 +13,8 @@ for (const [address, prefix] of [
   // Alibaba Cloud and Azure host metadata services.
   ['100.100.100.200', 32],
   ['168.63.129.16', 32],
+  // Oracle Cloud metadata.
+  ['192.0.0.192', 32],
 ] as const) {
   forbiddenAddresses.addSubnet(address, prefix);
 }
@@ -23,6 +25,10 @@ for (const [address, prefix] of [
   ['ff00::', 8],
   // AWS IPv6 instance metadata.
   ['fd00:ec2::254', 128],
+  // IPv4 embedded in IPv6 (NAT64, 6to4, IPv4-compatible) can reach the blocked IPv4 ranges.
+  ['64:ff9b::', 96],
+  ['2002::', 16],
+  ['::', 96],
 ] as const) {
   forbiddenAddresses.addSubnet(address, prefix, 'ipv6');
 }
@@ -52,7 +58,10 @@ function assertAllowedAddress(address: LookupAddress): void {
 export const MAX_CONNECTOR_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 /** Errors the body stream once it passes maxBytes, so a huge upstream reply cannot exhaust agent memory. */
-export function capResponseBody(response: Response, maxBytes: number): Response {
+export function capResponseBody(
+  response: Response,
+  maxBytes: number,
+): Response {
   if (!response.body) return response;
   let total = 0;
   const limited = response.body.pipeThrough(

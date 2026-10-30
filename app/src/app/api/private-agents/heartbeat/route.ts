@@ -17,7 +17,7 @@ const heartbeatSchema = z.object({
   activeJobCount: z.number().int().min(0).max(1000).default(0),
   latencyMs: z.number().int().min(0).max(300_000).optional().nullable(),
   // Agents may echo hostnames or tokens from upstream errors; this text is stored and shown in the UI.
-  errorCode: z.string().trim().max(100).transform(redactConnectorText).optional().nullable(),
+  errorCode: z.string().trim().max(100).transform((value) => redactConnectorText(value).slice(0, 100)).optional().nullable(),
   capabilities: z
     .object({
       supportsSreConnectors: z.boolean().default(true),
