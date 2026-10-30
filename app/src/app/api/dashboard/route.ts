@@ -10,7 +10,7 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
+import { eq, ne, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
@@ -43,7 +43,11 @@ export async function GET() {
     const last30Days = subDays(now, 30);
 
     // Get queue statistics
-    const queueStats = await getQueueStats(context.organizationId);
+    // A queue-stats failure must not 500 the whole dashboard
+    const queueStats = await getQueueStats(context.organizationId).catch((error) => {
+      console.error("Dashboard queue stats error:", error instanceof Error ? error.message : "Unknown error");
+      return { running: 0, queued: 0, runningCapacity: 0, queuedCapacity: 0 };
+    });
 
     // Monitor Statistics - scoped to project
     // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause
@@ -52,6 +56,9 @@ export async function GET() {
       eq(monitors.organizationId, context.organizationId)
     );
     
+    // Paused or disabled monitors don't run checks, so they stay out of uptime figures
+    const activeMonitorCondition = and(eq(monitors.enabled, true), ne(monitors.status, "paused"));
+
     const [
       monitorCounts,
       recentMonitorResults,
@@ -110,6 +117,9 @@ export async function GET() {
       eq(jobs.organizationId, context.organizationId)
     );
     
+    // Run-based cards are Playwright-only; k6 runs are read from k6_performance_runs
+    const playwrightJobCondition = and(jobBaseCondition, eq(jobs.jobType, "playwright"));
+
     const [
       jobCounts,
       recentRuns,
@@ -138,8 +148,7 @@ export async function GET() {
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last30Days),
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, context.organizationId)
+          playwrightJobCondition
         )),
       
       // OPTIMIZED: Single query for successful and failed runs in last 24h
@@ -153,8 +162,7 @@ export async function GET() {
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last24Hours),
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, context.organizationId)
+          playwrightJobCondition
         )),
       
       // Jobs by status
@@ -175,7 +183,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last7Days),
           inArray(runs.status, [...FAILED_RUN_STATUSES]),
-          jobBaseCondition
+          playwrightJobCondition
         )),
 
       // Daily job runs by trigger (last 30 days); unknown triggers count as manual
@@ -187,7 +195,7 @@ export async function GET() {
         remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`,
       }).from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
-        .where(and(gte(runs.startedAt, last30Days), jobBaseCondition))
+        .where(and(gte(runs.startedAt, last30Days), playwrightJobCondition))
         .groupBy(sql`DATE(${runs.startedAt})`)
         .orderBy(sql`DATE(${runs.startedAt})`),
 
@@ -201,8 +209,7 @@ export async function GET() {
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last30Days),
-          eq(jobs.projectId, targetProjectId), 
-          eq(jobs.organizationId, context.organizationId),
+          playwrightJobCondition,
           // Only include completed runs with valid duration
           sql`${runs.completedAt} IS NOT NULL`,
           sql`${runs.durationMs} IS NOT NULL`,
@@ -325,6 +332,7 @@ export async function GET() {
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
+          activeMonitorCondition,
           excludeSupersededSyntheticResults
         )),
 
@@ -339,6 +347,7 @@ export async function GET() {
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
+          activeMonitorCondition,
           excludeSupersededSyntheticResults
         ))
         .groupBy(sql`DATE(${monitorResults.checkedAt})`)
@@ -376,7 +385,7 @@ export async function GET() {
     // Calculate overall uptime percentage from aggregated result
     const totalChecks = uptimeResult[0]?.totalChecks ?? 0;
     const successfulChecks = uptimeResult[0]?.successfulChecks ?? 0;
-    const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
+    const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : null;
 
     // OPTIMIZED: Calculate total execution time using pre-aggregated SQL data
     // This eliminates CPU spikes from looping over 5000+ records in JavaScript
@@ -438,7 +447,7 @@ export async function GET() {
         pending: monitorCounts[0].pending,
         maintenance: monitorCounts[0].maintenance,
         error: monitorCounts[0].error,
-        uptime: Math.round(overallUptime * 100) / 100,
+        uptime: overallUptime === null ? null : Math.round(overallUptime * 100) / 100,
         recentChecks24h: recentMonitorResults[0].count,
         byType: monitorsByType,
         criticalAlerts: criticalAlerts,
@@ -447,9 +456,9 @@ export async function GET() {
           uptime: day.totalCount > 0 ? Math.round((day.upCount / day.totalCount) * 100 * 100) / 100 : 100
         })),
         responseTime: {
-          avg: responseTimeStats[0]?.avgResponseTime ? Math.round(responseTimeStats[0].avgResponseTime) : null,
-          min: responseTimeStats[0]?.minResponseTime || null,
-          max: responseTimeStats[0]?.maxResponseTime || null
+          avg: responseTimeStats[0]?.avgResponseTime != null ? Math.round(responseTimeStats[0].avgResponseTime) : null,
+          min: responseTimeStats[0]?.minResponseTime ?? null,
+          max: responseTimeStats[0]?.maxResponseTime ?? null
         }
       },
       
@@ -461,8 +470,9 @@ export async function GET() {
         recentRuns30d: recentRuns[0].count,
         passedRuns30d: Number(recentRuns[0].passed) || 0,
         failedRuns30d: Number(recentRuns[0].failed) || 0,
-        successfulRuns24h: runCounts24h[0].passed,
-        failedRuns24h: runCounts24h[0].failed,
+        // SUM/FILTER counts come back from Postgres as strings.
+        successfulRuns24h: Number(runCounts24h[0].passed) || 0,
+        failedRuns24h: Number(runCounts24h[0].failed) || 0,
         byStatus: jobsByStatus,
         failedRuns7d: (() => {
           const total = Number(failedRuns7d[0].total) || 0;

@@ -18,7 +18,7 @@ Looking for k6 or Playwright job analytics? They now live on the [Runs](/docs/ap
 | **Tests** | Test cases saved in your project |
 | **Jobs** | Jobs with a schedule configured, out of all jobs |
 | **Monitors** | Monitors currently up, out of all monitors |
-| **Browser minutes** | Playwright execution time used over the last 30 days (job runs, synthetic monitor checks, playground tests) |
+| **Browser minutes** | Playwright execution time used over the last 30 days from Playwright job runs (k6 jobs count under k6 VU-minutes), synthetic monitor checks and playground tests |
 | **k6 VU-minutes** | k6 virtual-user minutes used over the last 30 days (job runs and playground runs) |
 
 Usage cards are estimated from this project's recorded run durations and link to the matching analytics view on the Runs page. Billed usage is metered per organization and billing period, so it can differ.
@@ -33,9 +33,9 @@ A card with a **Runs** tab (failed job runs from the last 7 days, by trigger) an
 
 | Chart | Shows |
 |---|---|
-| **Job Status** | Successful vs failed job runs over the last 30 days. Runs that ended in an error count as failed. |
+| **Job Status** | Successful vs failed job runs over the last 30 days. Runs that ended in an error count as failed. Blocked runs and k6 job runs are not included. |
 | **Monitor Status** | Current monitors by status: Up, Down, Error, Maintenance, Pending, and Paused. Only statuses with monitors are shown. |
 | **Test Types** | Breakdown of test types in your project: Browser, API, Database, Custom, Performance. |
 | **Test Activity** | Playground test executions per day over the last 30 days. |
 | **Job Activity** | Job runs per day by trigger: Manual, Scheduled, or Remote (API/CI). |
-| **Uptime Trend** | Daily monitor uptime over the last 30 days. Days without monitor checks are left blank rather than estimated. |
+| **Uptime Trend** | Daily monitor uptime over the last 30 days. Days without monitor checks are left blank rather than estimated. Paused and disabled monitors are excluded, and with no checks there is no uptime figure rather than 100%. |

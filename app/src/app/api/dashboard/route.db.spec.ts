@@ -19,6 +19,7 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: jest.fn(() => false),
 }));
 import { GET } from "./route";
+import { getQueueStats } from "@/lib/queue-stats";
 
 const execFileAsync = promisify(execFile);
 const name = `dashboard_${randomUUID().replaceAll("-", "")}`;
@@ -61,12 +62,13 @@ beforeAll(async () => {
       { organizationId: otherOrg.id, name: "Foreign" },
     ])
     .returning();
-  const [job, siblingJob, foreignJob] = await mockDatabase
+  const [job, siblingJob, foreignJob, k6Job] = await mockDatabase
     .insert(schema.jobs)
     .values([
       { organizationId: org.id, projectId: project.id, name: "Nightly" },
       { organizationId: org.id, projectId: sibling.id, name: "Sibling job" },
       { organizationId: otherOrg.id, projectId: foreign.id, name: "Foreign job" },
+      { organizationId: org.id, projectId: project.id, name: "Load test", jobType: "k6" },
     ])
     .returning();
   mockContext = { organizationId: org.id, project: { id: project.id } };
@@ -83,6 +85,24 @@ beforeAll(async () => {
     run(job.id, "failed", daysAgo(40)),
     run(siblingJob.id, "failed", daysAgo(0)),
     run(foreignJob.id, "failed", daysAgo(0)),
+    // k6 job runs belong to the k6 cards, not the Playwright run counts
+    run(k6Job.id, "failed", daysAgo(0)),
+    run(k6Job.id, "passed", daysAgo(2)),
+  ]);
+
+  const [active, paused] = await mockDatabase
+    .insert(schema.monitors)
+    .values([
+      { organizationId: org.id, projectId: project.id, name: "Active", type: "http_request", target: "https://a.test", status: "up" },
+      { organizationId: org.id, projectId: project.id, name: "Paused", type: "http_request", target: "https://p.test", status: "paused", enabled: false },
+    ])
+    .returning();
+  const result = (monitorId: string, isUp: boolean, responseTimeMs: number | null) =>
+    ({ monitorId, isUp, responseTimeMs, status: isUp ? "up" : "down", checkedAt: new Date() } as const);
+  await mockDatabase.insert(schema.monitorResults).values([
+    result(active.id, true, 0),
+    result(paused.id, false, null),
+    result(paused.id, false, null),
   ]);
 }, 100000);
 
@@ -111,4 +131,39 @@ it("returns the project's 7-day failures and daily trigger counts without other 
   const total = jobs.triggerTrend.reduce(
     (sum: number, d: { manual: number; scheduled: number; remote: number }) => sum + d.manual + d.scheduled + d.remote, 0);
   expect(total).toBe(jobs.recentRuns30d);
+});
+
+it("excludes k6 job runs from Playwright run counts", async () => {
+  const { jobs } = await (await GET()).json();
+  // 1 k6 failed + 1 k6 passed run were seeded; 7 failures + 3 passed + 1 blocked remain
+  expect(jobs.recentRuns30d).toBe(11);
+  expect(jobs.passedRuns30d).toBe(3);
+  expect(jobs.failedRuns24h).toBe(1);
+  expect(jobs.failedRuns7d.manual).toBe(6);
+});
+
+it("leaves paused monitors out of uptime and keeps a 0 ms response time", async () => {
+  const { monitors } = await (await GET()).json();
+  expect(monitors.uptime).toBe(100);
+  expect(monitors.availabilityTrend.at(-1).uptime).toBe(100);
+  expect(monitors.responseTime.min).toBe(0);
+  expect(monitors.responseTime.max).toBe(0);
+});
+
+it("reports null uptime when the project has no checks", async () => {
+  const [empty] = await mockDatabase
+    .insert(schema.projects).values({ organizationId: mockContext.organizationId, name: "Empty" }).returning();
+  mockContext = { ...mockContext, project: { id: empty.id } };
+  const { monitors } = await (await GET()).json();
+  expect(monitors.uptime).toBeNull();
+});
+
+it("still serves the dashboard when queue stats fail", async () => {
+  jest.mocked(getQueueStats).mockRejectedValueOnce(new Error("redis down"));
+  const log = jest.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect((await response.json()).queue).toEqual({ running: 0, queued: 0, runningCapacity: 0, queuedCapacity: 0 });
+  } finally { log.mockRestore(); }
 });

@@ -26,6 +26,9 @@ import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billi
 
 const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
+const STATUS_POLL_INTERVAL_MS = 10_000;
+// Keep only the newest console output so a long run cannot exhaust browser memory.
+export const MAX_CONSOLE_BUFFER_CHARS = 2 * 1024 * 1024;
 
 interface PerformanceTestReportProps {
   runId: string;
@@ -322,7 +325,18 @@ export function PerformanceTestReport({
       }, HEARTBEAT_CHECK_INTERVAL_MS);
     };
 
+    // While the stream is down, poll so the UI still reaches a terminal state.
+    let statusPoll: ReturnType<typeof setInterval> | null = null;
+    const startStatusPoll = () => {
+      statusPoll ??= setInterval(() => void pollRunStatus(), STATUS_POLL_INTERVAL_MS);
+    };
+    const stopStatusPoll = () => {
+      if (statusPoll) clearInterval(statusPoll);
+      statusPoll = null;
+    };
+
     const cleanupSource = () => {
+      stopStatusPoll();
       if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
@@ -371,6 +385,7 @@ export function PerformanceTestReport({
           : `${prefix} Retrying (attempt ${reconnectAttempts})…`
       );
 
+      startStatusPoll();
       clearReconnectTimeout();
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
@@ -397,6 +412,7 @@ export function PerformanceTestReport({
       startHeartbeatWatchdog();
 
       const onOpen = () => {
+        stopStatusPoll();
         reconnectAttempts = 0;
         setStreamError(null);
         recordHeartbeat();
@@ -407,7 +423,10 @@ export function PerformanceTestReport({
           const payload = JSON.parse(event.data);
           if (payload?.line) {
             setStreamError(null);
-            setConsoleBuffer((prev) => prev + payload.line);
+            stopStatusPoll();
+            setConsoleBuffer((prev) =>
+              (prev + payload.line).slice(-MAX_CONSOLE_BUFFER_CHARS)
+            );
             recordHeartbeat();
           }
         } catch (err) {
@@ -443,6 +462,7 @@ export function PerformanceTestReport({
         // If the browser is still trying to reconnect we do not want to close the source.
         if (source.readyState === EventSource.CONNECTING) {
           setStreamError("Connection interrupted. Reconnecting…");
+          startStatusPoll();
           return;
         }
 

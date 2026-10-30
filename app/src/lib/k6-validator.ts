@@ -20,6 +20,69 @@ export interface K6ValidationOptions {
   selectedTestType?: string;
 }
 
+/** Upper bounds for literal options; matches the 60 min default run timeout. Dynamic values are left to k6/worker. */
+export const K6_MAX_VUS = 1000;
+export const K6_MAX_DURATION_MS = 60 * 60 * 1000;
+
+const DURATION_UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 } as const;
+
+function literalDurationMs(node: acorn.Expression | acorn.Pattern): number | undefined {
+  if (node.type !== 'Literal') return undefined;
+  if (typeof node.value === 'number') return node.value;
+  if (typeof node.value !== 'string') return undefined;
+  if (!/^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/.test(node.value)) return undefined;
+  let total = 0;
+  for (const [, n, unit] of node.value.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)) total += Number(n) * DURATION_UNIT_MS[unit as keyof typeof DURATION_UNIT_MS];
+  return total;
+}
+
+/** Errors for literal VU/duration values above the limits in top-level `options`. */
+function findOptionLimitErrors(script: string): string[] {
+  const errors: string[] = [];
+  const ast = acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
+  const keyOf = (p: acorn.Property) =>
+    p.computed ? undefined : p.key.type === 'Identifier' ? p.key.name : p.key.type === 'Literal' ? String(p.key.value) : undefined;
+  const checkVus = (name: string, v: acorn.Expression | acorn.Pattern) => {
+    if (v.type === 'Literal' && typeof v.value === 'number' && v.value > K6_MAX_VUS)
+      errors.push(`k6 option "${name}" (${v.value}) exceeds the maximum of ${K6_MAX_VUS} virtual users.`);
+  };
+  const checkDuration = (v: acorn.Expression | acorn.Pattern) => {
+    const ms = literalDurationMs(v);
+    if (ms !== undefined && ms > K6_MAX_DURATION_MS)
+      errors.push(`k6 duration exceeds the maximum of ${K6_MAX_DURATION_MS / 60_000} minutes.`);
+  };
+  for (const node of ast.body) {
+    const decl = node.type === 'ExportNamedDeclaration' ? node.declaration : node;
+    if (decl?.type !== 'VariableDeclaration') continue;
+    for (const d of decl.declarations) {
+      if (d.id.type !== 'Identifier' || d.id.name !== 'options' || d.init?.type !== 'ObjectExpression') continue;
+      walk.fullAncestor(d.init, (n, _s, ancestors) => {
+        if (n.type !== 'Property') return;
+        const key = keyOf(n as acorn.Property);
+        const value = (n as acorn.Property).value;
+        if (key === 'vus' || key === 'maxVUs' || key === 'preAllocatedVUs') checkVus(key, value);
+        else if (key === 'duration') checkDuration(value);
+        else if (key === 'target') {
+          // Only ramping-stage targets are VU counts (not e.g. arrival-rate targets).
+          const arr = ancestors[ancestors.length - 3] as acorn.Node | undefined;
+          const owner = ancestors[ancestors.length - 4] as acorn.Node | undefined;
+          if (arr?.type === 'ArrayExpression' && owner?.type === 'Property' && keyOf(owner as acorn.Property) === 'stages') checkVus('stages.target', value);
+        } else if (key === 'stages' && value.type === 'ArrayExpression') {
+          // Stages run back to back, so their durations add up.
+          let total = 0;
+          for (const el of value.elements) {
+            if (el?.type !== 'ObjectExpression') continue;
+            const dur = el.properties.find((p) => p.type === 'Property' && keyOf(p) === 'duration') as acorn.Property | undefined;
+            total += (dur && literalDurationMs(dur.value)) || 0;
+          }
+          if (total > K6_MAX_DURATION_MS) checkDuration({ type: 'Literal', value: total } as acorn.Literal);
+        }
+      });
+    }
+  }
+  return [...new Set(errors)];
+}
+
 function collectModuleSpecifiers(script: string): Set<string> {
   const modules = new Set<string>();
   const ast = acorn.parse(script, {
@@ -166,6 +229,8 @@ export function validateK6Script(
   if (isMissingEntrypoint(jsCode)) {
     errors.push('Script must export a default function or configure options.scenarios with named exec functions.');
   }
+
+  errors.push(...findOptionLimitErrors(jsCode));
 
   // Warning: Recommend options export for test configuration
   // Use original script - esbuild restructures exports

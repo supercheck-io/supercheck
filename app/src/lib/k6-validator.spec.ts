@@ -378,6 +378,29 @@ describe("K6Validator", () => {
       });
     });
 
+    describe("literal option limits", () => {
+      const wrap = (options: string) =>
+        `import http from 'k6/http';\nexport const options = ${options};\nexport default function() { http.get('https://x.test'); }`;
+      const errs = (options: string) => validateK6Script(wrap(options)).errors.join("|");
+
+      it.each([
+        ["vus", "{ vus: 5000, duration: '30s' }"],
+        ["stages target", "{ stages: [{ duration: '1m', target: 5000 }] }"],
+        ["maxVUs", "{ scenarios: { a: { executor: 'constant-arrival-rate', maxVUs: 5000, duration: '1m', rate: 1, timeUnit: '1s', preAllocatedVUs: 1 } } }"],
+        ["duration string", "{ vus: 10, duration: '2h' }"],
+        ["duration compound", "{ vus: 10, duration: '1h1m' }"],
+        ["stages total", "{ stages: [{ duration: '40m', target: 10 }, { duration: '40m', target: 10 }] }"],
+      ])("rejects %s above the limit", (_n, options) => {
+        expect(validateK6Script(wrap(options)).valid).toBe(false);
+      });
+
+      it("accepts values at the limit and leaves dynamic values alone", () => {
+        expect(errs("{ vus: 1000, duration: '60m' }")).toBe("");
+        expect(errs("{ vus: Number(__ENV.VUS), duration: __ENV.DUR }")).toBe("");
+        expect(errs("{ stages: [{ duration: '1m', target: 10 }] }")).toBe("");
+      });
+    });
+
     describe("warnings", () => {
       it("should warn about missing options export", () => {
         const script = `

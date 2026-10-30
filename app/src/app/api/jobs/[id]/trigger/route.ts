@@ -433,6 +433,22 @@ export async function POST(
           );
         }
 
+        if (processedTestScripts.length !== 1) {
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: "k6 jobs support exactly one performance test",
+            })
+            .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
+
+          return NextResponse.json(
+            { error: "k6 jobs support exactly one performance test" },
+            { status: 400 }
+          );
+        }
+
         try {
           const validation = validateK6Script(primaryScript);
           if (!validation.valid) {

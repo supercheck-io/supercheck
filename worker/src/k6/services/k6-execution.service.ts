@@ -168,16 +168,20 @@ export class K6ExecutionService {
     const testTimeoutEnv = this.configService.get<string>(
       'K6_TEST_EXECUTION_TIMEOUT_MS',
     );
-    this.testExecutionTimeoutMs = testTimeoutEnv
-      ? parseInt(testTimeoutEnv, 10)
-      : 60 * 60 * 1000;
+    const parsedTestTimeout = parseInt(testTimeoutEnv ?? '', 10);
+    this.testExecutionTimeoutMs =
+      Number.isFinite(parsedTestTimeout) && parsedTestTimeout > 0
+        ? parsedTestTimeout
+        : 60 * 60 * 1000;
 
     const jobTimeoutEnv = this.configService.get<string>(
       'K6_JOB_EXECUTION_TIMEOUT_MS',
     );
-    this.jobExecutionTimeoutMs = jobTimeoutEnv
-      ? parseInt(jobTimeoutEnv, 10)
-      : 60 * 60 * 1000;
+    const parsedJobTimeout = parseInt(jobTimeoutEnv ?? '', 10);
+    this.jobExecutionTimeoutMs =
+      Number.isFinite(parsedJobTimeout) && parsedJobTimeout > 0
+        ? parsedJobTimeout
+        : 60 * 60 * 1000;
     this.logger.log(
       `k6 test execution timeout: ${this.testExecutionTimeoutMs}ms (${Math.round(this.testExecutionTimeoutMs / 60000)}m)`,
     );
@@ -726,6 +730,13 @@ export class K6ExecutionService {
       // Test passes only if BOTH thresholds pass AND all checks pass without a timeout
       const overallSuccess = !timedOut && thresholdsPassed && !checksFailed;
 
+      // A non-zero exit with no summary is an execution error even when stderr was empty.
+      const executionError =
+        execResult.error ||
+        (!summary && exitCode !== 0
+          ? `k6 exited with code ${exitCode} before producing a summary`
+          : null);
+
       finalResult = {
         success: overallSuccess,
         cancelled: execResult.cancelled,
@@ -741,7 +752,7 @@ export class K6ExecutionService {
         consoleUrl,
         logsUrl: consoleUrl,
         consoleOutput: execResult.stdout || null,
-        error: execResult.error,
+        error: executionError,
       };
 
       // Store report metadata so the app can proxy the report via /api/test-results
@@ -751,7 +762,7 @@ export class K6ExecutionService {
       // - 'error': execution error (infrastructure issue, Docker not available, timeout, etc.)
       // Note: timedOut is a standalone condition since execResult.error might be null for timeouts
       const isExecutionError =
-        !overallSuccess && (timedOut || (!summary && execResult.error));
+        !overallSuccess && (timedOut || (!summary && executionError));
       const reportStatus = overallSuccess
         ? 'passed'
         : isExecutionError
