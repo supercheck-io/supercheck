@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn().mockResolvedValue(true) }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
 import { DELETE, GET, PUT } from "./route";
@@ -10,6 +11,7 @@ import { db } from "@/utils/db";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const ID = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
 const set = jest.fn();
@@ -91,14 +93,67 @@ describe("CLI tokens", () => {
   );
 });
 
+describe("audit, conflicts and ordering", () => {
+  const del = () => DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+  const row = (isDefault: boolean) => ({
+    from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault, name: "P", slug: "p", description: null }] }) }),
+  });
+
+  it("audits project updates", async () => {
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ id: ID, name: "n", slug: "s", description: null }] }) });
+    await put({ name: "n" });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_updated", resourceId: ID, organizationId: "org-1" }));
+  });
+
+  it("maps a duplicate slug to 409", async () => {
+    set.mockReturnValue({ where: () => ({ returning: async () => { throw Object.assign(new Error("dup"), { cause: { code: "23505" } }); } }) });
+    expect((await put({ slug: "taken" })).status).toBe(409);
+  });
+
+  it("audits project deletion", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(false));
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
+    expect((await del()).status).toBe(200);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted", resourceId: ID, organizationId: "org-1", metadata: expect.objectContaining({ projectName: "n", projectSlug: "s" }) }));
+  });
+
+  it("does not audit a deletion that lost the race to another delete", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(false));
+    set.mockReturnValue({ where: () => ({ returning: async () => [] }) });
+    expect((await del()).status).toBe(404);
+    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
+  });
+
+  it("checks delete permission before revealing the default project", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(true));
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
+    expect((await del()).status).toBe(403);
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
+    expect((await del()).status).toBe(400);
+  });
+});
+
 describe("DELETE schedules", () => {
   it("removes repeatables for the project's scheduled jobs after soft-deleting", async () => {
     (db.select as jest.Mock)
       .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
       .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }, { id: "job-2" }] }) });
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
     const res = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(200);
     expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
     expect(deleteScheduledJob).toHaveBeenCalledWith("job-2");
+  });
+
+  it("audits the deletion even when scheduler cleanup never settles", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }] }) });
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
+    (deleteScheduledJob as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    (logAuditEvent as jest.Mock).mockClear();
+    void DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
   });
 });

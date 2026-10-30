@@ -160,6 +160,15 @@ describe("GET /api/cli-tokens", () => {
     ]);
   });
 
+  it("flags only the viewer's own tokens as isOwner (re-enable is owner-only)", async () => {
+    mockSelectRows.mockResolvedValue([
+      { id: "k1", name: "Mine", start: "s", enabled: false, ownerId: "u1", createdAt: new Date(), expiresAt: null, lastRequest: null, createdByName: null, createdByImage: null },
+      { id: "k2", name: "Theirs", start: "s", enabled: false, ownerId: "u2", createdAt: new Date(), expiresAt: null, lastRequest: null, createdByName: null, createdByImage: null },
+    ]);
+    const body = await (await GET()).json();
+    expect(body.tokens.map((t: { isOwner: boolean }) => t.isOwner)).toEqual([true, false]);
+  });
+
   it("requires apiKey:view", async () => {
     mockCheckPermission.mockReturnValue(false);
     expect((await GET()).status).toBe(403);

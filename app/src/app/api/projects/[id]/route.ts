@@ -7,6 +7,7 @@ import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 // Status transitions are not editable here: DELETE owns soft-delete (project:delete, non-default).
 const updateProjectSchema = z
@@ -16,6 +17,11 @@ const updateProjectSchema = z
     description: z.string().max(5000).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'No fields to update');
+
+function isUniqueViolation(error: unknown): boolean {
+  const e = error as { code?: string; cause?: { code?: string } };
+  return e?.code === '23505' || e?.cause?.code === '23505';
+}
 
 /**
  * GET /api/projects/[id]
@@ -180,6 +186,21 @@ export async function PUT(
       );
     }
     
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: 'project_updated',
+      resource: 'project',
+      resourceId: projectId,
+      metadata: {
+        projectName: updatedProject.name,
+        projectSlug: updatedProject.slug,
+        description: updatedProject.description,
+        organizationId,
+      },
+      success: true,
+    });
+
     return NextResponse.json({
       success: true,
       project: updatedProject
@@ -191,6 +212,9 @@ export async function PUT(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: 401 }
       );
+    }
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ error: 'A project with this slug already exists' }, { status: 409 });
     }
     console.error('Failed to update project:', error);
     return NextResponse.json(
@@ -233,14 +257,6 @@ export async function DELETE(
     
     const { organizationId, isDefault } = projectData[0];
     
-    // Prevent deletion of default project
-    if (isDefault) {
-      return NextResponse.json(
-        { error: 'Cannot delete the default project' },
-        { status: 400 }
-      );
-    }
-    
     const canDelete = await hasPermissionForUser(userId, 'project', 'delete', {
       organizationId,
       projectId,
@@ -252,15 +268,39 @@ export async function DELETE(
         { status: 403 }
       );
     }
+
+    // After the permission check so non-owners cannot probe which project is the default.
+    if (isDefault) {
+      return NextResponse.json(
+        { error: 'Cannot delete the default project' },
+        { status: 400 }
+      );
+    }
     
     // Soft delete project (mark as deleted)
-    await db
+    // Guarded + RETURNING: a concurrent delete/rename cannot produce a duplicate or stale audit entry.
+    const [deleted] = await db
       .update(projects)
       .set({
         status: 'deleted',
         updatedAt: new Date()
       })
-      .where(eq(projects.id, projectId));
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
+      .returning({ name: projects.name, slug: projects.slug, description: projects.description });
+
+    if (!deleted) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: 'project_deleted',
+      resource: 'project',
+      resourceId: projectId,
+      metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
+      success: true,
+    });
 
     // Best effort: processScheduledJob also drops the repeatable if this fails.
     try {

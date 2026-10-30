@@ -206,20 +206,6 @@ export async function POST(
       );
     }
 
-    // Rate limit resend operations
-    const rateLimitResult = await checkResendRateLimit(userId);
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: "Too many resend requests. Please try again later." },
-        { 
-          status: 429,
-          headers: rateLimitResult.retryAfter 
-            ? { 'Retry-After': String(rateLimitResult.retryAfter) }
-            : undefined
-        }
-      );
-    }
-
     // Find the invitation and verify it belongs to this organization
     if (!isUuid((await params).invitationId)) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
     const inviteDetails = await db
@@ -256,6 +242,21 @@ export async function POST(
       return NextResponse.json(
         { error: "Only pending invitations can be resent" },
         { status: 400 }
+      );
+    }
+
+    // Only count a resend against the limit once the invitation is valid.
+    // Rate limit resend operations
+    const rateLimitResult = await checkResendRateLimit(userId);
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many resend requests. Please try again later." },
+        { 
+          status: 429,
+          headers: rateLimitResult.retryAfter 
+            ? { 'Retry-After': String(rateLimitResult.retryAfter) }
+            : undefined
+        }
       );
     }
 

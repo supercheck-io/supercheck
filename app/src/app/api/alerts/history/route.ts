@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
           WHERE m.organization_id = ${context.organizationId}
             AND m.project_id = ${context.project.id}
         )
-        ORDER BY "timestamp" DESC
+        ORDER BY "timestamp" DESC, id DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `);
@@ -186,10 +186,13 @@ export async function GET(request: NextRequest) {
         status: item.status,
         timestamp: item.timestamp,
         incident: incidentByAlert.get(item.id) ?? null,
+        // A deleted channel leaves a raw provider UUID behind; show its stored type or a label instead.
         notificationProvider:
           item.providerType ||
           item.providerName ||
-          item.providerId ||
+          (isUuid(item.providerId)
+            ? item.deliveryMetadata?.provider?.type || 'Deleted channel'
+            : item.providerId) ||
           'Unknown',
         metadata: {
           errorMessage: item.errorMessage,

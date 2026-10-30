@@ -135,6 +135,8 @@ export async function fetchWithRetry(
   options: RequestInit,
   retryConfig: RetryOptions,
   logger?: Logger,
+  // Lets callers swap in a DNS-pinned fetch; redirect/timeout handling stays here.
+  fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch,
 ): Promise<RetryResult<Response>> {
   let lastError: string | undefined;
   let lastStatusCode: number | undefined;
@@ -157,7 +159,7 @@ export async function fetchWithRetry(
         redirect: 'error',
       };
 
-      const response = await fetch(url, fetchOptions);
+      const response = await fetcher(url, fetchOptions);
       // The timer stays armed while an error body is read: a server that sends headers and then
       // trickles the body must not hang the caller. It is cleared on every exit below.
 

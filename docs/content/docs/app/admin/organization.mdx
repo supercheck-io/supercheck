@@ -10,7 +10,7 @@ Manage your organization's projects, members, CLI tokens, AI SRE setup, and audi
 
 ## Your default organization
 
-Signup assigns one default organization and a default project. There is no organization creation or switching menu. Create and switch projects using the project selector and **Settings → Organization → Projects**.
+Signup assigns one default organization and a default project. There is no organization creation or switching menu. Create and switch projects using the project selector and the **Projects** tab on the **Organization** page in the sidebar.
 
 You can accept invitations to projects in other organizations while keeping your default organization. Those projects appear in the project selector with their team name. All active projects in a joined team are visible and selectable with read-only access. Project editor and project admin assignments grant additional permissions only in the selected projects; they do not hide other team projects. Owning your default organization does not grant administrative access to another team.
 
@@ -18,7 +18,7 @@ New users signing up through an invitation join the inviting team without creati
 
 ## Projects
 
-Organization administrators can create and manage projects. Project admins can update their assigned projects.
+Organization owners and admins create and manage projects from the Organization page, which is limited to those two roles. Project admins can update their assigned projects only through the API, not the UI. Projects are deleted by soft delete through the API only (organization owners and admins; the default project cannot be deleted); there is no delete action in the UI.
 
 ![Projects List](/screenshots/org-admin-projects.png)
 
@@ -26,11 +26,12 @@ Organization administrators can create and manage projects. Project admins can u
 
 Create a new project to organize your tests, jobs, and monitors.
 
-1. Go to **Settings → Organization → Projects**
+1. Open **Organization** in the sidebar and select the **Projects** tab
 2. Click **Create Project**
-3. Enter project name and description
-4. Configure project settings
-5. Save
+3. Enter a project name (up to 20 characters: letters, numbers, spaces, hyphens, underscores) and a description (up to 100 characters); both are required
+4. Save
+
+The API accepts longer values (name up to 255 characters, description up to 2000, optional slug up to 100). A slug that is already in use returns a conflict error.
 
 ![Create Project](/screenshots/org-admin-create-project.png)
 
@@ -41,7 +42,7 @@ Invite and manage team members with role-based access control.
 <Tabs items={['Invite Member', 'Email Invitation', 'Accept Invitation', 'Signup']}>
 <Tab value="Invite Member">
 
-1. Go to **Settings → Organization → Members**
+1. Open **Organization** in the sidebar and select the **Members** tab
 2. Click **Invite Member**
 3. Enter email and select role
 4. Send invitation
@@ -115,20 +116,23 @@ Only the organization owner can request deletion. Organizations with projects or
 
 Create project-scoped CLI tokens for API access and automation. Tokens inherit their owner's permissions; use a separate token for each pipeline or integration.
 
-1. Go to **Settings → Organization → CLI Tokens**
+1. Open **Organization** in the sidebar and select the **CLI Tokens** tab
 2. Click **Create Token**
-3. Enter a name and optional expiry date for a token in the current project
+3. Enter a name (unique within the project) and an optional expiry date at least 1 hour in the future (maximum 1 year) for a token in the current project
 4. Copy the generated token securely
+
+A project can have at most 20 active CLI tokens (enabled and not expired). Anyone with token update permission can disable a token or rename it, but only the token's owner can re-enable it.
 
 ## AI SRE Setup
 
-Administrators configure project-level AI SRE setup from **Settings → Organization** so responders do not need to manage setup screens during an incident.
+Administrators configure project-level AI SRE setup from the **Organization** page so responders do not need to manage setup screens during an incident.
 
 The section tabs sit in the page header next to the title, and become a menu on narrow screens. The setup tabs are:
 
-- **Services** — Open the top-level **Services** page to register production services and ownership metadata used to map alerts, incidents, and connector evidence.
 - **Integrations** — Configure read-only evidence connectors, link alert notification providers to connector context, and optionally save repeatable read-only queries.
 - **Private Agents** — [Register and deploy an agent](/docs/app/deployment/private-agent) to use private evidence sources in investigations.
+
+Register production services and ownership metadata (used to map alerts, incidents, and connector evidence) on the top-level **Services** page in the sidebar before you configure connectors.
 
 See [AI SRE setup](/docs/app/admin/ai-sre-setup) for the full setup flow.
 

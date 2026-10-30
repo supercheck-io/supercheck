@@ -43,6 +43,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Email has its own tighter limit (after recipient checks); cap every other outbound test here.
+    if (type !== "email") {
+      const limit = await apiKeyRateLimiter.checkAndIncrement(`notification-test-other:${context.userId}`, TEST_OTHER_RATE_LIMIT);
+      if (!limit.allowed) {
+        return NextResponse.json(
+          { success: false, error: "Too many connection tests. Try again later." },
+          { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+        );
+      }
+    }
+
     switch (type) {
       case "email":
         return await testEmailConnection(config, context);
@@ -79,6 +90,7 @@ export async function POST(req: NextRequest) {
 
 const MAX_TEST_RECIPIENTS = 5;
 // 5 test sends per 10 minutes per user
+const TEST_OTHER_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 20 };
 const TEST_EMAIL_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 5 };
 
 async function testEmailConnection(

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { type Table as TableType } from "@tanstack/react-table";
+import { useSession } from "@/utils/auth-client";
 import { AdminDataTable } from "@/components/admin/admin-data-table";
 import { MemberTableToolbar } from "./member-table-toolbar";
 import { createMemberColumns, type MemberOrInvitation } from "./member-columns";
@@ -11,6 +12,7 @@ interface MembersTableProps {
   onMemberUpdate: () => void;
   onInviteMember: () => void;
   canInviteMembers?: boolean;
+  currentUserRole?: string;
   projects?: { id: string; name: string; description?: string }[];
 }
 
@@ -44,10 +46,13 @@ export function MembersTable({
   onInviteMember,
   canInviteMembers = false,
   projects = [],
+  currentUserRole,
 }: MembersTableProps) {
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   const columns = React.useMemo(
-    () => createMemberColumns(onMemberUpdate, projects),
-    [onMemberUpdate, projects]
+    () => createMemberColumns(onMemberUpdate, projects, currentUserId, currentUserRole),
+    [onMemberUpdate, projects, currentUserId, currentUserRole]
   );
 
   const CustomToolbar = React.useCallback(

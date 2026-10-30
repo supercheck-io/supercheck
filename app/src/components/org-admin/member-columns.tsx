@@ -256,10 +256,14 @@ const MemberActionsCell = ({
   member,
   onMemberUpdate,
   projects: initialProjects,
+  currentUserId,
+  currentUserRole,
 }: {
   member: OrgMember;
   onMemberUpdate: () => void;
   projects: { id: string; name: string; description?: string }[];
+  currentUserId?: string;
+  currentUserRole?: string;
 }) => {
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -373,7 +377,12 @@ const MemberActionsCell = ({
     }
   };
 
-  if (member.role === "org_owner") {
+  // Mirrors the server: owners and the viewer's own row are immutable, org admins only editable by owners.
+  if (
+    member.role === "org_owner" ||
+    member.id === currentUserId ||
+    (member.role === "org_admin" && currentUserRole !== "org_owner")
+  ) {
     return <span className="text-muted-foreground text-sm">None</span>;
   }
 
@@ -427,6 +436,7 @@ const MemberActionsCell = ({
             selectedProjects: memberData.selectedProjects,
           }}
           projects={projects}
+          actorRole={currentUserRole}
           onSubmit={async (updatedData) => {
             const response = await fetch(
               `/api/organizations/members/${member.id}`,
@@ -598,7 +608,9 @@ const InvitationActionsCell = ({
 
 export const createMemberColumns = (
   onMemberUpdate: () => void,
-  projects: { id: string; name: string; description?: string }[] = []
+  projects: { id: string; name: string; description?: string }[] = [],
+  currentUserId?: string,
+  currentUserRole?: string
 ): ColumnDef<MemberOrInvitation>[] => [
   {
     accessorKey: "id",
@@ -882,6 +894,8 @@ export const createMemberColumns = (
             member={member}
             onMemberUpdate={onMemberUpdate}
             projects={projects}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
           />
         </div>
       );

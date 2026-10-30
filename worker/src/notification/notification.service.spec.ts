@@ -107,7 +107,7 @@ describe('NotificationService', () => {
   const telegramProvider: NotificationProvider = {
     id: 'provider-telegram',
     type: 'telegram',
-    config: { botToken: 'bot-token-123', chatId: 'chat-123' },
+    config: { botToken: '123456:ABC-def_token', chatId: 'chat-123' },
   };
 
   const webhookProvider: NotificationProvider = {
@@ -483,6 +483,121 @@ describe('NotificationService', () => {
       expect(body.text).toContain('api_v2_*prod*');
       expect(body.text.length).toBeLessThanOrEqual(4096);
       expect(body.chat_id).toBe(telegramProvider.config.chatId);
+    });
+  });
+
+  describe('Provider send results', () => {
+    const failResponse = (body: string) => ({
+      ok: false,
+      status: 400, // non-retryable, fails immediately
+      statusText: 'Bad Request',
+      text: jest.fn().mockResolvedValue(body),
+    });
+
+    it('returns a descriptive error for a failed Telegram send without leaking the bot token', async () => {
+      mockFetch.mockResolvedValue(failResponse('chat not found'));
+      const result = await service.sendNotificationToMultipleProviders(
+        [telegramProvider],
+        basePayload,
+      );
+      const error = result.results[0].error ?? '';
+      expect(error).toContain('Telegram delivery failed');
+      expect(error).toContain('chat not found');
+      expect(error).not.toContain('ABC-def_token');
+    });
+
+    it('redacts the webhook URL from Slack failure text', async () => {
+      mockFetch.mockResolvedValue(
+        failResponse(`bad hook ${slackProvider.config.webhookUrl as string}`),
+      );
+      const result = await service.sendNotificationToMultipleProviders(
+        [slackProvider],
+        basePayload,
+      );
+      const error = result.results[0].error ?? '';
+      expect(error).toContain('Slack delivery failed');
+      expect(error).not.toContain('hooks.slack.com/services/xxx');
+    });
+
+    it('redacts the URL path when the error echoes only the path', async () => {
+      const path = new URL(slackProvider.config.webhookUrl as string).pathname;
+      mockFetch.mockResolvedValue(failResponse(`POST ${path} failed`));
+      const result = await service.sendNotificationToMultipleProviders(
+        [slackProvider],
+        basePayload,
+      );
+      expect(result.results[0].error).not.toContain(path);
+    });
+
+    it('redacts a percent-encoded query value echoed unchanged', async () => {
+      const provider: NotificationProvider = {
+        id: 'p-enc',
+        type: 'slack',
+        config: {
+          webhookUrl:
+            'https://hooks.slack.com/services/T0001/B0002/x?key=Secret%2DToken99',
+        },
+      };
+      mockFetch.mockResolvedValue(failResponse('bad key Secret%2DToken99'));
+      const result = await service.sendNotificationToMultipleProviders(
+        [provider],
+        basePayload,
+      );
+      expect(result.results[0].error).not.toContain('Secret%2DToken99');
+    });
+
+    it('redacts a lone token segment or query value echoed by the provider', async () => {
+      const provider: NotificationProvider = {
+        id: 'p-parts',
+        type: 'slack',
+        config: {
+          webhookUrl:
+            'https://hooks.slack.com/services/T0001/B0002/SecretTokenSegment?key=queryValue123',
+        },
+      };
+      mockFetch.mockResolvedValue(
+        failResponse('bad token SecretTokenSegment, key queryValue123'),
+      );
+      const result = await service.sendNotificationToMultipleProviders(
+        [provider],
+        basePayload,
+      );
+      const error = result.results[0].error ?? '';
+      expect(error).not.toContain('SecretTokenSegment');
+      expect(error).not.toContain('queryValue123');
+    });
+
+    it('re-checks the provider host allowlist before sending', async () => {
+      const bad: NotificationProvider = {
+        id: 'p-bad',
+        type: 'slack',
+        config: { webhookUrl: 'https://evil.example.com/hook' },
+      };
+      const result = await service.sendNotificationToMultipleProviders(
+        [bad],
+        basePayload,
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.results[0].error).toContain('host is not allowed');
+    });
+
+    it('rejects a Telegram bot token that could alter the URL path', async () => {
+      const bad: NotificationProvider = {
+        id: 'p-bad-tg',
+        type: 'telegram',
+        config: { botToken: '1:a/../x', chatId: 'c' },
+      };
+      await service.sendNotificationToMultipleProviders([bad], basePayload);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('bounds the response body kept in a failed webhook error', async () => {
+      mockFetch.mockResolvedValue(failResponse('x'.repeat(50000)));
+      const result = await service.sendNotificationToMultipleProviders(
+        [webhookProvider],
+        basePayload,
+      );
+      expect((result.results[0].error ?? '').length).toBeLessThan(1300);
     });
   });
 

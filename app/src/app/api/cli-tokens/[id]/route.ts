@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -79,7 +79,7 @@ export async function PATCH(
     // Verify the token belongs to this project and is a CLI token (no jobId)
     if (!isUuid((await params).id)) return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
     const tokenRecord = await db
-      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId, enabled: apikey.enabled })
+      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId, enabled: apikey.enabled, name: apikey.name })
       .from(apikey)
       .where(
         and(
@@ -95,7 +95,7 @@ export async function PATCH(
     }
     // Anyone with apiKey:update may revoke a project token, but only its owner may re-enable it,
     // so a stolen token cannot undo another member's revocation.
-    if (enabled === true && tokenRecord[0].ownerId !== context.userId) {
+    if (enabled === true && tokenRecord[0].enabled !== true && tokenRecord[0].ownerId !== context.userId) {
       return NextResponse.json({ error: "Only the token's owner can re-enable it" }, { status: 403 });
     }
 
@@ -105,18 +105,35 @@ export async function PATCH(
 
     // Re-enabling must respect the same per-project cap as issuance (serialised by the same lock).
     const updated = await db.transaction(async (tx) => {
-      if (enabled === true) {
-        await lockProjectForKeyIssuance(tx, context.project.id);
-        // Re-read under the lock: the pre-read may be stale.
-        const [current] = await tx.select({ enabled: apikey.enabled }).from(apikey).where(eq(apikey.id, tokenId)).limit(1);
+      if (enabled === true || name !== undefined) await lockProjectForKeyIssuance(tx, context.project.id);
+      // Re-read under the lock: the pre-read may be stale (state and name can both have changed).
+      // Row-locked so a concurrent revocation cannot be overwritten; ownership is re-checked on the locked row.
+      let lockedName: string | null = null;
+      if (enabled === true || name !== undefined) {
+        const [current] = await tx.select({ enabled: apikey.enabled, ownerId: apikey.referenceId, name: apikey.name }).from(apikey).where(eq(apikey.id, tokenId)).limit(1).for("update");
         if (!current) return "gone" as const;
-        if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        lockedName = current.name;
+        if (enabled === true) {
+          if (current.enabled !== true && current.ownerId !== context.userId) return "forbidden" as const;
+          if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        }
+      }
+      if (name !== undefined && name !== lockedName) {
+        // Same uniqueness rule as issuance (cli-key-service), under the same lock.
+        const [dup] = await tx.select({ id: apikey.id }).from(apikey).where(and(eq(apikey.projectId, context.project.id), isNull(apikey.jobId), eq(apikey.name, name), ne(apikey.id, tokenId))).limit(1);
+        if (dup) return "name_conflict" as const;
       }
       const [row] = await tx.update(apikey).set(updateData).where(eq(apikey.id, tokenId)).returning();
       return row;
     });
     if (updated === "gone") {
       return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
+    }
+    if (updated === "forbidden") {
+      return NextResponse.json({ error: "Only the token's owner can re-enable it" }, { status: 403 });
+    }
+    if (updated === "name_conflict") {
+      return NextResponse.json({ error: "A CLI token with this name already exists in this project" }, { status: 409 });
     }
     if (!updated) {
       return NextResponse.json(
