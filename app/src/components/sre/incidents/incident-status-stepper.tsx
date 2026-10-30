@@ -44,15 +44,17 @@ export function IncidentStatusStepper({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      tabIndex={0}
+                      
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-semibold",
                         current === "resolved" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-primary text-primary-foreground",
                       )}
                     >
                       {current === "resolved" && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
                       {status.label}
                       {current === "resolved" && <span className="sr-only"> (done)</span>}
+                      {/* The list is screen-reader only on phones, so it holds no focus stop; the description is read inline. */}
+                      <span className="sr-only">: {description}</span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs text-xs">{description}</TooltipContent>

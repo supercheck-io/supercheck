@@ -84,7 +84,14 @@ export function InvestigationFeedback({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{control}</TooltipTrigger>
-        <TooltipContent>{verdict === "right" ? "The AI got this right" : "The AI got this wrong"}</TooltipContent>
+        <TooltipContent className="max-w-xs">
+          {/* The saved verdict and note live here in compact mode, which has no room for a status line. */}
+          {saved && !draft && saved.verdict === verdict
+            ? `You marked this ${verdict}${saved.note ? `: ${saved.note}` : ""}`
+            : verdict === "right"
+              ? "The AI got this right"
+              : "The AI got this wrong"}
+        </TooltipContent>
       </Tooltip>
     );
   };

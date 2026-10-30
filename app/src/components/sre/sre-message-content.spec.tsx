@@ -191,4 +191,9 @@ describe("SreMessageContent", () => {
     expect(screen.getByRole("link", { name: /docs\.supercheck\.io/ })).toHaveTextContent("(evil.example)");
     expect(screen.getByRole("link", { name: /example\.com\/a/ })).not.toHaveTextContent("(example.com)");
   });
+
+  it("compares the label host exactly, so a lookalike subdomain still shows the real host", () => {
+    render(<SreMessageContent content={"[safe.evil.example](https://evil.example/x)"} />);
+    expect(screen.getByRole("link", { name: /safe\.evil\.example/ })).toHaveTextContent("(evil.example)");
+  });
 });

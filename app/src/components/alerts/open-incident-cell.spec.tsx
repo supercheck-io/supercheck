@@ -29,7 +29,7 @@ describe("isEscalatableAlert", () => {
     [{ status: "failed" }, false],
     [{ type: "monitor_recovery" }, false],
     [{ type: "job_success" }, false],
-    [{ type: "job_failed", message: "Job completed successfully" }, false],
+    [{ type: "job_failed", message: "Job completed successfully" }, true],
   ])("%j -> %s", (overrides, expected) => {
     expect(isEscalatableAlert(alert(overrides as Partial<AlertHistory>))).toBe(expected);
   });

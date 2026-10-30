@@ -55,4 +55,12 @@ describe("InvestigationFeedback", () => {
     expect(screen.getByRole("button", { name: "Right: Deploy 42 regression" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Wrong: Deploy 42 regression" })).toHaveAttribute("aria-pressed", "false");
   });
+
+  it("shows the saved verdict and note in the compact button tooltip", async () => {
+    render(<InvestigationFeedback {...props} compact initial={{ verdict: "wrong", note: "It was DNS" }} />);
+    const wrong = screen.getByRole("button", { name: "Wrong: Deploy 42 regression" });
+    expect(wrong).toHaveAttribute("aria-pressed", "true");
+    fireEvent.focus(wrong);
+    expect((await screen.findAllByText("You marked this wrong: It was DNS")).length).toBeGreaterThan(0);
+  });
 });

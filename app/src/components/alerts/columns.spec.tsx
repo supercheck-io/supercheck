@@ -6,7 +6,9 @@ import type { AlertHistory } from "./schema";
 
 jest.mock("./open-incident-cell", () => ({
   ...jest.requireActual("./open-incident-cell"),
-  OpenIncidentCell: ({ targetName }: { targetName: string }) => <button type="button">open {targetName}</button>,
+  OpenIncidentCell: ({ alertHistoryId, targetName }: { alertHistoryId: string; targetName: string }) => (
+    <button type="button" data-alert-id={alertHistoryId}>open {targetName}</button>
+  ),
 }));
 
 const incidentColumn = columns.find((column) => column.id === "incident")!;
@@ -24,7 +26,7 @@ describe("alert history Incident column", () => {
 
   it("offers Open incident for a sent failure with no incident", () => {
     renderIncidentCell({});
-    expect(screen.getByRole("button", { name: "open api" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "open api" })).toHaveAttribute("data-alert-id", "a1");
   });
 
   it.each([{ type: "monitor_recovery" }, { status: "failed" as const }])("shows a dash for %j", (alert) => {

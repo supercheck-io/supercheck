@@ -10,7 +10,7 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
-The **Notifications** page in the sidebar has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists every notification sent. Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+The **Notifications** page in the sidebar has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists the latest 200 alert notifications sent for your monitors and jobs. Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Alert Workflow
 
@@ -419,7 +419,7 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 
 ## Delivery History
 
-Track every notification from **Notifications → Delivery history**:
+Review the latest 200 alert notifications in **Notifications → Delivery history**. Incident update notifications are not listed there. Each row shows:
 
 ![Alert History](/screenshots/alert-history.png)
 

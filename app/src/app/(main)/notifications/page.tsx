@@ -243,8 +243,8 @@ function NotificationsPage() {
                   titleAdornment={
                     <InfoTip label="About notifications">
                       Channels are where Supercheck notifies your team about
-                      alerts and incidents. Delivery history lists every
-                      notification sent. Status-page subscribers are managed
+                      alerts and incidents. Delivery history lists the alert
+                      notifications sent for your monitors and jobs. Status-page subscribers are managed
                       on each status page.
                     </InfoTip>
                   }

@@ -74,6 +74,17 @@ function isWebUrl(value: string | undefined): value is string {
   }
 }
 
+/** The host a link label claims, if it reads as a URL or bare host ("docs.example.com/x"). */
+function labelHost(label: string | undefined) {
+  const text = (label ?? "").trim();
+  if (!/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(\/\S*)?$/i.test(text)) return null;
+  try {
+    return new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function renderInlineMarkdown(text: string) {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]*\))/g;
@@ -114,7 +125,7 @@ function renderInlineMarkdown(text: string) {
           >
             {label}
             {/* Model text comes from untrusted evidence; show the real host when the label hides it. */}
-            {!(label ?? "").toLowerCase().includes(new URL(href).host.toLowerCase()) && (
+            {labelHost(label) !== new URL(href).host.toLowerCase() && (
               <span className="ml-1 text-xs text-muted-foreground">({new URL(href).host})</span>
             )}
           </a>

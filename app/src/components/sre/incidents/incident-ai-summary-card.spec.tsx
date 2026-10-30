@@ -49,6 +49,11 @@ describe("stripReportBoilerplate", () => {
     expect(stripReportBoilerplate(report)).toBe(report.split("\n").slice(2).join("\n"));
   });
 
+  it("keeps a leading field line that carries the finding when no report title precedes it", () => {
+    const text = "**Status:** All replicas unhealthy\nThe outage continues.";
+    expect(stripReportBoilerplate(text)).toBe(text);
+  });
+
   it("keeps ordinary prose that mentions status or severity", () => {
     expect(stripReportBoilerplate("The status page stayed green while severity rose.")).toBe(
       "The status page stayed green while severity rose.",
@@ -229,5 +234,20 @@ describe("IncidentAiSummaryCard compact layout", () => {
     render(<IncidentAiSummaryCard rootCauseSummary="**Status:** Investigating" confidenceScore="0.8" investigationStatus="completed" />);
     expect(screen.queryByText(/No AI analysis yet/)).toBeNull();
     expect(screen.getByText(/Investigating/)).toBeInTheDocument();
+  });
+
+  it("collapses again when the conclusion changes while expanded", () => {
+    const height = jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+    const { rerender } = render(
+      <IncidentAiSummaryCard rootCauseSummary={"First conclusion. ".repeat(40)} confidenceScore="0.8" investigationStatus="completed" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(screen.getByRole("button", { name: "Show less" })).toBeInTheDocument();
+    rerender(
+      <IncidentAiSummaryCard rootCauseSummary={"Second conclusion. ".repeat(40)} confidenceScore="0.8" investigationStatus="completed" />,
+    );
+    expect(screen.getByRole("button", { name: "Show more" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("ai-summary-body").className).toContain("max-h-28");
+    height.mockRestore();
   });
 });

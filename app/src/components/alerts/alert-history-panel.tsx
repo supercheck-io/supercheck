@@ -20,7 +20,7 @@ export function AlertHistoryPanel({
         <DashboardEmptyState
           className="min-h-[360px]"
           title="No notifications sent yet"
-          description="Every alert and incident notification sent to your channels will be listed here"
+          description="Alert notifications sent for your monitors and jobs will be listed here"
           icon={<BellRing className="h-12 w-12" />}
         />
       ) : (

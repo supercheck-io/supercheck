@@ -66,6 +66,8 @@ export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "even
 }
 
 const TIMELINE_COLLAPSED = 20;
+// getSreIncidentTimeline returns at most this many of the newest events.
+const TIMELINE_FETCH_LIMIT = 500;
 
 function formatTime(value: Date | string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
@@ -162,7 +164,11 @@ export function IncidentTimeline({
           )}
           {events.length > TIMELINE_COLLAPSED && (
             <Button type="button" variant="link" size="sm" className="mt-2 h-auto px-0 text-muted-foreground" aria-expanded={showAll} onClick={() => setShowAll((value) => !value)}>
-              {showAll ? "Show fewer" : `Show all ${events.length} events`}
+              {showAll
+                ? "Show fewer"
+                : events.length >= TIMELINE_FETCH_LIMIT
+                  ? `Show the ${events.length} most recent events`
+                  : `Show all ${events.length} events`}
             </Button>
           )}
         </div>

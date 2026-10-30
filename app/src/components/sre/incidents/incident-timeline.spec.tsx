@@ -46,6 +46,12 @@ describe("describeTimelineEvent", () => {
 });
 
 describe("IncidentTimeline", () => {
+  it("does not call a capped timeline complete", () => {
+    ready(Array.from({ length: 500 }, (_, i) => ev(`e${i}`, "comment", { text: `note ${i}` })));
+    render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);
+    expect(screen.getByRole("button", { name: "Show the 500 most recent events" })).toBeInTheDocument();
+  });
+
   it("shows the latest 20 events and expands to all of them", () => {
     ready(Array.from({ length: 25 }, (_, i) => ev(`e${i}`, "comment", { text: `note ${i}` })));
     render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);

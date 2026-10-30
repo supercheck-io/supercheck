@@ -47,15 +47,18 @@ export function confidenceLabel(score: string | null): {
 }
 
 
-// Older free-text reports open with a title and a details block that repeat the page header.
-const HEADER_LINE =
-  /^\s*(?:#{1,4}\s*)?(?:\*\*)?(?:incident (?:investigation )?report|overview|report details)(?:\*\*)?:?\s*$|^\s*[-*]?\s*\*\*(?:incident(?: title)?|title|severity|status|primary service|evidence source|evidence items|primary signal)(?::\*\*|\*\*:).*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
+// Older free-text reports open with a title or Overview heading, then field lines that repeat the page header.
+const REPORT_TITLE = /^\s*(?:#{1,4}\s*)?(?:\*\*)?(?:incident (?:investigation )?report|overview|report details)(?:\*\*)?:?\s*$/i;
+const HEADER_FIELD =
+  /^\s*[-*]?\s*\*\*(?:incident(?: title)?|title|severity|status|primary service|evidence source|evidence items|primary signal)(?::\*\*|\*\*:).*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
 
-/** Drops the leading header block (title, severity, status, service); the rest of the report is kept as written. */
+/** Drops a leading report header (title, severity, status, service); a summary that starts with a finding is kept whole. */
 export function stripReportBoilerplate(text: string) {
   const lines = text.split("\n");
   let start = 0;
-  while (start < lines.length && (!lines[start]!.trim() || HEADER_LINE.test(lines[start]!))) start += 1;
+  while (start < lines.length && !lines[start]!.trim()) start += 1;
+  if (start >= lines.length || !REPORT_TITLE.test(lines[start]!)) return text.trim();
+  while (start < lines.length && (!lines[start]!.trim() || REPORT_TITLE.test(lines[start]!) || HEADER_FIELD.test(lines[start]!))) start += 1;
   return lines.slice(start).join("\n").trim();
 }
 
@@ -92,10 +95,22 @@ export function IncidentAiSummaryCard({
   const nextCheck = structured?.nextChecks[0] ?? null;
   const bodyRef = useRef<HTMLDivElement>(null);
   const [clampable, setClampable] = useState(false);
-  // Offer "Show more" only when the collapsed body actually hides content.
+  // New content (the detail query polls) starts collapsed again.
+  const [shownConclusion, setShownConclusion] = useState(conclusion);
+  if (shownConclusion !== conclusion) {
+    setShownConclusion(conclusion);
+    setExpanded(false);
+  }
+  // Offer "Show more" only when the collapsed body actually hides content, re-checked when the card resizes.
   useLayoutEffect(() => {
     const el = bodyRef.current;
-    if (el && !expanded) setClampable(el.scrollHeight > el.clientHeight + 1);
+    if (!el || expanded) return;
+    const measure = () => setClampable(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [conclusion, expanded]);
 
   return (
