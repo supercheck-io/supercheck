@@ -29,6 +29,7 @@ const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
 const STATUS_POLL_INTERVAL_MS = 10_000;
 // Keep only the newest console output so a long run cannot exhaust browser memory.
 export const MAX_CONSOLE_BUFFER_CHARS = 2 * 1024 * 1024;
+export const CONSOLE_TRUNCATED_NOTICE = "[earlier output truncated]\n";
 
 interface PerformanceTestReportProps {
   runId: string;
@@ -336,13 +337,18 @@ export function PerformanceTestReport({
       statusPoll = null;
     };
 
-    const cleanupSource = () => {
-      stopStatusPoll();
+    // Closes the stream only; the status poll must survive a reconnect until the new source opens.
+    const closeSource = () => {
       if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
       }
       stopHeartbeatWatchdog();
+    };
+
+    const cleanupSource = () => {
+      stopStatusPoll();
+      closeSource();
     };
 
     const pollRunStatus = async () => {
@@ -409,7 +415,7 @@ export function PerformanceTestReport({
         return;
       }
 
-      cleanupSource();
+      closeSource();
 
       const source = new EventSource(
         `/api/runs/${encodeURIComponent(runId)}/stream`
@@ -437,7 +443,7 @@ export function PerformanceTestReport({
               const code = next.charCodeAt(start);
               // Skip a low surrogate that would begin the retained text.
               if (code >= 0xdc00 && code <= 0xdfff) start += 1;
-              return next.slice(start);
+              return CONSOLE_TRUNCATED_NOTICE + next.slice(start);
             });
             recordHeartbeat();
           }

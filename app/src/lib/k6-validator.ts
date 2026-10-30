@@ -41,7 +41,10 @@ function findOptionLimitErrors(script: string): string[] {
   const errors: string[] = [];
   const ast = acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
   const keyOf = (p: acorn.Property) =>
-    p.computed ? undefined : p.key.type === 'Identifier' ? p.key.name : p.key.type === 'Literal' ? String(p.key.value) : undefined;
+    p.key.type === 'Identifier' ? (p.computed ? undefined : p.key.name) : p.key.type === 'Literal' ? String(p.key.value) : undefined;
+  // Inline `...{ ... }` spreads are flattened; spreads of identifiers/calls stay unresolved (static guard, no evaluation).
+  const propsOf = (obj: acorn.ObjectExpression): Array<acorn.Property | acorn.SpreadElement> =>
+    obj.properties.flatMap((p) => (p.type === 'SpreadElement' && p.argument.type === 'ObjectExpression' ? propsOf(p.argument) : [p]));
   const checkVus = (name: string, v: acorn.Expression | acorn.Pattern) => {
     if (v.type === 'Literal' && typeof v.value === 'number' && v.value > K6_MAX_VUS)
       errors.push(`k6 option "${name}" (${v.value}) exceeds the maximum of ${K6_MAX_VUS} virtual users.`);
@@ -53,7 +56,7 @@ function findOptionLimitErrors(script: string): string[] {
   };
   const get = (obj: acorn.ObjectExpression, name: string) =>
     // Last duplicate wins, as in JS/k6.
-    [...obj.properties].reverse().find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
+    propsOf(obj).reverse().find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
   // Only load keys are checked, so values under tags/env/thresholds are ignored.
   const checkLoad = (obj: acorn.ObjectExpression, stageTargetsAreVus: boolean) => {
     for (const k of ['vus', 'maxVUs', 'preAllocatedVUs', 'startVUs']) {
@@ -85,7 +88,7 @@ function findOptionLimitErrors(script: string): string[] {
       checkLoad(d.init, true);
       const scenarios = get(d.init, 'scenarios');
       if (scenarios?.type !== 'ObjectExpression') continue;
-      for (const sc of scenarios.properties) {
+      for (const sc of propsOf(scenarios)) {
         if (sc.type !== 'Property' || sc.value.type !== 'ObjectExpression') continue;
         const executor = get(sc.value, 'executor');
         checkLoad(sc.value, executor?.type === 'Literal' && executor.value === 'ramping-vus');

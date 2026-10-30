@@ -379,6 +379,13 @@ describe("K6Validator", () => {
     });
 
     describe("literal option limits", () => {
+      it("resolves computed literal keys and inline object spreads", () => {
+        for (const opts of ["{ ['vus']: 5000 }", "{ ...{ vus: 5000 } }", "{ scenarios: { a: { ...{ ['maxVUs']: 5000 } } } }"]) {
+          const r = validateK6Script(`import http from 'k6/http';\nexport const options = ${opts};\nexport default function () {}`);
+          expect(r.errors.join()).toContain("exceeds the maximum");
+        }
+      });
+
       const wrap = (options: string) =>
         `import http from 'k6/http';\nexport const options = ${options};\nexport default function() { http.get('https://x.test'); }`;
       const errs = (options: string) => validateK6Script(wrap(options)).errors.join("|");
