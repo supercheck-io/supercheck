@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -17,7 +17,7 @@ jest.mock("@/components/sre/incidents/edit-sre-incident-dialog", () => ({
 jest.mock("@/components/sre/incidents/resolve-sre-incident-dialog", () => ({
   OPEN_POSTMORTEM_EVENT: "incident:open-postmortem",
   ResolveSreIncidentDialog: ({ open }: { open?: boolean }) =>
-    open === undefined ? <button>Resolve incident</button> : null,
+    open ? <div role="dialog" aria-label="Resolve incident dialog" /> : null,
 }));
 
 jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
@@ -39,7 +39,8 @@ jest.mock("@/components/sre/incidents/investigation-feedback", () => ({
 }));
 
 jest.mock("@/components/sre/incidents/similar-incidents-card", () => ({
-  SimilarIncidentsCard: () => <div data-testid="similar-incidents">Mock similar incidents</div>,
+  SimilarIncidentsList: () => <div data-testid="similar-incidents">Mock similar incidents</div>,
+  useSimilarIncidentCount: () => 2,
 }));
 
 jest.mock("@/components/sre/incidents/postmortem-card", () => ({
@@ -238,7 +239,15 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("#42");
     expect(screen.getByRole("navigation", { name: "Incident progress" }).querySelector("[aria-current=step]")).toHaveTextContent("Investigating");
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
+    // Similar incidents sit behind one sidebar row that opens the details sheet on that list.
+    expect(screen.queryByTestId("similar-incidents")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Similar past incidents/ }));
     expect(screen.getByTestId("similar-incidents")).toHaveTextContent("Mock similar incidents");
+    expect(screen.queryByText("Mock AI investigation panel")).not.toBeInTheDocument();
+    // Closing and reopening Investigation details restores the default sections.
+    fireEvent.keyDown(screen.getByTestId("investigation-sheet"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: /Investigation details/ }));
+    expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
   });
 
   it.each([
@@ -254,8 +263,19 @@ describe("SreIncidentDetailView", () => {
   it("opens the sheet from Investigation details and the actions menu holds the secondary links", async () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
-    expect(screen.getByTestId("investigation-sheet")).toHaveTextContent("Run controls");
-    fireEvent.keyDown(screen.getByTestId("investigation-sheet"), { key: "Escape" });
+    const sheet = screen.getByTestId("investigation-sheet");
+    // One tab per topic, opening on Analysis; the post-mortem tab only exists once resolved.
+    expect(within(sheet).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Analysis",
+      "Evidence (1)",
+      "Brief",
+      "Similar",
+    ]);
+    expect(within(sheet).getByRole("tab", { name: "Analysis" })).toHaveAttribute("aria-selected", "true");
+    expect(sheet).toHaveTextContent("Mock AI investigation panel");
+    fireEvent.mouseDown(within(sheet).getByRole("tab", { name: "Brief" }));
+    expect(within(sheet).getByRole("tab", { name: "Brief" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(sheet, { key: "Escape" });
   });
 
   it("shows hypotheses, the step trace and one feedback control in the sheet", () => {
@@ -309,7 +329,8 @@ describe("SreIncidentDetailView", () => {
     expect(screen.queryByRole("button", { name: "About status" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Post update" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "+ Add commander" })).toBeInTheDocument();
+    // Back control matches the monitor and job detail pages.
+    expect(screen.getByRole("link", { name: "Back to incidents" })).toHaveAttribute("href", "/incidents");
   });
 
   it("hides acknowledge once acknowledged and shows MTTA in the sidebar", () => {
@@ -344,10 +365,18 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
   it("gives editors Edit, Ask Copilot and Re-run investigation", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     openMenu();
-    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit incident" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ask Copilot" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Re-run investigation" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Resolve" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Resolve incident" })).toBeInTheDocument();
+  });
+
+  it("adds a commander from the menu instead of a permanent sidebar link", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    expect(screen.queryByText("Commander: None")).not.toBeInTheDocument();
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add commander" }));
+    expect(screen.getByText(/^Commander:/)).toBeInTheDocument();
   });
 
   it("offers Run investigation when nothing has run yet", () => {
@@ -364,7 +393,7 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     detail.permissions.canInvestigate = false;
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     openMenu();
-    expect(screen.getByRole("menuitem", { name: "Investigation map" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Investigation Map" })).toBeInTheDocument();
     for (const name of [/^Edit$/, /Ask Copilot/, /investigation$/i, /^Resolve$/]) {
       expect(screen.queryByRole("menuitem", { name })).not.toBeInTheDocument();
     }
@@ -380,8 +409,11 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     acked.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
     const ackedView = render(<SreIncidentDetailView detail={acked} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Resolve incident" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
+    // The header button opens the same dialog the menu uses.
+    expect(screen.queryByRole("dialog", { name: "Resolve incident dialog" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resolve incident" }));
+    expect(screen.getByRole("dialog", { name: "Resolve incident dialog" })).toBeInTheDocument();
     ackedView.unmount();
 
     const resolved = detailFixture();

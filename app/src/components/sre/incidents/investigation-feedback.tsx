@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { submitSreInvestigationFeedback } from "@/actions/sre-investigation-feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey } from "@/lib/sre/query-keys";
 import { cn } from "@/lib/utils";
@@ -63,14 +64,14 @@ export function InvestigationFeedback({
   };
 
   const active = draft ?? saved?.verdict ?? null;
-  const button = (verdict: Verdict, Icon: typeof ThumbsUp, text: string) => (
+  const button = (verdict: Verdict, Icon: typeof ThumbsUp, text: string) => {
+    const control = (
     <Button
       type="button"
       variant={active === verdict ? "secondary" : "ghost"}
       size="sm"
       aria-pressed={active === verdict}
       aria-label={`${text}: ${label}`}
-      title={compact ? text : undefined}
       className={cn("h-7 gap-1 px-2 text-xs", compact && "w-7 px-0", active === verdict && "ring-1 ring-border")}
       onClick={() => setDraft(verdict)}
       disabled={pending}
@@ -78,7 +79,22 @@ export function InvestigationFeedback({
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {!compact && text}
     </Button>
-  );
+    );
+    if (!compact) return control;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          {/* The saved verdict and note live here in compact mode, which has no room for a status line. */}
+          {saved && !draft && saved.verdict === verdict
+            ? `You marked this ${verdict}${saved.note ? `: ${saved.note}` : ""}`
+            : verdict === "right"
+              ? "The AI got this right"
+              : "The AI got this wrong"}
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
 
   return (
     <div className={cn("space-y-2", compact && "ml-auto text-xs", compact && draft && "basis-full")}>
@@ -87,11 +103,6 @@ export function InvestigationFeedback({
         role="group"
         aria-label={`Feedback on ${label}`}
       >
-        {saved && !draft && compact && (
-          <span className="mr-1 text-xs text-muted-foreground" role="status" title={saved.note ?? undefined}>
-            Marked {saved.verdict}
-          </span>
-        )}
         {button("right", ThumbsUp, "Right")}
         {button("wrong", ThumbsDown, "Wrong")}
         {saved && !draft && !compact && (

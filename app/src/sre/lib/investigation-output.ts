@@ -141,9 +141,20 @@ export function parseInvestigationOutput(
 
 const EVIDENCE_ID_LIST = /\s*[[(](?:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[;,]?)+\s*[\])]/gi;
 
+// Placeholder references with no real target, e.g. "(Evidence ID:(#))" and "([Log ID: <uuid>](#))".
+const ID_LABEL = String.raw`(?:evidence|log)\s+ids?\s*:?`;
+const EMPTY_ID_REFERENCE = new RegExp(
+  [
+    String.raw`\s*\(\s*${ID_LABEL}\s*\(#\)\s*\)`,
+    String.raw`\s*\(\[\s*${ID_LABEL}\s*[0-9a-f-]{36}\s*\]\(#\)\)`,
+    String.raw`\s*\[\s*${ID_LABEL}\s*[0-9a-f-]{36}\s*\]\(#\)`,
+  ].join("|"),
+  "gi",
+);
+
 /** Removes bracketed evidence-id lists the model inlines; citations are shown as chips instead. */
 export function stripEvidenceIdLists(text: string) {
-  return text.replace(EVIDENCE_ID_LIST, "").replace(/[ \t]{2,}/g, " ").trim();
+  return text.replace(EVIDENCE_ID_LIST, "").replace(EMPTY_ID_REFERENCE, "").replace(/[ \t]{2,}/g, " ").trim();
 }
 
 const STATE_LABEL: Record<SreHypothesisState, string> = {

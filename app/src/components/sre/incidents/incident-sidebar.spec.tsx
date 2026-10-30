@@ -34,12 +34,12 @@ const alerts = (n: number) =>
 beforeEach(() => { mockSimilar = []; });
 
 describe("IncidentSidebar", () => {
-  it("reveals the commander picker from + Add commander", () => {
-    render(<IncidentSidebar detail={detailFixture()} />);
+  it("shows the commander picker only when one is set or the page asks for it", () => {
+    const view = render(<IncidentSidebar detail={detailFixture()} />);
     expect(screen.queryByTestId("picker-Commander")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add commander" }));
+    view.unmount();
+    render(<IncidentSidebar detail={detailFixture()} showCommander />);
     expect(screen.getByTestId("picker-Commander")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "+ Add commander" })).not.toBeInTheDocument();
   });
 
   it("shows a set commander by name and offers no add link without edit rights", () => {
@@ -52,22 +52,24 @@ describe("IncidentSidebar", () => {
     const viewer = detailFixture();
     viewer.permissions.canUpdate = false;
     render(<IncidentSidebar detail={viewer} />);
-    expect(screen.queryByRole("button", { name: "+ Add commander" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("picker-Commander")).not.toBeInTheDocument();
   });
 
-  it("status page: not published", () => {
+  it("status page: offers Post update when not published", () => {
     render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.getByText("Not published")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Post update" })).toHaveAttribute("href", "/status-pages");
   });
 
-  it("status page: published shows the status label and a View link", () => {
+  it("status page: published links its status to the public incident and editors to the status page", () => {
     const detail = detailFixture();
     detail.publicIncident = { id: "pub-1", statusPageId: "sp-1", status: "in_progress" } as never;
-    render(<IncidentSidebar detail={detail} />);
-    expect(screen.getByText("in progress")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("href", "/status-pages/sp-1/public/incidents/pub-1");
+    const view = render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByRole("link", { name: "in progress" })).toHaveAttribute("href", "/status-pages/sp-1/public/incidents/pub-1");
     expect(screen.getByRole("link", { name: "Post update" })).toHaveAttribute("href", "/status-pages/sp-1");
+    view.unmount();
+    detail.permissions.canUpdate = false;
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
   });
 
   it("status page: no Post update without canUpdate", () => {
@@ -99,36 +101,39 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("No alerts linked.")).toBeInTheDocument();
   });
 
-  it("hides Similar when empty and shows it when there are matches", () => {
-    const view = render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.queryByText("Similar incidents")).not.toBeInTheDocument();
+  it("shows one Similar past incidents row that opens the list, only when there are matches", () => {
+    const onOpenSimilar = jest.fn();
+    const view = render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
+    expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
     view.unmount();
-    mockSimilar = [{ id: "s1", incidentNumber: 3, title: "Old outage", matchedOn: ["service"], rootCauseSummary: null, resolutionSummary: null }];
-    render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.getByText("Similar incidents")).toBeInTheDocument();
-    expect(screen.getByText("#3 Old outage")).toBeInTheDocument();
+    mockSimilar = [{ id: "s1" }, { id: "s2" }];
+    render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
+    const row = screen.getByRole("button", { name: /Similar past incidents/ });
+    expect(row).toHaveTextContent("2");
+    fireEvent.click(row);
+    expect(onOpenSimilar).toHaveBeenCalled();
   });
 
-  it("shows the top 3 similar incidents with a Show more control", () => {
-    mockSimilar = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, incidentNumber: i + 1, title: `Outage ${i + 1}`, matchedOn: ["service"], rootCauseSummary: null, resolutionSummary: null }));
-    render(<IncidentSidebar detail={detailFixture()} />);
-    expect(screen.queryByText("#4 Outage 4")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show more (2)" }));
-    expect(screen.getByText("#5 Outage 5")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(screen.queryByText("#4 Outage 4")).not.toBeInTheDocument();
-  });
 
-  it("shows MTTA and MTTR durations and the acknowledger", () => {
+  it("shows who acknowledged, time to acknowledge, and time to resolve once resolved", () => {
     const detail = detailFixture();
     detail.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
     detail.incident.acknowledgedByName = "Ada";
     detail.incident.resolvedAt = new Date("2026-06-24T14:05:00Z");
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText(/by Ada/)).toBeInTheDocument();
     expect(screen.getByText("10 min")).toBeInTheDocument();
     expect(screen.getByText("2 h 5 min")).toBeInTheDocument();
-    expect(screen.getByText(/by Ada/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "+ Add commander" })).not.toBeInTheDocument();
+  });
+
+  it("says Skipped for an incident resolved without acknowledgement", () => {
+    const detail = detailFixture();
+    detail.incident.resolvedAt = new Date("2026-06-24T14:05:00Z");
+    detail.incident.status = "resolved";
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+    expect(screen.queryByText("Time to acknowledge")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Details" })).toBeInTheDocument();
   });
 });

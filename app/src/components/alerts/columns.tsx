@@ -11,6 +11,7 @@ import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 import { getAlertTypeLabel, getNotificationProviderConfig } from "./data";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { OpenIncidentCell, isEscalatableAlert } from "./open-incident-cell";
 
 const statusTones: Record<string, TableBadgeTone> = {
   sent: "success",
@@ -156,6 +157,8 @@ export const columns: ColumnDef<AlertHistory>[] = [
         <Link href={`/incidents/${incident.id}`} className="text-sm underline-offset-4 hover:underline">
           #{incident.number}
         </Link>
+      ) : isEscalatableAlert(row.original) ? (
+        <OpenIncidentCell alertHistoryId={row.original.id} targetName={row.original.targetName} />
       ) : (
         <span className="text-sm text-muted-foreground">-</span>
       );

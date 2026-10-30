@@ -98,6 +98,7 @@ export function UserCell({
   image,
   emptyLabel = "Unassigned",
   compact = false,
+  emptyDash = false,
   className,
   avatarClassName,
 }: {
@@ -107,6 +108,8 @@ export function UserCell({
   emptyLabel?: string;
   /** Table columns: avatar plus initials ("KK"); the full name stays in the tooltip and for screen readers. */
   compact?: boolean;
+  /** Compact only: show a dash where the initials go when nobody is set (an "Unassigned" column). */
+  emptyDash?: boolean;
   className?: string;
   avatarClassName?: string;
 }) {
@@ -115,6 +118,7 @@ export function UserCell({
     <div className={cn("flex min-w-0 items-center gap-2 text-sm", !label && "text-muted-foreground", className)}>
       <UserAvatar name={label} image={image} className={avatarClassName} />
       {compact && label ? <span aria-hidden="true" className="font-medium">{initials(label)}</span> : null}
+      {compact && !label && emptyDash ? <span aria-hidden="true" className="text-muted-foreground">—</span> : null}
       <span className={compact ? "sr-only" : "truncate"}>
         {label ?? emptyLabel}
         {name && email ? <span className="sr-only">, {email}</span> : null}

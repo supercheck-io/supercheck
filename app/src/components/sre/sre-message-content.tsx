@@ -64,9 +64,30 @@ function safeChartText(value: unknown, maxLength: number) {
   return trimmed ? trimmed.slice(0, maxLength) : null;
 }
 
+function isWebUrl(value: string | undefined): value is string {
+  if (!value || !/^https?:\/\//i.test(value)) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The host a link label claims, if it reads as a URL or bare host ("docs.example.com/x"). */
+function labelHost(label: string | undefined) {
+  const text = (label ?? "").trim();
+  if (!/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(\/\S*)?$/i.test(text)) return null;
+  try {
+    return new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function renderInlineMarkdown(text: string) {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]*\))/g;
   const parts = text.split(pattern);
 
   parts.forEach((part, index) => {
@@ -85,6 +106,32 @@ function renderInlineMarkdown(text: string) {
         >
           {part.slice(1, -1)}
         </code>,
+      );
+      return;
+    }
+
+    const link = /^\[([^\]]+)\]\(([^)\s]*)\)$/.exec(part);
+    if (link) {
+      const [, label, href] = link;
+      // Models emit placeholder targets like "(#)"; only real web links become anchors.
+      nodes.push(
+        isWebUrl(href) ? (
+          <a
+            key={`${part}-${index}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            {label}
+            {/* Model text comes from untrusted evidence; show the real host when the label hides it. */}
+            {labelHost(label) !== new URL(href).host.toLowerCase() && (
+              <span className="ml-1 text-xs text-muted-foreground">({new URL(href).host})</span>
+            )}
+          </a>
+        ) : (
+          label
+        ),
       );
       return;
     }
@@ -618,6 +665,9 @@ export function SreMessageContent({ content }: { content: string }) {
 
     const orderedMatch = /^(\d+)\.\s+(.*)$/.exec(trimmed);
     const unorderedMatch = /^[-*]\s+(.*)$/.exec(trimmed);
+
+    // Horizontal rules add noise between short report sections.
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) continue;
 
     if (!trimmed) {
       rendered.push(

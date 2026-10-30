@@ -38,7 +38,7 @@ export function SreIncidentAnalyticsPageClient() {
 function Unavailable({ message }: { message: string }) {
   return (
     <div className="py-12 text-center">
-      <h1 className="text-lg font-semibold">Incident trends unavailable</h1>
+      <h1 className="text-lg font-semibold">Trends unavailable</h1>
       <p className="mt-1 text-sm text-muted-foreground">{message}</p>
     </div>
   );

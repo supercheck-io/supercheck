@@ -14,7 +14,5 @@ export function alertsRedirectTarget(params: Params): string {
     const qs = next.toString();
     return qs ? `/notifications?${qs}` : "/notifications";
   }
-  return tab === "history"
-    ? "/incidents?tab=alerts&view=history"
-    : "/incidents?tab=alerts";
+  return "/notifications?tab=history";
 }

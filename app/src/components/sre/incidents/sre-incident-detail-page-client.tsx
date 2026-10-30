@@ -17,7 +17,7 @@ export function SreIncidentDetailPageClient({
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SupercheckLoading className="h-full" message="Loading incident..." />
+        <SupercheckLoading className="min-h-72" message="Loading incident..." />
       );
     }
 

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { FileSearch, PanelRightOpen, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { Button } from "@/components/ui/button";
-import { InfoTip } from "@/components/ui/info-tip";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
@@ -15,6 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 type IncidentAiSummaryCardProps = {
@@ -25,7 +26,7 @@ type IncidentAiSummaryCardProps = {
   /** Latest investigation run; enables citations, live progress and failure details. */
   investigation?: SreIncidentDetail["latestInvestigation"];
   evidence?: SreIncidentDetail["evidence"];
-  /** Whole-investigation feedback control, shown beside "Was this right?". */
+  /** Whole-investigation feedback control, shown at the right of the footer. */
   feedback?: React.ReactNode;
   /** Opens the investigation details sheet. */
   onOpenDetails?: () => void;
@@ -45,7 +46,21 @@ export function confidenceLabel(score: string | null): {
   return { label: "Inconclusive", tone: "slate" };
 }
 
-const CLAMP_THRESHOLD = 240;
+
+// Older free-text reports open with a title or Overview heading, then field lines that repeat the page header.
+const REPORT_TITLE = /^\s*(?:#{1,4}\s*)?(?:\*\*)?(?:incident (?:investigation )?report|overview|report details)(?:\*\*)?:?\s*$/i;
+const HEADER_FIELD =
+  /^\s*[-*]?\s*\*\*(?:incident(?: title)?|title|severity|status|primary service|evidence source|evidence items|primary signal)(?::\*\*|\*\*:).*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
+
+/** Drops a leading report header (title, severity, status, service); a summary that starts with a finding is kept whole. */
+export function stripReportBoilerplate(text: string) {
+  const lines = text.split("\n");
+  let start = 0;
+  while (start < lines.length && !lines[start]!.trim()) start += 1;
+  if (start >= lines.length || !REPORT_TITLE.test(lines[start]!)) return text.trim();
+  while (start < lines.length && (!lines[start]!.trim() || REPORT_TITLE.test(lines[start]!) || HEADER_FIELD.test(lines[start]!))) start += 1;
+  return lines.slice(start).join("\n").trim();
+}
 
 export function IncidentAiSummaryCard({
   rootCauseSummary,
@@ -65,7 +80,8 @@ export function IncidentAiSummaryCard({
   const fullReport = !structured && investigationStatus === "completed" ? investigation?.summary : null;
   const rawConclusion = structured?.conclusion ?? fullReport ?? rootCauseSummary;
   // Runs stored before ids were stripped at parse time still carry inline id lists.
-  const conclusion = rawConclusion ? stripEvidenceIdLists(rawConclusion) : rawConclusion;
+  const stripped = rawConclusion ? stripEvidenceIdLists(rawConclusion) : rawConclusion;
+  const conclusion = stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
@@ -77,7 +93,25 @@ export function IncidentAiSummaryCard({
   const stepCount = investigation?.steps.length ?? 0;
   const summaryOnly = investigationStatus === "completed" && Boolean(investigation) && !structured;
   const nextCheck = structured?.nextChecks[0] ?? null;
-  const clampable = (conclusion?.length ?? 0) > CLAMP_THRESHOLD;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [clampable, setClampable] = useState(false);
+  // New content (the detail query polls) starts collapsed again.
+  const [shownConclusion, setShownConclusion] = useState(conclusion);
+  if (shownConclusion !== conclusion) {
+    setShownConclusion(conclusion);
+    setExpanded(false);
+  }
+  // Offer "Show more" only when the collapsed body actually hides content, re-checked when the card resizes.
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    const measure = () => setClampable(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [conclusion, expanded]);
 
   return (
     <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
@@ -85,9 +119,6 @@ export function IncidentAiSummaryCard({
         <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
           AI summary
-          <InfoTip label="About the AI summary">
-            The AI&apos;s best explanation from the evidence it could read. Inconclusive means it did not find enough proof.
-          </InfoTip>
         </CardTitle>
         {conclusion && !running && !unrated && (
           inconclusive || confidence.label === "Inconclusive" ? (
@@ -110,12 +141,12 @@ export function IncidentAiSummaryCard({
           </p>
         )}
         {failed && (
-          <div role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive">
-            <p className="font-medium">Investigation did not complete</p>
-            <p className="mt-1 line-clamp-3">
+          <Alert variant="destructive">
+            <AlertTitle>Investigation did not complete</AlertTitle>
+            <AlertDescription className="line-clamp-3">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
-            </p>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
         {conclusion ? (
           <div className="space-y-1.5">
@@ -127,14 +158,17 @@ export function IncidentAiSummaryCard({
             {(failed || running) && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
-            <div className={expanded ? "max-h-48 overflow-y-auto" : clampable ? "line-clamp-3" : undefined}>
-              {structured ? (
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{conclusion}</p>
-              ) : (
-                <div className="break-words text-sm leading-relaxed">
-                  <SreMessageContent content={conclusion} />
-                </div>
+            {/* Collapsed height clamps block markdown too (line-clamp only clamps plain text); expanding grows the page, no inner scroller. */}
+            <div
+              ref={bodyRef}
+              data-testid="ai-summary-body"
+              className={cn(
+                "break-words text-sm leading-relaxed",
+                !expanded && "max-h-28 overflow-hidden",
+                clampable && !expanded && "relative after:absolute after:inset-x-0 after:bottom-0 after:h-8 after:bg-gradient-to-t after:from-card after:to-transparent",
               )}
+            >
+              <SreMessageContent content={conclusion} />
             </div>
             {clampable && (
               <button
@@ -199,14 +233,14 @@ export function IncidentAiSummaryCard({
           </p>
         )}
         {(conclusion || running || failed) && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm">{feedback}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           {onOpenDetails && (
-            <Button type="button" variant="ghost" size="sm" onClick={onOpenDetails}>
+            <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 text-muted-foreground" onClick={onOpenDetails}>
               <PanelRightOpen className="h-4 w-4" />
               Investigation details
             </Button>
           )}
+          {feedback}
         </div>
         )}
       </CardContent>

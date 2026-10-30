@@ -8,7 +8,8 @@ import {
   SreIncidentBriefReport,
   SreIncidentBriefReportActions,
 } from "@/components/sre/incidents/sre-incident-brief-report";
-import { Badge } from "@/components/ui/badge";
+import { confidenceLabel } from "@/components/sre/incidents/incident-ai-summary-card";
+import { TableBadge } from "@/components/ui/table-badge";
 import {
   Card,
   CardContent,
@@ -16,7 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 type SreIncidentBriefPanelProps = {
   incidentId: string;
@@ -30,26 +30,6 @@ type SreIncidentBriefPanelProps = {
   evidenceCount?: number | null;
   totalEvidenceCount?: number;
 };
-
-const providerBadgeClasses: Record<string, string> = {
-  ai: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
-  fallback:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
-};
-
-function confidenceBadgeClass(value: string | null) {
-  const score = Number(value);
-  if (!Number.isFinite(score)) {
-    return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
-  }
-  if (score >= 0.75) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
-  }
-  if (score >= 0.45) {
-    return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
-  }
-  return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
-}
 
 export function SreIncidentBriefPanel({
   incidentId,
@@ -129,33 +109,16 @@ export function SreIncidentBriefPanel({
             )}
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {confidenceScore != null && (
-                <Badge
-                  variant="outline"
-                  className={confidenceBadgeClass(confidenceScore)}
-                >
-                  Confidence {Math.round(Number(confidenceScore) * 100)}%
-                </Badge>
+                <TableBadge tone={confidenceLabel(confidenceScore).tone}>
+                  Confidence: {confidenceLabel(confidenceScore).label}
+                </TableBadge>
               )}
               {provider && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "capitalize",
-                    providerBadgeClasses[provider] ??
-                      "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
-                  )}
-                >
+                <TableBadge tone={provider === "ai" ? "success" : "warning"}>
                   {provider === "ai" ? "AI generated" : "Fallback brief"}
-                </Badge>
+                </TableBadge>
               )}
-              {isStreaming && (
-                <Badge
-                  variant="outline"
-                  className="border-cyan-200 bg-cyan-50 text-cyan-700 shadow-sm shadow-cyan-500/10 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-300"
-                >
-                  Streaming
-                </Badge>
-              )}
+              {isStreaming && <TableBadge tone="info">Streaming</TableBadge>}
             </div>
             <SreIncidentBriefReport
               content={summary}

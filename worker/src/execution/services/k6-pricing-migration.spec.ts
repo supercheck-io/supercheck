@@ -39,8 +39,13 @@ const migration = readFileSync(
 
 describe('K6 volume pricing migration and seeding', () => {
   let pg: PGlite;
-  beforeEach(async () => {
+  // One embedded Postgres per file: booting PGlite per test made this the
+  // slowest suite and left its Jest worker too busy to exit cleanly.
+  beforeAll(() => {
     pg = new PGlite();
+  });
+  beforeEach(async () => {
+    await pg.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
     await pg.exec(`CREATE TABLE overage_pricing (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), plan text UNIQUE NOT NULL,
       playwright_minute_price_cents integer NOT NULL, k6_vu_minute_price_cents integer NOT NULL,
@@ -48,7 +53,7 @@ describe('K6 volume pricing migration and seeding', () => {
       created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now()
     );`);
   });
-  afterEach(async () => {
+  afterAll(async () => {
     await pg.close();
   });
 

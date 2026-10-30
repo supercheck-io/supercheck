@@ -4,7 +4,7 @@ const mockSimilar = jest.fn();
 jest.mock("@/hooks/use-sre", () => ({ useSreSimilarIncidents: (...a: unknown[]) => mockSimilar(...a) }));
 
 import { InvestigationStepTrace } from "./investigation-step-trace";
-import { SimilarIncidentsCard } from "./similar-incidents-card";
+import { SimilarIncidentsList, useSimilarIncidentCount } from "./similar-incidents-card";
 
 describe("InvestigationStepTrace", () => {
   const steps = [
@@ -35,32 +35,50 @@ describe("InvestigationStepTrace", () => {
   });
 });
 
-describe("SimilarIncidentsCard", () => {
-  const ok = (incidents: unknown[]) => mockSimilar.mockReturnValue({ isLoading: false, data: { success: true, incidents } });
+describe("SimilarIncidentsList", () => {
+  const ok = (incidents: unknown[]) =>
+    mockSimilar.mockReturnValue({ isPending: false, data: { success: true, incidents } });
 
-  it("renders nothing when empty, loading or unavailable", () => {
-    ok([]);
-    const { container, rerender } = render(<SimilarIncidentsCard incidentId="i-1" />);
+  it("says so when loading, unavailable or empty", () => {
+    mockSimilar.mockReturnValue({ isPending: true, data: undefined });
+    const { rerender } = render(<SimilarIncidentsList incidentId="i-1" />);
     expect(mockSimilar).toHaveBeenCalledWith("i-1");
-    expect(container).toBeEmptyDOMElement();
-    mockSimilar.mockReturnValue({ isLoading: true, data: undefined });
-    rerender(<SimilarIncidentsCard incidentId="i-1" />);
-    expect(container).toBeEmptyDOMElement();
-    mockSimilar.mockReturnValue({ isLoading: false, data: { success: false, error: "x", incidents: [] } });
-    rerender(<SimilarIncidentsCard incidentId="i-1" />);
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText(/Looking for similar incidents/)).toBeInTheDocument();
+    mockSimilar.mockReturnValue({ isPending: false, data: { success: false, error: "x", incidents: [] } });
+    rerender(<SimilarIncidentsList incidentId="i-1" />);
+    expect(screen.getByText(/unavailable right now/)).toBeInTheDocument();
+    ok([]);
+    rerender(<SimilarIncidentsList incidentId="i-1" />);
+    expect(screen.getByText(/No similar resolved incidents/)).toBeInTheDocument();
   });
 
-  it("links to past incidents with match reasons", () => {
+  it("links to past incidents with their service and match reasons", () => {
     ok([
       {
         id: "i-2", incidentNumber: 7, title: "Checkout latency", severity: "sev2", serviceName: "checkout",
         resolvedAt: new Date(), rootCauseSummary: "Bad deploy", resolutionSummary: "Rolled back", matchedOn: ["service", "title"],
       },
     ]);
-    render(<SimilarIncidentsCard incidentId="i-1" />);
+    render(<SimilarIncidentsList incidentId="i-1" />);
     expect(screen.getByRole("link", { name: "#7 Checkout latency" })).toHaveAttribute("href", "/incidents/i-2");
+    expect(screen.getByText("checkout")).toBeInTheDocument();
     expect(screen.getByText("Same service")).toBeInTheDocument();
     expect(screen.getByText("Rolled back")).toBeInTheDocument();
+  });
+});
+
+describe("useSimilarIncidentCount", () => {
+  function Count() {
+    const count = useSimilarIncidentCount("i-1");
+    return <span>{count === null ? "none" : count}</span>;
+  }
+
+  it("is null until the list loads, then the number of matches", () => {
+    mockSimilar.mockReturnValue({ isPending: true, data: undefined });
+    const { rerender } = render(<Count />);
+    expect(screen.getByText("none")).toBeInTheDocument();
+    mockSimilar.mockReturnValue({ isPending: false, data: { success: true, incidents: [{}, {}] } });
+    rerender(<Count />);
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 });
