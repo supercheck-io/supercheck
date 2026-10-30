@@ -6,8 +6,17 @@ import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
 jest.mock("./use-project-context", () => ({ useProjectContext: () => ({ currentProject: { id: "p1" } }) }));
 
+const clients: QueryClient[] = [];
+afterEach(() => {
+  clients.splice(0).forEach((client) => client.clear());
+});
+
 function setup() {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  // gcTime 0 so no cache garbage-collection timer outlives the test and holds the Jest worker open.
+  const client = new QueryClient({
+    defaultOptions: { queries: { gcTime: 0 }, mutations: { retry: false, gcTime: 0 } },
+  });
+  clients.push(client);
   const spy = jest.spyOn(client, "invalidateQueries");
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   return { client, spy, wrapper };
