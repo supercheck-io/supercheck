@@ -17,24 +17,6 @@ Both paths open the incident workspace.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
-## How Alerts Become Incidents
-
-When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider, and happens even if the alert delivery fails.
-
-| Rule | Behavior |
-|---|---|
-| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the timeline shows **Failure returned** and the next recovery is noted again |
-| **Alert snapshot** | Each incident keeps the alert's message, severity and time as they were when it was linked, so a later failure of the same check does not change an older incident's evidence |
-| **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
-| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
-| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
-
-Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
-
-<Callout type="info">
-AI triage is separate and optional. It runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured.
-</Callout>
-
 ## Incident Queue
 
 Open **Incidents** in the sidebar. **Trends** and **New incident** are in the page header. Alert notifications sent are listed under **Notifications → Delivery history** (see [Alerts](/docs/app/communicate/alerts#delivery-history)).
@@ -73,17 +55,17 @@ Incidents opened by an alert are titled `<target>: <alert type>`, for example *C
 
 ## Incident Workspace
 
-The page fits the window without a page scrollbar. The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **...** menu holds **Edit**, **Ask Copilot**, **Run investigation**, and **Investigation map**. Hover the info icons for a one-sentence explanation of each term.
+The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **...** menu holds **Edit incident**, **Add commander**, **Run investigation** (**Re-run investigation** after a run), and **Ask Copilot**. Hover the info icons for a one-sentence explanation of each term.
 
 A progress line shows the six statuses: Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved.
 
 | Area | Contents |
 |---|---|
-| **AI summary** | The conclusion (select **Show more** to expand), confidence, the top evidence, the next step, and a **Was this right?** control. **Investigation details** opens a side panel |
-| **Timeline** | A box to post updates above the event list. Only the list scrolls |
-| **Investigation details** panel | Run controls, hypotheses, the step log, every evidence item, the evidence brief, a report snapshot, and the post-mortem once resolved |
+| **AI summary** | The conclusion (select **Show more** to expand), confidence, the top evidence, the next step, and **Right** / **Wrong** buttons. **Investigate** or **Investigation details** opens the side panel |
+| **Timeline** | A box to post updates above the event list |
+| **Investigation details** panel | Tabs: **Analysis** (run controls, hypotheses, step log, report snapshot), **Evidence**, **Brief**, **Similar**, and **Post-mortem** once resolved |
 
-The right sidebar shows the **owner** (and an optional commander, added with **+ Add commander**), service, **status page** state with **Post update**, linked **alerts**, **similar incidents** (only when there are matches), and start time, acknowledgement, MTTA, and MTTR. Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
+The **Details** sidebar shows the assignee (and an optional commander), service, **Status page** state with **Post update**, start and acknowledgement times, **Time to acknowledge** and **Time to resolve**, linked **Alerts**, and **Similar past incidents** (only when there are matches). Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
@@ -110,13 +92,13 @@ In the **Investigation details** panel, **How I investigated** lists each check 
 | **Include live sources** | Off by default. Needs a linked service and connector investigation permission |
 | **Right** / **Wrong** | On the whole investigation or on any single hypothesis, with an optional one-line note (up to 500 characters). Needs permission to update incidents |
 | **Re-run with my note** | Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
-| **Save report & feedback** | Snapshot an immutable report and rate findings accuracy |
+| **Save report snapshot** | Locks the sanitized report for audit and review (**Analysis** tab) |
 
 Your notes are hints, not evidence. The agent is told to weigh them against the stored evidence and to ignore any instructions inside them. Recent notes on other incidents of the same service are also passed to future investigations as hints. If a run fails or times out, review the error and available evidence before retrying.
 
 ### Similar incidents
 
-The sidebar lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. The same list, shortened, is given to the investigation as *past incidents (may be unrelated)*. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
+The **Similar** tab (opened from **Similar past incidents** in the sidebar) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. The same list, shortened, is given to the investigation as *past incidents (may be unrelated)*. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
 
 ### Evidence
 
@@ -136,43 +118,7 @@ Stored evidence stays available when a connector is disabled. Disabling a connec
 
 ## Saving and Sharing
 
-Use **Save report** to keep the findings of a completed investigation, and the **Evidence brief** for a shorter summary. Download either to share. Credentials and raw connector responses are excluded.
-
-## Ownership and Acknowledgement
-
-| Action | Behavior |
-|---|---|
-| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
-| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
-| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
-| **Commander** | Optional single incident commander, set from the sidebar |
-
-Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
-
-## Notifications
-
-Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, gets an **AI finding**, **reopens**, or is **resolved**.
-
-| Where | What is sent |
-|---|---|
-| **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
-| **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
-| **Incidents created by hand** | No source channels, so only the participants are emailed |
-
-Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
-
-## Incident Lifecycle
-
-| Stage | Who | Action |
-|---|---|---|
-| **Triage** | Responder / Supercheck | An incident opens automatically from an alert (or create one manually). AI triage and correlation depend on administrator configuration |
-| **Investigate** | AI SRE agent | Reads native evidence and authorized connectors, then generates cited hypotheses |
-| **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
-| **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |
-| **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
-| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the AI root cause when one exists. Edit it to state the fix and the checks that confirmed recovery |
-
-Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
+Use **Save report snapshot** to keep the findings of a completed investigation, and the **Evidence brief** for a shorter summary. Download either to share. Credentials and raw connector responses are excluded.
 
 ## Post-mortem
 
@@ -185,8 +131,73 @@ When an incident is resolved, the **Post-mortem** card offers **Generate post-mo
 
 Review the draft before sharing it. The incident timeline and resolution summary remain the record of what happened.
 
+## Reference
 
-## Incident Trends
+<Accordions>
+
+<Accordion title="How Alerts Become Incidents" id="how-alerts-become-incidents">
+
+When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider, and happens even if the alert delivery fails.
+
+| Rule | Behavior |
+|---|---|
+| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the timeline shows **Failure returned** and the next recovery is noted again |
+| **Alert snapshot** | Each incident keeps the alert's message, severity and time as they were when it was linked, so a later failure of the same check does not change an older incident's evidence |
+| **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
+| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
+| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
+
+Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
+
+<Callout type="info">
+AI triage is separate and optional. It runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured.
+</Callout>
+
+</Accordion>
+
+<Accordion title="Ownership and Acknowledgement" id="ownership">
+
+| Action | Behavior |
+|---|---|
+| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
+| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
+| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
+| **Commander** | Optional single incident commander, set from the sidebar |
+
+Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
+
+</Accordion>
+
+<Accordion title="Incident notifications" id="notifications">
+
+Supercheck announces an incident when it is **opened**, **assigned**, **acknowledged**, gets an **AI finding**, **reopens**, or is **resolved**.
+
+| Where | What is sent |
+|---|---|
+| **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
+| **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
+| **Incidents created by hand** | No source channels, so only the participants are emailed |
+
+Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
+
+</Accordion>
+
+<Accordion title="Incident Lifecycle" id="lifecycle">
+
+| Stage | Who | Action |
+|---|---|---|
+| **Triage** | Responder / Supercheck | An incident opens automatically from an alert (or create one manually). AI triage and correlation depend on administrator configuration |
+| **Investigate** | AI SRE agent | Reads native evidence and authorized connectors, then generates cited hypotheses |
+| **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
+| **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |
+| **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
+| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the AI root cause when one exists. Edit it to state the fix and the checks that confirmed recovery |
+
+Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
+
+</Accordion>
+
+<Accordion title="Incident Trends" id="trends">
 
 Select **Trends** in the queue to see metrics for the last 30 days.
 
@@ -199,18 +210,9 @@ Select **Trends** in the queue to see metrics for the last 30 days.
 
 ![Incident Trends](/screenshots/sre-incident-trends.png)
 
-## Copilot Assistance
+</Accordion>
 
-Open **Respond → Copilot**, or select **Ask Copilot** on an incident to chat with that incident's evidence in scope. Suggested questions: *What changed before this started?*, *Have we seen this before?*, and *What should I check next?*. See [Copilot Chat](/docs/app/investigate/copilot) for modes, live sources, and limits.
-
-## Alerts vs. Incidents
-
-| Open | To |
-|---|---|
-| **Notifications → Delivery history** | Review alert notifications sent and open an incident for a failure that has none |
-| **Incidents** | Investigate evidence, save findings, and record recovery |
-
-## Permissions
+<Accordion title="Permissions" id="permissions">
 
 | Role | View | Investigate stored evidence | Live sources | Assign, acknowledge, resolve, post updates |
 |---|:---:|:---:|:---:|:---:|
@@ -221,3 +223,15 @@ Open **Respond → Copilot**, or select **Ask Copilot** on an incident to chat w
 The same `sre_incident:update` permission covers assign, acknowledge, resolve, and updates over the API (`POST /api/sre/incidents/{id}/assign`, `/acknowledge`, `/resolve`).
 
 If investigations are disabled, existing evidence and results stay readable, but run and live-source controls are unavailable.
+
+</Accordion>
+
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Copilot Chat" href="/docs/app/investigate/copilot" description="Ask questions with an incident's evidence in scope" />
+<Card title="Connectors" href="/docs/app/investigate/connectors" description="Add read-only live sources" />
+<Card title="Notifications" href="/docs/app/communicate/alerts" description="Channels and delivery history" />
+</Cards>

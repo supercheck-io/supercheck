@@ -22,7 +22,7 @@ import type { LocationConfig } from "@/lib/location-service";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
-import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { invalidateMonitorCaches } from "./monitor-actions";
 import { Loader2, SaveIcon } from "lucide-react";
 
 type WizardStep = "monitor" | "location" | "alerts";
@@ -379,7 +379,7 @@ export function MonitorCreationWizard() {
         clearDraft();
 
         // Invalidate Monitors cache to ensure fresh data on monitors page
-        queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+        invalidateMonitorCaches(queryClient, result.id);
 
         // Redirect to monitor details page using router
         router.push(`/monitors/${result.id}`);

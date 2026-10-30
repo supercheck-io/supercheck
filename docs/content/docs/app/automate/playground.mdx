@@ -22,11 +22,23 @@ Use the editor to write and check your script:
 
 Use the Playground to check a script before adding it to an automated job or monitor.
 
-1. Click **Run**.
-2. Watch the run status and live logs in the results panel.
-3. Open the report when the run finishes. Review errors and available screenshots or traces.
-4. Update the script and run it again until it checks the expected behavior.
-5. **Save** the test to reuse it in a job or synthetic monitor.
+<Steps>
+<Step>
+Click **Run**.
+</Step>
+<Step>
+Watch the run status and live logs in the results panel.
+</Step>
+<Step>
+Open the report when the run finishes. Review errors and available screenshots or traces.
+</Step>
+<Step>
+Update the script and run it again until it checks the expected behavior.
+</Step>
+<Step>
+**Save** the test to reuse it in a job or synthetic monitor.
+</Step>
+</Steps>
 
 <Callout type="info">
 Use **Cancel** to stop a running test. Review the cancellation details in its result.
@@ -78,15 +90,28 @@ Describe the behavior you want to test. AI Create suggests a script for you to r
 
 ### How to Use AI Create
 
-1. Click the **AI Create** button (purple gradient)
-2. Describe what you want to test in natural language
-3. Click **Generate** to start streaming the code
-4. Review the generated script in the diff viewer
-5. Click **Apply to Editor** to use the code, or **Discard** to close it
+<Steps>
+<Step>
+Click the **AI Create** button (purple gradient)
+</Step>
+<Step>
+Describe what you want to test in natural language
+</Step>
+<Step>
+Click **Generate** to start streaming the code
+</Step>
+<Step>
+Review the generated script in the diff viewer
+</Step>
+<Step>
+Click **Apply to Editor** to use the code, or **Discard** to close it
+</Step>
+</Steps>
 
 ![AI Create Result](/screenshots/ai-create-result-dialog.png)
 
-### Writing Effective Prompts
+<Accordions>
+<Accordion title="Writing effective prompts" id="effective-prompts">
 
 **Good prompts are specific and include:**
 - The user action you want to test
@@ -101,6 +126,9 @@ Describe the behavior you want to test. AI Create suggests a script for you to r
 | "Check that the /api/health endpoint returns 200 and includes status: ok" | API test with fetch, status check, and JSON body validation |
 | "Verify user can add a product to cart, view cart, and see correct total" | Multi-step e-commerce flow with navigation and assertions |
 | "Test that the contact form validates required fields and shows error messages" | Form validation test with empty submission and error checking |
+
+</Accordion>
+</Accordions>
 
 ### Review Generated Code
 
@@ -122,15 +150,28 @@ Keep the run's organization selected and make sure you can view its project. AI 
 
 ### Use AI Fix
 
-1. Run a test that fails
-2. Click the **AI Fix** button (appears after failure)
-3. AI analyzes the error report and your code
-4. A diff viewer shows original vs. suggested fix
-5. Review changes, edit if needed, then **Accept & Apply** or **Reject**
+<Steps>
+<Step>
+Run a test that fails
+</Step>
+<Step>
+Click the **AI Fix** button (appears after failure)
+</Step>
+<Step>
+AI analyzes the error report and your code
+</Step>
+<Step>
+A diff viewer shows original vs. suggested fix
+</Step>
+<Step>
+Review changes, edit if needed, then **Accept & Apply** or **Reject**
+</Step>
+</Steps>
 
 ![AI Fix Result](/screenshots/ai-fix-result-dialog.png)
 
-### What AI Fix Can Repair
+<Accordions>
+<Accordion title="What AI Fix can repair" id="ai-fix-repairs">
 
 AI Fix is effective for code-level issues that can be resolved by modifying your test:
 
@@ -140,6 +181,9 @@ AI Fix is effective for code-level issues that can be resolved by modifying your
 | **Timing Problems** | Element not visible, timeout | Adds appropriate waits or increases timeout |
 | **Assertion Failures** | Expected value mismatch | Corrects assertion or expected value |
 | **Navigation Errors** | Page not loading, wrong URL | Fixes URL or adds navigation waits |
+
+</Accordion>
+</Accordions>
 
 <Accordions>
 <Accordion title="When AI Fix shows guidance instead" id="ai-fix-guidance">
@@ -223,11 +267,23 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 
 ### Using Templates
 
-1. Click **Templates** in the editor toolbar
-2. Browse categories or search for specific scenarios
-3. Click a template to preview the code
-4. Click **Apply Template** to insert it into the editor
-5. Customize URLs, selectors, and test data for your app
+<Steps>
+<Step>
+Click **Templates** in the editor toolbar
+</Step>
+<Step>
+Browse categories or search for specific scenarios
+</Step>
+<Step>
+Click a template to preview the code
+</Step>
+<Step>
+Click **Apply Template** to insert it into the editor
+</Step>
+<Step>
+Customize URLs, selectors, and test data for your app
+</Step>
+</Steps>
 
 ## Test Reports
 
@@ -244,7 +300,8 @@ Every test run generates a detailed report with artifacts for debugging:
 | **Console Logs** | Browser console output | JavaScript errors, debug messages |
 | **Network** | All HTTP requests and responses | API debugging, performance analysis |
 
-### Viewing Traces
+<Accordions>
+<Accordion title="Viewing traces" id="viewing-traces">
 
 The Playwright Trace Viewer lets you:
 - Step through each action in your test
@@ -252,6 +309,9 @@ The Playwright Trace Viewer lets you:
 - Inspect DOM elements and their properties
 - View network requests with timing
 - Debug timing and selector issues
+
+</Accordion>
+</Accordions>
 
 ## Using Variables
 
@@ -279,11 +339,21 @@ Keep credentials in **Secrets** and use **File** variables for non-sensitive fix
 
 See [Variables](/docs/app/automate/variables) for setup instructions.
 
-## Learn More
+<Accordions>
+<Accordion title="Further reading" id="further-reading">
 
-For deeper understanding of the testing frameworks used in Supercheck:
+- [Playwright documentation](https://playwright.dev/docs/intro)
+- [Locators](https://playwright.dev/docs/locators)
+- [Assertions](https://playwright.dev/docs/test-assertions)
+- [Trace Viewer](https://playwright.dev/docs/trace-viewer)
 
-- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Complete guide to browser automation
-- **[Playwright Locators](https://playwright.dev/docs/locators)** — Best practices for finding elements
-- **[Playwright Assertions](https://playwright.dev/docs/test-assertions)** — Available assertion methods
-- **[Playwright Trace Viewer](https://playwright.dev/docs/trace-viewer)** — Debugging with traces
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Tests" href="/docs/app/automate/tests" description="Manage saved tests" />
+<Card title="Jobs" href="/docs/app/automate/jobs" description="Schedule saved tests" />
+<Card title="Variables" href="/docs/app/automate/variables" description="Config, secrets, and test data" />
+</Cards>

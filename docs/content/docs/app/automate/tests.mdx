@@ -10,7 +10,7 @@ Tests are reusable scripts that validate your application. Create browser, API, 
 
 The list shows the newest 200 tests; older tests are not loaded and search and filters only cover the loaded ones. Filter by type, priority, or tag, and use the **Created by** column to see who created each test.
 
-## Test Types
+## Test types
 
 <Cards>
 <Card icon={<Chrome className="text-sky-500" />} title="Browser Test">
@@ -38,10 +38,20 @@ k6 load testing with configurable virtual users and thresholds
 
 On Supercheck Cloud, creating tests and saving changes from the Playground requires an active organization subscription and a valid billing customer. These billing checks do not apply to self-hosted installations.
 
-1. Open **Create** and select a test type.
-2. Write a script in the [Playground](/docs/app/automate/playground), pick one from **Templates**, or use **AI Create** for a starting point.
-3. Review the script, replace example URLs and data, then click **Run**.
-4. Review the result and **Save** the test.
+<Steps>
+<Step>
+Open **Create** and select a test type.
+</Step>
+<Step>
+Write a script in the [Playground](/docs/app/automate/playground), pick one from **Templates**, or use **AI Create** for a starting point.
+</Step>
+<Step>
+Replace example URLs and data, then select **Run**.
+</Step>
+<Step>
+Review the result and select **Save**.
+</Step>
+</Steps>
 
 After a run completes, review its result and available logs, screenshots, and traces. If it fails, update the script and run it again. You can save a draft before it passes; validate it before adding it to a job or synthetic monitor.
 
@@ -185,18 +195,11 @@ export default function () {
 
 Organize tests with color-coded tags for easy filtering and categorization.
 
-- **Create tags** — Add custom tags with any of 15 available colors
+- **Create tags** — Add custom tags with a color
 - **Filter by tags** — Quickly find tests by tag in the list view
 - **Bulk operations** — Apply or remove tags from multiple tests
 
 Tags are project-scoped, so each project can have its own tagging system.
-
-## Features
-
-- **Playground** — Interactive editor with AI assistance
-- **Variables** — Project-scoped config, secrets, and file-backed test data ([learn more](/docs/app/automate/variables))
-- **Reports** — Screenshots, traces, and logs
-- **Tags** — Color-coded organization and filtering
 
 ## Execution Limits
 
@@ -205,11 +208,18 @@ Tags are project-scoped, so each project can have its own tagging system.
 | **Playwright** | **5 minutes**. Tests exceeding this limit are automatically terminated |
 | **K6 Performance** | **60 minutes**, to accommodate load testing scenarios |
 
-## Running Multiple Tests
+<Accordions>
+<Accordion title="Further reading" id="further-reading">
 
-For running multiple tests together in a sequence, use **[Jobs](/docs/app/automate/jobs)**: group related tests into automated workflows, schedule regular execution (hourly, daily, or custom cron), trigger from CI/CD pipelines, get aggregated reports and notifications, and set up alerts for the entire test suite. Jobs are ideal for regression testing, smoke tests, and comprehensive validation of your application.
+- [Playwright documentation](https://playwright.dev/docs/intro)
 
-## Learn More
+</Accordion>
+</Accordions>
 
-- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Browser automation framework
-- **[k6 Documentation](https://grafana.com/docs/k6/latest/)** — Load testing tool
+## Next steps
+
+<Cards>
+<Card title="Jobs" href="/docs/app/automate/jobs" description="Group tests, schedule them, and trigger from CI/CD" />
+<Card title="Playground" href="/docs/app/automate/playground" description="Write, run, and fix tests with AI" />
+<Card title="Variables" href="/docs/app/automate/variables" description="Project config, secrets, and file-backed test data" />
+</Cards>

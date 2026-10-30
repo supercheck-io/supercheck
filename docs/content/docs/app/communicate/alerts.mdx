@@ -4,13 +4,11 @@ description: Notification channels, alert rules, and delivery for failures and r
 icon: BellRing
 ---
 
-Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
+Notifications tell your team when monitors fail, jobs break, or services recover. Set up a channel, attach it to a monitor or job, and use thresholds to avoid noise.
 
 ![Notification Channels](/screenshots/notification-channels.png)
 
-Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
-
-The **Notifications** page in the sidebar has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists the latest 200 alert notifications sent for your monitors and jobs. Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+**Communicate → Notifications** has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists the latest 200 alert notifications sent for your monitors and jobs. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Alert Workflow
 
@@ -52,18 +50,18 @@ Email uses your SMTP provider; the others use the service's webhook or bot token
 
 <Steps>
 <Step>
-Open **Notifications** and click **Create channel**.
+Open **Communicate → Notifications → Channels** and select **Create channel**.
 </Step>
 <Step>
 Pick the provider and enter its credentials (see [Provider Configuration](#provider-configuration)).
 </Step>
 <Step>
-Click **Test Connection**, then save.
+Select **Test Connection**, then save.
 
-Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel that is used by a monitor or job cannot be deleted until you remove it from them.
+Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel used by a monitor or job cannot be deleted until you remove it from them.
 </Step>
 <Step>
-Select the channel in a monitor's or job's **Alerts** settings.
+Select the channel in a monitor's or job's **Alert Settings**.
 </Step>
 </Steps>
 
@@ -103,15 +101,15 @@ The number of consecutive failures required before sending the first failure ale
 
 **Recovery Threshold**
 
-The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. The threshold is 1–5; an initially healthy monitor does not send a recovery alert.
+The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. Failure and recovery thresholds are 1–5; an initially healthy monitor does not send a recovery alert.
 
 SSL expiration warnings are evaluated independently of the monitor's up/down result. Enable **SSL Expiration Alerts** on a website monitor and set its warning window; a warning is sent at most once every 24 hours while the certificate remains within that window.
 
-**Job failures** follow the same rule as monitors: the first alert at the failure threshold, then repeats at threshold + the larger of 5 or 2x threshold failures, at most 3 alerts per failure streak. A passing run resets the streak.
+**Job failures** follow the same rule as monitors: the first alert at the failure threshold, then repeats after every further `max(5, 2 × threshold)` failures, at most 3 alerts per failure streak. A passing run resets the streak.
 
 **Alert Limiting**
 
-At most **3 alerts** go out per failure or recovery streak: the first when the threshold is reached, then reminders spaced by the threshold (see job failures above). The interval is not configurable.
+At most **3 failure alerts** go out per failure streak: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. Each recovery sends one alert. The interval is not configurable.
 
 </Tab>
 <Tab value="Example">
@@ -248,7 +246,8 @@ The webhook channel includes presets that fill the method, headers, and JSON bod
 Preset payloads include placeholders such as `REPLACE_WITH_PAGERDUTY_ROUTING_KEY` and `REPLACE_WITH_OPSGENIE_API_KEY`. Replace them before testing, and verify the endpoint URL in the vendor documentation because some providers generate tenant-specific webhook URLs.
 </Callout>
 
-### Default Payload
+<Accordions>
+<Accordion title="Default payload" id="default-payload">
 
 When no body template is provided, Supercheck sends a JSON payload similar to the following. `fields` and `originalPayload.metadata` vary by alert type and the metadata available for that event:
 
@@ -285,6 +284,9 @@ When no body template is provided, Supercheck sends a JSON payload similar to th
   "version": "1.0"
 }
 ```
+
+</Accordion>
+</Accordions>
 
 ### Body Template
 
@@ -444,7 +446,8 @@ Review the latest 200 alert notifications in **Notifications → Delivery histor
 Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.
 </Callout>
 
-## Alert Samples
+<Accordions>
+<Accordion title="Alert samples" id="alert-samples">
 
 <Tabs items={['Email', 'Slack', 'Discord', 'Teams']}>
 <Tab value="Email">
@@ -484,3 +487,14 @@ Use delivery status and HTTP diagnostics to troubleshoot failed notifications. R
 
 </Tab>
 </Tabs>
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Investigate and resolve the incident an alert opens" />
+<Card title="Status Pages" href="/docs/app/communicate/status-pages" description="Tell your users about outages" />
+<Card title="Monitors" href="/docs/app/monitor" description="Create the checks that send alerts" />
+</Cards>

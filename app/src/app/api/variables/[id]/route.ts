@@ -15,12 +15,19 @@ import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { updateVariableSchema } from "@/lib/validations/variable";
 
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
+
+// Drizzle wraps driver errors; the Postgres code lives on `cause`.
+const isUniqueViolation = (e: unknown): boolean =>
+  [e, (e as { cause?: unknown } | null)?.cause].some(
+    (x) => !!x && typeof x === "object" && (x as { code?: unknown }).code === "23505"
+  );
 
 export async function GET(
   _request: NextRequest,
@@ -205,11 +212,35 @@ export async function PUT(
       }
     }
 
-    const [updated] = await db
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
       .update(projectVariables)
       .set(updateData)
-      .where(eq(projectVariables.id, variableId))
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, context.project.id)
+        )
+      )
       .returning();
+
+      await logAuditEvent({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      action: "variable_updated",
+      resource: "project_variable",
+      resourceId: variableId,
+      metadata: {
+        projectId: context.project.id,
+        key: row.key,
+        isSecret: row.isSecret,
+        ...(existing.key !== row.key ? { previousKey: existing.key } : {}),
+        ...(existing.isSecret !== row.isSecret ? { previousIsSecret: existing.isSecret } : {}),
+      },
+      success: true,
+    }, tx, { strict: true });
+      return row;
+    });
 
     return NextResponse.json({
       ...updated,
@@ -221,6 +252,12 @@ export async function PUT(
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: 401 }
+      );
+    }
+    if (isUniqueViolation(error)) {
+      return NextResponse.json(
+        { error: "Variable with this key already exists" },
+        { status: 409 }
       );
     }
     console.error("Error updating variable:", error);
@@ -254,6 +291,8 @@ export async function DELETE(
         id: projectVariables.id,
         type: projectVariables.type,
         storagePath: projectVariables.storagePath,
+        key: projectVariables.key,
+        isSecret: projectVariables.isSecret,
       })
       .from(projectVariables)
       .where(
@@ -272,9 +311,30 @@ export async function DELETE(
     }
 
     // Delete DB row first, then best-effort S3 cleanup
-    await db
+    const didDelete = await db.transaction(async (tx) => {
+      const deleted = await tx
       .delete(projectVariables)
-      .where(eq(projectVariables.id, variableId));
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, context.project.id)
+        )
+      ).returning({ id: projectVariables.id });
+      if (deleted.length === 0) return false;
+      await logAuditEvent({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      action: "variable_deleted",
+      resource: "project_variable",
+      resourceId: variableId,
+      metadata: { projectId: context.project.id, key: existing.key, isSecret: existing.isSecret },
+      success: true,
+    }, tx, { strict: true });
+      return true;
+    });
+    if (!didDelete) {
+      return NextResponse.json({ error: "Variable not found" }, { status: 404 });
+    }
 
     if (existing.type === "file" && existing.storagePath) {
       try {

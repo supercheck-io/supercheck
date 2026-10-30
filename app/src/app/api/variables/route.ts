@@ -17,6 +17,7 @@ import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { encryptValue } from "@/lib/encryption";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { createVariableSchema } from "@/lib/validations/variable";
 
 export async function GET() {
@@ -132,6 +133,16 @@ export async function POST(request: NextRequest) {
       .insert(projectVariables)
       .values(variableData as typeof projectVariables.$inferInsert)
       .returning();
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      action: "variable_created",
+      resource: "project_variable",
+      resourceId: newVariable.id,
+      metadata: { projectId: context.project.id, key: newVariable.key, isSecret: newVariable.isSecret },
+      success: true,
+    });
 
     return NextResponse.json(
       {

@@ -101,7 +101,8 @@ Clicking an incident opens its full timeline.
 
 **Languages:** 24 languages, with right-to-left layout for Arabic. Supercheck writes its own automatic messages (outage, recovery, maintenance) in the page language. Text you write is never translated. Unknown language codes fall back to English.
 
-### Status Badge and Feeds
+<Accordions>
+<Accordion title="Status badge and feeds" id="badge-and-feeds">
 
 | Endpoint | URL | Notes |
 |---|---|---|
@@ -121,6 +122,9 @@ Prefix each path with your Supercheck URL. `[id]` is the status page UUID from t
 ```
 
 Badge colors follow the page's **Status Colors** setting.
+
+</Accordion>
+</Accordions>
 
 ## Components
 
@@ -419,3 +423,10 @@ Local development uses `http://localhost:3000/status/[subdomain]`; custom domain
 
 </Accordion>
 </Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Notifications" href="/docs/app/communicate/alerts" description="Alert your own team on failures" />
+<Card title="Monitors" href="/docs/app/monitor" description="Create the monitors that drive component status" />
+</Cards>

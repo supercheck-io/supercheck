@@ -23,13 +23,13 @@ import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 const chartConfig = {
   time: {
     label: "Response Time (ms)",
-    color: "#1e90ff",
+    color: "var(--chart-2)",
   },
 } satisfies ChartConfig;
 
 interface ResponseTimeChartDataPoint {
   name: string;
-  time: number;
+  time: number | null; // null (no response, e.g. failed check) leaves a gap
   fullDate?: string;
   isUp?: boolean;
   status?: string;
@@ -39,7 +39,7 @@ interface ResponseTimeChartDataPoint {
 }
 
 interface ProcessedDataPoint extends ResponseTimeChartDataPoint {
-  originalTime: number;
+  originalTime: number | null;
   isFailed: boolean;
 }
 
@@ -61,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
     const data = payload[0].payload;
     const displayDate = data.fullDate || label;
     const isFailed = data.isFailed || false;
-    const originalTime = data.originalTime || data.time; // Original time before processing
+    const originalTime = data.originalTime ?? data.time; // Original time before processing
 
     return (
       <div className="bg-background border rounded-lg p-3 shadow-lg text-sm min-w-[160px]">
@@ -94,7 +94,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Response:</span>
             <span className="font-medium">
-              {originalTime > 0 ? `${originalTime} ms` : "N/A"}
+              {originalTime ? `${originalTime} ms` : "N/A"}
             </span>
           </div>
         </div>
@@ -120,8 +120,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
         typeof point === "object" &&
         typeof point.name === "string" &&
         point.name.trim() &&
-        typeof point.time === "number" &&
-        point.time >= 0
+        (point.time === null || (typeof point.time === "number" && point.time >= 0))
       );
     });
   }, [data]);
@@ -148,7 +147,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
       return {
         ...point,
         originalTime: point.time, // Preserve original time for tooltip
-        time: Math.max(0, point.time), // Keep actual response time, just ensure non-negative
+        time: point.time === null ? null : Math.max(0, point.time), // Keep actual response time, just ensure non-negative
         isFailed,
       };
     });
@@ -217,7 +216,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
   // Get all response times for Y-axis domain calculation (including failed checks)
   const allResponseTimes = processedData
     .map((d) => d.time)
-    .filter((time) => time >= 0); // Only filter out negative values, keep 0ms responses
+    .filter((time): time is number => time !== null && time >= 0); // Only filter out negative values, keep 0ms responses
 
   if (allResponseTimes.length === 0) {
     // If no valid response times at all
@@ -297,13 +296,13 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                   x2="0"
                   y2="1"
                 >
-                  <stop offset="5%" stopColor="#1e90ff" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#1e90ff" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <CartesianGrid
                 strokeDasharray="2 2"
-                stroke="#e5e7eb"
+                stroke="var(--border)"
                 opacity={0.4}
                 vertical={false}
               />
@@ -314,19 +313,19 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                 tickMargin={8}
                 minTickGap={30}
                 fontSize={10}
-                tick={{ fontSize: 10, fill: "#6b7280" }}
+                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                 interval="preserveStartEnd"
-                stroke="#d1d5db"
+                stroke="var(--border)"
               />
               <YAxis
                 tickLine={false}
                 axisLine={true}
                 tickMargin={8}
                 fontSize={10}
-                tick={{ fontSize: 10, fill: "#6b7280" }}
+                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                 domain={yAxisDomain}
                 tickFormatter={(value) => `${Math.round(value)}ms`}
-                stroke="#d1d5db"
+                stroke="var(--border)"
               />
               <Tooltip
                 content={<CustomTooltip />}
@@ -340,7 +339,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
               <Line
                 type="monotone"
                 dataKey="time"
-                stroke="#1e90ff"
+                stroke="var(--chart-2)"
                 strokeWidth={2.5}
                 dot={(props: {
                   cx?: number;
@@ -375,8 +374,8 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                         cx={cx}
                         cy={cy}
                         r={4}
-                        fill="#ef4444"
-                        stroke="#ffffff"
+                        fill="var(--destructive)"
+                        stroke="var(--background)"
                         strokeWidth={2}
                         className="drop-shadow-sm filter"
                       />
@@ -390,8 +389,8 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                       cx={cx}
                       cy={cy}
                       r={4}
-                      fill="#22c55e"
-                      stroke="#ffffff"
+                      fill="var(--success)"
+                      stroke="var(--background)"
                       strokeWidth={2}
                       className="drop-shadow-sm filter"
                     />
@@ -416,7 +415,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                     );
                   }
 
-                  const color = payload?.isFailed ? "#ef4444" : "#1e90ff";
+                  const color = payload?.isFailed ? "var(--destructive)" : "var(--chart-2)";
                   return (
                     <circle
                       key={`active-dot-${payload?.name || "unknown"}-${index || 0
@@ -426,7 +425,7 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                       r={5}
                       stroke={color}
                       strokeWidth={2}
-                      fill="#ffffff"
+                      fill="var(--background)"
                       className="drop-shadow-md filter"
                     />
                   );

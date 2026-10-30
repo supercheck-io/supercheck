@@ -40,7 +40,7 @@ export default function EditJobPage() {
 
   if (isLoading) {
     return (
-      <div className=" mx-auto p-4 space-y-4">
+      <div className="p-4 space-y-4">
         <PageBreadcrumbs items={breadcrumbs} />
         <EditJobSkeleton />
       </div>
@@ -49,7 +49,7 @@ export default function EditJobPage() {
 
   if (error || !jobData) {
     return (
-      <div className=" mx-auto p-4 space-y-4">
+      <div className="p-4 space-y-4">
         <PageBreadcrumbs items={breadcrumbs} />
         <ListErrorState title="Failed to load job" error={error} onRetry={() => refetch()} />
       </div>
@@ -57,7 +57,7 @@ export default function EditJobPage() {
   }
 
   return (
-    <div className=" mx-auto p-4 space-y-4">
+    <div className="p-4 space-y-4">
       <PageBreadcrumbs items={breadcrumbs} />
       {/* Suspense boundary required because EditJob uses useSearchParams() */}
       <Suspense

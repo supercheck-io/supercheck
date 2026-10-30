@@ -1,3 +1,6 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
 /** Keep only a secret-length tail so matches across transport chunks stay private. */
 export function createSecretStream(
   secrets: Record<string, string>,
@@ -37,4 +40,71 @@ export function createSecretStream(
       if (output) await emit(redact(output));
     },
   };
+}
+
+/** Shorter values would mangle unrelated output (e.g. "1", "true"), so they are not redacted in reports. */
+export const MIN_REPORT_SECRET_LENGTH = 6;
+const TEXT_REPORT_EXT = new Set(['.html', '.json', '.txt', '.md', '.xml']);
+
+// Larger text files are skipped (with a warning) instead of read whole into memory.
+const MAX_SCRUB_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Raw, base64, URL-encoded, JSON-escaped and HTML-entity-escaped forms of each secret long enough to redact. */
+export function secretRedactionVariants(
+  secrets: Record<string, string>,
+): string[] {
+  const out = new Set<string>();
+  for (const value of Object.values(secrets)) {
+    if (typeof value !== 'string' || value.length < MIN_REPORT_SECRET_LENGTH)
+      continue;
+    out.add(value);
+    out.add(Buffer.from(value, 'utf8').toString('base64'));
+    out.add(encodeURIComponent(value));
+    out.add(JSON.stringify(value).slice(1, -1));
+    out.add(
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;'),
+    );
+  }
+  return [...out]
+    .filter((v) => v.length >= MIN_REPORT_SECRET_LENGTH)
+    .sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Rewrites text-like report files in place with secret values replaced.
+ * Binary artifacts (trace.zip, screenshots, videos) are not scrubbed.
+ */
+export async function scrubSecretsFromReportDir(
+  dir: string,
+  secrets: Record<string, string>,
+): Promise<void> {
+  const variants = secretRedactionVariants(secrets);
+  if (variants.length === 0) return;
+  const walk = async (current: string): Promise<void> => {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (
+        entry.isFile() &&
+        TEXT_REPORT_EXT.has(path.extname(entry.name).toLowerCase())
+      ) {
+        if ((await fs.stat(full)).size > MAX_SCRUB_FILE_BYTES) {
+          console.warn(
+            `Skipping secret scrub of oversized report file: ${entry.name}`,
+          );
+          continue;
+        }
+        const original = await fs.readFile(full, 'utf8');
+        let text = original;
+        for (const v of variants) text = text.split(v).join('[SECRET]');
+        if (text !== original) await fs.writeFile(full, text, 'utf8');
+      }
+    }
+  };
+  await walk(dir);
 }

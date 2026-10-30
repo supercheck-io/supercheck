@@ -39,9 +39,16 @@ Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) be
 - Trial allowance checks before queueing subtract runs that are still in flight, matching worker admission.
 - A trial reminder whose delivery succeeded but whose sent-marker write failed transiently is no longer resent.
 - A scheduled check for a deleted monitor removes its leftover repeatable schedule.
+- AI features (test creation and repair, job, k6 and monitor analysis) no longer use an AI credit when the provider fails, returns nothing, or the request is cancelled before any output. Failed or cancelled AI SRE investigations no longer count toward the trial allowance.
+- Editing a monitor keeps settings the form does not show (timeouts, retry strategy, Playwright options, website method, regions) and a custom check interval set through the CLI or API. Names, request bodies, keywords, headers and credentials are saved exactly as entered.
+- Monitor charts never round uptime up to 100% and show failed checks as gaps instead of 0 ms. Viewers opening a monitor's edit page are taken to its details.
+- A run decrypts only the project secrets its script uses, so one unreadable secret no longer fails every run in the project. A run that uses an unreadable secret fails with `422 VARIABLES_UNRESOLVED` naming the key.
+- Renaming a variable to an existing key returns the same error as creating it, and variable updates and deletes are scoped to their project.
 
 ### Security
 
+- Secret values are scrubbed from Playwright and k6 plain-text report files (HTML, JSON, text, Markdown, XML; plain, Base64, URL-encoded, JSON- and HTML-escaped forms) before upload. Traces, screenshots, videos and data embedded in the Playwright HTML report are not scrubbed.
+- Variable create, update, delete, secret conversion and secret reveal are recorded in the audit log (keys only, never values). The variable edit dialog no longer decrypts a secret when it opens.
 - Worker: `fast-uri` override raised to 3.1.9 (GHSA-w74x-v6f9-j3xg and related advisories in the build tooling chain); recorder dev dependencies refreshed. `npm audit` reports 0 vulnerabilities for app, worker, recorder, docs and cli.
 
 ### Changed

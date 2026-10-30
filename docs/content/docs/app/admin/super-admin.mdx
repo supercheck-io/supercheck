@@ -81,9 +81,17 @@ Manage worker execution entries for self-hosted monitoring and performance testi
 
 ### Adding a Location
 
-1. Navigate to **Super Admin → Locations** tab
-2. Click **Add Location**
-3. Fill in the fields described below and click **Save**
+<Steps>
+<Step>
+Navigate to **Super Admin → Locations** tab
+</Step>
+<Step>
+Click **Add Location**
+</Step>
+<Step>
+Fill in the fields described below and click **Save**
+</Step>
+</Steps>
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -132,17 +140,6 @@ The default location determines where K6 **job** executions run. Only one locati
 ### Project Restrictions
 
 Organization admins can restrict which locations a project is allowed to use.
-
-## Capabilities
-
-| Feature | Description |
-|---------|-------------|
-| **System Statistics** | View total users, organizations, projects, jobs, tests, monitors, and runs |
-| **Organizations** | View and manage all organizations |
-| **Users** | Manage all users system-wide, ban/unban accounts |
-| **Impersonation** | Log in as any user for troubleshooting |
-| **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
-| **Location Management** | Add, edit, enable, or disable worker execution entries |
 
 ## User Management
 
@@ -196,7 +193,8 @@ Banned users see a "User is banned" message when attempting to log in.
 </Tab>
 </Tabs>
 
-## Security
+<Accordions>
+<Accordion title="Security controls" id="security-controls">
 
 | Control | Details |
 |---|---|
@@ -204,3 +202,6 @@ Banned users see a "User is banned" message when attempting to log in.
 | **Validation** | Multiple emails in `SUPER_ADMIN_EMAIL` will cause a startup error |
 | **Audit Trail** | All super admin actions are logged with timestamps |
 | **Session Tracking** | Impersonation sessions preserve the original admin ID for accountability |
+
+</Accordion>
+</Accordions>

@@ -4,7 +4,7 @@ description: 24/7 uptime monitoring for your services
 icon: Globe
 ---
 
-Monitors continuously check your services and alert you when issues occur. Track availability and response times, then investigate failed checks.
+Monitors check your services on a schedule and alert you when they fail. Track availability and response time, then investigate failed checks.
 
 ![Monitors List](/screenshots/monitors-list.png)
 
@@ -33,7 +33,7 @@ flowchart LR
 
 ## Monitor Types
 
-Supercheck offers five monitor types, each designed for specific use cases:
+Choose a type from **Monitor → Create** in the sidebar:
 
 <Cards>
 <Card icon={<ArrowLeftRight className="text-teal-600" />} title="HTTP Monitor">
@@ -98,6 +98,8 @@ Simplified monitoring for web pages with built-in SSL tracking.
 - Public-facing web applications
 - SSL certificate expiration alerts
 
+Website monitors accept custom headers and Basic or Bearer authentication. The form always sends `GET` with no request body; use an HTTP monitor to send another method or a body.
+
 ![Create Website Monitor](/screenshots/create-website-monitor.png)
 
 ## Ping Monitor
@@ -160,7 +162,7 @@ Run full Playwright browser tests on a schedule to validate complete user flows.
 2. Save the test to your project
 3. Create a Synthetic Monitor and select your test
 4. Set the check interval (minimum 5 minutes)
-5. Monitor runs your test and reports pass/fail status
+5. Supercheck runs your test and reports pass/fail status
 
 <Accordions>
 <Accordion title="Multi-location synthetic checks" id="multi-location-synthetic">
@@ -172,11 +174,19 @@ When a legacy single queue job runs a synthetic monitor from several locations, 
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
 
-<Callout type="info">
-Set synthetic monitor intervals longer than your test execution time to prevent overlapping runs. For a test that takes 2 minutes, use a 5+ minute interval.
-</Callout>
-
 📚 [Playwright Documentation](https://playwright.dev/docs/intro) — Learn more about writing browser tests
+
+## Locations
+
+Turn on **Multi-Location Monitoring** in the monitor form, then pick two or more **Locations**. With several locations, the **Aggregation Strategy** decides the monitor's overall status.
+
+| Strategy | Monitor is Up when |
+|---|---|
+| **All Locations Up** | Every location is up |
+| **Majority Up** (default) | More than 50% of locations are up |
+| **Any Location Up** | At least one location is up |
+
+Synthetic monitors can only use locations that allow browser execution; others are shown but disabled. See [Super Admin](/docs/app/admin/super-admin) for location settings.
 
 ## Alert Configuration
 
@@ -244,7 +254,8 @@ Click **AI Analyze** in the header to generate an AI-powered analysis report for
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
-### Key Metrics Bar
+<Accordions>
+<Accordion title="Key metrics" id="key-metrics">
 
 Nine key metrics are displayed prominently below the header:
 
@@ -272,14 +283,22 @@ All-locations history uses one combined rollup for each hour or day. For older p
 </Accordion>
 </Accordions>
 
-### Availability and Response Time
+</Accordion>
+</Accordions>
+
+<Accordions>
+<Accordion title="Availability and response time charts" id="charts">
 
 | Chart | What it shows |
 |-------|---------------|
 | **Availability Overview** | Bar chart of the last 100 individual checks: green bars are successful checks (monitor was up), red bars are failed checks (monitor was down). Helps you spot intermittent failures or sustained outages |
 | **Response Time Chart** | Interactive line chart of the most recent 100 check results. Hover for the exact response time and timestamp; use it to identify latency spikes, trends, and anomalies, and to spot performance degradation before it impacts users |
 
-### Recent Check Results Table
+</Accordion>
+</Accordions>
+
+<Accordions>
+<Accordion title="Recent check results table" id="check-results">
 
 A paginated table showing detailed results for each check:
 
@@ -293,6 +312,10 @@ A paginated table showing detailed results for each check:
 **Features:**
 - **Pagination** — Navigate through historical results (10 per page)
 - **Date Filter** — Filter results by specific date
+- **Location** — Use the location menu on the availability chart to show one location
+
+</Accordion>
+</Accordions>
 
 ## Monitor Reports
 
@@ -328,15 +351,10 @@ A check cycle is skipped, not recorded as Down, when none of the monitor's locat
 
 ## Check Intervals
 
-| Interval | Best For | Notes |
-|----------|----------|-------|
-| **1 minute** | Critical production APIs | Fastest detection, highest resource usage |
-| **5 minutes** | Standard production services | Good balance of speed and efficiency |
-| **15 minutes** | Less critical services | Reduced resource usage |
-| **30-60 minutes** | Low-priority or development | Minimal resource usage |
+Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
 <Callout type="info">
-**Synthetic Monitors**: Minimum interval is 5 minutes to prevent overlapping Playwright executions. Set intervals longer than your test execution time—for a 2-minute test, use 5+ minute intervals.
+Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.
 </Callout>
 
 ## Configuration and cleanup
@@ -360,3 +378,11 @@ Deleting a resource with stored artifacts waits for storage cleanup to finish. I
 
 </Accordion>
 </Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Notifications" href="/docs/app/communicate/alerts" description="Set up the channels that receive monitor alerts" />
+<Card title="Status Pages" href="/docs/app/communicate/status-pages" description="Show monitor health to your users" />
+<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Investigate failed checks" />
+</Cards>

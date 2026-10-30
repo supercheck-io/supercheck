@@ -2383,6 +2383,7 @@ export class MonitorService {
           const variableResolution =
             await this.variableResolverService.resolveProjectVariables(
               projectId,
+              [decodedScript],
             );
 
           if (variableResolution.errors?.length) {
