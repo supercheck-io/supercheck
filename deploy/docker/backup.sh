@@ -7,7 +7,7 @@
 #
 # A backup directory holds database.dump (pg_dump custom format), rustfs-data.tar.gz (reports,
 # artifacts, status-page assets, documents), env (a copy of .env: it holds every secret, keep it
-# private) and, for HTTPS, traefik-letsencrypt.tar.gz. Services that write data are stopped while it
+# private) and, for HTTPS, traefik-letsencrypt.tar.gz and traefik-dns.env (DNS-01 credentials). Services that write data are stopped while it
 # is copied, so the database and storage match, and are started again afterwards, also on failure.
 #
 # Restore needs the same Supercheck release as the backup, stops everything, replaces .env (the old
@@ -71,8 +71,10 @@ STOPPED=()
 restart_stopped() {
   if [[ ${#STOPPED[@]} -gt 0 ]]; then
     say "Starting ${STOPPED[*]}"
-    dc start "${STOPPED[@]}" || echo "Could not start ${STOPPED[*]}; run: sudo docker compose up -d" >&2
+    local rc=0
+    dc start "${STOPPED[@]}" || { rc=$?; echo "Could not start ${STOPPED[*]}; run: sudo docker compose up -d" >&2; }
     STOPPED=()
+    return "$rc"
   fi
 }
 
@@ -101,6 +103,7 @@ backup() {
 
   say "Copying .env"
   install -m 600 .env "$dest/env"
+  if [[ -f traefik-dns.env ]]; then install -m 600 traefik-dns.env "$dest/traefik-dns.env"; fi
   say "Dumping the database"
   ( umask 077; dc exec -T postgres sh -c "pg_dump -Fc -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"" >"$dest/database.dump" )
   [[ -s "$dest/database.dump" ]] || die "The database dump is empty."
@@ -115,8 +118,8 @@ backup() {
   printf 'release=%s\nproject=%s\ncreated=%s\n' "$(release_of .env)" "$PROJECT" "$(date -u +%FT%TZ)" >"$dest/manifest"
   chmod 600 "$dest/manifest"
 
-  restart_stopped
   trap - EXIT
+  restart_stopped || { mv "$dest" "$final"; die "Backup written to $final, but the stopped services did not start."; }
   mv "$dest" "$final"
   say "Backup written to $final ($(du -sh "$final" | cut -f1))"
   echo "Copy it off this server and keep it private: env holds the secrets needed to read the data."
@@ -143,7 +146,7 @@ restore() {
     if [[ -z "$vol" && "$name" == rustfs-data ]]; then
       die "The rustfs-data volume was not found; start Supercheck once (sudo docker compose up -d), then re-run."
     fi
-    [[ -n "$vol" ]] || continue
+    if [[ -z "$vol" ]]; then echo "Warning: the backup has $name.tar.gz but this installation has no $name volume (HTTPS profile off); it is skipped." >&2; continue; fi
     helper tar -v "$src:/backup:ro" "$HELPER_IMAGE" -tzf "/backup/$name.tar.gz" >/dev/null || die "$src/$name.tar.gz is damaged."
     names+=("$name"); vols+=("$vol")
   done
@@ -160,12 +163,15 @@ restore() {
 
   say "Stopping all services"
   dc stop
+  # Past this point data is being replaced; if a step fails, say what state things are in.
+  trap 'echo "Restore failed part-way: data may be half-replaced. Fix the error above and re-run: sudo bash backup.sh --restore $src --yes (the previous .env, if replaced, is .env.pre-restore-*)." >&2' ERR
   if [[ -f "$src/env" ]]; then
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
     say "Restoring .env (previous file kept as .env.pre-restore-$stamp)"
     install -m 600 .env ".env.pre-restore-$stamp"
     install -m 600 "$src/env" .env
   fi
+  if [[ -f "$src/traefik-dns.env" ]]; then install -m 600 "$src/traefik-dns.env" traefik-dns.env; fi
   for i in "${!names[@]}"; do
     name="${names[$i]}" vol="${vols[$i]}"
     say "Restoring the $name volume"

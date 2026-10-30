@@ -591,7 +591,8 @@ echo fixture > "$file"
         subprocess.run(git + ['-C', str(target), 'fetch', '-q', '--depth', '1', 'origin',
                               f'refs/tags/v{version}:refs/tags/v{version}'], check=True)
         subprocess.run(git + ['-C', str(target), 'checkout', '-q', '--detach', f'refs/tags/v{version}'], check=True)
-        (target / 'deploy/docker/.env').write_text(f'BETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION={version}\n')
+        (target / 'deploy/docker/.env').write_text(
+            f'DB_PASSWORD=x\nREDIS_PASSWORD=x\nBETTER_AUTH_SECRET=fixture\nSUPERCHECK_VERSION={version}\n')
         return target
 
     def test_upgrade_checks_out_the_release_and_keeps_env(self):
@@ -614,6 +615,14 @@ echo fixture > "$file"
         out = self.run_shell(body.format('1.5.0'), 1)
         self.assertIn('changed locally', out)
         self.assertIn('deploy/docker/docker-compose.yml', out)
+
+    def test_upgrade_fails_early_when_a_required_secret_is_missing(self):
+        target = self._git_checkout('1.4.0', ('1.4.0', '1.5.0'))
+        env = target / 'deploy/docker/.env'
+        env.write_text(env.read_text().replace('REDIS_PASSWORD=x\n', ''))
+        out = self.run_shell('COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION=1.5.0\nupgrade_preflight\n', 1)
+        self.assertIn('REDIS_PASSWORD is missing', out)
+        self.assertIn('never generate a new one', out)
 
     def test_upgrade_needs_an_existing_install(self):
         self.assertIn('No existing installation', self.run_shell('VERSION=1.5.0\nupgrade_preflight\n', 1))
@@ -709,6 +718,50 @@ exit 0
         # Archives and the dump are checked before the confirmation prompt.
         self.assertIn('-tzf /backup/rustfs-data.tar.gz', log)
         self.assertIn('-l /backup/database.dump', log)
+
+    def test_backup_fails_when_stopped_services_do_not_restart(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: acme' ;;
+  'compose ps -aq postgres'|'compose ps --status running -q postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'compose ps --status running --services') printf '%s\n' app postgres ;;
+  'compose exec'*) echo dump-bytes ;;
+  'compose start'*) exit 1 ;;
+  'volume ls'*) [[ "$*" == *'volume=rustfs-data'* ]] && echo acme_rustfs-data ;;
+  'run'*) for a in "$@"; do [[ $a == *:/backup ]] && touch "${a%:/backup}/rustfs-data.tar.gz"; done ;;
+esac
+exit 0
+''')
+        (self.root / 'install/traefik-dns.env').write_text('CF_DNS_API_TOKEN=x\n')
+        result = self._run_backup('--out', str(self.root / 'backups'))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('Could not start app', result.stderr)
+        saved = list((self.root / 'backups').glob('*/traefik-dns.env'))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0].stat().st_mode & 0o777, 0o600)
+
+    def test_restore_warns_about_a_missing_volume_and_explains_a_failure(self):
+        self._backup_fixture(r'''case "$*" in
+  'compose config') echo 'name: acme' ;;
+  'compose ps -aq postgres') echo pg-id ;;
+  'inspect'*) echo postgres:18.6 ;;
+  'compose up'*) exit 1 ;;
+  'volume ls'*) [[ "$*" == *'volume=rustfs-data'* ]] && echo acme_rustfs-data ;;
+esac
+exit 0
+''')
+        backup = self.root / 'backup'
+        backup.mkdir()
+        for name in ('database.dump', 'rustfs-data.tar.gz', 'traefik-letsencrypt.tar.gz', 'traefik-dns.env'):
+            (backup / name).write_text('x')
+        (backup / 'manifest').write_text('release=1.4.0\n')
+        result = self._run_backup('--restore', str(backup), '--yes')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('no traefik-letsencrypt volume', result.stderr)
+        self.assertIn('Restore failed part-way', result.stderr)
+        restored = self.root / 'install/traefik-dns.env'
+        self.assertEqual(restored.read_text(), 'x')
+        self.assertEqual(restored.stat().st_mode & 0o777, 0o600)
 
     def test_prompts_need_only_a_readable_tty_not_a_tty_stdout(self):
         out = self.run_shell(r'''ASSUME_YES=false; IS_TTY=false

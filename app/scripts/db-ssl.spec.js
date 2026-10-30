@@ -39,9 +39,12 @@ test("sslmode in DATABASE_URL overrides the hosting-mode default", () => {
       assert.equal(getDatabaseSSLConfig(), "verify-full");
     });
   }
-  for (const mode of ["disable", "allow", "prefer"]) {
+  withEnv({ SELF_HOSTED: "false", DATABASE_URL: "postgres://user:pass@db/supercheck?sslmode=disable" }, () => {
+    assert.equal(getDatabaseSSLConfig(), undefined);
+  });
+  for (const mode of ["allow", "prefer"]) {
     withEnv({ SELF_HOSTED: "false", DATABASE_URL: `postgres://user:pass@db/supercheck?sslmode=${mode}` }, () => {
-      assert.equal(getDatabaseSSLConfig(), undefined);
+      assert.equal(getDatabaseSSLConfig(), "prefer");
     });
   }
   for (const url of [base, `${base}?sslmode=`, "not a url"]) {

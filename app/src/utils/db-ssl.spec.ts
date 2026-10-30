@@ -50,6 +50,13 @@ describe("getSSLConfig", () => {
     expect(shouldEnableSSL()).toBe(false);
   });
 
+  it("keeps opportunistic TLS for sslmode=prefer and allow", () => {
+    for (const mode of ["prefer", "allow"]) {
+      process.env.DATABASE_URL = `postgres://u:p@db/supercheck?sslmode=${mode}`;
+      expect(getSSLConfig()).toBe("prefer");
+    }
+  });
+
   it("falls back to the hosting mode for a URL without sslmode or an unparsable URL", () => {
     process.env.SELF_HOSTED = "true";
     for (const url of ["postgresql://u:p@postgres:5432/supercheck", "::not a url::"]) {

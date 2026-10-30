@@ -6,7 +6,7 @@
  * - Cloud mode → certificate-verified TLS ON unless sslmode=disable
  */
 
-type PostgresSslConfig = 'verify-full' | undefined;
+type PostgresSslConfig = 'verify-full' | 'prefer' | undefined;
 
 function isSelfHosted(): boolean {
   return ['true', '1'].includes(
@@ -36,9 +36,16 @@ function readSslModeFromDatabaseUrl(): string | undefined {
 export function getSSLConfig(): PostgresSslConfig {
   const sslMode = readSslModeFromDatabaseUrl();
 
-  if (sslMode === 'disable' || sslMode === 'allow' || sslMode === 'prefer') {
+  if (sslMode === 'disable') {
     return undefined;
   }
+
+  // postgres.js ignores ?sslmode= once ssl is passed: keep opportunistic TLS (no cert check).
+  if (sslMode === 'allow' || sslMode === 'prefer') {
+    return 'prefer';
+  }
+
+  // verify-ca is verified as verify-full: postgres.js has no CA-only mode.
 
   if (
     sslMode === 'require' ||
@@ -52,5 +59,5 @@ export function getSSLConfig(): PostgresSslConfig {
 }
 
 export function shouldEnableSSL(): boolean {
-  return getSSLConfig() === 'verify-full';
+  return getSSLConfig() !== undefined;
 }

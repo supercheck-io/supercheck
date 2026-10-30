@@ -297,7 +297,7 @@ Never run `docker compose down -v`: it deletes the database, stored artifacts, a
 <Accordions>
 <Accordion title="Manual update" id="manual-update">
 
-Use this for installs that are not a git checkout of a release, or when you prefer to run each step. Replace `<x.y.z>` with the target release and `/opt/supercheck` with your `--dir`:
+Use this for a git checkout of a release (what `install.sh` creates) when `--upgrade` is unavailable, or when you prefer to run each step. A directory unpacked from an archive is not a checkout: install fresh with `install.sh` and restore a backup into it. Replace `<x.y.z>` with the target release and `/opt/supercheck` with your `--dir`:
 
 ```bash
 cd /opt/supercheck/deploy/docker
@@ -339,7 +339,7 @@ From `deploy/docker`:
 sudo bash backup.sh
 ```
 
-This writes `/var/backups/supercheck/<UTC time>/` (readable by root only) with the database dump, RustFS storage (reports, artifacts, status-page assets, documents), `.env`, and the HTTPS certificates. The app and worker stop while data is copied, usually for under a minute, and start again afterwards, also if the backup fails. Use `--out <dir>` for another location.
+This writes `/var/backups/supercheck/<UTC time>/` (readable by root only) with the database dump, RustFS storage (reports, artifacts, status-page assets, documents), `.env`, the HTTPS certificates, and `traefik-dns.env` when you use DNS-01. The app and worker stop while data is copied, usually for under a minute, and start again afterwards, also if the backup fails. Use `--out <dir>` for another location.
 
 Copy each backup off the server and keep it private: its `env` file holds the secrets needed to read encrypted data. Old backups are not deleted for you.
 
@@ -363,7 +363,7 @@ Each run briefly stops the app and worker, so pick a quiet hour.
 </Accordion>
 <Accordion title="Releases without backup.sh (1.4.0 and earlier)" id="backups-without-script">
 
-Back up `.env`, a database dump and the storage volume. Run from `deploy/docker`; `docker volume ls` shows the volume name if you changed the project name:
+These commands assume the RustFS volume of 1.4.0. On an older MinIO install, run the [MinIO migration](#upgrading-from-minio-breaking) first, or archive the `minio-data` volume instead. Back up `.env`, a database dump and the storage volume. Run from `deploy/docker`; `docker volume ls` shows the volume name if you changed the project name:
 
 ```bash
 sudo install -m 600 .env "$HOME/supercheck.env"

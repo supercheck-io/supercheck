@@ -621,6 +621,11 @@ upgrade_source() {
 upgrade_preflight() {
   [[ -f "$(compose_dir)/.env" ]] || die "No existing installation was found in $(compose_dir)." \
     "Install first with: sudo bash install.sh   (or pass the install location with --dir)"
+  local key
+  for key in DB_PASSWORD REDIS_PASSWORD BETTER_AUTH_SECRET; do
+    grep -Eq "^${key}=[^[:space:]]" "$(compose_dir)/.env" || die "$key is missing from $(compose_dir)/.env; this release will not start without it." \
+      "Existing install? Restore the .env you installed with; never generate a new one (new installs run ./init-secrets.sh)."
+  done
   command -v git >/dev/null 2>&1 || die "git is required to upgrade. Install it with: sudo apt-get install -y git"
   UPGRADE_TOP="$(cd "$(compose_dir)/../.." && pwd -P)"
   # Root runs git here, so the checkout must not be controlled by another user (hooks, config).

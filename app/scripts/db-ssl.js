@@ -13,7 +13,10 @@ function readSslMode() {
 
 function getDatabaseSSLConfig() {
   const sslMode = readSslMode();
-  if (["disable", "allow", "prefer"].includes(sslMode)) return undefined;
+  if (sslMode === "disable") return undefined;
+  // postgres.js reads an explicit ssl option instead of ?sslmode=, so keep opportunistic TLS here.
+  if (["allow", "prefer"].includes(sslMode)) return "prefer";
+  // verify-ca is verified as verify-full: postgres.js has no CA-only mode.
   if (["require", "verify-ca", "verify-full"].includes(sslMode)) return "verify-full";
   const selfHosted = ["true", "1"].includes(process.env.SELF_HOSTED?.trim().toLowerCase() ?? "");
   return selfHosted ? undefined : "verify-full";
