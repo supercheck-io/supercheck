@@ -74,6 +74,16 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     expect((await patch({ enabled: true })).status).toBe(200);
   });
 
+  it("lets a non-owner rename an already-enabled token that sends enabled:true", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: true }];
+    expect((await patch({ enabled: true, name: "renamed" })).status).toBe(200);
+  });
+
+  it("still blocks a non-owner from re-enabling a disabled token", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: false }];
+    expect((await patch({ enabled: true })).status).toBe(403);
+  });
+
   it("returns 404, not the cap error, when the token disappears before the locked re-read", async () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: false }];
     lockedRow = null;

@@ -519,6 +519,16 @@ describe('NotificationService', () => {
       expect(error).not.toContain('hooks.slack.com/services/xxx');
     });
 
+    it('redacts the URL path when the error echoes only the path', async () => {
+      const path = new URL(slackProvider.config.webhookUrl as string).pathname;
+      mockFetch.mockResolvedValue(failResponse(`POST ${path} failed`));
+      const result = await service.sendNotificationToMultipleProviders(
+        [slackProvider],
+        basePayload,
+      );
+      expect(result.results[0].error).not.toContain(path);
+    });
+
     it('re-checks the provider host allowlist before sending', async () => {
       const bad: NotificationProvider = {
         id: 'p-bad',

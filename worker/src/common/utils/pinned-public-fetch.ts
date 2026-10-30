@@ -32,9 +32,10 @@ export async function fetchPublicEndpoint(
     throw new Error('Cannot send to private or internal networks');
   }
 
-  const selected = addresses[0];
   const headers = new Headers(init.headers);
   headers.set('Accept-Encoding', 'identity');
+  if (typeof init.body === 'string')
+    headers.set('Content-Length', String(Buffer.byteLength(init.body)));
 
   return new Promise<Response>((resolve, reject) => {
     const request = https.request(
@@ -42,7 +43,7 @@ export async function fetchPublicEndpoint(
       {
         method: init.method ?? 'GET',
         headers: Object.fromEntries(headers.entries()),
-        lookup: createPinnedLookup(selected),
+        lookup: createPinnedLookup(addresses),
       },
       (response) => {
         const chunks: Buffer[] = [];

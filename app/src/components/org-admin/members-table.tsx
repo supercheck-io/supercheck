@@ -51,8 +51,8 @@ export function MembersTable({
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
   const columns = React.useMemo(
-    () => createMemberColumns(onMemberUpdate, projects),
-    [onMemberUpdate, projects]
+    () => createMemberColumns(onMemberUpdate, projects, currentUserId, currentUserRole),
+    [onMemberUpdate, projects, currentUserId, currentUserRole]
   );
 
   const CustomToolbar = React.useCallback(

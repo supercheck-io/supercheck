@@ -68,6 +68,42 @@ describe('worker pinned public fetch', () => {
     });
   });
 
+  it('passes every validated address to the pinned lookup and sets Content-Length', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '2606:4700:4700::1111', family: 6 },
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(),
+      write: jest.fn(),
+      destroy: jest.fn(),
+    });
+    let opts: {
+      lookup: (h: string, o: object, cb: (...a: unknown[]) => void) => void;
+      headers: Record<string, string>;
+    };
+    (mockRequest as unknown as jest.Mock).mockImplementation(
+      (_u: URL, o: typeof opts, onResponse: (r: EventEmitter) => void) => {
+        opts = o;
+        const response = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          headers: {},
+        });
+        onResponse(response);
+        queueMicrotask(() => response.emit('end'));
+        return request;
+      },
+    );
+    await fetchPublicEndpoint('https://hooks.example.com/e', {
+      method: 'POST',
+      body: 'héllo',
+    });
+    const cb = jest.fn();
+    opts!.lookup('hooks.example.com', { all: true }, cb);
+    expect(cb.mock.calls[0][1]).toHaveLength(2);
+    expect(opts!.headers['content-length']).toBe('6');
+  });
+
   it('rejects private DNS answers before webhook delivery connects', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '127.0.0.1', family: 4 },

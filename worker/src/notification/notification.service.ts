@@ -1753,7 +1753,19 @@ export class NotificationService {
     secrets: string[],
   ): string {
     let text = message ?? 'Unknown error';
-    for (const secret of secrets) text = text.split(secret).join('[redacted]');
+    const variants = new Set(secrets);
+    for (const secret of secrets) {
+      try {
+        const parsed = new URL(secret);
+        variants.add(parsed.href);
+        if (parsed.pathname.length > 1) variants.add(parsed.pathname);
+      } catch {
+        // not a URL (e.g. bot token)
+      }
+    }
+    // Longest first so href is redacted before its pathname substring.
+    for (const secret of [...variants].sort((a, b) => b.length - a.length))
+      text = text.split(secret).join('[redacted]');
     return `${label} delivery failed: ${clip(text, 300)}`;
   }
 

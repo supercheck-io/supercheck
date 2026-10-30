@@ -95,7 +95,7 @@ export async function PATCH(
     }
     // Anyone with apiKey:update may revoke a project token, but only its owner may re-enable it,
     // so a stolen token cannot undo another member's revocation.
-    if (enabled === true && tokenRecord[0].ownerId !== context.userId) {
+    if (enabled === true && tokenRecord[0].enabled !== true && tokenRecord[0].ownerId !== context.userId) {
       return NextResponse.json({ error: "Only the token's owner can re-enable it" }, { status: 403 });
     }
 
