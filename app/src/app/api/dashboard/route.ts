@@ -10,7 +10,7 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, ne, gte, and, count, sql, sum, inArray } from "drizzle-orm";
+import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
@@ -56,9 +56,6 @@ export async function GET() {
       eq(monitors.organizationId, context.organizationId)
     );
     
-    // Paused or disabled monitors don't run checks, so they stay out of uptime figures
-    const activeMonitorCondition = and(eq(monitors.enabled, true), ne(monitors.status, "paused"));
-
     const [
       monitorCounts,
       recentMonitorResults,
@@ -117,7 +114,8 @@ export async function GET() {
       eq(jobs.organizationId, context.organizationId)
     );
     
-    // Run-based cards are Playwright-only; k6 runs are read from k6_performance_runs
+    // Run-based cards are Playwright-only; k6 runs are read from k6_performance_runs.
+    // The 24h/7d failure signals (system health, needs attention) cover every job type so failed k6 job runs still surface.
     const playwrightJobCondition = and(jobBaseCondition, eq(jobs.jobType, "playwright"));
 
     const [
@@ -162,7 +160,7 @@ export async function GET() {
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last24Hours),
-          playwrightJobCondition
+          jobBaseCondition
         )),
       
       // Jobs by status
@@ -183,7 +181,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last7Days),
           inArray(runs.status, [...FAILED_RUN_STATUSES]),
-          playwrightJobCondition
+          jobBaseCondition
         )),
 
       // Daily job runs by trigger (last 30 days); unknown triggers count as manual
@@ -332,7 +330,6 @@ export async function GET() {
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
-          activeMonitorCondition,
           excludeSupersededSyntheticResults
         )),
 
@@ -347,7 +344,6 @@ export async function GET() {
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
-          activeMonitorCondition,
           excludeSupersededSyntheticResults
         ))
         .groupBy(sql`DATE(${monitorResults.checkedAt})`)

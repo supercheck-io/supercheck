@@ -389,6 +389,7 @@ describe("K6Validator", () => {
         ["maxVUs", "{ scenarios: { a: { executor: 'constant-arrival-rate', maxVUs: 5000, duration: '1m', rate: 1, timeUnit: '1s', preAllocatedVUs: 1 } } }"],
         ["duration string", "{ vus: 10, duration: '2h' }"],
         ["duration compound", "{ vus: 10, duration: '1h1m' }"],
+        ["ramping-vus scenario stage target", "{ scenarios: { a: { executor: 'ramping-vus', stages: [{ duration: '1m', target: 2000 }] } } }"],
         ["stages total", "{ stages: [{ duration: '40m', target: 10 }, { duration: '40m', target: 10 }] }"],
       ])("rejects %s above the limit", (_n, options) => {
         expect(validateK6Script(wrap(options)).valid).toBe(false);
@@ -398,6 +399,14 @@ describe("K6Validator", () => {
         expect(errs("{ vus: 1000, duration: '60m' }")).toBe("");
         expect(errs("{ vus: Number(__ENV.VUS), duration: __ENV.DUR }")).toBe("");
         expect(errs("{ stages: [{ duration: '1m', target: 10 }] }")).toBe("");
+      });
+
+      it("treats ramping-arrival-rate stage targets as rates, not VUs", () => {
+        expect(errs("{ scenarios: { a: { executor: 'ramping-arrival-rate', startRate: 1, timeUnit: '1s', preAllocatedVUs: 10, stages: [{ duration: '1m', target: 2000 }] } } }")).toBe("");
+      });
+
+      it("ignores load-like keys under tags, env and thresholds", () => {
+        expect(errs("{ vus: 5, tags: { vus: 5000, duration: '2h' }, thresholds: { vus: ['x'] } }")).toBe("");
       });
     });
 

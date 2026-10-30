@@ -51,33 +51,42 @@ function findOptionLimitErrors(script: string): string[] {
     if (ms !== undefined && ms > K6_MAX_DURATION_MS)
       errors.push(`k6 duration exceeds the maximum of ${K6_MAX_DURATION_MS / 60_000} minutes.`);
   };
+  const get = (obj: acorn.ObjectExpression, name: string) =>
+    obj.properties.find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
+  // Only load keys are checked, so values under tags/env/thresholds are ignored.
+  const checkLoad = (obj: acorn.ObjectExpression, stageTargetsAreVus: boolean) => {
+    for (const k of ['vus', 'maxVUs', 'preAllocatedVUs']) {
+      const v = get(obj, k);
+      if (v) checkVus(k, v);
+    }
+    const duration = get(obj, 'duration');
+    if (duration) checkDuration(duration);
+    const stages = get(obj, 'stages');
+    if (stages?.type !== 'ArrayExpression') return;
+    // Stages run back to back, so their durations add up.
+    let total = 0;
+    for (const el of stages.elements) {
+      if (el?.type !== 'ObjectExpression') continue;
+      const target = get(el, 'target');
+      if (stageTargetsAreVus && target) checkVus('stages.target', target);
+      const dur = get(el, 'duration');
+      total += (dur && literalDurationMs(dur)) || 0;
+    }
+    if (total > K6_MAX_DURATION_MS) checkDuration({ type: 'Literal', value: total } as acorn.Literal);
+  };
   for (const node of ast.body) {
     const decl = node.type === 'ExportNamedDeclaration' ? node.declaration : node;
     if (decl?.type !== 'VariableDeclaration') continue;
     for (const d of decl.declarations) {
       if (d.id.type !== 'Identifier' || d.id.name !== 'options' || d.init?.type !== 'ObjectExpression') continue;
-      walk.fullAncestor(d.init, (n, _s, ancestors) => {
-        if (n.type !== 'Property') return;
-        const key = keyOf(n as acorn.Property);
-        const value = (n as acorn.Property).value;
-        if (key === 'vus' || key === 'maxVUs' || key === 'preAllocatedVUs') checkVus(key, value);
-        else if (key === 'duration') checkDuration(value);
-        else if (key === 'target') {
-          // Only ramping-stage targets are VU counts (not e.g. arrival-rate targets).
-          const arr = ancestors[ancestors.length - 3] as acorn.Node | undefined;
-          const owner = ancestors[ancestors.length - 4] as acorn.Node | undefined;
-          if (arr?.type === 'ArrayExpression' && owner?.type === 'Property' && keyOf(owner as acorn.Property) === 'stages') checkVus('stages.target', value);
-        } else if (key === 'stages' && value.type === 'ArrayExpression') {
-          // Stages run back to back, so their durations add up.
-          let total = 0;
-          for (const el of value.elements) {
-            if (el?.type !== 'ObjectExpression') continue;
-            const dur = el.properties.find((p) => p.type === 'Property' && keyOf(p) === 'duration') as acorn.Property | undefined;
-            total += (dur && literalDurationMs(dur.value)) || 0;
-          }
-          if (total > K6_MAX_DURATION_MS) checkDuration({ type: 'Literal', value: total } as acorn.Literal);
-        }
-      });
+      checkLoad(d.init, true);
+      const scenarios = get(d.init, 'scenarios');
+      if (scenarios?.type !== 'ObjectExpression') continue;
+      for (const sc of scenarios.properties) {
+        if (sc.type !== 'Property' || sc.value.type !== 'ObjectExpression') continue;
+        const executor = get(sc.value, 'executor');
+        checkLoad(sc.value, executor?.type === 'Literal' && executor.value === 'ramping-vus');
+      }
     }
   }
   return [...new Set(errors)];

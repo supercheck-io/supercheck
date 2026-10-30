@@ -85,7 +85,7 @@ beforeAll(async () => {
     run(job.id, "failed", daysAgo(40)),
     run(siblingJob.id, "failed", daysAgo(0)),
     run(foreignJob.id, "failed", daysAgo(0)),
-    // k6 job runs belong to the k6 cards, not the Playwright run counts
+    // k6 job runs stay out of the Playwright run counts but count in the 24h/7d failure signals
     run(k6Job.id, "failed", daysAgo(0)),
     run(k6Job.id, "passed", daysAgo(2)),
   ]);
@@ -120,8 +120,8 @@ it("returns the project's 7-day failures and daily trigger counts without other 
   const { jobs } = await response.json();
 
   expect(jobs.failedRuns30d).toBe(7);
-  // Failed and error runs count; the 10-day, 40-day and other tenants' runs are excluded.
-  expect(jobs.failedRuns7d).toEqual({ manual: 6, scheduled: 0, remote: 0 });
+  // Failed and error runs of any job type count (6 Playwright + 1 k6); the 10-day, 40-day and other tenants' runs are excluded.
+  expect(jobs.failedRuns7d).toEqual({ manual: 7, scheduled: 0, remote: 0 });
   expect(jobs).not.toHaveProperty("recentRuns");
 
   const byDay = new Map(jobs.triggerTrend.map((d: { date: string }) => [d.date, d]));
@@ -138,14 +138,20 @@ it("excludes k6 job runs from Playwright run counts", async () => {
   // 1 k6 failed + 1 k6 passed run were seeded; 7 failures + 3 passed + 1 blocked remain
   expect(jobs.recentRuns30d).toBe(11);
   expect(jobs.passedRuns30d).toBe(3);
-  expect(jobs.failedRuns24h).toBe(1);
-  expect(jobs.failedRuns7d.manual).toBe(6);
 });
 
-it("leaves paused monitors out of uptime and keeps a 0 ms response time", async () => {
+it("counts failed k6 job runs in the 24h and 7d failure signals", async () => {
+  const { jobs } = await (await GET()).json();
+  // Today's k6 failure is always in range; yesterday's noon Playwright failure only before noon UTC.
+  const yesterdayInRange = daysAgo(1).getTime() >= Date.now() - 24 * 3600_000;
+  expect(jobs.failedRuns24h).toBe(1 + (yesterdayInRange ? 1 : 0));
+  expect(jobs.failedRuns7d.manual).toBe(7);
+});
+
+it("keeps a 0 ms response time and computes uptime over every monitor with checks", async () => {
   const { monitors } = await (await GET()).json();
-  expect(monitors.uptime).toBe(100);
-  expect(monitors.availabilityTrend.at(-1).uptime).toBe(100);
+  // 1 up check (Active) + 2 down checks (Paused): history is not rewritten by current monitor state
+  expect(monitors.uptime).toBeCloseTo(33.33, 1);
   expect(monitors.responseTime.min).toBe(0);
   expect(monitors.responseTime.max).toBe(0);
 });
