@@ -53,6 +53,7 @@ import {
   deleteRequirements,
   linkTestsToRequirement,
   unlinkTestFromRequirement,
+  getAvailableTestsForLinking,
 } from "./requirements";
 
 // Cast mocks
@@ -306,7 +307,10 @@ describe("Requirements Server Actions", () => {
     });
 
     it("should log audit event on bulk delete", async () => {
-      await deleteRequirements([testRequirementId, "req-2"]);
+      (mockDb.delete as jest.Mock).mockImplementation(() => ({
+        where: () => ({ returning: () => Promise.resolve([{ id: testRequirementId }]) }),
+      }));
+      await deleteRequirements([testRequirementId, testIdA]);
 
       expect(mockLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -593,6 +597,23 @@ describe("Requirements Server Actions", () => {
       expect(mockLogAuditEvent).not.toHaveBeenCalled();
     });
 
+    it("rejects non-uuid ids and over-large batches for bulk delete", async () => {
+      expect((await deleteRequirements(["req-2"])).success).toBe(false);
+      expect((await deleteRequirements(Array(101).fill(testIdA))).success).toBe(false);
+      expect(mockDb.delete).not.toHaveBeenCalled();
+    });
+
+    it("reports and audits only the rows actually deleted", async () => {
+      (mockDb.delete as jest.Mock).mockImplementation(() => ({
+        where: () => ({ returning: () => Promise.resolve([{ id: testRequirementId }]) }),
+      }));
+      const result = await deleteRequirements([testRequirementId, testIdA]);
+      expect(result).toEqual({ success: true, deletedCount: 1 });
+      expect(mockLogAuditEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ resourceId: testRequirementId, metadata: expect.objectContaining({ count: 1 }) })
+      );
+    });
+
     it("should handle empty ids array for bulk delete", async () => {
       const result = await deleteRequirements([]);
 
@@ -613,6 +634,25 @@ describe("Requirements Server Actions", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Database error");
+    });
+  });
+
+  describe("getAvailableTestsForLinking", () => {
+    it("excludes linked tests in SQL, orders deterministically and searches ilike with escaping", async () => {
+      mockCheckPermissionWithContext.mockReturnValue(true);
+      mockSelectResults([{ id: testRequirementId }]);
+      let where: SQL | undefined;
+      const orderBy = jest.fn(() => ({ limit: () => Promise.resolve([{ id: testIdA, title: "a_b", type: "browser" }]) }));
+      (mockDb.select as jest.Mock).mockImplementationOnce(() => ({
+        from: () => ({ where: (w: SQL) => ((where = w), { orderBy }) }),
+      }));
+      const result = await getAvailableTestsForLinking(testRequirementId, "50%_x");
+      expect(result).toEqual([{ id: testIdA, title: "a_b", type: "browser" }]);
+      expect(orderBy).toHaveBeenCalledTimes(1);
+      const q = new PgDialect().sqlToQuery(where as SQL);
+      expect(q.sql).toContain("NOT IN");
+      expect(q.sql).toContain("ilike");
+      expect(q.params).toContain("%50\\%\\_x%");
     });
   });
 });

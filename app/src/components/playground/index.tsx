@@ -182,6 +182,13 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const [activeTab, setActiveTab] = useState<string>("editor");
   const [isRunning, setIsRunning] = useState(false);
+  // Only the stream held here may update run state; cancel/new run/unmount close it.
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const closeEventSource = () => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+  };
+  useEffect(() => closeEventSource, []);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -216,6 +223,17 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [initialEditorContent, setInitialEditorContent] = useState(
     initialTestData?.script || ""
   );
+  // Warn before leaving the page with unsaved editor changes
+  const hasUnsavedChanges = editorContent !== initialEditorContent;
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
   const [initialFormValues, setInitialFormValues] = useState<
     Partial<TestCaseFormData>
   >(
@@ -811,6 +829,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       setIsReportLoading(true);
     }
 
+    closeEventSource();
     setIsRunning(true);
 
     try {
@@ -887,10 +906,13 @@ const Playground: React.FC<PlaygroundProps> = ({
         const eventSource = new EventSource(
           `/api/test-status/events/${result.testId}`
         );
+        eventSourceRef.current = eventSource;
         let eventSourceClosed = false;
         let reconnectNoticeShown = false;
 
         eventSource.onmessage = (event) => {
+          // A cancelled or superseded run must not overwrite the active run's state.
+          if (eventSourceRef.current !== eventSource) return;
           try {
             reconnectNoticeShown = false;
             const data = JSON.parse(event.data);
@@ -946,7 +968,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   setLastExecutedScript(editorContent);
                 }
 
-                eventSource.close();
+                closeEventSource();
                 eventSourceClosed = true;
 
                 if (result.testId) {
@@ -1194,6 +1216,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           description: "The execution has been cancelled successfully",
         });
 
+        closeEventSource();
         // Reset state
         setIsRunning(false);
         setIsReportLoading(false);

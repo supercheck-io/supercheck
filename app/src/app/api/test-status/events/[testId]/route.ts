@@ -14,11 +14,15 @@ import {
 const encoder = new TextEncoder();
 
 const STATUS_RECONCILE_INTERVAL_MS = 3000;
+// Backstop so an abandoned stream cannot reconcile against the DB forever.
+const MAX_STREAM_LIFETIME_MS = 15 * 60 * 1000;
 
 const serialize = (payload: Record<string, unknown>) =>
   `data: ${JSON.stringify(payload)}\n\n`;
 
 const terminalStatuses = new Set(["passed", "failed", "error", "completed", "blocked"]);
+// Derived statuses that end the stream once sent.
+const finalDerivedStatuses = new Set(["passed", "failed", "blocked"]);
 
 const deriveFinalStatus = (
   queueStatus: string,
@@ -120,6 +124,7 @@ export async function GET(request: Request) {
       // 'Controller is already closed' errors from async callbacks
       let isClosed = false;
       let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+      let lifetimeTimer: ReturnType<typeof setTimeout> | undefined;
 
       let keepAlive: ReturnType<typeof setInterval> | undefined;
       let unsubscribe = () => {};
@@ -130,6 +135,7 @@ export async function GET(request: Request) {
         request.signal.removeEventListener("abort", cleanup);
         isClosed = true;
         clearInterval(keepAlive);
+        clearTimeout(lifetimeTimer);
         if (reconcileTimer) {
           clearTimeout(reconcileTimer);
           reconcileTimer = null;
@@ -155,6 +161,12 @@ export async function GET(request: Request) {
           isClosed = true;
           cleanupStream();
         }
+      };
+
+      // Sends a status payload and closes the stream once the outcome is final.
+      const emit = (payload: Record<string, unknown>) => {
+        safeEnqueue(encoder.encode(serialize(payload)));
+        if (finalDerivedStatuses.has(String(payload.derivedStatus))) cleanup();
       };
 
       const send = async (event: NormalizedQueueEvent) => {
@@ -194,8 +206,19 @@ export async function GET(request: Request) {
           }
         }
 
+        // A queue "completed"/"passed" without a report outcome is not final yet;
+        // the persisted-status reconcile emits it once the report exists.
+        if (
+          (["completed", "passed"] as string[]).includes(status) &&
+          reportStatus !== "passed" &&
+          reportStatus !== "failed" &&
+          reportStatus !== "error"
+        ) {
+          return;
+        }
+
         payload.derivedStatus = deriveFinalStatus(status, reportStatus);
-        safeEnqueue(encoder.encode(serialize(payload)));
+        emit(payload);
       };
 
       if (isClosed) return;
@@ -213,19 +236,15 @@ export async function GET(request: Request) {
 
           if (report) {
             const status = report.status ?? "running";
-            safeEnqueue(
-              encoder.encode(
-                serialize({
-                  status,
-                  reportStatus: status,
-                  derivedStatus: deriveFinalStatus(status, status),
-                  testId,
-                  reportPath: report.reportPath,
-                  s3Url: report.s3Url,
-                  errorDetails: report.errorDetails,
-                })
-              )
-            );
+            emit({
+              status,
+              reportStatus: status,
+              derivedStatus: deriveFinalStatus(status, status),
+              testId,
+              reportPath: report.reportPath,
+              s3Url: report.s3Url,
+              errorDetails: report.errorDetails,
+            });
           }
         } catch (error) {
           // Queue events remain the low-latency path. A transient database
@@ -249,19 +268,16 @@ export async function GET(request: Request) {
       if (isClosed) return;
       if (initialReport) {
         const initStatus = initialReport.status ?? "running";
-        safeEnqueue(
-          encoder.encode(
-            serialize({
-              status: initStatus,
-              reportStatus: initStatus,
-              derivedStatus: deriveFinalStatus(initStatus, initStatus),
-              testId,
-              reportPath: initialReport.reportPath,
-              s3Url: initialReport.s3Url,
-              errorDetails: initialReport.errorDetails,
-            })
-          )
-        );
+        emit({
+          status: initStatus,
+          reportStatus: initStatus,
+          derivedStatus: deriveFinalStatus(initStatus, initStatus),
+          testId,
+          reportPath: initialReport.reportPath,
+          s3Url: initialReport.s3Url,
+          errorDetails: initialReport.errorDetails,
+        });
+        if (isClosed) return;
       } else {
         safeEnqueue(
           encoder.encode(serialize({ status: "waiting", derivedStatus: "waiting", testId }))
@@ -272,6 +288,8 @@ export async function GET(request: Request) {
         reconcilePersistedStatus,
         STATUS_RECONCILE_INTERVAL_MS
       );
+
+      lifetimeTimer = setTimeout(cleanup, MAX_STREAM_LIFETIME_MS);
 
       keepAlive = setInterval(() => {
         safeEnqueue(encoder.encode(": ping\n\n"));

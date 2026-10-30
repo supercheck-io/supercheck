@@ -5,7 +5,7 @@ export interface Run {
   jobId: string;
   jobName?: string;
   jobType?: "playwright" | "k6";
-  status: "pending" | "running" | "passed" | "failed" | "error";
+  status: "queued" | "running" | "passed" | "failed" | "error" | "blocked";
   trigger: "manual" | "schedule" | "remote";
   startedAt: string | null;
   completedAt: string | null;

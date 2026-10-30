@@ -205,6 +205,85 @@ describe("test-status event filtering", () => {
 });
 
 
+describe("test-status stream lifecycle", () => {
+  const open = async () => {
+    jest.clearAllMocks();
+    const unsubscribe = jest.fn();
+    const hub = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      subscribe: jest.fn().mockReturnValue(unsubscribe),
+    };
+    mockRequireAuthContext.mockResolvedValue({
+      organizationId: "org-1",
+      project: { id: "project-1" },
+    });
+    mockTestsFindFirst.mockResolvedValue({ id: "test-1" });
+    mockGetQueueEventHub.mockReturnValue(hub);
+    const response = await GET(
+      new Request("http://localhost/api/test-status/events/test-1")
+    );
+    return { reader: response.body!.getReader(), hub, unsubscribe };
+  };
+  const decoder = new TextDecoder();
+
+  it("closes the stream and stops reconciling after a terminal status", async () => {
+    jest.useFakeTimers();
+    try {
+      mockReportsFindFirst.mockResolvedValue({ status: "passed", reportPath: "p" });
+      const { reader, unsubscribe } = await open();
+      await reader.read(); // connected
+      expect(decoder.decode((await reader.read()).value)).toContain('"derivedStatus":"passed"');
+      expect((await reader.read()).done).toBe(true);
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+      mockReportsFindFirst.mockClear();
+      await jest.advanceTimersByTimeAsync(10000);
+      expect(mockReportsFindFirst).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("closes a never-finishing stream after the max lifetime", async () => {
+    jest.useFakeTimers();
+    try {
+      mockReportsFindFirst.mockResolvedValue({ status: "running", reportPath: "p" });
+      const { reader, unsubscribe } = await open();
+      await reader.read();
+      await reader.read();
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000 + 1);
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("holds back a queue 'completed' event until the report outcome is known", async () => {
+    jest.useFakeTimers();
+    try {
+      mockReportsFindFirst.mockResolvedValue(undefined);
+      // First lookup is the playground-run access gate; later ones find no run.
+      mockRunsFindFirst.mockResolvedValueOnce({ id: "run-1" }).mockResolvedValue(undefined);
+      const { reader, hub } = await open();
+      await reader.read(); // connected
+      const w = await reader.read();
+            expect(decoder.decode(w.value)).toContain('"waiting"');
+
+      const send = hub.subscribe.mock.calls[0][0];
+      await send({ category: "test", entityId: "test-1", queueJobId: "test-1", status: "completed" });
+
+      // Report lands; reconcile emits the real outcome instead of a premature "completed".
+      mockReportsFindFirst.mockResolvedValue({ status: "passed", reportPath: "p" });
+      await jest.advanceTimersByTimeAsync(3000);
+      const chunk = decoder.decode((await reader.read()).value);
+      expect(chunk).toContain('"derivedStatus":"passed"');
+      expect(chunk).not.toContain('"derivedStatus":"completed"');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe("text playground identifiers", () => {
   beforeEach(() => {
     jest.clearAllMocks();

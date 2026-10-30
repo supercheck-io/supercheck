@@ -50,9 +50,10 @@ jest.mock("@/lib/session", () => ({
   getActiveOrganization: jest.fn(),
 }));
 
+const mockS3Send = jest.fn().mockResolvedValue({});
 jest.mock("@/lib/s3-proxy", () => ({
   getS3Client: jest.fn(() => ({
-    send: jest.fn().mockResolvedValue({}),
+    send: (...args: unknown[]) => mockS3Send(...args),
   })),
 }));
 
@@ -153,7 +154,9 @@ function createMockFile(
       buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
     ),
     text: jest.fn().mockResolvedValue(content),
-    slice: jest.fn(),
+    slice: jest.fn((start: number, end: number) => ({
+      arrayBuffer: jest.fn().mockResolvedValue(new Uint8Array(buffer.subarray(start, end)).buffer),
+    })),
     stream: jest.fn(),
     webkitRelativePath: "",
   } as unknown as File;
@@ -252,7 +255,15 @@ describe("extractRequirementsFromDocument", () => {
       expect(result.error).toContain("Unsupported file type");
     });
 
-    it("should reject empty files (size = 0)", async () => {
+    it("should reject a .pdf whose content is not a PDF", async () => {
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("not really a pdf".padEnd(100, "."), "fake.pdf", { type: "application/pdf" }));
+    const result = await extractRequirementsFromDocument(formData);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not a valid PDF");
+  });
+
+  it("should reject empty files (size = 0)", async () => {
       const formData = new MockFormData() as unknown as FormData;
       formData.append(
         "file", 
@@ -410,6 +421,23 @@ describe("extractRequirementsFromDocument", () => {
     expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalledWith(testOrgId, 170, "plus");
   });
 
+  it("keeps the extraction when token tracking fails afterwards", async () => {
+    (aiRateLimiter.checkAndTrackTokens as jest.Mock).mockRejectedValueOnce(new Error("quota exceeded"));
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("Requirements".padEnd(100, "."), "test.txt", { type: "text/plain" }));
+    const result = await extractRequirementsFromDocument(formData);
+    expect(result.success).toBe(true);
+    expect(result.requirements?.length).toBeGreaterThan(0);
+  });
+
+  it("flags truncation when the document exceeds the AI length limit", async () => {
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("Requirements ".repeat(3000), "long.txt", { type: "text/plain" }));
+    const result = await extractRequirementsFromDocument(formData);
+    expect(result.success).toBe(true);
+    expect(result.truncated).toBe(true);
+  });
+
   describe("Allowed File Types", () => {
     it("should accept .txt files", async () => {
       const formData = new MockFormData() as unknown as FormData;
@@ -502,7 +530,20 @@ describe("extractRequirementsFromDocument", () => {
       });
     });
 
-    it("should reject when rate limited", async () => {
+    it("should delete the uploaded S3 object when extraction fails after upload", async () => {
+    const { AuthService } = require("@/lib/ai/ai-security");
+    AuthService.checkRateLimit.mockRejectedValueOnce(new Error("AI rate limit exceeded."));
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("Valid content for cleanup testing.".padEnd(100, "."), "test.txt"));
+
+    await extractRequirementsFromDocument(formData);
+
+    const names = mockS3Send.mock.calls.map(([cmd]) => cmd.constructor.name);
+    expect(names).toEqual(["PutObjectCommand", "DeleteObjectCommand"]);
+    expect(mockS3Send.mock.calls[1][0].input.Key).toBe(mockS3Send.mock.calls[0][0].input.Key);
+  });
+
+  it("should reject when rate limited", async () => {
       const { AuthService } = require("@/lib/ai/ai-security");
       AuthService.checkRateLimit.mockRejectedValueOnce(
         new Error("AI rate limit exceeded. Please try again in 1 minute.")

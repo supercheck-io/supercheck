@@ -26,7 +26,7 @@ import {
   requirementDocuments,
   type RequirementDocumentType,
 } from "@/db/schema";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { extractText } from "unpdf";
 import * as mammoth from "mammoth";
 import { getS3Client } from "@/lib/s3-proxy";
@@ -62,6 +62,8 @@ interface ExtractResult {
   error?: string;
   documentName?: string;
   documentId?: string;
+  /** True when the document exceeded the AI length limit and only the first part was analyzed. */
+  truncated?: boolean;
 }
 
 // Allowed MIME types for security validation
@@ -251,25 +253,30 @@ async function extractTextFromDocx(file: File): Promise<string> {
 // DOCUMENT STORAGE
 // ============================================================================
 
-function getFileType(filename: string): RequirementDocumentType {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf":
-      return "pdf";
-    case "docx":
-      return "docx";
-    case "md":
-    case "markdown":
-      return "md";
-    case "txt":
-      return "text";
-    default:
-      return "text";
+const MIME_BY_TYPE: Record<RequirementDocumentType, string> = {
+  text: "text/plain",
+  md: "text/markdown",
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+/** Resolve the document type and, for binary formats, check the magic bytes so a renamed file is rejected. */
+async function detectFileType(file: File): Promise<RequirementDocumentType> {
+  const type = validateFileType(file);
+  const head = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+  const startsWith = (sig: number[]) => sig.every((byte, i) => head[i] === byte);
+  if (type === "pdf" && !startsWith([0x25, 0x50, 0x44, 0x46, 0x2d])) {
+    throw new Error("File content is not a valid PDF document");
   }
+  if (type === "docx" && !startsWith([0x50, 0x4b, 0x03, 0x04])) {
+    throw new Error("File content is not a valid DOCX document");
+  }
+  return type;
 }
 
 async function uploadDocument(
   file: File,
+  fileType: RequirementDocumentType,
   organizationId: string,
   projectId: string,
   userId: string
@@ -291,7 +298,7 @@ async function uploadDocument(
         Bucket: BUCKET_NAME,
         Key: storagePath,
         Body: buffer,
-        ContentType: file.type || "application/octet-stream",
+        ContentType: MIME_BY_TYPE[fileType],
       })
     );
 
@@ -302,7 +309,7 @@ async function uploadDocument(
         organizationId,
         projectId,
         name: file.name,
-        type: getFileType(file.name),
+        type: fileType,
         storagePath,
         fileSize: file.size,
         uploadedByUserId: userId,
@@ -319,7 +326,15 @@ async function uploadDocument(
   }
 }
 
-async function deleteDocumentRecord(id: string) {
+async function deleteDocumentRecord(id: string, storagePath: string) {
+  try {
+    // Best effort: an orphaned object is preferable to failing the user's request.
+    await getS3Client().send(
+      new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: storagePath })
+    );
+  } catch (e) {
+    console.error("Failed to delete uploaded document object", e);
+  }
   try {
     await db.delete(requirementDocuments).where(eq(requirementDocuments.id, id));
   } catch (e) {
@@ -431,7 +446,7 @@ async function extractWithAI(
   documentText: string,
   organizationId: string,
   tier?: string
-): Promise<ExtractedRequirement[]> {
+): Promise<{ requirements: ExtractedRequirement[]; truncated: boolean }> {
   // Step 1: Validate AI configuration before making request
   validateAIConfiguration();
 
@@ -444,7 +459,8 @@ async function extractWithAI(
     10
   );
   let truncatedText = documentText;
-  if (documentText.length > maxLength) {
+  const truncated = documentText.length > maxLength;
+  if (truncated) {
     truncatedText =
       documentText.substring(0, maxLength) +
       "\n\n[Document truncated due to length...]";
@@ -477,7 +493,12 @@ async function extractWithAI(
     const usageData = usage as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
     tokensUsed = usageData.totalTokens ?? 
       ((usageData.inputTokens ?? 0) + (usageData.outputTokens ?? 0));
-    await aiRateLimiter.checkAndTrackTokens(organizationId, tokensUsed, tier);
+    // Tracking failure must not discard an extraction that was already paid for.
+    try {
+      await aiRateLimiter.checkAndTrackTokens(organizationId, tokensUsed, tier);
+    } catch (trackError) {
+      console.error("[AI Extraction] Token tracking failed:", trackError);
+    }
 
     console.log(
       `[AI Extraction] Completed in ${duration}ms, tokens: ${tokensUsed}, model: ${getActualModelName()}`
@@ -491,7 +512,7 @@ async function extractWithAI(
         text.toLowerCase().includes("no requirements") ||
         text.includes("[]")
       ) {
-        return [];
+        return { requirements: [], truncated };
       }
       throw new Error("AI did not return valid JSON array");
     }
@@ -531,7 +552,7 @@ async function extractWithAI(
       );
     }
 
-    return validated;
+    return { requirements: validated, truncated };
   } catch (error) {
     console.error("[AI Extraction] Error:", error);
     // Map provider errors to user-friendly messages
@@ -575,9 +596,10 @@ export async function extractRequirementsFromDocument(
       };
     }
 
-    // Validate file type (MIME type check for security)
+    // Validate file type (MIME type check plus magic bytes for security)
+    let fileType: RequirementDocumentType;
     try {
-      validateFileType(file);
+      fileType = await detectFileType(file);
     } catch (typeError) {
       return {
         success: false,
@@ -626,14 +648,17 @@ export async function extractRequirementsFromDocument(
 
     // 1. Upload Document First
     let documentId: string;
+    let storagePath: string;
     try {
       const uploadResult = await uploadDocument(
         file,
+        fileType,
         organizationId,
         project.id,
         userId
       );
       documentId = uploadResult.id;
+      storagePath = uploadResult.storagePath;
     } catch (uploadError) {
       return {
         success: false,
@@ -650,7 +675,7 @@ export async function extractRequirementsFromDocument(
     try {
       documentText = await extractTextFromFile(file);
     } catch (textError) {
-      await deleteDocumentRecord(documentId);
+      await deleteDocumentRecord(documentId, storagePath);
       return {
         success: false,
         error:
@@ -662,7 +687,7 @@ export async function extractRequirementsFromDocument(
     }
 
     if (documentText.length < 50) {
-      await deleteDocumentRecord(documentId);
+      await deleteDocumentRecord(documentId, storagePath);
       return {
         success: false,
         error: "Document appears to be empty or unreadable",
@@ -683,7 +708,7 @@ export async function extractRequirementsFromDocument(
         tier,
       });
     } catch (rateLimitError) {
-      await deleteDocumentRecord(documentId);
+      await deleteDocumentRecord(documentId, storagePath);
       return {
         success: false,
         error:
@@ -695,10 +720,11 @@ export async function extractRequirementsFromDocument(
 
     // 4. Extract requirements using AI
     let requirements: ExtractedRequirement[];
+    let truncated: boolean;
     try {
-      requirements = await extractWithAI(documentText, organizationId, tier);
+      ({ requirements, truncated } = await extractWithAI(documentText, organizationId, tier));
     } catch (aiError) {
-      await deleteDocumentRecord(documentId);
+      await deleteDocumentRecord(documentId, storagePath);
       return {
         success: false,
         error:
@@ -720,7 +746,7 @@ export async function extractRequirementsFromDocument(
         projectName: project.name,
         documentName: file.name,
         documentId,
-        documentType: file.type,
+        documentType: fileType,
         documentSize: file.size,
         extractedCount: requirements.length,
         aiModel: getActualModelName(),
@@ -733,6 +759,7 @@ export async function extractRequirementsFromDocument(
       requirements,
       documentName: file.name,
       documentId,
+      truncated,
     };
   } catch (error) {
     console.error("Error extracting requirements:", error);

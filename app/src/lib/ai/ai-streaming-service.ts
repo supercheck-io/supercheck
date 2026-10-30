@@ -378,10 +378,10 @@ export class AIStreamingService {
               testType,
             });
 
-            // Send error event to client
+            // Send a generic message; provider detail stays in the server logs above
             const errorData = JSON.stringify({
               type: "error",
-              error: errorMessage,
+              error: "AI generation failed. Try again.",
             });
             controller.enqueue(
               new TextEncoder().encode(`data: ${errorData}\n\n`)

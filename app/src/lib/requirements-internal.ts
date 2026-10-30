@@ -1,10 +1,13 @@
-import { eq, and, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import {
   requirementCoverageSnapshots,
   testRequirements,
   tags,
   requirementTags,
+  jobTests,
+  runs,
 } from "@/db/schema";
+import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
 import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
@@ -181,14 +184,32 @@ export async function updateCoverageSnapshot(
     return;
   }
 
-  // Get latest run status for each linked test
-  // This is a simplified version - in production, you'd query the runs table
-  // For now, set status based on linked test count
+  // Same rule as the worker's getLinkedTestsWithStatus: a test's status is its latest terminal job run.
+  const rows = await executor
+    .select({ testId: testRequirements.testId, status: runs.status })
+    .from(testRequirements)
+    .innerJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
+    .innerJoin(runs, eq(runs.jobId, jobTests.jobId))
+    .where(
+      and(
+        eq(testRequirements.requirementId, requirementId),
+        inArray(runs.status, ["passed", "failed", "error"])
+      )
+    )
+    .orderBy(desc(runs.completedAt));
+
+  const latest = new Map<string, string>();
+  for (const row of rows) if (!latest.has(row.testId)) latest.set(row.testId, row.status);
+  const passedTestCount = [...latest.values()].filter((st) => st === "passed").length;
+  const failedTestCount = latest.size - passedTestCount;
+
   await executor
     .update(requirementCoverageSnapshots)
     .set({
+      status: computeCoverageStatus(linkedTestCount, passedTestCount, failedTestCount),
       linkedTestCount,
-      // Status will be computed by coverage worker after job runs
+      passedTestCount,
+      failedTestCount,
       lastEvaluatedAt: new Date(),
       updatedAt: new Date(),
     })

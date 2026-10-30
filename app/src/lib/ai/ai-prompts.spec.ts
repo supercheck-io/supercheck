@@ -3,6 +3,35 @@ import { AIPromptBuilder } from './ai-prompts';
 import { K6RunData } from './ai-prompts';
 
 describe('AIPromptBuilder', () => {
+  describe('buildK6FixPrompt', () => {
+    it('keeps only the tail of oversized console logs and summaries', () => {
+      const log = 'ZZHEADZZ' + 'x'.repeat(60_000) + 'TAIL';
+      const prompt = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a', consoleLog: log, summaryJSON: log });
+      expect(prompt).toContain('[truncated]');
+      expect(prompt).toContain('TAIL');
+      expect(prompt).not.toContain('ZZHEADZZ');
+      expect(prompt.length).toBeLessThan(115_000);
+    });
+    it('does not truncate small inputs', () => {
+      const prompt = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a', consoleLog: 'short log' });
+      expect(prompt).toContain('short log');
+      expect(prompt).not.toContain('[truncated]');
+    });
+  });
+
+  it('tells the model embedded sections are entity-escaped and code output must be raw', () => {
+    const fix = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a => b && c' });
+    expect(fix).toContain('&amp;&amp;');
+    expect(fix).toContain('HTML-entity escaped');
+    expect(fix).toContain('output raw, unescaped code');
+    const prompts = [
+      AIPromptBuilder.buildMarkdownContextPrompt({ failedScript: 'a', testType: 'browser', markdownContent: 'm' }),
+      AIPromptBuilder.buildBasicFixPrompt({ failedScript: 'a', testType: 'browser', reason: 'r' }),
+      AIPromptBuilder.buildCreatePrompt({ testType: 'browser', userRequest: 'x' }),
+    ];
+    for (const p of prompts) expect(p).toContain('output raw, unescaped code');
+  });
+
   describe('buildK6AnalyzePrompt', () => {
     const mockBaselineRun: K6RunData = {
       runId: 'baseline-123',

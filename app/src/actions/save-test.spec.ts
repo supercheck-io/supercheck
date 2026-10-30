@@ -115,6 +115,7 @@ async function update(
       await PUT(
         new NextRequest("http://localhost/api/tests/00000000-0000-4000-8000-000000000001", {
           method: "PUT",
+          headers: { origin: "http://localhost" },
           body: JSON.stringify({ title: "Renamed", ...fields }),
         }),
         { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) },
@@ -174,4 +175,51 @@ it.each([
   const result = await saveTest({ ...input, script: "const a = ;" });
   expect(result).toEqual({ id: "", success: false, error });
   expect(mockSet).not.toHaveBeenCalled();
+});
+
+it("ignores ownership columns supplied to the save action", async () => {
+  const result = await saveTest({
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "Renamed",
+    createdByUserId: "00000000-0000-4000-8000-0000000000aa",
+    projectId: "00000000-0000-4000-8000-0000000000bb",
+  } as Parameters<typeof saveTest>[0]);
+  expect(result.success).toBe(true);
+  const set = mockSet.mock.calls[0][0];
+  expect(set).not.toHaveProperty("createdByUserId");
+  expect(set).not.toHaveProperty("projectId");
+  expect(set).not.toHaveProperty("organizationId");
+});
+
+describe("PUT /api/tests/[id] request hardening", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const put = (body: string, headers: Record<string, string> = { origin: "http://localhost" }) =>
+    PUT(new NextRequest(`http://localhost/api/tests/${id}`, { method: "PUT", headers, body }), {
+      params: Promise.resolve({ id }),
+    });
+
+  it("rejects cross-origin requests", async () => {
+    expect((await put("{}", { origin: "https://evil.example" })).status).toBe(403);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for invalid JSON", async () => {
+    expect((await put("{nope")).status).toBe(400);
+  });
+
+  it.each([
+    { title: "   " },
+    { title: 5 },
+    { title: "a".repeat(256) },
+    { description: 5 },
+    { description: "a".repeat(1001) },
+  ])("returns 400 for invalid fields %j", async (body) => {
+    expect((await put(JSON.stringify(body))).status).toBe(400);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("trims the title and accepts a null description", async () => {
+    expect((await put(JSON.stringify({ title: "  Hi  ", description: null }))).status).toBe(200);
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ title: "Hi", description: null }));
+  });
 });

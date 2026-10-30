@@ -3,7 +3,7 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
-import { syncRequirementTags, syncRequirementTagsByName, TagLimitError } from "./requirements-internal";
+import { syncRequirementTags, syncRequirementTagsByName, TagLimitError, updateCoverageSnapshot } from "./requirements-internal";
 
 const R = "44444444-4444-4444-8444-444444444444";
 
@@ -86,5 +86,32 @@ describe("syncRequirementTags", () => {
     await expect(syncRequirementTags(R, Array.from({ length: 11 }, (_, i) => `t${i}`), executor)).rejects.toBeInstanceOf(
       TagLimitError
     );
+  });
+});
+
+describe("updateCoverageSnapshot", () => {
+  it("recomputes status and pass/fail counts, not just linkedTestCount", async () => {
+    const sets: Record<string, unknown>[] = [];
+    let call = 0;
+    const executor = {
+      select: () => ({
+        from: () => {
+          const n = call++;
+          if (n === 0) return { where: () => Promise.resolve([{ testId: "a" }, { testId: "b" }]) };
+          const q: Record<string, unknown> = {};
+          q.innerJoin = () => q;
+          q.where = () => q;
+          q.orderBy = () => Promise.resolve([
+            { testId: "a", status: "failed" },
+            { testId: "a", status: "passed" },
+            { testId: "b", status: "passed" },
+          ]);
+          return q;
+        },
+      }),
+      update: () => ({ set: (v: Record<string, unknown>) => { sets.push(v); return { where: () => Promise.resolve() }; } }),
+    };
+    await updateCoverageSnapshot(R, executor as never);
+    expect(sets[0]).toMatchObject({ status: "failing", linkedTestCount: 2, passedTestCount: 1, failedTestCount: 1 });
   });
 });

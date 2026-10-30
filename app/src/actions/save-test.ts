@@ -141,25 +141,17 @@ export async function saveTest(
     if (validatedData.id) {
       const testId = validatedData.id;
 
-      // Remove the id from the data to update
-
-      const {
-        id: _,
-        requirementId: _requirementId,
-        ...updateData
-      } = validatedData;
-
-      // Update the test in the database
+      // Update the test in the database; explicit fields only, so client input
+      // cannot overwrite ownership columns such as createdByUserId.
       const updatedTests = await db
         .update(tests)
         .set({
-          ...updateData,
+          title: validatedData.title,
+          description: validatedData.description,
           script: scriptToSave,
           updatedAt: new Date(),
-          priority: updateData.priority as TestPriority,
+          priority: validatedData.priority as TestPriority,
           type: resolvedType as TestType,
-          organizationId: organizationId,
-          projectId: project.id,
         })
         .where(
           and(

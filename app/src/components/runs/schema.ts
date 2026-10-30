@@ -9,7 +9,7 @@ export const runSchema = z.object({
   jobId: z.string(),
   jobName: z.string().optional(),
   jobType: z.enum(["playwright", "k6"]).optional(),
-  status: z.enum(["pending", "queued", "running", "passed", "failed", "skipped", "error"]),
+  status: z.enum(["queued", "running", "passed", "failed", "error", "blocked"]),
   duration: z.string().nullable().optional(),
   startedAt: z.string().nullable().optional(),
   completedAt: z.string().nullable().optional(),
