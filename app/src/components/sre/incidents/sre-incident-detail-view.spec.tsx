@@ -387,16 +387,12 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     expect(screen.getByRole("menuitem", { name: "Run investigation" })).toBeInTheDocument();
   });
 
-  it("hides Edit, Ask Copilot and Re-run from viewers but keeps the investigation map", () => {
+  it("shows viewers no actions menu, since every item needs update or investigate access", () => {
     const detail = detailFixture();
     detail.permissions.canUpdate = false;
     detail.permissions.canInvestigate = false;
     render(<SreIncidentDetailView detail={detail} services={[]} />);
-    openMenu();
-    expect(screen.getByRole("menuitem", { name: "Investigation Map" })).toBeInTheDocument();
-    for (const name of [/^Edit$/, /Ask Copilot/, /investigation$/i, /^Resolve$/]) {
-      expect(screen.queryByRole("menuitem", { name })).not.toBeInTheDocument();
-    }
+    expect(screen.queryByRole("button", { name: "More actions" })).not.toBeInTheDocument();
   });
 
   it("shows Acknowledge, then Resolve, then Post-mortem as the incident progresses", () => {

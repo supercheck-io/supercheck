@@ -8,7 +8,6 @@ export const SRE_QUERY_KEYS = {
   similarIncidents: ["sre", "similar-incidents"] as const,
   services: ["sre", "services"] as const,
   serviceDetails: ["sre", "service-detail"] as const,
-  evidenceGraph: ["sre", "evidence-graph"] as const,
   copilotHistories: ["sre", "copilot-histories"] as const,
   admin: ["sre", "admin"] as const,
 };
@@ -44,10 +43,6 @@ export function getSreServiceDetailQueryKey(
   serviceId: string,
 ) {
   return [...SRE_QUERY_KEYS.serviceDetails, projectId, serviceId] as const;
-}
-
-export function getSreEvidenceGraphQueryKey(projectId: string | null) {
-  return [...SRE_QUERY_KEYS.evidenceGraph, projectId] as const;
 }
 
 export function getSreCopilotHistoriesQueryKey(projectId: string | null) {

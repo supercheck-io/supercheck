@@ -23,7 +23,6 @@ import {
   Target,
   Bot,
   Network,
-  BrainCircuit,
   Siren,
   UserCog,
   Boxes,
@@ -95,7 +94,6 @@ export function CommandSearch({
         ...(canInvestigateSre
           ? {
               "investigation-chat": "/copilot",
-              "evidence-graph": "/copilot/evidence-graph",
             }
           : {}),
 
@@ -242,12 +240,6 @@ export function CommandSearch({
                     >
                       <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
                       <span>Copilot</span>
-                    </CommandItem>
-                    <CommandItem
-                      onSelect={() => handleCommand("evidence-graph")}
-                    >
-                      <BrainCircuit className="mr-2 h-4 w-4 !text-violet-500" />
-                      <span>Investigation Map</span>
                     </CommandItem>
                   </CommandGroup>
 

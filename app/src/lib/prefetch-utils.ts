@@ -23,13 +23,11 @@
  */
 
 import type { QueryClient } from "@tanstack/react-query";
-import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
 import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import { getSreIncidents } from "@/actions/sre-incidents";
 import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
 import { fetchDashboard, getDashboardQueryKey } from "@/hooks/use-dashboard";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreCopilotHistoriesQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
@@ -296,12 +294,6 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     "/incidents": {
       queryKey: [...getSreIncidentsQueryKey(projectId), "active"],
       queryFn: () => getSreIncidents({ scope: "active" }),
-      staleTime: 30_000,
-      persist: false,
-    },
-    "/copilot/evidence-graph": {
-      queryKey: getSreEvidenceGraphQueryKey(projectId),
-      queryFn: getSreEvidenceGraphAction,
       staleTime: 30_000,
       persist: false,
     },

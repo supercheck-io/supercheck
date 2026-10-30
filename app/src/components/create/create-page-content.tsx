@@ -9,7 +9,6 @@ import {
   FileText,
   FolderOpen,
   KeyRound,
-  BrainCircuit,
   RadioTower,
   Shield,
   Siren,
@@ -193,12 +192,6 @@ export function CreatePageContent({
           title: "Copilot",
           description: "Start read-only triage",
           onClick: () => router.push("/copilot"),
-        },
-        {
-          icon: <BrainCircuit size={20} className="text-violet-500" />,
-          title: "Investigation Map",
-          description: "Trace incident context",
-          onClick: () => router.push("/copilot/evidence-graph"),
         },
         {
           icon: <Siren size={20} className="text-rose-500" />,

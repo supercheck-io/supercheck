@@ -82,7 +82,6 @@ import { useAppConfig } from "@/hooks/use-app-config";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreAdminQueryKey,
-  getSreEvidenceGraphQueryKey,
   SRE_QUERY_KEYS,
 } from "@/lib/sre/query-keys";
 import { updateOrganizationNameSchema } from "@/lib/validations/organization";
@@ -608,9 +607,6 @@ function OrgAdminDashboardContent() {
 
   const handleSreSetupChanged = () => {
     void queryClient.invalidateQueries({ queryKey: SRE_QUERY_KEYS.admin });
-    void queryClient.invalidateQueries({
-      queryKey: getSreEvidenceGraphQueryKey(projectId),
-    });
     setSreSetupLoaded(false);
     setDiagnosticLoaded(false);
   };

@@ -1,6 +1,5 @@
 import {
   getSreAdminQueryKey,
-  getSreEvidenceGraphQueryKey,
   getSreIncidentDetailQueryKey,
   getSreIncidentsQueryKey,
   getSreServiceDetailQueryKey,
@@ -10,9 +9,6 @@ describe("SRE query keys", () => {
   it("isolates cached data by project", () => {
     expect(getSreIncidentsQueryKey("project-a")).not.toEqual(
       getSreIncidentsQueryKey("project-b"),
-    );
-    expect(getSreEvidenceGraphQueryKey("project-a")).not.toEqual(
-      getSreEvidenceGraphQueryKey("project-b"),
     );
   });
 

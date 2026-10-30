@@ -9,7 +9,6 @@ import { generateSreEvidenceBrief } from "@/actions/sre-evidence";
 import { Button } from "@/components/ui/button";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentDetailQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
@@ -170,9 +169,6 @@ export function GenerateEvidenceBriefButton({
       }),
       queryClient.invalidateQueries({
         queryKey: getSreIncidentsQueryKey(projectId),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: getSreEvidenceGraphQueryKey(projectId),
       }),
     ]);
 

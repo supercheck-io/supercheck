@@ -187,11 +187,6 @@ describe("ServiceDetailView", () => {
       screen.queryByRole("button", { name: "Reject" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Configure access required")).toBeInTheDocument();
-    expect(
-      screen
-        .getByRole("link", { name: "Investigation Map" })
-        .querySelector(".lucide-brain-circuit"),
-    ).toBeInTheDocument();
   });
 
   it("shows topology management actions with edit access", () => {

@@ -85,58 +85,6 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
       await page.getByRole("tab", {name:/Dependencies/}).click();
       await expect(page.getByText(targetName, { exact: true })).toBeVisible();
 
-      await page.goto("/copilot/evidence-graph", { waitUntil: "load" });
-      await waitForHydration(page);
-      await expect(page.getByText(sourceName, { exact: true })).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(page.getByText(targetName, { exact: true })).toBeVisible();
-      await page.getByLabel("Map view").click();
-      await expect(page.getByRole("option")).toHaveText([
-        "Essentials",
-        "Services & incidents",
-        "Changes",
-        "Investigations",
-        "All details",
-      ]);
-      await page
-        .getByRole("option", { name: "All details", exact: true })
-        .click();
-      await page.getByPlaceholder("Search topology...").fill(sourceName);
-      await expect(page.getByLabel(`Service: ${sourceName}`)).toBeVisible();
-      await expect(page.getByLabel(`Service: ${targetName}`)).toHaveCount(0);
-      await page.getByRole("button", { name: "Clear", exact: true }).click();
-      await expect(page.getByLabel(`Service: ${targetName}`)).toBeVisible();
-      await page.locator(".react-flow__edge").first().click({ force: true });
-      const relationshipDetails = page.getByRole("dialog", {
-        name: /Relationship:/,
-      });
-      await expect(relationshipDetails).toContainText("Direction");
-      await expect(relationshipDetails).toContainText(sourceName);
-      await expect(relationshipDetails).toContainText(targetName);
-      await expect(relationshipDetails).toContainText("Provenance");
-      await expect(relationshipDetails).toContainText("manual");
-      await relationshipDetails
-        .getByRole("button", { name: "Close", exact: true })
-        .click();
-
-      await page.getByLabel(`Service: ${sourceName}`).click();
-      const nodeDetails = page.getByRole("dialog", {
-        name: `Service: ${sourceName}`,
-      });
-      await expect(nodeDetails).toContainText(sourceName);
-      await expect(nodeDetails).toContainText(targetName);
-      const serviceDetailsLink = nodeDetails.getByRole("link", {
-        name: "View details",
-      });
-      await expect(serviceDetailsLink).toHaveAttribute(
-        "href",
-        `/services/${sourceId}`,
-      );
-      await nodeDetails
-        .getByRole("button", { name: "Close", exact: true })
-        .click();
-
       const viewerSwitch = await viewerPage.request.post(
         "/api/projects/switch",
         { data: { projectId } },

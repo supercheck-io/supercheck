@@ -46,7 +46,7 @@ describe("ResolveSreIncidentDialog", () => {
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Resolve incident" }),
     );
-    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(4));
     expect(fetch).toHaveBeenCalledWith(
       "/api/sre/incidents/incident-1/resolve",
       expect.objectContaining({

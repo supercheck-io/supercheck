@@ -8,7 +8,6 @@ import {
   Activity,
   ArrowDownLeft,
   ArrowUpRight,
-  BrainCircuit,
   Boxes,
   Check,
   ExternalLink,
@@ -55,7 +54,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreServiceDetailQueryKey,
 } from "@/lib/sre/query-keys";
 
@@ -200,9 +198,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
       getSreServiceDetailQueryKey(projectId, detail.service.id),
       result,
     );
-    await queryClient.invalidateQueries({
-      queryKey: getSreEvidenceGraphQueryKey(projectId),
-    });
     return true;
   };
 
@@ -309,12 +304,6 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/copilot/evidence-graph?service=${detail.service.id}`}>
-              <BrainCircuit className="h-4 w-4" />
-              Investigation Map
-            </Link>
-          </Button>
           <Button
             variant="outline"
             onClick={() =>

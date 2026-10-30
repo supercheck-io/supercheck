@@ -32,7 +32,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
@@ -97,9 +96,6 @@ export function NewIncidentAction() {
         }),
         queryClient.invalidateQueries({
           queryKey: getSreIncidentAnalyticsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreEvidenceGraphQueryKey(projectId),
         }),
       ]);
       router.push(`/incidents/${result.incident.id}`);
