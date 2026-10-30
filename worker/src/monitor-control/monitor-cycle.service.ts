@@ -248,18 +248,13 @@ export class MonitorCycleService {
           expected.length,
         )
       ) {
-        const previousState = this.evaluator.readAggregatedAlertState(
-          monitor.config,
-        );
         evaluation.alertState = {
-          ...(monitor.alertConfig?.enabled &&
-          !['pending', 'paused'].includes(previousStatus)
-            ? this.evaluator.getNextAggregatedAlertState(
-                previousState,
-                previousStatus,
-                decision.status,
-              )
-            : previousState),
+          ...this.evaluator.advanceAggregatedAlertState(
+            monitor.alertConfig?.enabled,
+            monitor.config,
+            previousStatus,
+            decision.status,
+          ),
           executionGroupId: cycle.id,
         };
       }

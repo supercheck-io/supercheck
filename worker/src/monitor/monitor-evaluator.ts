@@ -142,6 +142,24 @@ export class MonitorEvaluator {
     };
   }
 
+  /** Counters after one multi-location cycle. Shared by the legacy and control-plane cycle paths. */
+  advanceAggregatedAlertState(
+    alertEnabled: boolean | undefined,
+    monitorConfig: MonitorConfig | null | undefined,
+    previousStatus: string,
+    currentStatus: 'up' | 'down',
+  ): AggregatedAlertState {
+    const previousState = this.readAggregatedAlertState(monitorConfig);
+    // 'pending' must count: its first real observation is cycle 1 (as for single-location).
+    return alertEnabled && previousStatus !== 'paused'
+      ? this.getNextAggregatedAlertState(
+          previousState,
+          previousStatus,
+          currentStatus,
+        )
+      : previousState;
+  }
+
   async persistAggregatedAlertState(
     monitorId: string,
     monitorConfig: MonitorConfig | null | undefined,
@@ -508,16 +526,13 @@ export class MonitorEvaluator {
         currentStatus,
       };
       if (this.isMultiLocationEvaluation(monitor.config, resultCount)) {
-        const previousState = this.readAggregatedAlertState(monitor.config);
         evaluation.alertState = {
-          ...(monitor.alertConfig?.enabled &&
-          !['pending', 'paused'].includes(previousStatus)
-            ? this.getNextAggregatedAlertState(
-                previousState,
-                previousStatus,
-                currentStatus,
-              )
-            : previousState),
+          ...this.advanceAggregatedAlertState(
+            monitor.alertConfig?.enabled,
+            monitor.config,
+            previousStatus,
+            currentStatus,
+          ),
           executionGroupId,
         };
       }
