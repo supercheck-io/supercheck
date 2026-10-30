@@ -529,6 +529,27 @@ describe('NotificationService', () => {
       expect(result.results[0].error).not.toContain(path);
     });
 
+    it('redacts a lone token segment or query value echoed by the provider', async () => {
+      const provider: NotificationProvider = {
+        id: 'p-parts',
+        type: 'slack',
+        config: {
+          webhookUrl:
+            'https://hooks.slack.com/services/T0001/B0002/SecretTokenSegment?key=queryValue123',
+        },
+      };
+      mockFetch.mockResolvedValue(
+        failResponse('bad token SecretTokenSegment, key queryValue123'),
+      );
+      const result = await service.sendNotificationToMultipleProviders(
+        [provider],
+        basePayload,
+      );
+      const error = result.results[0].error ?? '';
+      expect(error).not.toContain('SecretTokenSegment');
+      expect(error).not.toContain('queryValue123');
+    });
+
     it('re-checks the provider host allowlist before sending', async () => {
       const bad: NotificationProvider = {
         id: 'p-bad',

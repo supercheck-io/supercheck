@@ -110,9 +110,16 @@ describe("audit, conflicts and ordering", () => {
 
   it("audits project deletion", async () => {
     (db.select as jest.Mock).mockReturnValue(row(false));
-    set.mockReturnValue({ where: async () => undefined });
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
     expect((await del()).status).toBe(200);
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted", resourceId: ID, organizationId: "org-1" }));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted", resourceId: ID, organizationId: "org-1", metadata: expect.objectContaining({ projectName: "n", projectSlug: "s" }) }));
+  });
+
+  it("does not audit a deletion that lost the race to another delete", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(false));
+    set.mockReturnValue({ where: () => ({ returning: async () => [] }) });
+    expect((await del()).status).toBe(404);
+    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
   });
 
   it("checks delete permission before revealing the default project", async () => {

@@ -1759,6 +1759,12 @@ export class NotificationService {
         const parsed = new URL(secret);
         variants.add(parsed.href);
         if (parsed.pathname.length > 1) variants.add(parsed.pathname);
+        // Providers can echo just one component, so redact each long path segment and query value too.
+        for (const part of [
+          ...parsed.pathname.split('/'),
+          ...parsed.searchParams.values(),
+        ])
+          if (part.length >= 8) variants.add(part);
       } catch {
         // not a URL (e.g. bot token)
       }

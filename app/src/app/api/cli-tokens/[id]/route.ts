@@ -79,7 +79,7 @@ export async function PATCH(
     // Verify the token belongs to this project and is a CLI token (no jobId)
     if (!isUuid((await params).id)) return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
     const tokenRecord = await db
-      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId, enabled: apikey.enabled })
+      .select({ id: apikey.id, projectId: apikey.projectId, jobId: apikey.jobId, ownerId: apikey.referenceId, enabled: apikey.enabled, name: apikey.name })
       .from(apikey)
       .where(
         and(
@@ -108,11 +108,13 @@ export async function PATCH(
       if (enabled === true || name !== undefined) await lockProjectForKeyIssuance(tx, context.project.id);
       if (enabled === true) {
         // Re-read under the lock: the pre-read may be stale.
-        const [current] = await tx.select({ enabled: apikey.enabled }).from(apikey).where(eq(apikey.id, tokenId)).limit(1);
+        // Row-locked so a concurrent revocation cannot be overwritten; ownership is re-checked on the locked row.
+        const [current] = await tx.select({ enabled: apikey.enabled, ownerId: apikey.referenceId }).from(apikey).where(eq(apikey.id, tokenId)).limit(1).for("update");
         if (!current) return "gone" as const;
+        if (current.enabled !== true && current.ownerId !== context.userId) return "forbidden" as const;
         if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
       }
-      if (name !== undefined) {
+      if (name !== undefined && name !== tokenRecord[0].name) {
         // Same uniqueness rule as issuance (cli-key-service), under the same lock.
         const [dup] = await tx.select({ id: apikey.id }).from(apikey).where(and(eq(apikey.projectId, context.project.id), isNull(apikey.jobId), eq(apikey.name, name), ne(apikey.id, tokenId))).limit(1);
         if (dup) return "name_conflict" as const;
@@ -122,6 +124,9 @@ export async function PATCH(
     });
     if (updated === "gone") {
       return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
+    }
+    if (updated === "forbidden") {
+      return NextResponse.json({ error: "Only the token's owner can re-enable it" }, { status: 403 });
     }
     if (updated === "name_conflict") {
       return NextResponse.json({ error: "A CLI token with this name already exists in this project" }, { status: 409 });

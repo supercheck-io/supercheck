@@ -13,6 +13,27 @@ function allowsDevelopmentPrivateNetworks() {
   return process.env.NODE_ENV === 'development' && selfHosted;
 }
 
+/** Rejects when the signal aborts so a slow DNS answer cannot outlive the caller's timeout. */
+function abortable<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal | null,
+): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      const reason: unknown = signal.reason;
+      reject(
+        reason instanceof Error ? reason : new Error('Webhook request aborted'),
+      );
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 export async function fetchPublicEndpoint(
   input: string | URL,
   init: RequestInit = {},
@@ -24,7 +45,10 @@ export async function fetchPublicEndpoint(
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
   const addresses = isIP(hostname)
     ? [{ address: hostname, family: isIP(hostname) }]
-    : await lookup(hostname, { all: true, verbatim: true });
+    : await abortable(
+        lookup(hostname, { all: true, verbatim: true }),
+        init.signal,
+      );
   if (
     addresses.length === 0 ||
     addresses.some(({ address }) => isPrivateOrReservedAddress(address))

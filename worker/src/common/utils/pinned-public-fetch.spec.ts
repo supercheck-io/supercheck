@@ -104,6 +104,17 @@ describe('worker pinned public fetch', () => {
     expect(opts!.headers['content-length']).toBe('6');
   });
 
+  it('aborts while DNS resolution is still pending', async () => {
+    (mockLookup as jest.Mock).mockReturnValueOnce(new Promise(() => undefined));
+    const controller = new AbortController();
+    const pending = fetchPublicEndpoint('https://hooks.example.com/events', {
+      signal: controller.signal,
+    });
+    controller.abort(new Error('timed out'));
+    await expect(pending).rejects.toThrow('timed out');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('rejects private DNS answers before webhook delivery connects', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '127.0.0.1', family: 4 },

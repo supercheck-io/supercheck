@@ -243,7 +243,7 @@ export async function DELETE(
     // Get project to determine organization
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const projectData = await db
-      .select({ organizationId: projects.organizationId, isDefault: projects.isDefault, name: projects.name, slug: projects.slug, description: projects.description })
+      .select({ organizationId: projects.organizationId, isDefault: projects.isDefault })
       .from(projects)
       .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
@@ -255,7 +255,7 @@ export async function DELETE(
       );
     }
     
-    const { organizationId, isDefault, name, slug, description } = projectData[0];
+    const { organizationId, isDefault } = projectData[0];
     
     const canDelete = await hasPermissionForUser(userId, 'project', 'delete', {
       organizationId,
@@ -278,13 +278,19 @@ export async function DELETE(
     }
     
     // Soft delete project (mark as deleted)
-    await db
+    // Guarded + RETURNING: a concurrent delete/rename cannot produce a duplicate or stale audit entry.
+    const [deleted] = await db
       .update(projects)
       .set({
         status: 'deleted',
         updatedAt: new Date()
       })
-      .where(eq(projects.id, projectId));
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
+      .returning({ name: projects.name, slug: projects.slug, description: projects.description });
+
+    if (!deleted) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
 
     await logAuditEvent({
       userId,
@@ -292,7 +298,7 @@ export async function DELETE(
       action: 'project_deleted',
       resource: 'project',
       resourceId: projectId,
-      metadata: { projectName: name, projectSlug: slug, description, organizationId },
+      metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
       success: true,
     });
     

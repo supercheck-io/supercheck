@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 let tokenRows: unknown[] = [];
 let usableCount = 0;
 let dupRow: { id: string } | undefined;
-let lockedRow: { enabled: boolean } | null | undefined;
+let lockedRow: { enabled: boolean; ownerId?: string } | null | undefined;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
 
@@ -19,7 +19,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => (cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }]) }) }) }) }),
+      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: () => { const r = cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled, ownerId: (tokenRows[0] as { ownerId?: string })?.ownerId }]; return Object.assign(Promise.resolve(r), { for: async () => r }); } }) }) }) }),
   };
   return { db };
 });
@@ -108,5 +108,18 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     dupRow = { id: "other" };
     expect((await patch({ name: "CI" })).status).toBe(409);
     expect(updates).toHaveLength(0);
+  });
+
+  it("rejects a non-owner when the locked row was revoked after the pre-read", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: true }];
+    lockedRow = { enabled: false, ownerId: "u2" };
+    expect((await patch({ enabled: true })).status).toBe(403);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("skips the name uniqueness check when the name is unchanged", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true, name: "CI" }];
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(200);
   });
 });
