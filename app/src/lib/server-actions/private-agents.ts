@@ -230,6 +230,10 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
     if (!context.allowed) {
       return { success: false, error: "Insufficient permissions to rotate Private Agent tokens" };
     }
+    // A rotated token becomes a runtime credential that outlives the impersonated session.
+    if (await isImpersonatedSession()) {
+      return { success: false, error: "Private Agent tokens cannot be rotated while impersonating a user" };
+    }
 
     const current = await db.query.privateAgents.findFirst({
       where: and(

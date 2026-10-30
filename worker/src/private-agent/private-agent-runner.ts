@@ -1186,9 +1186,10 @@ async function executeElasticsearch(
     typeof spec.filters.index === 'string' && spec.filters.index.trim()
       ? spec.filters.index.trim()
       : null;
+  // A field name only; anything else could rewrite the time-range clause of the query string.
   const timestampField =
     typeof spec.filters.timestampField === 'string' &&
-    spec.filters.timestampField.trim()
+    /^[A-Za-z0-9_.@-]{1,128}$/.test(spec.filters.timestampField.trim())
       ? spec.filters.timestampField.trim()
       : '@timestamp';
   const searchPath = index

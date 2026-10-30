@@ -1802,9 +1802,10 @@ export class ElasticsearchConnector extends BaseDirectConnector {
       typeof params.filters?.index === "string" && params.filters.index.trim()
         ? params.filters.index.trim()
         : null;
+    // A field name only; anything else could rewrite the time-range clause of the query string.
     const timestampField =
       typeof params.filters?.timestampField === "string" &&
-      params.filters.timestampField.trim()
+      /^[A-Za-z0-9_.@-]{1,128}$/.test(params.filters.timestampField.trim())
         ? params.filters.timestampField.trim()
         : "@timestamp";
     const searchPath = index

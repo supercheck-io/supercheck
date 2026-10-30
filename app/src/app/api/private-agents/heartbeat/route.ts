@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
+
 import { privateAgentCredentials, privateAgentHeartbeats, privateAgents } from "@/db/schema";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../jobs/auth";
@@ -14,7 +16,8 @@ const heartbeatSchema = z.object({
   agentVersion: z.string().trim().min(1).max(50),
   activeJobCount: z.number().int().min(0).max(1000).default(0),
   latencyMs: z.number().int().min(0).max(300_000).optional().nullable(),
-  errorCode: z.string().trim().max(100).optional().nullable(),
+  // Agents may echo hostnames or tokens from upstream errors; this text is stored and shown in the UI.
+  errorCode: z.string().trim().max(100).transform(redactConnectorText).optional().nullable(),
   capabilities: z
     .object({
       supportsSreConnectors: z.boolean().default(true),

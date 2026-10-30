@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import {
+  capResponseBody,
   createAgentPinnedLookup,
   requestPrivateAgentEndpoint,
 } from './private-agent-endpoint';
@@ -16,7 +17,16 @@ describe('Private Agent endpoint transport', () => {
     global.fetch = originalFetch;
   });
 
-  it.each(['127.0.0.2', '169.254.169.254', '::1', '::ffff:127.0.0.1'])(
+  it.each([
+    '127.0.0.2',
+    '169.254.169.254',
+    '::1',
+    '::ffff:127.0.0.1',
+    '::ffff:169.254.169.254',
+    '100.100.100.200',
+    '168.63.129.16',
+    'fd00:ec2::254',
+  ])(
     'rejects forbidden resolved address %s before fetch',
     async (address) => {
       mockLookup.mockResolvedValueOnce([
@@ -78,5 +88,14 @@ describe('Private Agent endpoint transport', () => {
     expect(callback).toHaveBeenCalledWith(null, [
       { address: '10.0.0.5', family: 4 },
     ]);
+  });
+
+  it('errors once a response body passes the byte cap', async () => {
+    await expect(
+      capResponseBody(new Response('x'.repeat(11)), 10).text(),
+    ).rejects.toThrow('exceeded 10 bytes');
+    await expect(
+      capResponseBody(new Response('x'.repeat(10)), 10).text(),
+    ).resolves.toHaveLength(10);
   });
 });

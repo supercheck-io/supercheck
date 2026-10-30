@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
+import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
+
 import { privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { hashConnectorPayload } from "@/lib/sre/connectors";
@@ -25,7 +27,8 @@ const resultSchema = z.object({
   resultHash: z.string().regex(/^[a-f0-9]{64}$/i).optional().nullable(),
   evidence: z.array(evidenceSummarySchema).max(100).optional().default([]),
   truncated: z.boolean().optional().default(false),
-  errorCode: z.string().trim().max(100).optional().nullable(),
+  // Agents may echo hostnames or tokens from upstream errors; this text is stored and shown in the UI.
+  errorCode: z.string().trim().max(100).transform(redactConnectorText).optional().nullable(),
   durationMs: z.number().int().min(0).max(24 * 60 * 60 * 1000).optional().nullable(),
 });
 

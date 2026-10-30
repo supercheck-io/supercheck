@@ -34,6 +34,17 @@ beforeEach(() => {
   mockImpersonated.mockResolvedValue(false);
 });
 
+describe("rotatePrivateAgentToken", () => {
+  it("refuses while a super admin is impersonating, before touching the agent", async () => {
+    mockImpersonated.mockResolvedValue(true);
+    const result = await rotatePrivateAgentToken({ id: "018f0000-0000-7000-8000-000000000001" });
+    expect(result.success).toBe(false);
+    expect(String((result as { error?: string }).error)).toMatch(/impersonating/);
+    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("registerPrivateAgent", () => {
   it("refuses while a super admin is impersonating, before creating anything", async () => {
     mockImpersonated.mockResolvedValue(true);
