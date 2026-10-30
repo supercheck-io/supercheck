@@ -10,7 +10,7 @@ jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: {} }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/session-security", () => ({ getClientIP: jest.fn(() => "127.0.0.1") }));
 jest.mock("@/lib/rbac/middleware", () => ({ requireAuth: jest.fn(async () => ({ user: { id: "user-1" } })) }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), checkAICreditAvailable: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));
@@ -39,7 +39,7 @@ describe("AI create-test input bounds", () => {
     const response = await post({ userRequest: "write a login test", testType: "playwright", currentScript: "x".repeat(50_001) });
     expect(response.status).toBe(400);
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
-    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
   });
 
   it("requires an active organization before any AI call or credit charge", async () => {
@@ -47,7 +47,7 @@ describe("AI create-test input bounds", () => {
     const response = await post({ userRequest: "write a login test", testType: "playwright" });
     expect(response.status).toBe(400);
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
-    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
   });
 
   it("maps the capitalised rate-limit error from AuthService to 429", async () => {

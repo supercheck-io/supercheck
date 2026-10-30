@@ -4,7 +4,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: { genera
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6FixPrompt: jest.fn(() => "prompt"), generateGuidanceMessage: jest.fn(() => "Retry after the report is ready") } }));
 jest.mock("@/lib/ai/ai-service", () => ({ AIFixService: { generateScriptFix: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), checkAICreditAvailable: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn() } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
@@ -30,14 +30,14 @@ describe("streaming AI Fix artifact access", () => {
     jest.mocked(AuthService.validateUserAccess).mockResolvedValue({ user: { id: "user", email: "user@example.test", organizationId: "org" } });
     jest.mocked(AuthService.canAccessTestReport).mockResolvedValue(true);
     jest.mocked(getActiveOrganization).mockResolvedValue({ id: "org" } as never);
-    jest.mocked(usageTracker.consumeAICredit).mockResolvedValue({ allowed: true } as never);
+    jest.mocked(usageTracker.checkAICreditAvailable).mockResolvedValue({ allowed: true } as never);
     jest.mocked(db.query.runs.findFirst).mockResolvedValue({ id: "latest-run-id" } as never);
     jest.mocked(AIStreamingService.generateStreamingResponse).mockResolvedValue({ stream: new ReadableStream({ start: (controller) => controller.close() }), model: "test" });
   });
   it("denies unauthorized reports before consuming credit or loading artifacts", async () => {
     jest.mocked(AuthService.canAccessTestReport).mockResolvedValue(false);
     expect((await POST(request())).status).toBe(404);
-    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
     expect(db.query.runs.findFirst).not.toHaveBeenCalled();
   });
   it.each([["streaming", POST], ["regular", fixTest]] as const)("does not consume AI credit when the %s fix has no report", async (_name, post) => {
@@ -46,7 +46,7 @@ describe("streaming AI Fix artifact access", () => {
       body: JSON.stringify({ testId: "saved-test-id", testType: "browser", failedScript: "test('example', async () => {})" }) }));
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ reason: "report_not_available" });
-    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
   });
   it.each([["streaming", POST], ["regular", fixTest]] as const)("reads the %s Playwright report from the newest run's directory, not the test id", async (_name, post) => {

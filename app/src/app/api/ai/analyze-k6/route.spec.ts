@@ -11,7 +11,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6AnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), checkAICreditAvailable: jest.fn() } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/s3-proxy", () => ({ getS3FileContent: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));

@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
 
       // Atomically consume AI credit (prevents race conditions)
       // This increments first, then checks limit, and rolls back if exceeded
-      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_create");
+      const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
       if (!creditResult.allowed) {
         return NextResponse.json(
           {
@@ -169,6 +169,8 @@ export async function POST(request: NextRequest) {
     // Step 4: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
+      // Charge only once the provider has produced output.
+      onFirstContent: async () => { await usageTracker.consumeAICredit(activeOrg.id, "ai_create"); },
       userId, orgId, tier,
       prompt,
       maxTokens: 4000,

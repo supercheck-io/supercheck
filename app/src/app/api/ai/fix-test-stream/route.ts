@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Charge only after report and prompt prerequisites succeed.
-    const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+    const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
     if (!creditResult.allowed) {
       return NextResponse.json(
         {
@@ -276,6 +276,8 @@ export async function POST(request: NextRequest) {
     // Step 4: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
+      // Charge only once the provider has produced output.
+      onFirstContent: async () => { await usageTracker.consumeAICredit(activeOrg.id, "ai_fix"); },
       userId: session.user.id,
       orgId: activeOrg.id,
       tier: session.tier,

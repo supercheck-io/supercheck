@@ -25,6 +25,8 @@ interface AIStreamRequest {
   // Idempotency key to prevent duplicate requests
   idempotencyKey?: string;
   signal?: AbortSignal;
+  // Called once, before the first non-empty chunk is sent (billing hook).
+  onFirstContent?: () => Promise<void>;
 }
 
 interface AIStreamResponse {
@@ -145,6 +147,7 @@ export class AIStreamingService {
     tier,
     idempotencyKey,
     signal,
+    onFirstContent,
   }: AIStreamRequest): Promise<AIStreamResponse> {
     const startTime = Date.now();
 
@@ -254,8 +257,17 @@ export class AIStreamingService {
             );
 
             // Stream the text chunks
+            let charged = !onFirstContent;
             for await (const chunk of result.textStream) {
               if (cancelled || signal?.aborted) return;
+              if (!charged && chunk.length > 0) {
+                charged = true;
+                try {
+                  await onFirstContent!();
+                } catch (e) {
+                  console.error("[AI Streaming Service] onFirstContent failed:", e);
+                }
+              }
               chunkCount++;
               totalContentLength += chunk.length;
               collectedContent.push(chunk); // Collect for idempotency caching

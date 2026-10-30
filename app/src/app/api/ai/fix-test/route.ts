@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     const consumeCredit = async () => {
-      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+      const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
       if (!creditResult.allowed) {
         return NextResponse.json(
           {
@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
             temperature: 0.2,
             testType: testType as "browser" | "api" | "custom" | "database",
           });
+          await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
 
           const sanitizedScript = AISecurityService.sanitizeCodeOutput(
             aiResponse.fixedScript
@@ -279,6 +280,7 @@ export async function POST(request: NextRequest) {
       temperature: 0.1, // Low temperature for consistent, reliable fixes
       testType: testType as "browser" | "api" | "custom" | "database",
     });
+    await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
 
     // Step 9: Validate and sanitize AI output
     const sanitizedScript = AISecurityService.sanitizeCodeOutput(

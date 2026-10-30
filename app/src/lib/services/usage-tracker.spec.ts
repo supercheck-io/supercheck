@@ -102,4 +102,13 @@ describe("AI credit admission", () => {
     await expect(tracker.consumeAICredit("org-1", "ai_fix")).resolves.toEqual({ allowed: true });
     expect(db.update).not.toHaveBeenCalled();
   });
+
+  it("pre-flight check rejects an exhausted org with 429 without writing", async () => {
+    const lim = jest.fn().mockResolvedValue([{ aiCreditsUsed: 100 }]);
+    jest.mocked(db.select).mockReturnValue({ from: () => ({ where: () => ({ limit: lim }) }) } as never);
+    await expect(tracker.checkAICreditAvailable("org-1")).resolves.toMatchObject({ allowed: false, status: 429, used: 100, limit: 100 });
+    lim.mockResolvedValue([{ aiCreditsUsed: 99 }]);
+    await expect(tracker.checkAICreditAvailable("org-1")).resolves.toMatchObject({ allowed: true });
+    expect(db.update).not.toHaveBeenCalled();
+  });
 });

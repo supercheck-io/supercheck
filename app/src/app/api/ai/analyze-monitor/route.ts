@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Atomically consume AI credit
-    const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
+    const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
     if (!creditResult.allowed) {
       return NextResponse.json(
         {
@@ -277,6 +277,8 @@ export async function POST(request: NextRequest) {
     // Step 10: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
+      // Charge only once the provider has produced output.
+      onFirstContent: async () => { await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze"); },
       userId: session.user.id,
       orgId: activeOrg.id,
       tier: session.tier,
