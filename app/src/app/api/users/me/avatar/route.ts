@@ -8,6 +8,7 @@ import { checkAdminRateLimit } from "@/lib/session-security";
 import {
   AVATAR_MAX_BYTES, avatarPath, avatarVersionOf, deleteAvatar, detectAvatarType, newAvatarVersion, pruneAvatars, putAvatar,
 } from "@/lib/user-avatar";
+import { isAvatarPreset } from "@/lib/avatar-presets";
 
 const err = (error: string, status: number, extra?: HeadersInit) =>
   NextResponse.json({ error }, { status, headers: extra });
@@ -25,6 +26,13 @@ async function previousVersion(userId: string) {
   return avatarVersionOf(userId, row?.image);
 }
 
+async function rateLimited(userId: string, key: string, message: string) {
+  const limit = await checkAdminRateLimit(userId, key, 10, 10 * 60 * 1000);
+  if (limit.allowed) return null;
+  const retry = Math.max(1, Math.ceil(((limit.resetTime ?? Date.now()) - Date.now()) / 1000));
+  return err(message, 429, { "Retry-After": String(retry) });
+}
+
 async function setImage(image: string | null) {
   await auth.api.updateUser({ headers: await headers(), body: { image } });
 }
@@ -32,12 +40,8 @@ async function setImage(image: string | null) {
 export async function POST(request: NextRequest) {
   const s = await currentSession();
   if (s.error) return s.error;
-
-  const limit = await checkAdminRateLimit(s.userId, "avatar-upload", 10, 10 * 60 * 1000);
-  if (!limit.allowed) {
-    const retry = Math.max(1, Math.ceil(((limit.resetTime ?? Date.now()) - Date.now()) / 1000));
-    return err("Too many uploads. Try again later.", 429, { "Retry-After": String(retry) });
-  }
+  const limited = await rateLimited(s.userId, "avatar-upload", "Too many uploads. Try again later.");
+  if (limited) return limited;
 
   // Reject oversized bodies before buffering them (multipart overhead is small).
   const lengthHeader = request.headers.get("content-length");
@@ -68,17 +72,37 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ image: avatarPath(s.userId, version) });
 }
 
+/** Point user.image at a preset (or nothing) and delete the uploaded object it replaces. */
+async function replaceUpload(userId: string, image: string | null) {
+  const previous = await previousVersion(userId);
+  try {
+    await setImage(image);
+  } catch (error) {
+    console.error("[AVATAR] Update failed:", error);
+    return err(image ? "Failed to update image" : "Failed to remove image", 500);
+  }
+  if (previous) await deleteAvatar(userId, previous);
+  await pruneAvatars(userId, null);
+  return NextResponse.json({ image });
+}
+
+/** Choose a preset avatar: `{ "preset": "/avatars/notionists-01.svg" }`. */
+export async function PUT(request: NextRequest) {
+  const s = await currentSession();
+  if (s.error) return s.error;
+  const limited = await rateLimited(s.userId, "avatar-preset", "Too many changes. Try again later.");
+  if (limited) return limited;
+  // The body is a short JSON object; refuse anything larger before buffering it.
+  const length = request.headers.get("content-length");
+  if (!length) return err("Content-Length required", 411);
+  if (!(Number(length) <= 1024)) return err("Request too large", 413);
+  const preset = ((await request.json().catch(() => null)) as { preset?: unknown } | null)?.preset;
+  if (!isAvatarPreset(preset)) return err("Unknown avatar", 400);
+  return replaceUpload(s.userId, preset);
+}
+
 export async function DELETE() {
   const s = await currentSession();
   if (s.error) return s.error;
-  const previous = await previousVersion(s.userId);
-  try {
-    await setImage(null);
-  } catch (error) {
-    console.error("[AVATAR] Remove failed:", error);
-    return err("Failed to remove image", 500);
-  }
-  if (previous) await deleteAvatar(s.userId, previous);
-  await pruneAvatars(s.userId, null);
-  return NextResponse.json({ image: null });
+  return replaceUpload(s.userId, null);
 }

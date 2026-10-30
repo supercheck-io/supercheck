@@ -12,6 +12,7 @@ jest.mock("@/components/leave-organization-dialog", () => ({ LeaveOrganizationDi
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 import { AccountDialog } from "./account-dialog";
+import { AVATAR_PRESETS, defaultAvatarFor } from "@/lib/avatar-presets";
 
 describe("AccountDialog", () => {
   beforeEach(() => {
@@ -24,7 +25,7 @@ describe("AccountDialog", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("Ada");
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
     expect(screen.getByLabelText("Email")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Change photo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload photo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove photo" })).not.toBeInTheDocument();
     expect(screen.getByText("leave organization row")).toBeInTheDocument();
   });
@@ -45,6 +46,40 @@ describe("AccountDialog", () => {
     fireEvent.change(input, { target: { value: "  Grace  " } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(mockUpdateUser).toHaveBeenCalledWith({ name: "Grace" }));
+  });
+
+  it("keeps Save off until something changes, and shows the default preset as selected", () => {
+    render(<AccountDialog open onOpenChange={jest.fn()} />);
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(screen.getAllByRole("radio")).toHaveLength(AVATAR_PRESETS.length);
+    const index = AVATAR_PRESETS.indexOf(defaultAvatarFor("Ada"));
+    expect(screen.getByRole("radio", { name: `Avatar ${index + 1}` })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("stages a preset and saves it with the name in one Save", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const onOpenChange = jest.fn();
+    render(<AccountDialog open onOpenChange={onOpenChange} />);
+    const other = AVATAR_PRESETS.find((p) => p !== defaultAvatarFor("Ada"))!;
+    fireEvent.click(screen.getByRole("radio", { name: `Avatar ${AVATAR_PRESETS.indexOf(other) + 1}` }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Grace" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(fetchMock).toHaveBeenCalledWith("/api/users/me/avatar", expect.objectContaining({ method: "PUT", body: JSON.stringify({ preset: other }) }));
+    expect(mockUpdateUser).toHaveBeenCalledWith({ name: "Grace" });
+  });
+
+  it("saves the shown default when picked, so a later rename keeps it", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<AccountDialog open onOpenChange={jest.fn()} />);
+    const shown = defaultAvatarFor("Ada");
+    fireEvent.click(screen.getByRole("radio", { name: `Avatar ${AVATAR_PRESETS.indexOf(shown) + 1}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/users/me/avatar", expect.objectContaining({ body: JSON.stringify({ preset: shown }) })));
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
   it("hides Connected apps when MCP is disabled", () => {
