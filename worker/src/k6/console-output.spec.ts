@@ -10,4 +10,15 @@ describe('truncateConsoleOutput', () => {
     expect(out.endsWith('THRESHOLD FAILED')).toBe(true);
     expect(truncateConsoleOutput('short')).toBe('short');
   });
+
+  it('does not leave lone surrogates at the cuts', () => {
+    const out = truncateConsoleOutput(
+      `${'a'.repeat(1999)}😀${'b'.repeat(7999)}😀tail`,
+    );
+    expect(
+      /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(
+        out,
+      ),
+    ).toBe(false);
+  });
 });

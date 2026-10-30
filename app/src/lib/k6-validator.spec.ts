@@ -390,6 +390,9 @@ describe("K6Validator", () => {
         ["duration string", "{ vus: 10, duration: '2h' }"],
         ["duration compound", "{ vus: 10, duration: '1h1m' }"],
         ["ramping-vus scenario stage target", "{ scenarios: { a: { executor: 'ramping-vus', stages: [{ duration: '1m', target: 2000 }] } } }"],
+        ["startVUs", "{ scenarios: { a: { executor: 'ramping-vus', startVUs: 1500, stages: [{ duration: '1m', target: 10 }] } } }"],
+        ["scenario maxDuration", "{ scenarios: { a: { executor: 'shared-iterations', vus: 1, iterations: 1, maxDuration: '2h' } } }"],
+        ["last duplicate vus", "{ vus: 10, vus: 5000, duration: '30s' }"],
         ["stages total", "{ stages: [{ duration: '40m', target: 10 }, { duration: '40m', target: 10 }] }"],
       ])("rejects %s above the limit", (_n, options) => {
         expect(validateK6Script(wrap(options)).valid).toBe(false);
@@ -397,6 +400,7 @@ describe("K6Validator", () => {
 
       it("accepts values at the limit and leaves dynamic values alone", () => {
         expect(errs("{ vus: 1000, duration: '60m' }")).toBe("");
+        expect(errs("{ vus: 5000, vus: 10, duration: '30s' }")).toBe("");
         expect(errs("{ vus: Number(__ENV.VUS), duration: __ENV.DUR }")).toBe("");
         expect(errs("{ stages: [{ duration: '1m', target: 10 }] }")).toBe("");
       });

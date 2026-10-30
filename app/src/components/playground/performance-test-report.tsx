@@ -327,6 +327,7 @@ export function PerformanceTestReport({
 
     // While the stream is down, poll so the UI still reaches a terminal state.
     let statusPoll: ReturnType<typeof setInterval> | null = null;
+    let pollInFlight = false;
     const startStatusPoll = () => {
       statusPoll ??= setInterval(() => void pollRunStatus(), STATUS_POLL_INTERVAL_MS);
     };
@@ -345,6 +346,8 @@ export function PerformanceTestReport({
     };
 
     const pollRunStatus = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       try {
         const details = await fetchK6RunDetails(runId);
         if (!details) {
@@ -361,12 +364,15 @@ export function PerformanceTestReport({
           clearReconnectTimeout();
           cleanupSource();
           setStreamError(null);
+          setShouldStream(false);
           await handleCompletion(
             details.runStatus ?? details.status ?? derivedStatus
           );
         }
       } catch (err) {
         console.error("Failed to poll run status after stream error", err);
+      } finally {
+        pollInFlight = false;
       }
     };
 
@@ -424,9 +430,15 @@ export function PerformanceTestReport({
           if (payload?.line) {
             setStreamError(null);
             stopStatusPoll();
-            setConsoleBuffer((prev) =>
-              (prev + payload.line).slice(-MAX_CONSOLE_BUFFER_CHARS)
-            );
+            setConsoleBuffer((prev) => {
+              const next = prev + payload.line;
+              if (next.length <= MAX_CONSOLE_BUFFER_CHARS) return next;
+              let start = next.length - MAX_CONSOLE_BUFFER_CHARS;
+              const code = next.charCodeAt(start);
+              // Skip a low surrogate that would begin the retained text.
+              if (code >= 0xdc00 && code <= 0xdfff) start += 1;
+              return next.slice(start);
+            });
             recordHeartbeat();
           }
         } catch (err) {

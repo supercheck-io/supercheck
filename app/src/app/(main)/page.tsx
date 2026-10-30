@@ -752,7 +752,7 @@ function DashboardOverview({
 
         <ChartCard
           title="Job Activity"
-          description="Job runs by trigger, last 30 days"
+          description="Playwright job runs by trigger, last 30 days"
           icon={<Activity className={mutedIcon} />}
         >
           {hasJobActivity ? (

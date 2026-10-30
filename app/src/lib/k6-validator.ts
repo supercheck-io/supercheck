@@ -52,15 +52,18 @@ function findOptionLimitErrors(script: string): string[] {
       errors.push(`k6 duration exceeds the maximum of ${K6_MAX_DURATION_MS / 60_000} minutes.`);
   };
   const get = (obj: acorn.ObjectExpression, name: string) =>
-    obj.properties.find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
+    // Last duplicate wins, as in JS/k6.
+    [...obj.properties].reverse().find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
   // Only load keys are checked, so values under tags/env/thresholds are ignored.
   const checkLoad = (obj: acorn.ObjectExpression, stageTargetsAreVus: boolean) => {
-    for (const k of ['vus', 'maxVUs', 'preAllocatedVUs']) {
+    for (const k of ['vus', 'maxVUs', 'preAllocatedVUs', 'startVUs']) {
       const v = get(obj, k);
       if (v) checkVus(k, v);
     }
     const duration = get(obj, 'duration');
     if (duration) checkDuration(duration);
+    const maxDuration = get(obj, 'maxDuration');
+    if (maxDuration) checkDuration(maxDuration);
     const stages = get(obj, 'stages');
     if (stages?.type !== 'ArrayExpression') return;
     // Stages run back to back, so their durations add up.
