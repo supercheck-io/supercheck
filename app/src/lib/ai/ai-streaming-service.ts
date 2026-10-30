@@ -25,8 +25,8 @@ interface AIStreamRequest {
   // Idempotency key to prevent duplicate requests
   idempotencyKey?: string;
   signal?: AbortSignal;
-  // Called once, before the first non-empty chunk is sent (billing hook).
-  onFirstContent?: () => Promise<void>;
+  // Called exactly once if the stream ends or errors without any content (credit refund hook).
+  onNoContent?: () => Promise<void>;
 }
 
 interface AIStreamResponse {
@@ -147,7 +147,7 @@ export class AIStreamingService {
     tier,
     idempotencyKey,
     signal,
-    onFirstContent,
+    onNoContent,
   }: AIStreamRequest): Promise<AIStreamResponse> {
     const startTime = Date.now();
 
@@ -244,6 +244,17 @@ export class AIStreamingService {
 
       // Create a custom readable stream that handles the AI response
       let cancelled = false;
+      let gotContent = false;
+      let noContentSent = false;
+      const reportNoContent = async () => {
+        if (gotContent || noContentSent || !onNoContent) return;
+        noContentSent = true;
+        try {
+          await onNoContent();
+        } catch (e) {
+          console.error("[AI Streaming Service] onNoContent failed:", e);
+        }
+      };
       const stream = new ReadableStream({
         async start(controller) {
           try {
@@ -257,17 +268,9 @@ export class AIStreamingService {
             );
 
             // Stream the text chunks
-            let charged = !onFirstContent;
             for await (const chunk of result.textStream) {
               if (cancelled || signal?.aborted) return;
-              if (!charged && chunk.length > 0) {
-                charged = true;
-                try {
-                  await onFirstContent!();
-                } catch (e) {
-                  console.error("[AI Streaming Service] onFirstContent failed:", e);
-                }
-              }
+              if (chunk.length > 0) gotContent = true;
               chunkCount++;
               totalContentLength += chunk.length;
               collectedContent.push(chunk); // Collect for idempotency caching
@@ -400,11 +403,14 @@ export class AIStreamingService {
               new TextEncoder().encode(`data: ${errorData}\n\n`)
             );
             controller.close();
+          } finally {
+            await reportNoContent();
           }
         },
         cancel() {
           cancelled = true;
           cancellation.abort();
+          void reportNoContent();
         },
       });
 
@@ -421,6 +427,11 @@ export class AIStreamingService {
         "[AI Streaming Service] Failed to initialize streaming:",
         errorMessage
       );
+      try {
+        await onNoContent?.();
+      } catch (e) {
+        console.error("[AI Streaming Service] onNoContent failed:", e);
+      }
       console.error("[AI Streaming Service] Full error:", error);
 
       // Log failure metrics for monitoring

@@ -44,17 +44,12 @@ export function createSecretStream(
 
 /** Shorter values would mangle unrelated output (e.g. "1", "true"), so they are not redacted in reports. */
 export const MIN_REPORT_SECRET_LENGTH = 6;
-const TEXT_REPORT_EXT = new Set([
-  '.html',
-  '.json',
-  '.txt',
-  '.md',
-  '.xml',
-  '.js',
-  '.css',
-]);
+const TEXT_REPORT_EXT = new Set(['.html', '.json', '.txt', '.md', '.xml']);
 
-/** Raw, base64, URL-encoded and JSON-escaped forms of each secret long enough to redact. */
+// Larger text files are skipped (with a warning) instead of read whole into memory.
+const MAX_SCRUB_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Raw, base64, URL-encoded, JSON-escaped and HTML-entity-escaped forms of each secret long enough to redact. */
 export function secretRedactionVariants(
   secrets: Record<string, string>,
 ): string[] {
@@ -66,6 +61,14 @@ export function secretRedactionVariants(
     out.add(Buffer.from(value, 'utf8').toString('base64'));
     out.add(encodeURIComponent(value));
     out.add(JSON.stringify(value).slice(1, -1));
+    out.add(
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;'),
+    );
   }
   return [...out]
     .filter((v) => v.length >= MIN_REPORT_SECRET_LENGTH)
@@ -90,6 +93,12 @@ export async function scrubSecretsFromReportDir(
         entry.isFile() &&
         TEXT_REPORT_EXT.has(path.extname(entry.name).toLowerCase())
       ) {
+        if ((await fs.stat(full)).size > MAX_SCRUB_FILE_BYTES) {
+          console.warn(
+            `Skipping secret scrub of oversized report file: ${entry.name}`,
+          );
+          continue;
+        }
         const original = await fs.readFile(full, 'utf8');
         let text = original;
         for (const v of variants) text = text.split(v).join('[SECRET]');

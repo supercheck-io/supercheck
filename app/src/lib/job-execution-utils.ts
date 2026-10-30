@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { resolveProjectVariables, extractVariableNames } from "./variable-resolver";
 import type { VariableResolutionResult } from "./variable-resolver";
 import { decodeStoredTestScript } from "./test-script";
+import { VariableResolutionError } from "./variable-resolution-error";
 
 /**
  * Interface for processed test script
@@ -48,7 +49,7 @@ export async function applyVariablesToTestScripts(
       .filter((key) => key === undefined || used.has(key));
     if (blocking.length > 0) {
       const keys = [...new Set(blocking.filter((key): key is string => !!key))];
-      throw new Error(
+      throw new VariableResolutionError(
         keys.length > 0
           ? `Project variables could not be resolved: ${keys.join(", ")}`
           : "Project variables could not be resolved"

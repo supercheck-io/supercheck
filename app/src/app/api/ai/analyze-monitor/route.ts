@@ -8,7 +8,7 @@ import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
-import { usageTracker } from "@/lib/services/usage-tracker";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
@@ -57,6 +57,7 @@ async function getTestReportContent(testReportS3Url: string): Promise<string | n
 }
 
 export async function POST(request: NextRequest) {
+  let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Parse and validate input
     const body = await request.json();
@@ -149,25 +150,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Atomically consume AI credit
-    const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
-    if (!creditResult.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
-          message: creditResult.reason,
-          guidance: creditResult.status === 503
-              ? "Billing is temporarily unavailable. Please try again shortly."
-              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
-          usage: {
-            used: creditResult.used,
-            limit: creditResult.limit,
-          },
-        },
-        { status: creditResult.status ?? 429 }
-      );
-    }
 
     // Step 6: Fetch recent results (last 10)
     const recentResults = await db
@@ -275,10 +257,30 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 10: Generate streaming AI response
+    // Reserve a credit atomically before the provider call; refunded if no content.
+    const creditResult = await reserveAICredit(activeOrg.id, "ai_analyze");
+    if (!creditResult.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
+          message: creditResult.reason,
+          guidance: creditResult.status === 503
+              ? "Billing is temporarily unavailable. Please try again shortly."
+              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+          usage: {
+            used: creditResult.used,
+            limit: creditResult.limit,
+          },
+        },
+        { status: creditResult.status ?? 429 }
+      );
+    }
+    refundCredit = creditResult.refund;
+
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
-      // Charge only once the provider has produced output.
-      onFirstContent: async () => { await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze"); },
+      onNoContent: creditResult.refund,
       userId: session.user.id,
       orgId: activeOrg.id,
       tier: session.tier,
@@ -321,6 +323,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    await refundCredit?.();
     console.error("[AI Analyze Monitor] Streaming failed:", error);
 
     const errorMessage =

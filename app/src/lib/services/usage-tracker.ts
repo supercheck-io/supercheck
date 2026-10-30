@@ -19,47 +19,6 @@ import { and, eq, gt, isNotNull, or, sql } from "drizzle-orm";
 
 export class UsageTracker {
   /**
-   * Read-only pre-flight: is at least one AI credit left? Credits are charged
-   * later via consumeAICredit once output exists. Concurrent requests can pass
-   * this check together, so usage may overshoot by the in-flight count.
-   */
-  async checkAICreditAvailable(
-    organizationId: string
-  ): Promise<{ allowed: boolean; reason?: string; used?: number; limit?: number; status?: 429 | 503 }> {
-    if (!organizationId || typeof organizationId !== "string") {
-      return { allowed: false, reason: "A valid organization is required", status: 503 };
-    }
-    if (!isCloudHosted()) return { allowed: true };
-    if (!isPolarEnabled()) {
-      return { allowed: false, reason: "Cloud billing is not configured", status: 503 };
-    }
-    try {
-      const plan = await subscriptionService.getOrganizationPlan(organizationId);
-      const limit = plan.aiCreditsIncluded;
-      const [row] = await db
-        .select({ aiCreditsUsed: organization.aiCreditsUsed })
-        .from(organization)
-        .where(eq(organization.id, organizationId))
-        .limit(1);
-      if (!row) return { allowed: false, reason: "Unable to verify AI credits. Please retry.", status: 503 };
-      const used = row.aiCreditsUsed ?? 0;
-      if (used < limit) return { allowed: true, used, limit };
-      return {
-        allowed: false,
-        reason: plan.id === "trial"
-          ? `You've used all ${limit} AI credits included in your trial. Subscribe to keep using AI features.`
-          : `You've used all ${limit} AI credits included in your ${plan.plan} plan this month. Credits reset at the start of your next billing cycle.`,
-        used,
-        limit,
-        status: 429,
-      };
-    } catch (error) {
-      console.error("[UsageTracker] Failed to check AI credits:", error);
-      return { allowed: false, reason: "Unable to verify AI credits. Please retry.", status: 503 };
-    }
-  }
-
-  /**
    * Atomically consume an AI credit and check if within limit
    *
    * This method uses a single atomic SQL statement to prevent TOCTOU race conditions.
@@ -168,6 +127,22 @@ export class UsageTracker {
       console.error("[UsageTracker] Failed to consume AI credit:", error);
       return { allowed: false, reason: "Unable to verify AI credits. Please retry.", status: 503 };
     }
+  }
+
+  /**
+   * Return a credit reserved by consumeAICredit when the provider produced no
+   * output. Atomic and floored at 0; callers guard against double refunds
+   * (see reserveAICredit). A usage reset in between simply floors at 0.
+   */
+  async refundAICredit(
+    organizationId: string,
+    _actionType: "ai_fix" | "ai_create" | "ai_analyze"
+  ): Promise<void> {
+    if (!organizationId || !isCloudHosted() || !isPolarEnabled()) return;
+    await db
+      .update(organization)
+      .set({ aiCreditsUsed: sql`GREATEST(COALESCE(${organization.aiCreditsUsed}, 0) - 1, 0)` })
+      .where(and(eq(organization.id, organizationId), sql`COALESCE(${organization.aiCreditsUsed}, 0) > 0`));
   }
 }
 

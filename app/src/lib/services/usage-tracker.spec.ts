@@ -103,12 +103,19 @@ describe("AI credit admission", () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
-  it("pre-flight check rejects an exhausted org with 429 without writing", async () => {
-    const lim = jest.fn().mockResolvedValue([{ aiCreditsUsed: 100 }]);
-    jest.mocked(db.select).mockReturnValue({ from: () => ({ where: () => ({ limit: lim }) }) } as never);
-    await expect(tracker.checkAICreditAvailable("org-1")).resolves.toMatchObject({ allowed: false, status: 429, used: 100, limit: 100 });
-    lim.mockResolvedValue([{ aiCreditsUsed: 99 }]);
-    await expect(tracker.checkAICreditAvailable("org-1")).resolves.toMatchObject({ allowed: true });
-    expect(db.update).not.toHaveBeenCalled();
+  it("refund decrements atomically, floored at 0, and is skipped off-cloud", async () => {
+    await tracker.refundAICredit("org-1", "ai_fix");
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0][0] as SQL);
+    expect(query.sql).toContain("> 0");
+    jest.mocked(isCloudHosted).mockReturnValue(false);
+    await tracker.refundAICredit("org-1", "ai_fix");
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("with one credit left, concurrent consumers admit exactly one", async () => {
+    let remaining = 1;
+    returning.mockImplementation(async () => (remaining-- > 0 ? [{ aiCreditsUsed: 100 }] : []));
+    const results = await Promise.all([1, 2, 3].map(() => tracker.consumeAICredit("org-1", "ai_fix")));
+    expect(results.filter((r) => r.allowed)).toHaveLength(1);
   });
 });

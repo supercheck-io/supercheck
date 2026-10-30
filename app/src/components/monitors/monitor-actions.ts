@@ -50,6 +50,8 @@ const CLEARABLE: Record<string, string[]> = {
 };
 // Defaults the form hardcodes but does not expose; on edit the stored value wins.
 const UNMANAGED = ["timeoutSeconds", "playwrightOptions"];
+// Legacy keys the PUT validator now rejects (see UNEVALUATED_CONFIG_KEYS in monitor-validation.ts); drop them so old monitors stay saveable.
+const REJECTED_LEGACY = ["responseBodyJsonPath", "checkExpiration", "daysUntilExpirationWarning", "checkRevocation", "sslCheckOnStatusChange"];
 
 /** Edit mode: start from the stored config and overlay only what the form manages. */
 export function mergeEditConfig(
@@ -63,6 +65,11 @@ export function mergeEditConfig(
   if (type === "website") delete managed.method; // the form forces GET here; keep the stored method
   const merged = { ...stored, ...managed };
   for (const key of CLEARABLE[type] ?? []) if (!(key in built)) delete merged[key];
+  for (const key of REJECTED_LEGACY) delete merged[key];
+  const t = merged.timeoutSeconds; // validator accepts a finite number in 1..3600
+  if (t !== undefined && (typeof t !== "number" || !Number.isFinite(t) || t < 1 || t > 3600)) {
+    merged.timeoutSeconds = typeof t === "number" && Number.isFinite(t) ? Math.min(3600, Math.max(1, t)) : 30;
+  }
   return merged;
 }
 

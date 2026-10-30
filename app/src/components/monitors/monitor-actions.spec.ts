@@ -43,6 +43,14 @@ describe("mergeEditConfig", () => {
     expect(merged).toMatchObject({ method: "HEAD", timeoutSeconds: 9, enableSslCheck: true });
   });
 
+  it("saves legacy configs without keys the validator rejects and clamps timeout", () => {
+    const legacy = { ...stored, checkExpiration: true, daysUntilExpirationWarning: 14, checkRevocation: false, sslCheckOnStatusChange: true, responseBodyJsonPath: "$.a", timeoutSeconds: 99999 };
+    const merged = mergeEditConfig("website", legacy, { method: "GET", enableSslCheck: true });
+    for (const k of ["checkExpiration", "daysUntilExpirationWarning", "checkRevocation", "sslCheckOnStatusChange", "responseBodyJsonPath"]) expect(merged).not.toHaveProperty(k);
+    expect(merged.timeoutSeconds).toBe(3600);
+    expect(mergeEditConfig("website", { ...stored, timeoutSeconds: 0 }, {}).timeoutSeconds).toBe(1);
+  });
+
   it("keeps synthetic playwrightOptions", () => {
     const merged = mergeEditConfig("synthetic_test", { testId: "t", playwrightOptions: { timeout: 1, retries: 2 } }, { testId: "t", playwrightOptions: { timeout: 300000, retries: 0 } });
     expect(merged.playwrightOptions).toEqual({ timeout: 1, retries: 2 });

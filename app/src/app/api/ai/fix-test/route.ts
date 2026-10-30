@@ -17,7 +17,7 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getActiveOrganization } from "@/lib/session";
-import { usageTracker } from "@/lib/services/usage-tracker";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -35,6 +35,7 @@ const s3Client = new S3Client({
 });
 
 export async function POST(request: NextRequest) {
+  let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Input validation and sanitization
     const body = await request.json();
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     const consumeCredit = async () => {
-      const creditResult = await usageTracker.checkAICreditAvailable(activeOrg.id);
+      const creditResult = await reserveAICredit(activeOrg.id, "ai_fix");
       if (!creditResult.allowed) {
         return NextResponse.json(
           {
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
           { status: creditResult.status ?? 429 }
         );
       }
+      refundCredit = creditResult.refund;
       return null;
     };
 
@@ -208,7 +210,7 @@ export async function POST(request: NextRequest) {
             temperature: 0.2,
             testType: testType as "browser" | "api" | "custom" | "database",
           });
-          await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+          refundCredit = undefined; // content produced: keep the charge
 
           const sanitizedScript = AISecurityService.sanitizeCodeOutput(
             aiResponse.fixedScript
@@ -245,6 +247,7 @@ export async function POST(request: NextRequest) {
             },
           });
         } catch {
+          await refundCredit?.();
           // Basic analysis failed - this is not an error condition, just means we couldn't analyze
         }
       }
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest) {
       temperature: 0.1, // Low temperature for consistent, reliable fixes
       testType: testType as "browser" | "api" | "custom" | "database",
     });
-    await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+    refundCredit = undefined; // content produced: keep the charge
 
     // Step 9: Validate and sanitize AI output
     const sanitizedScript = AISecurityService.sanitizeCodeOutput(
@@ -362,6 +365,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    await refundCredit?.();
     console.error("AI fix generation failed:", error);
 
     // Determine error type for appropriate response

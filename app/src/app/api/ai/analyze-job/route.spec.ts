@@ -11,7 +11,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildJobAnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), checkAICreditAvailable: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));
@@ -54,7 +54,7 @@ describe("job AI analysis tenant boundary", () => {
     }));
     expect(response.status).toBe(404);
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
-    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
+    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
   });
 
   it("rejects a missing billing organization before consuming credits or calling AI", async () => {
@@ -64,7 +64,7 @@ describe("job AI analysis tenant boundary", () => {
       body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
     }));
     expect(response.status).toBe(400);
-    expect(usageTracker.checkAICreditAvailable).not.toHaveBeenCalled();
+    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
   });
 });
