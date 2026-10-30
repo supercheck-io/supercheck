@@ -22,6 +22,7 @@ import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import {
   assertSreAgentPromptWithinBudget,
+  keepNewestWithinBudget,
   resolveSreAgentBudget,
 } from "@/sre/lib/budget-manager";
 import {
@@ -152,6 +153,24 @@ function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
   );
 }
 
+/**
+ * The newest turns that fit the budget, always ending with the latest user turn
+ * and starting on a user turn, as providers expect.
+ */
+function fitPromptHistory(messages: SreAssistantUiMessage[], maxChars: number) {
+  let lastUser = messages.length - 1;
+  while (lastUser > 0 && messages[lastUser]?.role !== "user") lastUser -= 1;
+  const trailing = messages.slice(lastUser + 1);
+  const trailingChars = trailing.reduce((total, message) => total + getTextFromUiMessage(message).length, 0);
+  const kept = keepNewestWithinBudget(
+    messages.slice(0, lastUser + 1),
+    (message) => getTextFromUiMessage(message).length,
+    maxChars - trailingChars,
+  );
+  while (kept.length > 1 && kept[0]?.role !== "user") kept.shift();
+  return [...kept, ...trailing];
+}
+
 function buildAssistantUiSystemPrompt(input: {
   projectName: string;
   incidentId: string | null;
@@ -186,7 +205,7 @@ function buildAssistantUiSystemPrompt(input: {
     "- When evidence is missing, name the gap and suggest the next read-only checks. Do not present a generic checklist as completed verification.",
     "- When a small numeric summary is clearer as a chart and real values are available, include a fenced `chart` JSON block:",
     '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-    "- Supported chart types are bar, line, and area. Use only evidence or values from the conversation; do not fabricate chart data.",
+    "- Supported chart types are bar, line, and area, with at most 4 series and 48 data rows; series values must be numbers. Use only evidence or values from the conversation; do not fabricate chart data.",
     "- Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
   ]
     .filter(Boolean)
@@ -359,6 +378,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Checked before anything is saved, so a rejected message leaves no orphan turn.
+  const budget = resolveSreAgentBudget({
+    maxSteps: 4,
+    maxOutputTokens: 1200,
+    timeoutMs: 45_000,
+  });
+  const liveConnectorToolsEnabled =
+    parsed.data.useLiveConnectorTools && canInvestigateConnectors;
+  const system = buildAssistantUiSystemPrompt({
+    projectName: context.project.name,
+    incidentId: requestedIncidentId,
+    liveConnectorToolsEnabled,
+  });
+  try {
+    assertSreAgentPromptWithinBudget(`${system}\n\n${latestUserText}`, budget);
+  } catch {
+    return NextResponse.json(
+      { error: "Copilot message is too large" },
+      { status: 413 },
+    );
+  }
+  const promptMessages = fitPromptHistory(
+    modelMessages,
+    budget.maxPromptChars - system.length,
+  );
+
   if (!conversation) {
     try {
       conversation = await createSreConversation({
@@ -400,26 +445,12 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const budget = resolveSreAgentBudget({
-    maxSteps: 4,
-    maxOutputTokens: 1200,
-    timeoutMs: 45_000,
-  });
   const connectorToolScope = {
     organizationId: context.organizationId,
     projectId: context.project.id,
     incidentId: conversation.incidentId,
     userId: context.userId,
   };
-  const liveConnectorToolsEnabled =
-    parsed.data.useLiveConnectorTools && canInvestigateConnectors;
-  const system = buildAssistantUiSystemPrompt({
-    projectName: context.project.name,
-    incidentId: conversation.incidentId,
-    liveConnectorToolsEnabled,
-  });
-  const promptPreview = `${system}\n\n${latestUserText}`;
-  assertSreAgentPromptWithinBudget(promptPreview, budget);
 
   const modelId = getActualModelName();
   const activeConversationId = conversation.id;
@@ -428,7 +459,7 @@ export async function POST(request: NextRequest) {
   const result = streamText({
     model: getProviderModel(),
     system,
-    messages: await convertToModelMessages(modelMessages),
+    messages: await convertToModelMessages(promptMessages),
     tools: {
       ...(conversation.incidentId
         ? {

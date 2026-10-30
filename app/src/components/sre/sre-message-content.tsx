@@ -143,7 +143,11 @@ function renderInlineMarkdown(text: string) {
 }
 
 function isMarkdownTableSeparator(line: string) {
-  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  // A lone `---` is a horizontal rule, so a single-column separator needs a pipe.
+  return (
+    /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line) ||
+    /^\s*\|\s*:?-{3,}:?\s*\|\s*$/.test(line)
+  );
 }
 
 function splitMarkdownTableRow(line: string) {
@@ -262,7 +266,11 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
     return row.label ? [row] : [];
   });
 
-  if (data.length === 0) return null;
+  if (
+    data.length === 0 ||
+    data.every((row) => series.every((_, index) => row[`series${index}`] === null))
+  )
+    return null;
 
   return {
     title:
@@ -322,9 +330,9 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
             )}
             {chart.sources.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {chart.sources.map((source) => (
+                {chart.sources.map((source, sourceIndex) => (
                   <span
-                    key={`${source.label}-${source.type ?? "source"}`}
+                    key={`${sourceIndex}-${source.label}`}
                     title={[
                       source.label,
                       source.type,
@@ -360,9 +368,9 @@ function SreInlineChart({ chart }: { chart: ParsedSreChart }) {
           </div>
           {latestMetrics.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2">
-              {latestMetrics.map((metric) => (
+              {latestMetrics.map((metric, metricIndex) => (
                 <div
-                  key={metric.label}
+                  key={`${metricIndex}-${metric.label}`}
                   className="rounded-md border bg-muted/30 px-2 py-1"
                 >
                   <span className="block max-w-28 truncate text-[11px] text-muted-foreground">

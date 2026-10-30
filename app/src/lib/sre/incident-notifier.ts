@@ -53,11 +53,13 @@ type IncidentNotifyInput = {
   actorUserId?: string | null;
   /** Assignee for `assigned` / `created`; receives a direct email. */
   assigneeUserId?: string | null;
+  /** The assignee being replaced on `assigned`; told the incident moved. */
+  previousAssigneeUserId?: string | null;
   /** Short, already-safe text (for example an AI conclusion headline). */
   detail?: string;
   /** Distinguishes repeats of one event, such as the investigation run id. */
   dedupeDiscriminator?: string;
-  /** `resolved` by alert recovery rather than a person (channels already got the recovery alert). */
+  /** `resolved` or `reopened` by the alert flow rather than a person (channels already got the alert). */
   automatic?: boolean;
 };
 
@@ -293,6 +295,63 @@ async function sendToProvider(
   }
 }
 
+// System events can repeat every check cycle while a monitor flaps.
+const SYSTEM_EVENTS: IncidentNotifyEvent[] = ["recovered", "reopened"];
+
+/** Emails of participants who can still act on the incident, at most one per person per window for alert-driven events. */
+async function participantEmails(
+  input: IncidentNotifyInput,
+  participantIds: string[],
+  person: (id?: string | null) => { email: string } | undefined,
+) {
+  if (participantIds.length === 0) return { emails: [], claimed: [] };
+  try {
+    // Lazy import: incident-lifecycle imports this module.
+    const { isAssignableUser } = await import("./incident-lifecycle");
+    const throttled = SYSTEM_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic);
+    const emails: string[] = [];
+    const claimed: string[] = [];
+    for (const id of participantIds) {
+      const email = person(id)?.email;
+      if (!email || !(await isAssignableUser(input.organizationId, input.projectId, id))) continue;
+      if (throttled) {
+        if (!(await claimRecipient(input, id))) continue;
+        claimed.push(id);
+      }
+      emails.push(email);
+    }
+    return { emails, claimed };
+  } catch (error) {
+    // Channel posts below must still go out.
+    logger.warn({ error: error instanceof Error ? error.message : "lookup failed" }, "Incident participant lookup failed");
+    return { emails: [], claimed: [] };
+  }
+}
+
+function recipientKey(input: IncidentNotifyInput, userId: string) {
+  return `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
+}
+
+async function claimRecipient(input: IncidentNotifyInput, userId: string) {
+  try {
+    const redis = await getRedisConnection();
+    return (await redis.set(recipientKey(input, userId), "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
+  } catch {
+    return true;
+  }
+}
+
+/** A failed send must not use up the window, or the next event would be suppressed too. */
+async function releaseRecipients(input: IncidentNotifyInput, userIds: string[]) {
+  if (userIds.length === 0) return;
+  try {
+    const redis = await getRedisConnection();
+    await redis.del(...userIds.map((id) => recipientKey(input, id)));
+  } catch {
+    // Best effort; the claim expires on its own.
+  }
+}
+
 /** True when a failure alert for this source was delivered (status `sent`) in the last 15 minutes. */
 async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string) {
   const rows = await db
@@ -328,6 +387,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         status: sreIncidents.status,
         acknowledgedAt: sreIncidents.acknowledgedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
+        commanderUserId: sreIncidents.commanderUserId,
         serviceName: sreServices.name,
       })
       .from(sreIncidents)
@@ -345,10 +405,16 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
 
-    // Direct email to the person who now owns it (not to themselves).
-    const directTo = ["assigned", "created", "recovered", "reopened"].includes(input.event) ? input.assigneeUserId : null;
+    // Participants (owner, commander, and the owner being replaced) get a direct email for
+    // every lifecycle change, like ticket watchers; never the person who made the change.
     const ownerId = input.assigneeUserId ?? incident.assigneeUserId;
-    const personIds = [...new Set([input.actorUserId, ownerId, directTo].filter((id): id is string => Boolean(id)))];
+    const participantIds =
+      input.event === "ai_finding"
+        ? []
+        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId])].filter(
+            (id): id is string => Boolean(id) && id !== input.actorUserId,
+          );
+    const personIds = [...new Set([input.actorUserId, ownerId, ...participantIds].filter((id): id is string => Boolean(id)))];
     // Names are cosmetic: a failed lookup must not stop the channel posts below.
     const people = personIds.length
       ? await db
@@ -396,12 +462,13 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       },
     };
 
-    const directEmail = person(directTo)?.email;
-    if (directTo && directTo !== input.actorUserId && directEmail) {
+    const direct = await participantEmails(input, participantIds, person);
+    if (direct.emails.length > 0) {
       try {
-        await sendEmail([directEmail], message);
+        await sendEmail(direct.emails, message);
       } catch (error) {
-        logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to assignee failed");
+        await releaseRecipients(input, direct.claimed);
+        logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }
 
@@ -418,7 +485,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
-    if (input.event === "recovered" || input.event === "reopened" || (input.event === "resolved" && input.automatic)) return;
+    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
     if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId))) return;
 
     const providerColumns = {

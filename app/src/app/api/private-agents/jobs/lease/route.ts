@@ -105,6 +105,17 @@ export async function POST(request: NextRequest) {
           .update(privateAgentJobs)
           .set({ status: "failed", completedAt: now, errorCode: "connector_disabled" })
           .where(and(queued, sql`${privateAgentJobs.connectorId} IN (SELECT id FROM external_connectors WHERE status = 'disabled')`));
+        // The connector was moved to another agent, organization or project after the job was queued.
+        await tx
+          .update(privateAgentJobs)
+          .set({ status: "failed", completedAt: now, errorCode: "connector_reassigned" })
+          .where(
+            and(
+              queued,
+              sql`${privateAgentJobs.connectorId} IS NOT NULL`,
+              sql`NOT EXISTS (SELECT 1 FROM external_connectors ec WHERE ec.id = ${privateAgentJobs.connectorId} AND ec.private_agent_id = ${auth.agent.id} AND ec.organization_id = ${privateAgentJobs.organizationId} AND (ec.project_id IS NULL OR ec.project_id = ${privateAgentJobs.projectId}))`
+            )
+          );
 
         const [job] = await tx
           .select()

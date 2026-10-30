@@ -547,6 +547,22 @@ describe("direct connectors", () => {
     );
   });
 
+  it("rejects an Elasticsearch timestampField that is not a plain field name", async () => {
+    global.fetch = jest.fn() as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "elasticsearch",
+      endpointUrl: "https://search.example.com",
+      surfaces: ["logs"],
+      evidenceTypes: ["log"],
+      credential: { secret: "token" },
+    });
+    await expect(
+      connector.search({ ...params, query: "error", filters: { timestampField: "x:[* TO *] OR y" } }),
+    ).rejects.toThrow("timestampField must be a field name");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("normalizes Elasticsearch search hits into log evidence", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

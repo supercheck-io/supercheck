@@ -62,6 +62,7 @@ import {
 import {
   getDefaultAssigneeId,
 } from "@/lib/sre/incident-lifecycle";
+import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
@@ -1085,11 +1086,11 @@ export async function getSreIncidentDetails(
     const linkedAlerts = await db
       .select({
         id: sreAlertEvents.id,
-        title: sreAlertEvents.title,
-        severity: sreAlertEvents.severity,
+        title: linkedAlertFields.title,
+        severity: linkedAlertFields.severity,
         status: sreAlertEvents.status,
         role: sreIncidentAlerts.role,
-        firedAt: sreAlertEvents.firedAt,
+        firedAt: linkedAlertFields.firedAt,
       })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
@@ -1100,7 +1101,7 @@ export async function getSreIncidentDetails(
           eq(sreAlertEvents.projectId, project.id),
         ),
       )
-      .orderBy(desc(sreAlertEvents.firedAt))
+      .orderBy(desc(linkedAlertFields.firedAt))
       .limit(20);
     const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
@@ -1344,6 +1345,7 @@ export async function updateSreIncident(
     }
 
     const now = new Date();
+    const reopening = current.status === "resolved" && parsed.data.status !== "resolved";
     const incident = await db.transaction(async (tx) => {
       const [updatedIncident] = await tx
         .update(sreIncidents)
@@ -1356,12 +1358,19 @@ export async function updateSreIncident(
             parsed.data.status === "resolved"
               ? (current.resolvedAt ?? now)
               : null,
-          ...(parsed.data.status === "verifying" && !current.mitigatedAt
-            ? { mitigatedAt: now }
+          // A reopened incident is no longer verified, and needs a fresh acknowledgement.
+          ...(reopening
+            ? {
+                verifiedAt: null,
+                resolutionSummary: null,
+                mitigatedAt: null,
+                acknowledgedAt: null,
+                acknowledgedByUserId: null,
+              }
             : {}),
-          // A reopened incident is no longer verified.
-          ...(parsed.data.status !== "resolved" && current.status === "resolved"
-            ? { verifiedAt: null, resolutionSummary: null }
+          // After the reopen reset, so reopening straight to Monitoring still records mitigation.
+          ...(parsed.data.status === "verifying" && (reopening || !current.mitigatedAt)
+            ? { mitigatedAt: now }
             : {}),
           updatedAt: now,
         })
@@ -1406,6 +1415,16 @@ export async function updateSreIncident(
         actorUserId: userId,
         createdAt: now,
       });
+      if (reopening) {
+        await tx.insert(sreIncidentTimelineEvents).values({
+          incidentId: parsed.data.id,
+          eventType: "state_change",
+          eventData: { state: "reopened", comment: "Reopened from the incident editor" },
+          actorType: "user",
+          actorUserId: userId,
+          createdAt: now,
+        });
+      }
 
       return updatedIncident;
     });
@@ -1429,6 +1448,17 @@ export async function updateSreIncident(
       },
       success: true,
     });
+
+    if (reopening) {
+      void notifyIncidentEvent({
+        organizationId,
+        projectId: project.id,
+        incidentId: parsed.data.id,
+        event: "reopened",
+        actorUserId: userId,
+        dedupeDiscriminator: String(now.getTime()),
+      }).catch(() => undefined);
+    }
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${parsed.data.id}`);
@@ -1744,6 +1774,10 @@ export async function createSreIncidentFromAlert(
                 incidentId: correlation.candidate.incidentId,
                 alertEventId: alertEvent.id,
                 role: "related",
+                alertTitle: title,
+                alertDescription: alert.message,
+                alertSeverity: severity,
+                alertFiredAt: firedAt,
                 createdAt: new Date(),
               })
               .onConflictDoNothing();
@@ -1827,6 +1861,10 @@ export async function createSreIncidentFromAlert(
         incidentId: incident.id,
         alertEventId: alertEvent.id,
         role: "trigger",
+        alertTitle: title,
+        alertDescription: alert.message,
+        alertSeverity: severity,
+        alertFiredAt: firedAt,
         createdAt: new Date(),
       });
 

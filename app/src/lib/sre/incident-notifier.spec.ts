@@ -11,7 +11,8 @@ function chain(result: unknown[]) {
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(() => chain(selectQueue.shift() ?? [])) } }));
 
 const redisSet = jest.fn();
-jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet })) }));
+const redisDel = jest.fn();
+jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet, del: redisDel })) }));
 const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAddresses: [], errors: {} });
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
@@ -23,6 +24,10 @@ const renderIncidentUpdateEmail = jest.fn();
 jest.mock("@/lib/email-renderer", () => ({ renderIncidentUpdateEmail: (...args: unknown[]) => renderIncidentUpdateEmail(...args) }));
 const mockWarn = jest.fn();
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockWarn(...a) }) }));
+
+let mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
+const mockIsAssignable = jest.fn(async (_org: string, _project: string, id: string) => mockAssignable.some((row) => row.id === id));
+jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: [string, string, string]) => mockIsAssignable(...a) }));
 
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
@@ -44,6 +49,7 @@ const incident = { id: "inc-1", number: 7, title: "Checkout down", severity: "se
 beforeEach(() => {
   jest.clearAllMocks();
   selectQueue.length = 0;
+  mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
   redisSet.mockResolvedValue("OK");
   // Default: template fails, so the plain fallback email is what most tests check.
   renderIncidentUpdateEmail.mockRejectedValue(new Error("render unavailable"));
@@ -91,6 +97,71 @@ it("does not email the actor about their own assignment", async () => {
   selectQueue.push([incident], people, []);
   await notifyIncidentEvent({ ...base, assigneeUserId: "actor" });
   expect(sendEmailToMultiple).not.toHaveBeenCalled();
+});
+
+describe("participant emails", () => {
+  const participants = [
+    ...people,
+    { id: "commander", name: "Lin", email: "lin@example.com" },
+    { id: "previous", name: "Bo", email: "bo@example.com" },
+  ];
+
+  it("emails the owner and commander when someone else acknowledges", async () => {
+    selectQueue.push([{ ...incident, commanderUserId: "commander" }], participants, []);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ada@example.com", "lin@example.com"]);
+  });
+
+  it("tells the previous owner on a reassignment", async () => {
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, previousAssigneeUserId: "previous" });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ada@example.com", "bo@example.com"]);
+  });
+
+  it("skips people who can no longer act on the incident", async () => {
+    mockAssignable = [{ id: "actor" }];
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
+  it("throttles automatic resolve emails like reopen, but not a person's resolve", async () => {
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", automatic: true, actorUserId: null, assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the throttle claim when the email send fails, so the next event can still email", async () => {
+    sendEmailToMultiple.mockResolvedValueOnce({ sentCount: 0, failedAddresses: ["ada@example.com"], errors: {} });
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "reopened", actorUserId: null, assigneeUserId: null });
+    expect(redisDel).toHaveBeenCalledWith("supercheck:sre:incident-email:inc-1:reopened:assignee");
+  });
+
+  it("still posts to channels when the participant lookup fails", async () => {
+    mockIsAssignable.mockRejectedValueOnce(new Error("db down"));
+    selectQueue.push(
+      [incident],
+      participants,
+      [{ sourceType: "monitor", sourceId: "mon-1" }],
+      [{ id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } }],
+    );
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("emails a participant about a flapping reopen at most once per window", async () => {
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "reopened", actorUserId: null, assigneeUserId: null });
+    expect(redisSet).toHaveBeenCalledWith("supercheck:sre:incident-email:inc-1:reopened:assignee", "1", "EX", 600, "NX");
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
 });
 
 it("posts to providers linked to the triggering monitor and skips invalid configs", async () => {
@@ -256,7 +327,7 @@ describe("one message per event for alert-triggered incidents", () => {
 
   it.each([
     ["recovered", {}],
-    ["reopened", {}],
+    ["reopened", { automatic: true }],
     ["resolved", { automatic: true }],
   ])("skips channel posts for %s %j", async (event, extra) => {
     await run({ event, ...extra });
@@ -278,6 +349,7 @@ describe("one message per event for alert-triggered incidents", () => {
     ["acknowledged", {}],
     ["ai_finding", {}],
     ["resolved", {}],
+    ["reopened", {}],
   ])("still posts channels for %s", async (event, extra) => {
     await run({ event, ...extra });
     expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);

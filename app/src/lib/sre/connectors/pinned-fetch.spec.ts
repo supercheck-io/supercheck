@@ -10,7 +10,7 @@ jest.mock("node:https", () => ({
 
 import { lookup } from "node:dns/promises";
 import https from "node:https";
-import { fetchPublicEndpoint } from "./pinned-fetch";
+import { fetchConnectorEndpoint, fetchPublicEndpoint } from "./pinned-fetch";
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 const mockRequest = https.request as jest.MockedFunction<typeof https.request>;
@@ -82,6 +82,18 @@ describe("pinned public fetch", () => {
       fetchPublicEndpoint("https://hooks.example.com/events"),
     ).rejects.toThrow("private or reserved IP ranges");
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it("caps the response body on the self-hosted private-network path", async () => {
+    process.env.SELF_HOSTED = "true";
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue(new Response("x".repeat(11)));
+    try {
+      const response = await fetchConnectorEndpoint("http://prometheus.internal:9090", {}, 10);
+      await expect(response.text()).rejects.toThrow("exceeded 10 bytes");
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it("rejects a trailing-dot loopback hostname in self-hosted development", async () => {

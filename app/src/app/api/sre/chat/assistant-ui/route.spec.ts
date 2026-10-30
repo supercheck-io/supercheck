@@ -67,15 +67,6 @@ jest.mock("@/sre/lib/session-store", () => ({
   },
 }));
 
-jest.mock("@/sre/lib/budget-manager", () => ({
-  assertSreAgentPromptWithinBudget: jest.fn(),
-  resolveSreAgentBudget: jest.fn(() => ({
-    maxSteps: 4,
-    maxOutputTokens: 1200,
-    timeoutMs: 45_000,
-  })),
-}));
-
 jest.mock("@/sre/agents/triage", () => ({
   buildSreTriageSystemPrompt: jest.fn(() => "read-only system"),
 }));
@@ -101,6 +92,7 @@ jest.mock("@/sre/tools/connector-tools", () => ({
 }));
 
 import { streamText } from "ai";
+import { buildSreTriageSystemPrompt } from "@/sre/agents/triage";
 import { POST } from "./route";
 
 const { requireProjectContext: mockRequireProjectContext } = jest.requireMock(
@@ -427,6 +419,45 @@ describe("Copilot assistant-ui chat API", () => {
         ],
       }),
     );
+  });
+
+  it("drops the oldest turns that do not fit the prompt budget and starts on a user turn", async () => {
+    jest.mocked(buildSreTriageSystemPrompt).mockReturnValueOnce("s".repeat(15_000));
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [
+            { id: "u1", role: "user", parts: [{ type: "text", text: "a".repeat(4000) }] },
+            { id: "a1", role: "assistant", parts: [{ type: "text", text: "b".repeat(4000) }] },
+            { id: "a1b", role: "assistant", parts: [{ type: "text", text: "e".repeat(4000) }] },
+            { id: "a2", role: "assistant", parts: [{ type: "text", text: "d".repeat(1000) }] },
+            { id: "u3", role: "user", parts: [{ type: "text", text: "Latest check" }] },
+          ],
+        }),
+      }),
+    );
+
+    // Budget leaves ~9k chars: a2 + a1b fit, a1 does not, and the leading assistant turns are dropped.
+    const { messages } = jest.mocked(streamText).mock.calls[0]![0] as { messages: { role: string }[] };
+    expect(messages).toEqual([{ role: "user", content: "converted" }]);
+  });
+
+  it("returns 413 when the latest message alone exceeds the prompt budget", async () => {
+    jest.mocked(buildSreTriageSystemPrompt).mockReturnValueOnce("s".repeat(23_000));
+    const response = await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "x".repeat(3_000) }] }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(streamText).not.toHaveBeenCalled();
+    expect(mockAppendSreMessage).not.toHaveBeenCalled();
+    expect(mockCreateSreConversation).not.toHaveBeenCalled();
   });
 
   it("does not duplicate the user message when regenerating a response", async () => {

@@ -22,6 +22,11 @@ jest.mock("@/utils/db", () => ({ db: {
   }),
 } }));
 jest.mock("./native-evidence-collector", () => ({ collectNativeEvidence: jest.fn() }));
+const mockFailStale = jest.fn(async () => 0);
+jest.mock("@/sre/lib/stale-run-recovery", () => ({
+  ...jest.requireActual("@/sre/lib/stale-run-recovery"),
+  failStaleSreInvestigationRunsForIncident: () => mockFailStale(),
+}));
 jest.mock("@/lib/ai/ai-provider", () => ({ getActualModelName: () => "test-model" }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
@@ -52,6 +57,17 @@ describe("evidence brief stored evidence", () => {
     expect(mockLimit).toHaveBeenCalledWith(100);
     const query = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
     expect(query.params).toEqual(["org-a", "project-a", "incident-a", "2026-09-08T08:00:00.000Z", "2026-09-08T09:10:00.000Z"]);
+  });
+
+  it("releases a stale run first and reports a brief that is already running instead of failing", async () => {
+    mockValues.mockReturnValueOnce({
+      returning: jest.fn().mockRejectedValue(Object.assign(new Error("duplicate"), { code: "23505", constraint_name: "sre_investigation_runs_active_incident_unique" })),
+    });
+    const generateBrief = jest.fn();
+    const result = await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
+    expect(mockFailStale).toHaveBeenCalled();
+    expect(result).toEqual({ success: false, error: expect.stringContaining("already being generated") });
+    expect(generateBrief).not.toHaveBeenCalled();
   });
 
   it("reports zero used items when no evidence qualifies for the incident window", async () => {

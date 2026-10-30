@@ -10,6 +10,11 @@ for (const [address, prefix] of [
   ['127.0.0.0', 8],
   ['169.254.0.0', 16],
   ['224.0.0.0', 4],
+  // Alibaba Cloud and Azure host metadata services.
+  ['100.100.100.200', 32],
+  ['168.63.129.16', 32],
+  // Oracle Cloud metadata.
+  ['192.0.0.192', 32],
 ] as const) {
   forbiddenAddresses.addSubnet(address, prefix);
 }
@@ -18,6 +23,12 @@ for (const [address, prefix] of [
   ['::1', 128],
   ['fe80::', 10],
   ['ff00::', 8],
+  // AWS IPv6 instance metadata.
+  ['fd00:ec2::254', 128],
+  // IPv4 embedded in IPv6 (NAT64, 6to4, IPv4-compatible) can reach the blocked IPv4 ranges.
+  ['64:ff9b::', 96],
+  ['2002::', 16],
+  ['::', 96],
 ] as const) {
   forbiddenAddresses.addSubnet(address, prefix, 'ipv6');
 }
@@ -41,6 +52,37 @@ function assertAllowedAddress(address: LookupAddress): void {
       'Private Agent connector endpoints cannot target localhost or cloud metadata endpoints',
     );
   }
+}
+
+// Same ceiling as the app's pinned fetch; callers parse the whole body in memory.
+export const MAX_CONNECTOR_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+/** Errors the body stream once it passes maxBytes, so a huge upstream reply cannot exhaust agent memory. */
+export function capResponseBody(
+  response: Response,
+  maxBytes: number,
+): Response {
+  if (!response.body) return response;
+  let total = 0;
+  const limited = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          controller.error(
+            new Error(`Connector response exceeded ${maxBytes} bytes`),
+          );
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(limited, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 export function createAgentPinnedLookup(
@@ -96,7 +138,7 @@ export async function requestPrivateAgentEndpoint<T>(
       redirect: 'error',
       dispatcher: agent,
     } as RequestInit);
-    return await read(response);
+    return await read(capResponseBody(response, MAX_CONNECTOR_RESPONSE_BYTES));
   } finally {
     // Error responses may have unread bodies; force close avoids waiting for them.
     await agent.destroy();

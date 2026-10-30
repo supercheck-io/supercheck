@@ -198,7 +198,7 @@ function notify(
   actor: IncidentActor,
   incidentId: string,
   event: IncidentNotifyEvent,
-  extra: { assigneeUserId?: string | null } = {},
+  extra: { assigneeUserId?: string | null; previousAssigneeUserId?: string | null } = {},
 ) {
   // Never let a delivery problem fail the user action; the notifier logs its own errors.
   void notifyIncidentEvent({
@@ -299,7 +299,7 @@ export async function assignIncident(
       previousAssigneeUserId: result.previous,
     });
     if (assigneeUserId && role === "assignee") {
-      notify(actor, incidentId, "assigned", { assigneeUserId });
+      notify(actor, incidentId, "assigned", { assigneeUserId, previousAssigneeUserId: result.previous });
     }
   }
   return { ok: true, incident: result.incident, changed: result.changed };
@@ -629,6 +629,7 @@ export async function applySourceRecovery(
         and(
           eq(sreIncidentTimelineEvents.incidentId, incident.id),
           eq(sreIncidentTimelineEvents.eventType, "state_change"),
+          sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
         ),
       )
       .orderBy(desc(sreIncidentTimelineEvents.createdAt))
@@ -640,6 +641,8 @@ export async function applySourceRecovery(
       eventData: {
         state: "recovered",
         comment: `${source.targetName} recovered; resolve when you've confirmed`,
+        // When the check recovered, so a failure processed late is not mistaken for a new one.
+        recoveredAt: source.recoveredAt.toISOString(),
       },
       actorType: "system",
       createdAt: new Date(),
@@ -670,6 +673,40 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
 }
 
 /**
+ * Record a failure that came back on an open incident after its recovery note, so the
+ * timeline shows it and the next recovery is noted again.
+ */
+export async function noteFailureReturned(tx: Executor, incidentId: string, firedAt: Date) {
+  // Only the source's own health states: an acknowledgement after the recovery must not hide the failure.
+  const [lastState] = await tx
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      recoveredAt: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'recoveredAt'`,
+    })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, incidentId),
+        eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
+      ),
+    )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+    .limit(1);
+  if (lastState?.state !== "recovered") return false;
+  // A failure that fired before the recovery is late, not returning.
+  if (lastState.recoveredAt && firedAt.getTime() <= new Date(lastState.recoveredAt).getTime()) return false;
+  await tx.insert(sreIncidentTimelineEvents).values({
+    incidentId,
+    eventType: "state_change",
+    eventData: { state: "failure_returned", comment: "The check failed again after recovering" },
+    actorType: "system",
+    createdAt: new Date(),
+  });
+  return true;
+}
+
+/**
  * Reopen the source's most recent trigger incident when it was auto-resolved
  * within the reopen window and no other incident for the source is open.
  */
@@ -691,12 +728,13 @@ export async function reopenRecentlyAutoResolved(
     .where(triggerSourceMatch(source))
     .orderBy(desc(sreIncidents.createdAt))
     .limit(1);
-  if (
-    !latest ||
-    latest.status !== "resolved" ||
-    !latest.resolvedAt ||
-    source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS
-  ) {
+  if (!latest || latest.status !== "resolved" || !latest.resolvedAt) return null;
+  // A failure that fired before the resolve was processed late: it belongs to that incident,
+  // which must neither reopen nor be duplicated by a new one.
+  if (source.firedAt.getTime() < latest.resolvedAt.getTime()) {
+    return { incidentId: latest.id, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
+  }
+  if (source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS) {
     return null;
   }
 
@@ -746,6 +784,7 @@ export async function reopenRecentlyAutoResolved(
     incidentId: latest.id,
     assigneeUserId: latest.assigneeUserId,
     alreadyTriaged: Boolean(latest.triageInvestigationRunId),
+    stale: false as const,
   };
 }
 
@@ -770,7 +809,7 @@ export async function announceSystemTransition(
     projectId,
     incidentId,
     event,
-    automatic: event === "resolved",
+    automatic: event === "resolved" || event === "reopened",
     assigneeUserId: extra.assigneeUserId,
     dedupeDiscriminator: extra.discriminator,
   }).catch(() => undefined);

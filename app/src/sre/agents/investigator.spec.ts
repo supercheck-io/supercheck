@@ -39,7 +39,8 @@ describe("SRE investigation prompt", () => {
     expect(system).toContain("A hypothesis may be \"validated\" only when it cites");
     expect(prompt).toContain("checkout latency");
     expect(prompt).toContain("Live connector tools: available");
-    expect(prompt).toContain("Sanitized stored evidence");
+    expect(prompt).toContain("<stored_evidence>");
+    expect(prompt).toContain("<incident_title>");
     expect(prompt).toContain("id=evidence-1");
     expect(prompt).toContain("Phase Running - 0 restarts");
     expect(prompt).toContain("final JSON object");

@@ -116,7 +116,7 @@ describe("Private Agent job lease route", () => {
     expect(jest.requireMock("@/lib/sre/connectors").decryptConnectorCredential).not.toHaveBeenCalled();
   });
 
-  it("fails stale queued jobs and jobs of disabled connectors before selecting work", async () => {
+  it("fails stale queued jobs and jobs of disabled or reassigned connectors before selecting work", async () => {
     const updateSets: Array<Record<string, unknown>> = [];
     const tx = {
       update: jest.fn(() => ({
@@ -139,5 +139,6 @@ describe("Private Agent job lease route", () => {
     expect(response.status).toBe(200);
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "timed_out", errorCode: "queued_too_long" }));
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_disabled" }));
+    expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_reassigned" }));
   });
 });

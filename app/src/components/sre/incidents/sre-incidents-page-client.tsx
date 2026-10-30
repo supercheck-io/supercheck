@@ -44,6 +44,7 @@ function IncidentsTab() {
       truncated={query.data.success && query.data.truncated}
       hasIncidents={query.data.success ? query.data.hasIncidents : false}
       onScopeChange={setScope}
+      loadingScope={query.isPlaceholderData}
     />
   );
 }

@@ -1,6 +1,14 @@
+import { createLogger } from "@/lib/logger/index";
+
 const encoder = new TextEncoder();
+const logger = createLogger({ module: "sre-sse-stream" }) as {
+  error: (data: unknown, message?: string) => void;
+};
 
 const EVENT_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/i;
+
+/** An error whose message is safe to show the client; any other error is reported generically. */
+export class SseClientError extends Error {}
 
 export type SseEvent = {
   event: string;
@@ -36,8 +44,10 @@ export function createSseStream(
         await producer(send, disconnected.signal);
         send("done", { ok: true });
       } catch (error) {
+        // The client gets a generic message; keep the cause in the logs.
+        if (!(error instanceof SseClientError)) logger.error({ err: error }, "SRE stream failed");
         send("error", {
-          message: error instanceof Error ? error.message : "SRE stream failed",
+          message: error instanceof SseClientError ? error.message : "SRE stream failed",
         });
       } finally {
         if (!cancelled) controller.close();

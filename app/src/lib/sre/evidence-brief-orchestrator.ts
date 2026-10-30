@@ -26,6 +26,10 @@ import {
   type NativeEvidenceWindow,
 } from "@/lib/sre/native-evidence-collector";
 import { db } from "@/utils/db";
+import {
+  failStaleSreInvestigationRunsForIncident,
+  isActiveIncidentRunConflict,
+} from "@/sre/lib/stale-run-recovery";
 
 const orchestratorLogger = createLogger({
   module: "sre-evidence-brief-orchestrator",
@@ -309,30 +313,45 @@ export async function runSreEvidenceBriefGeneration(input: {
   }
 
   const modelId = getActualModelName();
-  const [run] = await db
-    .insert(sreInvestigationRuns)
-    .values({
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      incidentId: input.incidentId,
-      agentType: "sre_ai",
-      status: "running",
-      modelId,
-      promptInput: {
-        mode: "native_evidence_brief",
-        evidenceWindow: {
-          since: collection.window.since.toISOString(),
-          until: collection.window.until.toISOString(),
-          source: collection.window.source,
-          confidence: collection.window.confidence,
+  // A brief whose process died keeps the one-active-run slot; release it before taking the slot.
+  await failStaleSreInvestigationRunsForIncident(input);
+  let run: typeof sreInvestigationRuns.$inferSelect | undefined;
+  try {
+    [run] = await db
+      .insert(sreInvestigationRuns)
+      .values({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: input.incidentId,
+        agentType: "sre_ai",
+        status: "running",
+        modelId,
+        promptInput: {
+          mode: "native_evidence_brief",
+          evidenceWindow: {
+            since: collection.window.since.toISOString(),
+            until: collection.window.until.toISOString(),
+            source: collection.window.source,
+            confidence: collection.window.confidence,
+          },
+          candidateEvidenceCount: collection.evidence.length,
         },
-        candidateEvidenceCount: collection.evidence.length,
-      },
-      createdByUserId: input.userId,
-      startedAt: new Date(startedAt),
-      createdAt: new Date(),
-    })
-    .returning();
+        createdByUserId: input.userId,
+        startedAt: new Date(startedAt),
+        createdAt: new Date(),
+      })
+      .returning();
+  } catch (error) {
+    if (isActiveIncidentRunConflict(error)) {
+      return {
+        success: false,
+        error:
+          "An evidence brief is already being generated for this incident. Try again when it finishes.",
+      };
+    }
+    throw error;
+  }
+  if (!run) throw new Error("Evidence brief run was not created");
 
   try {
     const { rows: evidenceRows } = await persistNativeEvidence({
@@ -358,19 +377,27 @@ export async function runSreEvidenceBriefGeneration(input: {
     const storedEvidenceRows = await db
       .select()
       .from(sreEvidenceItems)
-      .where(and(
-        eq(sreEvidenceItems.organizationId, input.organizationId),
-        eq(sreEvidenceItems.projectId, input.projectId),
-        eq(sreEvidenceItems.incidentId, input.incidentId),
-        gte(sreEvidenceItems.observedAt, collection.window.since),
-        lte(sreEvidenceItems.observedAt, collection.window.until),
-      ))
+      .where(
+        and(
+          eq(sreEvidenceItems.organizationId, input.organizationId),
+          eq(sreEvidenceItems.projectId, input.projectId),
+          eq(sreEvidenceItems.incidentId, input.incidentId),
+          gte(sreEvidenceItems.observedAt, collection.window.since),
+          lte(sreEvidenceItems.observedAt, collection.window.until),
+        ),
+      )
       .orderBy(desc(sreEvidenceItems.observedAt))
       .limit(100);
-    const allEvidenceRows = Array.from(new Map(
-      [...evidenceRows, ...connectorEvidenceRows, ...storedEvidenceRows].map((item) => [item.id, item]),
-    ).values()).slice(0, 100);
-    const connectorEvidenceCount = allEvidenceRows.filter((item) => item.sourceType !== "native").length;
+    const allEvidenceRows = Array.from(
+      new Map(
+        [...evidenceRows, ...connectorEvidenceRows, ...storedEvidenceRows].map(
+          (item) => [item.id, item],
+        ),
+      ).values(),
+    ).slice(0, 100);
+    const connectorEvidenceCount = allEvidenceRows.filter(
+      (item) => item.sourceType !== "native",
+    ).length;
 
     const brief = await input.generateBrief({
       incidentTitle: collection.incident.title,

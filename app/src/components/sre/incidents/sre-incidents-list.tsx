@@ -81,6 +81,8 @@ type SreIncidentsListProps = {
   hasIncidents?: boolean;
   /** Reports which server scope the current filters need. */
   onScopeChange?: (scope: "active" | "all") => void;
+  /** The rows are the previous scope's while the requested one loads. */
+  loadingScope?: boolean;
 };
 
 type QuickFilter = "active" | "mine" | "unassigned" | "all";
@@ -96,9 +98,11 @@ export function matchesQuickFilter(
   incident: Pick<SreIncidentListItem, "status" | "assigneeUserId">,
   filter: QuickFilter,
   currentUserId: string | null | undefined,
+  /** A Status filter is set, so resolved incidents may match "mine" or "unassigned". */
+  includeResolved = false,
 ) {
   if (filter === "all") return true;
-  if (incident.status === "resolved") return false;
+  if (incident.status === "resolved" && (filter === "active" || !includeResolved)) return false;
   if (filter === "mine") return Boolean(currentUserId) && incident.assigneeUserId === currentUserId;
   if (filter === "unassigned") return !incident.assigneeUserId;
   return true;
@@ -160,6 +164,11 @@ function getIncidentSortValue(
     return incident.primaryServiceName ?? "No service linked";
   if (key === "latestInvestigationStatus")
     return incident.latestInvestigationStatus ?? "not_started";
+  // Workflow order (Triggered → Resolved), as the badges read, not the stored names.
+  if (key === "status")
+    return INCIDENT_DISPLAY_STATUSES.findIndex(
+      (entry) => entry.value === getDisplayStatus(incident.status, incident.acknowledgedAt).value,
+    );
   return incident[key];
 }
 
@@ -221,6 +230,7 @@ export function SreIncidentsList({
   truncated = false,
   hasIncidents = false,
   onScopeChange,
+  loadingScope = false,
 }: SreIncidentsListProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -275,6 +285,7 @@ export function SreIncidentsList({
           incident,
           effectiveQuickFilter,
           currentUserId,
+          statusFilter.length > 0,
         ) &&
         (statusFilter.length === 0 ||
           statusFilter.includes(
@@ -290,7 +301,7 @@ export function SreIncidentsList({
         incident.primaryServiceName ?? "No service linked",
         incident.assigneeName ?? "unassigned",
         incident.severity,
-        incident.status,
+        getDisplayStatus(incident.status, incident.acknowledgedAt).label,
         incident.latestInvestigationStatus ?? "not started",
       ]
         .join(" ")
@@ -534,7 +545,7 @@ export function SreIncidentsList({
                       colSpan={8}
                       className="h-24 text-center text-muted-foreground"
                     >
-                      No incidents match the current filters.
+                      {loadingScope ? "Loading incidents..." : "No incidents match the current filters."}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -632,7 +643,7 @@ export function SreIncidentsList({
             <div className="flex-1 text-sm text-muted-foreground">
               Total {filteredIncidents.length}{" "}
               {filteredIncidents.length === 1 ? "incident" : "incidents"}
-              {truncated && " (showing latest 500)"}
+              {truncated && " (from the latest 500)"}
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
               <div className="flex items-center space-x-2">

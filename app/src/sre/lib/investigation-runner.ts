@@ -47,7 +47,7 @@ import {
 import { persistNativeEvidence } from "@/lib/sre/evidence-brief-orchestrator";
 import { findSimilarIncidents, similarIncidentPromptLines } from "@/lib/sre/similar-incidents";
 import { SreDailyTokenLimitError } from "@/lib/sre/sre-daily-token-limit";
-import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+import { failStaleSreInvestigationRunsForIncident, isActiveIncidentRunConflict } from "@/sre/lib/stale-run-recovery";
 
 const NATIVE_EVIDENCE_TIMEOUT_MS = 15_000;
 const NATIVE_EVIDENCE_FRESH_MS = 10 * 60 * 1000;
@@ -95,30 +95,7 @@ export type StartSreIncidentInvestigationResult =
       error: string;
     };
 
-const ACTIVE_INCIDENT_RUN_CONSTRAINT =
-  "sre_investigation_runs_active_incident_unique";
-
-export function isActiveIncidentRunConflict(error: unknown): boolean {
-  let current = error;
-  for (let depth = 0; depth < 3 && current; depth += 1) {
-    if (typeof current !== "object") return false;
-    const dbError = current as {
-      code?: string;
-      constraint?: string;
-      constraint_name?: string;
-      cause?: unknown;
-    };
-    if (
-      dbError.code === "23505" &&
-      (dbError.constraint === ACTIVE_INCIDENT_RUN_CONSTRAINT ||
-        dbError.constraint_name === ACTIVE_INCIDENT_RUN_CONSTRAINT)
-    ) {
-      return true;
-    }
-    current = dbError.cause;
-  }
-  return false;
-}
+export { isActiveIncidentRunConflict };
 
 export async function startSreIncidentInvestigation(
   input: RunSreIncidentInvestigationInput,

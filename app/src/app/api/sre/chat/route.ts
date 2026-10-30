@@ -14,7 +14,11 @@ import {
   appendSreMessage,
   getSreConversation,
 } from "@/sre/lib/session-store";
-import { createSseResponse, createSseStream } from "@/sre/lib/sse-stream";
+import {
+  createSseResponse,
+  createSseStream,
+  SseClientError,
+} from "@/sre/lib/sse-stream";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -116,7 +120,7 @@ function validateChatAttachments(input: {
     }
 
     if (!input.incidentId || attachment.incidentId !== input.incidentId) {
-      throw new Error(
+      throw new SseClientError(
         "SRE chat file attachment does not belong to this incident",
       );
     }
@@ -126,7 +130,7 @@ function validateChatAttachments(input: {
       attachment.storageBucket !== SRE_ATTACHMENTS_BUCKET ||
       !attachment.storagePath.startsWith(expectedPrefix)
     ) {
-      throw new Error("Invalid SRE chat file attachment storage reference");
+      throw new SseClientError("Invalid SRE chat file attachment storage reference");
     }
 
     return sanitizeAttachmentForPrompt(attachment);
@@ -164,7 +168,7 @@ function buildChatPrompt(input: {
       "Do not present a generic checklist as completed verification.",
       "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",
       '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-      "Supported chart types are bar, line, and area. Use only real values already present in evidence or the user request; do not fabricate chart data.",
+      "Supported chart types are bar, line, and area, with at most 4 series and 48 data rows; series values must be numbers. Use only real values already present in evidence or the user request; do not fabricate chart data.",
       "Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
     ].join("\n"),
   ]
@@ -417,6 +421,10 @@ export async function POST(request: NextRequest) {
             incidentId: parsed.data.incidentId ?? null,
           },
         });
+
+    if (!conversation) {
+      throw new SseClientError("Copilot conversation not found");
+    }
 
     send("conversation", {
       id: conversation.id,
