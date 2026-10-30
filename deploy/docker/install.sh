@@ -110,8 +110,9 @@ if [[ "$UPGRADE" == true ]]; then
   fi
   VERSION_SET=true # the target release is always explicit, even when it is this script's default
 fi
-if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "'$VERSION' is not a release number like 1.3.6." >&2; exit 2
+# Stable releases only: pre-release images (such as -canary builds) are not for self-hosting.
+if [[ "$VERSION_SET" == true && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "'$VERSION' is not a stable release number like 1.4.0." >&2; exit 2
 fi
 if [[ "$INSTALL_DIR" != /* ]]; then echo "--dir must be an absolute path." >&2; exit 2; fi
 while [[ "$INSTALL_DIR" == */ && "$INSTALL_DIR" != "/" ]]; do INSTALL_DIR="${INSTALL_DIR%/}"; done

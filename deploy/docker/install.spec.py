@@ -676,6 +676,13 @@ cat "$TEST_ROOT/calls"
         self.assertIn('docker image rm ghcr.io/supercheck-io/supercheck/app:1.4.0 ghcr.io/supercheck-io/supercheck/worker:1.4.0', out)
         self.assertIn('status=0', out)
 
+    def test_version_accepts_only_stable_releases(self):
+        for version in ['1.5.0-rc1', '1.4.1-canary.6', '1.4']:
+            result = subprocess.run(['bash', str(DEPLOY / 'install.sh'), '--version', version, '--dry-run'],
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2, version)
+            self.assertIn('not a stable release number', result.stderr)
+
     def test_upgrade_rejects_configuration_flags(self):
         for flag in (['--local'], ['--domain', 'app.example.com']):
             result = subprocess.run(['bash', str(DEPLOY / 'install.sh'), '--upgrade', *flag],
