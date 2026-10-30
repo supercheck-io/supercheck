@@ -153,25 +153,27 @@ export function DataTableRowActions<TData>({
           </DropdownMenuItem>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (canDelete) {
-                      setShowDeleteDialog(true);
-                    }
-                  }}
-                  disabled={!canDelete}
-                  className={
-                    canDelete
-                      ? "text-destructive"
-                      : "opacity-50 cursor-not-allowed"
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canDelete) {
+                    setShowDeleteDialog(true);
                   }
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  <span>Delete</span>
-                </DropdownMenuItem>
-              </div>
+                }}
+                // aria-disabled (not disabled) keeps the item focusable so keyboard users can reach the tooltip.
+                aria-disabled={!canDelete}
+                onSelect={(e) => {
+                  if (!canDelete) e.preventDefault();
+                }}
+                className={
+                  canDelete
+                    ? "text-destructive"
+                    : "opacity-50 cursor-not-allowed"
+                }
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                <span>Delete</span>
+              </DropdownMenuItem>
             </TooltipTrigger>
             {!canDelete && (
               <TooltipContent>

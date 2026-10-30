@@ -26,6 +26,11 @@ describe("readAiStream", () => {
     await expect(readAiStream(res)).rejects.toThrow("AI generation failed. Please try again.");
   });
 
+  it("surfaces a rate-limit failure without leaking provider detail", async () => {
+    const res = sse([ev({ type: "error", error: "AI generation failed. Try again.", code: "rate_limit" })]);
+    await expect(readAiStream(res)).rejects.toThrow("AI rate limit reached");
+  });
+
   it("throws when the stream ends without a done event", async () => {
     await expect(readAiStream(sse([ev({ type: "content", content: "cut off" })]))).rejects.toThrow("ended unexpectedly");
   });

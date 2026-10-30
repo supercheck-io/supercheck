@@ -281,6 +281,29 @@ describe("test-status stream lifecycle", () => {
     }
   });
 
+  it("does not time out as failed when a later event supersedes a held-back completion", async () => {
+    jest.useFakeTimers();
+    try {
+      mockReportsFindFirst.mockResolvedValue(undefined);
+      mockRunsFindFirst.mockResolvedValueOnce({ id: "run-1" }).mockResolvedValue(undefined);
+      const { reader, hub, unsubscribe } = await open();
+      await reader.read(); // connected
+      await reader.read(); // waiting
+      const send = hub.subscribe.mock.calls[0][0];
+      await send({ category: "test", entityId: "test-1", queueJobId: "test-1", status: "completed" });
+      await send({ category: "test", entityId: "test-1", queueJobId: "test-1", status: "running" });
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000 + 1);
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+      let text = "";
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        text += decoder.decode(chunk.value);
+      }
+      expect(text).not.toContain("Timed out waiting for the test report");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("holds back a queue 'completed' event until the report outcome is known", async () => {
     jest.useFakeTimers();
     try {

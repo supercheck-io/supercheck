@@ -11,7 +11,7 @@ import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
 import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
-export type Executor = Pick<typeof db, "select" | "insert" | "delete" | "update">;
+export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "insert" | "delete" | "update">;
 
 /** Raised when a requirement would exceed the tag cap; services map it to a validation failure (not a 500). */
 export class TagLimitError extends Error {
@@ -158,13 +158,21 @@ export async function updateCoverageSnapshot(
   requirementId: string,
   executor: Executor = db
 ): Promise<void> {
-  // Get linked tests with their latest run status
+  // One statement, so the link set and the run statuses cannot drift apart between reads. Same rule as
+  // the worker's getLinkedTestsWithStatus: a test's status is its latest terminal job run (runs.id breaks ties).
   const linkedTests = await executor
-    .select({
+    .selectDistinctOn([testRequirements.testId], {
       testId: testRequirements.testId,
+      status: runs.status,
     })
     .from(testRequirements)
-    .where(eq(testRequirements.requirementId, requirementId));
+    .leftJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
+    .leftJoin(
+      runs,
+      and(eq(runs.jobId, jobTests.jobId), inArray(runs.status, ["passed", "failed", "error"]))
+    )
+    .where(eq(testRequirements.requirementId, requirementId))
+    .orderBy(testRequirements.testId, sql`${runs.completedAt} desc nulls last`, desc(runs.id));
 
   const linkedTestCount = linkedTests.length;
 
@@ -184,24 +192,8 @@ export async function updateCoverageSnapshot(
     return;
   }
 
-  // Same rule as the worker's getLinkedTestsWithStatus: a test's status is its latest terminal job run.
-  const rows = await executor
-    .select({ testId: testRequirements.testId, status: runs.status })
-    .from(testRequirements)
-    .innerJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
-    .innerJoin(runs, eq(runs.jobId, jobTests.jobId))
-    .where(
-      and(
-        eq(testRequirements.requirementId, requirementId),
-        inArray(runs.status, ["passed", "failed", "error"])
-      )
-    )
-    .orderBy(desc(runs.completedAt));
-
-  const latest = new Map<string, string>();
-  for (const row of rows) if (!latest.has(row.testId)) latest.set(row.testId, row.status);
-  const passedTestCount = [...latest.values()].filter((st) => st === "passed").length;
-  const failedTestCount = latest.size - passedTestCount;
+  const passedTestCount = linkedTests.filter((r) => r.status === "passed").length;
+  const failedTestCount = linkedTests.filter((r) => r.status === "failed" || r.status === "error").length;
 
   await executor
     .update(requirementCoverageSnapshots)

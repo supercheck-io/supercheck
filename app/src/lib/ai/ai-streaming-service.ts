@@ -382,6 +382,7 @@ export class AIStreamingService {
             const errorData = JSON.stringify({
               type: "error",
               error: "AI generation failed. Try again.",
+              ...(/\b429\b|rate limit/i.test(errorMessage) && { code: "rate_limit" }),
             });
             controller.enqueue(
               new TextEncoder().encode(`data: ${errorData}\n\n`)

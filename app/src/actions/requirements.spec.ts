@@ -14,6 +14,13 @@
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
+    // updateCoverageSnapshot: one query returning the linked tests with their latest run status.
+    selectDistinctOn: jest.fn(() => {
+      const q: Record<string, unknown> = {};
+      q.from = q.leftJoin = q.where = () => q;
+      q.orderBy = () => Promise.resolve([]);
+      return q;
+    }),
     insert: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -325,8 +332,6 @@ describe("Requirements Server Actions", () => {
     it("should log audit event on link tests", async () => {
       mockWriteChains();
       mockSelectResults([{ id: testRequirementId }], [{ id: testIdA }, { id: testIdB }]);
-      // updateCoverageSnapshot reads linked tests
-      mockSelectResults([]);
       await linkTestsToRequirement(testRequirementId, [testIdA, testIdB]);
 
       expect(mockLogAuditEvent).toHaveBeenCalledWith(
@@ -343,7 +348,6 @@ describe("Requirements Server Actions", () => {
     it("should log audit event on unlink test", async () => {
       mockWriteChains();
       mockSelectResults([{ id: testRequirementId }], [{ id: testIdA }]);
-      mockSelectResults([]);
       await unlinkTestFromRequirement(testRequirementId, testIdA);
 
       expect(mockLogAuditEvent).toHaveBeenCalledWith(

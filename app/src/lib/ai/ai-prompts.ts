@@ -8,6 +8,12 @@ const K6_FIX_INPUT_CAP = 50_000;
 const tailCap = (text: string) =>
   text.length > K6_FIX_INPUT_CAP ? `[truncated]\n${text.slice(-K6_FIX_INPUT_CAP)}` : text;
 
+// A k6 summary is JSON: keep its opening structure and metric keys plus the tail, not only the end.
+const headTailCap = (text: string) =>
+  text.length > K6_FIX_INPUT_CAP
+    ? `${text.slice(0, K6_FIX_INPUT_CAP / 4)}\n[truncated]\n${text.slice(-(K6_FIX_INPUT_CAP * 3) / 4)}`
+    : text;
+
 interface PromptContext {
   failedScript: string;
   testType: string;
@@ -355,7 +361,7 @@ CONFIDENCE:
       ? AISecurityService.escapeForPrompt(tailCap(consoleLog))
       : "";
     const escapedSummaryJSON = summaryJSON
-      ? AISecurityService.escapeForPrompt(tailCap(summaryJSON))
+      ? AISecurityService.escapeForPrompt(headTailCap(summaryJSON))
       : "";
 
     return `<SYSTEM_INSTRUCTIONS>

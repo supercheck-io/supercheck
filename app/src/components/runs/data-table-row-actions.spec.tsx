@@ -10,8 +10,11 @@ jest.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuSeparator: () => null,
-  DropdownMenuItem: ({ children, onClick, disabled }: { children: React.ReactNode; onClick?: (e: unknown) => void; disabled?: boolean }) => (
-    <button role="menuitem" disabled={disabled} onClick={onClick}>{children}</button>
+  // Forward ref and props so the tooltip trigger can attach to the item itself.
+  DropdownMenuItem: require("react").forwardRef(
+    ({ children, onSelect: _onSelect, ...rest }: Record<string, unknown> & { children: React.ReactNode }, ref: React.Ref<HTMLButtonElement>) => (
+      <button role="menuitem" ref={ref} {...rest}>{children}</button>
+    )
   ),
 }));
 jest.mock("@/actions/delete-run", () => ({ deleteRun: jest.fn() }));
@@ -47,9 +50,9 @@ describe("runs DataTableRowActions delete", () => {
 
   it("explains why Delete is disabled for viewers", async () => {
     render(<DataTableRowActions row={row} canDelete={false} />);
-      expect(screen.getByRole("menuitem", { name: /delete/i })).toBeDisabled();
-    // Radix tooltip opens on focus of the trigger wrapper.
-    fireEvent.focus(screen.getByRole("menuitem", { name: /delete/i }).parentElement!);
+      expect(screen.getByRole("menuitem", { name: /delete/i })).toHaveAttribute("aria-disabled", "true");
+    // The item itself stays focusable and is the tooltip trigger.
+    fireEvent.focus(screen.getByRole("menuitem", { name: /delete/i }));
     expect((await screen.findAllByText("Insufficient permissions to delete runs")).length).toBeGreaterThan(0);
   });
 });

@@ -35,6 +35,7 @@ export const cronExpressionSchema = z
 
 /** Upper bound for user-supplied test/job scripts (characters). */
 export const MAX_SCRIPT_LENGTH = 1_000_000;
+export const MAX_DESCRIPTION_LENGTH = 1000;
 
 export const TEST_PRIORITIES = ["low", "medium", "high"] as const;
 

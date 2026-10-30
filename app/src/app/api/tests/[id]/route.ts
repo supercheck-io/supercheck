@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
-import { isTestPriority, MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
@@ -20,7 +20,6 @@ import {
 
 // Matches the tests.title varchar(255) column.
 const MAX_TITLE_LENGTH = 255;
-const MAX_DESCRIPTION_LENGTH = 1000;
 
 export async function GET(
   request: NextRequest,
@@ -138,7 +137,7 @@ export async function PUT(
 
     if (body.title !== undefined) {
       body.title = typeof body.title === "string" ? body.title.trim() : body.title;
-      if (typeof body.title !== "string" || !body.title || body.title.length > MAX_TITLE_LENGTH) {
+      if (typeof body.title !== "string" || !body.title || [...body.title].length > MAX_TITLE_LENGTH) {
         return NextResponse.json(
           { error: `Title must be 1-${MAX_TITLE_LENGTH} characters` },
           { status: 400 },

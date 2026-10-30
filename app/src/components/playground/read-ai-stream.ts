@@ -16,7 +16,7 @@ export async function readAiStream(
 
   const handleLine = (line: string) => {
     if (!line.startsWith("data: ")) return;
-    let data: { type?: string; content?: string };
+    let data: { type?: string; content?: string; code?: string };
     try {
       data = JSON.parse(line.slice(6));
     } catch (error) {
@@ -29,6 +29,7 @@ export async function readAiStream(
     } else if (data.type === "done") {
       finished = true;
     } else if (data.type === "error") {
+      if (data.code === "rate_limit") throw new Error("AI rate limit reached. Please wait a moment and try again.");
       throw new Error("AI generation failed. Please try again.");
     }
   };

@@ -90,28 +90,35 @@ describe("syncRequirementTags", () => {
 });
 
 describe("updateCoverageSnapshot", () => {
-  it("recomputes status and pass/fail counts, not just linkedTestCount", async () => {
+  const run = async (rows: { testId: string; status: string | null }[]) => {
     const sets: Record<string, unknown>[] = [];
-    let call = 0;
+    const orders: unknown[][] = [];
+    const q: Record<string, unknown> = {};
+    q.from = () => q;
+    q.leftJoin = () => q;
+    q.where = () => q;
+    q.orderBy = (...o: unknown[]) => { orders.push(o); return Promise.resolve(rows); };
     const executor = {
-      select: () => ({
-        from: () => {
-          const n = call++;
-          if (n === 0) return { where: () => Promise.resolve([{ testId: "a" }, { testId: "b" }]) };
-          const q: Record<string, unknown> = {};
-          q.innerJoin = () => q;
-          q.where = () => q;
-          q.orderBy = () => Promise.resolve([
-            { testId: "a", status: "failed" },
-            { testId: "a", status: "passed" },
-            { testId: "b", status: "passed" },
-          ]);
-          return q;
-        },
-      }),
+      selectDistinctOn: () => q,
       update: () => ({ set: (v: Record<string, unknown>) => { sets.push(v); return { where: () => Promise.resolve() }; } }),
     };
     await updateCoverageSnapshot(R, executor as never);
-    expect(sets[0]).toMatchObject({ status: "failing", linkedTestCount: 2, passedTestCount: 1, failedTestCount: 1 });
+    return { sets, orders };
+  };
+
+  it("derives the link count and pass/fail counts from one latest-run-per-test result", async () => {
+    const { sets, orders } = await run([
+      { testId: "a", status: "failed" },
+      { testId: "b", status: "passed" },
+      { testId: "c", status: null },
+    ]);
+    expect(sets[0]).toMatchObject({ status: "failing", linkedTestCount: 3, passedTestCount: 1, failedTestCount: 1 });
+    // runs.id is the final ordering key, so equal completedAt values resolve deterministically.
+    expect(orders[0]).toHaveLength(3);
+  });
+
+  it("marks coverage missing when nothing is linked", async () => {
+    const { sets } = await run([]);
+    expect(sets[0]).toMatchObject({ status: "missing", linkedTestCount: 0 });
   });
 });

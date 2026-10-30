@@ -219,6 +219,7 @@ export async function GET(request: Request) {
           return;
         }
 
+        heldCompletion = false; // a later event supersedes an earlier held completion
         payload.derivedStatus = deriveFinalStatus(status, reportStatus);
         emit(payload);
       };

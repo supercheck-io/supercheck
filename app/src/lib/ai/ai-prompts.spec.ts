@@ -4,12 +4,20 @@ import { K6RunData } from './ai-prompts';
 
 describe('AIPromptBuilder', () => {
   describe('buildK6FixPrompt', () => {
-    it('keeps only the tail of oversized console logs and summaries', () => {
+    it('keeps the tail of an oversized console log', () => {
       const log = 'ZZHEADZZ' + 'x'.repeat(60_000) + 'TAIL';
-      const prompt = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a', consoleLog: log, summaryJSON: log });
+      const prompt = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a', consoleLog: log });
       expect(prompt).toContain('[truncated]');
       expect(prompt).toContain('TAIL');
       expect(prompt).not.toContain('ZZHEADZZ');
+      expect(prompt.length).toBeLessThan(115_000);
+    });
+    it('keeps both the opening structure and the tail of an oversized summary', () => {
+      const summary = '{METRICSKEY' + 'x'.repeat(60_000) + 'TAIL';
+      const prompt = AIPromptBuilder.buildK6FixPrompt({ failedScript: 'a', summaryJSON: summary });
+      expect(prompt).toContain('[truncated]');
+      expect(prompt).toContain('METRICSKEY');
+      expect(prompt).toContain('TAIL');
       expect(prompt.length).toBeLessThan(115_000);
     });
     it('does not truncate small inputs', () => {

@@ -27,6 +27,7 @@ import {
   type RequirementDocumentType,
 } from "@/db/schema";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { randomUUID } from "crypto";
 import { extractText } from "unpdf";
 import * as mammoth from "mammoth";
 import { getS3Client } from "@/lib/s3-proxy";
@@ -87,24 +88,29 @@ function validateFileType(file: File): RequirementDocumentType {
   const fileName = file.name.toLowerCase();
   const mimeType = file.type;
 
+  const extType: RequirementDocumentType | undefined = /\.(md|markdown)$/.test(fileName)
+    ? "md"
+    : fileName.endsWith(".txt")
+      ? "text"
+      : fileName.endsWith(".pdf")
+        ? "pdf"
+        : fileName.endsWith(".docx")
+          ? "docx"
+          : undefined;
+
   // Check MIME type first
-  if (mimeType && ALLOWED_MIME_TYPES[mimeType]) {
-    return ALLOWED_MIME_TYPES[mimeType];
+  const mimeDocType = mimeType ? ALLOWED_MIME_TYPES[mimeType] : undefined;
+  if (mimeDocType) {
+    // Text and Markdown MIME types are interchangeable across browsers; a binary format must match its extension.
+    const binary = (t?: RequirementDocumentType) => t === "pdf" || t === "docx";
+    if (extType && extType !== mimeDocType && (binary(extType) || binary(mimeDocType))) {
+      throw new Error("File type does not match its extension");
+    }
+    return mimeDocType;
   }
 
   // Fallback to extension check
-  if (fileName.endsWith(".md") || fileName.endsWith(".markdown")) {
-    return "md";
-  }
-  if (fileName.endsWith(".txt")) {
-    return "text";
-  }
-  if (fileName.endsWith(".pdf")) {
-    return "pdf";
-  }
-  if (fileName.endsWith(".docx")) {
-    return "docx";
-  }
+  if (extType) return extType;
 
   throw new Error(
     `Unsupported file type: ${mimeType || fileName}. Allowed: PDF, DOCX, Markdown, Text`
@@ -288,10 +294,9 @@ async function uploadDocument(
     const buffer = Buffer.from(arrayBuffer);
 
     // Generate unique storage path
-    // Format: projects/{projectId}/documents/{timestamp}-{sanitized_filename}
-    const timestamp = Date.now();
+    // Format: projects/{projectId}/documents/{uuid}-{sanitized_filename}
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const storagePath = `projects/${projectId}/documents/${timestamp}-${sanitizedName}`;
+    const storagePath = `projects/${projectId}/documents/${randomUUID()}-${sanitizedName}`;
 
     // Upload to S3
     await s3.send(
@@ -329,17 +334,19 @@ async function uploadDocument(
 
 async function deleteDocumentRecord(id: string, storagePath: string) {
   try {
+    await db.delete(requirementDocuments).where(eq(requirementDocuments.id, id));
+  } catch (e) {
+    // Keep the object: the surviving row still points at it.
+    console.error("Failed to cleanup document record", e);
+    return;
+  }
+  try {
     // Best effort: an orphaned object is preferable to failing the user's request.
     await getS3Client().send(
       new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: storagePath })
     );
   } catch (e) {
     console.error("Failed to delete uploaded document object", e);
-  }
-  try {
-    await db.delete(requirementDocuments).where(eq(requirementDocuments.id, id));
-  } catch (e) {
-    console.error("Failed to cleanup document record", e);
   }
 }
 
@@ -597,6 +604,13 @@ export async function extractRequirementsFromDocument(
       };
     }
 
+    if (file.size === 0) {
+      return {
+        success: false,
+        error: "File is empty. Please upload a document with content.",
+      };
+    }
+
     // Validate file type (MIME type check plus magic bytes for security)
     let fileType: RequirementDocumentType;
     try {
@@ -611,13 +625,7 @@ export async function extractRequirementsFromDocument(
       };
     }
 
-    // Validate file size (min and max)
-    if (file.size === 0) {
-      return {
-        success: false,
-        error: "File is empty. Please upload a document with content.",
-      };
-    }
+    // Validate file size (max)
     
     const maxDocumentSizeBytes =
       parseInt(process.env.MAX_DOCUMENT_SIZE_MB || "10", 10) * 1024 * 1024;

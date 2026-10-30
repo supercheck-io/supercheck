@@ -15,9 +15,11 @@ jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
 
 import { GET, POST } from "./route";
+import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { usageTracker } from "@/lib/services/usage-tracker";
 
 const { getActiveOrganization } = jest.requireMock("@/lib/session") as { getActiveOrganization: jest.Mock };
@@ -59,5 +61,10 @@ describe("AI create-test input bounds", () => {
     const response = await GET();
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+
+  it("reports configured: false when the AI provider is not configured", async () => {
+    (validateAIConfiguration as jest.Mock).mockImplementationOnce(() => { throw new Error("no key"); });
+    expect(await (await GET()).json()).toMatchObject({ configured: false });
   });
 });

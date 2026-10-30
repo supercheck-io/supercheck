@@ -17,7 +17,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { updateCoverageSnapshot } from "@/lib/requirements-internal";
-import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import {
   validateTestScript,
@@ -39,6 +39,7 @@ const saveTestSchema = testsInsertSchema.omit({
 const saveTestWithIdSchema = saveTestSchema.extend({
   id: z.string().uuid().optional(),
   requirementId: z.string().uuid().optional(),
+  description: z.string().max(MAX_DESCRIPTION_LENGTH).nullish(),
 });
 
 export type SaveTestInput = z.infer<typeof saveTestWithIdSchema>;

@@ -177,6 +177,12 @@ it.each([
   expect(mockSet).not.toHaveBeenCalled();
 });
 
+it("rejects a description over the API limit in the save action too", async () => {
+  const result = await saveTest({ id: "00000000-0000-4000-8000-000000000001", title: "T", description: "a".repeat(1001) });
+  expect(result.success).toBe(false);
+  expect(mockSet).not.toHaveBeenCalled();
+});
+
 it("ignores ownership columns supplied to the save action", async () => {
   const result = await saveTest({
     id: "00000000-0000-4000-8000-000000000001",
@@ -216,6 +222,10 @@ describe("PUT /api/tests/[id] request hardening", () => {
   ])("returns 400 for invalid fields %j", async (body) => {
     expect((await put(JSON.stringify(body))).status).toBe(400);
     expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("counts a supplementary-plane title character once, like the database column", async () => {
+    expect((await put(JSON.stringify({ title: "😀".repeat(255) }))).status).toBe(200);
   });
 
   it("trims the title and accepts a null description", async () => {
