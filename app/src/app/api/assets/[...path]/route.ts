@@ -141,7 +141,7 @@ export async function HEAD(
     }
 
     // Don't include the body for HEAD requests; release the S3 stream.
-    await response.body?.cancel();
+    await response.body?.cancel().catch(() => undefined);
     return new NextResponse(null, {
       status: response.status,
       headers,

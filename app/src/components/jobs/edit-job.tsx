@@ -429,7 +429,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
       toast.success("Job deleted successfully");
 
       // Invalidate Jobs cache to ensure fresh data on jobs list
-      invalidateJobCaches(queryClient);
+      invalidateJobCaches(queryClient, jobId);
 
       router.push("/jobs");
     } catch (error) {

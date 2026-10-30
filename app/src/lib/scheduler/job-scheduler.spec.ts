@@ -388,8 +388,16 @@ describe("scheduled job bookkeeping", () => {
       .mockReturnValueOnce(selectRows([jobRow]))
       .mockReturnValueOnce(selectRows([{ status: "deleted" }]));
     await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: true });
-    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
+    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1", { throwOnError: true });
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("rethrows a Redis failure while removing the repeatable so BullMQ retries", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([{ ...jobRow, cronSchedule: null }]))
+      .mockReturnValueOnce(selectRows([{ status: "active" }]));
+    jest.mocked(deleteScheduledJob).mockRejectedValueOnce(new Error("redis down"));
+    await expect(processScheduledJob(scheduledJob)).rejects.toThrow("redis down");
   });
 
   it("removes the repeatable when the job no longer has a cron schedule", async () => {
@@ -397,7 +405,7 @@ describe("scheduled job bookkeeping", () => {
       .mockReturnValueOnce(selectRows([{ ...jobRow, cronSchedule: null }]))
       .mockReturnValueOnce(selectRows([{ status: "active" }]));
     await processScheduledJob(scheduledJob);
-    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
+    expect(deleteScheduledJob).toHaveBeenCalledWith("job-1", { throwOnError: true });
     expect(db.insert).not.toHaveBeenCalled();
   });
 

@@ -457,15 +457,18 @@ export class PlaywrightExecutionProcessor
       );
 
       // Update run status to cancelled
-      await this.dbService
+      const runCancellationRecorded = await this.dbService
         .updateRunStatus(runId, 'error', '0', RUN_CANCELLATION_MARKER)
-        .catch((err: Error) =>
+        .then(() => true)
+        .catch((err: Error) => {
           this.logger.error(
             `[${runId}] Failed to update run status to cancelled: ${err.message}`,
-          ),
-        );
+          );
+          return false;
+        });
 
-      if (originalJobId) {
+      // The stalled-run sweep finalizes the run and its job together if this write failed.
+      if (originalJobId && runCancellationRecorded) {
         await this.updateJobStatus(originalJobId, 'error', runId);
         await this.dbService.db
           .update(jobs)
@@ -795,17 +798,20 @@ export class PlaywrightExecutionProcessor
     runId: string,
   ) {
     // Job status follows this run's final status; only a sibling still queued/running keeps it running.
-    const otherActive = await this.dbService.hasOtherActiveRun(
-      originalJobId,
-      runId,
-    );
-    await this.dbService
-      .updateJobStatus(originalJobId, [otherActive ? 'running' : status])
-      .catch((err: Error) =>
-        this.logger.error(
-          `[${runId}] Failed to update job status: ${err.message}`,
-        ),
+    try {
+      const otherActive = await this.dbService.hasOtherActiveRun(
+        originalJobId,
+        runId,
       );
+      await this.dbService.updateJobStatus(originalJobId, [
+        otherActive ? 'running' : status,
+      ]);
+    } catch (err) {
+      // A failed sibling lookup is "unknown", not "none active": skip the write instead of guessing.
+      this.logger.error(
+        `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   @OnWorkerEvent('failed')

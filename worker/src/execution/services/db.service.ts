@@ -548,10 +548,18 @@ export class DbService implements OnModuleInit {
       .returning({ id: runs.id, jobId: runs.jobId });
     if (!finalized) return false;
     if (finalized.jobId) {
-      const active = await this.hasOtherActiveRun(finalized.jobId, runId);
-      await this.updateJobStatus(finalized.jobId, [
-        active ? 'running' : 'error',
-      ]);
+      try {
+        const active = await this.hasOtherActiveRun(finalized.jobId, runId);
+        await this.updateJobStatus(finalized.jobId, [
+          active ? 'running' : 'error',
+        ]);
+      } catch (error) {
+        // The run is already finalized; leave the job status for the next run to write rather than guess.
+        this.logger.error(
+          `Failed to update job status after cancelling run ${runId}:`,
+          error,
+        );
+      }
     }
     return true;
   }
@@ -621,25 +629,20 @@ export class DbService implements OnModuleInit {
     }
   }
 
-  /** True when another run of the job is still queued or running. */
+  /** True when another run of the job is still queued or running. Throws when the lookup fails: callers must not guess. */
   async hasOtherActiveRun(jobId: string, runId: string): Promise<boolean> {
-    try {
-      const [other] = await this.db
-        .select({ id: runs.id })
-        .from(runs)
-        .where(
-          and(
-            eq(runs.jobId, jobId),
-            ne(runs.id, runId),
-            inArray(runs.status, ['queued', 'running']),
-          ),
-        )
-        .limit(1);
-      return !!other;
-    } catch (error) {
-      this.logger.error(`Failed to check active runs for job ${jobId}:`, error);
-      return false;
-    }
+    const [other] = await this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.jobId, jobId),
+          ne(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+        ),
+      )
+      .limit(1);
+    return !!other;
   }
 
   // ===============================

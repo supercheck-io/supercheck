@@ -150,6 +150,16 @@ it("does not re-validate a legacy stored cron or threshold that the caller only 
   expect(mockSelect).toHaveBeenCalled();
 });
 
+it("only caps a description the caller supplied, not an inherited legacy one", async () => {
+  mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
+  const legacy = { ...input, description: "x".repeat(5000) };
+  await updateJob(legacy, { ...context, inherited: { description: true } });
+  expect(mockSelect).toHaveBeenCalled();
+  mockSelect.mockClear();
+  expect(await updateJob(legacy, context)).toMatchObject({ success: false, message: expect.stringContaining("2000") });
+  expect(mockSelect).not.toHaveBeenCalled();
+});
+
 it("accepts an inherited null threshold instead of failing an unrelated edit", async () => {
   mockSelect.mockImplementation(() => { throw new Error("lookup reached"); });
   const alertConfig = { enabled: false, notificationProviders: [], alertOnFailure: true, failureThreshold: null, recoveryThreshold: null };

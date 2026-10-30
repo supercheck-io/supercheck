@@ -130,6 +130,24 @@ async function streamToUint8Array(
   throw new Error("Unsupported stream type");
 }
 
+// Failures after the response has started cannot reach fetchFromS3's catch; log them and abort the download.
+function logStreamErrors(source: ReadableStream, label: string): ReadableStream {
+  const reader = source.getReader();
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        console.error("[S3 PROXY] Stream error while reading:", label, error);
+        controller.error(error);
+      }
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+}
+
 /**
  * Fetch an object from S3/MinIO and return it as a NextResponse
  * @param bucket - S3 bucket name
@@ -164,7 +182,7 @@ export async function fetchFromS3(
     const streamable = s3Response.Body as { transformToWebStream?: () => ReadableStream };
     const body =
       typeof streamable.transformToWebStream === "function"
-        ? streamable.transformToWebStream()
+        ? logStreamErrors(streamable.transformToWebStream(), `${bucket}/${key}`)
         : new Blob([(await streamToUint8Array(s3Response.Body)) as BlobPart]);
 
     const headers: Record<string, string> = {

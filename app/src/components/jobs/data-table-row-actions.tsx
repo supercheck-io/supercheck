@@ -98,7 +98,7 @@ export function DataTableRowActions<TData>({
       toast.success("Job deleted successfully");
 
       // Invalidate Jobs cache to ensure fresh data on jobs page
-      invalidateJobCaches(queryClient);
+      invalidateJobCaches(queryClient, job.id);
 
       // Call onDelete callback if provided
       if (onDelete) {

@@ -357,6 +357,32 @@ describe("Jobs route regressions", () => {
     expect((updateJob as jest.Mock).mock.calls[0][0]).not.toHaveProperty("status");
   });
 
+  it("PUT /api/jobs keeps the stored schedule when cronSchedule is omitted", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000006";
+    mockDb.select
+      .mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([{ id: jobId, projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "5 * * * *" }]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({ from: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue([{ id: TEST_ID, type: "browser" }]) }) });
+    (updateJob as jest.Mock).mockResolvedValue({ success: true, job: { id: jobId } });
+
+    const response = await PUT(new Request("http://localhost/api/jobs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: jobId, name: "Nightly Job", tests: [{ id: TEST_ID }] }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(updateJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId, cronSchedule: "5 * * * *" }),
+      expect.objectContaining({ inherited: { cronSchedule: true } }),
+    );
+  });
+
   it("POST /api/jobs rejects a k6 job with more than one test", async () => {
     const T2 = "00000000-0000-4000-8000-0000000000a2";
     const rows = [{ id: TEST_ID, type: "performance" }, { id: T2, type: "performance" }];

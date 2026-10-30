@@ -174,6 +174,26 @@ describe('StalledJobHandlerService', () => {
     },
   );
 
+  it('reads orphaned queued runs in their own query, so skipped rows cannot crowd them out', async () => {
+    const select = jest.fn(() => ({
+      from: () => ({
+        leftJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+      }),
+    }));
+    const service = new StalledJobHandlerService(
+      { db: { select } } as never,
+      { get: jest.fn() } as never,
+      {} as never,
+    );
+    const state = service as unknown as {
+      redisClient: object;
+      checkAndHandleStalledJobs: () => Promise<void>;
+    };
+    state.redisClient = {};
+    await state.checkAndHandleStalledJobs();
+    expect(select).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['the newest run', ['error', 'passed', 'failed'], 'error'],
     ['a still-active run', ['error', 'running', 'failed'], 'running'],

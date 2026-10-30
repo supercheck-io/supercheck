@@ -30,6 +30,15 @@ it("updating a job also invalidates the dashboard", async () => {
   expect(invalidated(spy)).toEqual(expect.arrayContaining([DASHBOARD_QUERY_KEY]));
 });
 
+it("invalidateJobCaches evicts the deleted job's detail query", () => {
+  const { client } = setup();
+  client.setQueryData(["job", "j1"], { id: "j1" });
+  client.setQueryData(["job", "j2"], { id: "j2" });
+  invalidateJobCaches(client, "j1");
+  expect(client.getQueryData(["job", "j1"])).toBeUndefined();
+  expect(client.getQueryData(["job", "j2"])).toBeDefined();
+});
+
 it("invalidateJobCaches refreshes jobs and dashboard", () => {
   const { client, spy } = setup();
   invalidateJobCaches(client);

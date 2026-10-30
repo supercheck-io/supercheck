@@ -144,7 +144,8 @@ export async function handleScheduledJobTrigger(job: Job) {
  * Deletes a job scheduler
  */
 export async function deleteScheduledJob(
-  schedulerId: string
+  schedulerId: string,
+  options: { throwOnError?: boolean } = {}
 ): Promise<boolean> {
   try {
     // Removing job scheduler
@@ -180,6 +181,7 @@ export async function deleteScheduledJob(
     return removed;
   } catch (error) {
     console.error(`Failed to delete scheduled job:`, error);
+    if (options.throwOnError) throw error; // lets a BullMQ worker retry instead of reporting success
     return false;
   }
 }

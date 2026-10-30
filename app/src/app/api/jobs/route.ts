@@ -746,6 +746,7 @@ export async function PUT(request: Request) {
         projectId: jobs.projectId,
         organizationId: jobs.organizationId,
         jobType: jobs.jobType,
+        cronSchedule: jobs.cronSchedule,
       })
       .from(jobs)
       .where(eq(jobs.id, targetJobId))
@@ -850,18 +851,21 @@ export async function PUT(request: Request) {
 
     // Same path as PATCH/PUT /api/jobs/[id]: validates the cron, reschedules, syncs notifications. A
     // client-supplied status is never written.
+    // An omitted cronSchedule keeps the stored one (as PATCH does); an explicit "" or null clears it.
+    const scheduleOmitted = jobData.cronSchedule === undefined;
+    const effectiveCron = scheduleOmitted ? existingJob[0].cronSchedule : jobData.cronSchedule;
     const result = await updateJob(
       {
         jobId: targetJobId,
         name: jobData.name,
         description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule || undefined,
+        cronSchedule: effectiveCron || undefined,
         tests: jobData.tests.map((test) => ({ id: test.id })),
         alertConfig: jobData.alertConfig
           ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
           : undefined,
       },
-      { userId: context.userId, project, organizationId },
+      { userId: context.userId, project, organizationId, inherited: { cronSchedule: scheduleOmitted } },
     );
     if (!result.success) {
       return NextResponse.json(
@@ -876,7 +880,7 @@ export async function PUT(request: Request) {
         id: targetJobId,
         name: jobData.name,
         description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule || null,
+        cronSchedule: effectiveCron || null,
         nextRunAt: result.job?.nextRunAt ?? null,
         ...(result.job?.warning ? { warning: result.job.warning } : {}),
       },

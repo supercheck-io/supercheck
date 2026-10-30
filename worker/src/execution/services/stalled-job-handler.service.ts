@@ -8,7 +8,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
-import { and, or, eq, ne, isNull, lt, inArray, sql, desc } from 'drizzle-orm';
+import {
+  and,
+  or,
+  eq,
+  ne,
+  isNull,
+  lt,
+  inArray,
+  sql,
+  desc,
+  type SQL,
+} from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
@@ -135,32 +146,42 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         ),
       );
       // Enable queued recovery only after every worker uses atomic execution admission.
-      const activeRuns = await this.dbService.db
-        .select({
-          id: schema.runs.id,
-          jobId: schema.runs.jobId,
-          startedAt: schema.runs.startedAt,
-          createdAt: schema.runs.createdAt,
-          status: schema.runs.status,
-          errorDetails: schema.runs.errorDetails,
-          location: schema.runs.location,
-          callbackHeartbeatAt: schema.runCallbacks.heartbeatAt,
-          callbackFinishedAt: schema.runCallbacks.finishedAt,
-          callbackRevokedAt: schema.runCallbacks.revokedAt,
-        })
-        .from(schema.runs)
-        .leftJoin(
-          schema.runCallbacks,
-          eq(schema.runCallbacks.runId, schema.runs.id),
-        )
-        .where(
+      const selectRuns = (where: SQL | undefined) =>
+        this.dbService.db
+          .select({
+            id: schema.runs.id,
+            jobId: schema.runs.jobId,
+            startedAt: schema.runs.startedAt,
+            createdAt: schema.runs.createdAt,
+            status: schema.runs.status,
+            errorDetails: schema.runs.errorDetails,
+            location: schema.runs.location,
+            callbackHeartbeatAt: schema.runCallbacks.heartbeatAt,
+            callbackFinishedAt: schema.runCallbacks.finishedAt,
+            callbackRevokedAt: schema.runCallbacks.revokedAt,
+          })
+          .from(schema.runs)
+          .leftJoin(
+            schema.runCallbacks,
+            eq(schema.runCallbacks.runId, schema.runs.id),
+          )
+          .where(where)
+          .limit(1000); // Limit to prevent large queries
+      // Separate windows: orphaned queued runs the loop skips (waiting for capacity) must not crowd out running ones, nor the reverse.
+      const [tracked, orphaned] = await Promise.all([
+        selectRuns(
           or(
             eq(schema.runs.status, 'running'),
             recoverQueuedCancellations ? queuedCancellation : undefined,
-            orphanedQueued,
           ),
-        )
-        .limit(1000); // Limit to prevent large queries
+        ),
+        selectRuns(orphanedQueued),
+      ]);
+      const activeRuns = [
+        ...new Map(
+          [...tracked, ...orphaned].map((run) => [run.id, run]),
+        ).values(),
+      ];
 
       if (activeRuns.length === 0) {
         return;

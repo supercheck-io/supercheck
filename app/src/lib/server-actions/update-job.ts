@@ -30,7 +30,7 @@ export const jobNameSchema = z.string().trim().min(1, { message: "Job name is re
 export const jobDescriptionSchema = z.string().max(2000, { message: "Description must be at most 2000 characters." });
 export const MAX_JOB_TESTS = 50;
 
-const JOB_CONFLICT_ERROR = "Job changed since you opened it — reload";
+export const JOB_CONFLICT_ERROR = "Job changed since you opened it — reload";
 class JobConflictError extends Error {}
 
 const updateJobSchema = z.object({
@@ -74,7 +74,7 @@ type UpdateJobContext = {
   organizationId: string;
   project: { id: string; name: string; userRole: string };
   /** Fields the caller filled from the stored job. Stored values accepted earlier are not re-validated, so an unrelated edit still works. */
-  inherited?: { cronSchedule?: boolean; alertConfig?: boolean };
+  inherited?: { cronSchedule?: boolean; alertConfig?: boolean; description?: boolean };
 };
 
 export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJobContext) {
@@ -103,7 +103,11 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
 
     // Validate the data
-    const validatedData = updateJobSchema.parse(data);
+    // An inherited (stored) description may predate the length limit; only a caller-supplied one is capped.
+    const validatedData = (contextOverride?.inherited?.description
+      ? updateJobSchema.extend({ description: z.string() })
+      : updateJobSchema
+    ).parse(data);
     const cronError = contextOverride?.inherited?.cronSchedule ? null : validateJobCron(validatedData.cronSchedule);
     if (cronError) return { success: false, message: cronError };
     const thresholdError = contextOverride?.inherited?.alertConfig ? null : alertThresholdError(validatedData.alertConfig);

@@ -24,6 +24,16 @@ describe("fetchFromS3", () => {
     expect(await response.text()).toBe("hello");
   });
 
+  it("logs and aborts the download when S3 fails mid-stream", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const failing = new ReadableStream({ pull() { throw new Error("socket reset"); } });
+    mockSend.mockResolvedValue({ Body: { transformToWebStream: () => failing } });
+    const response = await fetchFromS3("b", "k");
+    await expect(response.text()).rejects.toThrow("socket reset");
+    expect(spy).toHaveBeenCalledWith("[S3 PROXY] Stream error while reading:", "b/k", expect.any(Error));
+    spy.mockRestore();
+  });
+
   it("lets a caller opt into public caching", async () => {
     mockSend.mockResolvedValue({ Body: body("x") });
     const response = await fetchFromS3("b", "k", { cacheControl: "public, max-age=60" });

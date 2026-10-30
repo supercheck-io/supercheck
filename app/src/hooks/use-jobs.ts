@@ -85,7 +85,9 @@ export const JOBS_QUERY_KEY = ["jobs"] as const;
 export const JOB_QUERY_KEY = ["job"] as const;
 
 /** Job writes also change dashboard stats and recent runs; call sites that save through server actions use this. */
-export function invalidateJobCaches(queryClient: QueryClient) {
+export function invalidateJobCaches(queryClient: QueryClient, deletedJobId?: string) {
+  // A deleted job's detail entry would otherwise be served from cache on a deep link.
+  if (deletedJobId) queryClient.removeQueries({ queryKey: [...JOB_QUERY_KEY, deletedJobId] });
   queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
   queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 }

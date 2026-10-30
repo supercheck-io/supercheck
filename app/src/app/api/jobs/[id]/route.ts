@@ -1,7 +1,7 @@
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
-import { updateJob } from "@/lib/server-actions/update-job";
+import { updateJob, JOB_CONFLICT_ERROR } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
 import { eq, inArray, asc, and } from "drizzle-orm";
@@ -181,21 +181,14 @@ export async function PATCH(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // Fetch current tests for the job
-    const currentTests = await db
-      .select({ id: testsTable.id })
-      .from(testsTable)
-      .innerJoin(jobTests, eq(testsTable.id, jobTests.testId))
-      .where(eq(jobTests.jobId, jobId))
-      .orderBy(asc(jobTests.orderPosition));
-
     // Merge updates
     const updateData = {
       jobId,
       name: rawData.name !== undefined ? rawData.name : existingJob.name,
       description: rawData.description !== undefined ? rawData.description : (existingJob.description || ""),
       cronSchedule: rawData.cronSchedule !== undefined ? rawData.cronSchedule : (existingJob.cronSchedule || ""),
-      tests: rawData.tests !== undefined ? rawData.tests : currentTests.map(t => ({ id: t.id })),
+      // Omitted: updateJob falls back to the stored tests, so a legacy job over the new test cap stays editable.
+      tests: rawData.tests,
       alertConfig: rawData.alertConfig !== undefined ? rawData.alertConfig : (existingJob.alertConfig || undefined),
     } as any; // Cast as any to bypass strict UpdateJobData if needed, though structure matches
 
@@ -203,7 +196,7 @@ export async function PATCH(
       userId,
       project,
       organizationId,
-      inherited: { cronSchedule: rawData.cronSchedule === undefined, alertConfig: rawData.alertConfig === undefined },
+      inherited: { cronSchedule: rawData.cronSchedule === undefined, alertConfig: rawData.alertConfig === undefined, description: rawData.description === undefined },
     });
 
     if (result.success) {
@@ -211,7 +204,7 @@ export async function PATCH(
     } else {
       return NextResponse.json(
         { error: result.message },
-        { status: 400 }
+        { status: result.message === JOB_CONFLICT_ERROR ? 409 : 400 }
       );
     }
   } catch (error) {
@@ -274,7 +267,7 @@ export async function PUT(
     } else {
       return NextResponse.json(
         { error: result.message },
-        { status: 400 }
+        { status: result.message === JOB_CONFLICT_ERROR ? 409 : 400 }
       );
     }
   } catch (error) {

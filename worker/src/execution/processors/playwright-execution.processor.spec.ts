@@ -901,6 +901,31 @@ describe('PlaywrightExecutionProcessor', () => {
         ]);
       });
 
+      it('skips the job status write when the sibling-run lookup fails', async () => {
+        mockDbService.hasOtherActiveRun.mockRejectedValueOnce(
+          new Error('db down'),
+        );
+        mockDbService.updateJobStatus.mockClear();
+        const job = createMockJob(mockJobTask);
+
+        await processor.process(job);
+
+        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
+      });
+
+      it('leaves the job alone when a cancelled run status could not be recorded', async () => {
+        mockCancellationService.isCancelled.mockResolvedValue(true);
+        mockDbService.updateRunStatus.mockRejectedValueOnce(
+          new Error('db down'),
+        );
+        mockDbService.updateJobStatus.mockClear();
+        const job = createMockJob(mockJobTask);
+
+        await processor.process(job);
+
+        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
+      });
+
       it('should handle single run status', async () => {
         const job = createMockJob(mockJobTask);
 

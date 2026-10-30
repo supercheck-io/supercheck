@@ -33,7 +33,7 @@ const logger = queueLogger;
 async function removeOrphanedSchedule(jobId: string, reason: string): Promise<void> {
   // Dynamic import: lib/job-scheduler imports this module.
   const { deleteScheduledJob } = await import('@/lib/job-scheduler');
-  const removed = await deleteScheduledJob(jobId);
+  const removed = await deleteScheduledJob(jobId, { throwOnError: true });
   logger.warn({ jobId, removed, reason }, 'Removed schedule for job that should no longer run');
 }
 
