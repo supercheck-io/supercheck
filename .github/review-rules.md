@@ -1,7 +1,6 @@
 # Supercheck review rules
 
-The custom reviewer selects complete sections by their `Paths:` globs from the
-trusted default-branch checkout. CodeRabbit also consumes this file.
+CodeRabbit consumes this file through `.coderabbit.yaml`.
 
 ## Evidence and scope
 Paths: **/*
