@@ -11,6 +11,9 @@ import {
   type ReportDeletionInput,
 } from "@/lib/s3-cleanup";
 
+// Messages of this class are authored here and safe to show; any other error text may leak DB/S3 detail.
+class RetryableDeleteError extends Error {}
+
 type DeleteRunResult = {
   success: boolean;
   message: string;
@@ -99,7 +102,7 @@ async function deleteAssociatedReports(
           entityType: report.entityType,
         }))]
       );
-      if (!cleanup.success) throw new Error("Could not delete run storage; please retry");
+      if (!cleanup.success) throw new RetryableDeleteError("Could not delete run storage; please retry");
     }
 
     const totalCount = existingReports.length;
@@ -109,9 +112,9 @@ async function deleteAssociatedReports(
       reportsToDelete,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[DELETE_RUN] Error deleting reports:", message);
-    throw new Error(`Failed to delete reports: ${message}`);
+    console.error("[DELETE_RUN] Error deleting reports:", error);
+    if (error instanceof RetryableDeleteError) throw error;
+    throw new Error("Failed to delete reports");
   }
 }
 
@@ -237,10 +240,10 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
         return db.transaction(async (tx) => {
           const [fresh] = await tx.select({id:runs.id,status:runs.status,reportS3Url:runs.reportS3Url,logsS3Url:runs.logsS3Url,metadata:runs.metadata}).from(runs).where(and(eq(runs.id, runId), eq(runs.projectId, project.id))).for("update");
           if (!fresh || fresh.status !== runData.status || fresh.reportS3Url !== runData.reportS3Url || fresh.logsS3Url !== runData.logsS3Url || !isDeepStrictEqual(fresh.metadata, runData.metadata)) {
-            throw new Error("Run changed during cleanup; retry deletion");
+            throw new RetryableDeleteError("Run changed during cleanup; retry deletion");
           }
           const freshReports = await tx.select({ id: reports.id, reportPath: reports.reportPath, s3Url: reports.s3Url, entityType: reports.entityType }).from(reports).where(and(or(eq(reports.entityId, runId), and(eq(reports.entityType, "test"), eq(reports.reportPath, `${runId}/report`))), inArray(reports.entityType, ["job", "test", "k6_job", "k6_test"]))).for("update");
-          if (!isDeepStrictEqual(freshReports.sort((a,b)=>a.id.localeCompare(b.id)), reportsResult.reportsToDelete.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Run reports changed during cleanup; retry deletion");
+          if (!isDeepStrictEqual(freshReports.sort((a,b)=>a.id.localeCompare(b.id)), reportsResult.reportsToDelete.sort((a,b)=>a.id.localeCompare(b.id)))) throw new RetryableDeleteError("Run reports changed during cleanup; retry deletion");
           const reportIds = reportsResult.reportsToDelete.map(report => report.id);
           if (reportIds.length) await tx.delete(reports).where(and(inArray(reports.id, reportIds),
             or(eq(reports.entityId, runId), and(eq(reports.entityType, "test"), eq(reports.reportPath, `${runId}/report`)))));
@@ -276,11 +279,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
             "[DELETE_RUN] Run error stack:",
             runError instanceof Error ? runError.stack : "No stack available"
           );
-          throw new Error(
-            `Failed to delete run: ${
-              runError instanceof Error ? runError.message : String(runError)
-            }`
-          );
+          throw runError;
         }
         });
       })();
@@ -346,7 +345,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
     return {
       success: false as const,
       message: "Failed to delete run",
-      error: errorMessage,
+      error: error instanceof RetryableDeleteError ? errorMessage : "Unexpected error while deleting the run",
       details: "Check server logs for more information",
     };
   }

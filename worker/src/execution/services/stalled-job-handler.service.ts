@@ -8,7 +8,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
-import { and, or, eq, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  or,
+  eq,
+  ne,
+  isNull,
+  lt,
+  inArray,
+  sql,
+  desc,
+  type SQL,
+} from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { buildRedisOptions } from '../../common/redis/redis-options';
@@ -35,6 +46,8 @@ import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.serv
 @Injectable()
 export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
   private static readonly REDIS_COMMAND_TIMEOUT_MS = 5_000;
+  // A queued run with no BullMQ job past this age will never start.
+  private static readonly ORPHANED_QUEUED_MS = 30 * 60 * 1000;
   private readonly logger = new Logger(StalledJobHandlerService.name);
   private redisClient: Redis | null = null;
   private monitoringInterval: NodeJS.Timeout | null = null;
@@ -121,31 +134,54 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         eq(schema.runs.status, 'queued'),
         eq(schema.runs.errorDetails, RUN_CANCELLATION_MARKER),
       );
+      const orphanedQueued = and(
+        eq(schema.runs.status, 'queued'),
+        lt(
+          schema.runs.createdAt,
+          new Date(Date.now() - StalledJobHandlerService.ORPHANED_QUEUED_MS),
+        ),
+        or(
+          isNull(schema.runs.errorDetails),
+          ne(schema.runs.errorDetails, RUN_CANCELLATION_MARKER),
+        ),
+      );
       // Enable queued recovery only after every worker uses atomic execution admission.
-      const activeRuns = await this.dbService.db
-        .select({
-          id: schema.runs.id,
-          jobId: schema.runs.jobId,
-          startedAt: schema.runs.startedAt,
-          createdAt: schema.runs.createdAt,
-          status: schema.runs.status,
-          location: schema.runs.location,
-          callbackHeartbeatAt: schema.runCallbacks.heartbeatAt,
-          callbackFinishedAt: schema.runCallbacks.finishedAt,
-          callbackRevokedAt: schema.runCallbacks.revokedAt,
-        })
-        .from(schema.runs)
-        .leftJoin(
-          schema.runCallbacks,
-          eq(schema.runCallbacks.runId, schema.runs.id),
-        )
-        .where(
+      const selectRuns = (where: SQL | undefined) =>
+        this.dbService.db
+          .select({
+            id: schema.runs.id,
+            jobId: schema.runs.jobId,
+            startedAt: schema.runs.startedAt,
+            createdAt: schema.runs.createdAt,
+            status: schema.runs.status,
+            errorDetails: schema.runs.errorDetails,
+            location: schema.runs.location,
+            callbackHeartbeatAt: schema.runCallbacks.heartbeatAt,
+            callbackFinishedAt: schema.runCallbacks.finishedAt,
+            callbackRevokedAt: schema.runCallbacks.revokedAt,
+          })
+          .from(schema.runs)
+          .leftJoin(
+            schema.runCallbacks,
+            eq(schema.runCallbacks.runId, schema.runs.id),
+          )
+          .where(where)
+          .limit(1000); // Limit to prevent large queries
+      // Separate windows: orphaned queued runs the loop skips (waiting for capacity) must not crowd out running ones, nor the reverse.
+      const [tracked, orphaned] = await Promise.all([
+        selectRuns(
           or(
             eq(schema.runs.status, 'running'),
             recoverQueuedCancellations ? queuedCancellation : undefined,
           ),
-        )
-        .limit(1000); // Limit to prevent large queries
+        ),
+        selectRuns(orphanedQueued),
+      ]);
+      const activeRuns = [
+        ...new Map(
+          [...tracked, ...orphaned].map((run) => [run.id, run]),
+        ).values(),
+      ];
 
       if (activeRuns.length === 0) {
         return;
@@ -162,6 +198,26 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
       }> = [];
 
       for (const run of activeRuns) {
+        if (
+          run.status === 'queued' &&
+          run.errorDetails !== RUN_CANCELLATION_MARKER
+        ) {
+          // Orphaned queued run: sweep only when no queue job or execution remains.
+          if (
+            (await this.isWaitingForCapacity(run.id)) ||
+            (await this.isBullMqJobActive(run.id, run.location)) ||
+            (await this.containerExecutorService.hasActiveExecution(run.id))
+          ) {
+            continue;
+          }
+          stalledRuns.push({
+            id: run.id,
+            jobId: run.jobId,
+            ageMs: now.getTime() - (run.createdAt ?? now).getTime(),
+            status: run.status,
+          });
+          continue;
+        }
         // Use startedAt as the primary runtime clock for stalled detection.
         // Fall back to createdAt only if startedAt is null (should not happen for running runs).
         const referenceTime = run.startedAt ?? run.createdAt;
@@ -250,17 +306,20 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
                         .map((run) => run.id),
                     ),
                   ),
-                  recoverQueuedCancellations
-                    ? and(
-                        queuedCancellation,
-                        inArray(
-                          schema.runs.id,
-                          stalledRuns
-                            .filter((run) => run.status === 'queued')
-                            .map((run) => run.id),
-                        ),
-                      )
-                    : undefined,
+                  and(
+                    or(
+                      recoverQueuedCancellations
+                        ? queuedCancellation
+                        : undefined,
+                      orphanedQueued,
+                    ),
+                    inArray(
+                      schema.runs.id,
+                      stalledRuns
+                        .filter((run) => run.status === 'queued')
+                        .map((run) => run.id),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -297,6 +356,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
 
         if (uniqueJobIds.length > 0) {
           // Batch fetch all run statuses for affected jobs
+          // Newest first: a job reflects its latest run, or running while any run is still active.
           const allJobRuns = await this.dbService.db.query.runs.findMany({
             where: inArray(schema.runs.jobId, uniqueJobIds),
             columns: {
@@ -304,6 +364,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
               jobId: true,
               status: true,
             },
+            orderBy: [desc(schema.runs.createdAt)],
           });
 
           // Group runs by job ID
@@ -328,9 +389,17 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
             }
           }
 
-          // Update each job status based on its runs
           for (const [jobId, runStatuses] of runsByJob.entries()) {
-            await this.dbService.updateJobStatus(jobId, runStatuses);
+            const active = runStatuses.find(
+              (status) => status === 'running' || status === 'queued',
+            );
+            // Jobs have no blocked status; a policy-blocked tick never ran, so use the last real run.
+            const latestExecuted =
+              runStatuses.find((status) => status !== 'blocked') ??
+              runStatuses[0];
+            await this.dbService.updateJobStatus(jobId, [
+              active ?? latestExecuted,
+            ]);
           }
 
           this.logger.log(`Updated status for ${uniqueJobIds.length} jobs`);
@@ -386,6 +455,19 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('StalledJobHandlerService cleaned up');
+  }
+
+  /**
+   * A run held by the app's per-organization capacity queue has no BullMQ job until it is promoted,
+   * and may legitimately wait longer than the sweep threshold. Fails safe: a Redis error keeps the run.
+   */
+  private async isWaitingForCapacity(runId: string): Promise<boolean> {
+    if (!this.redisClient) return true;
+    try {
+      return (await this.redisClient.exists(`capacity:job:${runId}`)) === 1;
+    } catch {
+      return true;
+    }
   }
 
   private async isBullMqJobActive(

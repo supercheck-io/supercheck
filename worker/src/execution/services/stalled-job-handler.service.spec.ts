@@ -121,4 +121,135 @@ describe('StalledJobHandlerService', () => {
     });
     expect(await state.isBullMqJobActive('paused-run', null)).toBe(true);
   });
+
+  it.each([
+    ['orphaned', false, false, true],
+    ['still in BullMQ', true, false, false],
+    ['waiting in the capacity queue', false, true, false],
+  ])(
+    'sweeps a plain queued run past the threshold: %s',
+    async (_name, queueActive, capacityQueued, recover) => {
+      const transaction = jest.fn().mockResolvedValue(undefined);
+      const database = {
+        select: () => ({
+          from: () => ({
+            leftJoin: () => ({
+              where: () => ({
+                limit: async () => [
+                  {
+                    id: 'queued-run',
+                    jobId: null,
+                    status: 'queued',
+                    errorDetails: null,
+                    startedAt: null,
+                    createdAt: new Date(Date.now() - 31 * 60_000),
+                    location: null,
+                    callbackHeartbeatAt: null,
+                    callbackFinishedAt: null,
+                    callbackRevokedAt: null,
+                  },
+                ],
+              }),
+            }),
+          }),
+        }),
+        transaction,
+      };
+      const service = new StalledJobHandlerService(
+        { db: database } as never,
+        { get: jest.fn() } as never,
+        { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
+      );
+      const state = service as unknown as {
+        redisClient: object;
+        isBullMqJobActive: () => Promise<boolean>;
+        checkAndHandleStalledJobs: () => Promise<void>;
+      };
+      state.redisClient = {
+        exists: jest.fn().mockResolvedValue(capacityQueued ? 1 : 0),
+      };
+      jest.spyOn(state, 'isBullMqJobActive').mockResolvedValue(queueActive);
+      await state.checkAndHandleStalledJobs();
+      expect(transaction).toHaveBeenCalledTimes(recover ? 1 : 0);
+    },
+  );
+
+  it('reads orphaned queued runs in their own query, so skipped rows cannot crowd them out', async () => {
+    const select = jest.fn(() => ({
+      from: () => ({
+        leftJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+      }),
+    }));
+    const service = new StalledJobHandlerService(
+      { db: { select } } as never,
+      { get: jest.fn() } as never,
+      {} as never,
+    );
+    const state = service as unknown as {
+      redisClient: object;
+      checkAndHandleStalledJobs: () => Promise<void>;
+    };
+    state.redisClient = {};
+    await state.checkAndHandleStalledJobs();
+    expect(select).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['the newest run', ['error', 'passed', 'failed'], 'error'],
+    ['a still-active run', ['error', 'running', 'failed'], 'running'],
+  ])(
+    'sets a recovered job from %s, not its whole history',
+    async (_name, newestFirst, expected) => {
+      const database = {
+        select: () => ({
+          from: () => ({
+            leftJoin: () => ({
+              where: () => ({
+                limit: async () => [
+                  {
+                    id: 'run-id',
+                    jobId: 'job-id',
+                    status: 'running',
+                    startedAt: new Date(Date.now() - 90 * 60_000),
+                    createdAt: new Date(),
+                    location: null,
+                    callbackHeartbeatAt: new Date(Date.now() - 180_000),
+                    callbackFinishedAt: null,
+                    callbackRevokedAt: null,
+                  },
+                ],
+              }),
+            }),
+          }),
+        }),
+        transaction: jest.fn().mockResolvedValue(undefined),
+        query: {
+          runs: {
+            findMany: jest.fn().mockResolvedValue(
+              newestFirst.map((status, index) => ({
+                id: `r${index}`,
+                jobId: 'job-id',
+                status,
+              })),
+            ),
+          },
+        },
+      };
+      const updateJobStatus = jest.fn().mockResolvedValue(undefined);
+      const service = new StalledJobHandlerService(
+        { db: database, updateJobStatus } as never,
+        { get: jest.fn() } as never,
+        { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
+      );
+      const state = service as unknown as {
+        redisClient: object;
+        isBullMqJobActive: () => Promise<boolean>;
+        checkAndHandleStalledJobs: () => Promise<void>;
+      };
+      state.redisClient = {};
+      jest.spyOn(state, 'isBullMqJobActive').mockResolvedValue(false);
+      await state.checkAndHandleStalledJobs();
+      expect(updateJobStatus).toHaveBeenCalledWith('job-id', [expected]);
+    },
+  );
 });

@@ -45,7 +45,7 @@ import { createJobTestColumns } from "./job-test-columns";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs, canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
-import { useJobs, useJobMutations } from "@/hooks/use-jobs";
+import { useJobs, useJob, useJobMutations, type Job as ApiJob } from "@/hooks/use-jobs";
 import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
 import {
   AlertDialog,
@@ -74,6 +74,51 @@ function mapToTestType(type: string | undefined): Test["type"] {
     default:
       return "browser"; // Default to api
   }
+}
+
+// Map an API job to the local Job schema.
+function toLocalJob(job: ApiJob): Job {
+  // Map tests from API format to local Test schema
+  const tests: Test[] = Array.isArray(job.tests)
+    ? job.tests.map((test) => ({
+      id: test.id,
+      name: test.title || test.name || "",
+      description: test.description || null,
+      type: mapToTestType(test.type),
+      status: undefined, // API doesn't return test status in job context
+      lastRunAt: test.updatedAt || null,
+      duration: null,
+      tags: test.tags?.map(t => ({ ...t, color: t.color || null })),
+    }))
+    : [];
+
+  // Map lastRun to match local schema
+  const lastRun = job.lastRun ? {
+    id: job.lastRun.id,
+    status: job.lastRun.status,
+    startedAt: job.lastRun.startedAt ?? null,
+    completedAt: job.lastRun.completedAt ?? null,
+    duration: null,
+    errorDetails: job.lastRun.errorDetails ?? null,
+  } : undefined;
+
+  return {
+    id: job.id,
+    name: job.name,
+    description: job.description || null,
+    cronSchedule: job.cronSchedule || null,
+    status: job.status as Job["status"],
+    jobType: (job.jobType || "playwright") as Job["jobType"],
+    lastRunAt: job.lastRunAt || null,
+    nextRunAt: job.nextRunAt || null,
+    createdAt: job.createdAt || undefined,
+    updatedAt: job.updatedAt || undefined,
+    tests,
+    alertConfig: job.alertConfig as Job["alertConfig"],
+    lastRun,
+    createdByName: job.createdByName ?? null,
+    createdByImage: job.createdByImage ?? null,
+  };
 }
 
 export default function Jobs() {
@@ -123,73 +168,31 @@ export default function Jobs() {
   };
 
   // Transform jobs data with memoization to match local Job schema
-  const jobs = useMemo<Job[]>(() => {
-    if (!rawJobs || rawJobs.length === 0) return [];
-
-    return rawJobs.map((job) => {
-      // Map tests from API format to local Test schema
-      const tests: Test[] = Array.isArray(job.tests)
-        ? job.tests.map((test) => ({
-          id: test.id,
-          name: test.title || test.name || "",
-          description: test.description || null,
-          type: mapToTestType(test.type),
-          status: undefined, // API doesn't return test status in job context
-          lastRunAt: test.updatedAt || null,
-          duration: null,
-          tags: test.tags?.map(t => ({ ...t, color: t.color || null })),
-        }))
-        : [];
-
-      // Map lastRun to match local schema
-      const lastRun = job.lastRun ? {
-        id: job.lastRun.id,
-        status: job.lastRun.status,
-        startedAt: job.lastRun.startedAt ?? null,
-        completedAt: job.lastRun.completedAt ?? null,
-        duration: null,
-        errorDetails: job.lastRun.errorDetails ?? null,
-      } : undefined;
-
-      return {
-        id: job.id,
-        name: job.name,
-        description: job.description || null,
-        cronSchedule: job.cronSchedule || null,
-        status: job.status as Job["status"],
-        jobType: (job.jobType || "playwright") as Job["jobType"],
-        lastRunAt: job.lastRunAt || null,
-        nextRunAt: job.nextRunAt || null,
-        createdAt: job.createdAt || undefined,
-        updatedAt: job.updatedAt || undefined,
-        tests,
-        alertConfig: job.alertConfig as Job["alertConfig"],
-        lastRun,
-        createdByName: job.createdByName ?? null,
-        createdByImage: job.createdByImage ?? null,
-      };
-    });
-  }, [rawJobs]);
+  const jobs = useMemo<Job[]>(() => (rawJobs ?? []).map(toLocalJob), [rawJobs]);
 
   // Derive selectedJob and isSheetOpen from URL params (no effect needed)
   const jobIdFromUrl = searchParams.get('job');
+  const inList = !!jobIdFromUrl && jobs.some((j: Job) => j.id === jobIdFromUrl);
+  // A deep link past the list cap is fetched on its own instead of being dropped.
+  const { data: linkedJob, error: linkedJobError } = useJob(jobIdFromUrl && !isLoading && !inList ? jobIdFromUrl : null);
   const selectedJob = useMemo(() => {
     if (selectedJobOverride) return selectedJobOverride;
-    if (!jobIdFromUrl || jobs.length === 0) return null;
-    return jobs.find((j: Job) => j.id === jobIdFromUrl) || null;
-  }, [jobIdFromUrl, jobs, selectedJobOverride]);
+    if (!jobIdFromUrl) return null;
+    const listed = jobs.find((j: Job) => j.id === jobIdFromUrl);
+    if (listed) return listed;
+    return linkedJob ? toLocalJob(linkedJob) : null;
+  }, [jobIdFromUrl, jobs, selectedJobOverride, linkedJob]);
   const isSheetOpen = !!selectedJob;
 
-  // Handle invalid job ID in URL (job not found)
+  // Handle invalid job ID in URL: only a 404 strips it, other failures keep the link
   useEffect(() => {
-    if (jobIdFromUrl && jobs.length > 0 && !jobs.find((j: Job) => j.id === jobIdFromUrl)) {
-      // Job not found, remove from URL
+    if (jobIdFromUrl && !inList && /not found|HTTP 404/i.test(linkedJobError?.message ?? "")) {
       const params = new URLSearchParams(searchParams);
       params.delete('job');
       const newUrl = params.toString() ? `/jobs?${params.toString()}` : '/jobs';
       router.replace(newUrl, { scroll: false });
     }
-  }, [jobIdFromUrl, jobs, searchParams, router]);
+  }, [jobIdFromUrl, inList, linkedJobError, searchParams, router]);
 
   // Edit an existing test
   const handleEditTest = () => {

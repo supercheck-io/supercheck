@@ -29,6 +29,8 @@ export interface DataHookConfig<T, CreateData, UpdateData> {
   refetchOnMount?: boolean | 'always';
   generateOptimisticItem?: (data: CreateData) => Partial<T>;
   singleItemField?: string;
+  /** Other caches that mutations here also make stale (e.g. the dashboard). */
+  relatedQueryKeys?: readonly (readonly string[])[];
 }
 
 export interface ListQueryOptions {
@@ -171,6 +173,7 @@ export function createDataHook<
     refetchOnWindowFocus = false,
     refetchOnMount = false,
     singleItemField,
+    relatedQueryKeys = [],
   } = config;
 
   const singleQueryKey = [queryKey[0].replace(/s$/, "")] as const;
@@ -272,6 +275,15 @@ export function createDataHook<
     const { currentProject } = useProjectContext();
     const projectId = currentProject?.id ?? null;
 
+    // Wraps onSettled so update/remove also refresh the related caches.
+    const withRelatedInvalidation = <H extends { onSettled: (...args: never[]) => void }>(handlers: H): H => ({
+      ...handlers,
+      onSettled: (...args: Parameters<H["onSettled"]>) => {
+        handlers.onSettled(...args);
+        relatedQueryKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key, refetchType: 'all' }));
+      },
+    });
+
     const create = useMutation({
       mutationFn: async (data: CreateData) => {
         const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -290,6 +302,7 @@ export function createDataHook<
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+        relatedQueryKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key, refetchType: 'all' }));
       },
     });
 
@@ -311,7 +324,7 @@ export function createDataHook<
         }
         return response.json();
       },
-      ...createUpdateOptimisticHandlers<T>(queryClient, queryKey, singleQueryKey),
+      ...withRelatedInvalidation(createUpdateOptimisticHandlers<T>(queryClient, queryKey, singleQueryKey)),
     });
 
     const remove = useMutation({
@@ -329,7 +342,7 @@ export function createDataHook<
         }
         return response.json();
       },
-      ...createDeleteOptimisticHandlers<T>(queryClient, queryKey),
+      ...withRelatedInvalidation(createDeleteOptimisticHandlers<T>(queryClient, queryKey)),
     });
 
     return {
