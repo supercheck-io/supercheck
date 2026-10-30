@@ -14,6 +14,7 @@ Copilot is read-only. It gathers evidence and suggests checks, but cannot change
 
 ## Chat Modes
 
+
 <Cards className="grid-cols-1 sm:grid-cols-2">
 <Card icon={<MessageSquare className="text-blue-500" />} title="General chat">
 Name the service you want to check. Copilot finds available sources in your current project and asks if the service is unclear. Connector results are temporary and are not added to incident evidence
@@ -40,8 +41,8 @@ If live data is unavailable, check the service and connector configuration in **
 
 History is private to you within your current organization and project. Let a response finish to keep its answer. A stopped answer is not saved.
 
-## Asking Useful Questions
-
+<Accordions>
+<Accordion title="Asking useful questions and limits" id="questions-and-limits">
 Ask one focused question, then review citations and any evidence gaps before acting.
 
 - "Is checkout-api healthy? Check recent errors and latency."
@@ -60,10 +61,10 @@ Answers can include markdown tables and small bar, line or area charts (up to 4 
 
 Keep credentials in connector settings, not in chat.
 
-For a complete investigation with a saved report, use [Incident Investigation](/docs/app/investigate/incidents).
+For a full investigation with a saved report, use [Incident Investigation](/docs/app/investigate/incidents).
 
-## Permissions and Billing
-
+</Accordion>
+<Accordion title="Permissions and Cloud billing" id="permissions-billing">
 | Role | Use Copilot | Live sources |
 |---|:---:|---|
 | Org Owner, Org Admin, Project Admin | ✓ | On by default |
@@ -73,3 +74,13 @@ For a complete investigation with a saved report, use [Incident Investigation](/
 <Callout type="warn">
 On Supercheck Cloud, Copilot replies, incident triage, and evidence brief generation require an active organization subscription and a valid billing customer. If access is blocked, open **Settings → Organization → Subscription**. Self-hosted installations do not use these billing checks. Investigation runs also enforce spending limits.
 </Callout>
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Run a cited, read-only investigation" />
+<Card title="Connectors" href="/docs/app/investigate/connectors" description="Configure the live sources Copilot can query" />
+</Cards>

@@ -30,18 +30,6 @@ Choose one of these in **Add connector**.
 
 For OpenTelemetry, connect the backend your collector exports to (Tempo, Jaeger, Loki, Prometheus, and so on). Slack, Teams and webhooks are notification channels, not connectors.
 
-## Tickets and Knowledge Connectors
-
-Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: it is redacted, fenced, and labeled so the AI treats it as evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
-
-| Provider | Endpoint | Credential | Least privilege |
-|---|---|---|---|
-| **Jira** | Cloud site URL, or Data Center base URL | Cloud: account email and API token. Data Center: leave the email empty and use a personal access token | A dedicated user that can only browse the operational projects |
-| **Confluence** | Cloud site URL (`/wiki` is added), or Data Center base URL | Same as Jira | A dedicated user with view access to runbook and post-mortem spaces only |
-| **Notion** | Fixed at `api.notion.com`; the endpoint field is ignored | Internal integration token | Share only the runbook pages with the integration |
-
-Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
-
 ## Choose How to Connect
 
 | Your provider | Choose | What to do |
@@ -152,6 +140,9 @@ Tick the tools investigations may call and save. Nothing is callable until you a
 </Step>
 </Steps>
 
+<Accordions>
+<Accordion title="How allowlisted MCP tools are controlled" id="mcp-controls">
+
 Allowlisted tools appear to the AI as `callMcpTool` targets together with their descriptions and argument names. Each call is checked before it leaves Supercheck, and again by the agent.
 
 | Control | Behavior |
@@ -164,11 +155,30 @@ Allowlisted tools appear to the AI as `callMcpTool` targets together with their 
 | **Audit** | Each call, including rejected ones, appears in the investigation tool trace and the connector audit log with the tool name, and results are stored as evidence |
 | **Network** | The agent applies its endpoint policy: no localhost or cloud metadata targets, no redirects, and no credentials in URLs |
 
+</Accordion>
+</Accordions>
+
 <Callout type="warn">
 Allowlist only tools that cannot change anything. Supercheck cannot verify what a tool does on your server. Prefer a server or token that exposes read-only tools, and review each tool before ticking it.
 </Callout>
 
-## Query Examples
+## Reference
+
+<Accordions>
+<Accordion title="Jira, Confluence and Notion" id="tickets-knowledge">
+
+Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: it is redacted, fenced, and labeled so the AI treats it as evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
+
+| Provider | Endpoint | Credential | Least privilege |
+|---|---|---|---|
+| **Jira** | Cloud site URL, or Data Center base URL | Cloud: account email and API token. Data Center: leave the email empty and use a personal access token | A dedicated user that can only browse the operational projects |
+| **Confluence** | Cloud site URL (`/wiki` is added), or Data Center base URL | Same as Jira | A dedicated user with view access to runbook and post-mortem spaces only |
+| **Notion** | Fixed at `api.notion.com`; the endpoint field is ignored | Internal integration token | Share only the runbook pages with the integration |
+
+Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
+
+</Accordion>
+<Accordion title="Query examples" id="query-examples">
 
 Each provider uses its own read-only query language.
 
@@ -192,7 +202,8 @@ Queries are read-only. Supercheck rejects Splunk commands that write, notify, ru
 
 Kubernetes searches require a namespace. Grant the connector service account read-only access only to the namespaces under test. Never grant cluster-admin or write permissions.
 
-## Credential Best Practices
+</Accordion>
+<Accordion title="Credential best practices" id="credentials">
 
 Use dedicated, read-only credentials limited to the service scope.
 
@@ -218,3 +229,14 @@ New Relic, Google Cloud, and Azure Monitor call fixed vendor API hosts, so they 
 <Callout type="warn">
 Store credentials in the connector credential fields, not in prompts or endpoint URLs. Supercheck encrypts stored credentials and does not include them in AI prompts.
 </Callout>
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Incident Investigation" href="/docs/app/investigate/incidents" description="Run an investigation with live sources" />
+<Card title="Private Agent" href="/docs/app/deployment/private-agent" description="Reach connectors inside your network" />
+<Card title="AI SRE setup" href="/docs/app/admin/ai-sre-setup" description="Services, saved queries and provider setup" />
+</Cards>

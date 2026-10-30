@@ -4,7 +4,7 @@ description: Playwright-based UI testing
 icon: Chrome
 ---
 
-Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content. Browser tests run in isolated containers with Chromium.
+Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content. Browser tests run in isolated containers on Chromium by default. Add `@firefox`, `@webkit` (or `@safari`) or `@mobile` to a test title to run it on that browser or device instead.
 
 ## Example
 
@@ -39,10 +39,19 @@ test.describe('authentication flow', () => {
 
 ## Create Test
 
-1. Go to **Create → Browser Test**
-2. Write your test script
-3. Click **Run** to validate
-4. **Save** when passing
+<Steps>
+<Step>
+Go to **Create → Browser Test**
+</Step>
+<Step>
+Write your test script
+</Step>
+<Step>
+Click **Run** to validate
+</Step>
+<Step>
+**Save** when passing
+</Step></Steps>
 
 ## Common Actions
 
@@ -55,7 +64,10 @@ test.describe('authentication flow', () => {
 | Wait | `await page.waitForSelector('selector')` |
 | Screenshot | `await page.screenshot({ path: 'file.png' })` |
 
-## Selectors
+<Accordions>
+<Accordion title="Selectors, assertions, and tips" id="selectors-tips">
+
+**Selectors**
 
 Use stable selectors:
 
@@ -68,7 +80,7 @@ await page.getByTestId('submit-btn').click();
 await page.click('.btn-primary');
 ```
 
-## Assertions
+**Assertions**
 
 ```typescript
 // URL
@@ -81,7 +93,7 @@ await expect(page.locator('.message')).toBeVisible();
 await expect(page.locator('h1')).toHaveText('Welcome');
 ```
 
-## Tips
+**Tips**
 
 - Use `data-testid` attributes for stable selectors
 - Playwright auto-waits for elements
@@ -89,10 +101,24 @@ await expect(page.locator('h1')).toHaveText('Welcome');
 - Take screenshots on failure for debugging
 - Use `getSecret()` for passwords and API keys
 
-## Learn More
+</Accordion>
+</Accordions>
 
-- **[Supercheck Recorder Extension](/docs/recorder)** — Record user flows directly in Chrome/Edge and save as Playwright tests
-- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Complete Playwright guide
-- **[Playwright Locators](https://playwright.dev/docs/locators)** — Finding elements reliably
-- **[Playwright Assertions](https://playwright.dev/docs/test-assertions)** — Available assertion methods
-- **[Playwright Auto-waiting](https://playwright.dev/docs/actionability)** — How Playwright waits for elements
+<Accordions>
+<Accordion title="Further reading" id="further-reading">
+
+- [Playwright documentation](https://playwright.dev/docs/intro)
+- [Locators](https://playwright.dev/docs/locators)
+- [Assertions](https://playwright.dev/docs/test-assertions)
+- [Auto-waiting](https://playwright.dev/docs/actionability)
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Recorder extension" href="/docs/recorder" description="Record a flow in Chrome or Edge" />
+<Card title="Playground" href="/docs/app/automate/playground" description="Run and fix tests with AI" />
+<Card title="Jobs" href="/docs/app/automate/jobs" description="Schedule saved tests" />
+</Cards>

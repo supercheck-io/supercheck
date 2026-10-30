@@ -78,24 +78,25 @@ Click **AI Analyze** on any job run to generate an AI-powered analysis report.
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
-## Job Analytics
+## Analytics
 
 Open **Automate → Runs** and use the tabs at the top: **All runs**, **Performance (k6)**, and **Browser (Playwright)**. The selected view is kept in the URL (`/runs?view=k6` or `/runs?view=playwright`), so you can bookmark or share it.
 
 Switching projects resets analytics filters, job selection, and any open comparison. Each view loads jobs from the newly selected project.
 
-### Performance (k6)
+<Accordions>
+<Accordion title="Performance (k6) analytics" id="k6-analytics">
 
 The **Performance (k6)** view provides detailed performance metrics for your load tests.
 
 ![K6 Analytics](/screenshots/dashboard-k6-analytics.png)
 
-#### Filters
+**Filters**
 
 - **Job** — Filter to a specific K6 job or view all jobs
 - **Period** — Analyze last 30, 60, or 90 days of data
 
-#### Metric Cards
+**Metric Cards**
 
 | Metric | Description |
 |--------|-------------|
@@ -106,23 +107,22 @@ The **Performance (k6)** view provides detailed performance metrics for your loa
 | **Avg Request Rate** | Average requests per second across runs |
 | **Avg Response Time** | Mean response latency across runs |
 
-#### Charts
+**Charts**
 
-##### Response Time Trend
+**Response Time Trend**
 Area chart showing P95 response time across runs. Use this to identify performance regressions or improvements over time.
 
-##### Request Rate Trend
+**Request Rate Trend**
 Area chart showing requests per second across runs. Monitor throughput patterns and capacity trends.
 
----
 
-#### Run Comparison
+**Run Comparison**
 
 When a specific job is selected and has 2+ runs, click **Compare Runs** to open a side-by-side comparison dialog.
 
 ![Run Comparison Dialog](/screenshots/dashboard-k6-compare-dialog.png)
 
-##### Run Selection
+**Run Selection**
 
 - **Baseline (Left)** — Select the reference run to compare against
 - **Compare To (Right)** — Select the run to compare with the baseline
@@ -133,7 +133,7 @@ Each run in the dropdown displays:
 - P95 response time
 - Run ID
 
-##### Comparison Metrics
+**Comparison Metrics**
 
 The comparison table shows metrics from both runs with calculated delta values:
 
@@ -148,13 +148,13 @@ Delta values are color-coded:
 - **Green** — Improvement
 - **Red** — Regression
 
-#### View k6 Reports
+**View k6 Reports**
 
 Click **View k6 Reports** to compare the detailed k6 HTML reports side-by-side.
 
 ![K6 Report Comparison](/screenshots/dashboard-k6-report-comparison.png)
 
-#### AI Analyze
+**AI Analyze**
 
 Click **AI Analyze** to generate an AI-powered performance comparison report.
 
@@ -168,18 +168,19 @@ Click **AI Analyze** to generate an AI-powered performance comparison report.
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
-### Browser (Playwright)
+</Accordion>
+<Accordion title="Browser (Playwright) analytics" id="playwright-analytics">
 
 The **Browser (Playwright)** view provides insights into your browser test execution patterns and duration trends.
 
 ![Playwright Analytics](/screenshots/dashboard-playwright-analytics.png)
 
-#### Filters
+**Filters**
 
 - **Job** — Filter to a specific Playwright job or view all jobs
 - **Period** — Analyze last 30, 60, or 90 days of data
 
-#### Metric Cards
+**Metric Cards**
 
 | Metric | Description |
 |--------|-------------|
@@ -189,15 +190,18 @@ The **Browser (Playwright)** view provides insights into your browser test execu
 | **Avg / P95 Duration** | Execution time statistics |
 | **Total Duration** | Cumulative execution time in minutes |
 
-#### Charts
+**Charts**
 
-##### Run Frequency
+**Run Frequency**
 Stacked bar chart showing daily test run distribution (Passed vs Failed). Use this to identify testing patterns and failure spikes.
 
-##### Execution Time Trend
+**Execution Time Trend**
 Area chart showing test duration over time. Monitor for performance regressions, flaky tests, or infrastructure issues.
 
-## Delete a Run
+</Accordion>
+</Accordions>
+
+## Delete a run
 
 <Accordions>
 <Accordion title="Deleting runs and stored artifacts" id="deleting-runs">

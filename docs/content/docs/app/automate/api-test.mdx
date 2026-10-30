@@ -35,12 +35,24 @@ test.describe('API health check', () => {
 
 ## Create Test
 
-1. Go to **Create → API Test**
-2. Write your test script
-3. Click **Run** to validate
-4. **Save** when passing
+<Steps>
+<Step>
+Go to **Create → API Test**
+</Step>
+<Step>
+Write your test script
+</Step>
+<Step>
+Click **Run** to validate
+</Step>
+<Step>
+**Save** when passing
+</Step></Steps>
 
-## HTTP Methods
+<Accordions>
+<Accordion title="HTTP methods and assertions" id="methods-assertions">
+
+**HTTP Methods**
 
 ```typescript
 const API_URL = 'https://jsonplaceholder.typicode.com';
@@ -62,7 +74,7 @@ const putResponse = await request.put(API_URL + '/posts/1', {
 const deleteResponse = await request.delete(API_URL + '/posts/1');
 ```
 
-## Assertions
+**Assertions**
 
 ```typescript
 // Status code
@@ -79,7 +91,10 @@ expect(typeof data.title).toBe('string');
 expect(response.headers()['content-type']).toContain('application/json');
 ```
 
-## Using Variables
+</Accordion>
+</Accordions>
+
+## Use variables
 
 ```typescript
 const baseUrl = getVariable('API_BASE_URL');
@@ -99,7 +114,17 @@ expect(response.ok()).toBeTruthy();
 - Validate response structure, not just status codes
 - Use Playwright's `request` context instead of `fetch` for better integration
 
-## Learn More
+<Accordions>
+<Accordion title="Further reading" id="further-reading">
 
-- **[Playwright API Testing](https://playwright.dev/docs/api-testing)** — Complete API testing guide
-- **[Playwright Request Context](https://playwright.dev/docs/api/class-apirequestcontext)** — API reference
+- [APIRequestContext reference](https://playwright.dev/docs/api/class-apirequestcontext)
+
+</Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+<Card title="Variables" href="/docs/app/automate/variables" description="Base URLs and API keys" />
+<Card title="Jobs" href="/docs/app/automate/jobs" description="Schedule saved tests" />
+</Cards>

@@ -143,19 +143,7 @@ Responses are JSON. Pagination shapes are endpoint-specific; for example, resour
 
 ## Rate Limits
 
-| Token Type | Limit | Window |
-|------------|-------|--------|
-| Job trigger key (`sck_trigger_*`) | Configurable per key; default 100 requests per 60 seconds | Per key |
-| Other endpoints | Operation-specific | As documented by the endpoint |
-
-Rate-limit headers are included on rate-limited responses:
-
-```
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1612137600
-Retry-After: 60  # Only on 429 responses
-```
+Job trigger keys default to 100 requests per 60 seconds (configurable per key). Other endpoints apply their own limits. See [Authentication](/docs/api/authentication#rate-limiting) for headers and `429` handling.
 
 ## Reference Guides
 
