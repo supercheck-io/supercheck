@@ -97,7 +97,7 @@ sequenceDiagram
 | Main server | A running self-hosted instance and Super Admin access |
 | Each worker server | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64), 2 vCPU, 4 GB RAM, 10 GB free disk minimum (15 GB recommended), `sudo`, `curl`, `bzip2`, and [Docker Engine with Compose v2.24.4+](https://docs.docker.com/engine/install/) |
 | Network | VPN or other encrypted private link from workers to the main server's PostgreSQL (5432), Redis (6379), and S3 (9000) |
-| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.4.0** |
+| Versions | App, workers, Compose files, and scripts from the same release. Examples use **1.5.0** |
 
 <Callout type="warn">
 Never expose PostgreSQL, Redis, or S3 publicly. Docker-published ports bypass `ufw`, so a host firewall rule does not protect them: bind them to the private address (below) and restrict 5432, 6379, and 9000 to the worker IPs in your cloud firewall or in the `DOCKER-USER` iptables chain. Keep the k3s API (6443) closed to the internet; each worker uses its own local k3s, and the main server's worker container reaches 6443 over the local Docker network. macOS, Windows, WSL2, and Docker Desktop are not supported for workers.
@@ -141,8 +141,8 @@ sudo docker compose up -d
 ```bash
 mkdir -p ~/supercheck-worker
 cd ~/supercheck-worker
-curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/setup-k3s.sh
-curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/docker-compose-worker.yml
+curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/setup-k3s.sh
+curl -fsSL -o docker-compose-worker.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/docker-compose-worker.yml
 sudo bash setup-k3s.sh
 ```
 
@@ -156,7 +156,7 @@ Create `.env` in the same directory. Use the main server's **private** address, 
 ```dotenv
 WORKER_LOCATION=worker-extra
 SELF_HOSTED=true
-SUPERCHECK_VERSION=1.4.0
+SUPERCHECK_VERSION=1.5.0
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@10.0.0.10:5432/supercheck
 REDIS_HOST=10.0.0.10
 REDIS_PORT=6379
@@ -170,7 +170,7 @@ AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
 chmod 600 .env
 sudo docker compose -f docker-compose-worker.yml pull
 # Load the worker image into the sandbox so the first run does not time out downloading it.
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.5.0 | sudo k3s ctr -n k8s.io images import -
 sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
@@ -205,7 +205,7 @@ An unknown token stops the worker at startup. Which workloads users may run in a
 
 `CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
 
-For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.4.0/deploy/docker/docker-compose-worker.yml).
+For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.5.0/deploy/docker/docker-compose-worker.yml).
 
 ## Upgrade workers
 

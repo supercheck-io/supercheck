@@ -5,7 +5,7 @@
 # sandboxed test execution. Replaces Docker-socket-based execution.
 #
 # Usage:
-#   curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/setup-k3s.sh
+#   curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/setup-k3s.sh
 #   sudo bash setup-k3s.sh
 #   # or
 #   chmod +x setup-k3s.sh && sudo ./setup-k3s.sh

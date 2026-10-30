@@ -7,9 +7,9 @@ The canonical guide is [Self-Hosted](https://supercheck.io/docs/app/deployment/s
 On Ubuntu 22.04+ or Debian 12+ the installer does everything below and verifies it. It never prompts when `--yes` is given:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
-sudo bash install.sh --version 1.4.0 --local --yes                                              # HTTP evaluation
-sudo bash install.sh --version 1.4.0 --domain app.example.com --email admin@example.com --yes   # public HTTPS
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
+sudo bash install.sh --version 1.5.0 --local --yes                                              # HTTP evaluation
+sudo bash install.sh --version 1.5.0 --domain app.example.com --email admin@example.com --yes   # public HTTPS
 ```
 
 Use `--dry-run` first to see the plan. Exit codes: 0 installed and healthy, 1 failed (log: `/var/log/supercheck/install.log`), 2 bad usage, 3 installed but the health check reports a problem. Re-running is safe: it keeps `.env` and skips finished steps.
@@ -56,7 +56,7 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
 
 ```bash
 sudo docker compose version
-git clone --depth 1 --branch v1.4.0 https://github.com/supercheck-io/supercheck.git
+git clone --depth 1 --branch v1.5.0 https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 ./init-secrets.sh
 sudo bash setup-k3s.sh
@@ -87,7 +87,7 @@ Both modes use the main Compose file:
 sudo docker compose config -q
 sudo docker compose pull
 # Import the ~3 GB worker image into the sandbox so the first test run does not time out pulling it.
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.5.0 | sudo k3s ctr -n k8s.io images import -
 sudo docker compose up -d --wait --wait-timeout 300
 ```
 

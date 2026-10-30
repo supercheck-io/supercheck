@@ -72,10 +72,10 @@ flowchart TB
 ### Download the installer
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
 ```
 
-The URL uses the release tag (`v1.4.0`), the same release you pass to `--version`, so the script and the installed version match. Read it first with `less install.sh` if you like. Add `--dry-run` in the next step to see the plan without changing anything.
+The URL uses the release tag (`v1.5.0`), the same release you pass to `--version`, so the script and the installed version match. Read it first with `less install.sh` if you like. Add `--dry-run` in the next step to see the plan without changing anything.
 
 </Step>
 <Step>
@@ -85,7 +85,7 @@ The URL uses the release tag (`v1.4.0`), the same release you pass to `--version
 <Tabs items={['Guided', 'Local, no prompts', 'Public HTTPS, no prompts']}>
   <Tab value="Guided">
     ```bash
-    sudo bash install.sh --version 1.4.0
+    sudo bash install.sh --version 1.5.0
     ```
 
     The installer asks only what it cannot detect:
@@ -99,12 +99,12 @@ The URL uses the release tag (`v1.4.0`), the same release you pass to `--version
   </Tab>
   <Tab value="Local, no prompts">
     ```bash
-    sudo bash install.sh --version 1.4.0 --local --yes
+    sudo bash install.sh --version 1.5.0 --local --yes
     ```
   </Tab>
   <Tab value="Public HTTPS, no prompts">
     ```bash
-    sudo bash install.sh --version 1.4.0 --domain app.example.com --email you@example.com --yes
+    sudo bash install.sh --version 1.5.0 --domain app.example.com --email you@example.com --yes
     ```
   </Tab>
 </Tabs>
@@ -207,7 +207,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `SIGNUP_ENABLED` | `true` | `false` disables open registration (invited users still work) |
 | `ALLOWED_EMAIL_DOMAINS` | empty | Comma-separated signup allowlist, for example `acme.com,acme.org` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASSWORD` | unset | Email for alerts and invitations (disabled without `SMTP_HOST`) |
-| `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.4.0/deploy/docker/README.md#environment-variables) |
+| `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.5.0/deploy/docker/README.md#environment-variables) |
 | `SRE_AUTOMATION_ENABLED` | `false` | AI triage of alert incidents; can incur provider charges. Incidents open from alerts without it. Set in the app (the worker only needs `SRE_ENABLED`) |
 | `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | `2000000` | Daily AI token limit per organization for AI SRE (UTC day). `0` disables. App only |
 | `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
@@ -275,18 +275,16 @@ To turn it off, remove both lines from `.env` and run `sudo docker compose up -d
 Download the installer of the release you want and run it with `--upgrade` on the server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
 sudo bash install.sh --upgrade
 ```
 
-Replace `v1.4.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
+Replace `v1.5.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
 
 1. Stops early if tracked files in the installation were edited (keep changes in `.env` instead) or if the target is older than the installed release.
 2. Dumps the database to `/var/backups/supercheck/pre-upgrade-<time>.dump` and keeps a copy of `.env`.
 3. Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
 4. Restarts the stack, which applies database migrations, and checks health.
-
-If `sudo bash install.sh --help` on your installed release does not list `--upgrade` (v1.4.0 and earlier), follow [Manual update](#manual-update) once; later upgrades can use the command above.
 
 Expect a few minutes of downtime. Upgrade remote workers afterwards ([Multi-Server](/docs/app/deployment/multi-server#upgrade-workers)).
 
@@ -320,7 +318,7 @@ Importing the worker image keeps the first test run after the update from timing
 MinIO and RustFS disk formats are incompatible, so storage must be migrated before you update. Stop remote workers, then run the migration from your **current** checkout's `deploy/docker`, with the old stack running:
 
 ```bash
-sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
+sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
 sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
 ```
 
@@ -434,7 +432,7 @@ The ~3 GB worker image must be in the sandbox before a run starts. The installer
 
 ```bash
 sudo k3s ctr -n k8s.io images ls -q | grep supercheck/worker
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.5.0 | sudo k3s ctr -n k8s.io images import -
 ```
 
 Use the version in your `.env` (`SUPERCHECK_VERSION`).

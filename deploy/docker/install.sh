@@ -3,7 +3,7 @@
 #
 # Takes a fresh Ubuntu 22.04+/Debian 12+ server to a running, verified Supercheck.
 #
-#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
 #   less install.sh                 # read it first
 #   sudo bash install.sh            # guided; asks only what it cannot detect
 #
@@ -23,7 +23,7 @@
 set -Eeuo pipefail
 
 # Keep in sync with the SUPERCHECK_VERSION default in docker-compose.yml (validate.sh enforces it).
-SUPERCHECK_VERSION_DEFAULT="1.4.0"
+SUPERCHECK_VERSION_DEFAULT="1.5.0"
 REPO_URL="https://github.com/supercheck-io/supercheck.git"
 MIN_COMPOSE="2.24.4"
 KUBECONFIG_FILE="/etc/rancher/k3s/supercheck-worker.kubeconfig"
@@ -72,7 +72,7 @@ Examples:
   sudo bash install.sh
   sudo bash install.sh --local --yes
   sudo bash install.sh --domain app.example.com --email ops@example.com --yes
-  sudo bash install.sh --upgrade --version 1.4.0
+  sudo bash install.sh --upgrade --version 1.5.0
 EOF
 }
 
