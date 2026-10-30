@@ -6,6 +6,10 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-30
+
+This release turns alerts and incidents into one flow (a failing monitor or job opens an incident, and recovery resolves it), adds incident assignment, acknowledgement and structured AI investigations, and extends AI SRE with more connectors. It also adds account avatars, an optional cookieless reports origin, a one-command self-hosted upgrade with backups, and a broad round of security, tenancy and correctness fixes.
+
 ### Upgrade notes
 
 Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) before upgrading a self-hosted installation.
@@ -13,11 +17,36 @@ Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) be
 - **Required secrets.** `docker-compose.yml` no longer falls back to built-in values for `DB_PASSWORD`, `REDIS_PASSWORD` and `BETTER_AUTH_SECRET` (and `docker-compose-external.yml` requires `BETTER_AUTH_SECRET`). Installer-created `.env` files already have them. If yours does not, Compose refuses to start and names the missing key: restore the `.env` you installed with, and never generate new values for an existing install.
 - **Database TLS.** `sslmode` in `DATABASE_URL` is now honoured by the app, migrations and the worker. `require`, `verify-ca` and `verify-full` connect with a verified certificate, and `allow` and `prefer` try TLS first. An external PostgreSQL with a private certificate authority needs that CA trusted in the containers.
 - **Image pins.** The bundled PostgreSQL and Redis images are pinned to `postgres:18.6` and `redis:8.10`, the versions the floating `18` and `8` tags pointed to.
+- **Upgrading from v1.4.0.** Download the 1.5.0 `install.sh` and run `sudo bash install.sh --upgrade` on the server; it upgrades installer-created v1.4.0 installations directly. Installations from releases before 1.4.0 must first move from MinIO to RustFS (see 1.4.0).
+- **Database migrations.** Apply migrations `0043` to `0046` before updating the app; older app versions ignore the new columns. `0044` deletes every external connector of a removed type (see Removed) and, through cascades, its credentials, service links, integration bindings and diagnostic queries. `0045` adds `runs.triggered_by_user_id` and builds an index without `CONCURRENTLY`, so writes to `runs` block briefly.
+- **Deploy order.** Deploy the app before or together with the worker: an older app rejects the worker's new incident-recovery signal, so auto-resolve from recovery only starts once the app is updated, and Teams webhook rules are validated by both.
+- **Effective project role is the lower of the org role and the project role.** One shared rule now applies to the dashboard, project-id routes, CLI tokens and run cancellation. A user demoted at the project level (for example org project editor, project viewer) is now a viewer on the dashboard too, and a project role higher than the org role no longer grants more than the org role anywhere. Org owners, org admins and super admins are not capped. Review project roles before upgrading.
+- **Trigger keys follow their owner.** `POST /api/jobs/{id}/trigger` now returns 403 when the key's owner no longer has `job:trigger` on the job's project (demoted, removed, or the job has no project). Trigger keys and CLI tokens created with an expiring CLI token now expire with it.
+- **Investigation Map removed.** `/copilot/evidence-graph` and its entry points are gone; cited evidence, linked alerts and similar incidents are on the incident page and dependencies are on the service page.
+- **Removed connector types.** AI SRE connectors of type `opentelemetry`, `slack`, `teams`, `webhook`, `kafka`, `rabbitmq`, `appdynamics`, `postgresql`, `mysql`, `mongodb`, `redis` and `clickhouse` are removed, and migration `0044` deletes existing ones. Slack, Teams and webhook notification channels are unchanged. Diagnostic queries of type `sql` are no longer supported either.
+- **Private Agents.** Upgrade Private Agents to the latest version: agents now report the connector types they support, and a job for a type an older agent does not support is refused with `private_agent_outdated` instead of jamming its queue.
+- **Alerts moved.** `/alerts` and `/incidents?tab=alerts` redirect to `/notifications?tab=history`, and the dashboard `GET /api/dashboard` returns `jobs.failedRuns7d` instead of `recentFailures`.
+- **Incident resolve needs a summary.** Resolving an incident requires a resolution summary; the REST resolve route still accepts `comment` for it.
+- **Internal targets.** `ALLOW_INTERNAL_TARGETS` now opts in only when set to exactly `true`; before, `false` switched the guard off. Ping and port monitors on self-hosted Compose workers refuse hosts that resolve to a private address unless it is `true`.
+- **k3s execution egress.** `setup-k3s.sh` now blocks the mail ports (25, 465, 587, 2525) and the host's Kubernetes control ports, and limits DNS to CoreDNS. `install.sh --upgrade` re-runs it (manual updates run it as in the guide); `EXECUTION_DNS_NAMESERVERS` also needs a matching rule in the execution egress policy.
+- **Scheduled k6 jobs** must have exactly one test, and scripts whose literal options exceed 1000 VUs or 60 minutes are rejected before running.
+- **New optional settings.** `REPORTS_ORIGIN` serves report HTML from a separate cookieless origin (unset keeps the current behaviour; it needs its own DNS and TLS and routing to the app). `SRE_DAILY_TOKEN_LIMIT_PER_ORG` caps AI SRE tokens per organization per day (default 2,000,000, `0` disables). `MAX_MONITOR_NOTIFICATION_CHANNELS` (default 10) is now also enforced on `POST /api/monitors/{id}/notifications`. `DB_BIND_ADDR`, `REDIS_BIND_ADDR` and `RUSTFS_BIND_ADDR` are described under Added.
 
 ### Added
 
+- **Alerts open and resolve incidents.** A failing monitor or job opens one incident, later failures from the same source join it, and it resolves on its own when the source recovers (unless someone acknowledged it); a failure within 30 minutes reopens the same incident. Per monitor and job, `incidentEnabled` (default on), `incidentSeverity` (auto or `sev1` to `sev4`) and `autoResolveIncident` (default on) are available in the app, API, CLI config and OpenAPI. `GET /api/alerts/history` returns the linked `incident`, and incident responses carry a `statusLabel` (Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved) while filters still take stored values.
+- **Incident ownership.** Incidents have an assignee, an optional commander and an acknowledgement, with `POST /api/sre/incidents/{id}/assign` and `/acknowledge`, an `assignee` list filter, and a required resolution summary (pre-filled from the AI root cause). The incident list defaults to Active, with Assigned to me, Unassigned and All; open, assign, acknowledge, AI finding and resolve notify through the channels of the monitor or job that raised the alert. The assignee, the commander and a previous assignee also get a direct email when someone else changes the incident (at most once per 10 minutes for alert-driven changes).
+- **Structured AI investigations.** An investigation returns a conclusion, confidence or an explicit Inconclusive outcome, ranked hypotheses with the evidence they cite, and next checks. Resolved incidents of the same project from the last 180 days appear as similar incidents. Right/Wrong feedback with an optional note, "Re-run with my note", and an editable post-mortem draft with Markdown export are on the incident page, whose investigation sheet has Analysis, Evidence, Brief, Similar and Post-mortem tabs.
+- **More AI SRE connectors.** Jaeger, New Relic, Splunk, Google Cloud and Azure Monitor connectors give read-only live evidence search, directly or through a Private Agent. An MCP evidence connector runs only through a Private Agent: an admin discovers the server's tools and allowlists them, and investigations call only those, with output redacted and treated as untrusted.
+- **Delivery history** is a tab on Notifications; a sent failure without an incident has an **Open incident** action. The sidebar groups pages under **Respond** (Dashboard, Incidents, Copilot, Services) and **Communicate** (Status Pages, Notifications).
+- **Account dialog** replaces the Source code and Connected apps menu items: edit your name, upload or remove a profile photo (`POST` and `DELETE /api/users/me/avatar`: PNG, JPEG or WebP up to 2 MB), pick one of 24 preset avatars (`PUT /api/users/me/avatar`; everyone without a photo gets a default), see Connected apps when MCP is enabled, and **Leave organization** (moved from the profile menu). Profile photos from GitHub and Google sign-in show in tables.
+- **Created by and Triggered by columns** on list tables. Runs record who triggered them: the user for manual and CLI runs, the trigger key name for trigger-key runs, or Schedule; older runs show Unknown. Runs, tests, jobs, monitors, requirements, variables and notification channels return the creator's name and image.
+- **Optional cookieless reports origin.** With `REPORTS_ORIGIN` set, report HTML is served from that origin through signed, one-hour URLs from `POST /api/report-urls`, so generated report scripts never run on the app origin.
+- List tables size their page to the window so pages do not scroll (Rows per page offers the fitted size plus 10, 25, 50 and 100); the dashboard's Needs attention is two bar charts (failed runs in the last 7 days by trigger, open incidents by severity) with live incident counts, and the Playground fills the window height.
+- Organization and Super Admin settings put their tabs in the page header and use fit-to-window tables; CLI tokens are a table.
+- MCP `list_incidents` and `get_incident` return assignee, commander, acknowledgement and resolution summary, and `get_incident` also returns `alertCount`. `get_job` and `get_monitor` return the incident settings, never the channels. The CLI gains matching incident, analytics, variable file, CLI token and project commands (see the CLI changelog).
 - Supercheck Cloud sends server-side error reports from the app and worker to Sentry when `SENTRY_DSN` is set. A report has the error type, a shortened message scrubbed of secrets, URLs, email addresses, quoted text and database values, a stack trace, service (app or worker)/release/environment, OS and runtime versions, and internal IDs (hostnames and IPs in messages may appear); request contents, headers, cookies, form inputs, test scripts and run logs are not attached. Ignored when `SELF_HOSTED=true`, where the Sentry SDK is not loaded and no Sentry calls are made.
-- The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install.
+- The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install. The `ufw` check understands port lists, ranges, application profiles, interface-scoped and IPv6 rules, and first-match order.
 - `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
 - The requirements API accepts `"priority": null` to clear a requirement's priority.
 - `sudo bash install.sh --upgrade [--version X]` upgrades an existing installation in one step: it checks the checkout, dumps the database, keeps a copy of `.env`, checks out the release, refreshes the sandbox, imports the worker image and restarts with a health check, then removes the previous release's app and worker images (going back means restoring a backup taken on that release, which pulls its images again). `--version X` on an existing installation now points to `--upgrade` for a newer release and to `backup.sh --restore` for an older one.
@@ -25,35 +54,88 @@ Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) be
 - Opt-in `compose.dns01.yml` issues a wildcard certificate for status-page subdomains through a DNS-01 challenge.
 - `DB_BIND_ADDR`, `REDIS_BIND_ADDR` and `RUSTFS_BIND_ADDR` in `.env` publish PostgreSQL, Redis and RustFS for remote workers without editing the Compose file.
 
+### Changed
+
+- Every email uses one layout (wordmark, dark header, one button colour, details table). The team incident email carries the event message, an incident details table and an open-incident button, and Slack, Teams, Discord and Telegram incident messages use Slack attachments, Teams Adaptive Cards, Discord embeds and readable Telegram text instead of one plain line.
+- People are shown the same way everywhere with a shared avatar and name cell: photo or preset avatar, otherwise two-letter initials on a per-person colour, with the email in a tooltip. Dense columns (audit log user, CLI token and trigger key "Created by", incident assignee) show the avatar only, and dates use one compact cell with the full timestamp on hover.
+- The incident detail page has one scroll, a single **Details** card and one Resolve action. AI reports render as formatted text with only http(s) links.
+- Copilot chat (`/api/sre/chat/assistant-ui`) is no longer available during the trial, like the other chat, evidence brief and post-mortem routes.
+- `POST /api/sre/investigate` returns 403 when `useLiveConnectors` is true and the caller lacks `sre_connector:investigate`, instead of silently dropping it.
+- Synthetic monitors cannot run more often than every 5 minutes through the API and CLI, matching the form.
+- Stored k6 console output keeps its start and its end, so threshold and error lines survive. Dashboard Browser minutes, Job status, Job activity and 30-day run counts count Playwright job runs only; k6 stays on the k6 cards.
+- Docs are synced with the app and use one page layout; the docs site opens in light mode.
+
 ### Fixed
 
+- **Monitors and alerts.**
+  - Monitor checks skipped because no worker is live in any expected location (such as during a deployment rollout) are no longer recorded as Down, for scheduled and immediate runs. With `MISSING_CYCLE_CLOSURE_ENABLED=true`, regions skipped at enqueue no longer get synthetic Down rows at the cycle deadline, and the deadline for synthetic checks no longer uses the 30 s HTTP default.
+  - Multi-location monitors send their first failure alert on the threshold cycle after `pending`, not one cycle later; the first failure alert no longer waits five checks after a skipped pending observation.
+  - A failed result save now retries the job without re-running the check, and partial email delivery is no longer re-sent up to five times. SMTP sends the rendered subject, Telegram alerts for names with `_` or `*` are delivered, and Discord and Teams cards no longer drop content. k6 timeouts can trigger the job timeout alert.
+  - Alerts for user-cancelled job runs are no longer sent and do not count in failure streaks.
+  - Editing a monitor keeps settings the form does not show (timeouts, retry strategy, Playwright options, website method, regions) and a custom check interval set through the CLI or API. Names, request bodies, keywords, headers and credentials are saved exactly as entered. Monitor charts never round uptime up to 100% and show failed checks as gaps instead of 0 ms. Viewers opening a monitor's edit page are taken to its details.
+  - Monitor and job write paths accept only allowlisted fields, check that a synthetic monitor's test belongs to the project, apply one alert-config normaliser (recovery alerts default on, thresholds 1 to 100), and validate job cron expressions in one place.
+  - A scheduled check for a deleted monitor removes its leftover repeatable schedule.
+- **Incidents and AI SRE.**
+  - Incident snapshots keep the failure that opened them, so an older incident no longer shows a newer failure's message, severity and time; a failure that returns after recovery is noted as such, and a failure that fired before automatic recovery no longer reopens the incident.
+  - Investigation runs left `running` by a lost process are failed after 5 minutes so a retry no longer returns 409. The evidence brief no longer flips a resolved incident back to investigating.
+  - The incident list is capped at 500 with a note, and assign, acknowledge, resolve and update are limited to 30 per minute per user and incident (429 with `Retry-After`).
+  - `POST /api/alerts/history` now requires `monitor:manage` and `sre_incident:update`, and its `monitorId` or `jobId` must belong to the caller's project.
+  - SRE routes no longer return raw error messages to clients, an oversized Copilot message returns 413, and chat history is trimmed to fit. A Private Agent result that fails schema validation fails its job instead of being leased again.
+  - Private Agent leasing skips disabled connectors and jobs queued longer than 10 minutes, registering or disabling org-wide Private Agents needs an org-level permission, and evidence is redacted when stored.
+  - AI SRE investigations that fail or are cancelled no longer count toward the trial allowance.
+- **Jobs and runs.**
+  - `POST /api/jobs/run` runs the job's saved tests (the request `tests` field no longer decides), and `GET /api/executions/running` needs run view permission and is scoped to the caller's project. The trigger route no longer refuses jobs whose status is `error`, and new jobs always start `pending`.
+  - The scheduler advances the next run on skipped ticks, removes schedules of deleted projects and cleared jobs, and records one `blocked` run per blocked period. A job's status follows its latest run, and runs queued for 30 minutes with no queue entry are recovered.
+  - The Runs page loads up to 1000 runs, shows queued, cancelled and blocked runs correctly and says when the list is truncated. The job edit page detects concurrent edits and fills the full width again.
+  - Report and asset files stream and support Range requests (video seeking and Safari playback work), and S3 responses default to private caching.
+  - Scheduled k6 jobs are validated like manual runs, a k6 process that exits before writing a summary is recorded as an execution error, and the k6 report viewer no longer hangs on "Reconnecting".
+- **Tests, Playground and AI.**
+  - AI Fix finds the report for Playwright tests (it looked under the test id instead of the run id) and no longer opens an empty dialog. AI Fix and AI Create show a cut-off or failed generation as an error instead of success, and AI routes return 429 when rate limited.
+  - A cancelled run's status stream can no longer overwrite the next run; a run whose report never arrives ends as failed after 15 minutes. The editor asks before you leave with unsaved changes.
+  - `PUT` and `PATCH /api/tests/{id}` check the request origin for browser sessions, validate title and description, and are scoped by project. Test search is case-insensitive with literal `%` and `_`.
+  - Requirements: linking or unlinking tests recomputes coverage status, uploaded documents are checked by magic bytes and removed when extraction fails, and bulk delete validates IDs.
+  - AI features (test creation and repair, job, k6 and monitor analysis) no longer use an AI credit when the provider fails, returns nothing, or the request is cancelled before any output; credits are reserved before the call, so the limit holds under parallel requests.
+- **Status pages.** Webhook and Slack failures count once per delivery, a successful test or resubscribe clears quarantine, deleting a component or incident no longer widens a scoped subscriber to all, and the public components payload no longer includes monitor names, ids or status. Public pages fail loudly instead of showing "All Systems Operational" when data fails to load, list every unresolved incident above the components and let open incidents set the banner, apply custom background, font and border colours, and show maintenance windows. Unverified custom-domain reservations are released after 7 days.
+- **Organization admin and notifications.** Members and CLI tokens list hides actions the server would refuse, renaming a CLI token to a name in use and a duplicate project slug return 409, and project updates and deletes are audited. Teams URLs are validated against the hosts the worker sends to (Power Automate URLs can be saved; `outlook.office.com` and `*.azurewebsites.net` are rejected at save), notification test sends are limited to 20 per 10 minutes, and Slack, Discord, Teams and Telegram messages go through DNS-pinned public fetch. Failed sends show their reason in Delivery history.
+- **UI.** Lists show an error with Retry instead of an empty list when a load fails, and note when the API cap is reached. The status page preview shows uptime again, a project role above the member's organization role is no longer saved and silently capped, and the invitation member cap, pending-invitation usage count and spending percentage are corrected.
 - `PUT /api/jobs/{id}` accepts an `alertConfig` without `enabled`, `notificationProviders`, `alertOnFailure` or the thresholds, so a job pulled and deployed by the CLI can be updated. The job in the URL is always the one updated, even if the body carries another `jobId`.
 - `PUT /api/jobs/{id}` keeps any `alertConfig` field the request omits at its stored value (for example `alertOnFailure: false`); create defaults apply only when no alert config is stored.
 - `POST /api/cli/project-config/deploy` rejects more than 500 notification providers or SRE bindings per request.
 - MCP `list_runs` returns the newest runs first (ordered by creation time, cursor format unchanged), and `get_monitor` reports the monitor's configured locations with `locationStrategy` and `locationThreshold`. `list_incidents` accepts `severity`, and `list_tests` accepts `type`, `priority` and `search`.
-- `POST` and `PATCH` on `/api/tests/{id}/tags` and `/api/monitors/{id}/tags` return 400 instead of 500 when a tag is deleted between validation and insert.
-- Monitor checks skipped because no worker is live in any expected location (such as during a deployment rollout) are no longer recorded as Down.
-- A queued trial run is no longer failed when only another run's in-flight reservation puts it over the allowance; it stays queued until that run settles. An expired trial entitlement now counts as having no remaining allowance, as in the worker.
+- `POST` and `PATCH` on `/api/tests/{id}/tags` and `/api/monitors/{id}/tags` return 400 instead of 500 when a tag is deleted between validation and insert. Test tag changes are audited like monitor tag changes.
 - MCP requests that stall while uploading their body now fail with 408 after 15 seconds and release their concurrency slots.
+- A queued trial run is no longer failed when only another run's in-flight reservation puts it over the allowance; it stays queued until that run settles. An expired trial entitlement now counts as having no remaining allowance, as in the worker. Trial allowance checks before queueing subtract runs that are still in flight, matching worker admission.
+- Usage alert emails at the warning thresholds follow the user's alert toggles; the limit-reached email is always sent. A trial reminder whose delivery succeeded but whose sent-marker write failed transiently is no longer resent.
 - Incident analytics charts, the sidebar's outline menu button and the response-time chart's tooltip cursor use valid colors (the `hsl()` wrappers around oklch tokens are removed).
-- Trial allowance checks before queueing subtract runs that are still in flight, matching worker admission.
-- A trial reminder whose delivery succeeded but whose sent-marker write failed transiently is no longer resent.
-- A scheduled check for a deleted monitor removes its leftover repeatable schedule.
-- AI features (test creation and repair, job, k6 and monitor analysis) no longer use an AI credit when the provider fails, returns nothing, or the request is cancelled before any output. Failed or cancelled AI SRE investigations no longer count toward the trial allowance.
-- Editing a monitor keeps settings the form does not show (timeouts, retry strategy, Playwright options, website method, regions) and a custom check interval set through the CLI or API. Names, request bodies, keywords, headers and credentials are saved exactly as entered.
-- Monitor charts never round uptime up to 100% and show failed checks as gaps instead of 0 ms. Viewers opening a monitor's edit page are taken to its details.
 - A run decrypts only the project secrets its script uses, so one unreadable secret no longer fails every run in the project. A run that uses an unreadable secret fails with `422 VARIABLES_UNRESOLVED` naming the key.
-- Renaming a variable to an existing key returns the same error as creating it, and variable updates and deletes are scoped to their project.
+- Renaming a variable to an existing key returns the same error as creating it, variable updates and deletes are scoped to their project, and cached decrypted secrets are cleared after a save so the edit dialog cannot write back an old value.
+- Self-hosting: the Postgres healthcheck uses the configured user, the worker's ineffective restart policy is removed so it comes back after a reboot, and `setup-k3s.sh` adds a changed host IP to the k3s API certificate on re-run.
 
 ### Security
 
 - Secret values are scrubbed from Playwright and k6 plain-text report files (HTML, JSON, text, Markdown, XML; plain, Base64, URL-encoded, JSON- and HTML-escaped forms) before upload. Traces, screenshots, videos and data embedded in the Playwright HTML report are not scrubbed.
 - Variable create, update, delete, secret conversion and secret reveal are recorded in the audit log (keys only, never values). The variable edit dialog no longer decrypts a secret when it opens.
 - Worker: `fast-uri` override raised to 3.1.9 (GHSA-w74x-v6f9-j3xg and related advisories in the build tooling chain); recorder dev dependencies refreshed. `npm audit` reports 0 vulnerabilities for app, worker, recorder, docs and cli.
+- Accounts and credentials: a suspended approver can no longer mint a CLI key through device login, session auth honours `banExpires`, and a CLI token cannot create a CLI token or trigger key that outlives it. Only a token's owner can re-enable it. Removing a member or leaving an organization disables their trigger keys. Deleted projects no longer resolve for CLI tokens and no longer count toward limits.
+- Admin and invitations: the sole owner of an organization with other members and the last super admin cannot be deleted or demoted, unban is audited, cancelling an invitation is guarded against a concurrent accept, and notification test emails are limited to the caller or organization members with a per-user rate limit.
+- Ping, TCP/UDP port and website SSL monitor probes resolve the host once and connect to that address, and refuse hosts that resolve to a private address.
+- Profile updates are checked server-side: name and image changes are refused while impersonating, and `image` may only be unchanged, null, or the user's own avatar route, so arbitrary URLs are never loaded by other users' browsers. Avatar objects are pruned on replace, removal and user deletion.
+- Private Agents block more cloud metadata endpoints (AWS IPv6, Alibaba, Azure, Oracle) and NAT64, 6to4 and IPv4-compatible IPv6 forms, cap connector responses at 10 MB, and cannot have their token rotated while impersonating; jobs whose connector moved to another agent, organization or project are failed so the old agent never receives the credential.
+- The investigation prompt fences the incident title and stored evidence as untrusted text.
+- Generated report documents get a sandbox CSP unless loaded in the in-app viewer.
 
-### Changed
+### Removed
 
-- The AI PR reviewer also sends the head-commit contents of changed files, within a character budget, as untrusted context. Lockfiles, build output and secret-like files are never sent.
+- The Investigation Map and its entry points; see Upgrade notes.
+- AI SRE connector types that cannot be searched (`opentelemetry`, `slack`, `teams`, `webhook`, `kafka`, `rabbitmq`, `appdynamics`, `postgresql`, `mysql`, `mongodb`, `redis`, `clickhouse`) and the `sql` diagnostic query type. A stored connector of another unsupported type is blocked by validation and never sent anywhere.
+- The Signals view on Incidents, and the Alerts section on the dashboard.
+
+### Recorder
+
+- Settings are simpler: one **Sign in to Supercheck** button, with the self-hosted instance URL and API key under collapsible sections and no hostnames shown. The help popover is regrouped as Record, Inspect and Code.
+- `https://supercheck.io` is no longer a trusted origin for the extension; it is the marketing and docs site.
+- Saving hands the recorded code to the Playground the recorder was opened from, keeps the recording if the hand-off fails, and sends it only to the recorded Supercheck origin with an acknowledgement. The key is stored in local storage (existing synced keys migrate), at most five keys stay enabled, and auto-connect no longer overwrites a saved self-hosted instance.
+- The unused direct "Save to Supercheck" surface is removed.
 
 ## [1.4.0] - 2026-10-26
 
@@ -247,7 +329,8 @@ Read these before upgrading a self-hosted installation.
 - Add test execution, reports, and results visualization.
 - Add project and team management, authentication, and authorization.
 
-[Unreleased]: https://github.com/supercheck-io/supercheck/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/supercheck-io/supercheck/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/supercheck-io/supercheck/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/supercheck-io/supercheck/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/supercheck-io/supercheck/compare/v1.3.4...v1.3.5
