@@ -50,6 +50,11 @@ describe("guardProfileUpdate", () => {
     await expect(update({ image: ownAvatar })).resolves.toBeUndefined();
   });
 
+  it("allows a preset avatar but not an unknown preset path", async () => {
+    await expect(update({ image: "/avatars/notionists-01.svg" })).resolves.toBeUndefined();
+    await expect(update({ image: "/avatars/notionists-99.svg" })).rejects.toMatchObject({ status: "BAD_REQUEST" });
+  });
+
   it("rejects any other image URL, including another user's avatar route", async () => {
     await expect(update({ image: "https://evil.example/t.png" })).rejects.toMatchObject({ status: "BAD_REQUEST" });
     await expect(update({ image: ownAvatar.replace("u1", "u2") })).rejects.toMatchObject({ status: "BAD_REQUEST" });

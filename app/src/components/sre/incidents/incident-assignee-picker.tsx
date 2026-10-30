@@ -100,7 +100,8 @@ export function IncidentAssigneePicker({
               const name = assigneeUserId ? (person?.name ?? assigneeName ?? "Assigned") : null;
               return (
                 <span className="flex items-center gap-2">
-                  <UserAvatar name={name} image={person?.image ?? assigneeImage} className="h-5 w-5" />
+                  {/* No real name: show the neutral icon, not a preset hashed from "Assigned". */}
+                  <UserAvatar name={person?.name ?? assigneeName} image={person?.image ?? assigneeImage} className="h-5 w-5" />
                   {name ?? "Unassigned"}
                 </span>
               );

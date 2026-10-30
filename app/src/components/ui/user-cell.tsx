@@ -6,6 +6,7 @@ import { UserRound } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { defaultAvatarFor, isAvatarPreset } from "@/lib/avatar-presets";
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 // Whole graphemes (so emoji and accents stay intact), skipping leading symbols such as "@" or "(".
@@ -42,11 +43,11 @@ export function avatarColor(name: string) {
 const APP_AVATAR = /^\/api\/users\/[0-9a-f-]{36}\/avatar\?v=[a-f0-9]{32}\.(png|jpg|webp)$/;
 
 /**
- * True for an image every viewer may load: the app's avatar route, or the profile photo
+ * True for an image every viewer may load: a preset, the app's avatar route, or the profile photo
  * that GitHub or Google sign-in stored (exact host and photo path, https only).
  */
 export function isSafeAvatarUrl(image: string): boolean {
-  if (APP_AVATAR.test(image)) return true;
+  if (APP_AVATAR.test(image) || isAvatarPreset(image)) return true;
   let url: URL;
   try {
     url = new URL(image);
@@ -59,7 +60,7 @@ export function isSafeAvatarUrl(image: string): boolean {
   return /^lh[3-6]\.googleusercontent\.com$/.test(url.hostname) && /^\/a-?\//.test(url.pathname);
 }
 
-/** Round avatar: the photo, else initials, else a dashed person icon when nobody is set. */
+/** Round avatar: the photo, else the person's default preset, else a dashed person icon when nobody is set. */
 export function UserAvatar({
   name,
   image,
@@ -73,11 +74,12 @@ export function UserAvatar({
   allowExternalImage?: boolean;
   className?: string;
 } & Omit<React.ComponentProps<typeof Avatar>, "children">) {
-  const src = name && image && (allowExternalImage || isSafeAvatarUrl(image)) ? image : null;
+  const src = name ? (image && (allowExternalImage || isSafeAvatarUrl(image)) ? image : defaultAvatarFor(name)) : null;
   return (
     // Initials scale with the avatar size (container query), so one component fits 16px to 64px.
     <Avatar className={cn("@container h-6 w-6", className)} {...props}>
-      {/* No referrer: app URLs never reach GitHub or Google, and Google photos can refuse requests that send one. */}
+      {/* No referrer: app URLs never reach GitHub or Google, and Google photos can refuse requests that send one.
+          Initials stay as the fallback while the image loads or if it fails. */}
       {src ? <AvatarImage src={src} alt="" referrerPolicy="no-referrer" /> : null}
       <AvatarFallback className={cn("text-[max(8px,40cqw)] font-medium", name ? avatarColor(name) : "border border-dashed bg-transparent text-muted-foreground")}>
         {name ? initials(name) : <UserRound className="h-3/5 w-3/5" aria-hidden="true" />}

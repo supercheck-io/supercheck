@@ -22,7 +22,7 @@ jest.mock("@/lib/user-avatar", () => ({
 }));
 
 import { NextRequest } from "next/server";
-import { POST, DELETE } from "./route";
+import { POST, PUT, DELETE } from "./route";
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3];
 const req = (bytes: number[] | Uint8Array, type = "image/png") => {
@@ -109,5 +109,47 @@ describe("DELETE /api/users/me/avatar", () => {
     expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image: null } }));
     expect(mockDelete).not.toHaveBeenCalled();
     expect(mockPrune).toHaveBeenCalledWith("u1", null);
+  });
+});
+
+describe("PUT /api/users/me/avatar", () => {
+  const put = (body: unknown) =>
+    PUT(new NextRequest("http://localhost/api/users/me/avatar", { method: "PUT", body: JSON.stringify(body) }));
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockGetSession.mockResolvedValue({ user: { id: "u1" }, session: {} });
+    mockRateLimit.mockResolvedValue({ allowed: true });
+    mockLimit.mockResolvedValue([{ image: null }]);
+  });
+
+  it("401 without a session, 429 when rate limited", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    expect((await put({ preset: "/avatars/notionists-01.svg" })).status).toBe(401);
+    mockRateLimit.mockResolvedValueOnce({ allowed: false, resetTime: Date.now() + 5000 });
+    expect((await put({ preset: "/avatars/notionists-01.svg" })).status).toBe(429);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("sets a preset and deletes the uploaded photo it replaces", async () => {
+    const version = `${"b".repeat(32)}.webp`;
+    mockLimit.mockResolvedValue([{ image: `/api/users/u1/avatar?v=${version}` }]);
+    const res = await put({ preset: "/avatars/notionists-05.svg" });
+    expect(res.status).toBe(200);
+    expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image: "/avatars/notionists-05.svg" } }));
+    expect(mockDelete).toHaveBeenCalledWith("u1", version);
+    expect(mockPrune).toHaveBeenCalledWith("u1", null);
+  });
+
+  it("rejects anything that is not a known preset", async () => {
+    for (const preset of ["https://evil.example/a.svg", "/avatars/notionists-99.svg", 1, undefined]) {
+      expect((await put({ preset })).status).toBe(400);
+    }
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("403 while impersonating", async () => {
+    mockGetSession.mockResolvedValue({ user: { id: "u1" }, session: { impersonatedBy: "admin" } });
+    expect((await put({ preset: "/avatars/notionists-01.svg" })).status).toBe(403);
   });
 });
