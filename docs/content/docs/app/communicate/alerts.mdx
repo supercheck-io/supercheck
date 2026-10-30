@@ -59,6 +59,8 @@ Pick the provider and enter its credentials (see [Provider Configuration](#provi
 </Step>
 <Step>
 Click **Test Connection**, then save.
+
+Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel that is used by a monitor or job cannot be deleted until you remove it from them.
 </Step>
 <Step>
 Select the channel in a monitor's or job's **Alerts** settings.
@@ -207,6 +209,13 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 
 **Example:** `https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/...`
 
+Accepted URL hosts (HTTPS only):
+- Power Automate Workflows: `*.powerplatform.com`
+- Azure Logic Apps: `*.logic.azure.com`
+- Legacy Office 365 connectors: `*.webhook.office.com`
+
+Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, are rejected.
+
 </Tab>
 <Tab value="Webhook">
 
@@ -218,7 +227,7 @@ Teams uses Power Automate Workflows to receive webhook notifications.
 - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
-Use a publicly reachable HTTP or HTTPS webhook endpoint; private and internal targets are blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
+Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
 
 Because webhook URLs and custom headers are treated as secrets, they are cleared when you reopen an existing channel for editing. Leave a cleared secret blank to keep its existing value, or enter a replacement to change it. The same behavior applies to masked Slack, Teams, Discord, and Telegram credentials. Use **Test Connection** after replacing a credential to confirm it works.
 

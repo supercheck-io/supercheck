@@ -12,6 +12,7 @@ jest.mock("@/lib/email-renderer", () => ({ renderOrganizationInvitationEmail: je
 import { DELETE, POST } from "./route";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { getRedisConnection } from "@/lib/queue";
 import { EmailService } from "@/lib/email-service";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 
@@ -39,4 +40,12 @@ it("keeps the project assignment text in a resent invitation email", async () =>
   (EmailService.getInstance as jest.Mock).mockReturnValue({ sendEmail: async () => ({ success: true }) });
   await POST(req("POST"), ctx);
   expect(renderOrganizationInvitationEmail).toHaveBeenCalledWith(expect.objectContaining({ projectInfo: expect.stringContaining("Alpha") }));
+});
+
+it("does not consume the resend rate limit for an invitation that cannot be resent", async () => {
+  const zadd = jest.fn();
+  (getRedisConnection as jest.Mock).mockResolvedValueOnce({ zremrangebyscore: jest.fn(), zcard: async () => 0, zadd, expire: jest.fn() });
+  (db.select as jest.Mock).mockReset().mockReturnValueOnce({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [{ ...invite, status: "accepted" }] }) }) }) });
+  expect((await POST(req("POST"), ctx)).status).toBe(400);
+  expect(zadd).not.toHaveBeenCalled();
 });

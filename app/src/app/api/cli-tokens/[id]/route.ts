@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -105,18 +105,26 @@ export async function PATCH(
 
     // Re-enabling must respect the same per-project cap as issuance (serialised by the same lock).
     const updated = await db.transaction(async (tx) => {
+      if (enabled === true || name !== undefined) await lockProjectForKeyIssuance(tx, context.project.id);
       if (enabled === true) {
-        await lockProjectForKeyIssuance(tx, context.project.id);
         // Re-read under the lock: the pre-read may be stale.
         const [current] = await tx.select({ enabled: apikey.enabled }).from(apikey).where(eq(apikey.id, tokenId)).limit(1);
         if (!current) return "gone" as const;
         if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+      }
+      if (name !== undefined) {
+        // Same uniqueness rule as issuance (cli-key-service), under the same lock.
+        const [dup] = await tx.select({ id: apikey.id }).from(apikey).where(and(eq(apikey.projectId, context.project.id), isNull(apikey.jobId), eq(apikey.name, name), ne(apikey.id, tokenId))).limit(1);
+        if (dup) return "name_conflict" as const;
       }
       const [row] = await tx.update(apikey).set(updateData).where(eq(apikey.id, tokenId)).returning();
       return row;
     });
     if (updated === "gone") {
       return NextResponse.json({ error: "CLI token not found" }, { status: 404 });
+    }
+    if (updated === "name_conflict") {
+      return NextResponse.json({ error: "A CLI token with this name already exists in this project" }, { status: 409 });
     }
     if (!updated) {
       return NextResponse.json(

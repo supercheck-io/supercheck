@@ -74,3 +74,8 @@ describe("DELETE", () => {
     expect(delTx.delete).not.toHaveBeenCalled();
   });
 });
+
+it("returns 400, not 500, for a malformed JSON body on PUT", async () => {
+  const bad = new NextRequest("http://localhost/api/organizations/members/x", { method: "PUT", body: "{nope" });
+  expect((await PUT(bad, { params: Promise.resolve({ memberId: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) })).status).toBe(400);
+});

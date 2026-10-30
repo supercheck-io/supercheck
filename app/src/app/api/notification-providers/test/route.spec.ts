@@ -58,3 +58,18 @@ describe("email test connection", () => {
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+describe("non-email test connection", () => {
+  it("is rate limited per user before any outbound request", async () => {
+    const { fetchPublicEndpoint } = jest.requireMock("@/lib/sre/connectors/pinned-fetch") as { fetchPublicEndpoint: jest.Mock };
+    (apiKeyRateLimiter.checkAndIncrement as jest.Mock).mockResolvedValue({ allowed: false, remaining: 0, limit: 20, resetAt: new Date(), retryAfter: 30 });
+    const res = await POST(new NextRequest("http://localhost/api/notification-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "slack", config: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } }),
+    }));
+    expect(res.status).toBe(429);
+    expect(apiKeyRateLimiter.checkAndIncrement).toHaveBeenCalledWith("notification-test-other:u1", expect.objectContaining({ maxRequests: 20 }));
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+});

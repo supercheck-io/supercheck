@@ -266,12 +266,27 @@ describe('JobNotificationService', () => {
       ).resolves.toBeUndefined();
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          'Failed to save alert history for job job-1: db down',
+          'Failed to save alert history row for job job-1: db down',
         ),
       );
       expect(
         sreAlertTriageQueueService.enqueueAlertHistoryRows,
-      ).not.toHaveBeenCalled();
+      ).toHaveBeenCalledWith([]);
+    });
+
+    it('keeps saving and enqueues remaining rows after one save fails', async () => {
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      const savedRow = { id: 'row-2' };
+      dbService.saveAlertHistory
+        .mockReset()
+        .mockRejectedValueOnce(new Error('db blip'))
+        .mockResolvedValue(savedRow);
+      await service.handleJobNotifications(params);
+      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+      expect(
+        sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).toHaveBeenCalledWith([savedRow]);
     });
 
     it('logs and swallows a failure loading the job', async () => {

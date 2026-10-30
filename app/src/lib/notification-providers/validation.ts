@@ -4,6 +4,10 @@ import {
   normalizeWebhookMethod,
   parseWebhookJsonTemplate,
 } from "@/lib/notification-providers/webhook-template";
+import {
+  getTeamsWebhookDomainError,
+  isValidTeamsWebhookDomain,
+} from "@/lib/notification-providers/constants";
 import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
 
 const WEBHOOK_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -39,14 +43,6 @@ const PROVIDER_ALLOWED_HOSTS: Partial<Record<NotificationProviderType, string[]>
     "canary.discord.com",
     "ptb.discord.com",
   ],
-  teams: [
-    "outlook.office.com",
-    "outlook.office365.com",
-    "webhook.office.com",
-    ".webhook.office.com",
-    ".logic.azure.com",
-    ".azurewebsites.net",
-  ],
 };
 
 /**
@@ -64,6 +60,20 @@ export function validateProviderWebhookUrl(
   const urlValidation = validateWebhookUrlString(url);
   if (!urlValidation.valid) {
     throw new Error(`${fieldName}: ${urlValidation.error || "Invalid URL"}`);
+  }
+
+  // Teams uses the same domain list the worker enforces at send time
+  if (providerType === "teams") {
+    let hostname: string;
+    try {
+      hostname = new URL(url).hostname;
+    } catch {
+      throw new Error(`${fieldName}: Invalid URL format`);
+    }
+    if (!isValidTeamsWebhookDomain(hostname)) {
+      throw new Error(`${fieldName}: ${getTeamsWebhookDomainError()}`);
+    }
+    return;
   }
 
   // Provider-specific hostname allowlist validation

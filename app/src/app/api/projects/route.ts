@@ -103,6 +103,11 @@ export async function GET(request: NextRequest) {
  * POST /api/projects
  * Create a new project in the organization
  */
+function isUniqueViolation(error: unknown): boolean {
+  const e = error as { code?: string; cause?: { code?: string } };
+  return e?.code === "23505" || e?.cause?.code === "23505";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId, organizationId: authOrgId, isCliAuth } = await requireUserAuthContext();
@@ -260,6 +265,9 @@ export async function POST(request: NextRequest) {
         { error: error.message, code: error.reason },
         { status: 402 }
       );
+    }
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ error: "A project with this slug already exists" }, { status: 409 });
     }
     console.error("Failed to create project:", error);
     return NextResponse.json(

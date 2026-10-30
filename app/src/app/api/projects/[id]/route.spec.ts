@@ -2,12 +2,14 @@
 import { NextRequest } from "next/server";
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
 import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const ID = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
 const set = jest.fn();
@@ -87,4 +89,37 @@ describe("CLI tokens", () => {
       expect(db.update).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("audit, conflicts and ordering", () => {
+  const del = () => DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+  const row = (isDefault: boolean) => ({
+    from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault, name: "P", slug: "p", description: null }] }) }),
+  });
+
+  it("audits project updates", async () => {
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ id: ID, name: "n", slug: "s", description: null }] }) });
+    await put({ name: "n" });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_updated", resourceId: ID, organizationId: "org-1" }));
+  });
+
+  it("maps a duplicate slug to 409", async () => {
+    set.mockReturnValue({ where: () => ({ returning: async () => { throw Object.assign(new Error("dup"), { cause: { code: "23505" } }); } }) });
+    expect((await put({ slug: "taken" })).status).toBe(409);
+  });
+
+  it("audits project deletion", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(false));
+    set.mockReturnValue({ where: async () => undefined });
+    expect((await del()).status).toBe(200);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted", resourceId: ID, organizationId: "org-1" }));
+  });
+
+  it("checks delete permission before revealing the default project", async () => {
+    (db.select as jest.Mock).mockReturnValue(row(true));
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
+    expect((await del()).status).toBe(403);
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
+    expect((await del()).status).toBe(400);
+  });
 });

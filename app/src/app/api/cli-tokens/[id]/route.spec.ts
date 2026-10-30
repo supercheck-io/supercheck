@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 let tokenRows: unknown[] = [];
 let usableCount = 0;
+let dupRow: { id: string } | undefined;
 let lockedRow: { enabled: boolean } | null | undefined;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
@@ -18,7 +19,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => (lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }]) }) }) }) }),
+      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => (cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }]) }) }) }) }),
   };
   return { db };
 });
@@ -49,6 +50,7 @@ beforeEach(() => {
   updates.length = 0;
   usableCount = 0;
   lockedRow = undefined;
+  dupRow = undefined;
   mockRequireAuth.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: true });
 });
 
@@ -89,5 +91,12 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2" }];
     expect((await patch({ enabled: false, name: "old" })).status).toBe(200);
     expect(updates[0]).toMatchObject({ enabled: false, name: "old" });
+  });
+
+  it("returns 409 when renaming to a name another token in the project already uses", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1" }];
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(409);
+    expect(updates).toHaveLength(0);
   });
 });

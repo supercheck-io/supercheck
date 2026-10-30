@@ -39,7 +39,10 @@ export async function PUT(
       );
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
 
     if (body.projectAssignments !== undefined && !Array.isArray(body.projectAssignments)) {
       return NextResponse.json(

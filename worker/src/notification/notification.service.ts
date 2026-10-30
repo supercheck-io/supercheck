@@ -116,6 +116,20 @@ interface FormattedNotification {
   timestamp: number;
 }
 
+const DISCORD_HOSTS = [
+  'discord.com',
+  'discordapp.com',
+  'canary.discord.com',
+  'ptb.discord.com',
+];
+
+// Send-time re-check of the per-provider host allowlist enforced when saving.
+function assertAllowedHost(url: string, hosts: string[], label: string): void {
+  if (!hosts.includes(new URL(url).hostname.toLowerCase())) {
+    throw new Error(`${label} webhook URL host is not allowed`);
+  }
+}
+
 interface NotificationSendResult {
   success: boolean;
   /** Some, not all, recipients were reached (email). */
@@ -222,12 +236,14 @@ export class NotificationService {
           );
           break;
         case 'slack':
-          result = this.withDeliveryMetadata(provider, enhancedPayload, {
-            success: await this.sendSlackNotification(
+          result = this.withDeliveryMetadata(
+            provider,
+            enhancedPayload,
+            await this.sendSlackNotification(
               provider.config,
               formattedNotification,
             ),
-          });
+          );
           break;
         case 'webhook':
           result = await this.sendWebhookNotification(
@@ -238,28 +254,34 @@ export class NotificationService {
           );
           break;
         case 'telegram':
-          result = this.withDeliveryMetadata(provider, enhancedPayload, {
-            success: await this.sendTelegramNotification(
+          result = this.withDeliveryMetadata(
+            provider,
+            enhancedPayload,
+            await this.sendTelegramNotification(
               provider.config,
               formattedNotification,
             ),
-          });
+          );
           break;
         case 'discord':
-          result = this.withDeliveryMetadata(provider, enhancedPayload, {
-            success: await this.sendDiscordNotification(
+          result = this.withDeliveryMetadata(
+            provider,
+            enhancedPayload,
+            await this.sendDiscordNotification(
               provider.config,
               formattedNotification,
             ),
-          });
+          );
           break;
         case 'teams':
-          result = this.withDeliveryMetadata(provider, enhancedPayload, {
-            success: await this.sendTeamsNotification(
+          result = this.withDeliveryMetadata(
+            provider,
+            enhancedPayload,
+            await this.sendTeamsNotification(
               provider.config,
               formattedNotification,
             ),
-          });
+          );
           break;
         default: {
           const _exhaustiveCheck: never = provider.type;
@@ -968,12 +990,15 @@ export class NotificationService {
     config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
+    const secrets: string[] = [];
     try {
       const webhookUrl = config.webhookUrl as string | undefined;
       if (!webhookUrl) {
         throw new Error('Slack webhook URL is required');
       }
+      secrets.push(webhookUrl);
+      assertAllowedHost(webhookUrl, ['hooks.slack.com'], 'Slack');
 
       this.logger.debug(
         `Sending Slack notification to: ${webhookUrl.substring(0, 50)}...`,
@@ -1004,24 +1029,31 @@ export class NotificationService {
         },
         retryConfig,
         this.logger,
+        fetchPublicEndpoint,
       );
 
       if (result.success) {
         this.logger.debug(
           `Slack notification sent successfully after ${result.attempts} attempt(s)`,
         );
-        return true;
+        return { success: true };
       }
 
       this.logger.error(
         `Failed to send Slack notification after ${result.attempts} attempts: ${result.error}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Slack', result.error, secrets),
+      };
     } catch (error) {
       this.logger.error(
         `Failed to send Slack notification: ${getErrorMessage(error)}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Slack', getErrorMessage(error), secrets),
+      };
     }
   }
 
@@ -1076,7 +1108,7 @@ export class NotificationService {
           payload,
           {
             success: false,
-            error: `Webhook returned ${response.status}: ${response.statusText}. Response: ${responseText}`,
+            error: `Webhook returned ${response.status}: ${response.statusText}. Response: ${clip(responseText, 1024)}`,
           },
           responseDetails,
         );
@@ -1408,12 +1440,18 @@ export class NotificationService {
     config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
+    const secrets: string[] = [];
     try {
       const botToken = config.botToken as string | undefined;
       const chatId = config.chatId as string | undefined;
       if (!botToken || !chatId) {
         throw new Error('Telegram bot token and chat ID are required');
+      }
+      secrets.push(botToken);
+      // Token is interpolated into the URL path: reject anything that could alter it.
+      if (!/^[0-9]+:[A-Za-z0-9_-]+$/.test(botToken)) {
+        throw new Error('Telegram bot token has an invalid format');
       }
 
       const telegramMessage = this.formatTelegramMessage(formatted);
@@ -1438,25 +1476,32 @@ export class NotificationService {
         },
         retryConfig,
         this.logger,
+        fetchPublicEndpoint,
       );
 
       if (result.success) {
         this.logger.debug(
           `Telegram notification sent successfully after ${result.attempts} attempt(s)`,
         );
-        return true;
+        return { success: true };
       }
 
       this.logger.error(
         `Failed to send Telegram notification after ${result.attempts} attempts: ${result.error}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Telegram', result.error, secrets),
+      };
     } catch (error) {
       this.logger.error(
         `Failed to send Telegram notification: ${getErrorMessage(error)}`,
         getErrorStack(error),
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Telegram', getErrorMessage(error), secrets),
+      };
     }
   }
 
@@ -1464,12 +1509,15 @@ export class NotificationService {
     config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
+    const secrets: string[] = [];
     try {
       const webhookUrl = config.discordWebhookUrl as string | undefined;
       if (!webhookUrl) {
         throw new Error('Discord webhook URL is required');
       }
+      secrets.push(webhookUrl);
+      assertAllowedHost(webhookUrl, DISCORD_HOSTS, 'Discord');
 
       const retryConfig = createRetryConfig();
 
@@ -1505,24 +1553,31 @@ export class NotificationService {
         },
         retryConfig,
         this.logger,
+        fetchPublicEndpoint,
       );
 
       if (result.success) {
         this.logger.debug(
           `Discord notification sent successfully after ${result.attempts} attempt(s)`,
         );
-        return true;
+        return { success: true };
       }
 
       this.logger.error(
         `Failed to send Discord notification after ${result.attempts} attempts: ${result.error}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Discord', result.error, secrets),
+      };
     } catch (error) {
       this.logger.error(
         `Failed to send Discord notification: ${getErrorMessage(error)}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Discord', getErrorMessage(error), secrets),
+      };
     }
   }
 
@@ -1533,14 +1588,19 @@ export class NotificationService {
   private async sendTeamsNotification(
     config: Record<string, unknown>,
     formatted: FormattedNotification,
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
+    const secrets: string[] = [];
     try {
       const webhookUrl = config.teamsWebhookUrl as string | undefined;
+      if (webhookUrl) secrets.push(webhookUrl);
 
       // Input validation
       if (!webhookUrl || typeof webhookUrl !== 'string') {
         this.logger.error('Teams webhook URL is missing or invalid');
-        return false;
+        return {
+          success: false,
+          error: 'Teams webhook URL is missing or invalid',
+        };
       }
 
       // Validate URL is parseable
@@ -1549,13 +1609,16 @@ export class NotificationService {
         parsedUrl = new URL(webhookUrl);
       } catch {
         this.logger.error('Teams webhook URL is not a valid URL');
-        return false;
+        return {
+          success: false,
+          error: 'Teams webhook URL is not a valid URL',
+        };
       }
 
       // Security: Ensure HTTPS only
       if (parsedUrl.protocol !== 'https:') {
         this.logger.error('Teams webhook URL must use HTTPS');
-        return false;
+        return { success: false, error: 'Teams webhook URL must use HTTPS' };
       }
 
       // Check against allowed Microsoft domains (shared constant for DRY)
@@ -1565,7 +1628,7 @@ export class NotificationService {
         this.logger.error(
           `Invalid Teams webhook URL domain: ${hostname}. ${getTeamsWebhookDomainError()}`,
         );
-        return false;
+        return { success: false, error: getTeamsWebhookDomainError() };
       }
 
       // Map severity color to Teams Adaptive Card color
@@ -1655,25 +1718,43 @@ export class NotificationService {
         },
         retryConfig,
         this.logger,
+        fetchPublicEndpoint,
       );
 
       if (result.success) {
         this.logger.debug(
           `Teams notification sent successfully after ${result.attempts} attempt(s)`,
         );
-        return true;
+        return { success: true };
       }
 
       this.logger.error(
         `Failed to send Teams notification after ${result.attempts} attempts: ${result.error}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Teams', result.error, secrets),
+      };
     } catch (error) {
       this.logger.error(
         `Failed to send Teams notification: ${getErrorMessage(error)}`,
       );
-      return false;
+      return {
+        success: false,
+        error: this.safeSendError('Teams', getErrorMessage(error), secrets),
+      };
     }
+  }
+
+  /** Failure text for delivery history; strips webhook URLs and bot tokens. */
+  private safeSendError(
+    label: string,
+    message: string | undefined,
+    secrets: string[],
+  ): string {
+    let text = message ?? 'Unknown error';
+    for (const secret of secrets) text = text.split(secret).join('[redacted]');
+    return `${label} delivery failed: ${clip(text, 300)}`;
   }
 
   private formatTelegramMessage(formatted: FormattedNotification): string {

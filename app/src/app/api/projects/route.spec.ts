@@ -5,6 +5,7 @@ import { requireUserAuthContext } from "@/lib/auth-context";
 import { withMemberCounts } from "@/lib/project-member-counts";
 import { getSelectableProjects, getUserProjects } from "@/lib/session";
 import { hasPermissionForUser, getUserRole } from "@/lib/rbac/middleware";
+import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false) }));
 jest.mock("@/lib/session", () => ({ getSelectableProjects: jest.fn(), getUserProjects: jest.fn() }));
@@ -14,6 +15,7 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 jest.mock("@/lib/project-member-counts", () => ({
   withMemberCounts: jest.fn(async (list: Array<{ id: string }>) => list.map((p) => ({ ...p, membersCount: p.id === "invited-project" ? 3 : 1 }))),
 }));
+jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkProjectLimit: jest.fn() }));
 jest.mock("@/lib/services/subscription-service", () => {
@@ -68,4 +70,10 @@ it("includes a per-project membersCount in the browser and organization-scoped l
   expect(browser.data.map((p: { membersCount: number }) => p.membersCount)).toEqual([1, 3]);
   const scoped = await (await GET(new NextRequest("https://app.supercheck.io/api/projects?organizationId=team&includeMemberCounts=1"))).json();
   expect(scoped.data).toEqual([{ id: "invited-project", organizationId: "team", membersCount: 3 }]);
+});
+it("maps a duplicate slug to 409, not 500", async () => {
+  (subscriptionService.blockUntilSubscribed as jest.Mock).mockResolvedValue(undefined);
+  (insertWithinPlanLimit as jest.Mock).mockRejectedValue(Object.assign(new Error("dup"), { cause: { code: "23505" } }));
+  const response = await POST(new NextRequest("https://app.supercheck.io/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "P", slug: "taken" }) }));
+  expect(response.status).toBe(409);
 });
