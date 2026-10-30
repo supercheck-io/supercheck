@@ -144,4 +144,16 @@ describe("DELETE schedules", () => {
     expect(deleteScheduledJob).toHaveBeenCalledWith("job-1");
     expect(deleteScheduledJob).toHaveBeenCalledWith("job-2");
   });
+
+  it("audits the deletion even when scheduler cleanup never settles", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id: "job-1" }] }) });
+    set.mockReturnValue({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) });
+    (deleteScheduledJob as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+    (logAuditEvent as jest.Mock).mockClear();
+    void DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
+  });
 });

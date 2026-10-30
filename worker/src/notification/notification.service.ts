@@ -1763,6 +1763,11 @@ export class NotificationService {
         for (const part of [
           ...parsed.pathname.split('/'),
           ...parsed.searchParams.values(),
+          // Raw (percent-encoded) values, as providers may echo them unchanged.
+          ...parsed.search
+            .slice(1)
+            .split('&')
+            .map((pair) => pair.slice(pair.indexOf('=') + 1)),
         ])
           if (part.length >= 8) variants.add(part);
       } catch {

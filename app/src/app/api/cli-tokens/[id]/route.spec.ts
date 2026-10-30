@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 let tokenRows: unknown[] = [];
 let usableCount = 0;
 let dupRow: { id: string } | undefined;
-let lockedRow: { enabled: boolean; ownerId?: string } | null | undefined;
+let lockedRow: { enabled: boolean; ownerId?: string; name?: string } | null | undefined;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
 
@@ -19,7 +19,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: () => { const r = cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled, ownerId: (tokenRows[0] as { ownerId?: string })?.ownerId }]; return Object.assign(Promise.resolve(r), { for: async () => r }); } }) }) }) }),
+      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: () => { const r = cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled, ownerId: (tokenRows[0] as { ownerId?: string })?.ownerId, name: (tokenRows[0] as { name?: string })?.name }]; return Object.assign(Promise.resolve(r), { for: async () => r }); } }) }) }) }),
   };
   return { db };
 });
@@ -121,5 +121,13 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true, name: "CI" }];
     dupRow = { id: "other" };
     expect((await patch({ name: "CI" })).status).toBe(200);
+  });
+
+  it("checks uniqueness when the locked name differs from the pre-read name", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true, name: "CI" }];
+    lockedRow = { enabled: true, ownerId: "u1", name: "renamed-meanwhile" };
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(409);
+    expect(updates).toHaveLength(0);
   });
 });

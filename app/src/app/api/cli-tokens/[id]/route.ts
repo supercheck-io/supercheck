@@ -106,15 +106,19 @@ export async function PATCH(
     // Re-enabling must respect the same per-project cap as issuance (serialised by the same lock).
     const updated = await db.transaction(async (tx) => {
       if (enabled === true || name !== undefined) await lockProjectForKeyIssuance(tx, context.project.id);
-      if (enabled === true) {
-        // Re-read under the lock: the pre-read may be stale.
-        // Row-locked so a concurrent revocation cannot be overwritten; ownership is re-checked on the locked row.
-        const [current] = await tx.select({ enabled: apikey.enabled, ownerId: apikey.referenceId }).from(apikey).where(eq(apikey.id, tokenId)).limit(1).for("update");
+      // Re-read under the lock: the pre-read may be stale (state and name can both have changed).
+      // Row-locked so a concurrent revocation cannot be overwritten; ownership is re-checked on the locked row.
+      let lockedName: string | null = null;
+      if (enabled === true || name !== undefined) {
+        const [current] = await tx.select({ enabled: apikey.enabled, ownerId: apikey.referenceId, name: apikey.name }).from(apikey).where(eq(apikey.id, tokenId)).limit(1).for("update");
         if (!current) return "gone" as const;
-        if (current.enabled !== true && current.ownerId !== context.userId) return "forbidden" as const;
-        if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        lockedName = current.name;
+        if (enabled === true) {
+          if (current.enabled !== true && current.ownerId !== context.userId) return "forbidden" as const;
+          if (current.enabled === false && (await countUsableCliKeys(tx, context.project.id)) >= MAX_CLI_TOKENS_PER_PROJECT) return null;
+        }
       }
-      if (name !== undefined && name !== tokenRecord[0].name) {
+      if (name !== undefined && name !== lockedName) {
         // Same uniqueness rule as issuance (cli-key-service), under the same lock.
         const [dup] = await tx.select({ id: apikey.id }).from(apikey).where(and(eq(apikey.projectId, context.project.id), isNull(apikey.jobId), eq(apikey.name, name), ne(apikey.id, tokenId))).limit(1);
         if (dup) return "name_conflict" as const;

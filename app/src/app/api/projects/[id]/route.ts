@@ -292,6 +292,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: 'project_deleted',
+      resource: 'project',
+      resourceId: projectId,
+      metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
+      success: true,
+    });
+
     // Best effort: processScheduledJob also drops the repeatable if this fails.
     try {
       const { deleteScheduledJob } = await import('@/lib/job-scheduler');
@@ -309,16 +319,6 @@ export async function DELETE(
     } catch (error) {
       console.error('Failed to remove schedules for deleted project', projectId, error);
     }
-
-    await logAuditEvent({
-      userId,
-      organizationId,
-      action: 'project_deleted',
-      resource: 'project',
-      resourceId: projectId,
-      metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
-      success: true,
-    });
     
     return NextResponse.json({
       success: true,
