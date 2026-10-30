@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 jest.mock("@/utils/db", () => ({
   db: {
     select: jest.fn(),
+    selectDistinctOn: jest.fn(),
     transaction: jest.fn(),
   },
 }));
@@ -29,9 +30,15 @@ jest.mock("@/lib/notification-providers/ownership", () => ({
   validateNotificationProviderOwnership: jest.fn(),
 }));
 
-jest.mock("@/lib/server-actions/update-job", () => ({
-  updateJob: jest.fn(),
-}));
+jest.mock("@/lib/server-actions/update-job", () => {
+  const { z } = jest.requireActual("zod");
+  return {
+    updateJob: jest.fn(),
+    jobNameSchema: z.string().trim().min(1, "Job name is required.").max(255, "Job name must be at most 255 characters."),
+    jobDescriptionSchema: z.string().max(2000, "Description must be at most 2000 characters."),
+    MAX_JOB_TESTS: 50,
+  };
+});
 
 import { updateJob } from "@/lib/server-actions/update-job";
 import { GET, POST, PUT } from "./route";
@@ -39,6 +46,7 @@ import { GET, POST, PUT } from "./route";
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
     select: jest.Mock;
+    selectDistinctOn: jest.Mock;
     transaction: jest.Mock;
   };
 };
@@ -73,6 +81,7 @@ const {
 };
 
 const TEST_ID = "00000000-0000-4000-8000-0000000000a1";
+const mockInsertValues = jest.fn();
 
 describe("Jobs route regressions", () => {
   const authContext = {
@@ -184,9 +193,15 @@ describe("Jobs route regressions", () => {
         .mockReturnValueOnce(chain([{ count: 1 }]))
         .mockReturnValueOnce(chain([{ id: "job-1", name: "Nightly", createdAt: new Date() }]))
         .mockReturnValueOnce(chain([{ jobId: "job-1", testId: "t-1", title: "A", type: "browser", script: encoded }]))
-        .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]));
+      mockDb.selectDistinctOn.mockReturnValueOnce(chain([]));
     }
+
+    it("loads one latest run per job with DISTINCT ON, not every run", async () => {
+      mockJobWithTest();
+      await GET(new NextRequest("http://localhost/api/jobs"));
+      expect(mockDb.selectDistinctOn).toHaveBeenCalledTimes(1);
+    });
 
     it("leaves scripts out by default", async () => {
       mockJobWithTest();
@@ -362,6 +377,55 @@ describe("Jobs route regressions", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toContain("exactly one");
     expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  describe("POST /api/jobs input rules", () => {
+    const post = (extra: object) => POST(new NextRequest("http://localhost/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "J", description: "d", cronSchedule: "0 * * * *", tests: [{ id: TEST_ID }], ...extra }),
+    }));
+
+    it("checks job:create permission before the subscription", async () => {
+      mockCheckPermissionWithContext.mockReturnValue(false);
+      mockSubscriptionService.blockUntilSubscribed.mockRejectedValue(new Error("Subscription required"));
+      const response = await post({});
+      expect(response.status).toBe(403);
+      expect(mockSubscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a blank name", { name: "   " }],
+      ["a name over 255 characters", { name: "x".repeat(256) }],
+      ["a description over 2000 characters", { description: "x".repeat(2001) }],
+      ["more than 50 tests", { tests: Array.from({ length: 51 }, () => ({ id: TEST_ID })) }],
+    ])("answers 400 for %s", async (_label, extra) => {
+      const response = await post(extra);
+      expect(response.status).toBe(400);
+      expect(mockSubscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+    });
+
+    it("always inserts status pending, whatever the client sends", async () => {
+      const values = jest.fn(() => ({ returning: jest.fn(async () => [{ id: "j", name: "J" }]) }));
+      mockDb.select.mockReturnValue({ from: () => ({ where: () => Promise.resolve([{ id: TEST_ID, type: "browser" }]) }) });
+      mockDb.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
+        insert: () => ({ values: (v: unknown) => (mockInsertValues(v), values()) }),
+      }));
+      await post({ status: "passed" });
+      expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
+    });
+  });
+
+  describe("PUT /api/jobs optional fields", () => {
+    it("does not require a description or a cron schedule", async () => {
+      const response = await PUT(new Request("http://localhost/api/jobs", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "00000000-0000-4000-8000-000000000005", name: "J", tests: [{ id: "bad" }] }),
+      }));
+      // Past the required-field gate it reaches the test-id check (400 with that message, not "Missing required").
+      expect((await response.json()).error).toContain("valid test ID");
+    });
   });
 
   describe("nested test ids", () => {

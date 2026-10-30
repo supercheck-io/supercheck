@@ -458,12 +458,21 @@ export class PlaywrightExecutionProcessor
 
       // Update run status to cancelled
       await this.dbService
-        .updateRunStatus(runId, 'error', '0')
+        .updateRunStatus(runId, 'error', '0', RUN_CANCELLATION_MARKER)
         .catch((err: Error) =>
           this.logger.error(
             `[${runId}] Failed to update run status to cancelled: ${err.message}`,
           ),
         );
+
+      if (originalJobId) {
+        await this.updateJobStatus(originalJobId, 'error', runId);
+        await this.dbService.db
+          .update(jobs)
+          .set({ lastRunAt: new Date() })
+          .where(eq(jobs.id, originalJobId))
+          .execute();
+      }
 
       return {
         jobId: originalJobId || jobData.jobId,
@@ -785,29 +794,18 @@ export class PlaywrightExecutionProcessor
     status: 'pending' | 'running' | 'passed' | 'failed' | 'error',
     runId: string,
   ) {
-    const finalRunStatuses =
-      await this.dbService.getRunStatusesForJob(originalJobId);
-    // Robust: If only one run, or all runs are terminal, set job status to match this run
-    const allTerminal = finalRunStatuses.every((s) =>
-      ['passed', 'failed', 'error'].includes(s),
+    // Job status follows this run's final status; only a sibling still queued/running keeps it running.
+    const otherActive = await this.dbService.hasOtherActiveRun(
+      originalJobId,
+      runId,
     );
-    if (finalRunStatuses.length === 1 || allTerminal) {
-      await this.dbService
-        .updateJobStatus(originalJobId, [status])
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to update job status (robust): ${err.message}`,
-          ),
-        );
-    } else {
-      await this.dbService
-        .updateJobStatus(originalJobId, finalRunStatuses)
-        .catch((err: Error) =>
-          this.logger.error(
-            `[${runId}] Failed to update job status: ${err.message}`,
-          ),
-        );
-    }
+    await this.dbService
+      .updateJobStatus(originalJobId, [otherActive ? 'running' : status])
+      .catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to update job status: ${err.message}`,
+        ),
+      );
   }
 
   @OnWorkerEvent('failed')

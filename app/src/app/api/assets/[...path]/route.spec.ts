@@ -177,3 +177,18 @@ describe("Assets Proxy Route", () => {
     });
   });
 });
+
+describe("published asset caching", () => {
+  it("opts into public caching explicitly for published non-favicon assets", async () => {
+    mockFindStatusPage.mockResolvedValue({ id: PAGE_ID });
+    mockFetchFromS3.mockResolvedValue(new Response("png", { headers: { "content-type": "image/png" } }));
+    await GET(new NextRequest(`http://localhost/api/assets/status-pages/${PAGE_ID}/logo/a.png`), {
+      params: Promise.resolve({ path: ["status-pages", PAGE_ID, "logo", "a.png"] }),
+    });
+    expect(mockFetchFromS3).toHaveBeenCalledWith(
+      "status-page-artifacts",
+      `status-pages/${PAGE_ID}/logo/a.png`,
+      { cacheControl: "public, max-age=31536000" }
+    );
+  });
+});

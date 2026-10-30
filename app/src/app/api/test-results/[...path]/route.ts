@@ -95,7 +95,8 @@ function toTraceDataFallbackKey(s3Key: string): string | null {
 
 async function fetchReportAssetWithRecovery(
   bucket: string,
-  s3Key: string
+  s3Key: string,
+  range?: string
 ): Promise<Response> {
   const { maxRetries, retryDelayMs } = getReportAssetRetryConfig();
   let retries = 0;
@@ -103,7 +104,7 @@ async function fetchReportAssetWithRecovery(
   let fallbackApplied = false;
 
   while (true) {
-    const response = await fetchFromS3(bucket, currentKey);
+    const response = await fetchFromS3(bucket, currentKey, { range });
 
     if (response.ok) {
       return response;
@@ -483,7 +484,11 @@ export async function GET(request: Request) {
 
     try {
       // Retry transient S3 misses and apply trace/data fallback when needed.
-      const s3Response = await fetchReportAssetWithRecovery(bucket, s3Key);
+      const s3Response = await fetchReportAssetWithRecovery(
+        bucket,
+        s3Key,
+        request.headers.get("range") ?? undefined
+      );
 
       // Convert Response to NextResponse
       const headers = new Headers(s3Response.headers);
@@ -575,9 +580,7 @@ export async function GET(request: Request) {
       }
       headers.append("Vary", "Sec-Fetch-Dest, Sec-Fetch-Site");
 
-      const buffer = await s3Response.arrayBuffer();
-
-      return new NextResponse(buffer, {
+      return new NextResponse(s3Response.body, {
         status: s3Response.status,
         headers,
       });

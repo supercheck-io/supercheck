@@ -548,8 +548,10 @@ export class DbService implements OnModuleInit {
       .returning({ id: runs.id, jobId: runs.jobId });
     if (!finalized) return false;
     if (finalized.jobId) {
-      const statuses = await this.getRunStatusesForJob(finalized.jobId);
-      await this.updateJobStatus(finalized.jobId, statuses);
+      const active = await this.hasOtherActiveRun(finalized.jobId, runId);
+      await this.updateJobStatus(finalized.jobId, [
+        active ? 'running' : 'error',
+      ]);
     }
     return true;
   }
@@ -592,6 +594,7 @@ export class DbService implements OnModuleInit {
     });
   }
 
+  // Still used by the k6 processor.
   async getRunStatusesForJob(
     jobId: string,
   ): Promise<
@@ -615,6 +618,27 @@ export class DbService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`Failed to get run statuses for job ${jobId}:`, error);
       return [];
+    }
+  }
+
+  /** True when another run of the job is still queued or running. */
+  async hasOtherActiveRun(jobId: string, runId: string): Promise<boolean> {
+    try {
+      const [other] = await this.db
+        .select({ id: runs.id })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.jobId, jobId),
+            ne(runs.id, runId),
+            inArray(runs.status, ['queued', 'running']),
+          ),
+        )
+        .limit(1);
+      return !!other;
+    } catch (error) {
+      this.logger.error(`Failed to check active runs for job ${jobId}:`, error);
+      return false;
     }
   }
 

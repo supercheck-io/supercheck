@@ -10,8 +10,8 @@ import { getExecutionPolicy, ExecutionWorkloadError } from "@/lib/execution/exec
 import { Job } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
-import { jobs, runs } from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { jobs, runs, projects } from '@/db/schema';
+import { eq, and, inArray, lt } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
@@ -24,8 +24,19 @@ import {
   SubscriptionAccessDeniedError,
 } from '@/lib/services/subscription-service';
 import { polarUsageService } from '@/lib/services/polar-usage.service';
+import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses';
 
 const logger = queueLogger;
+
+// A run queued this long never reached the worker; stop it blocking future ticks.
+const STALE_QUEUED_RUN_MS = 30 * 60 * 1000;
+
+async function removeOrphanedSchedule(jobId: string, reason: string): Promise<void> {
+  // Dynamic import: lib/job-scheduler imports this module.
+  const { deleteScheduledJob } = await import('@/lib/job-scheduler');
+  const removed = await deleteScheduledJob(jobId);
+  logger.warn({ jobId, removed, reason }, 'Removed schedule for job that should no longer run');
+}
 
 /**
  * Job data structure for scheduled jobs
@@ -69,6 +80,9 @@ export async function processScheduledJob(
     return { success: false };
   }
 
+  // Set once this tick's run row exists, so the catch only touches that row.
+  let insertedRunId: string | null = null;
+
   try {
     const data = job.data;
     logger.info({ jobId }, 'Processing scheduled job trigger');
@@ -82,6 +96,7 @@ export async function processScheduledJob(
 
     if (jobData.length === 0) {
       logger.error({ jobId }, 'Job not found');
+      await removeOrphanedSchedule(jobId, 'job_not_found');
       return { success: false };
     }
 
@@ -98,6 +113,17 @@ export async function processScheduledJob(
       return { success: false };
     }
 
+    const [project] = await db
+      .select({ status: projects.status })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (!jobRecord.cronSchedule || project?.status === 'deleted') {
+      await removeOrphanedSchedule(jobId, jobRecord.cronSchedule ? 'project_deleted' : 'schedule_cleared');
+      return { success: true };
+    }
+
     // Advance the next run time before any early return, so a skipped tick (overlap, billing) does
     // not leave a stale "next run" behind.
     try {
@@ -106,6 +132,15 @@ export async function processScheduledJob(
       }
     } catch (error) {
       logger.error({ jobId, error }, 'Failed to update the next run date');
+    }
+
+    try {
+      await db
+        .update(runs)
+        .set({ status: 'error', completedAt: new Date(), errorDetails: 'Run was never picked up and was marked failed' })
+        .where(and(eq(runs.jobId, jobId), eq(runs.status, 'queued'), lt(runs.startedAt, new Date(Date.now() - STALE_QUEUED_RUN_MS))));
+    } catch (error) {
+      logger.error({ jobId, error }, 'Failed to expire stale queued runs');
     }
 
     // A queued run already owns capacity/queue position and must also prevent
@@ -126,6 +161,23 @@ export async function processScheduledJob(
       return { success: true };
     }
 
+    // Leave a visible blocked run so a policy-skipped tick shows in history.
+    const recordBlockedRun = async (reason: string) => {
+      const now = new Date();
+      await db.insert(runs).values({
+        id: runId,
+        jobId,
+        status: 'blocked',
+        startedAt: now,
+        completedAt: now,
+        trigger: 'schedule',
+        projectId,
+        errorDetails: reason,
+        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright' },
+      });
+      insertedRunId = runId;
+    };
+
     // Scheduled executions must pass the same subscription and spending
     // controls as user/API-triggered executions. Expected policy denials skip
     // the tick; operational failures are rethrown for BullMQ retry/backoff.
@@ -137,6 +189,7 @@ export async function processScheduledJob(
           { jobId, organizationId, reason: spendingBlock.reason },
           'Scheduled execution blocked by spending limit',
         );
+        await recordBlockedRun(spendingBlock.reason ?? 'Monthly spending limit reached');
         return { success: true };
       }
     } catch (error) {
@@ -145,6 +198,7 @@ export async function processScheduledJob(
           { jobId, organizationId, reason: error instanceof SubscriptionAccessDeniedError ? error.reason : "execution_entitlement_required" },
           'Scheduled execution blocked by subscription validation',
         );
+        await recordBlockedRun(error.message);
         return { success: true };
       }
       logger.error(
@@ -207,6 +261,7 @@ export async function processScheduledJob(
       },
     });
 
+    insertedRunId = runId;
     logger.info({ jobId, runId }, 'Created run record for scheduled job');
 
     await db.update(jobs).set({ lastRunAt: new Date() }).where(eq(jobs.id, jobId));
@@ -229,14 +284,13 @@ export async function processScheduledJob(
       processedTestScripts = prepared.testScripts;
       variableResolution = prepared.variableResolution;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to prepare test scripts';
       logger.error({ jobId, runId, error }, 'Failed to prepare test scripts for scheduled job');
       await db
         .update(runs)
         .set({
           status: 'failed',
           completedAt: new Date(),
-          errorDetails: errorMessage,
+          errorDetails: 'Failed to prepare test scripts',
         })
         .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
       return { success: false };
@@ -315,7 +369,7 @@ export async function processScheduledJob(
           .set({
             status: 'failed',
             completedAt: new Date(),
-            errorDetails: error instanceof Error ? error.message : 'Failed to enqueue job',
+            errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
           .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
@@ -356,7 +410,7 @@ export async function processScheduledJob(
           .set({
             status: 'failed',
             completedAt: new Date(),
-            errorDetails: error instanceof Error ? error.message : 'Failed to enqueue job',
+            errorDetails: getSafeExecutionQueueErrorDetails(error),
           })
           .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
@@ -367,22 +421,21 @@ export async function processScheduledJob(
   } catch (error) {
     logger.error({ jobId, error }, 'Failed to process scheduled job trigger');
 
-    // Update job status to error
-    try {
-      await db.update(jobs).set({ status: 'error' }).where(eq(jobs.id, jobId));
-
-      await db
-        .update(runs)
-        .set({
-          status: 'error',
-          errorDetails: `Failed to process scheduled job: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-          completedAt: new Date(),
-        })
-        .where(and(eq(runs.jobId, jobId), eq(runs.status, 'queued')));
-    } catch (dbError) {
-      logger.error({ jobId, dbError }, 'Failed to update job/run status to error');
+    // Only mark state this tick created; with no run inserted there is nothing to fail.
+    if (insertedRunId) {
+      try {
+        await db.update(jobs).set({ status: 'error' }).where(eq(jobs.id, jobId));
+        await db
+          .update(runs)
+          .set({
+            status: 'error',
+            errorDetails: 'Failed to process scheduled job',
+            completedAt: new Date(),
+          })
+          .where(and(eq(runs.id, insertedRunId), eq(runs.status, 'queued')));
+      } catch (dbError) {
+        logger.error({ jobId, dbError }, 'Failed to update job/run status to error');
+      }
     }
 
     throw error;

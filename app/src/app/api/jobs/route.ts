@@ -13,7 +13,8 @@ import {
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { updateJob } from "@/lib/server-actions/update-job";
+import { z } from "zod";
+import { updateJob, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -47,8 +48,8 @@ interface Test {
 interface JobData {
   id?: string;
   name: string;
-  description: string;
-  cronSchedule: string;
+  cronSchedule?: string | null;
+  description?: string | null;
   status?: JobStatus;
   timeoutSeconds: number;
   retryCount: number;
@@ -188,10 +189,9 @@ export async function GET(request: Request) {
         .where(inArray(jobTests.jobId, jobIds))
         .orderBy(asc(jobTests.orderPosition)),
 
-      // Query 4: Batch fetch last run for all jobs
-      // This gets the most recent run for each job in a single query
+      // Query 4: latest run per job. DISTINCT ON keeps one row per job however many runs it has.
       db
-        .select({
+        .selectDistinctOn([runs.jobId], {
           jobId: runs.jobId,
           id: runs.id,
           status: runs.status,
@@ -202,7 +202,7 @@ export async function GET(request: Request) {
         })
         .from(runs)
         .where(inArray(runs.jobId, jobIds))
-        .orderBy(runs.jobId, desc(runs.startedAt)),
+        .orderBy(runs.jobId, sql`${runs.startedAt} desc nulls last`),
     ]);
 
     // Query 3: Batch fetch all tags for all tests (depends on Query 2 results)
@@ -337,15 +337,11 @@ export async function POST(request: NextRequest) {
     const jobData: JobData = await request.json();
 
     // Validate required fields
-    if (!jobData.name) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Missing required field: name is required.",
-        },
-        { status: 400 }
-      );
+    const parsedFields = z.object({ name: jobNameSchema, description: jobDescriptionSchema.nullish() }).safeParse(jobData);
+    if (!parsedFields.success) {
+      return NextResponse.json({ success: false, error: parsedFields.error.issues[0].message }, { status: 400 });
     }
+    jobData.name = parsedFields.data.name;
 
     const cronError = validateJobCron(jobData.cronSchedule);
     const thresholdError = alertThresholdError(jobData.alertConfig);
@@ -359,6 +355,13 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "At least one test is required to create a job.",
         },
+        { status: 400 }
+      );
+    }
+
+    if (jobData.tests.length > MAX_JOB_TESTS) {
+      return NextResponse.json(
+        { success: false, error: `A job can have at most ${MAX_JOB_TESTS} tests.` },
         { status: 400 }
       );
     }
@@ -387,6 +390,16 @@ export async function POST(request: NextRequest) {
     // Use current project context
     const targetProjectId = project.id;
 
+    // Permission first, so a viewer is told 403 rather than the org's billing state
+    const canCreate = checkPermissionWithContext("job", "create", context);
+
+    if (!canCreate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to create jobs" },
+        { status: 403 }
+      );
+    }
+
     // SECURITY: Validate subscription before allowing job creation
     try {
       await subscriptionService.blockUntilSubscribed(organizationId);
@@ -399,16 +412,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: errorMessage },
         { status: 402 } // Payment Required
-      );
-    }
-
-    // Check permission to create jobs
-    const canCreate = checkPermissionWithContext("job", "create", context);
-
-    if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create jobs" },
-        { status: 403 }
       );
     }
 
@@ -554,7 +557,7 @@ export async function POST(request: NextRequest) {
           description: jobData.description || null,
           cronSchedule: jobData.cronSchedule || null,
           nextRunAt: nextRunAt,
-          status: jobData.status || "pending",
+          status: "pending", // a client-supplied status is never trusted
           alertConfig: jobData.alertConfig
             ? {
                 enabled: Boolean(jobData.alertConfig.enabled),
@@ -695,12 +698,11 @@ export async function PUT(request: Request) {
     }
 
     // Validate required fields
-    if (!jobData.name || !jobData.cronSchedule || !jobData.description) {
+    if (!jobData.name) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Missing required fields. Name, description, and cron schedule are required.",
+          error: "Missing required field: name is required.",
         },
         { status: 400 }
       );
@@ -853,7 +855,7 @@ export async function PUT(request: Request) {
         jobId: targetJobId,
         name: jobData.name,
         description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule,
+        cronSchedule: jobData.cronSchedule || undefined,
         tests: jobData.tests.map((test) => ({ id: test.id })),
         alertConfig: jobData.alertConfig
           ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
@@ -874,7 +876,7 @@ export async function PUT(request: Request) {
         id: targetJobId,
         name: jobData.name,
         description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule,
+        cronSchedule: jobData.cronSchedule || null,
         nextRunAt: result.job?.nextRunAt ?? null,
         ...(result.job?.warning ? { warning: result.job.warning } : {}),
       },

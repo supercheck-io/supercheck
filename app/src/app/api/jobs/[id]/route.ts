@@ -7,6 +7,7 @@ import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema
 import { eq, inArray, asc, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { loadCreators } from '@/lib/creators';
 import { logAuditEvent } from '@/lib/audit-logger';
 
 export async function GET(
@@ -43,6 +44,7 @@ export async function GET(
         createdByUserId: jobs.createdByUserId,
         lastRunAt: jobs.lastRunAt,
         nextRunAt: jobs.nextRunAt,
+        jobType: jobs.jobType,
       })
       .from(jobs)
       .where(
@@ -107,8 +109,10 @@ export async function GET(
       });
     });
     
+    const creatorOf = await loadCreators([job.createdByUserId]);
     const response = {
       ...job,
+      ...creatorOf(job.createdByUserId),
       lastRunAt: job.lastRunAt ? job.lastRunAt.toISOString() : null,
       nextRunAt: job.nextRunAt ? job.nextRunAt.toISOString() : null,
       tests: testsResult.map((test) => ({

@@ -11,6 +11,8 @@ import { isUuid } from "@/lib/uuid";
 const BUCKET_NAME =
   process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts";
 
+const PUBLIC_ASSET_CACHE_CONTROL = "public, max-age=31536000"; // published assets: 1 year
+
 // Interface for S3 error objects
 interface S3Error extends Error {
   Code?: string;
@@ -78,7 +80,7 @@ export async function GET(
     const response = await fetchFromS3(BUCKET_NAME, s3Key, {
       cacheControl: !isAllowedAsset ? "private, no-store" : isFavicon
         ? "public, max-age=0, must-revalidate" // No cache for favicons - they change frequently
-        : undefined, // Use default 1-year cache for other assets
+        : PUBLIC_ASSET_CACHE_CONTROL,
     });
 
     // Convert Response to NextResponse
@@ -92,9 +94,7 @@ export async function GET(
       headers["content-security-policy"] = "sandbox; default-src 'none'";
     }
 
-    const buffer = await response.arrayBuffer();
-
-    return new NextResponse(buffer, {
+    return new NextResponse(response.body, {
       status: response.status,
       headers,
     });
@@ -127,7 +127,7 @@ export async function HEAD(
     }
 
     // Use the shared S3 proxy utility with a minimal request
-    const response = await fetchFromS3(BUCKET_NAME, s3Key, { cacheControl: isAllowedAsset ? undefined : "private, no-store" });
+    const response = await fetchFromS3(BUCKET_NAME, s3Key, { cacheControl: isAllowedAsset ? PUBLIC_ASSET_CACHE_CONTROL : "private, no-store" });
 
     // Convert Response to NextResponse (head request)
     const headers: Record<string, string> = {};
@@ -140,7 +140,8 @@ export async function HEAD(
       headers["content-security-policy"] = "sandbox; default-src 'none'";
     }
 
-    // Don't include the body for HEAD requests
+    // Don't include the body for HEAD requests; release the S3 stream.
+    await response.body?.cancel();
     return new NextResponse(null, {
       status: response.status,
       headers,

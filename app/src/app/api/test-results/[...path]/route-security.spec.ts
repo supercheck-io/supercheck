@@ -225,4 +225,53 @@ describe("report artifact response security", () => {
     expect(db.select).not.toHaveBeenCalled();
     expect(fetchFromS3).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "report/%2e%2e/%2e%2e/other-run/data/x.png",
+    "report/..%2f..%2fother-run/x.png",
+    "report/%2e%2e%2f%2e%2e%2fother-run/x.png",
+    "report/%252e%252e/x.png",
+    "report/../../other-run/x.png",
+  ])("cannot escape the entity prefix via %s", async (file) => {
+    await GET(request(file));
+    for (const call of jest.mocked(fetchFromS3).mock.calls) {
+      const key = call[1];
+      expect(key.startsWith("run-id/report/")).toBe(true);
+      expect(key.split("/")).not.toContain("..");
+    }
+  });
+
+  it("streams the S3 body and passes Range through with 206 and range headers", async () => {
+    jest.mocked(fetchFromS3).mockResolvedValue(
+      new Response("ell", {
+        status: 206,
+        headers: {
+          "Content-Type": "video/webm",
+          "Content-Range": "bytes 1-3/5",
+          "Content-Length": "3",
+          "Accept-Ranges": "bytes",
+        },
+      }),
+    );
+    const response = await GET(
+      new Request("https://app.example/api/test-results/run-id/data/v.webm", { headers: { Range: "bytes=1-3" } }),
+    );
+    expect(fetchFromS3).toHaveBeenCalledWith("bucket", "run-id/report/data/v.webm", { range: "bytes=1-3" });
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 1-3/5");
+    expect(response.headers.get("content-length")).toBe("3");
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.text()).toBe("ell");
+  });
+
+  it("returns 416 for an unsatisfiable range", async () => {
+    jest.mocked(fetchFromS3).mockResolvedValue(
+      new Response(JSON.stringify({ error: "Range not satisfiable" }), { status: 416, headers: { "Content-Type": "application/json" } }),
+    );
+    const response = await GET(
+      new Request("https://app.example/api/test-results/run-id/data/v.webm", { headers: { Range: "bytes=99-" } }),
+    );
+    expect(response.status).toBe(416);
+  });
 });

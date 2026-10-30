@@ -276,6 +276,15 @@ describe("Artifact retention strategies", () => {
     expect(db.delete).not.toHaveBeenCalled();
   });
 
+  it.each(["tenant", "global"] as const)("never selects in-flight runs (%s)", async mode => {
+    jobSelections(mode);
+    deleteReports.mockResolvedValue(s3Success);
+    await new JobRunsCleanupStrategy(jobConfig).execute();
+    const runQueries = predicates.map(p => new PgDialect().sqlToQuery(p)).filter(q => q.sql.includes('"created_at" <'));
+    expect(runQueries.length).toBeGreaterThan(0);
+    for (const q of runQueries) expect(q.sql).toMatch(/"status" in/);
+  });
+
   it("retains the owning run when an alias-only storage cleanup fails", async () => {
     jobSelections("tenant");
     selections[4] = [{ id: "alias", entityId: "saved-test", entityType: "test", reportPath: "run-1/report", s3Url: null }];

@@ -7,8 +7,14 @@ import { scheduleJob } from "@/lib/job-scheduler";
 const mockSelect = jest.fn();
 jest.mock("server-only", () => ({}));
 const mockSet = jest.fn();
+const mockWhere = jest.fn();
+const mockUpdatedRows = jest.fn(() => [{ id: "job" }]);
 const mockWriter = {
-  update: jest.fn(() => ({ set: jest.fn((v: unknown) => (mockSet(v), { where: jest.fn(async () => undefined) })) })),
+  update: jest.fn(() => ({
+    set: jest.fn((v: unknown) => (mockSet(v), {
+      where: jest.fn((cond: unknown) => (mockWhere(cond), Object.assign(Promise.resolve(undefined), { returning: async () => mockUpdatedRows() }))),
+    })),
+  })),
   delete: jest.fn(() => ({ where: jest.fn(async () => undefined) })),
   insert: jest.fn(() => ({ values: jest.fn(async () => undefined) })),
 };
@@ -170,4 +176,37 @@ it("applies create defaults when no alertConfig is stored", async () => {
   mockJob(null);
   await updateJob({ ...input, alertConfig: { alertOnSuccess: true } } as never, context);
   expect(mockSet.mock.calls[0][0].alertConfig).toMatchObject({ enabled: false, alertOnFailure: true, failureThreshold: 1, recoveryThreshold: 1, alertOnSuccess: true });
+});
+
+describe("input limits and concurrent edits", () => {
+  it.each([
+    ["a blank name", { name: "   " }, "name is required"],
+    ["a name over 255 characters", { name: "x".repeat(256) }, "255"],
+    ["a description over 2000 characters", { description: "x".repeat(2001) }, "2000"],
+    ["more than 50 tests", { tests: Array.from({ length: 51 }, (_, i) => ({ id: `018f0000-0000-7000-8000-${String(i).padStart(12, "0")}` })) }, "at most 50"],
+  ])("rejects %s with a readable message and no database access", async (_label, extra, text) => {
+    const result = (await updateJob({ ...input, ...extra }, context)) as { success: boolean; message: string; error: unknown };
+    expect(result.success).toBe(false);
+    expect(result.message).toContain(text);
+    expect(typeof result.error).toBe("string");
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("reports a conflict when the job changed since the editor loaded it", async () => {
+    mockJob(null);
+    mockUpdatedRows.mockReturnValueOnce([]);
+    const result = await updateJob({ ...input, expectedUpdatedAt: "2026-01-01T00:00:00.000Z" }, context);
+    expect(result).toMatchObject({ success: false, message: expect.stringContaining("changed since you opened it") });
+  });
+
+  it("only adds the updatedAt condition when the caller supplies expectedUpdatedAt", async () => {
+    mockJob(null);
+    await updateJob(input, context);
+    const chunks = () => (mockWhere.mock.calls[0][0] as { queryChunks: unknown[] }).queryChunks.length;
+    const without = chunks();
+    mockWhere.mockClear();
+    mockJob(null);
+    await updateJob({ ...input, expectedUpdatedAt: "2026-01-01T00:00:00.000Z" }, context);
+    expect(chunks()).toBeGreaterThan(without);
+  });
 });

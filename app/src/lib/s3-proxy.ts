@@ -144,12 +144,14 @@ export async function fetchFromS3(
     contentType?: string;
     cacheControl?: string;
     contentDisposition?: string;
+    range?: string;
   } = {}
 ): Promise<Response> {
   try {
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
+      Range: options.range,
     });
 
     const s3Response = await s3Client.send(command);
@@ -158,15 +160,23 @@ export async function fetchFromS3(
       throw new Error("Empty response from S3");
     }
 
-    const buffer = await streamToUint8Array(s3Response.Body);
+    // Stream the body through instead of buffering the whole object in memory.
+    const body = (
+      s3Response.Body as { transformToWebStream: () => ReadableStream }
+    ).transformToWebStream();
 
     const headers: Record<string, string> = {
       "Content-Type":
         options.contentType ||
         s3Response.ContentType ||
         "application/octet-stream",
-      "Cache-Control": options.cacheControl || "public, max-age=31536000", // 1 year default
+      "Cache-Control": options.cacheControl || "private, no-store", // public caching must be an explicit opt-in
+      "Accept-Ranges": "bytes",
     };
+
+    if (s3Response.ContentRange) {
+      headers["Content-Range"] = s3Response.ContentRange;
+    }
 
     if (s3Response.ContentLength) {
       headers["Content-Length"] = s3Response.ContentLength.toString();
@@ -184,8 +194,8 @@ export async function fetchFromS3(
       headers["Content-Disposition"] = options.contentDisposition;
     }
 
-    return new Response(buffer as unknown as BodyInit, {
-      status: 200,
+    return new Response(body, {
+      status: s3Response.ContentRange ? 206 : 200,
       headers,
     });
   } catch (error: unknown) {
@@ -197,6 +207,13 @@ export async function fetchFromS3(
       if (error.name === "NoSuchKey" || s3Error.Code === "NoSuchKey") {
         return new Response(JSON.stringify({ error: "Object not found" }), {
           status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (error.name === "InvalidRange" || s3Error.Code === "InvalidRange") {
+        return new Response(JSON.stringify({ error: "Range not satisfiable" }), {
+          status: 416,
           headers: { "Content-Type": "application/json" },
         });
       }

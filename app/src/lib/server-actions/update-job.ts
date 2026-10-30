@@ -25,10 +25,20 @@ import {
   isTestTypeCompatibleWithJobType,
 } from "@/lib/script-type-validator";
 
+// Limits shared by POST /api/jobs and updateJob. Name matches jobs.name varchar(255); description is unbounded text in the DB.
+export const jobNameSchema = z.string().trim().min(1, { message: "Job name is required." }).max(255, { message: "Job name must be at most 255 characters." });
+export const jobDescriptionSchema = z.string().max(2000, { message: "Description must be at most 2000 characters." });
+export const MAX_JOB_TESTS = 50;
+
+const JOB_CONFLICT_ERROR = "Job changed since you opened it — reload";
+class JobConflictError extends Error {}
+
 const updateJobSchema = z.object({
   jobId: z.string().uuid(),
-  name: z.string(),
-  description: z.string().optional().default(""),
+  name: jobNameSchema,
+  description: jobDescriptionSchema.optional().default(""),
+  // The updatedAt the editor loaded; when set, the save only applies if the job is unchanged since.
+  expectedUpdatedAt: z.string().datetime().optional(),
   cronSchedule: z.string().optional(),
   tests: z
     .array(
@@ -37,6 +47,7 @@ const updateJobSchema = z.object({
       })
     )
     .min(1, { message: "At least one test is required." })
+    .max(MAX_JOB_TESTS, { message: `A job can have at most ${MAX_JOB_TESTS} tests.` })
     .optional(),
   alertConfig: z
     .object({
@@ -321,7 +332,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       // The job row, notification links and tests change together or not at all; BullMQ scheduling follows the commit.
       await db.transaction(async (dbInstance) => {
         // Update the job basic information
-        await dbInstance
+        const updated = await dbInstance
           .update(jobs)
           .set({
             name: validatedData.name,
@@ -339,7 +350,15 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
               : null,
             updatedAt: new Date(),
           })
-          .where(eq(jobs.id, validatedData.jobId));
+          .where(
+            and(
+              eq(jobs.id, validatedData.jobId),
+              validatedData.expectedUpdatedAt ? eq(jobs.updatedAt, new Date(validatedData.expectedUpdatedAt)) : undefined,
+            ),
+          )
+          .returning({ id: jobs.id });
+        // Throwing rolls the transaction back, so a stale editor changes nothing.
+        if (updated.length === 0) throw new JobConflictError(JOB_CONFLICT_ERROR);
 
         // Update notification provider links if alert config is enabled
         if (
@@ -514,6 +533,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         },
       };
     } catch (dbError) {
+      if (dbError instanceof JobConflictError) return { success: false, message: JOB_CONFLICT_ERROR, error: JOB_CONFLICT_ERROR };
       console.error(`Database error:`, dbError);
       return {
         success: false,
@@ -525,10 +545,12 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
     }
   } catch (validationError) {
     console.error(`Validation error:`, validationError);
+    // A ZodError becomes a readable message so callers answer 400, not 500.
+    const message = validationError instanceof z.ZodError ? validationError.issues[0]?.message ?? "Invalid data provided" : "Invalid data provided";
     return {
       success: false,
-      message: "Invalid data provided",
-      error: validationError,
+      message,
+      error: validationError instanceof z.ZodError ? message : validationError,
     };
   }
 }

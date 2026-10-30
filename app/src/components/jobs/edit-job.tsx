@@ -49,11 +49,11 @@ import { CicdSettings } from "./cicd-settings";
 import { EditJobSkeleton } from "./edit-job-skeleton";
 import { UrlTriggerTooltip } from "./url-trigger-tooltip";
 import { useProjectContext } from "@/hooks/use-project-context";
-import { canDeleteJobs } from "@/lib/rbac/client-permissions";
+import { canDeleteJobs, canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOBS_QUERY_KEY, type Job, type JobTest } from "@/hooks/use-jobs";
+import { invalidateJobCaches, type Job, type JobTest } from "@/hooks/use-jobs";
 
 
 interface AlertConfiguration {
@@ -104,6 +104,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
   const { currentProject } = useProjectContext();
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const canDeleteJob = userRole ? canDeleteJobs(userRole) : false;
+  const canEditJob = userRole ? canEditJobs(userRole) : false;
   const [formChanged, setFormChanged] = useState(false);
 
   // Single source of truth for initial form state
@@ -330,13 +331,15 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
         tests: selectedTests.map(test => ({ id: test.id })),
         cronSchedule: watchedValues.cronSchedule,
         alertConfig: alertConfig,
+        // Lets the server reject the save if someone else changed the job since it was loaded.
+        expectedUpdatedAt: initialJobData?.updatedAt ?? undefined,
       };
 
       // Submit the job data
       const response = await updateJob(finalJobData);
 
       if (!response.success) {
-        throw new Error(typeof response.error === 'string' ? response.error : "Failed to update job");
+        throw new Error(typeof response.error === 'string' ? response.error : response.message || "Failed to update job");
       }
 
       toast.success("Success", {
@@ -345,7 +348,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
       });
 
       // Invalidate Jobs cache to ensure fresh data on jobs list and details
-      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      invalidateJobCaches(queryClient);
       queryClient.invalidateQueries({ queryKey: ["job", jobId], refetchType: 'all' });
 
       // Navigate to jobs page after successful update
@@ -407,7 +410,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
 
       if (!result.success) {
         // If error is "Job not found", job may have been deleted already
-        if (result.error === "Job not found") {
+        if (/not found/i.test(result.error ?? "")) {
           // Show a warning instead of an error
           toast.warning("Job already deleted", {
             description: "This job was already deleted or doesn't exist. Returning to job list."
@@ -426,7 +429,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
       toast.success("Job deleted successfully");
 
       // Invalidate Jobs cache to ensure fresh data on jobs list
-      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      invalidateJobCaches(queryClient);
 
       router.push("/jobs");
     } catch (error) {
@@ -520,7 +523,8 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
               </Button>
               <Button
                 onClick={handleFinalSubmit}
-                disabled={isSubmitting || !formChanged}
+                disabled={isSubmitting || !formChanged || !canEditJob}
+                title={canEditJob ? undefined : "Insufficient permissions to edit jobs"}
                 className="flex items-center"
               >
                 {isSubmitting ? (
