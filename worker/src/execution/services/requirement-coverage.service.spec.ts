@@ -11,7 +11,10 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { RequirementCoverageService } from './requirement-coverage.service';
+import {
+  RequirementCoverageService,
+  computeCoverageStatus,
+} from './requirement-coverage.service';
 import { DbService } from './db.service';
 
 describe('RequirementCoverageService', () => {
@@ -309,5 +312,18 @@ describe('RequirementCoverageService', () => {
         1,
       );
     });
+  });
+});
+
+// Same table is asserted in app/src/lib/requirements/coverage-status.spec.ts.
+describe('computeCoverageStatus', () => {
+  it.each([
+    [0, 0, 0, 'missing'],
+    [3, 0, 0, 'missing'],
+    [3, 2, 0, 'covered'],
+    [3, 2, 1, 'failing'],
+    [1, 0, 1, 'failing'],
+  ])('linked=%i passed=%i failed=%i -> %s', (l, p, f, want) => {
+    expect(computeCoverageStatus(l, p, f)).toBe(want);
   });
 });

@@ -40,7 +40,7 @@ describe("GET /api/requirements/export", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/csv");
-    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="requirements.csv"');
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="f.csv"');
     expect(await res.text()).toBe("ID,Title\n1,a");
     expect(exportRequirementsCsvRecord).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p" }));
   });

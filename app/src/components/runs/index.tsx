@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useSyncExternalStore } from "react";
+import React, { useMemo, useCallback, useSyncExternalStore } from "react";
 import { createColumns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
@@ -11,6 +11,10 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteRuns } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useRuns } from "@/hooks/use-runs";
+import { ListCapNote, ListErrorState } from "@/components/shared/list-states";
+
+// GET /api/runs returns at most this many rows and the list has no pagination.
+export const RUNS_LIST_CAP = 1000;
 
 /**
  * Format duration for display
@@ -48,8 +52,6 @@ function formatDuration(
 
 export function Runs() {
   const router = useRouter();
-  // Use lazy initialization to avoid impure function during render
-  const [tableKey, setTableKey] = useState(() => Date.now());
   const { currentProject } = useProjectContext();
   
   // Hydration-safe mounted state - prevents mismatch between server and client
@@ -66,7 +68,7 @@ export function Runs() {
 
   // Use React Query hook for runs data (cached, handles loading/error)
   // No pageSize specified = API returns all runs for client-side filtering
-  const { runs: rawRuns, isLoading, isRestoring, invalidate } = useRuns();
+  const { runs: rawRuns, isLoading, isRestoring, error, invalidate } = useRuns();
 
   // Transform runs data with memoization
   const runs = useMemo<TestRun[]>(() => {
@@ -93,7 +95,6 @@ export function Runs() {
 
   // Refresh data after deletion
   const handleDeleteRun = useCallback(() => {
-    setTableKey(Date.now());
     invalidate();
   }, [invalidate]);
 
@@ -109,10 +110,14 @@ export function Runs() {
     );
   }
 
+  if (error && runs.length === 0) {
+    return <ListErrorState title="Failed to fetch runs" error={error} onRetry={() => invalidate()} />;
+  }
+
   return (
     <div className="flex h-full flex-col space-y-4 w-full max-w-full overflow-x-hidden">
+      <ListCapNote count={runs.length} cap={RUNS_LIST_CAP} />
       <DataTable
-        key={tableKey}
         columns={columns}
         data={runs}
         onRowClick={handleRowClick}

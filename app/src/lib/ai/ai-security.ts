@@ -60,7 +60,7 @@ const DANGEROUS_CODE_PATTERNS = [
   /document\.write/gi,
   /<script[\s>]/gi,
   /javascript\s*:/gi,
-  /data\s*:/gi,
+  /\bdata:(?:text\/html|text\/javascript|application\/)/gi, // data: URLs only; bare "data:" is a normal object key
   /vbscript\s*:/gi,
 
   // Dynamic imports (suspicious usage)

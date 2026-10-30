@@ -3,7 +3,7 @@ import { MoreHorizontal, PencilIcon, TrashIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +34,7 @@ import { useTestPermissions } from "@/hooks/use-rbac-permissions";
 import { testSchema } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
+import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -78,7 +79,6 @@ export function DataTableRowActions<TData>({
     // Show a loading toast for delete operation
     const deleteToastId = toast.loading("Deleting test...", {
       description: "Please wait while we delete the test.",
-      duration: Infinity, // Keep loading until dismissed
     });
 
     try {
@@ -110,6 +110,8 @@ export function DataTableRowActions<TData>({
       await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
       // Invalidate Tests cache to ensure fresh data on tests list
       queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
+      // Dashboard counts include tests.
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 
       // Call onDelete callback if provided
       if (onDelete) {
@@ -176,7 +178,7 @@ export function DataTableRowActions<TData>({
                     setShowDeleteDialog(true);
                   } : undefined}
                   disabled={!canDeleteTest}
-                  className={`${!canDeleteTest ? "opacity-50 cursor-not-allowed" : "text-red-600"}`}
+                  className={`${!canDeleteTest ? "opacity-50 cursor-not-allowed" : "text-destructive"}`}
                 >
                   <TrashIcon className="mr-2 h-4 w-4" />
                   <span>Delete</span>
@@ -210,7 +212,7 @@ export function DataTableRowActions<TData>({
                 void handleDeleteTest();
               }}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

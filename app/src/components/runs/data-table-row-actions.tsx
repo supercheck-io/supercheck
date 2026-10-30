@@ -4,7 +4,13 @@ import type { Row } from "@tanstack/react-table";
 import { MoreHorizontal, Trash2, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +39,12 @@ interface DataTableRowActionsProps<TData> {
   canDelete?: boolean;
 }
 
+class DeleteTimeoutError extends Error {
+  constructor() {
+    super("Delete operation timed out after 30 seconds");
+  }
+}
+
 export function DataTableRowActions<TData>({
   row,
   onDelete,
@@ -56,11 +68,7 @@ export function DataTableRowActions<TData>({
     try {
       // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(
-          () =>
-            reject(new Error("Delete operation timed out after 30 seconds")),
-          30000
-        );
+        setTimeout(() => reject(new DeleteTimeoutError()), 30000);
       });
 
       const result = (await Promise.race([
@@ -97,6 +105,14 @@ export function DataTableRowActions<TData>({
         }
       }
     } catch (error) {
+      if (error instanceof DeleteTimeoutError) {
+        // The server may still finish the delete; refresh so the list shows its real state.
+        toast.info("Still deleting", {
+          description: "The list will refresh.",
+        });
+        onDelete?.();
+        return;
+      }
       console.error("[DELETE_RUN_UI] Error deleting run:", error);
       console.error("[DELETE_RUN_UI] Error details:", {
         message: error instanceof Error ? error.message : String(error),
@@ -115,6 +131,7 @@ export function DataTableRowActions<TData>({
 
   return (
     <>
+      <TooltipProvider>
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
           <Button
@@ -134,21 +151,39 @@ export function DataTableRowActions<TData>({
             <ExternalLink className="mr-2 h-4 w-4" />
             <span>View Run</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              if (canDelete) {
-                setShowDeleteDialog(true);
-              }
-            }}
-            disabled={!canDelete}
-            className={canDelete ? "text-red-600" : "text-muted-foreground"}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            <span>Delete</span>
-          </DropdownMenuItem>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canDelete) {
+                    setShowDeleteDialog(true);
+                  }
+                }}
+                // aria-disabled (not disabled) keeps the item focusable so keyboard users can reach the tooltip.
+                aria-disabled={!canDelete}
+                onSelect={(e) => {
+                  if (!canDelete) e.preventDefault();
+                }}
+                className={
+                  canDelete
+                    ? "text-destructive"
+                    : "opacity-50 cursor-not-allowed"
+                }
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </TooltipTrigger>
+            {!canDelete && (
+              <TooltipContent>
+                <p>Insufficient permissions to delete runs</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </DropdownMenuContent>
       </DropdownMenu>
+      </TooltipProvider>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
@@ -167,7 +202,7 @@ export function DataTableRowActions<TData>({
                 void handleDeleteRun();
               }}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

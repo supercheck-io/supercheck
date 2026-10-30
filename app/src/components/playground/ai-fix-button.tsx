@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { readAiStream } from "./read-ai-stream";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +42,10 @@ export function AIFixButton({
   onStreamingEnd,
 }: AIFixButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort the in-flight request on unmount so the server stops generating.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const parseAIResponse = (fullText: string): {
     script: string;
@@ -137,11 +142,13 @@ export function AIFixButton({
       }
     };
 
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const response = await fetch("/api/ai/fix-test-stream", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
         },
@@ -171,7 +178,18 @@ export function AIFixButton({
               description: "Please log in to use AI fix feature.",
             });
             return;
+          case 402:
+            toast.error("Subscription required", {
+              description: "An active subscription is required to use AI fix.",
+            });
+            return;
           case 429:
+            if (result.reason === "ai_credits_exhausted") {
+              toast.error("AI credits exhausted", {
+                description: "You have used all your AI credits for this period.",
+              });
+              return;
+            }
             toast.error("Rate limit exceeded", {
               description: "Please wait before making another AI fix request.",
             });
@@ -212,52 +230,8 @@ export function AIFixButton({
       onStreamingStart?.();
       hasStreamingStarted = true;
 
-      // Handle streaming response
-      reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-
-      if (!reader) {
-        throw new Error("No response body received from server");
-      }
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-
-                if (data.type === "content") {
-                  fullText += data.content;
-                  onStreamingUpdate?.(fullText);
-                } else if (data.type === "done") {
-                  // Streaming complete
-                  endStreamingSafely();
-                } else if (data.type === "error") {
-                  throw new Error(data.error || "AI fix generation error");
-                }
-              } catch (parseError) {
-                // Only skip if it's a JSON parse error (empty lines are expected in SSE)
-                if (parseError instanceof SyntaxError && line.trim() === "") {
-                  continue;
-                }
-                // Silently ignore parsing errors
-              }
-            }
-          }
-        }
-      } finally {
-        // Always release the reader
-        reader.releaseLock();
-        reader = null;
-      }
+      const fullText = await readAiStream(response, onStreamingUpdate);
+      endStreamingSafely();
 
       // Check if we received any content
       if (!fullText || fullText.trim().length === 0) {
@@ -280,6 +254,7 @@ export function AIFixButton({
       onAIFixSuccess(script, explanation, confidence);
     } catch (error) {
       endStreamingSafely();
+      if (controller.signal.aborted) return; // unmounted
 
       // Provide specific error messages
       let errorDescription = "Please try again in a few moments or investigate manually.";
@@ -308,14 +283,6 @@ export function AIFixButton({
         "The AI fix service is currently unavailable or cannot fix the issue. Please try again in a few moments or proceed with manual investigation."
       );
     } finally {
-      // Cleanup: release reader if still locked
-      if (reader) {
-        try {
-          reader.releaseLock();
-        } catch {
-          // Ignore errors during cleanup
-        }
-      }
       endStreamingSafely();
       setIsProcessing(false);
       onAnalyzing?.(false);

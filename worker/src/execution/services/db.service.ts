@@ -745,7 +745,7 @@ export class DbService implements OnModuleInit {
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
             ),
           )
-          .orderBy(desc(schema.runs.completedAt))
+          .orderBy(desc(schema.runs.completedAt), desc(schema.runs.id))
           .limit(1);
 
         const status = latestRun.length > 0 ? latestRun[0].status : null;

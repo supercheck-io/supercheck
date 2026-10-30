@@ -282,6 +282,11 @@ export function UploadDocumentDialog({
             );
 
             setExtractedRequirements(requirements);
+            if (result.truncated) {
+                toast.info("Only the first part of this document was analyzed", {
+                    description: "It is longer than the extraction limit. Split it to cover the rest.",
+                });
+            }
             if (result.documentId) {
                 setDocumentId(result.documentId);
             }
