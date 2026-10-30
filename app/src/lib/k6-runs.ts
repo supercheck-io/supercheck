@@ -60,13 +60,21 @@ export const toDisplayStatus = (
 export async function fetchK6RunDetails(
   runId: string,
 ): Promise<K6RunDetails | null> {
-  const res = await fetch(`/api/k6/runs/${encodeURIComponent(runId)}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  let data;
+  try {
+    const res = await fetch(`/api/k6/runs/${encodeURIComponent(runId)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return null;
+    }
+    data = await res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json();
   return {
     status: data.status ?? data.runStatus ?? "running",
     runStatus: data.runStatus ?? data.status ?? null,

@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs, projects } from '@/db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
+import { validateK6Script } from '@/lib/k6-validator';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
@@ -326,6 +327,20 @@ export async function processScheduledJob(
             completedAt: new Date(),
             errorDetails: 'k6 jobs require performance tests',
           })
+          .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
+        return { success: false };
+      }
+
+      // Scheduled runs must meet the same k6 limits as manual runs: one test, valid script.
+      const k6Validation = processedTestScripts.length === 1 ? validateK6Script(primaryScript) : null;
+      if (!k6Validation?.valid) {
+        const errorDetails = !k6Validation
+          ? 'k6 jobs support exactly one performance test'
+          : k6Validation.errors[0] || 'Invalid k6 script';
+        logger.error({ jobId, runId, errorDetails }, 'Scheduled k6 job failed validation');
+        await db
+          .update(runs)
+          .set({ status: 'failed', completedAt: new Date(), errorDetails })
           .where(and(eq(runs.id, runId), inArray(runs.status, ['queued', 'running'])));
         return { success: false };
       }

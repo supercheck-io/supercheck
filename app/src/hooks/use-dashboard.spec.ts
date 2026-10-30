@@ -35,6 +35,19 @@ describe("dashboard data contract", () => {
     expect(data.tests.playgroundExecutionsTrend).toEqual([]);
   });
 
+  it("keeps null uptime and 0 ms response times instead of coercing them", async () => {
+    const respond = (monitors: unknown) => jest.spyOn(global, "fetch")
+      .mockResolvedValue({ ok: true, json: async () => ({ monitors }) } as Response);
+    respond({ uptime: null, responseTime: { avg: 0, min: 0, max: null } });
+    let data = await fetchDashboard();
+    expect(data.monitors.uptime).toBeNull();
+    expect(data.monitors.responseTime).toEqual({ avg: 0, min: 0, max: null });
+    jest.restoreAllMocks();
+    respond({ uptime: 0 });
+    data = await fetchDashboard();
+    expect(data.monitors.uptime).toBe(0);
+  });
+
   it("rejects unavailable dashboard data instead of returning a partial dashboard", async () => {
     jest.spyOn(global, "fetch").mockResolvedValue({ ok: false, status: 503, statusText: "Unavailable" } as Response);
     await expect(fetchDashboard()).rejects.toThrow("Dashboard API error: 503 Unavailable");

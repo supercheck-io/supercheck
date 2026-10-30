@@ -70,6 +70,8 @@ import {
   resolveProjectK6Location,
 } from "@/lib/location-registry";
 import { processScheduledJob } from "./job-scheduler";
+import { addK6JobToQueue } from "@/lib/queue";
+import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 
 const scheduledJob = {
@@ -276,6 +278,28 @@ describe("scheduled execution admission", () => {
         metadata: expect.objectContaining({ executionEngine: "k6" }),
       }),
     );
+  });
+
+  it.each([
+    ["multiple tests", [{ id: "t1", type: "performance", script: "x" }, { id: "t2", type: "performance", script: "x" }]],
+    ["an over-limit script", [{ id: "t1", type: "performance", script: "import http from 'k6/http';\nexport const options = { vus: 100000, duration: '1m' };\nexport default function() { http.get('https://x.test'); }" }]],
+  ])("fails the run without enqueueing a k6 job with %s", async (_n, testScripts) => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([{ id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "k6", status: "pending", cronSchedule: "*/5 * * * *" }]))
+      .mockReturnValueOnce(selectRows([{ status: "active" }]))
+      .mockReturnValueOnce(selectRows([]));
+    (resolveProjectK6Location as jest.Mock).mockResolvedValueOnce("global");
+    (db.insert as jest.Mock).mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
+    const set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+    (db.update as jest.Mock).mockReturnValue({ set });
+    (prepareJobTestScripts as jest.Mock).mockResolvedValueOnce({
+      testScripts,
+      variableResolution: { variables: {}, secrets: {}, files: [] },
+    });
+
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: false });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
+    expect(addK6JobToQueue).not.toHaveBeenCalled();
   });
 
   it.each(["paid", "trial"] as const)("rethrows unexpected location resolution errors for %s access", async (tier) => {

@@ -471,6 +471,26 @@ describe('K6ExecutionService', () => {
         expect(service['testExecutionTimeoutMs']).toBe(3600000);
       });
 
+      it.each(['abc', '0', '-5', '60m', '999'])(
+        'falls back to the default timeout for invalid env %s',
+        (value) => {
+          const cfg = {
+            get: (k: string) => (k.endsWith('_TIMEOUT_MS') ? value : undefined),
+          };
+          const svc = new K6ExecutionService(
+            cfg as never,
+            mockS3Service as never,
+            mockDbService as never,
+            mockRedisService as never,
+            mockContainerExecutorService as never,
+            mockAdmissionService as never,
+            mockVariableResolverService as never,
+          );
+          expect(svc['testExecutionTimeoutMs']).toBe(3600000);
+          expect(svc['jobExecutionTimeoutMs']).toBe(3600000);
+        },
+      );
+
       it('should use configured job timeout', () => {
         expect(service['jobExecutionTimeoutMs']).toBe(3600000);
       });
@@ -1162,11 +1182,19 @@ describe('K6ExecutionService', () => {
       },
     );
 
-    it.each([0, 99, -1])(
-      'retains billing through a missing dashboard or upload failure (exit %s)',
-      async (exitCode) => {
+    it.each([
+      [0, false],
+      [99, false],
+      [-1, false],
+      [1, false],
+      [1, true],
+    ])(
+      'retains billing through a missing dashboard or upload failure (exit %s, cancelled %s)',
+      async (exitCode, cancelled) => {
         const fs = jest.requireMock('fs/promises');
         fs.access.mockRejectedValue(new Error('missing HTML'));
+        if (exitCode === 1)
+          fs.readFile.mockRejectedValueOnce(new Error('no summary'));
         fs.rename = jest.fn().mockResolvedValue(undefined);
         fs.copyFile = jest.fn().mockResolvedValue(undefined);
         Object.assign(mockS3Service, {
@@ -1193,6 +1221,7 @@ describe('K6ExecutionService', () => {
           stderr: '',
           error: null,
           timedOut: false,
+          cancelled,
         } as never);
         if (exitCode === -1)
           (
@@ -1215,6 +1244,13 @@ describe('K6ExecutionService', () => {
         }
         const result = await execution;
         expect(result.success).toBe(exitCode === 0);
+        // No summary + non-zero exit is an execution error with a safe message.
+        if (exitCode === 1)
+          expect(result.error).toBe(
+            cancelled
+              ? null
+              : 'k6 exited with code 1 before producing a summary',
+          );
         expect(result.reportUrl).toBeNull();
         expect(result.summaryUrl).toBe('https://example.com/run/summary.json');
         fs.access.mockResolvedValue(undefined);

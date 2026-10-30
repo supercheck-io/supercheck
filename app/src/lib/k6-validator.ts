@@ -20,6 +20,84 @@ export interface K6ValidationOptions {
   selectedTestType?: string;
 }
 
+/** Upper bounds for literal options; matches the 60 min default run timeout. Dynamic values are left to k6/worker. */
+export const K6_MAX_VUS = 1000;
+export const K6_MAX_DURATION_MS = 60 * 60 * 1000;
+
+const DURATION_UNIT_MS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 } as const;
+
+function literalDurationMs(node: acorn.Expression | acorn.Pattern): number | undefined {
+  if (node.type !== 'Literal') return undefined;
+  if (typeof node.value === 'number') return node.value;
+  if (typeof node.value !== 'string') return undefined;
+  if (!/^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/.test(node.value)) return undefined;
+  let total = 0;
+  for (const [, n, unit] of node.value.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)) total += Number(n) * DURATION_UNIT_MS[unit as keyof typeof DURATION_UNIT_MS];
+  return total;
+}
+
+/** Errors for literal VU/duration values above the limits in top-level `options`. */
+function findOptionLimitErrors(script: string): string[] {
+  const errors: string[] = [];
+  const ast = acorn.parse(script, { ecmaVersion: 'latest', sourceType: 'module' });
+  const keyOf = (p: acorn.Property) =>
+    p.key.type === 'Identifier' ? (p.computed ? undefined : p.key.name) : p.key.type === 'Literal' ? String(p.key.value) : undefined;
+  // Inline `...{ ... }` spreads are flattened; spreads of identifiers/calls stay unresolved (static guard, no evaluation).
+  const propsOf = (obj: acorn.ObjectExpression): Array<acorn.Property | acorn.SpreadElement> =>
+    obj.properties.flatMap((p) => (p.type === 'SpreadElement' && p.argument.type === 'ObjectExpression' ? propsOf(p.argument) : [p]));
+  const checkVus = (name: string, v: acorn.Expression | acorn.Pattern) => {
+    if (v.type === 'Literal' && typeof v.value === 'number' && v.value > K6_MAX_VUS)
+      errors.push(`k6 option "${name}" (${v.value}) exceeds the maximum of ${K6_MAX_VUS} virtual users.`);
+  };
+  const checkDuration = (v: acorn.Expression | acorn.Pattern) => {
+    const ms = literalDurationMs(v);
+    if (ms !== undefined && ms > K6_MAX_DURATION_MS)
+      errors.push(`k6 duration exceeds the maximum of ${K6_MAX_DURATION_MS / 60_000} minutes.`);
+  };
+  const get = (obj: acorn.ObjectExpression, name: string) =>
+    // Last duplicate wins, as in JS/k6.
+    propsOf(obj).reverse().find((p): p is acorn.Property => p.type === 'Property' && keyOf(p) === name)?.value;
+  // Only load keys are checked, so values under tags/env/thresholds are ignored.
+  const checkLoad = (obj: acorn.ObjectExpression, stageTargetsAreVus: boolean) => {
+    for (const k of ['vus', 'maxVUs', 'preAllocatedVUs', 'startVUs']) {
+      const v = get(obj, k);
+      if (v) checkVus(k, v);
+    }
+    const duration = get(obj, 'duration');
+    if (duration) checkDuration(duration);
+    const maxDuration = get(obj, 'maxDuration');
+    if (maxDuration) checkDuration(maxDuration);
+    const stages = get(obj, 'stages');
+    if (stages?.type !== 'ArrayExpression') return;
+    // Stages run back to back, so their durations add up.
+    let total = 0;
+    for (const el of stages.elements) {
+      if (el?.type !== 'ObjectExpression') continue;
+      const target = get(el, 'target');
+      if (stageTargetsAreVus && target) checkVus('stages.target', target);
+      const dur = get(el, 'duration');
+      total += (dur && literalDurationMs(dur)) || 0;
+    }
+    if (total > K6_MAX_DURATION_MS) checkDuration({ type: 'Literal', value: total } as acorn.Literal);
+  };
+  for (const node of ast.body) {
+    const decl = node.type === 'ExportNamedDeclaration' ? node.declaration : node;
+    if (decl?.type !== 'VariableDeclaration') continue;
+    for (const d of decl.declarations) {
+      if (d.id.type !== 'Identifier' || d.id.name !== 'options' || d.init?.type !== 'ObjectExpression') continue;
+      checkLoad(d.init, true);
+      const scenarios = get(d.init, 'scenarios');
+      if (scenarios?.type !== 'ObjectExpression') continue;
+      for (const sc of propsOf(scenarios)) {
+        if (sc.type !== 'Property' || sc.value.type !== 'ObjectExpression') continue;
+        const executor = get(sc.value, 'executor');
+        checkLoad(sc.value, executor?.type === 'Literal' && executor.value === 'ramping-vus');
+      }
+    }
+  }
+  return [...new Set(errors)];
+}
+
 function collectModuleSpecifiers(script: string): Set<string> {
   const modules = new Set<string>();
   const ast = acorn.parse(script, {
@@ -166,6 +244,8 @@ export function validateK6Script(
   if (isMissingEntrypoint(jsCode)) {
     errors.push('Script must export a default function or configure options.scenarios with named exec functions.');
   }
+
+  errors.push(...findOptionLimitErrors(jsCode));
 
   // Warning: Recommend options export for test configuration
   // Use original script - esbuild restructures exports

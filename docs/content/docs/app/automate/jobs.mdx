@@ -14,7 +14,7 @@ A job is a collection of tests that run together. When a job executes:
 
 <Steps>
 <Step>
-All selected tests run in sequence
+All selected tests run in sequence (Playwright jobs). A k6 performance job runs exactly one test
 </Step>
 <Step>
 Results are collected and aggregated
@@ -310,7 +310,7 @@ Jobs send notifications through your configured alert channels:
 <Callout type="info">
 **Execution Time Limits:**
 - **Playwright Jobs:** Maximum runtime of **60 minutes** for the entire job execution
-- **K6 Performance Jobs:** Maximum runtime of **60 minutes** per job execution
+- **K6 Performance Jobs:** Exactly one test per job, with a maximum runtime of **60 minutes** per job execution. Scripts that set a literal `vus`, `maxVUs`, `preAllocatedVUs`, `startVUs`, or a VU stage target above **1000** (top-level `stages` or `ramping-vus` scenarios), or a literal duration above 60 minutes, are rejected
 - **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
 </Callout>
 

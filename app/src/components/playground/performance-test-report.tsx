@@ -26,6 +26,10 @@ import { formatBillingBlockedMessage, isBillingBlockedStatus } from "@/lib/billi
 
 const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
+const STATUS_POLL_INTERVAL_MS = 10_000;
+// Keep only the newest console output so a long run cannot exhaust browser memory.
+export const MAX_CONSOLE_BUFFER_CHARS = 2 * 1024 * 1024;
+export const CONSOLE_TRUNCATED_NOTICE = "[earlier output truncated]\n";
 
 interface PerformanceTestReportProps {
   runId: string;
@@ -322,7 +326,19 @@ export function PerformanceTestReport({
       }, HEARTBEAT_CHECK_INTERVAL_MS);
     };
 
-    const cleanupSource = () => {
+    // While the stream is down, poll so the UI still reaches a terminal state.
+    let statusPoll: ReturnType<typeof setInterval> | null = null;
+    let pollInFlight = false;
+    const startStatusPoll = () => {
+      statusPoll ??= setInterval(() => void pollRunStatus(), STATUS_POLL_INTERVAL_MS);
+    };
+    const stopStatusPoll = () => {
+      if (statusPoll) clearInterval(statusPoll);
+      statusPoll = null;
+    };
+
+    // Closes the stream only; the status poll must survive a reconnect until the new source opens.
+    const closeSource = () => {
       if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
@@ -330,7 +346,14 @@ export function PerformanceTestReport({
       stopHeartbeatWatchdog();
     };
 
+    const cleanupSource = () => {
+      stopStatusPoll();
+      closeSource();
+    };
+
     const pollRunStatus = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       try {
         const details = await fetchK6RunDetails(runId);
         if (!details) {
@@ -347,12 +370,15 @@ export function PerformanceTestReport({
           clearReconnectTimeout();
           cleanupSource();
           setStreamError(null);
+          setShouldStream(false);
           await handleCompletion(
             details.runStatus ?? details.status ?? derivedStatus
           );
         }
       } catch (err) {
         console.error("Failed to poll run status after stream error", err);
+      } finally {
+        pollInFlight = false;
       }
     };
 
@@ -371,6 +397,7 @@ export function PerformanceTestReport({
           : `${prefix} Retrying (attempt ${reconnectAttempts})…`
       );
 
+      startStatusPoll();
       clearReconnectTimeout();
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
@@ -388,7 +415,7 @@ export function PerformanceTestReport({
         return;
       }
 
-      cleanupSource();
+      closeSource();
 
       const source = new EventSource(
         `/api/runs/${encodeURIComponent(runId)}/stream`
@@ -397,6 +424,7 @@ export function PerformanceTestReport({
       startHeartbeatWatchdog();
 
       const onOpen = () => {
+        stopStatusPoll();
         reconnectAttempts = 0;
         setStreamError(null);
         recordHeartbeat();
@@ -407,7 +435,16 @@ export function PerformanceTestReport({
           const payload = JSON.parse(event.data);
           if (payload?.line) {
             setStreamError(null);
-            setConsoleBuffer((prev) => prev + payload.line);
+            stopStatusPoll();
+            setConsoleBuffer((prev) => {
+              const next = prev + payload.line;
+              if (next.length <= MAX_CONSOLE_BUFFER_CHARS) return next;
+              let start = next.length - MAX_CONSOLE_BUFFER_CHARS;
+              const code = next.charCodeAt(start);
+              // Skip a low surrogate that would begin the retained text.
+              if (code >= 0xdc00 && code <= 0xdfff) start += 1;
+              return CONSOLE_TRUNCATED_NOTICE + next.slice(start);
+            });
             recordHeartbeat();
           }
         } catch (err) {
@@ -443,6 +480,7 @@ export function PerformanceTestReport({
         // If the browser is still trying to reconnect we do not want to close the source.
         if (source.readyState === EventSource.CONNECTING) {
           setStreamError("Connection interrupted. Reconnecting…");
+          startStatusPoll();
           return;
         }
 

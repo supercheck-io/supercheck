@@ -32,6 +32,7 @@ import {
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
+import { truncateConsoleOutput } from '../console-output';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
@@ -404,7 +405,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
                 ? RUN_CANCELLATION_MARKER
                 : result.error,
               consoleOutput: result.consoleOutput
-                ? result.consoleOutput.slice(0, 10000)
+                ? truncateConsoleOutput(result.consoleOutput)
                 : null,
             });
 

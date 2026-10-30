@@ -17,7 +17,8 @@ interface MonitorSummary {
   pending: number;
   maintenance: number;
   error: number;
-  uptime: number;
+  /** null when there were no checks in the last 24h. */
+  uptime: number | null;
   criticalAlerts: Array<{
     id: string;
     name: string;
@@ -165,7 +166,13 @@ export function parseSystemHealth(raw: unknown): SystemHealth {
   };
 }
 
+const nullableNumber = (value: unknown): number | null =>
+  value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+
 function transformDashboardData(data: Record<string, unknown>): DashboardData {
+  const responseTimeData = (data.monitors as Record<string, unknown> | undefined)?.responseTime as
+    | Record<string, unknown>
+    | undefined;
 
   const jobsData = data.jobs as Record<string, unknown> | undefined;
   const failed7d = jobsData?.failedRuns7d as Record<string, unknown> | undefined;
@@ -189,7 +196,10 @@ function transformDashboardData(data: Record<string, unknown>): DashboardData {
       pending: Math.max(0, Number(monitorsData?.pending) || 0),
       maintenance: Math.max(0, Number(monitorsData?.maintenance) || 0),
       error: Math.max(0, Number(monitorsData?.error) || 0),
-      uptime: Math.max(0, Math.min(100, Number(monitorsData?.uptime) || 0)),
+      // null = no checks in the window, not 100% or 0%
+      uptime: nullableNumber(monitorsData?.uptime) === null
+        ? null
+        : Math.max(0, Math.min(100, Number(monitorsData?.uptime))),
       criticalAlerts: Array.isArray(monitorsData?.criticalAlerts)
         ? (monitorsData.criticalAlerts as Array<Record<string, unknown>>).slice(0, 100).map(alert => ({
             id: String(alert.id || ''),
@@ -205,16 +215,11 @@ function transformDashboardData(data: Record<string, unknown>): DashboardData {
             count: Number(item.count) || 0,
           }))
         : [],
+      // ?? not ||: a 0 ms reading is real data
       responseTime: {
-        avg: (monitorsData?.responseTime as Record<string, unknown>)?.avg !== null
-          ? Number((monitorsData?.responseTime as Record<string, unknown>)?.avg) || null
-          : null,
-        min: (monitorsData?.responseTime as Record<string, unknown>)?.min !== null
-          ? Number((monitorsData?.responseTime as Record<string, unknown>)?.min) || null
-          : null,
-        max: (monitorsData?.responseTime as Record<string, unknown>)?.max !== null
-          ? Number((monitorsData?.responseTime as Record<string, unknown>)?.max) || null
-          : null,
+        avg: nullableNumber(responseTimeData?.avg),
+        min: nullableNumber(responseTimeData?.min),
+        max: nullableNumber(responseTimeData?.max),
       },
       availabilityTrend: Array.isArray(monitorsData?.availabilityTrend)
         ? (monitorsData.availabilityTrend as Array<Record<string, unknown>>).slice(-LOOKBACK_DAYS).map(item => ({

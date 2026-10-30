@@ -378,6 +378,49 @@ describe("K6Validator", () => {
       });
     });
 
+    describe("literal option limits", () => {
+      it("resolves computed literal keys and inline object spreads", () => {
+        for (const opts of ["{ ['vus']: 5000 }", "{ ...{ vus: 5000 } }", "{ scenarios: { a: { ...{ ['maxVUs']: 5000 } } } }"]) {
+          const r = validateK6Script(`import http from 'k6/http';\nexport const options = ${opts};\nexport default function () {}`);
+          expect(r.errors.join()).toContain("exceeds the maximum");
+        }
+      });
+
+      const wrap = (options: string) =>
+        `import http from 'k6/http';\nexport const options = ${options};\nexport default function() { http.get('https://x.test'); }`;
+      const errs = (options: string) => validateK6Script(wrap(options)).errors.join("|");
+
+      it.each([
+        ["vus", "{ vus: 5000, duration: '30s' }"],
+        ["stages target", "{ stages: [{ duration: '1m', target: 5000 }] }"],
+        ["maxVUs", "{ scenarios: { a: { executor: 'constant-arrival-rate', maxVUs: 5000, duration: '1m', rate: 1, timeUnit: '1s', preAllocatedVUs: 1 } } }"],
+        ["duration string", "{ vus: 10, duration: '2h' }"],
+        ["duration compound", "{ vus: 10, duration: '1h1m' }"],
+        ["ramping-vus scenario stage target", "{ scenarios: { a: { executor: 'ramping-vus', stages: [{ duration: '1m', target: 2000 }] } } }"],
+        ["startVUs", "{ scenarios: { a: { executor: 'ramping-vus', startVUs: 1500, stages: [{ duration: '1m', target: 10 }] } } }"],
+        ["scenario maxDuration", "{ scenarios: { a: { executor: 'shared-iterations', vus: 1, iterations: 1, maxDuration: '2h' } } }"],
+        ["last duplicate vus", "{ vus: 10, vus: 5000, duration: '30s' }"],
+        ["stages total", "{ stages: [{ duration: '40m', target: 10 }, { duration: '40m', target: 10 }] }"],
+      ])("rejects %s above the limit", (_n, options) => {
+        expect(validateK6Script(wrap(options)).valid).toBe(false);
+      });
+
+      it("accepts values at the limit and leaves dynamic values alone", () => {
+        expect(errs("{ vus: 1000, duration: '60m' }")).toBe("");
+        expect(errs("{ vus: 5000, vus: 10, duration: '30s' }")).toBe("");
+        expect(errs("{ vus: Number(__ENV.VUS), duration: __ENV.DUR }")).toBe("");
+        expect(errs("{ stages: [{ duration: '1m', target: 10 }] }")).toBe("");
+      });
+
+      it("treats ramping-arrival-rate stage targets as rates, not VUs", () => {
+        expect(errs("{ scenarios: { a: { executor: 'ramping-arrival-rate', startRate: 1, timeUnit: '1s', preAllocatedVUs: 10, stages: [{ duration: '1m', target: 2000 }] } } }")).toBe("");
+      });
+
+      it("ignores load-like keys under tags, env and thresholds", () => {
+        expect(errs("{ vus: 5, tags: { vus: 5000, duration: '2h' }, thresholds: { vus: ['x'] } }")).toBe("");
+      });
+    });
+
     describe("warnings", () => {
       it("should warn about missing options export", () => {
         const script = `
