@@ -79,7 +79,7 @@ describe("SreInvestigationPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "may still be running",
     );
-    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledTimes(2));
   });
 
   it("disables another run when the server reports an active investigation", () => {

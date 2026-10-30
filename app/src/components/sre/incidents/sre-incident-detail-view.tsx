@@ -336,6 +336,7 @@ export function SreIncidentDetailView({
               Post-mortem
             </Button>
           )}
+          {(permissions.canUpdate || permissions.canInvestigate) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
@@ -361,11 +362,9 @@ export function SreIncidentDetailView({
                   </DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuItem asChild>
-                <Link href={`/copilot/evidence-graph?incident=${incident.id}`}>Investigation Map</Link>
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </header>
 

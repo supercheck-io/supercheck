@@ -15,7 +15,6 @@ import {
 } from "@/actions/sre-investigation-reports";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentDetailQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
@@ -128,9 +127,6 @@ export function SreInvestigationPanel({
           }),
           queryClient.invalidateQueries({
             queryKey: getSreIncidentsQueryKey(projectId),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: getSreEvidenceGraphQueryKey(projectId),
           }),
         ]);
       }

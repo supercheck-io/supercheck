@@ -26,7 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentDetailQueryKey,
   getSreIncidentsQueryKey,
@@ -146,9 +145,6 @@ export function EditSreIncidentDialog({
         }),
         queryClient.invalidateQueries({
           queryKey: getSreIncidentAnalyticsQueryKey(projectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getSreEvidenceGraphQueryKey(projectId),
         }),
       ]);
     });

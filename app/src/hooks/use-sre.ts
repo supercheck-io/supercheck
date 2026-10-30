@@ -2,7 +2,6 @@
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { getSreEvidenceGraphAction } from "@/actions/sre-evidence-graph";
 import { getSreCopilotChatHistories } from "@/actions/sre-ai";
 import {
   getSreIncidentAnalytics,
@@ -17,7 +16,6 @@ import { getSreSimilarIncidents } from "@/actions/sre-similar-incidents";
 import { getSreServiceDetail, getSreServices } from "@/actions/sre-services";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreCopilotHistoriesQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentAssigneesQueryKey,
@@ -118,17 +116,6 @@ export function useSreServiceDetail(serviceId: string) {
     queryFn: () => getSreServiceDetail({ id: serviceId }),
     enabled: Boolean(projectId && serviceId),
     staleTime: 60_000,
-    meta: MEMORY_ONLY_QUERY,
-  });
-}
-
-export function useSreEvidenceGraph(incidentId?: string) {
-  const { projectId } = useProjectContext();
-  return useQuery({
-    queryKey: [...getSreEvidenceGraphQueryKey(projectId), incidentId ?? null],
-    queryFn: () => getSreEvidenceGraphAction(incidentId),
-    enabled: Boolean(projectId),
-    staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,
   });
 }

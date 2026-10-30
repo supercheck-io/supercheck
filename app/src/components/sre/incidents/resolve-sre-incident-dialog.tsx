@@ -18,7 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentDetailQueryKey,
   getSreIncidentTimelineQueryKey,
@@ -93,7 +92,6 @@ export function ResolveSreIncidentDialog({
             getSreIncidentTimelineQueryKey(projectId, incidentId),
             getSreIncidentsQueryKey(projectId),
             getSreIncidentAnalyticsQueryKey(projectId),
-            getSreEvidenceGraphQueryKey(projectId),
           ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
         );
       } catch {

@@ -1325,7 +1325,6 @@ async function decideDependencySuggestion(
       });
     }
     revalidatePath("/org-admin");
-    revalidatePath("/copilot/evidence-graph");
     return { success: true, message: decision === "approved" ? "Suggestion approved" : "Suggestion rejected" };
   } catch (error) {
     logger.error({ error, suggestionId: parsed.data.id, decision }, "Failed to decide SRE topology suggestion");

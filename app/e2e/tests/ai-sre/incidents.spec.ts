@@ -102,30 +102,9 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       )?.replace("sre-evidence-", "");
       expect(evidenceId).toMatch(/^[0-9a-f-]{36}$/i);
 
-      await page.goto("/copilot/evidence-graph", {
+      await page.goto(`/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}`, {
         waitUntil: "domcontentloaded",
       });
-      await page.getByLabel("Map view").click();
-      await page
-        .getByRole("option", {
-          name: "Investigations",
-          exact: true,
-        })
-        .click();
-      const evidenceNode = page.locator('[aria-label^="Evidence:"]').first();
-      await expect(evidenceNode).toBeVisible({ timeout: 30_000 });
-      await evidenceNode.click();
-      const evidenceDetails = page.getByRole("link", { name: "View details" });
-      await expect(evidenceDetails).toHaveAttribute(
-        "href",
-        `/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}`,
-      );
-      await evidenceDetails.click();
-      await expect(page).toHaveURL(
-        new RegExp(
-          `/incidents/${promotedIncidentId}#sre-evidence-${evidenceId}$`,
-        ),
-      );
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
       await expect(

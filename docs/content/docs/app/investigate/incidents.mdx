@@ -94,14 +94,12 @@ The summary card answers four questions in order.
 |---|---|
 | **Conclusion** | One paragraph: what changed, the blast radius, the strongest signals, and the likely cause |
 | **Confidence** | **High**, **Medium**, **Low**, or **Inconclusive** |
-| **Cited evidence** | Up to three evidence items the conclusion rests on. Select one to read it, or open the **Investigation Map** |
+| **Cited evidence** | Up to three evidence items the conclusion rests on. Select one to read it |
 | **Hypotheses** | Ranked explanations, each marked **Validated**, **Ruled out**, or **Inconclusive**, with a short rationale and its evidence |
 
 **Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs from before structured results, or runs whose output could not be validated, show a plain summary without hypotheses or a confidence rating.
 
 In the **Investigation details** panel, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
-
-![Investigation Map](/screenshots/sre-investigation-map.png)
 
 ### Run, re-run, and give feedback
 
@@ -129,10 +127,6 @@ The **Evidence** section of the panel organizes observations from Supercheck che
 | **Evidence brief** | A shareable AI summary of findings, hypotheses, and gaps. Regenerate it or download it as Markdown |
 
 ![Investigation details](/screenshots/incident-evidence-brief.png)
-
-Select **Investigation Map** to see the incident and its evidence relationships. Select a node to inspect it.
-
-![Evidence Graph](/screenshots/sre-evidence-graph.png)
 
 <Callout type="info">
 Stored evidence stays available when a connector is disabled. Disabling a connector stops new live searches but does not remove evidence already collected.

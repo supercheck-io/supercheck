@@ -66,7 +66,6 @@ import { UserCell } from "@/components/ui/user-cell";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
-  getSreEvidenceGraphQueryKey,
   getSreIncidentAnalyticsQueryKey,
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";

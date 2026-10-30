@@ -2,7 +2,6 @@ import { dehydrate, hydrate, QueryClient } from "@tanstack/react-query";
 import { prefetchSidebarRoute } from "./prefetch-utils";
 import { getDashboardQueryKey, type DashboardData } from "@/hooks/use-dashboard";
 
-jest.mock("@/actions/sre-evidence-graph", () => ({ getSreEvidenceGraphAction: jest.fn() }));
 jest.mock("@/actions/sre-ai", () => ({ getSreCopilotChatHistories: jest.fn() }));
 jest.mock("@/actions/sre-incidents", () => ({ getSreIncidents: jest.fn() }));
 jest.mock("@/components/monaco-prefetcher", () => ({ triggerMonacoPreload: jest.fn() }));
